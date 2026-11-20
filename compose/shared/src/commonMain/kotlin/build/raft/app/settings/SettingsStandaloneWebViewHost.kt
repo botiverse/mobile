@@ -14,6 +14,7 @@ import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftPageLoadState
 import build.raft.designsystem.components.RaftPageLoadingBar
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftStickerTile
@@ -140,7 +141,7 @@ internal fun performSettingsWebViewBack(
 /**
  * What a Settings web page shows over its WebView. There is no cover: the WebView is shown as soon
  * as it is attached (it paints the page as it arrives, like the system browser), with a thin
- * progress bar on top while the document is loading. Only a failed, stalled or crashed load
+ * load line on top while the document is loading. Only a failed, stalled or crashed load
  * replaces it, with the error state.
  */
 internal enum class SettingsWebViewPresentation {
@@ -728,23 +729,29 @@ internal fun SettingsWebViewContent(
                 )
             }
         }
-        when (
+        val presentation =
             settingsWebViewPresentation(
                 committed = committed,
                 isLoading = navigationState.isLoading,
                 hasLoadError = loadError != null || loadWatchdog.showsError,
             )
-        ) {
-            SettingsWebViewPresentation.Error ->
-                SettingsWebViewErrorContent(
-                    actionLabel = stringResource(Res.string.common_retry),
-                    actionIcon = RaftLucideIconName.RefreshCw,
-                    body = settingsWebViewErrorBody(loadWatchdog.state.phase),
-                    onAction = { reloadKey += 1 },
-                )
-            SettingsWebViewPresentation.Loading -> RaftWebPageLoadingBar(navigationState.progress)
-            SettingsWebViewPresentation.Content -> Unit
+        if (presentation == SettingsWebViewPresentation.Error) {
+            SettingsWebViewErrorContent(
+                actionLabel = stringResource(Res.string.common_retry),
+                actionIcon = RaftLucideIconName.RefreshCw,
+                body = settingsWebViewErrorBody(loadWatchdog.state.phase),
+                onAction = { reloadKey += 1 },
+            )
         }
+        // Always composed, after the error state (over it in the Box): the line plays its own
+        // end when the load finishes, and goes at once when it fails.
+        RaftWebPageLoadingBar(
+            raftWebPageLoadState(
+                isLoading = presentation == SettingsWebViewPresentation.Loading,
+                progress = navigationState.progress,
+                failed = presentation == SettingsWebViewPresentation.Error,
+            ),
+        )
     }
 }
 
@@ -754,34 +761,54 @@ internal fun SettingsWebViewLoadingCover() {
     Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas))
 }
 
-/** A web page that cannot start its load yet (its session or URL is not known): canvas and the progress bar. */
+/**
+ * A web page that cannot start its load yet (its session or URL is not known): canvas and the load
+ * line, resting with no progress. It leaves the composition when the load can start, so its line
+ * goes at once; the page's own line then starts its load from the beginning.
+ */
 @Composable
 internal fun SettingsWebViewLoadingPlaceholder() {
     Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-        RaftWebPageLoadingBar(progress = 0)
+        RaftWebPageLoadingBar(RaftPageLoadState.Loading())
     }
 }
 
 /**
- * The load line on the top edge of a loading in-app web page ([RaftPageLoadingBar]: flat, square
- * ends, edge to edge): the page's load progress, or the indeterminate sweep before the engine
- * reports any. It stays short of full; it goes away when the load ends.
+ * The load line on the top edge of an in-app web page ([RaftPageLoadingBar]: flat, square ends,
+ * from the start edge). Keep it composed for as long as the page is and report the load with
+ * [raftWebPageLoadState]: the line waits before it first shows, follows the page's progress, runs
+ * to the end and fades out when the load finishes, and goes at once when it fails.
  */
 @Composable
-internal fun RaftWebPageLoadingBar(progress: Int, modifier: Modifier = Modifier) {
+internal fun RaftWebPageLoadingBar(state: RaftPageLoadState, modifier: Modifier = Modifier) {
     RaftPageLoadingBar(
-        value = raftWebPageLoadingBarValue(progress),
+        state = state,
         modifier = modifier.testTag(RAFT_WEB_PAGE_LOADING_BAR_TAG),
         contentDescription = stringResource(Res.string.common_loading),
     )
 }
 
-/** The bar's fraction for an engine [progress] (0..100): null (indeterminate) until it moves. */
-internal fun raftWebPageLoadingBarValue(progress: Int): Float? =
-    progress.takeIf { it > 0 }?.let { (it.coerceAtMost(100) / 100f).coerceAtMost(RAFT_WEB_PAGE_LOADING_BAR_MAX) }
+/**
+ * What a web view's navigation state means for the load line. [progress] is the engine's 0..100.
+ *
+ * - [failed] (the page shows its error state): [RaftPageLoadState.Failed].
+ * - [isLoading]: [RaftPageLoadState.Loading] with the progress, none while the engine reports 0
+ *   (every engine resets it to 0 when a main-frame load starts).
+ * - Not loading at 100: [RaftPageLoadState.Finished]. Android and iOS set 100 only when the
+ *   load finished (`onPageFinished`, `didFinish`).
+ * - Not loading short of 100: the load was stopped, or it failed and the failure callback has
+ *   not arrived yet (the engines report "not loading" first). These cannot be told apart from
+ *   the state, so the line goes at once ([RaftPageLoadState.Idle]) instead of running to the end.
+ */
+internal fun raftWebPageLoadState(isLoading: Boolean, progress: Int, failed: Boolean): RaftPageLoadState =
+    when {
+        failed -> RaftPageLoadState.Failed
+        isLoading -> RaftPageLoadState.Loading(progress.takeIf { it > 0 }?.let { it.coerceAtMost(100) / 100f })
+        progress >= 100 -> RaftPageLoadState.Finished
+        else -> RaftPageLoadState.Idle
+    }
 
 internal const val RAFT_WEB_PAGE_LOADING_BAR_TAG = "raft_web_page_loading_bar"
-private const val RAFT_WEB_PAGE_LOADING_BAR_MAX = 0.95f
 
 @Composable
 internal fun SettingsWebViewErrorContent(

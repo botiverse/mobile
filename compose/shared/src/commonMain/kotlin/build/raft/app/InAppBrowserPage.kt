@@ -202,9 +202,17 @@ private fun RaftInAppBrowserScreen() {
                 // The frame before the WebView attaches: the progress bar below already shows.
                 else -> Unit
             }
-            // Over the page (not above it), so the page does not jump when the load ends.
-            if (launchUrl != null && loadError == null && navigationState.isLoading) {
-                RaftWebPageLoadingBar(navigationState.progress)
+            // Over the page (not above it), so the page does not jump when the load ends. Always
+            // composed: the line plays its own end when the load finishes, and goes at once when it
+            // fails or is stopped.
+            if (launchUrl != null) {
+                RaftWebPageLoadingBar(
+                    raftWebPageLoadState(
+                        isLoading = navigationState.isLoading,
+                        progress = navigationState.progress,
+                        failed = loadError != null,
+                    ),
+                )
             }
         }
     }

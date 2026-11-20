@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.json.JSONObject
+import build.raft.designsystem.components.RaftPageLoadState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -117,11 +118,19 @@ class SettingsStandaloneWebViewHostTest {
     }
 
     @Test
-    fun loadingBarIsIndeterminateUntilProgressAndNeverReachesComplete() {
-        assertEquals(null, raftWebPageLoadingBarValue(0))
-        assertEquals(0.4f, raftWebPageLoadingBarValue(40))
-        assertEquals(0.95f, raftWebPageLoadingBarValue(100))
-        assertEquals(0.95f, raftWebPageLoadingBarValue(140))
+    fun loadLineStateFollowsTheNavigationState() {
+        // Loading: no progress until the engine reports some, then its fraction.
+        assertEquals(RaftPageLoadState.Loading(null), raftWebPageLoadState(isLoading = true, progress = 0, failed = false))
+        assertEquals(RaftPageLoadState.Loading(0.4f), raftWebPageLoadState(isLoading = true, progress = 40, failed = false))
+        assertEquals(RaftPageLoadState.Loading(1f), raftWebPageLoadState(isLoading = true, progress = 140, failed = false))
+        // Ended at 100: finished, the line plays its end.
+        assertEquals(RaftPageLoadState.Finished, raftWebPageLoadState(isLoading = false, progress = 100, failed = false))
+        // Ended short of 100 (stopped, or failed before the failure callback): gone at once.
+        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 60, failed = false))
+        assertEquals(RaftPageLoadState.Idle, raftWebPageLoadState(isLoading = false, progress = 0, failed = false))
+        // A failure wins over whatever the engine still reports.
+        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = true, progress = 40, failed = true))
+        assertEquals(RaftPageLoadState.Failed, raftWebPageLoadState(isLoading = false, progress = 100, failed = true))
     }
 
     @Test

@@ -151,11 +151,11 @@ fun RaftProgressBar(
 internal const val RaftProgressBarStillSweep = 0.5f
 
 /**
- * The indeterminate sweep, 0..1 over [RaftProgressBarIndeterminateMillis], shared with
- * [RaftPageLoadingBar]; [RaftProgressBarStillSweep] when not [animated].
+ * The indeterminate sweep, 0..1 over [RaftProgressBarIndeterminateMillis];
+ * [RaftProgressBarStillSweep] when not [animated].
  */
 @Composable
-internal fun raftProgressBarSweep(animated: Boolean): Float {
+private fun raftProgressBarSweep(animated: Boolean): Float {
     if (!animated) return RaftProgressBarStillSweep
     val transition = rememberInfiniteTransition(label = "raft-progress")
     return transition.animateFloat(
