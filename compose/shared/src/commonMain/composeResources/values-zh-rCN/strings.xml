@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">后天</string>
     <string name="relative_time_day_past_many">%1$d 天前</string>
     <string name="relative_time_day_future_many">%1$d 天后</string>
+    <string name="relative_time_short_now">现在</string>
+    <string name="relative_time_short_minute_past">%1$d 分钟前</string>
+    <string name="relative_time_short_hour_past">%1$d 小时前</string>
+    <string name="relative_time_short_day_past_one">1 天前</string>
+    <string name="relative_time_short_day_past_many">%1$d 天前</string>
     <string name="thread_author_you">你</string>
     <string name="thread_error_open_thread_missing_identity">无法打开消息列：缺少这个会话的信息，请返回列表重新打开。</string>
     <string name="thread_error_open_thread_stale_source">无法打开消息列：页面刚刚更新了，请再点一次。</string>

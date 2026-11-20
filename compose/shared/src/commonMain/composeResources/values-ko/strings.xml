@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">모레</string>
     <string name="relative_time_day_past_many">%1$d일 전</string>
     <string name="relative_time_day_future_many">%1$d일 후</string>
+    <string name="relative_time_short_now">지금</string>
+    <string name="relative_time_short_minute_past">%1$d분 전</string>
+    <string name="relative_time_short_hour_past">%1$d시간 전</string>
+    <string name="relative_time_short_day_past_one">1일 전</string>
+    <string name="relative_time_short_day_past_many">%1$d일 전</string>
     <string name="thread_author_you">나</string>
     <string name="thread_error_open_thread_missing_identity">스레드를 열 수 없어요. 일부 정보가 없어요. 목록으로 돌아가 다시 열어 주세요.</string>
     <string name="thread_error_open_thread_stale_source">스레드를 열 수 없어요. 페이지가 방금 바뀌었어요. 다시 탭해 주세요.</string>

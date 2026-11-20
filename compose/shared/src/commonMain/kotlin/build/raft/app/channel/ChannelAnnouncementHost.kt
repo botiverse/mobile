@@ -37,6 +37,7 @@ import build.raft.app.data.channelTypeSupportsAnnouncement
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import kotlinx.coroutines.flow.flowOf
 
 /*
  * Channel announcements wired to a page: the flag, the shared store's slice, the reads (open,
@@ -199,7 +200,7 @@ private sealed interface ChannelAnnouncementStep {
 }
 
 /**
- * Channel details › Announcement, wired: the row, the picker, the confirmations, and the change
+ * Channel details › Pinned content, wired: the row, the picker, the confirmations, and the change
  * through the shared store (a refusal stays in its dialog with the server's sentence and the
  * trace id; success closes it).
  */
@@ -241,18 +242,30 @@ internal fun ChannelSettingsAnnouncementSection(
     // Web `useChannelAnnouncementKind`: resolve the Artifact kind from object summaries;
     // falls back to Markdown (document icon) until the batched summary arrives.
     val artifactId = slice.announcement?.artifactId
-    val summaryStore = remember(sharedStores) { sharedStores.artifactSummaryStore }
+    val artifactVersion = slice.announcement?.version
     val artifactTargets = remember(artifactId) { artifactId?.let { listOf(ArtifactLinkTarget(it)) }.orEmpty() }
-    LaunchedEffect(summaryStore, key.serverId, artifactTargets) {
-        if (artifactTargets.isNotEmpty()) summaryStore.request(key.serverId, artifactTargets)
+    val summaryStore = remember(sharedStores, artifactTargets.isNotEmpty()) {
+        if (artifactTargets.isEmpty()) null else sharedStores.artifactSummaryStore
+    }
+    LaunchedEffect(summaryStore, key.serverId, artifactTargets, artifactVersion) {
+        if (summaryStore != null && artifactTargets.isNotEmpty()) {
+            summaryStore.request(key.serverId, artifactTargets)
+        }
+    }
+    val initialSummaryAnswers = remember(summaryStore, key.serverId, artifactTargets) {
+        if (summaryStore == null || artifactTargets.isEmpty()) {
+            emptyMap()
+        } else {
+            summaryStore.state.value.answersFor(key.serverId, artifactTargets)
+        }
     }
     val summaryAnswers by remember(summaryStore, key.serverId, artifactTargets) {
-        if (artifactTargets.isEmpty()) {
-            kotlinx.coroutines.flow.flowOf(emptyMap())
+        if (summaryStore == null || artifactTargets.isEmpty()) {
+            flowOf(emptyMap())
         } else {
             summaryStore.answersFlow(key.serverId, artifactTargets)
         }
-    }.collectAsState(emptyMap())
+    }.collectAsState(initialSummaryAnswers)
     val artifactKind =
         artifactTargets.firstOrNull()?.let { target ->
             (summaryAnswers[target.key] as? ArtifactSummaryAnswer.Ok)?.summary?.kind

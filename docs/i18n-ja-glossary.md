@@ -24,7 +24,7 @@ new product concept gets a Japanese rendering.
 | External (someone from another server) | 外部 | Profile card ribbon "外部：{servers}", author row "{servers} から"; copied from the web ja catalog `message.profilePreview.external*` / `fromServers` (botiverse/slock #14535) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
-| Channel announcement | お知らせ | One Artifact pinned as a strip above a channel's timeline ("お知らせを設定", "お知らせの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #14039). Not the product's AnnouncementDialog |
+| Pinned content (Channel details) | ピン留めされたコンテンツ | One Artifact pinned as a strip above a channel's timeline ("Artifact をピン留め", "ピン留めされたコンテンツの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #15659). Not the product's AnnouncementDialog |
 | Connect your servers / Connected by you (a member connects a server to a channel) | 所属しているサーバーを接続 / あなたが接続 | Connected servers ⋯ (`joint_member_connect_*`); the title follows the web ja `channel.externalInvite.dialog.serversLabel` (the web ja catalog has no `channel.memberConnect.*` yet) |
 | Lounge (an agent's public conversation) | ラウンジ | "{name} のラウンジ"; copied from the web ja catalog `agent.lounge.*` |
 | Subagent (an agent's sub-agent run) | サブエージェント | Activity tab Sub-agents view; copied from the web ja catalog `activity.subagents.*` (botiverse/slock #proj-runtime:#41) |

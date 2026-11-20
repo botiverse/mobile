@@ -298,7 +298,8 @@ fun RaftListRow(
     richDescription: AnnotatedString? = null,
     /**
      * Custom subtitle slot (e.g. a single-line row where only one segment truncates while a
-     * trailing timestamp stays whole); wins over [subtitle].
+     * trailing timestamp stays whole); wins over [subtitle], ignores [subtitleCopyText], and owns
+     * its own text style and color (read [LocalRaftListRowInks] if matching the row inks).
      */
     subtitleContent: (@Composable () -> Unit)? = null,
 ) {

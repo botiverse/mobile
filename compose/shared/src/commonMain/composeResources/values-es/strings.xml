@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">pasado mañana</string>
     <string name="relative_time_day_past_many">hace %1$d días</string>
     <string name="relative_time_day_future_many">en %1$d días</string>
+    <string name="relative_time_short_now">ahora</string>
+    <string name="relative_time_short_minute_past">hace %1$d min</string>
+    <string name="relative_time_short_hour_past">hace %1$d h</string>
+    <string name="relative_time_short_day_past_one">hace 1 d</string>
+    <string name="relative_time_short_day_past_many">hace %1$d d</string>
     <string name="thread_author_you">Tú</string>
     <string name="thread_error_open_thread_missing_identity">No se puede abrir el hilo: faltan algunos de sus datos. Vuelve a la lista y ábrelo de nuevo.</string>
     <string name="thread_error_open_thread_stale_source">No se puede abrir el hilo: la página acaba de cambiar. Tócalo de nuevo.</string>

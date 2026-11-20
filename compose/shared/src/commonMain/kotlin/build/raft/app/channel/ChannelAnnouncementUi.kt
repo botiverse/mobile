@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,6 +34,7 @@ import build.raft.app.data.ChannelAnnouncementNotice
 import build.raft.app.data.ChannelAnnouncementSlice
 import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.ScreenError
+import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftListRowInks
 import build.raft.designsystem.components.RaftBanner
@@ -345,40 +347,105 @@ private fun ChannelAnnouncementDetailsMetaSubtitle(
             ChannelAnnouncementMetaTimeToken,
         )
     val parts = remember(template) { splitChannelAnnouncementMetaTemplate(template) }
+    val activeParts =
+        remember(parts, timeLabel) {
+            if (timeLabel.isNotBlank()) {
+                parts
+            } else {
+                parts.filterNot { part ->
+                    part == ChannelAnnouncementMetaPart.Time ||
+                        (part is ChannelAnnouncementMetaPart.Literal && part.text.contains('·'))
+                }
+            }
+        }
     val style = RaftTheme.typography.monoMeta
     val color = LocalRaftListRowInks.current?.ink2 ?: RaftTheme.colors.foregroundMuted
-    Row(
+    // Measure Time first so the relative timestamp always stays whole, then reserve literals,
+    // and let Name take the remaining width with ellipsis (botiverse/slock #15693).
+    Layout(
         modifier = Modifier.fillMaxWidth().testTag(ChannelAnnouncementTestTags.DetailsMeta),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        parts.forEach { part ->
-            when (part) {
-                is ChannelAnnouncementMetaPart.Literal ->
-                    RaftText(
-                        text = part.text,
-                        style = style,
-                        color = color,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
-                ChannelAnnouncementMetaPart.Name ->
-                    RaftText(
-                        text = authorName,
-                        modifier = Modifier.weight(1f, fill = false).testTag(ChannelAnnouncementTestTags.DetailsMetaName),
-                        style = style,
-                        color = color,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                ChannelAnnouncementMetaPart.Time ->
-                    RaftText(
-                        text = timeLabel,
-                        modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsMetaTime),
-                        style = style,
-                        color = color,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
+        content = {
+            activeParts.forEach { part ->
+                when (part) {
+                    is ChannelAnnouncementMetaPart.Literal ->
+                        RaftText(
+                            text = part.text,
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    ChannelAnnouncementMetaPart.Name ->
+                        RaftText(
+                            text = authorName,
+                            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsMetaName),
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    ChannelAnnouncementMetaPart.Time ->
+                        RaftText(
+                            text = timeLabel,
+                            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsMetaTime),
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val maxWidth = constraints.maxWidth
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = arrayOfNulls<androidx.compose.ui.layout.Placeable>(measurables.size)
+        var remaining = maxWidth
+        // 1. Measure Time first at full width so it is never clipped.
+        activeParts.forEachIndexed { index, part ->
+            if (part == ChannelAnnouncementMetaPart.Time) {
+                val p = measurables[index].measure(loose)
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 2. Measure separator ("·") literals next so they stay intact beside Time.
+        activeParts.forEachIndexed { index, part ->
+            if (part is ChannelAnnouncementMetaPart.Literal && part.text.contains('·')) {
+                val p = measurables[index].measure(loose.copy(maxWidth = remaining))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 3. Measure remaining literals, keeping at least a small reserve for Name on ultra-narrow rows.
+        val hasName = activeParts.any { it == ChannelAnnouncementMetaPart.Name }
+        val minNameReserve = if (hasName) 32.dp.roundToPx() else 0
+        activeParts.forEachIndexed { index, part ->
+            if (placeables[index] == null && part is ChannelAnnouncementMetaPart.Literal) {
+                val cap = if (remaining > minNameReserve) remaining - minNameReserve else remaining
+                val p = measurables[index].measure(loose.copy(maxWidth = cap.coerceAtLeast(0)))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 4. Measure Name in whatever width remains (truncates with ellipsis).
+        activeParts.forEachIndexed { index, part ->
+            if (placeables[index] == null && part == ChannelAnnouncementMetaPart.Name) {
+                val p = measurables[index].measure(loose.copy(maxWidth = remaining))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        val measured = placeables.map { requireNotNull(it) }
+        val totalWidth = measured.sumOf { it.width }.coerceIn(constraints.minWidth, maxWidth)
+        val totalHeight = (measured.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(totalWidth, totalHeight) {
+            var x = 0
+            measured.forEach { placeable ->
+                placeable.placeRelative(x, (totalHeight - placeable.height) / 2)
+                x += placeable.width
             }
         }
     }
@@ -419,7 +486,7 @@ internal fun ChannelAnnouncementDetailsRow(
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             if (announcement != null) {
                 val authorName = channelAnnouncementAuthorName(announcement.updatedBy.name)
-                val timeLabel = raftRelativeTimestampLabel(announcement.updatedAt)
+                val timeLabel = raftShortRelativeTimestampLabel(announcement.updatedAt)
                 if (canEdit) {
                     ChannelAnnouncementDetailsItemWithActions(
                         title = announcement.title,
@@ -449,7 +516,7 @@ internal fun ChannelAnnouncementDetailsRow(
                     modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsEmpty),
                     variant = RaftListRowVariant.Plain,
                     tone = RaftRowTone.Muted,
-                    titleMaxLines = 2,
+                    titleMaxLines = Int.MAX_VALUE,
                     trailing = {
                         RaftButton(
                             text = stringResource(Res.string.channel_announcement_details_set),
@@ -483,6 +550,7 @@ private fun ChannelAnnouncementDetailsItemWithActions(
     onRemove: () -> Unit,
 ) {
     val colors = RaftTheme.colors
+    val actionsRoom = RaftTheme.controls.rowHeight ?: ChannelAnnouncementActionsRoom
     var open by remember { mutableStateOf(false) }
     val actionsLabel = stringResource(Res.string.channel_announcement_details_actions)
     Box(Modifier.fillMaxWidth()) {
@@ -497,7 +565,7 @@ private fun ChannelAnnouncementDetailsItemWithActions(
             leading = { RaftSlotIcon(artifactKind.lucideIcon(), size = 16.dp) },
             // Reserve room for ⋯ before the chevron so title and subtitle end before it.
             trailing = {
-                Spacer(Modifier.width(ChannelAnnouncementActionsRoom))
+                Spacer(Modifier.width(actionsRoom))
                 RaftListRowChevron()
             },
             menuOpen = open,
@@ -554,8 +622,8 @@ private fun ChannelAnnouncementErrorNote(error: ScreenError) {
 }
 
 /**
- * Set / Replace: one of the channel's own Artifacts (a Dialog md with a ChoiceList), the current
- * announcement left out. Set confirms here; Replace goes on to its confirmation ([onNext]).
+ * Pin / Replace pin: one of the channel's own Artifacts (a Dialog md with a ChoiceList), the
+ * currently pinned Artifact left out. Pin confirms here; Replace pin goes on to its confirmation.
  */
 @Composable
 internal fun ChannelAnnouncementPickerDialog(
@@ -615,7 +683,13 @@ internal fun ChannelAnnouncementPickerDialog(
                                     label = choice.title,
                                     descriptions = listOf(androidx.compose.ui.text.AnnotatedString(choice.meta)),
                                     searchText = choice.title,
-                                    media = { RaftSlotIcon(choice.kind.lucideIcon(), size = 16.dp) },
+                                    media = {
+                                        RaftSlotIcon(
+                                            choice.kind.lucideIcon(),
+                                            size = 16.dp,
+                                            color = if (running) colors.foregroundDisabled else colors.foregroundMuted,
+                                        )
+                                    },
                                 )
                             },
                         value = chosen,

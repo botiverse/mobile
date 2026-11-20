@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">depois de amanhã</string>
     <string name="relative_time_day_past_many">há %1$d dias</string>
     <string name="relative_time_day_future_many">em %1$d dias</string>
+    <string name="relative_time_short_now">agora</string>
+    <string name="relative_time_short_minute_past">há %1$d min.</string>
+    <string name="relative_time_short_hour_past">há %1$d h</string>
+    <string name="relative_time_short_day_past_one">há 1 dia</string>
+    <string name="relative_time_short_day_past_many">há %1$d dias</string>
     <string name="thread_author_you">Você</string>
     <string name="thread_error_open_thread_missing_identity">Não foi possível abrir a thread: faltam alguns dados dela. Volte para a lista e abra-a novamente.</string>
     <string name="thread_error_open_thread_stale_source">Não foi possível abrir a thread: a página acabou de mudar. Toque nela novamente.</string>

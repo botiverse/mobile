@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">послезавтра</string>
     <string name="relative_time_day_past_many">%1$d дн. назад</string>
     <string name="relative_time_day_future_many">через %1$d дн.</string>
+    <string name="relative_time_short_now">сейчас</string>
+    <string name="relative_time_short_minute_past">%1$d мин. назад</string>
+    <string name="relative_time_short_hour_past">%1$d ч назад</string>
+    <string name="relative_time_short_day_past_one">1 дн. назад</string>
+    <string name="relative_time_short_day_past_many">%1$d дн. назад</string>
     <string name="thread_author_you">Вы</string>
     <string name="thread_error_open_thread_missing_identity">Не удалось открыть ветку: не хватает части её данных. Вернитесь к списку и откройте её снова.</string>
     <string name="thread_error_open_thread_stale_source">Не удалось открыть ветку: страница только что обновилась. Нажмите на неё ещё раз.</string>

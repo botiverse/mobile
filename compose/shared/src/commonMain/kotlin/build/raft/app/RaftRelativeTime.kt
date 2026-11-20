@@ -127,6 +127,40 @@ internal fun raftRelativeTimestampLabel(
 }
 
 /**
+ * Compact relative time (web `formatShortRelativeTime`, e.g. `"now"`, `"5m ago"`, `"2h ago"`,
+ * `"9d ago"`), clamped so slight client clock skew behind the server reads as `"now"` rather than
+ * a future label.
+ */
+@Composable
+internal fun raftShortRelativeTimestampLabel(
+    value: String?,
+    timeContext: RaftTimeContext? = null,
+): String {
+    val effectiveContext = currentRaftTimeContext(timeContext)
+    val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext).clampedFutureToNow()
+    return when (resolved) {
+        RaftRelativeTimeLabel.Empty -> ""
+        RaftRelativeTimeLabel.Unknown ->
+            raftDeviceZoneAbsoluteLabel(value) ?: stringResource(Res.string.relative_time_unknown)
+        is RaftRelativeTimeLabel.Literal -> resolved.value
+        is RaftRelativeTimeLabel.Relative -> resolved.localizedShort()
+    }
+}
+
+@Composable
+private fun RaftRelativeTimeLabel.Relative.localizedShort(): String {
+    val count = absoluteValue()
+    if (count == 0) return stringResource(Res.string.relative_time_short_now)
+    return when (unit) {
+        RaftRelativeTimeUnit.Minute -> stringResource(Res.string.relative_time_short_minute_past, count)
+        RaftRelativeTimeUnit.Hour -> stringResource(Res.string.relative_time_short_hour_past, count)
+        RaftRelativeTimeUnit.Day ->
+            if (count == 1) stringResource(Res.string.relative_time_short_day_past_one)
+            else stringResource(Res.string.relative_time_short_day_past_many, count)
+    }
+}
+
+/**
  * A readable time with no time context: the absolute local time in the device zone ("14:05",
  * "11-06 12:10"), never "unknown time" for a timestamp that parses (artin 11-05). Every page has
  * a base context now (BasePager), so this is only the last fallback; null when [value] is not a

@@ -723,6 +723,11 @@
     <string name="relative_time_day_after_tomorrow">明後日</string>
     <string name="relative_time_day_past_many">%1$d 日前</string>
     <string name="relative_time_day_future_many">%1$d 日後</string>
+    <string name="relative_time_short_now">今</string>
+    <string name="relative_time_short_minute_past">%1$d分前</string>
+    <string name="relative_time_short_hour_past">%1$d時間前</string>
+    <string name="relative_time_short_day_past_one">1日前</string>
+    <string name="relative_time_short_day_past_many">%1$d日前</string>
     <string name="thread_author_you">あなた</string>
     <string name="thread_error_open_thread_missing_identity">スレッドを開けませんでした：この会話の情報が不足しています。一覧に戻ってもう一度開いてください。</string>
     <string name="thread_error_open_thread_stale_source">スレッドを開けませんでした：ページが更新されました。もう一度タップしてください。</string>
