@@ -116,15 +116,15 @@ tasks.named<Test>("desktopTest") {
 }
 
 // vcase pilot (vcase repo, docs/pilot-raft-mobile.md; Raft #proj-mobile:#211). desktopTest also
-// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost and DesignSystemVCases)
-// against build.raft.vcase from maven.artifacts.botiverse.dev.
+// compiles src/desktopVcase (the @VCase cases, RaftVCaseHost, DesignSystemVCases and the
+// LegacyGoldenParityTest migration gate) against build.raft.vcase from maven.artifacts.botiverse.dev.
 // Goldens live next to the Roborazzi ones, at screenshots/vcase/desktop-skiko/, with the manifest
 // at screenshots/vcase/vcase.manifest.json, so the record_screenshots dispatch collects them too.
 // - desktopTest / verifyRoborazziDesktop: verify, zero tolerance (inputs: screenshotGoldens covers screenshots/vcase).
 // - recordRoborazziDesktop: record (vcase.mode=record) alongside Roborazzi.
 // - -Pvcase.mode=record|verify|scan and -Pvcase.filter=<id glob> override; -Pvcase.version picks
 //   another release (or 0.1.0-SNAPSHOT from mavenLocal).
-val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.0")
+val vcaseVersion = providers.gradleProperty("vcase.version").getOrElse("0.1.1")
 val vcaseDir = screenshotGoldenDir.dir("vcase")
 val vcaseRecording = gradle.startParameter.taskNames.any { it.substringAfterLast(':') == "recordRoborazziDesktop" }
 kotlin {
