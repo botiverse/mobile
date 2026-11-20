@@ -28,6 +28,7 @@ import build.raft.app.data.PeerReadReceiptScope
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
+import build.raft.app.data.SharedPeerReadReceiptStore
 import build.raft.app.data.projectAgentReadReceipt
 import build.raft.app.data.projectPeerReadReceipt
 import build.raft.app.markdown.RaftMarkdownMentionReadStates
@@ -153,6 +154,20 @@ internal fun threadManagedAgentIds(serverMembers: List<MemberProfile>): Set<Stri
         .mapTo(mutableSetOf()) { it.id.value }
 
 /**
+ * Binds [store] once the conversation page knows its signed-in owner. A page whose session has not
+ * resolved yet ([owner] == null) must never dispatch `BindOwner(null)`: the store is shell-wide, so
+ * a null bind on frame 1 of a cached open would wipe cached read receipts across the whole shell.
+ * Sign-out and shell teardown clear the store explicitly.
+ */
+internal fun bindThreadPeerReadReceiptsOwner(
+    store: SharedPeerReadReceiptStore,
+    owner: PeerReadReceiptOwner?,
+) {
+    val currentOwner = owner ?: return
+    store.dispatch(PeerReadReceiptIntent.BindOwner(currentOwner))
+}
+
+/**
  * Binds the page to the shell's read-receipt store: hydrates the page's scope once its first page
  * settled (web waits for the same) and applies `scope_read:updated` frames for it (web
  * `useReadReceiptHydrate`). Returns the UI projection, or null while the scope has no hydrate.
@@ -182,7 +197,7 @@ internal fun rememberThreadPeerReadReceipts(
         }
     val scopeId = payload.peerReadReceiptScopeId()
     val firstPageSettled = payload.status != "loading"
-    LaunchedEffect(store, owner) { store.dispatch(PeerReadReceiptIntent.BindOwner(owner)) }
+    LaunchedEffect(store, owner) { bindThreadPeerReadReceiptsOwner(store, owner) }
     LaunchedEffect(store, owner, scopeId, firstPageSettled, active) {
         val currentOwner = owner ?: return@LaunchedEffect
         if (scopeId != null && firstPageSettled && active) store.hydrate(currentOwner, scopeId)
