@@ -154,6 +154,10 @@ internal class RaftAndroidSandboxWebView(
     private var lastNavigationStateKey: String = ""
     private var lastLoadFailureReason: String = ""
     private var hostMessageListener: WebViewCompat.WebMessageListener? = null
+    /** [startPageDownload]'s `blob:` reads in flight, by token; their port and name hook. */
+    private val pendingBlobDownloads = LinkedHashMap<String, RaftWebViewBlobDownloadAssembler>()
+    private var downloadMessageListener: WebViewCompat.WebMessageListener? = null
+    private var downloadNameScriptHandler: ScriptHandler? = null
     private var documentStartScriptHandler: ScriptHandler? = null
     /** [raftWebViewFirstPaintThemeScript] at document start; separate from the auth/bridge script. */
     private var firstPaintScriptHandler: ScriptHandler? = null
@@ -262,6 +266,7 @@ internal class RaftAndroidSandboxWebView(
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         removeHostMessageListener()
+        removeDownloadSupport()
         pendingRuntimeJavaScript = ""
         removeDocumentStartScript()
         diagnosticsInfo("destroy_webview loadedSrc=${loadedSrc.raftRedactedUrlForLog()}")
@@ -597,10 +602,13 @@ internal class RaftAndroidSandboxWebView(
                 }
             }
         webView.setDownloadListener(
-            DownloadListener { url, _, _, _, _ ->
+            DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 if (destroyed) return@DownloadListener
-                val download = events.onDownloadRequested
-                if (download != null) download(url.orEmpty()) else notifyNavigationBlocked(url.orEmpty())
+                if (events.onDownloadRequested == null) {
+                    notifyNavigationBlocked(url.orEmpty())
+                    return@DownloadListener
+                }
+                startPageDownload(url.orEmpty(), contentDisposition, mimeType)
             }
         )
     }
@@ -834,6 +842,7 @@ internal class RaftAndroidSandboxWebView(
         notifyNavigationState()
         val documentStartInstalled = installDocumentStartScript(normalized)
         installHostMessageListener(normalized)
+        if (events.onDownloadRequested != null) installDownloadSupport(normalized) else removeDownloadSupport()
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
             val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(documentUrl) ?: documentUrl
             bootstrapNavigationFence.begin(targetUrl = documentUrl)
@@ -1050,6 +1059,103 @@ internal class RaftAndroidSandboxWebView(
             WebViewCompat.addWebMessageListener(webView, RaftWebViewHostPortName, setOf(originRule), listener)
             Log.i(LOG_TAG, "host_message_listener installed origin=${originRule.raftRedactedUrlForLog()}")
         }.onFailure { Log.w(LOG_TAG, "host_message_listener unavailable", it) }
+    }
+
+    /**
+     * A file the page saves, kept in the app as a browser keeps it (#proj-mobile:#202):
+     * - `blob:` / `data:` (the web's Download saves this way): read in the page right away (the web
+     *   revokes the address soon after the click) and posted back in chunks to [RaftWebViewDownloadPortName],
+     *   which only the page's own origin, main frame, can reach.
+     * - http(s) on the page's own origin: handed to the host by address with the page's `download`
+     *   name; the host downloads it with its session.
+     * - anything else (another origin): the blocked-navigation route, as before.
+     */
+    private fun startPageDownload(url: String, contentDisposition: String?, mimeType: String?) {
+        val report = events.onDownloadRequested ?: return
+        val pageOrigin = raftDocumentStartScriptOriginRule(currentUrl.ifBlank { loadedSrc })
+        val trustedPage = pageOrigin != null && (mainFrameOrigin == null || pageOrigin == mainFrameOrigin)
+        val lower = url.lowercase()
+        when {
+            lower.startsWith("blob:") || lower.startsWith("data:") -> {
+                if (!trustedPage || downloadMessageListener == null) {
+                    diagnosticsWarn("page_download result=failed reason=no_port")
+                    report(RaftWebViewDownload.Failed("no_port"))
+                    return
+                }
+                val token = "d" + kotlin.random.Random.nextLong().toULong().toString(16)
+                if (pendingBlobDownloads.size >= 4) pendingBlobDownloads.remove(pendingBlobDownloads.keys.first())
+                pendingBlobDownloads[token] = RaftWebViewBlobDownloadAssembler(token, url)
+                diagnosticsInfo("page_download kind=blob")
+                webView.evaluateJavascript(raftWebViewBlobReadScript(url, token), null)
+            }
+            (lower.startsWith("https:") || lower.startsWith("http:")) &&
+                trustedPage && raftDocumentStartScriptOriginRule(url) == pageOrigin -> {
+                diagnosticsInfo("page_download kind=same_origin")
+                webView.evaluateJavascript(
+                    "(function(){var n=window.__raftDownloadNames;return n&&n[${build.raft.app.compat.json.JSONObject.quote(url)}]||'';})()"
+                ) { value ->
+                    if (destroyed) return@evaluateJavascript
+                    val pageName =
+                        value?.takeIf { it.length >= 2 && it.startsWith("\"") }
+                            ?.let { runCatching { AndroidJSONObject("{\"v\":$it}").optString("v") }.getOrNull() }
+                            ?.takeIf { it.isNotBlank() }
+                    events.onDownloadRequested?.invoke(
+                        RaftWebViewDownload.Url(url, pageName, contentDisposition, mimeType)
+                    )
+                }
+            }
+            else -> notifyNavigationBlocked(url)
+        }
+    }
+
+    private fun installDownloadSupport(targetUrl: String) {
+        removeDownloadSupport()
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
+            !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+        ) {
+            return
+        }
+        val originRule = raftDocumentStartScriptOriginRule(targetUrl) ?: return
+        if (mainFrameOrigin != null && originRule != mainFrameOrigin) return
+        runCatching {
+            val listener =
+                object : WebViewCompat.WebMessageListener {
+                    override fun onPostMessage(
+                        view: WebView,
+                        message: WebMessageCompat,
+                        sourceOrigin: Uri,
+                        isMainFrame: Boolean,
+                        replyProxy: JavaScriptReplyProxy
+                    ) {
+                        if (destroyed || !isMainFrame || sourceOrigin.toString() != originRule) return
+                        val raw = message.data ?: return
+                        val token = runCatching { AndroidJSONObject(raw).optString("t") }.getOrNull() ?: return
+                        val assembler = pendingBlobDownloads[token] ?: return
+                        val result = assembler.accept(raw) ?: return
+                        pendingBlobDownloads.remove(token)
+                        when (result) {
+                            is RaftWebViewDownload.Failed -> diagnosticsWarn("page_download result=failed reason=${result.reason}")
+                            is RaftWebViewDownload.Bytes -> diagnosticsInfo("page_download result=read bytes=${result.bytes.size}")
+                            is RaftWebViewDownload.Url -> Unit
+                        }
+                        events.onDownloadRequested?.invoke(result)
+                    }
+                }
+            WebViewCompat.addWebMessageListener(webView, RaftWebViewDownloadPortName, setOf(originRule), listener)
+            downloadMessageListener = listener
+            downloadNameScriptHandler =
+                WebViewCompat.addDocumentStartJavaScript(webView, RaftWebViewDownloadNameHookScript, setOf(originRule))
+        }.onFailure { Log.w(LOG_TAG, "download_support unavailable", it) }
+    }
+
+    private fun removeDownloadSupport() {
+        if (downloadMessageListener != null) {
+            runCatching { WebViewCompat.removeWebMessageListener(webView, RaftWebViewDownloadPortName) }
+        }
+        downloadMessageListener = null
+        runCatching { downloadNameScriptHandler?.remove() }
+        downloadNameScriptHandler = null
+        pendingBlobDownloads.clear()
     }
 
     private fun removeHostMessageListener() {

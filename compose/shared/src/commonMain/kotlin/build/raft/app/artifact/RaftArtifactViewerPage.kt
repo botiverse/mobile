@@ -46,6 +46,9 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.network.HEADER_AUTHORIZATION
+import build.raft.app.network.HEADER_SERVER_ID
+import build.raft.app.network.AttachmentDownloadLocalBytes
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -595,7 +598,9 @@ private fun RaftArtifactViewerScreen() {
     // when pinned), opened in the browser.
     val shownLink = ArtifactLinkTarget(shown.id, if (addressed != null) addressed?.version else shown.version)
     val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
-    val downloadInBrowser = stringResource(Res.string.artifacts_viewer_download_in_browser)
+    val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
+    val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
+    val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
         desktopModeChosen = !desktopModeChosen
         desktopModePreference?.write(desktopModeChosen)
@@ -667,12 +672,18 @@ private fun RaftArtifactViewerScreen() {
                                 addressed = null
                                 header = RaftArtifactViewerMemory.cache.header(scope, next.canonicalId)
                             },
-                            onDownload = {
-                                // The WebView cannot save the page's files (they are `blob:` links): the
-                                // browser can, so the Artifact opens there, said first.
-                                host.bridge.log("artifact_viewer_download action=open_in_browser")
-                                host.bridge.toast(downloadInBrowser)
-                                host.bridge.openUrl(shownUrl, inBrowser = true)
+                            onDownload = { download ->
+                                // A file the page saves, kept in the app as a browser keeps it
+                                // (#proj-mobile:#202): never the page in the browser, where nobody is signed in.
+                                downloadScope.launch {
+                                    raftArtifactViewerSaveDownload(
+                                        host = host,
+                                        scope = scope,
+                                        download = download,
+                                        savedMessage = downloadSaved,
+                                        failedMessage = downloadFailed,
+                                    )
+                                }
                             },
                             onHostAction = { action, version ->
                                 when (action) {
@@ -732,7 +743,8 @@ private fun RaftArtifactViewerWebBody(
     onStay: (RaftArtifactViewerNavigation.Stay) -> Unit,
     /** The page moved to another Artifact in place ([raftArtifactViewerSwitchesInPlace]): the viewer shows that one. */
     onSwitch: (ArtifactLinkTarget) -> Unit,
-    onDownload: () -> Unit,
+    /** A file the page saves ([RaftWebViewDownload]). */
+    onDownload: (RaftWebViewDownload) -> Unit,
     /** An App item in the page's own ⋯ (`#host=<name>`), with the version its address shows (null: the latest). */
     onHostAction: (action: RaftArtifactViewerHostAction, version: Int?) -> Unit,
     /** Whether the page now draws the only bar (`hostToolbar=1`, shown, no load error). */
@@ -1086,14 +1098,23 @@ private fun RaftArtifactViewerWebBody(
                 // routed as a link ([raftArtifactViewerBlockedNavigationTarget]).
                 when (val routed = raftArtifactViewerBlockedNavigationTarget(blocked, scope.webOrigin, shownTarget.id)) {
                     is RaftArtifactViewerBlockedTarget.SystemBrowser -> host.bridge.openUrl(routed.url, inBrowser = true)
-                    RaftArtifactViewerBlockedTarget.Download -> currentOnDownload()
+                    // A save the page asked for as a new window: an http(s) address on the page's origin is
+                    // downloaded with the app's session; a `blob:` one cannot be read from here.
+                    RaftArtifactViewerBlockedTarget.Download ->
+                        currentOnDownload(
+                            if (blocked.trim().startsWith("blob:", ignoreCase = true)) {
+                                RaftWebViewDownload.Failed("blob_new_window")
+                            } else {
+                                RaftWebViewDownload.Url(blocked.trim(), pageFileName = null, contentDisposition = null, mimeType = null)
+                            }
+                        )
                     is RaftArtifactViewerBlockedTarget.OpenMessage -> RaftMessageLinkIngress.accept(routed.url, "artifact_viewer", scope.webOrigin)
                     is RaftArtifactViewerBlockedTarget.OpenArtifact -> RaftArtifactLinkInbox.Process.submit(routed.target, "artifact_viewer")
                     RaftArtifactViewerBlockedTarget.Ignore -> Unit
                 }
             },
             // A file the page saves (Android DownloadListener, an iOS attachment response): the browser can.
-            onDownloadRequested = { currentOnDownload() },
+            onDownloadRequested = { download -> currentOnDownload(download) },
             // A Raft link the page opened in place (Android: `window.open` loads in this one window): routed
             // as the blocked navigation above, the viewer staying, as on the web and iOS.
             routesMainFrameNavigation = { url -> raftArtifactViewerRoutesDocumentAsLink(url, scope.webOrigin, shownTarget.id) },
@@ -1221,4 +1242,100 @@ internal fun RaftArtifactViewerUnavailable(onClose: () -> Unit) {
             leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
         )
     }
+}
+
+/**
+ * Saves a file the page saved ([RaftWebViewDownload]) as a message attachment is saved (Android:
+ * Downloads; iOS: the system's save sheet), with the name the page gave it:
+ * - [RaftWebViewDownload.Bytes] (a `blob:` save read in the page, an iOS WKDownload): from those
+ *   bytes, under a `raft-local:` address never fetched;
+ * - [RaftWebViewDownload.Url] (an http(s) address on the page's own web origin): downloaded with the
+ *   app's own session (in memory for that transfer, never over the bridge), named by the page's
+ *   `download` name or else the response's Content-Disposition.
+ * A failure says so (with the response's trace id when one was answered); nothing opens the browser.
+ */
+private suspend fun raftArtifactViewerSaveDownload(
+    host: RaftArtifactViewerHost,
+    scope: RaftArtifactViewerScope,
+    download: RaftWebViewDownload,
+    savedMessage: String,
+    failedMessage: String,
+) {
+    val owner = currentAttachmentOwnerLease(host.storeScope)
+    val result: JSONObject? =
+        when (download) {
+            is RaftWebViewDownload.Failed -> {
+                host.bridge.log("artifact_viewer_download action=save result=failed reason=${download.reason}")
+                host.bridge.errorToast(failedMessage)
+                return
+            }
+            is RaftWebViewDownload.Bytes -> {
+                if (owner == null) {
+                    host.bridge.log("artifact_viewer_download action=save kind=bytes result=no_owner")
+                    host.bridge.errorToast(failedMessage)
+                    return
+                }
+                host.bridge.log("artifact_viewer_download action=save kind=bytes bytes=${download.bytes.size}")
+                val token = raftArtifactViewerDownloadCacheId(scope.serverId, download.fileName + "|" + kotlin.random.Random.nextLong())
+                host.bridge.saveAttachment(
+                    url = "${AttachmentDownloadLocalBytes.SCHEME}://download/$token",
+                    attachmentId = token,
+                    fileName = download.fileName,
+                    owner = owner,
+                    mimeType = download.mimeType,
+                    localBytes = AttachmentDownloadLocalBytes.Source(download.bytes, download.fileName, download.mimeType),
+                )
+            }
+            is RaftWebViewDownload.Url -> {
+                val session =
+                    runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }
+                        .getOrNull()
+                        ?.takeIf { it.user.id.trim() == scope.accountId && it.accessToken.isNotBlank() }
+                if (owner == null || session == null || raftWebOriginOf(download.url) != raftWebOriginOf(scope.webOrigin)) {
+                    host.bridge.log("artifact_viewer_download action=save kind=url result=refused")
+                    host.bridge.errorToast(failedMessage)
+                    return
+                }
+                host.bridge.log("artifact_viewer_download action=save kind=url")
+                val pageName = download.pageFileName
+                host.bridge.saveAttachment(
+                    url = download.url,
+                    attachmentId = raftArtifactViewerDownloadCacheId(scope.serverId, download.url),
+                    fileName = raftWebViewDownloadFileName(pageName, download.contentDisposition, download.url, download.mimeType),
+                    owner = owner,
+                    mimeType = download.mimeType,
+                    // The page's own name wins; else the name the response gives.
+                    fileNameFromResponse = pageName == null,
+                    sessionHeaders =
+                        mapOf(
+                            HEADER_AUTHORIZATION to "Bearer ${session.accessToken}",
+                            HEADER_SERVER_ID to scope.serverId,
+                        ),
+                )
+            }
+        }
+    when (val status = result?.optString("status").orEmpty()) {
+        "saved" -> {
+            host.bridge.log("artifact_viewer_download action=save result=saved")
+            host.bridge.toast(result?.optString("message").orEmpty().trim().ifBlank { savedMessage })
+        }
+        "cancelled" -> host.bridge.log("artifact_viewer_download action=save result=cancelled")
+        else -> {
+            host.bridge.log(
+                "artifact_viewer_download action=save result=failed status=${status.ifBlank { "none" }} " +
+                    "errorKind=${result?.optString("errorKind").orEmpty().ifBlank { "none" }}"
+            )
+            host.bridge.errorToast(failedMessage)
+        }
+    }
+}
+
+/** A file-name-safe key for the device copy of [url] in [serverId]: `artifact-<16 hex>` (FNV-1a 64). */
+internal fun raftArtifactViewerDownloadCacheId(serverId: String, url: String): String {
+    var hash = -0x340d631b7bdddcdbL // FNV offset basis 14695981039346656037
+    for (byte in "$serverId|$url".encodeToByteArray()) {
+        hash = hash xor (byte.toLong() and 0xff)
+        hash *= 0x100000001b3L
+    }
+    return "artifact-" + hash.toULong().toString(16).padStart(16, '0')
 }

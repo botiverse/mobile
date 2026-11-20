@@ -44,7 +44,9 @@ data class AttachmentDownloadResult(
     val totalBytes: Long?,
     val contentType: String?,
     val errorKind: String?,
-    val message: String?
+    val message: String?,
+    /** The response's `Content-Disposition`, for a host that names the file by it ([raftDownloadFileName]). */
+    val contentDisposition: String? = null
 )
 
 data class AttachmentDownloadCleanupReservation(
@@ -464,6 +466,8 @@ internal class AttachmentDownloadCoordinatorEngine(
  * Download-to-file on the app's Ktor client (artin 2026-10-23; NetworkKMM before). The body streams
  * chunk by chunk into the coordinator's atomic sink; cancel() cancels the transfer.
  */
+private const val LOCAL_BYTES_CHUNK = 64 * 1024
+
 private object KtorAttachmentDownloadTransport : AttachmentDownloadTransport {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -471,6 +475,39 @@ private object KtorAttachmentDownloadTransport : AttachmentDownloadTransport {
         request: AttachmentDownloadRequest,
         callbacks: AttachmentDownloadTransportCallbacks
     ): AttachmentDownloadTransportCall {
+        AttachmentDownloadLocalBytes.take(request.downloadId, request.url)?.let { local ->
+            // A file the app already holds (a hosted page's `blob:` save): served as a response.
+            val localJob =
+                scope.launch {
+                    val headers =
+                        buildMap {
+                            put("Content-Disposition", listOf(raftAttachmentContentDisposition(local.fileName)))
+                            local.contentType?.takeIf { it.isNotBlank() }?.let { put("Content-Type", listOf(it)) }
+                        }
+                    callbacks.onResponseStart(200, local.bytes.size.toLong(), headers)
+                    var offset = 0
+                    while (offset < local.bytes.size) {
+                        val end = minOf(offset + LOCAL_BYTES_CHUNK, local.bytes.size)
+                        callbacks.onChunk(local.bytes.copyOfRange(offset, end))
+                        offset = end
+                    }
+                    callbacks.onComplete(AttachmentDownloadCompletion(statusCode = 200, headers = headers))
+                }
+            return object : AttachmentDownloadTransportCall {
+                override fun cancel() {
+                    localJob.cancel()
+                }
+            }
+        }
+        if (AttachmentDownloadLocalBytes.isLocal(request.url)) {
+            // Its bytes are gone (taken or expired): never sent to the network.
+            callbacks.onComplete(
+                AttachmentDownloadCompletion(statusCode = null, errorKind = "unknown", errorMessage = "Saved file is no longer available")
+            )
+            return object : AttachmentDownloadTransportCall {
+                override fun cancel() = Unit
+            }
+        }
         val job =
             scope.launch {
                 val completion =
@@ -478,7 +515,9 @@ private object KtorAttachmentDownloadTransport : AttachmentDownloadTransport {
                         val response =
                             raftStreamingGet(
                                 url = request.url,
-                                requestHeaders = mapOf("Accept" to "*/*"),
+                                requestHeaders =
+                                    mapOf("Accept" to "*/*") +
+                                        AttachmentDownloadSessionHeaders.take(request.downloadId, request.url).orEmpty(),
                                 priority = RaftRequestPriority.Visible,
                                 connectTimeoutMillis = request.connectTimeoutMillis,
                                 // The coordinator's watchdog owns the response-headers and idle budgets;
@@ -487,6 +526,8 @@ private object KtorAttachmentDownloadTransport : AttachmentDownloadTransport {
                                     maxOf(request.responseHeadersTimeoutMillis, request.interChunkIdleTimeoutMillis),
                                 totalTimeoutMillis = request.wholeTransferTimeoutMillis,
                                 onResponseStart = { statusCode, contentLength, headers ->
+                                    // A Raft API download (a session was attached): its failure's trace id, for the error toast.
+                                    RaftFailedRequestTraceIds.recordResponse(statusCode, headers)
                                     callbacks.onResponseStart(statusCode, contentLength, headers)
                                     statusCode in 200..299
                                 },
@@ -536,6 +577,7 @@ private class AttachmentDownloadAttempt(
     private val publishedDownloadedBytes = atomic(0L)
     private val publishedTotalBytes = atomic<Long?>(null)
     private val publishedContentType = atomic<String?>(null)
+    private val publishedContentDisposition = atomic<String?>(null)
     private val startedAtMillis = nowMillis()
     private val responseStartedAtMillis = atomic<Long?>(null)
     private val lastActivityAtMillis = atomic(startedAtMillis)
@@ -674,6 +716,7 @@ private class AttachmentDownloadAttempt(
                 responseStarted = true
                 totalBytes = contentLength?.takeIf { it >= 0L }
                 contentType = headers.contentTypeHeader()
+                publishedContentDisposition.value = headers.contentDispositionHeader()
                 publishedTotalBytes.value = totalBytes
                 publishedContentType.value = contentType
                 responseStartedAtMillis.value = nowMillis()
@@ -953,7 +996,8 @@ private class AttachmentDownloadAttempt(
             totalBytes = publishedTotalBytes.value,
             contentType = publishedContentType.value,
             errorKind = errorKind,
-            message = message
+            message = message,
+            contentDisposition = publishedContentDisposition.value
         )
 
     private companion object {
@@ -977,6 +1021,12 @@ private class AttachmentDownloadAttempt(
 private fun AttachmentDownloadObserver.safeComplete(result: AttachmentDownloadResult) {
     runCatching { onComplete(result) }
 }
+
+private fun Map<String, List<String>>.contentDispositionHeader(): String? =
+    entries.firstOrNull { (name, _) -> name.equals("Content-Disposition", ignoreCase = true) }
+        ?.value
+        ?.firstOrNull()
+        ?.takeIf { it.isNotBlank() }
 
 private fun Map<String, List<String>>.contentTypeHeader(): String? =
     entries.firstOrNull { (name, _) -> name.equals("Content-Type", ignoreCase = true) }
