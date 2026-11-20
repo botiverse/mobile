@@ -25,7 +25,7 @@
     {
       "id": "ds.composer-drop-overlay.default",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ComposerDropOverlayCases.kt:24",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ComposerDropOverlayCases.kt:23",
       "fixture": null,
       "axes": {},
       "parity": [],
@@ -43,7 +43,7 @@
     {
       "id": "ds.save-status.gallery",
       "kind": "component",
-      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/SaveStatusCases.kt:25",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/SaveStatusCases.kt:24",
       "fixture": null,
       "axes": {},
       "parity": [],
