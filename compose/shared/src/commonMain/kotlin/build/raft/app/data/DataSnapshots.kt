@@ -246,7 +246,8 @@ internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnap
 internal fun InboxSnapshot.projectActivityFollowMutation(
     itemKey: String,
     following: Boolean,
-    filter: InboxFilter
+    filter: InboxFilter,
+    retainedReadRowKeys: Set<String> = emptySet(),
 ): InboxSnapshot {
     val previousItem = items.firstOrNull { item -> item.key == itemKey }
     val mutated = items.map { item ->
@@ -270,9 +271,14 @@ internal fun InboxSnapshot.projectActivityFollowMutation(
     if (filter.listsUnfollowedActivityThreads) return projected
     val targetPresent = projected.items.any { it.key == itemKey }
     if (!targetPresent) return projected
+    val alreadyLeftCount =
+        !filter.keepsReadActivityRows() &&
+            previousItem != null &&
+            previousItem.key in retainedReadRowKeys &&
+            !previousItem.showsUnread
     return projected.copy(
         items = projected.items.filterNot { it.key == itemKey },
-        totalCount = (projected.totalCount - 1).coerceAtLeast(0)
+        totalCount = if (alreadyLeftCount) projected.totalCount else (projected.totalCount - 1).coerceAtLeast(0)
     )
 }
 
@@ -1362,6 +1368,8 @@ data class SharedActivityPendingDeferredHide(
  */
 internal fun InboxSnapshot.activityPendingDeferredDeltas(
     pendingDeferredHide: SharedActivityPendingDeferredHide?,
+    selectedFilter: InboxFilter = InboxFilter.All,
+    retainedReadRowKeys: Set<String> = emptySet(),
 ): Pair<Int, Int> {
     val hide = pendingDeferredHide ?: return 0 to 0
     val row =
@@ -1370,7 +1378,11 @@ internal fun InboxSnapshot.activityPendingDeferredDeltas(
                 item.kind != InboxItemKind.Object &&
                 !item.hasUnopenableInternalJointParentSource()
         } ?: return 0 to 0
-    val countDelta = if (hide.removesCountRow) 1 else 0
+    val alreadyLeftCount =
+        !selectedFilter.keepsReadActivityRows() &&
+            row.key in retainedReadRowKeys &&
+            !row.showsUnread
+    val countDelta = if (hide.removesCountRow && !alreadyLeftCount) 1 else 0
     val unreadDelta = row.unreadCount.coerceAtLeast(0)
     return countDelta to unreadDelta
 }

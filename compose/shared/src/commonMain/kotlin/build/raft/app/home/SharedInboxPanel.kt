@@ -825,7 +825,7 @@ internal fun projectActivityStateWithProcessSummary(
         snapshot == null ||
         state.selectedFilter != InboxFilter.All ||
         !activitySummary.hasValue ||
-        state.pendingDeferredHide != null ||
+        state.hasActivePendingDeferredHide() ||
         snapshot.items.any { item -> item.hasUnopenableInternalJointParentSource() }
     ) {
         return state
@@ -1071,7 +1071,7 @@ private fun SharedActivityPanelContent(
         var filterMenuExpanded by remember { mutableStateOf(false) }
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
-            totalUnreadCount = headerTotalUnreadCount,
+            totalUnreadCount = state.activityConversationUnreadCount(),
             onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
             onMarkAllRead = {
                 RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)

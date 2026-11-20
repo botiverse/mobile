@@ -5,6 +5,7 @@ import build.raft.app.ActivitySwipeDeferredAction
 import build.raft.app.ActivitySwipeDoneTransition
 import build.raft.app.ActivitySwipeDoneUndoState
 import build.raft.app.activitySwipeDeferredCommitIntent
+import build.raft.app.model.MessageId
 import build.raft.app.projectActivityStateWithProcessSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -12,6 +13,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * #proj-mobile:#229: non-object Mark as Done (and thread Unfollow) waits out an 8 s Undo window
@@ -265,5 +268,180 @@ class SharedActivityStorePendingDoneCountTest {
         panel.undoToast()
         runCurrent()
         assertEquals(2 to 3, store.state.value.activityHeaderCounts())
+    }
+
+    @Test
+    fun failedMarkDoneAndUnfollowRollbackDoNotResurrectStalePendingHide() = runTest {
+        val initial = snapshot(items = listOf(channelA, channelB), totalCount = 5, totalUnreadCount = 3)
+        val failDoneRepo = FakeInboxRepository(initialSnapshots = listOf(initial, initial), failDone = true)
+        val doneStore = activityStore(backgroundScope, inboxRepository = failDoneRepo)
+        doneStore.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val donePanel = Panel(doneStore)
+
+        donePanel.done(channelA)
+        runCurrent()
+        assertEquals(4 to 1, doneStore.state.value.activityHeaderCounts())
+
+        // Toast expires -> MarkDone fails -> rollback + refresh must NOT restore stale pendingDeferredHide.
+        donePanel.toastEnds()
+        runCurrent()
+        assertNull(doneStore.state.value.pendingDeferredHide)
+        assertEquals(5 to 3, doneStore.state.value.activityHeaderCounts())
+
+        // Same for a failed UnfollowThread.
+        val unfollowInitial = snapshot(items = listOf(threadC, channelB), totalCount = 4, totalUnreadCount = 3)
+        val failConvRepo =
+            FakeConversationRepository().apply {
+                unfollowResult = DataResult.Error(ScreenError("unfollow_failed"))
+            }
+        val unfollowStore =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(unfollowInitial, unfollowInitial)),
+                conversationRepository = failConvRepo
+            )
+        unfollowStore.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val unfollowPanel = Panel(unfollowStore)
+
+        unfollowPanel.unfollow(threadC)
+        runCurrent()
+        assertEquals(4 to 1, unfollowStore.state.value.activityHeaderCounts())
+
+        unfollowPanel.toastEnds()
+        runCurrent()
+        assertNull(unfollowStore.state.value.pendingDeferredHide)
+        assertEquals(4 to 3, unfollowStore.state.value.activityHeaderCounts())
+    }
+
+    @Test
+    fun newerActivityDuringUndoWindowSkipsDoneAndRestoresUpdatedCountsOnExpiry() = runTest {
+        val initialA = channelA.copy(latestActivityMessageId = MessageId("m-10"), latestActivitySeq = "10")
+        val newerA =
+            initialA.copy(
+                unreadCount = 3,
+                latestActivityMessageId = MessageId("m-11"),
+                latestActivitySeq = "11",
+            )
+        val repo =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(items = listOf(initialA, channelB), totalCount = 4, totalUnreadCount = 3),
+                        snapshot(items = listOf(newerA, channelB), totalCount = 4, totalUnreadCount = 4),
+                    )
+            )
+        val summaryFacts = mutableListOf<ActivityUnreadSummaryFact>()
+        val store = activityStore(backgroundScope, inboxRepository = repo, onSummaryFact = { summaryFacts += it })
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val panel = Panel(store)
+
+        panel.done(initialA)
+        runCurrent()
+        assertEquals(3 to 1, store.state.value.activityHeaderCounts())
+
+        // Newer activity arrives for channelA while the 8 s toast is still active.
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+
+        // When the toast expires, activitySwipeDeferredCommitIntent sees newer activity and skips MarkDone;
+        // clearing pendingDeferredHide restores the updated counts (4 total, 4 unread) with no server write.
+        panel.toastEnds()
+        runCurrent()
+        assertEquals(emptyList(), repo.doneChannelIds)
+        assertNull(store.state.value.pendingDeferredHide)
+        assertEquals(4 to 4, store.state.value.activityHeaderCounts())
+        assertEquals(4, summaryFacts.last().totalCount)
+        assertEquals(4, summaryFacts.last().totalUnreadCount)
+    }
+
+    @Test
+    fun retainedReadRowInUnreadFilterDoesNotDoubleDecrementTotalCountOnPendingOrCommit() = runTest {
+        val initial = snapshot(items = listOf(channelA, channelB), totalCount = 2, totalUnreadCount = 3)
+        val afterDone = snapshot(items = listOf(channelB), totalCount = 1, totalUnreadCount = 1)
+        val repo = FakeInboxRepository(initialSnapshots = listOf(initial, initial, afterDone))
+        val store = activityStore(backgroundScope, inboxRepository = repo)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        assertEquals(2 to 3, store.state.value.activityHeaderCounts())
+
+        // Reading channelA in Unread retains it in items while already decrementing totalCount (2 -> 1).
+        store.dispatch(SharedActivityIntent.MarkRead(channelA))
+        runCurrent()
+        val retainedA = store.state.value.items.first { it.key == channelA.key }
+        assertTrue(retainedA.key in store.state.value.retainedReadRowKeys)
+        assertEquals(1 to 1, store.state.value.activityHeaderCounts())
+
+        // Marking the retained read row Done must NOT subtract totalCount a second time during Undo or on commit.
+        val panel = Panel(store)
+        panel.done(retainedA)
+        runCurrent()
+        assertEquals(1 to 1, store.state.value.activityHeaderCounts())
+
+        panel.toastEnds()
+        runCurrent()
+        assertEquals(listOf(channelA.channelId), repo.doneChannelIds)
+        assertEquals(1 to 1, store.state.value.activityHeaderCounts())
+    }
+
+    @Test
+    fun remoteDoneDuringUndoWindowClearsPendingHideWithoutDoubleSubtract() = runTest {
+        val rowA = channelA.copy(latestActivitySeq = "10")
+        val repo =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(items = listOf(rowA, channelB), totalCount = 6, totalUnreadCount = 3)
+                    )
+            )
+        val store = activityStore(backgroundScope, inboxRepository = repo)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val panel = Panel(store)
+
+        panel.done(rowA)
+        runCurrent()
+        assertEquals(5 to 1, store.state.value.activityHeaderCounts())
+
+        // Remote Done removes rowA while the Undo toast is still active: pendingDeferredHide clears cleanly.
+        val outcome = store.applyRemoteDone(channelId = rowA.channelId.value, doneFrontierSeq = "10")
+        assertEquals(ActivityRemoteDoneOutcome.Removed, outcome)
+        assertNull(store.state.value.pendingDeferredHide)
+        assertFalse(store.state.value.hasActivePendingDeferredHide())
+        assertEquals(5 to 1, store.state.value.activityHeaderCounts())
+    }
+
+    @Test
+    fun objectCountsStayInHeaderWhileConversationUnreadExcludesObjectsForMarkAllRead() = runTest {
+        val objectCounts =
+            ActivityObjectCounts(
+                objectUnreadCount = 2,
+                objectMentionUnreadCount = 1,
+                objectCount = 3,
+            )
+        val repo =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(items = listOf(channelA), totalCount = 1, totalUnreadCount = 2)
+                            .copy(objectCounts = objectCounts)
+                    )
+            )
+        val store = activityStore(backgroundScope, inboxRepository = repo)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        assertEquals(4 to 4, store.state.value.activityHeaderCounts())
+        assertEquals(2, store.state.value.activityConversationUnreadCount())
+
+        // Hiding the only unread conversation drops header counts to objects-only (3 / 2) and
+        // drops conversation-only unread (Mark all read) to 0.
+        val panel = Panel(store)
+        panel.done(channelA)
+        runCurrent()
+        assertEquals(3 to 2, store.state.value.activityHeaderCounts())
+        assertEquals(0, store.state.value.activityConversationUnreadCount())
     }
 }
