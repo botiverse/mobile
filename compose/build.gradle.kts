@@ -18,6 +18,210 @@ configurations.configureEach {
     resolutionStrategy.cacheChangingModulesFor(0, "seconds")
 }
 
+// CMP-10674 (iOS crash on a re-entrant FlushCoroutineDispatcher.flush() while typing): every
+// configuration of every project that resolves the Compose UI iOS platform klibs at the patch base
+// version gets the patched build instead (third_party/compose-ui-1.12.2/README.md). Kotlin
+// Multiplatform reaches these modules through the root `org.jetbrains.compose.ui:ui` module's
+// `available-at` redirect; that redirect is an ordinary dependency edge in Gradle's graph, so this
+// rule rewrites it like a direct dependency. The root `ui` module and everything else stay on the
+// official release. The versions and klib SHA-256s live in gradle.properties
+// (raft.composeUiPatch.*); scripts/ci/check_compose_ui_patch_pin.py fails CI once composePlugin
+// moves off the base. `:verifyComposeUiPatch` (below) proves the rule took effect.
+val raftComposeUiPatchReadme = "third_party/compose-ui-1.12.2/README.md"
+val raftComposeUiPatchBase = providers.gradleProperty("raft.composeUiPatch.base").orNull
+val raftComposeUiPatchVersion = providers.gradleProperty("raft.composeUiPatch.version").orNull
+val raftComposeUiPatchOn = raftComposeUiPatchBase != null && raftComposeUiPatchVersion != null
+// Kotlin/Native target name -> the Compose UI platform module (patched klib) it links.
+val raftComposeUiPatchModules = mapOf(
+    "ios_arm64" to "ui-iosarm64",
+    "ios_simulator_arm64" to "ui-iossimulatorarm64",
+)
+if (raftComposeUiPatchOn) {
+    val patchedModules = raftComposeUiPatchModules.values.toSet()
+    allprojects {
+        configurations.configureEach {
+            resolutionStrategy.eachDependency {
+                if (requested.group == "org.jetbrains.compose.ui" &&
+                    requested.name in patchedModules &&
+                    requested.version == raftComposeUiPatchBase
+                ) {
+                    useVersion(raftComposeUiPatchVersion!!)
+                    because("CMP-10674 fix, see $raftComposeUiPatchReadme")
+                }
+            }
+        }
+    }
+}
+
+// Fails the build unless every iOS klib configuration and iOS link task resolves the patched
+// Compose UI klibs, byte for byte. Per Kotlin Multiplatform project with iOS targets, a
+// `verifyComposeUiPatch` task resolves, for each iOS target:
+// - every compilation's klib configuration (`<target>CompileKlibraries` for main,
+//   `<target>TestCompileKlibraries` for test): org.jetbrains.compose.ui:ui-ios* may resolve only
+//   at raft.composeUiPatch.version, the target's module must be there whenever the root `ui` is
+//   (always in :shared), and its klib must match raft.composeUiPatch.sha256.<module>;
+// - the libraries and export libraries of every binary's link task (the cocoapods `pod`
+//   framework: linkPod{Debug,Release}FrameworkIos*): the klib files the linker gets must be the
+//   patched ones (file name and SHA-256), and in :shared the target's klib must be among them.
+// Every iOS link task depends on it, so no framework links without the check. With the pin
+// properties absent it only logs "pin off". CI also runs `:verifyComposeUiPatch` explicitly in
+// test.yml (iOS compile), ios-release.yml and ios-simulator-app.yml.
+tasks.register("verifyComposeUiPatch") {
+    group = "verification"
+    description = "Checks that iOS builds resolve the CMP-10674 patched Compose UI klibs ($raftComposeUiPatchReadme)."
+    val pinOn = raftComposeUiPatchOn
+    doLast {
+        if (!pinOn) logger.lifecycle("verifyComposeUiPatch: pin off (no raft.composeUiPatch.* in gradle.properties)")
+    }
+}
+if (raftComposeUiPatchOn) {
+    val patchedVersion = raftComposeUiPatchVersion!!
+    val readme = raftComposeUiPatchReadme
+    val targetModules = raftComposeUiPatchModules
+    val expectedSha256 = targetModules.values.associateWith { module ->
+        val key = "raft.composeUiPatch.sha256.$module"
+        val value = providers.gradleProperty(key).orNull?.trim()?.lowercase()
+        require(value != null && Regex("[0-9a-f]{64}").matches(value)) {
+            "gradle.properties: $key must be the 64-hex SHA-256 of $module-$patchedVersion.klib ($readme)"
+        }
+        value
+    }
+    fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+    allprojects {
+        val projectPath = path
+        // :shared links the app framework, so every iOS configuration / link task there must
+        // carry the patched klib; elsewhere only projects that resolve the root `ui` must.
+        val anchor = projectPath == ":shared"
+        plugins.withId("org.jetbrains.kotlin.multiplatform") {
+            val task = tasks.register("verifyComposeUiPatch") {
+                group = "verification"
+                description = "Checks this project's iOS klibs are the CMP-10674 patched Compose UI ($readme)."
+                // (label, module this target must link, configuration)
+                val configs = mutableListOf<Triple<String, String, Configuration>>()
+                // (label, module this target must link, klib files the link task passes on)
+                val links = mutableListOf<Triple<String, String, FileCollection>>()
+                val kotlin = project.extensions.getByType(
+                    org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java
+                )
+                kotlin.targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java)
+                    .forEach { target ->
+                        val module = targetModules[target.konanTarget.name] ?: return@forEach
+                        target.compilations.forEach { compilation ->
+                            val name = compilation.compileDependencyConfigurationName
+                            configs += Triple("$projectPath:$name", module, project.configurations.getByName(name))
+                        }
+                        target.binaries.forEach { binary ->
+                            val link = binary.linkTaskProvider.get()
+                            val linked = project.files(link.libraries, link.exportLibraries)
+                            // Run after whatever produces those files (e.g. downloadKotlinNativeDistribution,
+                            // other projects' klibs); reading them earlier is an error in Gradle 9.
+                            dependsOn(linked)
+                            links += Triple("$projectPath:${link.name}", module, linked)
+                        }
+                    }
+                doLast {
+                    val errors = mutableListOf<String>()
+                    var checked = 0
+                    fun checkKlib(label: String, module: String, file: File) {
+                        val actual = sha256(file)
+                        if (actual != expectedSha256.getValue(module)) {
+                            errors += "$label: $module klib ${file.name} has SHA-256 $actual, expected " +
+                                "${expectedSha256.getValue(module)} (raft.composeUiPatch.sha256.$module). The artifact " +
+                                "repository served different bytes than the published patched build."
+                        }
+                    }
+                    configs.forEach { (label, module, configuration) ->
+                        checked++
+                        val components = configuration.incoming.resolutionResult.allComponents
+                            .mapNotNull { it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+                            .filter { it.group == "org.jetbrains.compose.ui" }
+                        val hasRootUi = components.any { it.module == "ui" }
+                        val platform = components.filter { it.module in targetModules.values }
+                        platform.filter { it.version != patchedVersion }.forEach {
+                            errors += "$label resolved ${it.displayName}, not $patchedVersion: the CMP-10674 pin did not apply."
+                        }
+                        if ((anchor || hasRootUi) && platform.none { it.module == module }) {
+                            errors += "$label has no org.jetbrains.compose.ui:$module at all" +
+                                (if (hasRootUi) " although it resolves the root ui module" else "") + "."
+                        }
+                        // Only the two platform modules' klibs: nothing else is downloaded, and
+                        // project artifacts (task outputs not built yet) are never touched.
+                        configuration.incoming.artifactView {
+                            componentFilter {
+                                it is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                                    it.group == "org.jetbrains.compose.ui" && it.module in targetModules.values
+                            }
+                        }.artifacts.artifacts.forEach { artifact ->
+                            val id = artifact.id.componentIdentifier as org.gradle.api.artifacts.component.ModuleComponentIdentifier
+                            if (id.version == patchedVersion) checkKlib(label, id.module, artifact.file)
+                        }
+                    }
+                    // A link task only sees files. Gradle's module cache keeps a klib at
+                    // .../<group>/<module>/<version>/<hash>/<file>; the file is named after the
+                    // .module's file name (ui-iosArm64Main-<version>.klib), not the URL.
+                    val looksLikeUiKlib = Regex("""ui-ios(arm64|simulatorarm64)(main)?-.*""")
+                    links.forEach { (label, module, files) ->
+                        checked++
+                        var found = false
+                        files.files.forEach { file ->
+                            val versionDir: File? = file.parentFile?.parentFile
+                            val moduleDir: File? = versionDir?.parentFile
+                            val cachedModule: String? = moduleDir?.name
+                                ?.takeIf { moduleDir?.parentFile?.name == "org.jetbrains.compose.ui" }
+                                ?.takeIf { it in targetModules.values }
+                            if (cachedModule != null) {
+                                val version = versionDir?.name
+                                if (version != patchedVersion) {
+                                    errors += "$label links org.jetbrains.compose.ui:$cachedModule:$version " +
+                                        "(${file.name}), not $patchedVersion: the CMP-10674 pin did not apply."
+                                } else if (!file.isFile) {
+                                    errors += "$label links ${file.path}, which is not a klib file."
+                                } else {
+                                    checkKlib(label, cachedModule, file)
+                                    if (cachedModule == module) found = true
+                                }
+                            } else if (looksLikeUiKlib.matches(file.name.lowercase())) {
+                                errors += "$label links ${file.path}, a Compose UI iOS klib outside Gradle's " +
+                                    "module cache layout; cannot tell its version."
+                            }
+                        }
+                        if (anchor && !found) {
+                            errors += "$label does not link org.jetbrains.compose.ui:$module:$patchedVersion."
+                        }
+                    }
+                    if (errors.isNotEmpty()) {
+                        throw GradleException(
+                            "CMP-10674 Compose UI patch check failed ($readme):\n" +
+                                errors.joinToString("\n") { "  - $it" }
+                        )
+                    }
+                    logger.lifecycle("verifyComposeUiPatch $projectPath: $checked iOS configurations/link tasks use $patchedVersion")
+                }
+            }
+            rootProject.tasks.named("verifyComposeUiPatch") { dependsOn(task) }
+            // Every iOS link (Xcode's nested syncFramework included) runs the check first.
+            project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)
+                .targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java)
+                .configureEach {
+                    if (konanTarget.name in targetModules) {
+                        binaries.configureEach { linkTaskProvider.configure { dependsOn(task) } }
+                    }
+                }
+        }
+    }
+}
+
 // Task #32: per-test hang watchdog for JVM unit tests. A hung test must fail
 // loud and named (HANG DETECTED + thread dump + fork exit 73) instead of
 // burning the job timeout in silence. Config via Gradle JVM -D properties:

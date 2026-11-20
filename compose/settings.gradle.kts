@@ -116,10 +116,32 @@ dependencyResolutionManagement {
         }
     }
 
+    // CMP-10674: the patched Compose UI iOS klibs (third_party/compose-ui-1.12.2/README.md). Only
+    // these two modules at the patched version come from here; every other Compose artifact,
+    // including ui-iosarm64 / ui-iossimulatorarm64 at any other version, stays on Maven Central.
+    // The version is raft.composeUiPatch.version in gradle.properties (root build.gradle.kts
+    // pins the two modules to it); without that property this repository is not added.
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsComposeUiPatch() {
+        val patchedVersion = providers.gradleProperty("raft.composeUiPatch.version").orNull ?: return
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsComposeUiPatch"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
+            }
+            filter {
+                includeVersion("org.jetbrains.compose.ui", "ui-iosarm64", patchedVersion)
+                includeVersion("org.jetbrains.compose.ui", "ui-iossimulatorarm64", patchedVersion)
+            }
+        }
+    }
+
     repositories {
         raftArtifactsKbaMetadata()
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
+        raftArtifactsComposeUiPatch()
         mavenLocal()
         google()
         mavenCentral()

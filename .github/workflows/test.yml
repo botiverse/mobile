@@ -131,6 +131,13 @@ jobs:
       - name: Validate no-local-Ktor dependency contract
         run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
 
+      # CMP-10674: the patched Compose UI iOS klibs (third_party/compose-ui-1.12.2/README.md) only
+      # apply while Compose Multiplatform is the version they patch.
+      - name: Validate Compose UI patch pin matches Compose Multiplatform
+        run: |
+          python3 -I scripts/ci/check_compose_ui_patch_pin.py --self-test
+          python3 -I scripts/ci/check_compose_ui_patch_pin.py
+
       - name: Validate fail-closed git diff consumers
         run: |
           .github/actions/git-safe-workspace/test_configure.sh
@@ -1357,6 +1364,8 @@ jobs:
         run: |
           set -euo pipefail
           tasks=(
+            # CMP-10674: fails unless the iOS klibs are the patched Compose UI (compose/build.gradle.kts).
+            :verifyComposeUiPatch
             :shared:compileKotlinIosSimulatorArm64
             :designsystem:compileKotlinIosSimulatorArm64
             :ui-cmp:compileKotlinIosSimulatorArm64
