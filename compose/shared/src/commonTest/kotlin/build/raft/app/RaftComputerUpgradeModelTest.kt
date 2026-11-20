@@ -88,6 +88,25 @@ class RaftComputerUpgradeModelTest {
     }
 
     @Test
+    fun aComputerRefusingTheUpgradeScopeGetsTheSystemServiceStepsInsteadOfUpgrade() {
+        // slock #15243: ready.upgradeScope { ok: false } on the machine row hides the one-click Upgrade.
+        val refused = computer(policy = eligible("1.0.50"), upgradeAvailable = true).copy(upgradeScopeRefused = true)
+        assertEquals(RaftComputerCardState.SystemService("1.0.50"), model(refused).card)
+        // A page loaded before the server knew it: the click's `scope_unavailable` refusal says the same.
+        val oneClick = computer(policy = eligible("1.0.50"), upgradeAvailable = true)
+        val clicked =
+            SettingsComputerControlState(
+                upgradeRefusal =
+                    SettingsComputerUpgradeRefusal(oneClick.id, settingsComputerUpgradeAvailabilityKey(oneClick), "scope_unavailable")
+            )
+        assertEquals(RaftComputerUpgradeRefusal.SystemService, model(oneClick, clicked).refusal)
+        assertEquals(RaftComputerCardState.SystemService("1.0.50"), model(oneClick, clicked).card)
+        // Too old for a web upgrade at all: the plain manual sentence, as before.
+        val tooOld = computer(version = "1.0.40", latest = "1.0.50", remoteUpgradeSupported = false).copy(upgradeScopeRefused = true)
+        assertEquals(RaftComputerCardState.ManualUpgrade("1.0.50"), model(tooOld).card)
+    }
+
+    @Test
     fun anUpgradeInFlightComesFromThePendingRowOrTheAcceptedRequest() {
         val pending = request(id = "req-2", state = "pending")
         assertEquals(RaftComputerCardState.Upgrading("1.0.50"), model(computer(policy = eligible("1.0.50"), row = pending)).card)

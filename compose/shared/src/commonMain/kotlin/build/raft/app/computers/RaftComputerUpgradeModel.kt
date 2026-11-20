@@ -219,7 +219,7 @@ internal fun raftComputerUpgradeReconnect(
 }
 
 /** Web `UpgradeRefusal`, mapped from the route's code (never its text). */
-internal enum class RaftComputerUpgradeRefusal { WebUpgradeOff, TooOld, NotAllowed, ManagedByDesktop, Unknown }
+internal enum class RaftComputerUpgradeRefusal { WebUpgradeOff, TooOld, NotAllowed, ManagedByDesktop, SystemService, Unknown }
 
 internal fun raftComputerUpgradeRefusal(code: String?): RaftComputerUpgradeRefusal =
     when (code) {
@@ -227,6 +227,9 @@ internal fun raftComputerUpgradeRefusal(code: String?): RaftComputerUpgradeRefus
         "computer_remote_upgrade_unsupported" -> RaftComputerUpgradeRefusal.TooOld
         "computer_broadcast_not_eligible" -> RaftComputerUpgradeRefusal.NotAllowed
         "computer_managed_by_desktop" -> RaftComputerUpgradeRefusal.ManagedByDesktop
+        // The Computer's systemd manager refuses the installer's scope (ready.upgradeScope), on a
+        // page loaded before the server knew it (slock #15243).
+        "scope_unavailable" -> RaftComputerUpgradeRefusal.SystemService
         else -> RaftComputerUpgradeRefusal.Unknown
     }
 
@@ -240,6 +243,12 @@ internal sealed interface RaftComputerCardState {
     data class Upgrading(val version: String, val waitingAgents: Int = 0) : RaftComputerCardState
     data class OneClick(val version: String) : RaftComputerCardState
     data class ManualUpgrade(val version: String) : RaftComputerCardState
+    /**
+     * Web `systemService` (slock #15243): the Computer runs as a systemd system service whose
+     * manager refuses the scope a web upgrade's installer needs; no Upgrade, the steps on the
+     * machine instead (stop the service, run the install command, start it again).
+     */
+    data class SystemService(val version: String) : RaftComputerCardState
     data class Commands(val version: String, val refusedNotAllowed: Boolean) : RaftComputerCardState
     /** Raft Desktop's bundled Computer (policy or refusal `managed_by_desktop`): Desktop updates it. */
     data object ManagedByDesktop : RaftComputerCardState
@@ -304,10 +313,16 @@ internal fun raftComputerUpgradeModel(
                     policy?.reasonCode == "managed_by_desktop" || refusal == RaftComputerUpgradeRefusal.ManagedByDesktop ->
                         RaftComputerCardState.ManagedByDesktop
                     refusal == RaftComputerUpgradeRefusal.NotAllowed -> RaftComputerCardState.Commands(version, refusedNotAllowed = true)
+                    refusal == RaftComputerUpgradeRefusal.SystemService -> RaftComputerCardState.SystemService(version)
                     refusal == RaftComputerUpgradeRefusal.WebUpgradeOff || refusal == RaftComputerUpgradeRefusal.TooOld ->
                         RaftComputerCardState.Commands(version, refusedNotAllowed = false)
                     !remoteUpgradeSupported -> RaftComputerCardState.ManualUpgrade(version)
-                    webUpgradeOn && oneClickTarget != null -> RaftComputerCardState.OneClick(oneClickTarget)
+                    webUpgradeOn && oneClickTarget != null ->
+                        if (computer.upgradeScopeRefused) {
+                            RaftComputerCardState.SystemService(version)
+                        } else {
+                            RaftComputerCardState.OneClick(oneClickTarget)
+                        }
                     else -> RaftComputerCardState.Commands(version, refusedNotAllowed = false)
                 }
             }

@@ -320,6 +320,29 @@ class ComputersApiTest {
     }
 
     @Test
+    fun anUpgradeScopeRefusalMapsOnlyFromOkFalse() = runPortableCoroutineTest {
+        // botiverse/slock #15243: routes/servers.ts GET /:id/machines `upgradeScope` (shared
+        // ComputerUpgradeScopeUnavailable `{ ok: false, reason }`); absent or anything else = not refused.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"a","status":"online","isComputer":true,"upgradeScope":{"ok":false,"reason":"Failed to start transient scope unit: Access denied"}},
+              {"id":"c-2","name":"b","status":"online","isComputer":true,"upgradeScope":null},
+              {"id":"c-3","name":"c","status":"online","isComputer":true,"upgradeScope":{"ok":true}},
+              {"id":"c-4","name":"d","status":"online","isComputer":true}
+            ]}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }.mapValues { it.value.toSettingsComputerSnapshot() }
+        assertEquals(true, machines.getValue("c-1").upgradeScopeRefused)
+        assertEquals(false, machines.getValue("c-2").upgradeScopeRefused)
+        assertEquals(false, machines.getValue("c-3").upgradeScopeRefused)
+        assertEquals(false, machines.getValue("c-4").upgradeScopeRefused)
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract
