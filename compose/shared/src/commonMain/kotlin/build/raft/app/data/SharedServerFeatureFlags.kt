@@ -232,6 +232,19 @@ const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
  */
 const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
 
+/**
+ * Share loop, first batch "share out" (#proj-mobile:#212, design v10): per server, default off. On, the
+ * app offers Share (the system share sheet with the item's link) on a channel's, Lounge's, thread's and
+ * task's ⋯, a message's menu and the multi-select toolbar, the long image's Share in place of Download,
+ * and applies the DM rule (no link out of a DM). Off (or unresolved), every one of those surfaces is as
+ * before, DMs included, and no `share_action_selected` is sent (ShareLoopGate.kt is the one reader).
+ *
+ * PROVISIONAL KEY: botiverse/slock staging @ 7c3e67b85c0da943b31c87c646ac888babfc5a52 has no share flag
+ * (`packages/shared/src/featureFlags.ts`, `featureFlagService.ts`); agree the final name with the web side
+ * before this merges, and change it here only.
+ */
+const val SHARE_LOOP_FEATURE_FLAG_KEY: String = "share_loop_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -263,6 +276,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     EXTERNAL_CHANNELS_FEATURE_FLAG_KEY,
     // The Computer usage card's "Use a limit reset" for Claude Code.
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
+    // Share loop: Share out through the system share sheet, and the DM rule.
+    SHARE_LOOP_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

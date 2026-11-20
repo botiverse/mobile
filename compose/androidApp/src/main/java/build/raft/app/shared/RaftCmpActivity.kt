@@ -5257,6 +5257,11 @@ internal class RaftBridgeModule(
             startFeedbackDiagnosticsUpload(request, callback)
             return
         }
+        // Share out (share loop): the system share sheet; it answers when the person acts (AndroidShareOut.kt).
+        if (action == "shareOut") {
+            AndroidShareOut.present(appContext, activity, request, callback)
+            return
+        }
         if (action == "feedbackDiagnosticsCancel") {
             cancelFeedbackDiagnosticsUpload(request, callback)
             return
