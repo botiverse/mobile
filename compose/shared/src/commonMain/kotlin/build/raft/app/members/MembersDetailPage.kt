@@ -623,11 +623,14 @@ internal fun MemberDetailPageContent(
         agentActivityLoadState = result.toMembersAgentActivityLoadState()
     }
 
+    var humanDescriptionEditRevision by remember(memberIdentity) { mutableStateOf(0L) }
+
     LaunchedEffect(memberIdentity, activeServerId, localAgentDetailRefreshKey) {
         if (memberIdentity == null) {
             routeState = MemberDetailRouteState.Error("member_identity_missing")
             return@LaunchedEffect
         }
+        val startHumanDescriptionRevision = humanDescriptionEditRevision
         if (
             (memberIdentity.kind == MemberKind.Agent || routeState !is MemberDetailRouteState.Human) &&
             !routeState.isCachedAgentDetailRoute(memberIdentity, provider.agentDetailStore.state.value)
@@ -707,7 +710,19 @@ internal fun MemberDetailPageContent(
         ) {
             return@LaunchedEffect
         }
-        routeState = loaded
+        val reconciled =
+            if (loaded is MemberDetailRouteState.Human && humanDescriptionEditRevision != startHumanDescriptionRevision) {
+                val confirmed = (routeState as? MemberDetailRouteState.Human)?.takeIf { it.member.id == loaded.member.id }
+                if (confirmed != null) {
+                    provider.serverMembersStore.updateHumanDescription(confirmed.member.id, confirmed.member.description)
+                    loaded.copy(member = loaded.member.copy(description = confirmed.member.description))
+                } else {
+                    loaded
+                }
+            } else {
+                loaded
+            }
+        routeState = reconciled
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
     }
@@ -1592,6 +1607,20 @@ internal fun MemberDetailPageContent(
                         humanAccessMode = current.accessMode,
                         onUpdateHumanRole = { memberId, role ->
                             provider.updateHumanRole(current.server.id.value, memberId, role)
+                        },
+                        onUpdateHumanDescription = { description ->
+                            provider.updateHumanDescription(current.member.id, description)
+                        },
+                        onApplyHumanDescription = { savedDescription ->
+                            humanDescriptionEditRevision += 1L
+                            routeState =
+                                (routeState as? MemberDetailRouteState.Human)?.let { state ->
+                                    if (state.member.id == current.member.id) {
+                                        state.copy(member = state.member.copy(description = savedDescription))
+                                    } else {
+                                        state
+                                    }
+                                } ?: routeState
                         }
                     ),
                     agentCallbacks = MembersAgentDetailCallbacks(

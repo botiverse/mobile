@@ -1661,6 +1661,16 @@ data class AccountUsageDataSnapshot(
     val sharing: Boolean get() = choice ?: SHARE_USAGE_DATA_DEFAULT
 }
 
+/**
+ * `PATCH /api/auth/me` `{ description }` result (botiverse/slock #15664): the normalized
+ * description the server now holds (null when cleared) and any link-visibility warnings for
+ * links in the newly saved description (botiverse/slock #15236).
+ */
+data class AccountDescriptionUpdateResult(
+    val description: String?,
+    val warnings: List<DescriptionLinkWarning> = emptyList(),
+)
+
 data class AccountProfileSnapshot(
     val userId: String,
     val displayName: String,

@@ -168,6 +168,14 @@ interface SettingsServerManagementRepository {
 
     suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult>
     suspend fun leaveServer(): DataResult<SettingsServerActionResult>
+
+    /**
+     * `PATCH /api/auth/me` `{ description }` (web HumanDetailPanel, botiverse/slock #15664):
+     * updates or clears (`null`) the signed-in person's profile description and returns any
+     * description link-visibility warnings.
+     */
+    suspend fun updateAccountDescription(description: String?): DataResult<AccountDescriptionUpdateResult> =
+        DataResult.Error(ScreenError("account_description_update_unsupported", retryable = false))
 }
 
 interface ConversationRepository {

@@ -1691,6 +1691,9 @@
     <string name="member_label_you_suffix">（你）</string>
     <string name="member_title_human_roles">真人成員角色</string>
     <string name="member_action_edit_role">編輯角色</string>
+    <string name="member_action_edit_description">編輯描述</string>
+    <string name="member_placeholder_human_description">介紹一下自己，讓此伺服器中的其他真人與 Agent 認識你</string>
+    <string name="member_error_update_description">無法更新描述</string>
     <string name="member_roles_help_owner_summary">擁有伺服器的完整控制權。</string>
     <string name="member_roles_help_owner_details">帳單與擁有權。伺服器設定。管理員與成員。頻道、電腦與 Agent。</string>
     <string name="member_roles_help_human_admin_details">伺服器資料。頻道與頻道成員。Agent 與電腦。邀請、邀請連結與提升為管理員。</string>

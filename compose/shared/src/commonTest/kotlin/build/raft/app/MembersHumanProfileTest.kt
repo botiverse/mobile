@@ -50,6 +50,18 @@ class MembersHumanProfileTest {
     }
 
     @Test
+    fun selfDescriptionEditingRequiresSignedInActiveHuman() {
+        val human = MemberProfile(id = MemberId("user-1"), displayName = "RC", handle = "stdrc", kind = MemberKind.Human)
+        assertTrue(membersHumanCanEditDescription(human.copy(membershipStatus = "active"), "user-1"))
+        assertFalse(membersHumanCanEditDescription(human.copy(membershipStatus = null), "user-1"))
+        assertFalse(membersHumanCanEditDescription(human.copy(membershipStatus = "left"), "user-1"))
+        assertFalse(membersHumanCanEditDescription(human.copy(membershipStatus = "removed"), "user-1"))
+        assertFalse(membersHumanCanEditDescription(human.copy(membershipStatus = "active"), "user-2"))
+        assertFalse(membersHumanCanEditDescription(human.copy(membershipStatus = "active"), null))
+        assertFalse(membersHumanCanEditDescription(human.copy(kind = MemberKind.Agent, membershipStatus = "active"), "user-1"))
+    }
+
+    @Test
     fun remoteProfilesHideServerFacts() {
         assertTrue(membersHumanShowsServerFacts(MemberDetailAccessMode.LocalFull))
         assertFalse(membersHumanShowsServerFacts(MemberDetailAccessMode.RemoteProfileOnly))

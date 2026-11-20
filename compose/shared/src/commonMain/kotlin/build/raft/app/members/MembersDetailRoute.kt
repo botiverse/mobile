@@ -418,6 +418,32 @@ internal class MemberDetailRouteProvider(
         )
     }
 
+    /**
+     * Self profile description edit (web HumanDetailPanel, botiverse/slock #15664): `PATCH /api/auth/me`
+     * with `{ description }` (explicit `null` clears), then patches all cached rosters/profiles for
+     * this user so reopened profiles and member lists stay in sync.
+     */
+    suspend fun updateHumanDescription(
+        memberId: MemberId,
+        description: String?
+    ): DataResult<build.raft.app.data.AccountDescriptionUpdateResult> {
+        val targetId = memberId.value.trim()
+        val startEnv = apiEnvironmentStore.current().apiBaseUrl
+        val startUserId = authStore.readSession()?.user?.id?.trim()
+        if (startUserId.isNullOrBlank() || startUserId != targetId) {
+            return DataResult.Error(ScreenError("member_description_account_changed", retryable = false))
+        }
+        val result = settingsRepository.updateAccountDescription(description)
+        if (result is DataResult.Content) {
+            val endEnv = apiEnvironmentStore.current().apiBaseUrl
+            val endUserId = authStore.readSession()?.user?.id?.trim()
+            if (endEnv == startEnv && endUserId == startUserId) {
+                serverMembersStore.updateHumanDescription(memberId, result.data.description)
+            }
+        }
+        return result
+    }
+
     suspend fun cachedContext(
         identity: MemberDetailIdentity
     ): MemberDetailRouteState.Agent? {

@@ -13,9 +13,18 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.components.RaftUiSelectionPopover
 import build.raft.app.components.RaftUiSelectionOption
+import build.raft.app.data.AccountDescriptionUpdateResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.DescriptionLinkSubject
+import build.raft.app.data.DescriptionLinkWarning
+import build.raft.app.data.PROFILE_DESCRIPTION_INVALID_CODE
+import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerActionResult
+import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.data.profileDescriptionComparable
+import build.raft.app.data.profileDescriptionLength
+import build.raft.app.data.profileDescriptionTooLong
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
@@ -24,7 +33,12 @@ import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.toMemberProfile
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.layout
@@ -34,6 +48,7 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
@@ -64,10 +79,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.raftClickable
 import androidx.compose.ui.semantics.selected
+
+internal const val MembersHumanDescriptionEditButtonTag = "human-profile-description-edit"
+internal const val MembersHumanDescriptionInputTag = "human-profile-description-input"
+internal const val MembersHumanDescriptionSaveButtonTag = "human-profile-description-save"
+internal const val MembersHumanDescriptionCancelButtonTag = "human-profile-description-cancel"
 
 // Web HumanDetailPanel (raft-ui ProfilePanelBody): each section is a full-bleed hairline
 // Separator over a `px-5 py-4` body; the hero row is `px-5 py-5 gap-4`.
@@ -88,6 +109,8 @@ internal fun MembersHumanDetailSections(
     currentServerId: String? = null,
     ownerCount: Int? = null,
     onUpdateRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
+    onUpdateDescription: (suspend (String?) -> DataResult<AccountDescriptionUpdateResult>)? = null,
+    onApplyDescription: ((String?) -> Unit)? = null,
     onRemoveMember: (() -> Unit)? = null,
     onPromoteGuest: (() -> Unit)? = null,
     promotingGuest: Boolean = false,
@@ -118,7 +141,12 @@ internal fun MembersHumanDetailSections(
             isSelf = isSelf,
             memberAvatarResolver = memberAvatarResolver
         )
-        MembersHumanDescriptionSection(member)
+        MembersHumanDescriptionSection(
+            member = member,
+            currentUserId = currentUserId,
+            onUpdateDescription = onUpdateDescription,
+            onApplyDescription = onApplyDescription
+        )
         // Web hides Info and Created Agents for a person seen through another server
         // (`isRemoteJointHuman`) or a channel summary projection.
         if (membersHumanShowsServerFacts(accessMode)) {
@@ -157,6 +185,7 @@ private fun MembersHumanSection(
     title: String,
     count: String? = null,
     titleGap: Dp = 12.dp,
+    accessory: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -166,7 +195,18 @@ private fun MembersHumanSection(
                 .fillMaxWidth()
                 .padding(horizontal = MembersHumanSectionPaddingX, vertical = MembersHumanSectionPaddingY)
         ) {
-            RaftSectionEyebrow(text = title, count = count, modifier = Modifier.padding(bottom = titleGap))
+            if (accessory != null) {
+                Row(
+                    modifier = Modifier.padding(bottom = titleGap),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftSectionEyebrow(text = title, count = count)
+                    accessory()
+                }
+            } else {
+                RaftSectionEyebrow(text = title, count = count, modifier = Modifier.padding(bottom = titleGap))
+            }
             content()
         }
     }
@@ -311,16 +351,224 @@ private fun MembersHumanProfileSummary(
 }
 
 @Composable
-private fun MembersHumanDescriptionSection(member: MemberProfile) {
+private fun MembersHumanDescriptionSection(
+    member: MemberProfile,
+    currentUserId: String?,
+    onUpdateDescription: (suspend (String?) -> DataResult<AccountDescriptionUpdateResult>)?,
+    onApplyDescription: ((String?) -> Unit)?
+) {
     val colors = RaftTheme.colors
-    val description = member.description?.takeIf { it.isNotBlank() }
-    // Web: eyebrow `mb-1`, then `text-callout text-foreground-muted`; the empty state is hint ink.
-    MembersHumanSection(title = stringResource(Res.string.member_section_description), titleGap = 4.dp) {
-        RaftText(
-            text = description ?: stringResource(Res.string.member_state_no_description),
-            style = RaftTheme.typography.callout,
-            color = if (description == null) colors.foregroundHint else colors.foregroundMuted
-        )
+    val errorStrings = localizedErrorPresentationStrings()
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val descriptionTooLongMessage =
+        stringResource(Res.string.agent_create_error_description_length, PROFILE_DESCRIPTION_MAX_LENGTH)
+    val updateFailedFallback = stringResource(Res.string.member_error_update_description)
+    val edgeBlockedMessage = stringResource(Res.string.error_edge_blocked)
+    val editDescriptionLabel = stringResource(Res.string.member_action_edit_description)
+    val canEdit = onUpdateDescription != null && membersHumanCanEditDescription(member, currentUserId)
+    val scope = rememberCoroutineScope()
+    val sessionToken = remember(member.id.value) { Any() }
+    val currentSessionToken by rememberUpdatedState(sessionToken)
+    val currentCanEdit by rememberUpdatedState(canEdit)
+    val currentOnApplyDescription by rememberUpdatedState(onApplyDescription)
+    var displayedDescription by remember(member.id.value) {
+        mutableStateOf(member.description?.takeIf { it.isNotBlank() })
+    }
+    var editing by remember(member.id.value) { mutableStateOf(false) }
+    var draft by remember(member.id.value) { mutableStateOf(member.description.orEmpty()) }
+    var saving by remember(member.id.value) { mutableStateOf(false) }
+    var saveGeneration by remember(member.id.value) { mutableStateOf(0L) }
+    var saveError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var saveErrorTraceId by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var linkWarnings by remember(member.id.value) { mutableStateOf<List<DescriptionLinkWarning>>(emptyList()) }
+
+    LaunchedEffect(member.id.value, member.description) {
+        if (!saving) {
+            displayedDescription = member.description?.takeIf { it.isNotBlank() }
+        }
+    }
+
+    val descriptionTooLong =
+        remember(draft, displayedDescription) {
+            profileDescriptionTooLong(draft, displayedDescription)
+        }
+    val shownError =
+        saveError?.takeIf { it.isNotBlank() } ?: descriptionTooLongMessage.takeIf { descriptionTooLong }
+
+    fun saveDescription() {
+        val update = onUpdateDescription ?: return
+        if (!canEdit || saving) return
+        if (profileDescriptionTooLong(draft, displayedDescription)) {
+            saveError = descriptionTooLongMessage
+            saveErrorTraceId = null
+            return
+        }
+        val editSessionToken = sessionToken
+        val requestGeneration = saveGeneration + 1L
+        saveGeneration = requestGeneration
+        val nextDescription = profileDescriptionComparable(draft).takeIf { it.isNotEmpty() }
+        saving = true
+        saveError = null
+        saveErrorTraceId = null
+        scope.launch {
+            try {
+                val result =
+                    try {
+                        update(nextDescription)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("member_description_save_failed"))
+                    }
+                if (currentSessionToken !== editSessionToken || saveGeneration != requestGeneration || !currentCanEdit) {
+                    return@launch
+                }
+                when (result) {
+                    is DataResult.Content -> {
+                        val saved = result.data.description?.takeIf { it.isNotBlank() }
+                        displayedDescription = saved
+                        draft = saved.orEmpty()
+                        linkWarnings = result.data.warnings
+                        currentOnApplyDescription?.invoke(saved)
+                        editing = false
+                    }
+                    is DataResult.Empty -> {
+                        saveError = updateFailedFallback
+                    }
+                    is DataResult.NoPermission -> {
+                        saveError =
+                            membersFormattedPermissionError(
+                                permissionErrorTemplate,
+                                result.blocker,
+                                errorStrings
+                            )
+                        saveErrorTraceId = result.blocker.traceId
+                    }
+                    is DataResult.Error -> {
+                        saveError =
+                            when {
+                                result.error.serverCode == PROFILE_DESCRIPTION_INVALID_CODE -> descriptionTooLongMessage
+                                result.error.serverMessage.isEdgeBlockedMarker() -> edgeBlockedMessage
+                                !result.error.serverMessage.isNullOrBlank() -> result.error.serverMessage
+                                else -> updateFailedFallback
+                            }
+                        saveErrorTraceId = result.error.traceId
+                    }
+                }
+            } finally {
+                if (currentSessionToken === editSessionToken && saveGeneration == requestGeneration) {
+                    saving = false
+                }
+            }
+        }
+    }
+
+    // Web HumanDetailPanel: eyebrow `mb-1` with inline Pencil button for self active human,
+    // then `text-callout text-foreground-muted` (empty state in hint ink) + link warnings.
+    MembersHumanSection(
+        title = stringResource(Res.string.member_section_description),
+        titleGap = 4.dp,
+        accessory =
+            if (canEdit && !editing) {
+                {
+                    RaftIconButton(
+                        onClick = {
+                            saveGeneration += 1L
+                            draft = displayedDescription.orEmpty()
+                            saveError = null
+                            saveErrorTraceId = null
+                            editing = true
+                        },
+                        tooltip = editDescriptionLabel,
+                        variant = RaftButtonVariant.Ghost,
+                        modifier = Modifier.membersInlineActionOverhang().testTag(MembersHumanDescriptionEditButtonTag)
+                    ) {
+                        MembersHumanInlineActionGlyph(RaftLucideIconName.Pencil)
+                    }
+                }
+            } else {
+                null
+            }
+    ) {
+        if (canEdit && editing) {
+            val descriptionFocus = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                delay(100)
+                runCatching { descriptionFocus.requestFocus() }
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Intentionally uncapped while typing (matching MembersAgentProfile) so IME/paste
+                // with outer whitespace isn't truncated mid-edit; Save is gated on the 300-char rule.
+                RaftTextarea(
+                    value = draft,
+                    onValueChange = { next ->
+                        draft = next
+                        if (saveError != null) {
+                            saveError = null
+                            saveErrorTraceId = null
+                        }
+                    },
+                    placeholder = stringResource(Res.string.member_placeholder_human_description),
+                    enabled = !saving,
+                    invalid = shownError != null,
+                    modifier = Modifier.fillMaxWidth(),
+                    inputModifier = Modifier.focusRequester(descriptionFocus).testTag(MembersHumanDescriptionInputTag)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftButton(
+                        text = if (saving) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
+                        onClick = { saveDescription() },
+                        enabled = !saving && !descriptionTooLong,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Md,
+                        modifier = Modifier.testTag(MembersHumanDescriptionSaveButtonTag)
+                    )
+                    RaftButton(
+                        text = stringResource(Res.string.common_cancel),
+                        onClick = {
+                            saveGeneration += 1L
+                            draft = displayedDescription.orEmpty()
+                            saveError = null
+                            saveErrorTraceId = null
+                            editing = false
+                        },
+                        enabled = !saving,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md,
+                        modifier = Modifier.testTag(MembersHumanDescriptionCancelButtonTag)
+                    )
+                }
+                RaftProfileDescriptionFoot(
+                    count = profileDescriptionLength(draft),
+                    hint = null,
+                    error = shownError,
+                    enabled = !saving
+                )
+                if (saveError != null) RaftTraceIdNote(saveErrorTraceId)
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                RaftText(
+                    text = displayedDescription ?: stringResource(Res.string.member_state_no_description),
+                    style = RaftTheme.typography.callout,
+                    color = if (displayedDescription == null) colors.foregroundHint else colors.foregroundMuted
+                )
+                RaftDescriptionLinkWarnings(
+                    warnings = linkWarnings,
+                    subject = DescriptionLinkSubject.Person,
+                    onDismiss = { linkWarnings = emptyList() }
+                )
+            }
+        }
     }
 }
 

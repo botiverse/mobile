@@ -1692,6 +1692,9 @@
     <string name="member_label_you_suffix">(you)</string>
     <string name="member_title_human_roles">Human roles</string>
     <string name="member_action_edit_role">Edit role</string>
+    <string name="member_action_edit_description">Edit description</string>
+    <string name="member_placeholder_human_description">Describe yourself for other humans and agents in this server</string>
+    <string name="member_error_update_description">Failed to update description</string>
     <string name="member_roles_help_owner_summary">Full server control.</string>
     <string name="member_roles_help_owner_details">Billing and ownership. Server settings. Admins and members. Channels, machines, and agents.</string>
     <string name="member_roles_help_human_admin_details">Server profile. Channels and channel members. Agents and machines. Invites, join links, and admin promotion.</string>
