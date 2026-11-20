@@ -425,12 +425,16 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
             harness.diagnostics.filter { "app_link_card_reread" in it }.map { line -> line.substringAfter("links=1 ").substringBefore(" cards=") },
             "each press leaves its outcome in the diagnostics",
         )
+        // An answer with nowhere to go (no answer of that message is held) is a failure too, never a silent "read".
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA))
+        val unread = harness.Row(CMessageC, "See $CPr1")
+        assertEquals(false, harness.store.rereadLink(CViewer, CServer, CMessageC, "See $CPr1", unread.batch, CPr1))
 
         // A nudge's re-read with no card keeps the card: only the person's own Refresh shows it gone.
         harness.api.cardReadResponses += changedAnswer()
         harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyB))
         after(1_000)
-        assertEquals(5, harness.api.cardReads.size)
+        assertEquals(6, harness.api.cardReads.size)
         assertEquals("Open", row.title(CPr2))
     }
 }

@@ -572,15 +572,16 @@ class SharedAppLinkPreviewStore internal constructor(
      * first; a link Raft answers with no card is the author's link again (web `reread`: "No result:
      * the link is the author's link now").
      *
-     * False when the read failed or Raft answered the link `rate_limited` (the card stays as it
-     * was): a Refresh says so (web `LinkCardReread` `failed`). A read superseded by a later one
-     * of the view is not a failure.
+     * False whenever the card shown is not what this read answered: the read failed, Raft answered
+     * the link `rate_limited`, a later request of the view took its place, or there was no answer
+     * of this message to put it in. A Refresh says so in a toast (web `LinkCardReread` `failed`), so
+     * an old card is never kept in silence. (The web says nothing for a superseded read; here the
+     * person is told, since the card they pressed on did not change.)
      */
     suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean =
         when (val read = rereadLinks(appLinkReadScope(viewerKey, messageId, content, batch.mode), serverId, messageId, batch, listOf(url), keepWithoutCard = false)) {
-            AppLinkReread.Failed -> false
-            AppLinkReread.Superseded -> true
-            is AppLinkReread.Read -> url !in read.limited
+            AppLinkReread.Failed, AppLinkReread.Superseded -> false
+            is AppLinkReread.Read -> read.applied && url !in read.limited
         }
 
     /**
@@ -616,7 +617,8 @@ class SharedAppLinkPreviewStore internal constructor(
             }
         val limited = urls.mapNotNull { url -> fetched.limited[url]?.let { url to it } }.toMap()
         val answered = urls.filter { it !in limited }
-        val fresh = answered.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.let { url to it } }
+        // The person's own press takes whatever Raft answered for the link (web `reread`); a nudge's only a card.
+        val fresh = answered.mapNotNull { url -> fetched.results[url]?.takeIf { !keepWithoutCard || it is AppLinkResult.Card }?.let { url to it } }
         // Answered with nothing at all (no card, no prompt): no longer previewed.
         val gone = if (keepWithoutCard) emptyList() else answered.filter { it !in fetched.results }
         // What became of the answer: applied, or dropped and why (never in silence).
@@ -637,7 +639,7 @@ class SharedAppLinkPreviewStore internal constructor(
             }
         }
         diagnosticsLogger("$line result=$outcome cards=${fresh.size} gone=${gone.size} limited=${limited.size}")
-        return AppLinkReread.Read(limited)
+        return AppLinkReread.Read(limited, applied = !outcome.startsWith("dropped"))
     }
 
     /** The rows on a page now ([keepFresh]). Store dispatcher only, like everything below. */
@@ -812,6 +814,7 @@ class SharedAppLinkPreviewStore internal constructor(
                 }
                 AppLinkReread.Superseded -> return false
                 is AppLinkReread.Read -> {
+                    if (!read.applied) return false
                     urls = reading.filter { it in read.limited }
                     if (urls.isEmpty()) {
                         readFailedAt.remove(readScope)
@@ -977,7 +980,7 @@ class SharedAppLinkPreviewStore internal constructor(
 /** How a read of some links of a message ended ([SharedAppLinkPreviewStore] `rereadLinks`). */
 private sealed interface AppLinkReread {
     /** Read: [limited] are the links Raft answered `rate_limited` (their `retry_after` seconds), whose cards stay as they were. */
-    data class Read(val limited: Map<String, Int>) : AppLinkReread
+    data class Read(val limited: Map<String, Int>, val applied: Boolean = true) : AppLinkReread
 
     data object Failed : AppLinkReread
 
