@@ -61,6 +61,14 @@ class RaftTextDirectionTest {
         val hebrewQuote = "> @alice שלום מציטוט"
         val quoteNode = firstNodeOfType(hebrewQuote, MarkdownElementTypes.BLOCK_QUOTE)
         assertEquals(RaftTextDirection.Rtl, raftMarkdownBlockDirection(hebrewQuote, quoteNode))
+
+        val hebrewDmRef = "dm:@alice שלום"
+        val dmRefParagraph = firstNodeOfType(hebrewDmRef, MarkdownElementTypes.PARAGRAPH)
+        assertEquals(RaftTextDirection.Rtl, raftMarkdownBlockDirection(hebrewDmRef, dmRefParagraph))
+
+        val hebrewMsgRef = "#general msg=ab12cd34 שלום"
+        val msgRefParagraph = firstNodeOfType(hebrewMsgRef, MarkdownElementTypes.PARAGRAPH)
+        assertEquals(RaftTextDirection.Rtl, raftMarkdownBlockDirection(hebrewMsgRef, msgRefParagraph))
     }
 
     @Test
@@ -137,6 +145,39 @@ class RaftTextDirectionTest {
 
         // Copy / accessibility strips FSI/PDI back to exact rendered source.
         assertEquals(original.text, isolated.text.raftCopyText())
+    }
+
+    @Test
+    fun rtlLinkBidiIsolationPreservesInlineChipGapLinksInsideSingleIsolate() {
+        val chipWithGaps =
+            buildAnnotatedString {
+                pushStringAnnotation(RaftInlineContentAnnotationTag, "${RaftInlineGapInlineIdPrefix}4")
+                append('\uFFFC')
+                pop()
+                append('\u2060')
+                withLink(LinkAnnotation.Clickable(tag = "chip-1", linkInteractionListener = {})) {
+                    append("#general")
+                }
+                append('\u2060')
+                pushStringAnnotation(RaftInlineContentAnnotationTag, "${RaftInlineGapInlineIdPrefix}4")
+                append('\uFFFC')
+                pop()
+                append(" שלום")
+            }
+
+        val resolved = chipWithGaps.withRaftInlineChipGapLinks().withRaftRtlLinkBidiIsolation()
+        assertEquals(
+            "${RAFT_BIDI_FSI}\uFFFC\u2060#general\u2060\uFFFC${RAFT_BIDI_PDI} שלום",
+            resolved.text,
+        )
+        // Leading gap, chip label, and trailing gap all retain their LinkAnnotations inside one isolate.
+        val links = resolved.getLinkAnnotations(0, resolved.length).sortedBy { it.start }
+        assertEquals(3, links.size)
+        assertEquals("\uFFFC\u2060", resolved.text.substring(links[0].start, links[0].end))
+        assertEquals("#general", resolved.text.substring(links[1].start, links[1].end))
+        assertEquals("\u2060\uFFFC", resolved.text.substring(links[2].start, links[2].end))
+        assertEquals(1, resolved.text.count { it == RAFT_BIDI_FSI })
+        assertEquals(1, resolved.text.count { it == RAFT_BIDI_PDI })
     }
 
     private fun parse(markdown: String): ASTNode =

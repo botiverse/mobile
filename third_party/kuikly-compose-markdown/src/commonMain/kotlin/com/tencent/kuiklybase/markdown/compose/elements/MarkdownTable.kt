@@ -331,7 +331,7 @@ fun MarkdownTableBasicText(
     CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
         MarkdownText(
             content = str,
-            modifier = if (cellDirection == RaftTextDirection.Rtl) modifier.fillMaxWidth() else modifier,
+            modifier = if (cellDirection != null) modifier.fillMaxWidth() else modifier,
             style = resolvedStyle.merge(
                 color = LocalMarkdownColors.current.tableText,
             ),

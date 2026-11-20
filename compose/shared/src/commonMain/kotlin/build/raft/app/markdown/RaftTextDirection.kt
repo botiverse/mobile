@@ -10,6 +10,7 @@ import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
 /**
@@ -65,8 +66,9 @@ private val SkippedMarkdownDirectionNodeTypes: Set<IElementType> =
         MarkdownElementTypes.AUTOLINK,
         GFMTokenTypes.GFM_AUTOLINK,
         MarkdownElementTypes.IMAGE,
-        RaftMarkdownTokenTypes.INLINE_MATH,
-        RaftMarkdownTokenTypes.BLOCK_MATH,
+        GFMElementTypes.INLINE_MATH,
+        GFMElementTypes.BLOCK_MATH,
+        RaftMarkdownTokenTypes.REFERENCE,
         MarkdownTokenTypes.LIST_BULLET,
         MarkdownTokenTypes.LIST_NUMBER,
         GFMTokenTypes.CHECK_BOX,
@@ -136,20 +138,39 @@ fun TextStyle.withRaftTextDirection(direction: RaftTextDirection?): TextStyle =
  */
 internal fun AnnotatedString.withRaftRtlLinkBidiIsolation(): AnnotatedString {
     if (isEmpty()) return this
+    val originalLength = length
+    val gaps =
+        getStringAnnotations(RaftInlineContentAnnotationTag, 0, originalLength)
+            .filter { it.item.startsWith(RaftInlineGapInlineIdPrefix) && it.end > it.start }
+    val gapEndingAt = if (gaps.isEmpty()) emptyMap() else gaps.associateBy { it.end }
+    val gapStartingAt = if (gaps.isEmpty()) emptyMap() else gaps.associateBy { it.start }
     val rawRanges =
-        getLinkAnnotations(0, length)
+        getLinkAnnotations(0, originalLength)
             .asSequence()
             .filter { range ->
-                val start = range.start.coerceIn(0, length)
-                val end = range.end.coerceIn(start, length)
+                val start = range.start.coerceIn(0, originalLength)
+                val end = range.end.coerceIn(start, originalLength)
                 start < end && (range.item as? LinkAnnotation.Clickable)?.tag != RaftMarkdownBodyClickTag
             }
-            .map { it.start.coerceIn(0, length) until it.end.coerceIn(0, length) }
+            .map { range ->
+                var start = range.start.coerceIn(0, originalLength)
+                var end = range.end.coerceIn(start, originalLength)
+                // Keep a chip's glued gap placeholders ([gap][\u2060][label][\u2060][gap]) inside
+                // the same single FSI..PDI isolate so UAX #9 never detaches painted padding from
+                // the chip label and chip gap links remain intact.
+                if (start >= 1 && text[start - 1] == '\u2060') {
+                    gapEndingAt[start - 1]?.let { gap -> start = minOf(start, gap.start.coerceIn(0, originalLength)) }
+                }
+                if (end < originalLength && text[end] == '\u2060') {
+                    gapStartingAt[end + 1]?.let { gap -> end = maxOf(end, gap.end.coerceIn(end, originalLength)) }
+                }
+                start until end
+            }
             .sortedWith(compareBy<IntRange> { it.first }.thenByDescending { it.last })
             .toList()
     if (rawRanges.isEmpty()) return this
 
-    // Keep outermost non-overlapping link ranges so each link is isolated once.
+    // Keep outermost non-overlapping link/chip ranges so each link or chip is isolated once.
     val ranges = ArrayList<IntRange>(rawRanges.size)
     var lastEnd = -1
     for (range in rawRanges) {
@@ -160,54 +181,55 @@ internal fun AnnotatedString.withRaftRtlLinkBidiIsolation(): AnnotatedString {
     }
     if (ranges.isEmpty()) return this
 
-    val fsiAt = IntArray(length + 1)
-    val pdiAt = IntArray(length + 1)
+    val fsiAt = IntArray(originalLength + 1)
+    val pdiAt = IntArray(originalLength + 1)
     for (range in ranges) {
         fsiAt[range.first]++
         pdiAt[range.last + 1]++
     }
 
-    // For each original boundary i in 0..length:
+    // For each original boundary i in 0..originalLength:
     //   - PDI marks closing a link that ended at i are emitted BEFORE i
     //   - FSI marks opening a link that starts at i are emitted AFTER PDI and BEFORE char[i]
     // Therefore:
     //   - an end offset maps right BEFORE PDI at i (so the isolate mark stays outside the link/box)
     //   - a start offset maps right AFTER FSI at i (so the isolate mark stays outside the link/box)
-    val endMap = IntArray(length + 1)
-    val startMap = IntArray(length + 1)
-    val outText = StringBuilder(length + ranges.size * 2)
-    for (i in 0..length) {
+    val endMap = IntArray(originalLength + 1)
+    val startMap = IntArray(originalLength + 1)
+    val outText = StringBuilder(originalLength + ranges.size * 2)
+    for (i in 0..originalLength) {
         endMap[i] = outText.length
         repeat(pdiAt[i]) { outText.append(RAFT_BIDI_PDI) }
         repeat(fsiAt[i]) { outText.append(RAFT_BIDI_FSI) }
         startMap[i] = outText.length
-        if (i < length) outText.append(text[i])
+        if (i < originalLength) outText.append(text[i])
     }
 
     fun mapRange(start: Int, end: Int): Pair<Int, Int> {
-        val clampedStart = start.coerceIn(0, length)
-        val clampedEnd = end.coerceIn(clampedStart, length)
+        val clampedStart = start.coerceIn(0, originalLength)
+        val clampedEnd = end.coerceIn(clampedStart, originalLength)
         val mappedStart = startMap[clampedStart]
         val mappedEnd = maxOf(mappedStart, endMap[clampedEnd])
         return mappedStart to mappedEnd
     }
 
+    val original = this
     return AnnotatedString.Builder(outText.length)
         .apply {
             append(outText.toString())
-            spanStyles.forEach { span ->
+            original.spanStyles.forEach { span ->
                 val (s, e) = mapRange(span.start, span.end)
                 addStyle(span.item, s, e)
             }
-            paragraphStyles.forEach { para ->
+            original.paragraphStyles.forEach { para ->
                 val (s, e) = mapRange(para.start, para.end)
                 addStyle(para.item, s, e)
             }
-            getStringAnnotations(0, length).forEach { ann ->
+            original.getStringAnnotations(0, originalLength).forEach { ann ->
                 val (s, e) = mapRange(ann.start, ann.end)
                 addStringAnnotation(ann.tag, ann.item, s, e)
             }
-            getLinkAnnotations(0, length).forEach { ann ->
+            original.getLinkAnnotations(0, originalLength).forEach { ann ->
                 val (s, e) = mapRange(ann.start, ann.end)
                 when (val link = ann.item) {
                     is LinkAnnotation.Url -> addLink(link, s, e)
