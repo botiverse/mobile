@@ -50,7 +50,7 @@ import build.raft.designsystem.tokens.RaftUiPalette
  *
  * - [RaftAvatarWithOriginCorner]: another server's tile on an avatar's top-left corner (the
  *   bottom-right stays the presence light or the delegated face), in the message author row,
- *   the channel member list and the @ list (a plain dot there);
+ *   the channel member list and the @ list (round there: the server's logo, or a plain dot);
  * - [RaftProfilePreviewExternalRibbon]: the band across the top of the profile card with the
  *   person's servers and "External".
  *
@@ -87,8 +87,10 @@ internal fun MemberServerRef.originInitial(): String = originLabel().take(1).upp
 /**
  * Where the corner sits and how large it is, from the avatar as drawn (web: a query container over
  * the face): the tile is 42% of the face, 7–19dp; it overhangs the top and left edges by 9%, 3–5dp;
- * its initial is 23%, 8–11sp. Under a 26dp face (and always with [forceDot], the @ list's faces)
- * it is a plain dot without an initial.
+ * its initial is 23%, 8–11sp. A small face (under 26dp, and always with [small], the @ list's
+ * faces) gets a round corner instead of a tile (raft-design identity-and-presence, #proj-raft-ui:#276):
+ * the server's logo when the viewer has it ([hasLogo]), at least 10dp so the logo can be made out,
+ * else a plain dot without an initial (an initial cannot be read at that size).
  */
 @Immutable
 internal data class RaftAvatarOriginCornerGeometry(
@@ -98,17 +100,29 @@ internal data class RaftAvatarOriginCornerGeometry(
     val dot: Boolean,
 )
 
-internal fun raftAvatarOriginCornerGeometry(avatarEdge: Dp, forceDot: Boolean = false): RaftAvatarOriginCornerGeometry {
+internal fun raftAvatarOriginCornerGeometry(
+    avatarEdge: Dp,
+    small: Boolean = false,
+    hasLogo: Boolean = false,
+): RaftAvatarOriginCornerGeometry {
     val edge = avatarEdge.value
+    val round = small || edge < 26f
+    val minTile = if (round && hasLogo) RaftAvatarOriginSmallLogoMinEdge else 7f
     return RaftAvatarOriginCornerGeometry(
-        tile = (edge * 0.42f).coerceIn(7f, 19f).dp,
+        tile = (edge * 0.42f).coerceIn(minTile, 19f).dp,
         overhang = (edge * 0.09f).coerceIn(3f, 5f).dp,
         initialSize = (edge * 0.23f).coerceIn(8f, 11f).sp,
-        dot = forceDot || edge < 26f,
+        dot = round,
     )
 }
 
+/** A small face's round logo is never under 10dp: smaller, a logo cannot be made out (#proj-raft-ui:#276). */
+private const val RaftAvatarOriginSmallLogoMinEdge = 10f
+
 internal const val RaftAvatarOriginCornerTestTag = "avatar-origin-corner"
+internal const val RaftAvatarOriginCornerLogoTestTag = "avatar-origin-corner-logo"
+internal const val RaftAvatarOriginCornerDotTestTag = "avatar-origin-corner-dot"
+internal const val RaftAvatarOriginCornerTileTestTag = "avatar-origin-corner-tile"
 internal const val RaftProfilePreviewExternalRibbonTestTag = "profile-card-external-ribbon"
 
 /**
@@ -122,7 +136,7 @@ internal fun RaftAvatarWithOriginCorner(
     servers: List<MemberServerRef>,
     avatarEdge: Dp,
     modifier: Modifier = Modifier,
-    forceDot: Boolean = false,
+    small: Boolean = false,
     contentDescription: String? = null,
     avatar: @Composable () -> Unit,
 ) {
@@ -133,30 +147,67 @@ internal fun RaftAvatarWithOriginCorner(
     }
     Box(modifier) {
         avatar()
-        RaftAvatarOriginCorner(first, raftAvatarOriginCornerGeometry(avatarEdge, forceDot), contentDescription)
+        val logo = LocalRaftViewerServerLogos.current[first.id.trim()]
+        RaftAvatarOriginCorner(
+            server = first,
+            logo = logo,
+            geometry = raftAvatarOriginCornerGeometry(avatarEdge, small = small, hasLogo = logo != null),
+            contentDescription = contentDescription,
+        )
     }
 }
 
 @Composable
-private fun RaftAvatarOriginCorner(server: MemberServerRef, geometry: RaftAvatarOriginCornerGeometry, contentDescription: String?) {
+private fun RaftAvatarOriginCorner(
+    server: MemberServerRef,
+    logo: String?,
+    geometry: RaftAvatarOriginCornerGeometry,
+    contentDescription: String?,
+) {
     val stickerEdge = RaftTheme.colors.stickerEdge
-    Box(
-        Modifier
-            .offset(x = -geometry.overhang, y = -geometry.overhang)
-            .size(geometry.tile)
-            .testTag(RaftAvatarOriginCornerTestTag)
-            .clearAndSetSemantics { if (contentDescription != null) this.contentDescription = contentDescription },
-    ) {
-        if (geometry.dot) {
-            // `rounded-full border border-sticker-ink bg-sticker-ink shadow-[0_0_0_1.5px_var(--sticker-edge)]`.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .originOuterRing(stickerEdge, circle = true)
-                    .background(RaftUiPalette.stickerInk, CircleShape),
-            )
-        } else {
-            RaftServerOriginTile(server, geometry.tile, geometry.initialSize)
+    // Which face the corner wears (tests): kept outside the corner, whose own semantics are cleared.
+    val variantTag =
+        when {
+            !geometry.dot -> RaftAvatarOriginCornerTileTestTag
+            logo != null -> RaftAvatarOriginCornerLogoTestTag
+            else -> RaftAvatarOriginCornerDotTestTag
+        }
+    Box(Modifier.testTag(variantTag)) {
+        Box(
+            Modifier
+                .offset(x = -geometry.overhang, y = -geometry.overhang)
+                .size(geometry.tile)
+                .testTag(RaftAvatarOriginCornerTestTag)
+                .clearAndSetSemantics { if (contentDescription != null) this.contentDescription = contentDescription },
+        ) {
+            if (geometry.dot) {
+                // `rounded-full border border-sticker-ink bg-sticker-ink shadow-[0_0_0_1.5px_var(--sticker-edge)]`:
+                // the plain dot, and under the logo while it loads or when it fails.
+                val dot: @Composable () -> Unit = {
+                    Box(Modifier.fillMaxSize().background(RaftUiPalette.stickerInk, CircleShape))
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .originOuterRing(stickerEdge, circle = true)
+                        .background(RaftUiPalette.stickerInk, CircleShape)
+                        .clip(CircleShape),
+                ) {
+                    if (logo != null) {
+                        RaftAvatarHttpImage(
+                            source = logo,
+                            modifier = Modifier.fillMaxSize(),
+                            cacheSubject = RaftAvatarCacheSubject.Server(server.id),
+                            cacheServerId = server.id,
+                            serverDiagnosticsId = server.id,
+                            fallback = dot,
+                            placeholder = dot,
+                        )
+                    }
+                }
+            } else {
+                RaftServerOriginTile(server, geometry.tile, geometry.initialSize)
+            }
         }
     }
 }

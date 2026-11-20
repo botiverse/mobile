@@ -4218,11 +4218,12 @@ internal fun ComposerMemberSuggestionRow(
         // web `MentionCandidateAvatar muted`: the avatar dims once more (`opacity-60`) inside the row's.
         Box(modifier = if (muted) Modifier.alpha(0.6f) else Modifier) {
             // Member labels (web #14535 MentionCandidateAvatar): a candidate from another server
-            // carries a plain dot on the avatar's top-left corner (the xs face has no room for a tile).
+            // carries a round corner on the avatar's top-left: the server's logo, or a plain dot when
+            // the viewer has none (the xs face has no room for a tile; #proj-raft-ui:#276).
             RaftAvatarWithOriginCorner(
                 servers = member.mentionOriginServers(),
                 avatarEdge = ComposerMemberSuggestionAvatarSize,
-                forceDot = true,
+                small = true,
             ) {
                 RaftAvatarWithStatus(
                     statusColor = agentStatus?.color,
