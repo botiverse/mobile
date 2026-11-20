@@ -39,7 +39,8 @@ class RaftWebViewDownloadsTest {
         val script = raftWebViewBlobReadScript(blob, "d1")
         assertTrue(RaftWebViewDownloadPortName in script)
         assertTrue("\"d1\"" in script)
-        assertTrue("\"$blob\"" in script)
+        assertTrue("0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" in script)
+        assertTrue("fetch(u)" in script)
     }
 
     private fun message(vararg pairs: Pair<String, Any>): String =
