@@ -322,16 +322,21 @@ internal class RaftComposerDraftUploadApplier(
     ) {
         val id = upload.localAttachmentId
         val state = currentState()
-        if (normalizeThreadAttachmentUploadDraftKey(state.draftKey) != draftKey) return
-        if (id in state.removedAttachmentIds) return
+        val terminal = upload.outcome != RaftComposerDraftUploadOutcome.InFlight && !upload.delivered
+        fun trace(step: String) {
+            if (terminal) log("upload_trace apply_skip id=$id step=$step outcome=${upload.outcome::class.simpleName} delivered=${upload.delivered} rowStatus=${state.uploadedAttachments.firstOrNull { it.id == id }?.status} stateKeyMatch=${normalizeThreadAttachmentUploadDraftKey(state.draftKey) == draftKey}")
+        }
+        if (terminal) log("upload_trace apply_begin id=$id outcome=${upload.outcome::class.simpleName} rows=${state.uploadedAttachments.size}")
+        if (normalizeThreadAttachmentUploadDraftKey(state.draftKey) != draftKey) return trace("draft_key")
+        if (id in state.removedAttachmentIds) return trace("removed")
         val row = state.uploadedAttachments.firstOrNull { it.id == id }
         val admission =
             when {
                 // The draft lost the row (it was never written before the page went away): show it
                 // again, unless a composer already took this upload's result.
                 row == null ->
-                    if (upload.delivered) return else adopt(draftKey, upload, upload.row, state, acceptWithState, onAdopted)
-                row.status != "uploading" && row.status != "queued" -> return
+                    if (upload.delivered) return trace("no_row_delivered") else adopt(draftKey, upload, upload.row, state, acceptWithState, onAdopted)
+                row.status != "uploading" && row.status != "queued" -> return trace("row_status")
                 else -> {
                     val current = state.attachmentAdmissionsByLocalId[id]
                     when {
@@ -339,10 +344,10 @@ internal class RaftComposerDraftUploadApplier(
                         current == upload.launchAdmission -> current
                         adoptedAdmissions[id] == (upload.attemptToken to current) -> current
                         // Another attempt of this store owns the row (a Retry about to launch).
-                        else -> null
+                        else -> null.also { trace("admission_mismatch current=$current launch=${upload.launchAdmission}") }
                     }
                 }
-            } ?: return
+            } ?: return trace("no_admission")
         when (val outcome = upload.outcome) {
             RaftComposerDraftUploadOutcome.InFlight -> {
                 val transfer = upload.transfer ?: return
@@ -379,6 +384,7 @@ internal class RaftComposerDraftUploadApplier(
                 val landed =
                     receipt.accepted &&
                         uploaded.all { attachment -> receipt.state.uploadedAttachments.any { it.id == attachment.id } }
+                log("upload_trace apply_success id=$id accepted=${receipt.accepted} landed=$landed")
                 if (landed) {
                     adoptedAdmissions.remove(id)
                     onSucceeded(upload)

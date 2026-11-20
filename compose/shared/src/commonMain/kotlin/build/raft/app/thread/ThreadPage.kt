@@ -6084,6 +6084,13 @@ private fun SharedThreadRouteContentContent(
     LaunchedEffect(composerDraftViewModel, attachmentUploads) {
         combine(composerDraftViewModel.state, attachmentUploads.byDraft) { draftState, uploads ->
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
+            val terminalElsewhere =
+                uploads.filterKeys { it != draftKey }.values.sumOf { draft ->
+                    draft.values.count { it.outcome != RaftComposerDraftUploadOutcome.InFlight && !it.delivered }
+                }
+            if (terminalElsewhere > 0) {
+                bridge.log(build.raft.app.base.BridgeLogLevel.Warn, "upload_trace apply_other_keys stateKey=$draftKey uploadKeys=${uploads.keys} terminal=$terminalElsewhere")
+            }
             draftKey to draftKey?.let { key -> uploads[key] }.orEmpty()
         }.collect { (draftKey, uploads) ->
             if (draftKey == null || uploads.isEmpty()) return@collect
