@@ -46,6 +46,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -59,7 +60,6 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -546,12 +546,16 @@ internal fun Modifier.raftPopupAnchorClipped(onChange: (Boolean) -> Unit): Modif
 
 internal fun raftAnchorClippedOut(anchor: LayoutCoordinates): Boolean {
     if (!anchor.isAttached) return false
-    val root = anchor.findRootCoordinates().size
-    if (root.width <= 0 || root.height <= 0) return false
+    val root = anchor.findRootCoordinates()
+    val window = Rect(0f, 0f, root.size.width.toFloat(), root.size.height.toFloat())
+    // raft-ui 0.102.8: only where the window has a size (not a test without layout).
+    if (window.isEmpty) return false
     if (anchor.size.width <= 0 || anchor.size.height <= 0) return false
+    // Laid out past the window's edge (a row wider than a test's window): not a scrolling
+    // region's doing, and the window itself does not scroll.
+    if (root.localBoundingBoxOf(anchor, clipBounds = false).intersect(window).isEmpty) return false
     // Clipped to the bounds of every layout round the anchor, on the way up to the window.
-    val visible = anchor.boundsInWindow()
-    return visible.width <= 0f || visible.height <= 0f
+    return root.localBoundingBoxOf(anchor, clipBounds = true).isEmpty
 }
 
 /**
