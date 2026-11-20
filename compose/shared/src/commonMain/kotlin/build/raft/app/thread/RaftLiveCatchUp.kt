@@ -21,8 +21,8 @@ internal typealias RaftLiveCatchUpTrigger = RaftFreshnessTrigger
  * ([RaftFreshnessSignal], the process's one freshness signal, #proj-mobile:#198). [onCatchUp] must
  * reach a single-flight, content-keeping store refresh (Background lane: the content is already
  * shown). Events of one return are one catch-up and every new socket connection of [serverId] is
- * one ([RaftFreshnessGate]); one that arrives while the page is hidden waits until it shows. Turn [foreground] off where the route already refreshes on
- * foreground (app shell tabs).
+ * one ([RaftFreshnessGate]); one that arrives while the page is hidden waits until it shows. Turn
+ * [foreground] off where the route already refreshes on foreground (app shell tabs).
  */
 @Composable
 internal fun RaftLiveCatchUpEffect(
