@@ -604,6 +604,36 @@ class RaftInteractiveSemanticsTest {
         }
 
     /**
+     * A TextLink that leaves Raft ends in the ↗ mark (raft-design "Links that leave Raft"): its
+     * target takes the mark too (2dp + 0.857em wider than the same link inside Raft), a tap on
+     * it opens the link, and its spoken text is still only its words. Inline and standalone.
+     */
+    @Test
+    fun aTextLinkThatLeavesRaftEndsInTheMarkInsideItsTarget() =
+        runComposeUiTest {
+            var opened = 0
+            setContent(
+                themed {
+                    Column {
+                        RaftText(buildAnnotatedString { appendRaftTextLink("Docs", onClick = {}) })
+                        RaftText(buildAnnotatedString { appendRaftTextLink("Docs", onClick = { opened++ }, leavesRaft = true) })
+                        RaftTextLink("Standalone", onClick = { opened++ }, leavesRaft = true)
+                    }
+                },
+            )
+            // The links' own nodes (a RaftText whose whole text is "Docs" has a text node too).
+            val links = onAllNodes(hasText("Docs") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            links.assertCountEquals(2)
+            val inside = links[0].fetchSemanticsNode().size.width / density.density
+            val outside = links[1].fetchSemanticsNode().size.width / density.density
+            // 0.857em of the body type (14 or 16) plus the 2dp gap: 14 to 15.7dp.
+            assertTrue(outside - inside in 13f..17f, "the mark (2dp + 0.857em) is inside the target: $inside → $outside")
+            links[1].performClick()
+            onNodeWithText("Standalone", substring = true).performClick()
+            assertEquals(2, opened, "both links open")
+        }
+
+    /**
      * The text of a RaftText with links takes the width it is given: with fillMaxWidth and
      * TextAlign.End the line ends at the container's end, as plain RaftText does.
      */

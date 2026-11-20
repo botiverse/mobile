@@ -1040,7 +1040,7 @@ private fun rememberRuntimeFormV2HintText(hint: String): androidx.compose.ui.tex
             parseRuntimeFormV2Hint(hint).forEach { part ->
                 when (part) {
                     is RuntimeFormV2HintPart.Plain -> append(part.text)
-                    is RuntimeFormV2HintPart.Link -> appendRaftTextLink(part.text, onClick = { uriHandler.openUri(part.href) })
+                    is RuntimeFormV2HintPart.Link -> appendRaftTextLink(part.text, onClick = { uriHandler.openUri(part.href) }, leavesRaft = true)
                 }
             }
         }

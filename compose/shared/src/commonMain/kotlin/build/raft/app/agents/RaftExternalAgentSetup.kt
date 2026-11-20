@@ -394,6 +394,7 @@ private fun ExternalSetupSteps(
                     text = stringResource(Res.string.external_agent_create_sdk_guide),
                     onClick = { openLink(RaftSdkDocsUrl) },
                     style = RaftTheme.typography.callout,
+                    leavesRaft = true,
                 )
             }
         }

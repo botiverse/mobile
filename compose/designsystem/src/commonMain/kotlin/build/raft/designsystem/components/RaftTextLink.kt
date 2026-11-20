@@ -3,7 +3,9 @@ package build.raft.designsystem.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,6 +34,13 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +72,59 @@ internal object RaftTextLinkMetrics {
     /** From the alphabetic baseline to the top of the underline (Chrome's length offset). */
     val UnderlineOffset = 3.dp
     val FocusRadius = 2.dp
+}
+
+/**
+ * raft-ui `TextLinkExternalIcon` (text-link.tsx, raft-design patterns/navigation.md "Links that
+ * leave Raft"): Lucide `ArrowUpRight` at 0.857em of the text (12px at 14px), stroke 2, 2px after
+ * the text, in the text's colour, centred on the cap height (0.7em/2 above the baseline). The
+ * link's underline stops at the text and never runs under it.
+ */
+internal object RaftTextLinkExternalMark {
+    const val SizeEm = 0.857f
+    val Gap = 2.dp
+
+    /** Centre of the mark above the baseline, in em (`align-[calc(0.7em/2-0.857em/2)]`). */
+    const val CentreAboveBaselineEm = 0.35f
+
+    /** Joins the mark to the last word (no line break between them) and stands in for it. */
+    const val Chars = "\u2060\uFFFC"
+
+    /** Inline content key of link [index]'s mark in [RaftLinkedText]. */
+    fun id(index: Int) = "raft-text-link-external:$index"
+
+    /** BasicText's inline-content annotation tag (androidx `appendInlineContent`). */
+    const val InlineContentTag = "androidx.compose.foundation.text.inlineContent"
+}
+
+/**
+ * The placeholder of the external mark for text in [style]: [RaftTextLinkExternalMark.Gap] plus
+ * the mark wide, the mark tall, standing on the baseline (the mark itself is drawn lower, see
+ * [RaftTextLinkExternalMarkContent]).
+ */
+internal fun raftTextLinkExternalPlaceholder(style: TextStyle, density: Density): Placeholder {
+    val fontSize = if (style.fontSize.isSp) style.fontSize.value else 14f
+    val gapSp = with(density) { RaftTextLinkExternalMark.Gap.toSp().value }
+    return Placeholder(
+        width = (fontSize * RaftTextLinkExternalMark.SizeEm + gapSp).sp,
+        height = (fontSize * RaftTextLinkExternalMark.SizeEm).sp,
+        placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
+    )
+}
+
+/**
+ * Draws the mark in its placeholder: after the gap, moved down so its centre sits
+ * [RaftTextLinkExternalMark.CentreAboveBaselineEm] above the baseline (the placeholder stands on it).
+ */
+@Composable
+internal fun RaftTextLinkExternalMarkContent(color: Color, fontSize: Float) {
+    val density = LocalDensity.current
+    val markPx = with(density) { (fontSize * RaftTextLinkExternalMark.SizeEm).sp.toPx() }
+    val dropPx = with(density) { (fontSize * (RaftTextLinkExternalMark.SizeEm / 2f - RaftTextLinkExternalMark.CentreAboveBaselineEm)).sp.toPx() }
+    val gapPx = with(density) { RaftTextLinkExternalMark.Gap.toPx() }
+    Box(Modifier.offset { IntOffset(gapPx.roundToInt(), dropPx.roundToInt()) }) {
+        RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = with(density) { markPx.toDp() }, color = color, strokeWidth = 2f)
+    }
 }
 
 /** Resolved colours of one variant x state. [underline] is null when there is none (disabled). */
@@ -116,6 +178,8 @@ fun RaftTextLink(
     enabled: Boolean = true,
     maxLines: Int = Int.MAX_VALUE,
     interactionSource: MutableInteractionSource? = null,
+    /** It takes someone to another site: it ends in the ↗ mark ([RaftTextLinkExternalMark]). */
+    leavesRaft: Boolean = false,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val colors = RaftTheme.colors
@@ -125,8 +189,30 @@ fun RaftTextLink(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val resolved = style.merge(TextStyle(color = look.ink, fontWeight = look.weight))
+    val density = LocalDensity.current
+    val shown = remember(text, leavesRaft) {
+        buildAnnotatedString {
+            append(text)
+            if (leavesRaft) {
+                append(RaftTextLinkExternalMark.Chars)
+                addStringAnnotation(RaftTextLinkExternalMark.InlineContentTag, RaftTextLinkExternalMark.id(0), text.length + 1, text.length + 2)
+            }
+        }
+    }
+    val marks =
+        if (!leavesRaft) {
+            emptyMap()
+        } else {
+            val fontSize = if (resolved.fontSize.isSp) resolved.fontSize.value else 14f
+            mapOf(
+                RaftTextLinkExternalMark.id(0) to
+                    InlineTextContent(raftTextLinkExternalPlaceholder(resolved, density)) { RaftTextLinkExternalMarkContent(look.ink, fontSize) },
+            )
+        }
     BasicText(
-        text = text,
+        text = shown,
+        inlineContent = marks,
         modifier =
             modifier
                 .raftFocusRing(focused, RaftTextLinkMetrics.FocusRadius, colors)
@@ -136,7 +222,7 @@ fun RaftTextLink(
                     val result = layout ?: return@drawBehind
                     if (look.underline != null) drawRaftTextLinkUnderline(result, 0, text.length, look.underline)
                 },
-        style = style.merge(TextStyle(color = look.ink, fontWeight = look.weight)),
+        style = resolved,
         onTextLayout = { layout = it },
         overflow = TextOverflow.Ellipsis,
         maxLines = maxLines,
@@ -154,7 +240,12 @@ internal data class RaftInlineTextLink(
     val variant: RaftTextLinkVariant,
     val enabled: Boolean,
     val annotation: LinkAnnotation.Clickable,
-)
+    /** It ends in the ↗ mark: its last [RaftTextLinkExternalMark.Chars] are the mark, not words. */
+    val leavesRaft: Boolean = false,
+) {
+    /** Where its words end (the underline stops here; the mark after them is still part of the target). */
+    val wordsEnd: Int get() = if (leavesRaft) end - RaftTextLinkExternalMark.Chars.length else end
+}
 
 /**
  * Appends [text] as a TextLink inside a sentence, for [RaftText]:
@@ -183,26 +274,34 @@ fun AnnotatedString.Builder.appendRaftTextLink(
     onClick: () -> Unit,
     variant: RaftTextLinkVariant = RaftTextLinkVariant.Strong,
     enabled: Boolean = true,
+    /** It takes someone to another site (docs, terms, a runtime's page): it ends in ↗ ([RaftTextLinkExternalMark]). */
+    leavesRaft: Boolean = false,
 ) {
     val link =
         LinkAnnotation.Clickable(
-            tag = "$RaftTextLinkTag:${variant.name}:$enabled",
+            tag = "$RaftTextLinkTag:${variant.name}:$enabled" + if (leavesRaft) ":$RaftTextLinkLeavesRaft" else "",
             linkInteractionListener = { if (enabled) onClick() },
         )
     pushLink(link)
     // Plain spaces: the link breaks between its words as the sentence does (raft-design #1306).
     append(text)
+    // The mark is part of the link (a tap on it opens it) and is glued to its last word.
+    if (leavesRaft) append(RaftTextLinkExternalMark.Chars)
     pop()
 }
+
+private const val RaftTextLinkLeavesRaft = "leaves-raft"
+
 
 /** The [appendRaftTextLink] links of [text], in order. */
 internal fun raftTextLinks(text: AnnotatedString): List<RaftInlineTextLink> =
     text.getLinkAnnotations(0, text.length).mapNotNull { range ->
         val link = range.item as? LinkAnnotation.Clickable ?: return@mapNotNull null
         val parts = link.tag.split(':')
-        if (parts.size != 3 || parts[0] != RaftTextLinkTag) return@mapNotNull null
+        if (parts.size !in 3..4 || parts[0] != RaftTextLinkTag) return@mapNotNull null
+        if (parts.size == 4 && parts[3] != RaftTextLinkLeavesRaft) return@mapNotNull null
         val variant = RaftTextLinkVariant.entries.firstOrNull { it.name == parts[1] } ?: return@mapNotNull null
-        RaftInlineTextLink(range.start, range.end, variant, enabled = parts[2] == "true", annotation = link)
+        RaftInlineTextLink(range.start, range.end, variant, enabled = parts[2] == "true", annotation = link, leavesRaft = parts.size == 4)
     }
 
 /**
@@ -241,7 +340,25 @@ internal fun RaftLinkedText(
             text.text,
             spanStyles = text.spanStyles + links.mapIndexed { i, link -> AnnotatedString.Range(SpanStyle(color = looks[i].ink, fontWeight = looks[i].weight), link.start, link.end) },
             paragraphStyles = text.paragraphStyles,
-        )
+        ).let { base ->
+            if (links.none { it.leavesRaft }) {
+                base
+            } else {
+                buildAnnotatedString {
+                    append(base)
+                    links.forEachIndexed { i, link ->
+                        if (link.leavesRaft) addStringAnnotation(RaftTextLinkExternalMark.InlineContentTag, RaftTextLinkExternalMark.id(i), link.end - 1, link.end)
+                    }
+                }
+            }
+        }
+    val density = LocalDensity.current
+    val markFontSize = if (style.fontSize.isSp) style.fontSize.value else 14f
+    val marks =
+        links.withIndex().filter { it.value.leavesRaft }.associate { (i, _) ->
+            RaftTextLinkExternalMark.id(i) to
+                InlineTextContent(raftTextLinkExternalPlaceholder(style, density)) { RaftTextLinkExternalMarkContent(looks[i].ink, markFontSize) }
+        }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val result = layout
     // One target per line of a link (a link that wraps has one per line), so a tap on
@@ -268,10 +385,11 @@ internal fun RaftLinkedText(
                                     drawRaftFocusRing(box, RaftTextLinkMetrics.FocusRadius, colors.layerCanvas, colors.lineStrong)
                                 }
                             }
-                            looks[i].underline?.let { drawRaftTextLinkUnderline(drawn, link.start, link.end, it) }
+                            looks[i].underline?.let { drawRaftTextLinkUnderline(drawn, link.start, link.wordsEnd, it) }
                         }
                     },
                 style = style,
+                inlineContent = marks,
                 onTextLayout = {
                     layout = it
                     onTextLayout?.invoke(it)
@@ -286,7 +404,7 @@ internal fun RaftLinkedText(
                 val onClick = { link.annotation.linkInteractionListener?.onClick(link.annotation); Unit }
                 if (target.line == 0) {
                     // The link's one node for focus, keyboard and screen readers.
-                    val words = text.text.substring(link.start, link.end)
+                    val words = text.text.substring(link.start, link.wordsEnd)
                     Box(
                         Modifier
                             .semantics { this.text = AnnotatedString(words) }
