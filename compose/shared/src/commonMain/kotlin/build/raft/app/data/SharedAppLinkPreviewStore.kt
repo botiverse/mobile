@@ -125,6 +125,13 @@ class AppLinkRowPresence internal constructor(
 
     // The store's own, touched only on its dispatcher.
     internal val refreshes = HashMap<String, AppLinkCardRefresh>()
+    /**
+     * By object key: when this row last sent a re-read for it ([APP_LINK_CARD_CHANGED_MIN_INTERVAL_MS]
+     * counts from then). The catch-up after the app came back is kept under [APP_LINK_ALL_OBJECTS],
+     * a key of its own, so a nudge's read and a came-back read of the same card on screen can land
+     * within ten seconds of each other. Harmless: it is bounded to the cards on screen, one extra
+     * read per return.
+     */
     internal val lastRefreshAt = HashMap<String, Long>()
     internal var quietMark = 0
     internal val reading = Mutex()
@@ -152,11 +159,29 @@ class AppLinkCardView internal constructor(val id: String) {
     internal val tickets: MutableMap<String, String> = LinkedHashMap()
     internal var rereads: Int = 0
 
+    /** How the view's latest request ended, once it has: what a read it superseded waits for ([SharedAppLinkPreviewStore.rereadLink]). */
+    internal val settled = MutableStateFlow<AppLinkViewRead?>(null)
+
     companion object {
         @OptIn(ExperimentalUuidApi::class)
         fun create(): AppLinkCardView = AppLinkCardView(Uuid.random().toString())
     }
 }
+
+/**
+ * One finished request of a view: its place in the view's count ([seq]), whether Raft [answered], the
+ * links it read ([urls]; null: the whole message) and those it answered `rate_limited` ([limited]).
+ */
+internal class AppLinkViewRead(val seq: Int, val answered: Boolean, val urls: List<String>?, val limited: Set<String>) {
+    /** Whether this read brought what is shown for [url]. */
+    fun shows(url: String): Boolean = answered && url !in limited && (urls == null || url in urls)
+}
+
+/** Web `LINK_CARD_READ_TIMEOUT_MS`: a read still unanswered after this is given up by what waits for it. */
+internal const val APP_LINK_CARD_READ_TIMEOUT_MS = 20_000L
+
+/** Web `PARTIAL_READ_TRIES`: a read of some links is sent at most this many times when a later request of the view drops its answer. */
+internal const val APP_LINK_PARTIAL_READ_TRIES = 3
 
 /** How a message is read with the batched link-card read: its [view] and the UI language. */
 class AppLinkBatchRead(val view: AppLinkCardView, val locale: String) {
@@ -506,6 +531,7 @@ class SharedAppLinkPreviewStore internal constructor(
         if (response?.code == 404 && urls == null) {
             val read = fetchWithGet(messageId, serverId)
             if (read is AppLinkFetch.Answer) batchedReadMissing = true
+            if (seq == view.seq) view.settled.value = AppLinkViewRead(seq, read is AppLinkFetch.Answer, null, emptySet())
             return if (seq == view.seq) read else AppLinkFetch.Stale
         }
         // One line per batched read, so a card that does not change can be read from a log: which
@@ -520,11 +546,13 @@ class SharedAppLinkPreviewStore internal constructor(
         if (parsed == null) {
             diagnosticsLogger("app_link_cards_read_failed code=${response?.code ?: -1}")
             diagnosticsLogger("app_link_cards_read $asked result=failed code=${response?.code ?: -1}")
+            view.settled.value = AppLinkViewRead(seq, false, urls, emptySet())
             return AppLinkFetch.Failed
         }
         parsed.tickets.forEach { (url, ticket) -> if (ticket != null) view.tickets[url] = ticket else view.tickets.remove(url) }
         val cards = parsed.results.values.count { it is AppLinkResult.Card }
         diagnosticsLogger("app_link_cards_read $asked result=answered code=${response?.code ?: -1} items=${parsed.itemCount} cards=$cards limited=${parsed.limited.size}")
+        view.settled.value = AppLinkViewRead(seq, true, urls, parsed.limited.keys.toSet())
         return AppLinkFetch.Answer(parsed.results.stampedReadAt(nowMillis()), parsed.limited)
     }
 
@@ -572,17 +600,29 @@ class SharedAppLinkPreviewStore internal constructor(
      * first; a link Raft answers with no card is the author's link again (web `reread`: "No result:
      * the link is the author's link now").
      *
-     * False whenever the card shown is not what this read answered: the read failed, Raft answered
-     * the link `rate_limited`, a later request of the view took its place, or there was no answer
-     * of this message to put it in. A Refresh says so in a toast (web `LinkCardReread` `failed`), so
-     * an old card is never kept in silence. (The web says nothing for a superseded read; here the
-     * person is told, since the card they pressed on did not change.)
+     * False whenever the card shown is not what a read answered: the read failed, Raft answered the
+     * link `rate_limited`, or there was no answer of this message to put it in. A Refresh says so in
+     * a toast (web `LinkCardReread` `failed`), so an old card is never kept in silence. A read whose
+     * place a later request of the view took reports that request's outcome instead of its own.
      */
-    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean =
-        when (val read = rereadLinks(appLinkReadScope(viewerKey, messageId, content, batch.mode), serverId, messageId, batch, listOf(url), keepWithoutCard = false)) {
-            AppLinkReread.Failed, AppLinkReread.Superseded -> false
-            is AppLinkReread.Read -> read.applied && url !in read.limited
+    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean {
+        val readScope = appLinkReadScope(viewerKey, messageId, content, batch.mode)
+        repeat(APP_LINK_PARTIAL_READ_TRIES) {
+            when (val read = rereadLinks(readScope, serverId, messageId, batch, listOf(url), keepWithoutCard = false)) {
+                AppLinkReread.Failed -> return false
+                is AppLinkReread.Read -> return read.applied && url !in read.limited
+                AppLinkReread.Superseded -> {
+                    // A later request of the view took this one's place (two quick presses, a read of the whole
+                    // message): that read decides what shows, so its outcome is this press's. Only when it did
+                    // not bring this link (it failed, or read other links) is the read sent again (web `readSome`).
+                    val view = batch.view
+                    val newer = withTimeoutOrNull(APP_LINK_CARD_READ_TIMEOUT_MS) { view.settled.first { it != null && it.seq >= view.seq } }
+                    if (newer?.shows(url) == true) return true
+                }
+            }
         }
+        return false
+    }
 
     /**
      * Reads [urls] of a message again, alone, in one request of [batch]'s view (web `readSome`). A
@@ -639,7 +679,42 @@ class SharedAppLinkPreviewStore internal constructor(
             }
         }
         diagnosticsLogger("$line result=$outcome cards=${fresh.size} gone=${gone.size} limited=${limited.size}")
-        return AppLinkReread.Read(limited, applied = !outcome.startsWith("dropped"))
+        val applied = !outcome.startsWith("dropped")
+        // Answered but not on screen: what waits for this read must not take it for shown.
+        if (!applied) batch.view.settled.value?.let { last -> batch.view.settled.value = AppLinkViewRead(last.seq, false, last.urls, last.limited) }
+        return AppLinkReread.Read(limited, applied = applied)
+    }
+
+    /**
+     * The GET form of [rereadLinks] for a nudge or the catch-up (a session that found no batched read,
+     * or a row without one): the message is read with the GET, whose `objectKeys` gave its cards their
+     * digests, and the cards it answers for [urls] replace those shown. Anything else stays as it is.
+     */
+    private suspend fun rereadWithGet(readScope: String, serverId: String, messageId: String, urls: List<String>): AppLinkReread {
+        val askedGeneration = _state.value.generation
+        val line = "app_link_card_reread message=${messageId.take(8)} why=changed get=true links=${urls.size}"
+        if (!inFlight.add(readScope)) return AppLinkReread.Superseded
+        val fetched =
+            try {
+                fetchWithGet(messageId, serverId)
+            } finally {
+                inFlight.remove(readScope)
+            }
+        if (fetched !is AppLinkFetch.Answer) {
+            diagnosticsLogger("$line result=failed")
+            return AppLinkReread.Failed
+        }
+        val fresh = urls.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.let { url to it } }
+        var applied = fresh.isEmpty()
+        if (fresh.isNotEmpty()) {
+            _state.update { state ->
+                val entry = state.entries[readScope]?.takeIf { state.generation == askedGeneration } ?: return@update state
+                applied = true
+                state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + fresh)))
+            }
+        }
+        diagnosticsLogger("$line result=${if (applied) "applied" else "dropped"} cards=${fresh.size}")
+        return AppLinkReread.Read(emptyMap(), applied = applied)
     }
 
     /** The rows on a page now ([keepFresh]). Store dispatcher only, like everything below. */
@@ -785,7 +860,7 @@ class SharedAppLinkPreviewStore internal constructor(
      * nothing is left to read.
      */
     private suspend fun refreshCards(presence: AppLinkRowPresence, objectKey: String, jitter: Boolean, refresh: AppLinkCardRefresh): Boolean {
-        val batch = presence.batch ?: return false
+        val batch = presence.batch
         val readScope = presence.readScope
         presence.isOnScreen.first { it }
         val startedAt = monotonicMillis()
@@ -807,7 +882,13 @@ class SharedAppLinkPreviewStore internal constructor(
             val busy = presence.busyUrls.value
             val reading = _state.value.entries[readScope]?.keyedUrls(objectKey).orEmpty().filter { it in urls && it !in busy }
             if (reading.isEmpty()) break
-            when (val read = presence.reading.withLock { rereadLinks(readScope, presence.serverId, presence.messageId, batch, reading, keepWithoutCard = true) }) {
+            val read =
+                presence.reading.withLock {
+                    // A server without the batched read has no read of one link: the GET reads the message, and only these cards are taken from it.
+                    if (batch == null || batchedReadMissing) rereadWithGet(readScope, presence.serverId, presence.messageId, reading)
+                    else rereadLinks(readScope, presence.serverId, presence.messageId, batch, reading, keepWithoutCard = true)
+                }
+            when (read) {
                 AppLinkReread.Failed -> {
                     noteReadFailed(readScope, sentAt)
                     return false
@@ -821,8 +902,9 @@ class SharedAppLinkPreviewStore internal constructor(
                         if (objectKey == APP_LINK_ALL_OBJECTS) clearChanged(readScope, mark)
                         return true
                     }
-                    if (batch.view.rereads >= APP_LINK_CARD_READ_RETRIES) return false
-                    batch.view.rereads += 1
+                    val view = batch?.view ?: return false
+                    if (view.rereads >= APP_LINK_CARD_READ_RETRIES) return false
+                    view.rereads += 1
                     val backoffMs = appLinkRereadBackoffMs(lastBackoffMs, urls.maxOf { read.limited.getValue(it) })
                     lastBackoffMs = backoffMs
                     delayMs = minOf(60_000L, backoffMs + retryJitterMs())

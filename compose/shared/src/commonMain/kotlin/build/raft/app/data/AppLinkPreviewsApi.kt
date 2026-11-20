@@ -66,6 +66,11 @@ private data class WireAppLinkPreviewList(
     val previews: List<JsonElement>? = null,
     val prompts: List<JsonElement>? = null,
     val appIcons: Map<String, String?>? = null,
+    /**
+     * Preview `url` -> its `object_key_sha256`, only for a preview whose App named its object (shared
+     * `appLinkPreviewListResponseSchema` `objectKeys`); older servers leave it out.
+     */
+    val objectKeys: JsonElement? = null,
 )
 
 /**
@@ -250,7 +255,12 @@ private fun readAppLinkPreviews(list: WireAppLinkPreviewList): List<AppLinkResul
     if (previews.size > 10) return null
     val icons = list.appIcons.orEmpty()
     if (icons.values.any { (it?.length ?: 0) > APP_LINK_PREVIEW_URL_MAX_LENGTH }) return null
-    return previews.map { element -> readAppLinkPreview(element, icons) ?: return null }
+    // A value that is not a digest is left out: that card is only never nudged.
+    val objectKeys =
+        (list.objectKeys as? JsonObject).orEmpty().mapNotNull { (url, value) ->
+            (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(::isAppLinkObjectKeySha256)?.let { url to it }
+        }.toMap()
+    return previews.map { element -> readAppLinkPreview(element, icons, objectKeys) ?: return null }
 }
 
 /** The keys a v1 list preview may carry (`appLinkPreviewResponseSchema.extend({ url, appName })`, strict). */
@@ -269,13 +279,13 @@ internal fun readAppLinkPreviewContent(obj: JsonObject, keys: Set<String>): Pair
 }
 
 /** One preview of the list, or null when the web's schema would refuse it. */
-private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>): AppLinkResult.Card? {
+private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>, objectKeys: Map<String, String>): AppLinkResult.Card? {
     val obj = element as? JsonObject ?: return null
     val (title, card) = readAppLinkPreviewContent(obj, APP_LINK_PREVIEW_KEYS) ?: return null
     val rawUrl = obj["url"].jsonStringOrNull() ?: return null
     val url = appLinkPreviewHref(rawUrl) ?: return null
     val appName = obj["appName"].jsonStringOrNull()?.takeIf { it.length <= 300 } ?: return null
-    return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card)
+    return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card, objectKey = objectKeys[rawUrl])
 }
 
 /** The prompts as one list (web `promptListSchema`), or null when any of them can't be read. */

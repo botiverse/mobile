@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -436,5 +437,74 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         after(1_000)
         assertEquals(6, harness.api.cardReads.size)
         assertEquals("Open", row.title(CPr2))
+    }
+
+    /** Two quick presses: the first read's place is taken by the second, whose answer is what shows. Neither says it failed. */
+    @Test
+    fun aRefreshSupersededByANewerOneReportsThatOnesOutcome() = runTest(StandardTestDispatcher()) {
+        val (harness, row) = shown(changedCard(CPr1, null, title = "Waiting for approval"))
+        val gate = CompletableDeferred<Unit>()
+        harness.api.readGate = gate
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Dropped"))
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Completed"))
+        val first = async { harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1) }
+        runCurrent()
+        val second = async { harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1) }
+        runCurrent()
+        harness.api.readGate = null
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(true, true), listOf(first.await(), second.await()), "no failure toast while the card updates")
+        assertEquals("Completed", row.title(CPr1))
+        assertEquals(3, harness.api.cardReads.size, "the superseded read is not sent again")
+
+        // The newer read fails: its press says so, and the superseded one is sent again (web `readSome`).
+        val again = CompletableDeferred<Unit>()
+        harness.api.readGate = again
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Dropped"))
+        harness.api.cardReadResponses += HomeNetworkResponse(500, null)
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Reopened"))
+        val third = async { harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1) }
+        runCurrent()
+        val fourth = async { harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1) }
+        runCurrent()
+        harness.api.readGate = null
+        again.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(true, false), listOf(third.await(), fourth.await()))
+        assertEquals("Reopened", row.title(CPr1))
+        assertEquals(6, harness.api.cardReads.size)
+    }
+
+    /**
+     * A server without the batched read answers the GET, whose `objectKeys` carries the digests (slock
+     * shared `appLinkPreviewListResponseSchema`: preview `url` -> `object_key_sha256`): those cards are
+     * read again too, with the GET.
+     */
+    @Test
+    fun aCardReadWithTheGetIsReadAgainByItsObjectKey() = runTest(StandardTestDispatcher()) {
+        fun getAnswer(title: String) =
+            HomeNetworkResponse(
+                200,
+                """{"previews":[{"version":1,"title":"$title","url":"$CPr1","appName":"Stamp"}],"prompts":[],"appIcons":{"$CPr1":null},"objectKeys":{"$CPr1":"$KeyA"}}""",
+            )
+        val harness = Harness(this)
+        harness.api.cardReadResponses += HomeNetworkResponse(404, null)
+        harness.api.readResponses += getAnswer("Open")
+        val row = harness.Row(CMessageA, "See $CPr1")
+        row.read()
+        row.show()
+        runCurrent()
+        assertEquals(listOf(CMessageA), harness.api.reads)
+        assertEquals("Open", row.title(CPr1))
+
+        harness.api.readResponses += getAnswer("Merged")
+        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
+        after(999)
+        assertEquals(1, harness.api.reads.size)
+        after(1)
+        assertEquals(2, harness.api.reads.size, "read again with the GET")
+        assertEquals(1, harness.api.cardReads.size, "the batched read is not tried again")
+        assertEquals("Merged", row.title(CPr1))
     }
 }
