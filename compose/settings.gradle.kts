@@ -97,6 +97,7 @@ dependencyResolutionManagement {
                 includeModuleByRegex("com\\.tencent\\.kuiklybase", "resource-core.*")
                 includeModuleByRegex("build\\.raft\\.kuiklybase", "datetime.*")
                 includeModuleByRegex("build\\.raft\\.mermaid", ".*")
+                includeGroup("build.raft.vcase")
             }
         }
     }
