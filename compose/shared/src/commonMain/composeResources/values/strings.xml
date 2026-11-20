@@ -4664,6 +4664,7 @@
     <string name="thread_link_preview_action_changed">This card changed. Check it and try again.</string>
     <string name="thread_link_preview_unreviewed_run_title">Run “%1$s”?</string>
     <string name="thread_link_preview_unreviewed_run_by">Run by %1$s</string>
+    <string name="thread_link_preview_action_confirm_from">From %1$s</string>
     <string name="thread_link_preview_unreviewed_note">%1$s was made in this server and isn't reviewed by Raft. It gets your name and acts with its own access.</string>
     <string name="thread_link_preview_connect_action">Connect account</string>
     <string name="thread_action_card_scope_group_server">Server · read</string>

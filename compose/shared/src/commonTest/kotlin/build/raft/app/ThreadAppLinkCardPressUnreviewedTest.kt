@@ -12,6 +12,7 @@ import build.raft.app.data.RaftAppLinkCardV2
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy
@@ -167,5 +168,28 @@ class ThreadAppLinkCardPressUnreviewedTest {
         val pending = assertNotNull(press.confirmation)
         assertFalse(pending.unreviewed)
         assertEquals(prepared, pending.prepared)
+        assertEquals(
+            AppLinkConfirmAttribution.From,
+            appLinkConfirmAttribution(unreviewed = pending.unreviewed, hasDescription = pending.prepared?.description != null),
+        )
+    }
+
+    @Test
+    fun confirmAttributionMatchesReviewedAndUnreviewedRules() {
+        assertEquals(
+            AppLinkConfirmAttribution.From,
+            appLinkConfirmAttribution(unreviewed = false, hasDescription = true),
+        )
+        assertEquals(Res.string.thread_link_preview_action_confirm_from, AppLinkConfirmAttribution.From.labelRes)
+        assertEquals(
+            AppLinkConfirmAttribution.RunBy,
+            appLinkConfirmAttribution(unreviewed = true, hasDescription = true),
+        )
+        assertEquals(
+            AppLinkConfirmAttribution.RunBy,
+            appLinkConfirmAttribution(unreviewed = true, hasDescription = false),
+        )
+        assertEquals(Res.string.thread_link_preview_unreviewed_run_by, AppLinkConfirmAttribution.RunBy.labelRes)
+        assertNull(appLinkConfirmAttribution(unreviewed = false, hasDescription = false))
     }
 }
