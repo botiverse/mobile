@@ -6332,6 +6332,10 @@ private fun SharedThreadRouteContentContent(
         )
         return true
     }
+    // The external-share auto-send below runs in an effect keyed only on the thread: it must
+    // send with the latest session, provenance and upload store, not the first frame's (null
+    // before the session loads, so the queued share was silently never sent).
+    val latestPerformComposerSend by rememberUpdatedState(::performComposerSend)
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
         if (externalShareSendRequested) {
             bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
@@ -6436,7 +6440,7 @@ private fun SharedThreadRouteContentContent(
                     externalShareSendRequested = false
                     externalShareExpectedAuthority = null
                     if (authorityCurrent) {
-                        performComposerSend()
+                        latestPerformComposerSend()
                     } else {
                         bridge.logWarn(
                             "external_share_send_rejected reason=auth_generation_changed_after_upload"
