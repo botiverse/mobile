@@ -153,6 +153,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.LocalRaftMarkdownTaskStatusesPending
 import build.raft.app.markdown.LocalRaftMarkdownTaskRefStatuses
 import build.raft.app.markdown.parseRaftMarkdownTaskRefLabel
 import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
@@ -7429,6 +7430,10 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownTaskRefStatuses provides markdownTaskRefStatuses,
+                // The conversation has a task source that has not loaded yet: task refs keep the
+                // status chip's shape in a neutral look until it does.
+                LocalRaftMarkdownTaskStatusesPending provides
+                    (markdownTaskStatuses == null && markdownTaskContextChannelId != null),
                 // web MessageMarkdownBody: a Raft message permalink in a message body is a
                 // PermalinkReferenceChip (link icon, the conversation, a mono "msg"), not a bare URL.
                 LocalRaftMarkdownRenderConfig provides

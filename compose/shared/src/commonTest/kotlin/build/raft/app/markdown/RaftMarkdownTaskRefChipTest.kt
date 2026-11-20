@@ -183,6 +183,27 @@ class RaftMarkdownTaskRefChipTest {
     }
 
     @Test
+    fun aTaskRefWhileTheTaskSourceLoadsKeepsTheStatusChipShapeInItsNeutralLook() {
+        val body = "Ready: #92"
+        val pending =
+            paragraph(body, raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs, taskStatusesPending = true))
+        val loaded =
+            paragraph(
+                body,
+                raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs, taskStatuses = mapOf(92 to TaskStatus.InReview))
+            )
+        // Neutral (hollow) status chip, not the dark tag chip or the not-found badge.
+        assertEquals(raftMarkdownTaskChipStyle(TaskStatus.Unknown).box, pending.raftInlineBoxRanges().single().item)
+        // Same text, padding and pixel slot as the loaded chip: only the colours change when the status comes.
+        assertEquals(loaded.text, pending.text)
+        assertEquals(loaded.raftInlineBoxRanges().map { it.start to it.end }, pending.raftInlineBoxRanges().map { it.start to it.end })
+        assertEquals(loaded.raftInlineMarkRanges().map { it.start }, pending.raftInlineMarkRanges().map { it.start })
+        // Without a task source at all, a task ref stays a plain tag chip.
+        val noSource = paragraph(body, raftMarkdownAnnotator(content = body, isTagValid = knownTaskRefs))
+        assertTrue(noSource.raftInlineMarkRanges().isEmpty())
+    }
+
+    @Test
     fun taskRefsInListItemsAlsoGetStatusChips() {
         val body = "- #224 iOS thread\n- #145 onboarding"
         val statuses = mapOf(224 to TaskStatus.InReview, 145 to TaskStatus.Done)

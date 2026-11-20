@@ -895,6 +895,7 @@ internal fun raftMarkdownAnnotator(
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: Map<Int, TaskStatus>? = null,
+    taskStatusesPending: Boolean = false,
     tokenPlan: MarkdownInlineTokenPlan =
         RaftMarkdownInlineTokenRegistry.plan(
             content,
@@ -920,7 +921,8 @@ internal fun raftMarkdownAnnotator(
             },
         onDiagnostics = onDiagnostics,
         softLineBreaksAsNewLines = softLineBreaksAsNewLines,
-        taskStatuses = { taskStatuses }
+        taskStatuses = { taskStatuses },
+        taskStatusesPending = { taskStatusesPending },
     )
 }
 
@@ -934,11 +936,20 @@ internal fun raftMarkdownAnnotator(
     taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
     mentionReadFontSize: TextUnit = RaftTextSize.Content,
-    taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
+    taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() },
+    taskStatusesPending: () -> Boolean = { false },
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val rendererInput =
-        RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize, taskRefStatuses)
+        RaftRichTextRendererInput(
+            document,
+            capabilities,
+            taskStatuses,
+            mentionReadStates,
+            mentionReadFontSize,
+            taskRefStatuses,
+            taskStatusesPending,
+        )
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -993,7 +1004,9 @@ private data class RaftRichTextRendererInput(
     val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
     val mentionReadFontSize: TextUnit = RaftTextSize.Content,
     /** Statuses of conversation-qualified task refs (`#proj:#7`), [raftMarkdownTaskRefStatusKey]. */
-    val taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() }
+    val taskRefStatuses: () -> Map<String, TaskStatus> = { emptyMap() },
+    /** The surface has a task source that is still loading ([LocalRaftMarkdownTaskStatusesPending]). */
+    val taskStatusesPending: () -> Boolean = { false },
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -1272,6 +1285,13 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             appendRaftRichTextTaskChipToken(token, action, label, taskStatuses, rendererInput.taskRefStatuses(), onOpenAction)
             return
         }
+        if (rendererInput.taskStatusesPending()) {
+            // The task source is still loading: draw the status chip in its neutral (hollow) look
+            // now, so the status arriving only changes its colours, never its size or ink
+            // (artin 11-20: the dark tag chip flashed into the status chip).
+            appendRaftRichTextTaskChipToken(token, action, label, emptyMap(), emptyMap(), onOpenAction, pending = true)
+            return
+        }
     }
     // artin 10-29: a chip whose open is in flight is busy — the spinner follows its label inside the
     // box (as the web's trailing spinner) and the chip is dimmed (raft-ui `--opacity-dimmed`, busy controls), until it settles.
@@ -1325,8 +1345,12 @@ private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
     taskStatuses: Map<Int, TaskStatus>,
     taskRefStatuses: Map<String, TaskStatus>,
     onOpenAction: (RaftRichTextAction) -> Unit,
+    pending: Boolean = false,
 ) {
-    val style = raftMarkdownTaskChipStyle(raftMarkdownTaskChipStatus(action, taskStatuses, taskRefStatuses))
+    val style =
+        raftMarkdownTaskChipStyle(
+            if (pending) TaskStatus.Unknown else raftMarkdownTaskChipStatus(action, taskStatuses, taskRefStatuses)
+        )
     withRaftInlineChipGaps(style.box) {
         pushStringAnnotation(
             tag = RaftMarkdownTagAnnotationTag,
@@ -2613,6 +2637,8 @@ fun RaftMarkdownBody(
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
     val taskRefStatuses = LocalRaftMarkdownTaskRefStatuses.current
     val currentTaskRefStatuses by rememberUpdatedState(taskRefStatuses)
+    val taskStatusesPending = LocalRaftMarkdownTaskStatusesPending.current
+    val currentTaskStatusesPending by rememberUpdatedState(taskStatusesPending)
     val mentionReadStates = LocalRaftMarkdownMentionReadStates.current
     val currentMentionReadStates by rememberUpdatedState(mentionReadStates)
     val colors = RaftMarkdownColorsDefault
@@ -2736,7 +2762,8 @@ fun RaftMarkdownBody(
             mentionReadStates = { currentMentionReadStates },
             // A read mark follows someone else's @mention, which is set at the sentence's size.
             mentionReadFontSize = mentionReadFontSize,
-            taskRefStatuses = { currentTaskRefStatuses }
+            taskRefStatuses = { currentTaskRefStatuses },
+            taskStatusesPending = { currentTaskStatusesPending },
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {

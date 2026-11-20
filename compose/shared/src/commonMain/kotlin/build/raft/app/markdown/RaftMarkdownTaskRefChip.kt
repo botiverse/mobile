@@ -51,6 +51,13 @@ internal val LocalRaftMarkdownTaskStatuses = compositionLocalOf<Map<Int, TaskSta
 internal val LocalRaftMarkdownTaskRefStatuses = compositionLocalOf<Map<String, TaskStatus>> { emptyMap() }
 
 /**
+ * True while the surface's task source is still loading ([LocalRaftMarkdownTaskStatuses] is null
+ * only for that reason). Task refs then draw the status chip in its neutral look, so the status
+ * arriving changes only its colours, never its size (artin 11-20).
+ */
+internal val LocalRaftMarkdownTaskStatusesPending = compositionLocalOf { false }
+
+/**
  * The status map with a message's own linked task layered on top (web: "the message's own linked
  * task is always the freshest source for a ref in that message's body"). A `null` base stays
  * `null`: the surface has no (loaded) task source, so refs keep the legacy chip.
