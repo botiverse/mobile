@@ -268,14 +268,17 @@ internal data class RaftComputerUpgradeModel(
     /** Release notes of exactly the version the card offers, when the server has them. */
     val releaseNotes: SettingsComputerReleaseNotesSnapshot?,
     /**
-     * Web `recommendRepair` (#proj-raft-computer task #34): the installer state needs a repair run,
-     * so the install command is recommended beside the offered one-click Upgrade, which stays.
+     * Web `recommendRepair` (#proj-raft-computer task #34, slock #15061): the installer state needs
+     * a repair run — either from `installerRepairHint` or from an active failed upgrade whose
+     * `failureHint` is `earlier_recovery_pending` — so the install command is recommended beside
+     * the offered one-click Upgrade, which stays.
      */
     val recommendRepair: Boolean = false,
     /**
-     * Web `upgradeFailureHint`: the last web upgrade failed in a way only the install command on the
-     * machine gets past; shown beside an offered Upgrade while the Computer still runs the version
-     * it failed on.
+     * Web `upgradeFailureHint` (`ComputerUpgradeUnitFailureHint`): the last web upgrade failed on
+     * a systemd unit (`unsafe_kill_mode` or `installation_held`); shown beside an offered Upgrade
+     * while the Computer still runs the version it failed on. `earlier_recovery_pending` sets
+     * [recommendRepair] instead and leaves this null.
      */
     val upgradeFailureHint: SettingsComputerUpgradeFailureHintSnapshot? = null,
 )
@@ -342,10 +345,24 @@ internal fun raftComputerUpgradeModel(
         (fact as? RaftComputerVersionFact.Outdated)?.let { outdated ->
             computer.latestComputerReleaseNotes?.takeIf { it.version == outdated.availableVersion }
         }
-    val upgradeFailureHint =
+    // Web computerUpgradeHints (slock #15061): earlier_recovery_pending turns on the existing
+    // repair advice rather than the systemd-unit failure hint, and clears once the Computer moves
+    // off the version it failed on or a newer request replaces it.
+    val activeFailureHint =
         row?.failureHint?.takeIf {
             card is RaftComputerCardState.OneClick && requestOutcome != null && row.state == "failed" &&
                 (row.observedVersion == null || row.observedVersion == computer.computerVersion)
+        }
+    val installerRepairHint = computer.installerRepairHint == "unrecovered_operation"
+    val (upgradeFailureHint, recommendRepair) =
+        if (card !is RaftComputerCardState.OneClick) {
+            null to false
+        } else {
+            when (activeFailureHint?.reason) {
+                "earlier_recovery_pending" -> null to true
+                "unsafe_kill_mode", "installation_held" -> activeFailureHint to installerRepairHint
+                else -> null to installerRepairHint
+            }
         }
     return RaftComputerUpgradeModel(
         fact = fact,
@@ -356,7 +373,7 @@ internal fun raftComputerUpgradeModel(
         requestOutcome = requestOutcome,
         webUpgradeOn = webUpgradeOn,
         releaseNotes = releaseNotes,
-        recommendRepair = computer.installerRepairHint == "unrecovered_operation" && card is RaftComputerCardState.OneClick,
+        recommendRepair = recommendRepair,
         upgradeFailureHint = upgradeFailureHint,
     )
 }

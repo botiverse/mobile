@@ -170,6 +170,19 @@ class RaftComputersRackActionTest {
         )
         // It moved on from the version it failed on: no hint.
         assertEquals(RaftComputerRackAction.Upgrade("1.0.53"), action(computer(upgradeRequest = failed.copy(observedVersion = "1.0.48"))))
+        // slock #15061: earlier_recovery_pending shows the repair hint, not the systemd-unit failure hint.
+        val earlier =
+            failed.copy(
+                failureHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
+            )
+        assertEquals(
+            RaftComputerRackAction.Upgrade("1.0.53", RaftComputerRackHint.Repair("1.0.53")),
+            action(computer(upgradeRequest = earlier)),
+        )
+        assertEquals(
+            RaftComputerRackAction.Upgrade("1.0.53"),
+            action(computer(upgradeRequest = earlier.copy(observedVersion = "1.0.48"))),
+        )
     }
 
     @Test
