@@ -169,43 +169,43 @@ class RaftShareOutTest {
         assertNull(pending.onHostResumed())
 
         // Overlapping multi-activity lifecycle: B resumes before A pauses -> host stays resumed until B pauses too.
-        pending.clear()
-        assertNull(pending.onHostResumed(hostId = 1))
-        assertNull(pending.onHostResumed(hostId = 2))
-        pending.onHostPaused(hostId = 1)
-        assertEquals("Opened Notes", pending.onNotice("Opened Notes"))
-        pending.onHostPaused(hostId = 2)
-        assertNull(pending.onNotice("Opened Mail"))
-        assertEquals("Opened Mail", pending.onHostResumed(hostId = 2))
+        val multiHost = RaftShareOutPendingNotice(nowMillis = { now })
+        assertNull(multiHost.onHostResumed(hostId = 1))
+        assertNull(multiHost.onHostResumed(hostId = 2))
+        multiHost.onHostPaused(hostId = 1)
+        assertEquals("Opened Notes", multiHost.onNotice("Opened Notes"))
+        multiHost.onHostPaused(hostId = 2)
+        assertNull(multiHost.onNotice("Opened Mail"))
+        assertEquals("Opened Mail", multiHost.onHostResumed(hostId = 2))
 
         // Multi-window dual-Raft-activity: A and B are both resumed, B opens share sheet and pauses
         // behind the target app while A stays resumed -> notice still waits for B to resume.
-        pending.clear()
-        assertNull(pending.onHostResumed(hostId = 1))
-        assertNull(pending.onHostResumed(hostId = 2))
-        pending.onShareSheetOpened(hostId = 2)
-        pending.onHostPaused(hostId = 2)
-        assertNull(pending.onNotice("Opened Messaging"))
+        multiHost.clear()
+        assertNull(multiHost.onHostResumed(hostId = 1))
+        assertNull(multiHost.onHostResumed(hostId = 2))
+        multiHost.onShareSheetOpened(hostId = 2)
+        multiHost.onHostPaused(hostId = 2)
+        assertNull(multiHost.onNotice("Opened Messaging"))
         // An unrelated resume of A does not steal B's deferred toast.
-        assertNull(pending.onHostResumed(hostId = 1))
-        assertEquals("Opened Messaging", pending.onHostResumed(hostId = 2))
+        assertNull(multiHost.onHostResumed(hostId = 1))
+        assertEquals("Opened Messaging", multiHost.onHostResumed(hostId = 2))
 
         // Config-change recreation: B is destroyed while in the target app; recreated B' (hostId=3)
         // consumes the deferred toast on resume.
-        pending.onShareSheetOpened(hostId = 2)
-        pending.onHostPaused(hostId = 2)
-        assertNull(pending.onNotice("Opened Mail"))
-        pending.onHostDestroyed(hostId = 2)
-        assertEquals("Opened Mail", pending.onHostResumed(hostId = 3))
+        multiHost.onShareSheetOpened(hostId = 2)
+        multiHost.onHostPaused(hostId = 2)
+        assertNull(multiHost.onNotice("Opened Mail"))
+        multiHost.onHostDestroyed(hostId = 2)
+        assertEquals("Opened Mail", multiHost.onHostResumed(hostId = 3))
 
         // Deep sleep / installed boottime clock: replacing the clock governs expiry across sleep.
         var bootTime = 50_000L
-        pending.installClock { bootTime }
-        pending.onShareSheetOpened(hostId = 3)
-        pending.onHostPaused(hostId = 3)
-        assertNull(pending.onNotice("Opened WeChat"))
+        multiHost.installClock { bootTime }
+        multiHost.onShareSheetOpened(hostId = 3)
+        multiHost.onHostPaused(hostId = 3)
+        assertNull(multiHost.onNotice("Opened WeChat"))
         bootTime += 180_001L
-        assertNull(pending.onHostResumed(hostId = 3))
+        assertNull(multiHost.onHostResumed(hostId = 3))
 
         // Only Android's "Opened <App>" defers to resume; Android Copied and all iOS notices show immediately.
         assertTrue(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Android, RaftShareOutNotice.Opened("Messaging")))
