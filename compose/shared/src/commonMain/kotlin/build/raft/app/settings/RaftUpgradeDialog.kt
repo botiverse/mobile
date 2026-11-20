@@ -30,6 +30,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -252,7 +253,11 @@ internal fun externalContextForGate(
     if (context == null) return null
     return when (context) {
         is RaftUpgradeExternalContext.FreezeUpcoming ->
-            context.takeIf { gate == RaftUpgradeGate.ExternalChannelFrozen && it.deadlineIso.isNotBlank() }
+            context.takeIf {
+                gate == RaftUpgradeGate.ExternalChannelFrozen &&
+                    it.deadlineIso.isNotBlank() &&
+                    parseRaftTimestampEpochMillisOrNull(it.deadlineIso, 0) != null
+            }
     }
 }
 

@@ -9,6 +9,7 @@ import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.data.realtime.ConversationContextWireDto
 import build.raft.app.data.realtime.toDomain
 import kotlinx.coroutines.CancellationException
@@ -343,11 +344,12 @@ class RealForwardMessageTargetRepository(
         // Never wait for the server member list here (the slowest source on a big server): DM
         // rows carry their own peer name/avatar; an already-loaded roster only refines them.
         val peerProfiles = cachedPeerProfiles(serverId)
+        val now = nowMillis()
         val items =
             (directMessages.mapNotNull { directMessage ->
                 directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
             } +
-                channels.mapNotNull { it.toRecentForwardTarget(serverId) })
+                channels.mapNotNull { it.toRecentForwardTarget(serverId, now) })
                 .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
                 .take(limit.coerceAtLeast(1))
         return DataResult.Content(items)
@@ -524,7 +526,8 @@ class RealForwardMessageTargetRepository(
                             directMessages = directMessages,
                             channels = channels,
                             query = "",
-                            limit = directMessages.size + channels.size
+                            limit = directMessages.size + channels.size,
+                            nowEpochMillis = now,
                         )
                     buildSearchIndex(serverId, targets).also { built ->
                         searchIndex = built
@@ -812,7 +815,8 @@ class RealForwardMessageTargetRepository(
             channels = channels,
             peerProfiles = cachedPeerProfiles(serverId),
             query = "",
-            limit = directMessages.size + channels.size
+            limit = directMessages.size + channels.size,
+            nowEpochMillis = nowMillis(),
         )
         return DataResult.Content(targets)
     }
@@ -870,12 +874,14 @@ class RealForwardMessageTargetRepository(
                 ScreenError(code = "forward_cross_server_target_unsupported", retryable = false)
             )
         }
+        val now = nowMillis()
         val sourceProjection =
             when (val result = channelRepository.getChannels(sourceServerId)) {
                 is DataResult.Content ->
                     result.data.channels.firstOrNull { row ->
                         row.joined &&
                             !row.archived &&
+                            !row.isExternalFreezeActive(now) &&
                             row.kind == ConversationKind.Joint &&
                             row.jointChannelId?.trim() == jointId
                     }
@@ -970,8 +976,17 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
     )
 }
 
-private fun HomeChannelRow.toRecentForwardTarget(serverId: ServerId): ForwardMessageTarget? {
-    if (!joined || archived) return null
+private fun HomeChannelRow.isExternalFreezeActive(nowEpochMillis: Long): Boolean {
+    val freezeAt = externalFreezeAt?.takeIf { it.isNotBlank() } ?: return false
+    val deadlineMillis = parseRaftTimestampEpochMillisOrNull(freezeAt, 0) ?: return false
+    return nowEpochMillis >= deadlineMillis
+}
+
+private fun HomeChannelRow.toRecentForwardTarget(
+    serverId: ServerId,
+    nowEpochMillis: Long = defaultNowMillis(),
+): ForwardMessageTarget? {
+    if (!joined || archived || isExternalFreezeActive(nowEpochMillis)) return null
     val channelId = toConversationSummary().messageStreamChannelId()
     val title = name.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: return null
     return ForwardMessageTarget(
@@ -990,8 +1005,11 @@ private fun HomeChannelRow.toRecentForwardTarget(serverId: ServerId): ForwardMes
     )
 }
 
-private fun HomeChannelRow.toSearchForwardTarget(serverId: ServerId): ForwardMessageTarget? {
-    if (archived) return null
+private fun HomeChannelRow.toSearchForwardTarget(
+    serverId: ServerId,
+    nowEpochMillis: Long = defaultNowMillis(),
+): ForwardMessageTarget? {
+    if (archived || isExternalFreezeActive(nowEpochMillis)) return null
     val normalizedType = channelType?.trim()?.lowercase()
     if (!joined && normalizedType != "public") return null
     val channelId = toConversationSummary().messageStreamChannelId()
@@ -1026,14 +1044,15 @@ internal fun fallbackForwardMessageTargets(
     /** Optional DM-peer enrichment from an in-memory roster; never a source of extra targets. */
     peerProfiles: Map<MemberId, MemberProfile> = emptyMap(),
     query: String,
-    limit: Int
+    limit: Int,
+    nowEpochMillis: Long = defaultNowMillis(),
 ): List<ForwardMessageTarget> {
     val matches =
         (
         directMessages.mapNotNull { directMessage ->
             directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
         } +
-            channels.mapNotNull { it.toSearchForwardTarget(serverId) }
+            channels.mapNotNull { it.toSearchForwardTarget(serverId, nowEpochMillis) }
         )
         .filter { it.matchesForwardQuery(query) }
         .dedupeForwardTargets()

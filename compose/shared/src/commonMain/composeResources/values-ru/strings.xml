@@ -4766,6 +4766,9 @@
     <string name="external_frozen_title">Сервер %1$s сейчас не может писать во внешних каналах</string>
     <string name="external_frozen_body_manager">Тариф Free допускает 1 внешний канал. Чтобы снова писать, повысьте тариф или выйдите из лишних каналов.</string>
     <string name="external_frozen_body_member">Тариф Free допускает 1 внешний канал. Попросите владельца перейти на Pro.</string>
+    <string name="external_freeze_notice_ios">Этот сервер использует тариф Free и делится более чем одним каналом с внешними участниками. С %1$s отправка сообщений в них станет недоступна. Чтобы продолжить отправку сообщений, выйдите из всех этих каналов, кроме одного.</string>
+    <string name="external_frozen_body_ios_manager">На тарифе Free доступен 1 внешний канал. Выйдите из лишних каналов, чтобы снова отправлять сообщения.</string>
+    <string name="external_frozen_body_ios_member">На тарифе Free доступен 1 внешний канал.</string>
     <string name="external_freeze_action_view_billing">Открыть настройки оплаты</string>
     <string name="external_freeze_action_upgrade_to_pro">Перейти на Pro</string>
     <string name="external_freeze_action_ask_owner">Попросить владельца перейти на Pro</string>

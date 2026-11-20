@@ -105,6 +105,26 @@ class ExternalChannelCopyCatalogTest {
             "upgrade_dialog_limit_joint_over_limit",
         )
 
+    private val requiredFreezeKeys =
+        listOf(
+            "external_freeze_notice",
+            "external_freeze_notice_ios",
+            "external_frozen_title",
+            "external_frozen_body_manager",
+            "external_frozen_body_member",
+            "external_frozen_body_ios_manager",
+            "external_frozen_body_ios_member",
+            "external_freeze_action_view_billing",
+            "external_freeze_action_upgrade_to_pro",
+            "external_freeze_action_ask_owner",
+            "upgrade_dialog_external_freeze_upcoming_title",
+            "upgrade_dialog_external_freeze_upcoming_hint",
+            "upgrade_dialog_external_freeze_upcoming_done",
+            "upgrade_dialog_limit_external_freeze_upcoming",
+        )
+
+    private val allLocales = listOf("base", "zh-rCN", "zh-rTW", "ja", "ko", "es", "pt-rBR", "ru")
+
     @Test
     fun everyLocaleWritesTheWebExternalChannelCopy() {
         expected.forEach { (locale, strings) ->
@@ -115,6 +135,12 @@ class ExternalChannelCopyCatalogTest {
                 listOf("Joint", "joint", "联合", "共同").forEach { retired ->
                     assertFalse(retired in shown, "$locale/$key still says $retired")
                 }
+            }
+        }
+        allLocales.forEach { locale ->
+            val catalog = catalog(locale)
+            requiredFreezeKeys.forEach { key ->
+                assertFalse(catalog[key].isNullOrBlank(), "$locale missing $key")
             }
             retiredUpgradeJointKeys.forEach { retiredKey ->
                 assertFalse(retiredKey in catalog, "$locale still defines retired $retiredKey")

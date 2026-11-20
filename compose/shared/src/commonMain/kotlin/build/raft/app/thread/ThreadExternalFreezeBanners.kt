@@ -1,19 +1,27 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 /**
  * Free-plan external channel freeze notice (web `ChannelLimitBanners.tsx` `ExternalFreezeNotice`,
  * botiverse/slock #15653): shown above the composer while the freeze deadline is still ahead.
  * Action label follows plan and server role so label and click outcome agree; on iOS view-only
- * billing, falls back to "View your plan".
+ * billing ([offersUpgrade] = false), uses neutral non-upgrade copy and "View your plan" (App Store
+ * guideline 3.1.1).
  */
 @Composable
 internal fun ThreadExternalFreezeNoticeBanner(
@@ -22,28 +30,44 @@ internal fun ThreadExternalFreezeNoticeBanner(
     role: String?,
     onOpenUpgrade: () -> Unit,
     modifier: Modifier = Modifier,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ) {
     val deadlineLabel = raftFormatFreezeDeadline(deadlineIso)
-    RaftUiBanner(
-        status = RaftUiBannerStatus.Warning,
-        description = stringResource(Res.string.external_freeze_notice, deadlineLabel),
-        size = RaftUiBannerSize.Medium,
-        iconName = RaftLucideIconName.TriangleAlert,
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        action = {
-            ThreadExternalFreezeActionButton(
-                plan = plan,
-                role = role,
-                onOpenUpgrade = onOpenUpgrade,
-            )
-        },
-    )
+    val descriptionRes =
+        if (offersUpgrade) {
+            Res.string.external_freeze_notice
+        } else {
+            Res.string.external_freeze_notice_ios
+        }
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(RaftColor.Canvas)
+                .raftSafeAreaHorizontalPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        RaftBanner(
+            status = RaftBannerStatus.Warning,
+            description = stringResource(descriptionRes, deadlineLabel),
+            size = RaftBannerSize.Md,
+            action = {
+                ThreadExternalFreezeActionButton(
+                    plan = plan,
+                    role = role,
+                    offersUpgrade = offersUpgrade,
+                    onOpenUpgrade = onOpenUpgrade,
+                )
+            },
+        )
+    }
 }
 
 /**
  * Free-plan external channel frozen banner (web `ChannelLimitBanners.tsx` `ExternalFrozenBanner`,
- * botiverse/slock #15653): replaces the composer once `externalFreezeAt` has passed, on both
- * channels and reply threads in them. Body copy varies by role (owner/admin vs member).
+ * botiverse/slock #15653): replaces the composer once `externalFreezeAt` has passed, on channels,
+ * reply threads, and task conversations in them. Body copy varies by role (owner/admin vs member),
+ * and on iOS view-only billing ([offersUpgrade] = false) omits upgrade prompts (App Store 3.1.1).
  */
 @Composable
 internal fun ThreadExternalFrozenBanner(
@@ -52,24 +76,27 @@ internal fun ThreadExternalFrozenBanner(
     role: String?,
     onOpenUpgrade: () -> Unit,
     modifier: Modifier = Modifier,
+    offersUpgrade: Boolean = settingsBillingOffersUpgrade(),
 ) {
+    val manager = externalFrozenUsesManagerCopy(role)
     val bodyRes =
-        if (externalFrozenUsesManagerCopy(role)) {
-            Res.string.external_frozen_body_manager
-        } else {
-            Res.string.external_frozen_body_member
+        when {
+            offersUpgrade && manager -> Res.string.external_frozen_body_manager
+            offersUpgrade -> Res.string.external_frozen_body_member
+            manager -> Res.string.external_frozen_body_ios_manager
+            else -> Res.string.external_frozen_body_ios_member
         }
-    RaftUiBanner(
-        status = RaftUiBannerStatus.Warning,
+    RaftBanner(
+        status = RaftBannerStatus.Warning,
         title = stringResource(Res.string.external_frozen_title, serverName),
         description = stringResource(bodyRes),
-        size = RaftUiBannerSize.Medium,
-        iconName = RaftLucideIconName.TriangleAlert,
+        size = RaftBannerSize.Md,
         modifier = modifier,
         action = {
             ThreadExternalFreezeActionButton(
                 plan = plan,
                 role = role,
+                offersUpgrade = offersUpgrade,
                 onOpenUpgrade = onOpenUpgrade,
             )
         },
@@ -80,9 +107,10 @@ internal fun ThreadExternalFrozenBanner(
 private fun ThreadExternalFreezeActionButton(
     plan: String?,
     role: String?,
+    offersUpgrade: Boolean,
     onOpenUpgrade: () -> Unit,
 ) {
-    if (settingsBillingOffersUpgrade()) {
+    if (offersUpgrade) {
         val labelRes =
             when (externalFreezeActionKind(plan, role)) {
                 ExternalFreezeActionKind.ViewBilling -> Res.string.external_freeze_action_view_billing

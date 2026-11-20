@@ -4790,6 +4790,9 @@
     <string name="external_frozen_title">%1$s não pode publicar em canais externos no momento</string>
     <string name="external_frozen_body_manager">O plano gratuito permite 1 canal externo. Faça upgrade ou saia dos canais extras para voltar a publicar.</string>
     <string name="external_frozen_body_member">O plano gratuito permite 1 canal externo. Peça upgrade a um proprietário.</string>
+    <string name="external_freeze_notice_ios">Este servidor está no plano Free e compartilha mais de um canal com pessoas de fora. A partir de %1$s, não poderá mais publicar neles. Para continuar publicando, saia de todos esses canais, menos um.</string>
+    <string name="external_frozen_body_ios_manager">O plano Free permite 1 canal externo. Saia dos canais extras para voltar a publicar.</string>
+    <string name="external_frozen_body_ios_member">O plano Free permite 1 canal externo.</string>
     <string name="external_freeze_action_view_billing">Ver cobrança</string>
     <string name="external_freeze_action_upgrade_to_pro">Fazer upgrade para o Pro</string>
     <string name="external_freeze_action_ask_owner">Pedir upgrade a um proprietário</string>

@@ -4976,6 +4976,9 @@
     <string name="external_frozen_title">%1$s 现在不能在外部频道中发言</string>
     <string name="external_frozen_body_manager">免费版只能有 1 个外部频道。升级，或退出多出来的频道，即可重新发言。</string>
     <string name="external_frozen_body_member">免费版只能有 1 个外部频道。请所有者升级。</string>
+    <string name="external_freeze_notice_ios">此服务器当前为免费版，与服务器外的人共享了多个频道。从 %1$s 起，将无法在这些频道中发消息。退出多出来的频道，只保留一个，即可继续发言。</string>
+    <string name="external_frozen_body_ios_manager">免费版只能有 1 个外部频道。退出多出来的频道，即可重新发言。</string>
+    <string name="external_frozen_body_ios_member">免费版只能有 1 个外部频道。</string>
     <string name="external_freeze_action_view_billing">查看账单</string>
     <string name="external_freeze_action_upgrade_to_pro">升级到 Pro</string>
     <string name="external_freeze_action_ask_owner">请所有者升级</string>

@@ -4790,6 +4790,9 @@
     <string name="external_frozen_title">%1$s 서버는 지금 외부 채널에 글을 쓸 수 없어요</string>
     <string name="external_frozen_body_manager">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요. 다시 글을 쓰려면 업그레이드하거나 남는 채널에서 나가 주세요.</string>
     <string name="external_frozen_body_member">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요. 소유자에게 업그레이드를 요청해 주세요.</string>
+    <string name="external_freeze_notice_ios">이 서버는 Free 플랜을 사용 중이며 외부와 2개 이상의 채널을 공유하고 있습니다. %1$s부터 해당 채널에 메시지를 보낼 수 없습니다. 계속 메시지를 보내려면 하나만 남기고 나머지 채널에서 나가세요.</string>
+    <string name="external_frozen_body_ios_manager">Free 플랜에서는 외부 채널 1개만 사용할 수 있습니다. 추가 채널에서 나가면 다시 메시지를 보낼 수 있습니다.</string>
+    <string name="external_frozen_body_ios_member">Free 플랜에서는 외부 채널 1개만 사용할 수 있습니다.</string>
     <string name="external_freeze_action_view_billing">결제 정보 보기</string>
     <string name="external_freeze_action_upgrade_to_pro">Pro로 업그레이드</string>
     <string name="external_freeze_action_ask_owner">소유자에게 업그레이드 요청</string>

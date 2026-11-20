@@ -2,8 +2,8 @@ package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.compat.json.JSONObject
@@ -21,85 +21,143 @@ import org.robolectric.annotation.Config
 
 /**
  * UI tests for #wg-mobile-sync:#178 (botiverse/slock #15653 #15686):
- * - ExternalFreezeNotice role-based action labels and click forwarding
- * - ExternalFrozenBanner manager vs member copy and role-based action labels
+ * - ExternalFreezeNotice role-based action labels, click forwarding, and iOS neutral copy
+ * - ExternalFrozenBanner manager vs member copy, role-based action labels, and iOS neutral copy
  * - RaftUpgradeDialog FreezeUpcoming wording in Upgrade and iOS LimitNotice modes
  */
+@OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ExternalChannelFreezeUiTest {
     @get:Rule
-    val rule = createComposeRule()
+    val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun externalFreezeNoticeShowsRoleBasedActionAndClicksThrough() {
+    fun externalFreezeNoticeShowsRoleBasedActionAndClicksThrough() = runRobolectricComposeUiTest {
         var clicks = 0
-        rule.setContent {
+        setContent {
             RaftDesignSystemTheme {
                 ThreadExternalFreezeNoticeBanner(
                     deadlineIso = "2026-12-01T14:30:00Z",
                     plan = "free",
                     role = "owner",
+                    offersUpgrade = true,
                     onOpenUpgrade = { clicks++ },
                 )
             }
         }
-        rule.onNodeWithText("Upgrade to Pro").assertIsDisplayed().performClick()
+        waitForIdle()
+        onNodeWithText("Upgrade to Pro").assertIsDisplayed().performClick()
         assertEquals(1, clicks)
     }
 
     @Test
-    fun externalFreezeNoticeShowsAskOwnerForMemberAndViewBillingForPaidPlan() {
-        rule.setContent {
+    fun externalFreezeNoticeShowsAskOwnerForMember() = runRobolectricComposeUiTest {
+        setContent {
             RaftDesignSystemTheme {
                 ThreadExternalFreezeNoticeBanner(
                     deadlineIso = "2026-12-01T14:30:00Z",
                     plan = "free",
                     role = "member",
+                    offersUpgrade = true,
                     onOpenUpgrade = {},
                 )
             }
         }
-        rule.onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
+        waitForIdle()
+        onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
     }
 
     @Test
-    fun externalFrozenBannerShowsManagerCopyForAdminAndMemberCopyForMember() {
-        rule.setContent {
+    fun externalFreezeNoticeUsesNeutralCopyAndViewYourPlanWhenUpgradeNotOffered() = runRobolectricComposeUiTest {
+        var openedPlan = 0
+        setContent {
+            CompositionLocalProvider(
+                LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(openPlan = { openedPlan++ }),
+            ) {
+                RaftDesignSystemTheme {
+                    ThreadExternalFreezeNoticeBanner(
+                        deadlineIso = "2026-12-01T14:30:00Z",
+                        plan = "free",
+                        role = "owner",
+                        offersUpgrade = false,
+                        onOpenUpgrade = {},
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        onNodeWithText("Leave all but one of those channels to keep posting.", substring = true).assertIsDisplayed()
+        onNodeWithText("View your plan").assertIsDisplayed().performClick()
+        assertEquals(1, openedPlan)
+    }
+
+    @Test
+    fun externalFrozenBannerShowsManagerCopyForAdmin() = runRobolectricComposeUiTest {
+        setContent {
             RaftDesignSystemTheme {
                 ThreadExternalFrozenBanner(
                     serverName = "Acme",
                     plan = "free",
                     role = "admin",
+                    offersUpgrade = true,
                     onOpenUpgrade = {},
                 )
             }
         }
-        rule.onNodeWithText("Acme can't post in external channels right now").assertIsDisplayed()
-        rule.onNodeWithText("Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.")
+        waitForIdle()
+        onNodeWithText("Acme can't post in external channels right now").assertIsDisplayed()
+        onNodeWithText("Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.")
             .assertIsDisplayed()
-        rule.onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
+        onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
     }
 
     @Test
-    fun externalFrozenBannerShowsViewBillingOnPaidPlanAndMemberBodyForMember() {
-        rule.setContent {
+    fun externalFrozenBannerShowsViewBillingOnPaidPlanAndMemberBodyForMember() = runRobolectricComposeUiTest {
+        setContent {
             RaftDesignSystemTheme {
                 ThreadExternalFrozenBanner(
                     serverName = "Acme",
                     plan = "pro",
                     role = "member",
+                    offersUpgrade = true,
                     onOpenUpgrade = {},
                 )
             }
         }
-        rule.onNodeWithText("Free allows 1 external channel. Ask an owner to upgrade.").assertIsDisplayed()
-        rule.onNodeWithText("View billing").assertIsDisplayed()
+        waitForIdle()
+        onNodeWithText("Free allows 1 external channel. Ask an owner to upgrade.").assertIsDisplayed()
+        onNodeWithText("View billing").assertIsDisplayed()
     }
 
     @Test
-    fun upgradeDialogShowsFreezeUpcomingCopyWhenContextPaired() {
-        rule.setContent {
+    fun externalFrozenBannerUsesNeutralCopyWhenUpgradeNotOffered() = runRobolectricComposeUiTest {
+        var openedPlan = 0
+        setContent {
+            CompositionLocalProvider(
+                LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(openPlan = { openedPlan++ }),
+            ) {
+                RaftDesignSystemTheme {
+                    ThreadExternalFrozenBanner(
+                        serverName = "Acme",
+                        plan = "free",
+                        role = "owner",
+                        offersUpgrade = false,
+                        onOpenUpgrade = {},
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        onNodeWithText("Acme can't post in external channels right now").assertIsDisplayed()
+        onNodeWithText("Free allows 1 external channel. Leave the extra channels to post again.").assertIsDisplayed()
+        onNodeWithText("View your plan").assertIsDisplayed().performClick()
+        assertEquals(1, openedPlan)
+    }
+
+    @Test
+    fun upgradeDialogShowsFreezeUpcomingCopyWhenContextPaired() = runRobolectricComposeUiTest {
+        setContent {
             val pager =
                 remember {
                     object : Pager() {}.apply {
@@ -126,7 +184,42 @@ class ExternalChannelFreezeUiTest {
                 }
             }
         }
-        rule.onNodeWithText("Keep posting in your external channels").assertIsDisplayed()
-        rule.onNodeWithText("Acme can't post in its external channels", substring = true).assertIsDisplayed()
+        waitForIdle()
+        onNodeWithText("Keep posting in your external channels").assertIsDisplayed()
+        onNodeWithText("Acme can't post in its external channels", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun upgradeDialogLimitNoticeShowsFreezeUpcomingWithoutUpgradePrompt() = runRobolectricComposeUiTest {
+        setContent {
+            val pager =
+                remember {
+                    object : Pager() {}.apply {
+                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+                    }
+                }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                RaftDesignSystemTheme {
+                    RaftUpgradeDialog(
+                        request =
+                            RaftUpgradeRequest(
+                                gate = RaftUpgradeGate.ExternalChannelFrozen,
+                                mode = RaftUpgradeMode.LimitNotice,
+                                pagerId = "fixture",
+                                serverId = "server-1",
+                                serverName = "Acme",
+                                owner = true,
+                                webUrl = "https://raft.build/s/acme/settings/billing?lang=en",
+                                externalContext = RaftUpgradeExternalContext.FreezeUpcoming("2026-12-01T14:30:00Z"),
+                            ),
+                        onOpenWeb = {},
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+        waitForIdle()
+        onNodeWithText("Acme can't post in its external channels", substring = true).assertIsDisplayed()
+        onNodeWithText("OK").assertIsDisplayed()
     }
 }

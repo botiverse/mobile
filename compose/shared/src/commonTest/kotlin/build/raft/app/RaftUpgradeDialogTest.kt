@@ -233,6 +233,7 @@ class RaftUpgradeDialogTest {
         assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFreeLimit, context))
         assertNull(externalContextForGate(RaftUpgradeGate.History30d, context))
         assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("   ")))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("not-a-timestamp")))
         assertEquals(
             "https://raft.build/s/acme/settings/billing?upgrade=external_channel_frozen&upgradeCanceled=1&upgradeFreezeAt=2026-12-01T14%3A30%3A00Z&lang=en",
             raftUpgradeWebUrl(

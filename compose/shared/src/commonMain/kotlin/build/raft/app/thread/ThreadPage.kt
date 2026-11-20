@@ -2221,57 +2221,6 @@ private fun SharedThreadRouteContentContent(
     val billingDirectoryProjections by directoryConversationProjectionFlow.collectAsState(
         initialDirectoryConversationProjections
     )
-    var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
-    val billingNowEpochMillis =
-        payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
-    val externalFreezeState =
-        remember(
-            billingDirectoryProjections,
-            payload.surfaceKind,
-            payload.parentChannelId,
-            conversationDirectoryLookupIds,
-            jointBillingDeadlineTick,
-            payload.nowEpochMillis,
-        ) {
-            externalFreezeState(
-                surfaceKind = payload.surfaceKind,
-                parentChannelId = payload.parentChannelId,
-                lookupIds = conversationDirectoryLookupIds,
-                projections = billingDirectoryProjections,
-                nowEpochMillis = billingNowEpochMillis,
-            )
-        }
-    val jointBillingNotice =
-        remember(
-            billingDirectoryProjections,
-            payload.surfaceKind,
-            payload.parentChannelId,
-            conversationDirectoryLookupIds,
-            jointBillingDeadlineTick,
-            payload.nowEpochMillis,
-        ) {
-            jointBillingNoticeState(
-                surfaceKind = payload.surfaceKind,
-                parentChannelId = payload.parentChannelId,
-                lookupIds = conversationDirectoryLookupIds,
-                projections = billingDirectoryProjections,
-                nowEpochMillis = billingNowEpochMillis,
-            )
-        }
-    val threadLimitLocked = threadLimitLocksWrites(jointBillingNotice, externalFreezeState)
-    val jointGraceDeadlineLabel =
-        remember(billingDirectoryProjections, conversationDirectoryLookupIds) {
-            (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
-                .firstNotNullOfOrNull { id ->
-                    billingDirectoryProjections[id]
-                        ?.takeIf { it.conversationKind == ConversationKind.Joint }
-                        ?.jointOverLimitGraceEndsAt
-                }
-        }
-    val nextChannelLimitDeadline =
-        remember(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel) {
-            nextChannelLimitDeadlineIso(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel)
-        }
     // Joint channel (or a reply thread in one): message rows may resolve senders from the other
     // server, who are in neither of this server's rosters, through `POST /api/actors/resolve`.
     val jointMessageSurface =
@@ -2293,22 +2242,6 @@ private fun SharedThreadRouteContentContent(
         remember(memberAvatarResolver, jointMessageSurface) {
             memberAvatarResolver.forJointSurface(jointMessageSurface)
         }
-    // §18.8 / slock #15653: flip Upcoming/Grace -> Frozen/Locked locally at the deadline without
-    // waiting for a new server snapshot. Recompute notice state via a state bump.
-    LaunchedEffect(nextChannelLimitDeadline, payload.instanceId) {
-        val deadline =
-            nextChannelLimitDeadline?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
-        if (deadline != null) {
-            val remaining =
-                deadline -
-                    (payload.nowEpochMillis
-                        ?: kotlin.time.Clock.System.now().toEpochMilliseconds())
-            if (remaining > 0) {
-                delay(remaining)
-                jointBillingDeadlineTick++
-            }
-        }
-    }
     var lastAcceptedHeaderProjection by remember(headerProjectionInput) {
         mutableStateOf<SharedConversationDirectoryProjection?>(null)
     }
@@ -3216,6 +3149,79 @@ private fun SharedThreadRouteContentContent(
             currentServerId = currentServerId,
             onBack = onBack,
         )
+    val taskParentChannelId = taskConversation.parentChannelId?.value
+    var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
+    val billingNowEpochMillis =
+        payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
+    val externalFreezeState =
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            taskParentChannelId,
+            conversationDirectoryLookupIds,
+            jointBillingDeadlineTick,
+            payload.nowEpochMillis,
+        ) {
+            externalFreezeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis = billingNowEpochMillis,
+                taskParentChannelId = taskParentChannelId,
+            )
+        }
+    val jointBillingNotice =
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            taskParentChannelId,
+            conversationDirectoryLookupIds,
+            jointBillingDeadlineTick,
+            payload.nowEpochMillis,
+        ) {
+            jointBillingNoticeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis = billingNowEpochMillis,
+                taskParentChannelId = taskParentChannelId,
+            )
+        }
+    val threadLimitLocked = threadLimitLocksWrites(jointBillingNotice, externalFreezeState)
+    val jointGraceDeadlineLabel =
+        remember(billingDirectoryProjections, payload.parentChannelId, taskParentChannelId, conversationDirectoryLookupIds) {
+            (listOfNotNull(payload.parentChannelId, taskParentChannelId) + conversationDirectoryLookupIds)
+                .firstNotNullOfOrNull { id ->
+                    billingDirectoryProjections[id]
+                        ?.takeIf { it.conversationKind == ConversationKind.Joint }
+                        ?.jointOverLimitGraceEndsAt
+                }
+        }
+    val nextChannelLimitDeadline =
+        remember(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel) {
+            nextChannelLimitDeadlineIso(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel)
+        }
+    // §18.8 / slock #15653: flip Upcoming/Grace -> Frozen/Locked locally at the deadline without
+    // waiting for a new server snapshot. Recompute notice state via a state bump (+50ms margin
+    // against sub-millisecond wakeup jitter).
+    LaunchedEffect(nextChannelLimitDeadline, payload.instanceId) {
+        val deadline =
+            nextChannelLimitDeadline?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
+        if (deadline != null) {
+            val remaining =
+                deadline -
+                    (payload.nowEpochMillis
+                        ?: kotlin.time.Clock.System.now().toEpochMilliseconds())
+            if (remaining > 0) {
+                delay(remaining + 50L)
+                jointBillingDeadlineTick++
+            }
+        }
+    }
     // The channel a bare `#N` chips and opens against (Web `taskContextChannelId`): the task's host
     // channel in a task conversation, and never gated on write access (unlike [taskChannelId]).
     val markdownTaskContextChannelId =
@@ -3691,7 +3697,11 @@ private fun SharedThreadRouteContentContent(
                 .withThreadMembersProjection(threadMembersProjection)
                 .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
-    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && !threadLimitLocked)
+    val renderedThread =
+        renderedPayload.withThreadWriteActionsEnabled(
+            enabled = renderSlice.writeActionsEnabled && !threadLimitLocked,
+            preserveSettingsAccess = renderSlice.writeActionsEnabled && threadLimitLocked,
+        )
     val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
@@ -7322,6 +7332,7 @@ private fun SharedThreadRouteContentContent(
             },
             openCanonicalTask = openCanonicalTask,
             settingsPageLinkKey = settingsPageLinkKey,
+            threadLimitLocked = threadLimitLocked,
         )
     val threadRouteEventHandler = buildThreadRouteEventHandler()
     RaftForegroundBannerHost(
@@ -8240,8 +8251,8 @@ private fun SharedThreadRouteContentContent(
             },
             onThreadEvent = ThreadEventHandler(dispatch = threadRouteEventHandler::handle),
             onComposerSendRequest = sendRequest@ { request ->
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, "send")) {
-                    bridge.log("thread_composer_action_blocked action=send reason=read_only_access_fallback")
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, "send")) {
+                    bridge.log("thread_composer_action_blocked action=send reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     return@sendRequest ThreadComposerSendAdmission.Rejected
                 }
                 handleComposerSendRequest(request)
@@ -8250,8 +8261,8 @@ private fun SharedThreadRouteContentContent(
                 // Files dragged onto the composer (web MessageInput handleDrop): the web's folder
                 // notice, then the host reads them as a File pick and the picker's admission
                 // takes them (sizes, skipped files, upload), straight into the tray.
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, ThreadComposerDropAttachmentsAction)) {
-                    bridge.log("thread_composer_action_blocked action=$ThreadComposerDropAttachmentsAction reason=read_only_access_fallback")
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, ThreadComposerDropAttachmentsAction)) {
+                    bridge.log("thread_composer_action_blocked action=$ThreadComposerDropAttachmentsAction reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     drop.release()
                 } else {
                     coroutineScope.launch {
@@ -8276,8 +8287,8 @@ private fun SharedThreadRouteContentContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled, action)) {
-                    bridge.log("thread_composer_action_blocked action=$action reason=read_only_access_fallback")
+                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, action)) {
+                    bridge.log("thread_composer_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     return@ThreadPageContent
                 }
                 val currentComposer = currentComposerPayload()

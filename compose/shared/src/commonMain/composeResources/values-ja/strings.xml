@@ -4976,6 +4976,9 @@
     <string name="external_frozen_title">%1$s は現在、外部チャンネルに投稿できません</string>
     <string name="external_frozen_body_manager">無料プランで使える外部チャンネルは 1 つです。アップグレードするか、余分なチャンネルから退出すると、再び投稿できます。</string>
     <string name="external_frozen_body_member">無料プランで使える外部チャンネルは 1 つです。オーナーにアップグレードを依頼してください。</string>
+    <string name="external_freeze_notice_ios">このサーバーは無料プランで、サーバーの外部の人と 2 つ以上のチャンネルを共有しています。%1$s以降、それらのチャンネルには投稿できなくなります。投稿を続けるには、それらのチャンネルを 1 つだけ残して退出してください。</string>
+    <string name="external_frozen_body_ios_manager">無料プランで使える外部チャンネルは 1 つです。余分なチャンネルから退出すると、再び投稿できます。</string>
+    <string name="external_frozen_body_ios_member">無料プランで使える外部チャンネルは 1 つです。</string>
     <string name="external_freeze_action_view_billing">請求情報を表示</string>
     <string name="external_freeze_action_upgrade_to_pro">Pro にアップグレード</string>
     <string name="external_freeze_action_ask_owner">オーナーにアップグレードを依頼</string>

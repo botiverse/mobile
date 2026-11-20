@@ -4790,6 +4790,9 @@
     <string name="external_frozen_title">%1$s 目前無法在外部頻道中發言</string>
     <string name="external_frozen_body_manager">免費版只能有 1 個外部頻道。升級，或退出多出來的頻道，即可重新發言。</string>
     <string name="external_frozen_body_member">免費版只能有 1 個外部頻道。請擁有者升級。</string>
+    <string name="external_freeze_notice_ios">此伺服器目前為免費方案，與伺服器外的人共享了多個頻道。從 %1$s 起，將無法在這些頻道中傳送訊息。退出多出來的頻道、只保留一個，即可繼續發言。</string>
+    <string name="external_frozen_body_ios_manager">免費方案僅允許 1 個外部頻道。退出多出來的頻道即可重新發言。</string>
+    <string name="external_frozen_body_ios_member">免費方案僅允許 1 個外部頻道。</string>
     <string name="external_freeze_action_view_billing">檢視帳單</string>
     <string name="external_freeze_action_upgrade_to_pro">升級到 Pro</string>
     <string name="external_freeze_action_ask_owner">請擁有者升級</string>

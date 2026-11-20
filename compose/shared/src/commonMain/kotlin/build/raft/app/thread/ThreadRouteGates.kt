@@ -308,6 +308,7 @@ internal fun externalFreezeState(
     lookupIds: List<String>,
     projections: Map<String, SharedConversationDirectoryProjection>,
     nowEpochMillis: Long? = null,
+    taskParentChannelId: String? = null,
 ): ExternalFreezeState {
     if (surfaceKind == RaftThreadSurfaceKind.DirectMessage) return ExternalFreezeState.None
     fun freezeFor(id: String?): ExternalFreezeState {
@@ -330,6 +331,10 @@ internal fun externalFreezeState(
         val parent = freezeFor(parentChannelId)
         if (parent != ExternalFreezeState.None) return parent
     }
+    if (taskParentChannelId != null) {
+        val taskParent = freezeFor(taskParentChannelId)
+        if (taskParent != ExternalFreezeState.None) return taskParent
+    }
     return lookupIds.firstNotNullOfOrNull { freezeFor(it).takeIf { s -> s != ExternalFreezeState.None } }
         ?: ExternalFreezeState.None
 }
@@ -337,17 +342,23 @@ internal fun externalFreezeState(
 /**
  * Earliest upcoming deadline ISO across external freeze and legacy joint grace so a single timer
  * flips the open conversation to read-only locally at the deadline (web `useRerenderAtJointDeadline`).
+ * Evaluates both candidates even while an upcoming external freeze suppresses the joint grace
+ * banner, so an earlier joint grace expiry still flips the channel to locked on time.
  */
 internal fun nextChannelLimitDeadlineIso(
     externalFreeze: ExternalFreezeState,
     jointBillingNotice: JointBillingNotice,
     jointGraceDeadlineIso: String?,
-): String? =
-    when {
-        externalFreeze is ExternalFreezeState.Upcoming -> externalFreeze.deadlineIso
-        jointBillingNotice == JointBillingNotice.Grace -> jointGraceDeadlineIso?.takeIf { it.isNotBlank() }
-        else -> null
-    }
+): String? {
+    val freezeCandidate = (externalFreeze as? ExternalFreezeState.Upcoming)?.deadlineIso
+    val graceCandidate =
+        jointGraceDeadlineIso
+            ?.takeIf { it.isNotBlank() && jointBillingNotice != JointBillingNotice.Locked }
+    val candidates =
+        listOfNotNull(freezeCandidate, graceCandidate)
+            .mapNotNull { iso -> parseRaftTimestampEpochMillisOrNull(iso, 0)?.let { millis -> iso to millis } }
+    return candidates.minByOrNull { it.second }?.first
+}
 
 /**
  * The rendered surface is a joint channel, or a reply thread / task conversation in one: the
@@ -386,27 +397,28 @@ internal fun jointBillingNoticeState(
     parentChannelId: String?,
     lookupIds: List<String>,
     projections: Map<String, SharedConversationDirectoryProjection>,
-    nowEpochMillis: Long? = null
+    nowEpochMillis: Long? = null,
+    taskParentChannelId: String? = null,
 ): JointBillingNotice {
     fun noticeFor(id: String?): JointBillingNotice {
         val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
         if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
         if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
-        // Web `jointChannelGraceEndsAt` (botiverse/slock #15653): one notice at a time; when the
-        // channel carries a valid `externalFreezeAt`, the external freeze notice replaces joint grace.
-        if (projection.externalFreezeAt?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } != null) {
-            return JointBillingNotice.None
-        }
         val graceEndsAt = projection.jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() }
             ?: return JointBillingNotice.None
         // §18.8: "now >= graceEndsAt" means the grace period has ended and the
         // channel is read-only — fall back to Locked even if the server has not
-        // flipped jointBillingLocked yet. When no clock is available, keep the
-        // deadline-agnostic Grace (fail-open for an unknown now is safer than
-        // wrongly locking a still-writable channel).
+        // flipped jointBillingLocked yet, and even if a later externalFreezeAt is
+        // present. When no clock is available, keep the deadline-agnostic Grace
+        // (fail-open for an unknown now is safer than wrongly locking a still-writable channel).
         val deadlineMillis = parseRaftTimestampEpochMillisOrNull(graceEndsAt, 0)
         if (nowEpochMillis != null && deadlineMillis != null && nowEpochMillis >= deadlineMillis) {
             return JointBillingNotice.Locked
+        }
+        // Web `jointChannelGraceEndsAt` (botiverse/slock #15653): one notice at a time; when the
+        // channel carries a valid `externalFreezeAt`, the external freeze notice replaces joint grace.
+        if (projection.externalFreezeAt?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } != null) {
+            return JointBillingNotice.None
         }
         return JointBillingNotice.Grace
     }
@@ -414,12 +426,43 @@ internal fun jointBillingNoticeState(
         val parent = noticeFor(parentChannelId)
         if (parent != JointBillingNotice.None) return parent
     }
+    if (taskParentChannelId != null) {
+        val taskParent = noticeFor(taskParentChannelId)
+        if (taskParent != JointBillingNotice.None) return taskParent
+    }
     return lookupIds.firstNotNullOfOrNull { noticeFor(it).takeIf { n -> n != JointBillingNotice.None } }
         ?: JointBillingNotice.None
 }
 
-internal fun threadEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
-    writeActionsEnabled || !threadEventRequiresWriteAccess(action)
+private val ThreadLimitLockedBlockedActions =
+    setOf(
+        "followMessageThread",
+        "unfollowMessageThread",
+        "toggleMessageSaved",
+        "commitActionCard",
+        "toggleReaction",
+        "submitAddMember",
+        "convertMessageToTask",
+        "setTaskStatus",
+        "moveTaskToBacklog",
+        "setTaskAssignee",
+        "markTaskDone",
+        "reopenTask",
+        "joinChannel",
+        "retryLocalSend",
+        "cancelLocalSend",
+        "deleteLocalFailedSend",
+    )
+
+internal fun threadEventAllowed(
+    writeActionsEnabled: Boolean,
+    action: String,
+    limitLocked: Boolean = false,
+): Boolean {
+    if (!writeActionsEnabled && threadEventRequiresWriteAccess(action)) return false
+    if (limitLocked && action in ThreadLimitLockedBlockedActions) return false
+    return true
+}
 
 internal fun threadComposerEventAllowed(writeActionsEnabled: Boolean, action: String): Boolean =
     writeActionsEnabled || !threadComposerEventRequiresWriteAccess(action)
@@ -461,16 +504,17 @@ internal fun ThreadAttachmentCommentsDialogState?.retainForThreadWriteAuthority(
 ): ThreadAttachmentCommentsDialogState? = takeIf { writeActionsEnabled }
 
 internal fun RaftThreadScreenPayload.withThreadWriteActionsEnabled(
-    enabled: Boolean
+    enabled: Boolean,
+    preserveSettingsAccess: Boolean = false,
 ): RaftThreadScreenPayload =
     if (enabled) {
         this
     } else {
         copy(
             canAddMembers = false,
-            members = members.map { member -> member.copy(canRemove = false) },
-            settingsActions = emptyList(),
-            showSettingsAction = false,
+            members = if (preserveSettingsAccess) members else members.map { member -> member.copy(canRemove = false) },
+            settingsActions = if (preserveSettingsAccess) settingsActions else emptyList(),
+            showSettingsAction = if (preserveSettingsAccess) showSettingsAction else false,
             showMessageSaveAction = false,
             showReactionActions = false,
             showTaskStatusActions = false
