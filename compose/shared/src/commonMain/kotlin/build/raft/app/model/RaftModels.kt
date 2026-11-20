@@ -165,6 +165,7 @@ data class ConversationSummary(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    val externalFreezeAt: String? = null,
     val bridgeProvider: String? = null,
     /**
      * Channel row `guestVisible` (see [build.raft.app.data.HomeChannelWireDto.guestVisible]).

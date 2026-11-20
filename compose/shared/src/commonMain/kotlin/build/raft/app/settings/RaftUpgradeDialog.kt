@@ -28,6 +28,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
@@ -39,10 +40,13 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
 
 /*
@@ -223,11 +227,54 @@ internal fun raftUpgradeOutcome(
 }
 
 /**
+ * Extra context for an external-channel upgrade gate (web `ExternalLimitContext`, botiverse/slock
+ * #15653). Paired strictly with its gate via [externalContextForGate]; mismatched pairings are
+ * ignored and fall back to the gate's own copy.
+ */
+internal sealed interface RaftUpgradeExternalContext {
+    /**
+     * Opened from `ExternalFreezeNotice` before the server's external channel freeze begins:
+     * carries the ISO `externalFreezeAt` deadline so the dialog and web return say from when the
+     * freeze takes effect rather than "again".
+     */
+    data class FreezeUpcoming(val deadlineIso: String) : RaftUpgradeExternalContext
+}
+
+/**
+ * Web `externalContextForGate` (`upgradeGateCopy.ts`): pairs [context] only with the gate that
+ * understands it (`FreezeUpcoming` only with [RaftUpgradeGate.ExternalChannelFrozen] and a
+ * non-blank deadline). Any other pairing returns null so the gate's default copy is used.
+ */
+internal fun externalContextForGate(
+    gate: RaftUpgradeGate,
+    context: RaftUpgradeExternalContext?,
+): RaftUpgradeExternalContext? {
+    if (context == null) return null
+    return when (context) {
+        is RaftUpgradeExternalContext.FreezeUpcoming ->
+            context.takeIf { gate == RaftUpgradeGate.ExternalChannelFrozen && it.deadlineIso.isNotBlank() }
+    }
+}
+
+/**
+ * The external channel freeze's start in the viewer's local time zone (web `formatFreezeDeadline`,
+ * medium date + short time); falls back to the raw ISO string when unparseable.
+ */
+@Composable
+internal fun raftFormatFreezeDeadline(iso: String): String {
+    val local =
+        runCatching { Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault()) }.getOrNull()
+            ?: return iso
+    return TaskHeadDateTime(local.year, local.month.ordinal + 1, local.day, local.hour, local.minute).localized()
+}
+
+/**
  * The web page the dialog opens. [RaftUpgradeMode.Upgrade]: Plan & Billing with the web upgrade
  * dialog open for the gate (web UpgradeDialog's Stripe-return parameters `upgrade=<gate>` plus
- * `upgradeCanceled=1`, which reopen it at its first step: an owner's plan choice, or a member's
- * message to an owner). [RaftUpgradeMode.AddSeats]: Plan & Billing, where an owner's Add seats is
- * (web PlanSectionContent; the web has no link straight into AddSeatsDialog).
+ * `upgradeCanceled=1`, and `upgradeFreezeAt=<iso>` for [RaftUpgradeExternalContext.FreezeUpcoming],
+ * which reopen it at its first step: an owner's plan choice, or a member's message to an owner).
+ * [RaftUpgradeMode.AddSeats]: Plan & Billing, where an owner's Add seats is (web
+ * PlanSectionContent; the web has no link straight into AddSeatsDialog).
  */
 internal fun raftUpgradeWebUrl(
     webBaseUrl: String?,
@@ -235,14 +282,21 @@ internal fun raftUpgradeWebUrl(
     gate: RaftUpgradeGate,
     mode: RaftUpgradeMode,
     localeTag: String,
+    externalContext: RaftUpgradeExternalContext? = null,
 ): String {
     val path = serverSlug?.takeIf { it.isNotBlank() }?.let { "s/$it/settings/billing" } ?: "settings/billing"
     val base = sharedSettingsWebUrl(webBaseUrl, path)
+    val freezeAt =
+        (externalContextForGate(gate, externalContext) as? RaftUpgradeExternalContext.FreezeUpcoming)
+            ?.deadlineIso
     val query =
         buildList {
             if (mode == RaftUpgradeMode.Upgrade) {
                 add("upgrade" to gate.webDialogGate)
                 add("upgradeCanceled" to "1")
+                if (freezeAt != null) {
+                    add("upgradeFreezeAt" to freezeAt.percentEncode())
+                }
             }
             add("lang" to localeTag)
         }
@@ -261,6 +315,8 @@ internal data class RaftUpgradeRequest(
     val webUrl: String,
     /** The web was opened and the app has not seen the plan change yet. */
     val waitingForWeb: Boolean = false,
+    /** Gate-paired external channel context (e.g. `FreezeUpcoming` from `ExternalFreezeNotice`). */
+    val externalContext: RaftUpgradeExternalContext? = null,
 )
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
@@ -282,13 +338,18 @@ private val raftUpgradeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main
  * Opens the upgrade dialog for [gate] on the current server (or Plan & Billing, or nothing:
  * [raftUpgradeOutcome]). Reads the server's plan, name, slug and the viewer's role from the session.
  */
-internal fun Pager.openRaftUpgradeDialog(gate: RaftUpgradeGate, storeScope: RaftShellStoreScope) {
+internal fun Pager.openRaftUpgradeDialog(
+    gate: RaftUpgradeGate,
+    storeScope: RaftShellStoreScope,
+    externalContext: RaftUpgradeExternalContext? = null,
+) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
     val webBaseUrl = standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore)
     val authStore = sharedStores.authStore(storeScope)
     val authDataSource = sharedStores.createAuthDataSourceForCurrentEnvironment(storeScope)
     val pager = this
+    val pairedContext = externalContextForGate(gate, externalContext)
     raftUpgradeScope.launch {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val server = session?.currentServerSummary()
@@ -312,7 +373,16 @@ internal fun Pager.openRaftUpgradeDialog(gate: RaftUpgradeGate, storeScope: Raft
                 serverId = server?.id?.value.orEmpty(),
                 serverName = server?.name.orEmpty(),
                 owner = server?.role == "owner",
-                webUrl = raftUpgradeWebUrl(webBaseUrl, server?.slug ?: standaloneSettingsServerSlug(session), gate, mode, readStandaloneSettingsLocaleTag()),
+                webUrl =
+                    raftUpgradeWebUrl(
+                        webBaseUrl,
+                        server?.slug ?: standaloneSettingsServerSlug(session),
+                        gate,
+                        mode,
+                        readStandaloneSettingsLocaleTag(),
+                        pairedContext,
+                    ),
+                externalContext = pairedContext,
             )
     }
 }
@@ -343,7 +413,15 @@ internal fun raftUpgradeDoneOnReturn(mode: RaftUpgradeMode, plan: String?): Bool
 internal fun RaftUpgradeDialogHost(pager: Pager) {
     val request = RaftUpgradeDialogState.request?.takeIf { it.pagerId == pager.pagerId } ?: return
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val paidToast = stringResource(Res.string.upgrade_dialog_paid_toast, request.serverName)
+    val paidToast =
+        stringResource(
+            if (externalContextForGate(request.gate, request.externalContext) is RaftUpgradeExternalContext.FreezeUpcoming) {
+                Res.string.upgrade_dialog_external_freeze_upcoming_done
+            } else {
+                Res.string.upgrade_dialog_paid_toast
+            },
+            request.serverName,
+        )
     val currentRequest by rememberUpdatedState(request)
     val currentPaidToast by rememberUpdatedState(paidToast)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -406,24 +484,21 @@ internal fun raftUpgradeGateCopy(gate: RaftUpgradeGate): RaftUpgradeGateCopy =
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_upload_quota_title, Res.string.upgrade_dialog_upload_quota_hint, Res.string.upgrade_dialog_limit_upload_quota, RaftUpgradeBenefit.Files)
         RaftUpgradeGate.UploadFileSize ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_file_size_title, Res.string.upgrade_dialog_file_size_hint, Res.string.upgrade_dialog_limit_file_size, RaftUpgradeBenefit.Files)
-        RaftUpgradeGate.JointChannelFreeCap ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_joint_free_cap_title, Res.string.upgrade_dialog_joint_free_cap_hint, Res.string.upgrade_dialog_limit_joint_free_cap, RaftUpgradeBenefit.Joint)
-        RaftUpgradeGate.JointChannelHostLimit ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_joint_host_limit_title, Res.string.upgrade_dialog_joint_host_limit_hint, Res.string.upgrade_dialog_limit_joint_host_limit, RaftUpgradeBenefit.Joint)
-        RaftUpgradeGate.JointChannelOverLimit ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_joint_over_limit_title, Res.string.upgrade_dialog_joint_over_limit_hint, Res.string.upgrade_dialog_limit_joint_over_limit, RaftUpgradeBenefit.Joint)
-        RaftUpgradeGate.JointChannelReadOnly ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_joint_read_only_title, Res.string.upgrade_dialog_joint_read_only_hint, Res.string.upgrade_dialog_limit_joint_read_only, RaftUpgradeBenefit.Joint)
+        // Legacy Joint Channel gates map to the external channel copy (botiverse/slock #15686).
+        RaftUpgradeGate.JointChannelFreeCap,
+        RaftUpgradeGate.JointChannelHostLimit,
+        RaftUpgradeGate.ExternalChannelFreeLimit ->
+            RaftUpgradeGateCopy(Res.string.upgrade_dialog_external_limit_title, Res.string.upgrade_dialog_external_limit_hint, Res.string.upgrade_dialog_limit_external_limit, RaftUpgradeBenefit.Joint)
+        RaftUpgradeGate.JointChannelOverLimit,
+        RaftUpgradeGate.JointChannelReadOnly,
+        RaftUpgradeGate.ExternalChannelFrozen ->
+            RaftUpgradeGateCopy(Res.string.upgrade_dialog_external_frozen_title, Res.string.upgrade_dialog_external_frozen_hint, Res.string.upgrade_dialog_limit_external_frozen, RaftUpgradeBenefit.Joint)
         RaftUpgradeGate.AgentMigration ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_migration_title, Res.string.upgrade_dialog_migration_hint, Res.string.upgrade_dialog_limit_migration, RaftUpgradeBenefit.Migration)
         RaftUpgradeGate.PlanDowngraded ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_downgraded_title, Res.string.upgrade_dialog_downgraded_hint, Res.string.upgrade_dialog_limit_downgraded, RaftUpgradeBenefit.History)
         RaftUpgradeGate.ProTheme ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_pro_theme_title, Res.string.upgrade_dialog_pro_theme_hint, Res.string.upgrade_dialog_limit_pro_theme, null)
-        RaftUpgradeGate.ExternalChannelFreeLimit ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_external_limit_title, Res.string.upgrade_dialog_external_limit_hint, Res.string.upgrade_dialog_limit_external_limit, RaftUpgradeBenefit.Joint)
-        RaftUpgradeGate.ExternalChannelFrozen ->
-            RaftUpgradeGateCopy(Res.string.upgrade_dialog_external_frozen_title, Res.string.upgrade_dialog_external_frozen_hint, Res.string.upgrade_dialog_limit_external_frozen, RaftUpgradeBenefit.Joint)
         RaftUpgradeGate.General ->
             RaftUpgradeGateCopy(Res.string.upgrade_dialog_general_title, Res.string.upgrade_dialog_general_hint, Res.string.upgrade_dialog_limit_general, null)
         // On Free a seat limit is Free's: the web's `general` offer.
@@ -444,6 +519,8 @@ internal fun RaftUpgradeDialog(
 ) {
     val server = request.serverName
     val copy = raftUpgradeGateCopy(request.gate)
+    val freezeUpcoming = externalContextForGate(request.gate, request.externalContext) as? RaftUpgradeExternalContext.FreezeUpcoming
+    val freezeDeadline = freezeUpcoming?.let { raftFormatFreezeDeadline(it.deadlineIso) }
     if (request.mode == RaftUpgradeMode.LimitNotice) {
         RaftUnifiedDialog(
             title = stringResource(Res.string.upgrade_dialog_limit_title),
@@ -452,7 +529,12 @@ internal fun RaftUpgradeDialog(
             titleMaxLines = 3,
         ) {
             RaftText(
-                text = stringResource(copy.limit, server),
+                text =
+                    if (freezeDeadline != null) {
+                        stringResource(Res.string.upgrade_dialog_limit_external_freeze_upcoming, freezeDeadline, server)
+                    } else {
+                        stringResource(copy.limit, server)
+                    },
                 style = RaftTheme.typography.subhead,
                 color = RaftTheme.colors.foregroundMuted,
             )
@@ -468,8 +550,19 @@ internal fun RaftUpgradeDialog(
         return
     }
     val seats = request.mode == RaftUpgradeMode.AddSeats
-    val title = stringResource(if (seats) Res.string.upgrade_dialog_seats_title else copy.title, server)
-    val hint = stringResource(if (seats) Res.string.upgrade_dialog_seats_hint else copy.hint, server)
+    val title =
+        when {
+            seats -> stringResource(Res.string.upgrade_dialog_seats_title, server)
+            freezeDeadline != null -> stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_title)
+            else -> stringResource(copy.title, server)
+        }
+    val hint =
+        when {
+            seats -> stringResource(Res.string.upgrade_dialog_seats_hint, server)
+            freezeDeadline != null ->
+                stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_hint, freezeDeadline, server)
+            else -> stringResource(copy.hint, server)
+        }
     val action =
         stringResource(
             when {

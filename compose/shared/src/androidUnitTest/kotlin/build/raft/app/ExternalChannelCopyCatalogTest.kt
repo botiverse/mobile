@@ -35,6 +35,13 @@ class ExternalChannelCopyCatalogTest {
                         "Free includes 1 external channel, and %1\$s already has one. On Pro, %1\$s can share as many as it needs.",
                     "upgrade_dialog_external_frozen_title" to "Post in your external channels again",
                     "upgrade_dialog_external_frozen_hint" to "Free allows 1 external channel. Upgrade to post in all of them again.",
+                    "upgrade_dialog_external_freeze_upcoming_title" to "Keep posting in your external channels",
+                    "upgrade_dialog_external_freeze_upcoming_hint" to
+                        "Free allows 1 external channel. From %1\$s, %2\$s can't post in its external channels. Upgrade to keep posting in all of them.",
+                    "upgrade_dialog_external_freeze_upcoming_done" to "%1\$s can keep posting in all its external channels.",
+                    "external_frozen_title" to "%1\$s can't post in external channels right now",
+                    "external_frozen_body_manager" to "Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.",
+                    "external_frozen_body_member" to "Free allows 1 external channel. Ask an owner to upgrade.",
                 ),
             "zh-rCN" to
                 mapOf(
@@ -48,6 +55,13 @@ class ExternalChannelCopyCatalogTest {
                     "upgrade_dialog_external_limit_hint" to "免费版包含 1 个外部频道，%1\$s 已经有一个了。升级到 Pro 后，%1\$s 需要多少就能共享多少。",
                     "upgrade_dialog_external_frozen_title" to "恢复在外部频道中发言",
                     "upgrade_dialog_external_frozen_hint" to "免费版只能有 1 个外部频道。升级后即可在所有外部频道中恢复发言。",
+                    "upgrade_dialog_external_freeze_upcoming_title" to "继续在外部频道中发言",
+                    "upgrade_dialog_external_freeze_upcoming_hint" to
+                        "免费版只能有 1 个外部频道。从 %1\$s 起，%2\$s 将无法在这些频道中发消息。升级后可以在所有外部频道中继续发言。",
+                    "upgrade_dialog_external_freeze_upcoming_done" to "%1\$s 可以继续在所有外部频道中发言。",
+                    "external_frozen_title" to "%1\$s 现在不能在外部频道中发言",
+                    "external_frozen_body_manager" to "免费版只能有 1 个外部频道。升级，或退出多出来的频道，即可重新发言。",
+                    "external_frozen_body_member" to "免费版只能有 1 个外部频道。请所有者升级。",
                 ),
             "ja" to
                 mapOf(
@@ -65,7 +79,30 @@ class ExternalChannelCopyCatalogTest {
                     "upgrade_dialog_external_frozen_title" to "外部チャンネルへの投稿を再開",
                     "upgrade_dialog_external_frozen_hint" to
                         "無料プランの外部チャンネルは 1 つまでです。アップグレードすると、すべての外部チャンネルに再び投稿できます。",
+                    "upgrade_dialog_external_freeze_upcoming_title" to "外部チャンネルへの投稿を続ける",
+                    "upgrade_dialog_external_freeze_upcoming_hint" to
+                        "無料プランの外部チャンネルは 1 つまでです。%1\$s以降、%2\$s は外部チャンネルに投稿できなくなります。アップグレードすると、すべての外部チャンネルに投稿し続けられます。",
+                    "upgrade_dialog_external_freeze_upcoming_done" to "%1\$s はすべての外部チャンネルに投稿し続けられます。",
+                    "external_frozen_title" to "%1\$s は現在、外部チャンネルに投稿できません",
+                    "external_frozen_body_manager" to "無料プランで使える外部チャンネルは 1 つです。アップグレードするか、余分なチャンネルから退出すると、再び投稿できます。",
+                    "external_frozen_body_member" to "無料プランで使える外部チャンネルは 1 つです。オーナーにアップグレードを依頼してください。",
                 ),
+        )
+
+    private val retiredUpgradeJointKeys =
+        listOf(
+            "upgrade_dialog_joint_free_cap_title",
+            "upgrade_dialog_joint_free_cap_hint",
+            "upgrade_dialog_joint_host_limit_title",
+            "upgrade_dialog_joint_host_limit_hint",
+            "upgrade_dialog_joint_read_only_title",
+            "upgrade_dialog_joint_read_only_hint",
+            "upgrade_dialog_joint_over_limit_title",
+            "upgrade_dialog_joint_over_limit_hint",
+            "upgrade_dialog_limit_joint_free_cap",
+            "upgrade_dialog_limit_joint_host_limit",
+            "upgrade_dialog_limit_joint_read_only",
+            "upgrade_dialog_limit_joint_over_limit",
         )
 
     @Test
@@ -78,6 +115,9 @@ class ExternalChannelCopyCatalogTest {
                 listOf("Joint", "joint", "联合", "共同").forEach { retired ->
                     assertFalse(retired in shown, "$locale/$key still says $retired")
                 }
+            }
+            retiredUpgradeJointKeys.forEach { retiredKey ->
+                assertFalse(retiredKey in catalog, "$locale still defines retired $retiredKey")
             }
         }
     }

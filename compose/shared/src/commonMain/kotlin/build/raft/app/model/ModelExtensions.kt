@@ -114,6 +114,8 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         jointBillingLocked = jointBillingLocked ?: fallback.jointBillingLocked.takeIf { sameConversation },
         jointOverLimitGraceEndsAt =
             jointOverLimitGraceEndsAt ?: fallback.jointOverLimitGraceEndsAt.takeIf { sameConversation },
+        externalFreezeAt =
+            externalFreezeAt ?: fallback.externalFreezeAt.takeIf { sameConversation },
         bridgeProvider = bridgeProvider ?: fallback.bridgeProvider.takeIf { sameConversation },
         channelCapabilities = channelCapabilities ?: fallback.channelCapabilities.takeIf { sameConversation }
     )

@@ -115,6 +115,10 @@ internal data class ThreadPageContentData(
     val writeActionsEnabled: Boolean,
     val jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
     val jointGraceDeadlineLabel: String? = null,
+    val externalFreezeState: ExternalFreezeState = ExternalFreezeState.None,
+    val billingServerName: String = "",
+    val billingServerPlan: String? = null,
+    val billingServerRole: String? = null,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?,
     val replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -232,6 +236,10 @@ fun ThreadPageContent(
     writeActionsEnabled: Boolean,
     jointBillingNotice: JointBillingNotice = JointBillingNotice.None,
     jointGraceDeadlineLabel: String? = null,
+    externalFreezeState: ExternalFreezeState = ExternalFreezeState.None,
+    billingServerName: String = "",
+    billingServerPlan: String? = null,
+    billingServerRole: String? = null,
     channelProfileUpdateStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     channelProfileUpdateErrorCode: String? = null,
     replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
@@ -347,6 +355,10 @@ fun ThreadPageContent(
                 writeActionsEnabled = writeActionsEnabled,
                 jointBillingNotice = jointBillingNotice,
                 jointGraceDeadlineLabel = jointGraceDeadlineLabel,
+                externalFreezeState = externalFreezeState,
+                billingServerName = billingServerName,
+                billingServerPlan = billingServerPlan,
+                billingServerRole = billingServerRole,
                 channelProfileUpdateStatus = channelProfileUpdateStatus,
                 channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
                 replyMetadataByParentId = replyMetadataByParentId,
@@ -466,6 +478,11 @@ private fun ThreadPageContentContent(
     val writeActionsEnabled = data.writeActionsEnabled
     val jointBillingNotice = data.jointBillingNotice
     val jointGraceDeadlineLabel = data.jointGraceDeadlineLabel
+    val externalFreezeState = data.externalFreezeState
+    val billingServerName = data.billingServerName
+    val billingServerPlan = data.billingServerPlan
+    val billingServerRole = data.billingServerRole
+    val threadLimitLocked = threadLimitLocksWrites(jointBillingNotice, externalFreezeState)
     val channelProfileUpdateStatus = data.channelProfileUpdateStatus
     val channelProfileUpdateErrorCode = data.channelProfileUpdateErrorCode
     val replyMetadataByParentId = data.replyMetadataByParentId
@@ -965,7 +982,7 @@ private fun ThreadPageContentContent(
         )
     val showComposerForSelectedTab =
         primaryFooterReady &&
-        jointBillingNotice != JointBillingNotice.Locked &&
+        !threadLimitLocked &&
         shouldShowThreadComposerForReadyContent(
             joined = payload.joined,
             showComposer = payload.showComposer,
@@ -1286,7 +1303,7 @@ private fun ThreadPageContentContent(
                     emptyList()
                 },
             body = {
-            if (jointBillingNotice != JointBillingNotice.None) {
+            if (externalFreezeState == ExternalFreezeState.None && jointBillingNotice != JointBillingNotice.None) {
                 val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
                 RaftUiBanner(
                     status =
@@ -1393,7 +1410,7 @@ private fun ThreadPageContentContent(
                         joined = payload.joined,
                         showComposer = payload.showComposer,
                         selectedTab = selectedTab.wireValue,
-                        composerLocked = jointBillingNotice == JointBillingNotice.Locked
+                        composerLocked = threadLimitLocked
                     )
                 ) {
                     ThreadComposerDock(
@@ -1472,9 +1489,41 @@ private fun ThreadPageContentContent(
                         },
                     )
                 }
+            } else if (externalFreezeState == ExternalFreezeState.Active) {
+                // Web ChannelLimitBanners `ExternalFrozenBanner` (botiverse/slock #15653):
+                // replaces the composer on frozen channels and reply threads in them.
+                ThreadFooterNoticeDock(bottomSafeArea = composerBottomSafeArea) {
+                    ThreadExternalFrozenBanner(
+                        serverName = billingServerName,
+                        plan = billingServerPlan,
+                        role = billingServerRole,
+                        onOpenUpgrade = {
+                            onThreadEvent(ThreadOpenUpgradeEvent, RaftUpgradeGate.ExternalChannelFrozen.wire, null, null)
+                        },
+                    )
+                }
             } else if (!writeActionsEnabled) {
                 Unit
             } else if (threadFooterShowsJoin(payload.joined, conversationLounge)) {
+                if (
+                    externalFreezeState is ExternalFreezeState.Upcoming &&
+                    payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    selectedTab == RaftThreadTab.Chat
+                ) {
+                    ThreadExternalFreezeNoticeBanner(
+                        deadlineIso = externalFreezeState.deadlineIso,
+                        plan = billingServerPlan,
+                        role = billingServerRole,
+                        onOpenUpgrade = {
+                            onThreadEvent(
+                                ThreadOpenUpgradeEvent,
+                                RaftUpgradeGate.ExternalChannelFrozen.wire,
+                                externalFreezeState.deadlineIso,
+                                null,
+                            )
+                        },
+                    )
+                }
                 ThreadJoinFooter(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) },
@@ -1593,6 +1642,25 @@ private fun ThreadPageContentContent(
                     )
                 }
             } else if (showComposerForSelectedTab) {
+                if (
+                    externalFreezeState is ExternalFreezeState.Upcoming &&
+                    payload.surfaceKind == RaftThreadSurfaceKind.Channel &&
+                    selectedTab == RaftThreadTab.Chat
+                ) {
+                    ThreadExternalFreezeNoticeBanner(
+                        deadlineIso = externalFreezeState.deadlineIso,
+                        plan = billingServerPlan,
+                        role = billingServerRole,
+                        onOpenUpgrade = {
+                            onThreadEvent(
+                                ThreadOpenUpgradeEvent,
+                                RaftUpgradeGate.ExternalChannelFrozen.wire,
+                                externalFreezeState.deadlineIso,
+                                null,
+                            )
+                        },
+                    )
+                }
                 ThreadComposerDock(
                     edgePadding = if (threadInSplitDetailPane()) ThreadSplitDetailEdgeInset else RaftAppSpacing.Sm,
                     // Bottom padding follows WindowInsets.ime in the layout phase of the

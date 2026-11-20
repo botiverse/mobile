@@ -2222,24 +2222,43 @@ private fun SharedThreadRouteContentContent(
         initialDirectoryConversationProjections
     )
     var jointBillingDeadlineTick by remember(payload.instanceId) { mutableStateOf(0) }
+    val billingNowEpochMillis =
+        payload.nowEpochMillis ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
+    val externalFreezeState =
+        remember(
+            billingDirectoryProjections,
+            payload.surfaceKind,
+            payload.parentChannelId,
+            conversationDirectoryLookupIds,
+            jointBillingDeadlineTick,
+            payload.nowEpochMillis,
+        ) {
+            externalFreezeState(
+                surfaceKind = payload.surfaceKind,
+                parentChannelId = payload.parentChannelId,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections,
+                nowEpochMillis = billingNowEpochMillis,
+            )
+        }
     val jointBillingNotice =
         remember(
             billingDirectoryProjections,
             payload.surfaceKind,
             payload.parentChannelId,
             conversationDirectoryLookupIds,
-            jointBillingDeadlineTick
+            jointBillingDeadlineTick,
+            payload.nowEpochMillis,
         ) {
             jointBillingNoticeState(
                 surfaceKind = payload.surfaceKind,
                 parentChannelId = payload.parentChannelId,
                 lookupIds = conversationDirectoryLookupIds,
                 projections = billingDirectoryProjections,
-                nowEpochMillis =
-                    payload.nowEpochMillis
-                        ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
+                nowEpochMillis = billingNowEpochMillis,
             )
         }
+    val threadLimitLocked = threadLimitLocksWrites(jointBillingNotice, externalFreezeState)
     val jointGraceDeadlineLabel =
         remember(billingDirectoryProjections, conversationDirectoryLookupIds) {
             (listOfNotNull(payload.parentChannelId) + conversationDirectoryLookupIds)
@@ -2248,6 +2267,10 @@ private fun SharedThreadRouteContentContent(
                         ?.takeIf { it.conversationKind == ConversationKind.Joint }
                         ?.jointOverLimitGraceEndsAt
                 }
+        }
+    val nextChannelLimitDeadline =
+        remember(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel) {
+            nextChannelLimitDeadlineIso(externalFreezeState, jointBillingNotice, jointGraceDeadlineLabel)
         }
     // Joint channel (or a reply thread in one): message rows may resolve senders from the other
     // server, who are in neither of this server's rosters, through `POST /api/actors/resolve`.
@@ -2270,11 +2293,11 @@ private fun SharedThreadRouteContentContent(
         remember(memberAvatarResolver, jointMessageSurface) {
             memberAvatarResolver.forJointSurface(jointMessageSurface)
         }
-    // §18.8: flip Grace -> Locked locally at the deadline without waiting for a
-    // new server snapshot. Recompute `jointBillingNotice` via a state bump.
-    LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
+    // §18.8 / slock #15653: flip Upcoming/Grace -> Frozen/Locked locally at the deadline without
+    // waiting for a new server snapshot. Recompute notice state via a state bump.
+    LaunchedEffect(nextChannelLimitDeadline, payload.instanceId) {
         val deadline =
-            jointGraceDeadlineLabel?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
+            nextChannelLimitDeadline?.let { parseRaftTimestampEpochMillisOrNull(it, 0) }
         if (deadline != null) {
             val remaining =
                 deadline -
@@ -3668,13 +3691,13 @@ private fun SharedThreadRouteContentContent(
                 .withThreadMembersProjection(threadMembersProjection)
                 .withFirstFrameKnownMarkdownChannelNames(firstFrameHomeSnapshot)
         }
-    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && !threadLimitLocked)
     val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
     val renderedTimelineSlice =
         timelineSlice
-            .withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+            .withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && !threadLimitLocked)
             .withThreadViewerMessageActions(
                 viewerIsGuest = threadViewerIsGuest,
                 forwardSourceAvailable = threadForwardSourceAvailable
@@ -8008,6 +8031,19 @@ private fun SharedThreadRouteContentContent(
             writeActionsEnabled = renderSlice.writeActionsEnabled,
             jointBillingNotice = jointBillingNotice,
             jointGraceDeadlineLabel = jointGraceDeadlineLabel,
+            externalFreezeState = externalFreezeState,
+            billingServerName =
+                (headerProjectionServerId?.value?.let { sid ->
+                    currentSession?.servers?.firstOrNull { it.id == sid }?.name
+                } ?: currentSession?.currentServerSummary()?.name).orEmpty(),
+            billingServerPlan =
+                headerProjectionServerId?.value?.let { sid ->
+                    currentSession?.servers?.firstOrNull { it.id == sid }?.plan
+                } ?: currentSession?.currentServerSummary()?.plan,
+            billingServerRole =
+                headerProjectionServerId?.value?.let { sid ->
+                    currentSession?.servers?.firstOrNull { it.id == sid }?.role
+                } ?: currentSession?.currentServerSummary()?.role,
             channelProfileUpdateStatus = renderSlice.channelProfileUpdateStatus,
             channelProfileUpdateErrorCode = renderSlice.channelProfileUpdateErrorCode,
             replyMetadataByParentId = replyMetadataByParentId,
@@ -8669,7 +8705,7 @@ private fun SharedThreadRouteContentContent(
             threadSelectTextQuoteTarget(
                 surfaceKind = renderedThread.surfaceKind,
                 composerAvailable =
-                    jointBillingNotice != JointBillingNotice.Locked &&
+                    !threadLimitLocked &&
                         shouldShowThreadComposerForReadyContent(
                             joined = payload.joined && renderSlice.writeActionsEnabled,
                             showComposer = payload.showComposer && renderSlice.writeActionsEnabled,

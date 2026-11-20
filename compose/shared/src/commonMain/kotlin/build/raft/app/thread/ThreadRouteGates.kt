@@ -263,6 +263,93 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
 internal enum class JointBillingNotice { None, Grace, Locked }
 
 /**
+ * Free plan external channel freeze state (botiverse/slock #15653 `utils/jointChannelLimit.ts`).
+ * Applies to ANY channel type with `externalFreezeAt` (public, private, joint); reply threads
+ * inherit from their parent channel projection.
+ */
+internal sealed interface ExternalFreezeState {
+    data object None : ExternalFreezeState
+    data class Upcoming(val deadlineIso: String) : ExternalFreezeState
+    data object Active : ExternalFreezeState
+}
+
+/**
+ * Action label for `ExternalFreezeNotice` / `ExternalFrozenBanner` (web `ChannelLimitBanners.tsx`):
+ * matches `raftUpgradeOutcome` so the button label and its action always agree.
+ */
+internal enum class ExternalFreezeActionKind { ViewBilling, UpgradeToPro, AskOwner }
+
+internal fun externalFreezeActionKind(plan: String?, role: String?): ExternalFreezeActionKind =
+    when {
+        !plan.isNullOrBlank() && plan != "free" -> ExternalFreezeActionKind.ViewBilling
+        role == "owner" -> ExternalFreezeActionKind.UpgradeToPro
+        else -> ExternalFreezeActionKind.AskOwner
+    }
+
+/** Web `ExternalFrozenBanner`: owners and admins may upgrade or leave extra channels; others ask an owner. */
+internal fun externalFrozenUsesManagerCopy(role: String?): Boolean =
+    role == "owner" || role == "admin"
+
+internal fun threadLimitLocksWrites(
+    jointBillingNotice: JointBillingNotice,
+    externalFreezeState: ExternalFreezeState,
+): Boolean =
+    jointBillingNotice == JointBillingNotice.Locked || externalFreezeState == ExternalFreezeState.Active
+
+/**
+ * Resolve the free-plan external channel freeze state for the rendered channel or reply thread.
+ * Unlike [jointBillingNoticeState], `externalFreezeAt` applies to any channel type (not only
+ * `ConversationKind.Joint`). Reply threads inherit from their parent channel projection; DMs never
+ * carry an external freeze.
+ */
+internal fun externalFreezeState(
+    surfaceKind: String?,
+    parentChannelId: String?,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    nowEpochMillis: Long? = null,
+): ExternalFreezeState {
+    if (surfaceKind == RaftThreadSurfaceKind.DirectMessage) return ExternalFreezeState.None
+    fun freezeFor(id: String?): ExternalFreezeState {
+        val projection = id?.let { projections[it] } ?: return ExternalFreezeState.None
+        if (projection.conversationKind == ConversationKind.DirectMessage ||
+            projection.conversationKind == ConversationKind.Thread
+        ) {
+            return ExternalFreezeState.None
+        }
+        val freezeAt = projection.externalFreezeAt?.takeIf { it.isNotBlank() }
+            ?: return ExternalFreezeState.None
+        val deadlineMillis = parseRaftTimestampEpochMillisOrNull(freezeAt, 0)
+            ?: return ExternalFreezeState.None
+        if (nowEpochMillis != null && nowEpochMillis >= deadlineMillis) {
+            return ExternalFreezeState.Active
+        }
+        return ExternalFreezeState.Upcoming(freezeAt)
+    }
+    if (surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+        val parent = freezeFor(parentChannelId)
+        if (parent != ExternalFreezeState.None) return parent
+    }
+    return lookupIds.firstNotNullOfOrNull { freezeFor(it).takeIf { s -> s != ExternalFreezeState.None } }
+        ?: ExternalFreezeState.None
+}
+
+/**
+ * Earliest upcoming deadline ISO across external freeze and legacy joint grace so a single timer
+ * flips the open conversation to read-only locally at the deadline (web `useRerenderAtJointDeadline`).
+ */
+internal fun nextChannelLimitDeadlineIso(
+    externalFreeze: ExternalFreezeState,
+    jointBillingNotice: JointBillingNotice,
+    jointGraceDeadlineIso: String?,
+): String? =
+    when {
+        externalFreeze is ExternalFreezeState.Upcoming -> externalFreeze.deadlineIso
+        jointBillingNotice == JointBillingNotice.Grace -> jointGraceDeadlineIso?.takeIf { it.isNotBlank() }
+        else -> null
+    }
+
+/**
  * The rendered surface is a joint channel, or a reply thread / task conversation in one: the
  * route's own kinds and task channel type first, then the conversation directory projection of
  * the parent or any lookup id.
@@ -305,6 +392,11 @@ internal fun jointBillingNoticeState(
         val projection = id?.let { projections[it] } ?: return JointBillingNotice.None
         if (projection.conversationKind != ConversationKind.Joint) return JointBillingNotice.None
         if (projection.jointBillingLocked == true) return JointBillingNotice.Locked
+        // Web `jointChannelGraceEndsAt` (botiverse/slock #15653): one notice at a time; when the
+        // channel carries a valid `externalFreezeAt`, the external freeze notice replaces joint grace.
+        if (projection.externalFreezeAt?.takeIf { it.isNotBlank() }?.let { parseRaftTimestampEpochMillisOrNull(it, 0) } != null) {
+            return JointBillingNotice.None
+        }
         val graceEndsAt = projection.jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() }
             ?: return JointBillingNotice.None
         // §18.8: "now >= graceEndsAt" means the grace period has ended and the
