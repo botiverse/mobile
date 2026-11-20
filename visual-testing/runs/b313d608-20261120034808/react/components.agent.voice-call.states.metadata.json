@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent.voice-call.states",
+  "image": "visual-testing-results/react/components.agent.voice-call.states.png",
+  "viewport": {
+    "width": 1280,
+    "height": 1200,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 1200,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.agent.voice-call.states']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 24,
+      "y": 24,
+      "width": 392,
+      "height": 1031
+    },
+    "targetRect": {
+      "x": 24,
+      "y": 24,
+      "width": 392,
+      "height": 1031
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:18:30.662Z"
+}

@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.message-card.fields.phone",
+  "image": "visual-testing-results/react/components.message-card.fields.phone.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.message-card.fields.phone']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 378
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 378
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:18:20.818Z"
+}

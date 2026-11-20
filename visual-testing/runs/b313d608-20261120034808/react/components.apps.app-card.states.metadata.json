@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.apps.app-card.states",
+  "image": "visual-testing-results/react/components.apps.app-card.states.png",
+  "viewport": {
+    "width": 1280,
+    "height": 1000,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 1000,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.apps.app-card.states']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 960,
+      "height": 948
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 960,
+      "height": 948
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:19:11.104Z"
+}

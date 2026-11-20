@@ -1,0 +1,53 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.runtime-form.create.claude",
+  "image": "visual-testing-results/react/components.runtime-form.create.claude.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 945,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.runtime-form.create.claude']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 945
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 945
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 945,
+    "initialOverflowPx": 101,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div.r-scroll-area.r-scroll-area--medium.r-scroll-area--hover-trigger.r-scroll-area--vertical-orientation"
+  },
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:21:01.316Z"
+}

@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.action-card.agent-migrate",
+  "image": "visual-testing-results/react/components.action-card.agent-migrate.png",
+  "viewport": {
+    "width": 640,
+    "height": 360,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 640,
+    "height": 360,
+    "density": 2
+  },
+  "selector": "[data-visual-case='components.action-card.agent-migrate']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 265
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 265
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2.0000000596046448
+  },
+  "capturedAt": "2026-11-20T03:40:50.526Z"
+}

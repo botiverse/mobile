@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.action-card.expired-agent",
+  "image": "visual-testing-results/react/components.action-card.expired-agent.png",
+  "viewport": {
+    "width": 640,
+    "height": 600,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 640,
+    "height": 600,
+    "density": 2
+  },
+  "selector": "[data-visual-case='components.action-card.expired-agent']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 286
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 286
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2.0000000596046448
+  },
+  "capturedAt": "2026-11-20T03:20:14.107Z"
+}

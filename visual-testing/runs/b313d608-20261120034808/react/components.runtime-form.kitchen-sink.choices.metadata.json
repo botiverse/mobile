@@ -1,0 +1,53 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.runtime-form.kitchen-sink.choices",
+  "image": "visual-testing-results/react/components.runtime-form.kitchen-sink.choices.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 1786,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.runtime-form.kitchen-sink.choices']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1786
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1786
+    },
+    "outset": null
+  },
+  "fullLength": {
+    "requested": true,
+    "baseViewportHeight": 844,
+    "expandedViewportHeight": 1786,
+    "initialOverflowPx": 942,
+    "residualOverflowPx": 0,
+    "iterations": 1,
+    "capped": false,
+    "maxHeight": 2700,
+    "scroller": "div.r-scroll-area.r-scroll-area--medium.r-scroll-area--hover-trigger.r-scroll-area--vertical-orientation"
+  },
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:18:50.157Z"
+}

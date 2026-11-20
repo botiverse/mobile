@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.apps.discover.admin.narrow",
+  "image": "visual-testing-results/react/screens.apps.discover.admin.narrow.png",
+  "viewport": {
+    "width": 360,
+    "height": 1500,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 360,
+    "height": 1500,
+    "density": 2
+  },
+  "selector": "[data-visual-case='screens.apps.discover.admin.narrow']",
+  "crop": {
+    "mode": "element",
+    "contract": "viewport-with-portal",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 1500
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 360,
+      "height": 1500
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2.0000000596046448
+  },
+  "capturedAt": "2026-11-20T03:41:40.801Z"
+}

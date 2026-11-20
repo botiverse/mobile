@@ -32,5 +32,12 @@
     "outset": null
   },
   "fullLength": null,
-  "capturedAt": "2026-11-19T18:38:11.173Z"
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:41:57.129Z"
 }

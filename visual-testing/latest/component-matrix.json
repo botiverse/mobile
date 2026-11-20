@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-19T19:16:22.103Z",
-  "runId": "a9f40757-20261119184104",
+  "generatedAt": "2026-11-20T03:50:05.224Z",
+  "runId": "b313d608-20261120034808",
   "baseline": "react",
   "current": "android",
   "summary": {
-    "total": 187,
-    "active": 167,
+    "total": 204,
+    "active": 184,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
@@ -16,24 +16,24 @@
         "skipped": 2
       },
       "real-screen": {
-        "total": 53,
-        "active": 38,
+        "total": 70,
+        "active": 55,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 157,
+        "active": 174,
         "pending": 13,
         "unsupported": 0,
-        "total": 170
+        "total": 187
       },
       "android": {
-        "active": 79,
+        "active": 84,
         "pending": 26,
         "unsupported": 0,
-        "total": 105
+        "total": 110
       },
       "harmony": {
         "active": 0,
@@ -50,6 +50,47 @@
     }
   },
   "rows": [
+    {
+      "id": "screens.wide.activity-task",
+      "title": "Wide: Activity beside an open task",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/activity",
+      "surface": "activity",
+      "group": "app/activity",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout"
+          ],
+          "path": "packages/web/visual-testing/WideShellCases.tsx",
+          "fixture": "packages/web/visual-testing/WideShellCases.tsx#prime",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.WideShellVisualFixture"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/WideShellVisualFixtures.kt",
+          "fixture": "compose_wide_shell_visual?scene=activity-task",
+          "reason": ""
+        }
+      },
+      "notes": "Wide-layout parity (mobile #proj-mobile:#195): a 1280x800 window (a 10-11\" tablet in landscape) by touch, `viewport.pointer: coarse`, captured at 2x (Android wide lane: wm size 2560x1600, wm density 320). Activity column (head on the canvas with title and counts on one line, the inbox toolbar 49px by touch, compact rows) beside a task conversation (its bar one line from 768). React renders the real MainLayout route with the shared primed stores; the harness serves no task, thread or message loads yet, so on React the task / thread columns are not open and channel messages show their loading rows: a known gap, not a parity verdict.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9788038175296176,
+        "pixelPerfectSimilarity": 0.93993701171875,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.wide.activity-task.side-by-side.png"
+      }
+    },
     {
       "id": "components.agent-context-view.count-matched",
       "title": "View Context: count matched (desktop side column)",
@@ -636,6 +677,436 @@
       }
     },
     {
+      "id": "screens.apps.discover.admin",
+      "title": "Apps page, Discover: an owner (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "components/apps/AppsRecommendedSection",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner: Add on what isn't added, Added on Tracker and Notion; Add app ends the toolbar. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.admin.dark",
+      "title": "Apps page, Discover: an owner (desktop, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "components/apps/AppsRecommendedSection",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner: Add on what isn't added, Added on Tracker and Notion; Add app ends the toolbar. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.admin.narrow",
+      "title": "Apps page, Discover: an owner (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "components/apps/AppsRecommendedSection",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner: Add on what isn't added, Added on Tracker and Notion; Add app ends the toolbar. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select and Add app as + for the owner), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.detail",
+      "title": "Apps page, Discover: an owner opened Retro Board, not added (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/MarketplaceListingDetail",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Retro Board's card (not its Add): its details open in the same dialog as Yours' details, with Add at the head's top right before x (R41, the A2 example), and what adding approves further down. Close in the footer. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.detail.narrow",
+      "title": "Apps page, Discover: an owner opened Retro Board, not added (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/MarketplaceListingDetail",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Retro Board's card (not its Add): its details open in the same dialog as Yours' details, with Add at the head's top right before x (R41, the A2 example), and what adding approves further down. Close in the footer. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select and Add app as + for the owner), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.install-confirm",
+      "title": "Apps page, Discover: an owner pressed Retro Board's Add, its install confirmation (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/MarketplaceInstallConfirm",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Retro Board's Add on its card (not the card): its install confirmation opens (MarketplaceInstallConfirm), not its details: what installing approves (its permissions; Retro Board offers no bot, and with the agent-text consent flag off no agent text), then Cancel and Add. At 1280px: the dialog over two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.install-confirm.narrow",
+      "title": "Apps page, Discover: an owner pressed Retro Board's Add, its install confirmation (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/MarketplaceInstallConfirm",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Retro Board's Add on its card (not the card): its install confirmation opens (MarketplaceInstallConfirm), not its details: what installing approves (its permissions; Retro Board offers no bot, and with the agent-text consent flag off no agent text), then Cancel and Add. In a 360px window: the dialog fits the window, nothing wider than it, Cancel and Add reachable.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.member-no-discover",
+      "title": "Apps page, Discover: a member has no Discover (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Viewer is a member following the same link: members have no Discover (R15), so the page shows Yours alone, read-only (Tracker, Notion), with no scope switch, no Add app and no Recommended; nothing of Discover is read. At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.member-no-discover.narrow",
+      "title": "Apps page, Discover: a member has no Discover (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/YoursAppsList",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Viewer is a member following the same link: members have no Discover (R15), so the page shows Yours alone, read-only (Tracker, Notion), with no scope switch, no Add app and no Recommended; nothing of Discover is read. In a 360px window: one column of cards, the toolbar on its narrow steps (the search and the Source filter; no scope, no Add app), nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.service-detail",
+      "title": "Apps page, Discover: an owner opened Linear, a connected service not added (desktop)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/DiscoverServiceDetail",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Linear's card (not its Add): its details say what Raft's listing says (R40): 'By Linear' under the name, Add at the head's top right, About (its description) and Information (Developer, Listed by Raft, Website, Category). No Tools section (the service lists its tools only once someone signs in) and no Try asking (the listing has no examples). At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.service-detail.dark",
+      "title": "Apps page, Discover: an owner opened Linear, a connected service not added (desktop, dark)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/DiscoverServiceDetail",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Linear's card (not its Add): its details say what Raft's listing says (R40): 'By Linear' under the name, Add at the head's top right, About (its description) and Information (Developer, Listed by Raft, Website, Category). No Tools section (the service lists its tools only once someone signs in) and no Try asking (the listing has no examples). At 1280px: two columns of cards.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.apps.discover.service-detail.narrow",
+      "title": "Apps page, Discover: an owner opened Linear, a connected service not added (360px)",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/apps",
+      "surface": "apps",
+      "group": "app/apps",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "features/apps/IntegrationsSection",
+            "features/apps/DiscoverAppsList",
+            "features/apps/DiscoverServiceDetail",
+            "features/apps/AppCard",
+            "components/apps/AppsToolbar"
+          ],
+          "fixture": "packages/web/visual-testing/AppsDiscoverCases.tsx#fixtureAnswers",
+          "path": "packages/web/visual-testing/AppsDiscoverCases.tsx",
+          "reason": ""
+        }
+      },
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsDiscoverCases.tsx stubs api.get); the page opens from its address with ?tab=discover. Discover: 'Recommended for {server}' on top with Stamp (Raft's, Official, not added: Add; no line saying why), then 'All apps': Stamp, Tracker (added), Notion (a connected service, added), Linear (a connected service, not added), Retro Board (a Raft App, not added), Postgres (a connected service with no maker named: 'Listed by Raft'), and an App with a long name, description and publisher. Every card is the same AppCard as Yours, its Discover variant: who makes it and how widely it is used, then Add or Added; no state, no App type, no address. Toolbar: Yours 2 / Discover 7, the search, one filter (Category, showing All categories); no Type, no Sort. Viewer is the Server's owner; the case's interactions press Linear's card (not its Add): its details say what Raft's listing says (R40): 'By Linear' under the name, Add at the head's top right, About (its description) and Information (Developer, Listed by Raft, Website, Category). No Tools section (the service lists its tools only once someone signs in) and no Try asking (the listing has no examples). In a 360px window: the details fit the window, the head's name, source and Add without overflow, Information's rows nothing wider than the window.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "missing",
+        "rawStatus": "missing",
+        "acceptance": "",
+        "rgbSimilarity": null,
+        "pixelPerfectSimilarity": null,
+        "sideBySideImage": null
+      }
+    },
+    {
       "id": "screens.apps.yours.admin",
       "title": "Apps page, Yours: an owner with a mix of Apps (desktop)",
       "captureType": "real-screen",
@@ -798,7 +1269,7 @@
           "reason": ""
         }
       },
-      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. At 1280px: two columns of cards.",
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: Yours alone with no scope switch (members have no Discover, R15), the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. At 1280px: two columns of cards.",
       "comparison": {
         "baseline": "react",
         "current": "android",
@@ -868,7 +1339,7 @@
           "reason": ""
         }
       },
-      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. In a 360px window: one column of cards, the toolbar on its narrow steps (the scope as a Select, Add app as +), nothing wider than the window.",
+      "notes": "React only, no baseline or parity gate: the Apps page is web-only in phase 1 of the Apps redesign (#wg-apps-ux:#2). The real IntegrationsSection (variant page) with no app shell around it, over fixture answers to its reads (AppsYoursCases.tsx stubs api.get). The same Server read by a member: Yours alone with no scope switch (members have no Discover, R15), the line that says who can change Apps, no Add app, no state and no button on any card (the server marks what waits for App managers only), the Apps in today's order. An App built here names its maker for a member too (Deploy bot, 'Internal · made by artin'; Draft tool, whose maker left, 'Internal'). The notice still tells a member that an update waits for an owner or admin. In a 360px window: one column of cards, the toolbar on its narrow steps (no scope and no Add app for a member), nothing wider than the window.",
       "comparison": {
         "baseline": "react",
         "current": "android",
@@ -1222,6 +1693,47 @@
       "comparison": null
     },
     {
+      "id": "screens.wide.settings",
+      "title": "Wide: Settings with Appearance open",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/settings",
+      "surface": "settings",
+      "group": "app/settings",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout"
+          ],
+          "path": "packages/web/visual-testing/WideShellCases.tsx",
+          "fixture": "packages/web/visual-testing/WideShellCases.tsx#prime",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.WideShellVisualFixture"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/WideShellVisualFixtures.kt",
+          "fixture": "compose_wide_shell_visual?scene=settings",
+          "reason": ""
+        }
+      },
+      "notes": "Wide-layout parity (mobile #proj-mobile:#195): a 1280x800 window (a 10-11\" tablet in landscape) by touch, `viewport.pointer: coarse`, captured at 2x (Android wide lane: wm size 2560x1600, wm density 320). Settings groups in the list column, Appearance in the detail. React renders the real MainLayout route with the shared primed stores; the harness serves no task, thread or message loads yet, so on React the task / thread columns are not open and channel messages show their loading rows: a known gap, not a parity verdict.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9545776003370237,
+        "pixelPerfectSimilarity": 0.735211181640625,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.wide.settings.side-by-side.png"
+      }
+    },
+    {
       "id": "screens.shell.open-in-app.desktop-download",
       "title": "Open in Raft Desktop: no sign of the app, so the download",
       "captureType": "real-screen",
@@ -1285,6 +1797,47 @@
         "rgbSimilarity": null,
         "pixelPerfectSimilarity": null,
         "sideBySideImage": null
+      }
+    },
+    {
+      "id": "screens.wide.tasks-task",
+      "title": "Wide: Tasks list with a task open",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/tasks",
+      "surface": "tasks",
+      "group": "app/tasks",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout"
+          ],
+          "path": "packages/web/visual-testing/WideShellCases.tsx",
+          "fixture": "packages/web/visual-testing/WideShellCases.tsx#prime",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.WideShellVisualFixture"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/WideShellVisualFixtures.kt",
+          "fixture": "compose_wide_shell_visual?scene=tasks-task",
+          "reason": ""
+        }
+      },
+      "notes": "Wide-layout parity (mobile #proj-mobile:#195): a 1280x800 window (a 10-11\" tablet in landscape) by touch, `viewport.pointer: coarse`, captured at 2x (Android wide lane: wm size 2560x1600, wm density 320). A page of a list (head, toolbar, list) with the open task's conversation in its column. React renders the real MainLayout route with the shared primed stores; the harness serves no task, thread or message loads yet, so on React the task / thread columns are not open and channel messages show their loading rows: a known gap, not a parity verdict.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9545060776654478,
+        "pixelPerfectSimilarity": 0.80383984375,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.wide.tasks-task.side-by-side.png"
       }
     },
     {
@@ -1601,7 +2154,7 @@
         "rawStatus": "different",
         "acceptance": "",
         "rgbSimilarity": 0.9689504504898095,
-        "pixelPerfectSimilarity": 0.9124674255006009,
+        "pixelPerfectSimilarity": 0.9124677630601801,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.comment-anchor.side-by-side.png"
       }
     },
@@ -1625,6 +2178,88 @@
         "rgbSimilarity": 0.9831319400333264,
         "pixelPerfectSimilarity": 0.9622956014175527,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.forward-modal.side-by-side.png"
+      }
+    },
+    {
+      "id": "screens.wide.channel",
+      "title": "Wide: channel conversation",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout"
+          ],
+          "path": "packages/web/visual-testing/WideShellCases.tsx",
+          "fixture": "packages/web/visual-testing/WideShellCases.tsx#prime",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.WideShellVisualFixture"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/WideShellVisualFixtures.kt",
+          "fixture": "compose_wide_shell_visual?scene=channel",
+          "reason": ""
+        }
+      },
+      "notes": "Wide-layout parity (mobile #proj-mobile:#195): a 1280x800 window (a 10-11\" tablet in landscape) by touch, `viewport.pointer: coarse`, captured at 2x (Android wide lane: wm size 2560x1600, wm density 320). The Chat sidebar (no head under the top bar) beside a channel conversation and its composer. React renders the real MainLayout route with the shared primed stores; the harness serves no task, thread or message loads yet, so on React the task / thread columns are not open and channel messages show their loading rows: a known gap, not a parity verdict.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9658400144889175,
+        "pixelPerfectSimilarity": 0.73416650390625,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.wide.channel.side-by-side.png"
+      }
+    },
+    {
+      "id": "screens.wide.channel-thread",
+      "title": "Wide: channel with its thread beside it",
+      "captureType": "real-screen",
+      "captureGroup": "Screens Parity",
+      "category": "app/thread",
+      "surface": "thread",
+      "group": "app/thread",
+      "status": "active",
+      "providers": {
+        "react": {
+          "status": "active",
+          "components": [
+            "components/layout/MainLayout"
+          ],
+          "path": "packages/web/visual-testing/WideShellCases.tsx",
+          "fixture": "packages/web/visual-testing/WideShellCases.tsx#prime",
+          "reason": ""
+        },
+        "android": {
+          "status": "active",
+          "components": [
+            "build.raft.app.WideShellVisualFixture"
+          ],
+          "path": "compose/shared/src/visualFixtures/kotlin/build/raft/app/WideShellVisualFixtures.kt",
+          "fixture": "compose_wide_shell_visual?scene=channel-thread",
+          "reason": ""
+        }
+      },
+      "notes": "Wide-layout parity (mobile #proj-mobile:#195): a 1280x800 window (a 10-11\" tablet in landscape) by touch, `viewport.pointer: coarse`, captured at 2x (Android wide lane: wm size 2560x1600, wm density 320). The channel with a thread column beside it (the thread splits off from a 720px row in landscape). React renders the real MainLayout route with the shared primed stores; the harness serves no task, thread or message loads yet, so on React the task / thread columns are not open and channel messages show their loading rows: a known gap, not a parity verdict.",
+      "comparison": {
+        "baseline": "react",
+        "current": "android",
+        "status": "different",
+        "rawStatus": "different",
+        "acceptance": "",
+        "rgbSimilarity": 0.9593325763378677,
+        "pixelPerfectSimilarity": 0.722442138671875,
+        "sideBySideImage": "visual-testing-results/diff/react__android/screens.wide.channel-thread.side-by-side.png"
       }
     },
     {
@@ -1916,7 +2551,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9138671867501548,
+        "rgbSimilarity": 0.9138671783314102,
         "pixelPerfectSimilarity": 0.7871081349962968,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.agent-lifecycle-actions.side-by-side.png"
       }
@@ -2586,8 +3221,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.853111324318134,
-        "pixelPerfectSimilarity": 0.8136372541816668,
+        "rgbSimilarity": 0.8531112410841613,
+        "pixelPerfectSimilarity": 0.813636029681875,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.md-wrap-task607.side-by-side.png"
       }
     },
@@ -2641,8 +3276,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9777775268701736,
-        "pixelPerfectSimilarity": 0.9233865848102589,
+        "rgbSimilarity": 0.9777774819606421,
+        "pixelPerfectSimilarity": 0.923387331675293,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message-row.rich-content.side-by-side.png"
       }
     },
@@ -3836,8 +4471,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.926472760530555,
-        "pixelPerfectSimilarity": 0.788017647614804,
+        "rgbSimilarity": 0.9236946504882814,
+        "pixelPerfectSimilarity": 0.7820877384858428,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-custom-provider-dialog.side-by-side.png"
       }
     },
@@ -3858,8 +4493,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9419437748409624,
-        "pixelPerfectSimilarity": 0.8648266294000891,
+        "rgbSimilarity": 0.9396655027259813,
+        "pixelPerfectSimilarity": 0.8579096960613548,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.claude-dialog.side-by-side.png"
       }
     },
@@ -3880,8 +4515,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9476055628229723,
-        "pixelPerfectSimilarity": 0.8693468897260367,
+        "rgbSimilarity": 0.945342772558113,
+        "pixelPerfectSimilarity": 0.8624991561010519,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-empty.side-by-side.png"
       }
     },
@@ -3902,8 +4537,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9401030765754128,
-        "pixelPerfectSimilarity": 0.8561847666113069,
+        "rgbSimilarity": 0.9380415662482957,
+        "pixelPerfectSimilarity": 0.8502207639648398,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog-error.side-by-side.png"
       }
     },
@@ -3978,7 +4613,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9346192086389172,
+        "rgbSimilarity": 0.9346191990937001,
         "pixelPerfectSimilarity": 0.8451832023409436,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-missing.side-by-side.png"
       }
@@ -4000,8 +4635,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.8623282981146299,
-        "pixelPerfectSimilarity": 0.7809458502229587,
+        "rgbSimilarity": 0.8623282926078915,
+        "pixelPerfectSimilarity": 0.7809495948050165,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.members.agent-detail.profile.computer-offline.side-by-side.png"
       }
     },
@@ -4320,8 +4955,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9443501204619538,
-        "pixelPerfectSimilarity": 0.9040442326667149,
+        "rgbSimilarity": 0.9443513080153249,
+        "pixelPerfectSimilarity": 0.9040502490794888,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.composer.empty.side-by-side.png"
       }
     },
@@ -4652,8 +5287,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9852122525620874,
-        "pixelPerfectSimilarity": 0.9341641264718188,
+        "rgbSimilarity": 0.9852125489957083,
+        "pixelPerfectSimilarity": 0.9341694002327486,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.message.row.side-by-side.png"
       }
     },
@@ -5334,8 +5969,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9421379549961126,
-        "pixelPerfectSimilarity": 0.8651182808765747,
+        "rgbSimilarity": 0.9398596828811315,
+        "pixelPerfectSimilarity": 0.8582013475378404,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.members.create-agent.dialog.side-by-side.png"
       }
     },
@@ -5905,8 +6540,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.7072484975716256,
-        "pixelPerfectSimilarity": 0.6140927021696252,
+        "rgbSimilarity": 0.7072483931181042,
+        "pixelPerfectSimilarity": 0.614093207909776,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.appearance.page.side-by-side.png"
       }
     },
@@ -6032,7 +6667,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.905414458525499,
+        "rgbSimilarity": 0.905414457340291,
         "pixelPerfectSimilarity": 0.8869301490588619,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.root.page.side-by-side.png"
       }
@@ -6090,7 +6725,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.962934431653614,
+        "rgbSimilarity": 0.9629345694544628,
         "pixelPerfectSimilarity": 0.9141105158649019,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.settings.server.profile.side-by-side.png"
       }
@@ -6319,7 +6954,7 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9733781787485489,
+        "rgbSimilarity": 0.9733780484020133,
         "pixelPerfectSimilarity": 0.8911301044634378,
         "sideBySideImage": "visual-testing-results/diff/react__android/components.thread.header.states.side-by-side.png"
       }
@@ -6980,8 +7615,8 @@
         "status": "different",
         "rawStatus": "different",
         "acceptance": "",
-        "rgbSimilarity": 0.9784540274299577,
-        "pixelPerfectSimilarity": 0.8620701178758051,
+        "rgbSimilarity": 0.9784537723849422,
+        "pixelPerfectSimilarity": 0.8620586408501101,
         "sideBySideImage": "visual-testing-results/diff/react__android/screens.home.loading.side-by-side.png"
       }
     },

@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.apps.discover.detail",
+  "image": "visual-testing-results/react/screens.apps.discover.detail.png",
+  "viewport": {
+    "width": 1280,
+    "height": 900,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 900,
+    "density": 1
+  },
+  "selector": "[data-visual-case='screens.apps.discover.detail']",
+  "crop": {
+    "mode": "element",
+    "contract": "viewport-with-portal",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 900
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 900
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:19:13.355Z"
+}

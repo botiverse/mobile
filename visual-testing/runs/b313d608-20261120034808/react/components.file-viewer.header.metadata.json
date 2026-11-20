@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.file-viewer.header",
+  "image": "visual-testing-results/react/components.file-viewer.header.png",
+  "viewport": {
+    "width": 1280,
+    "height": 400,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 400,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.file-viewer.header']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 262
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 262
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:20:48.493Z"
+}

@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent.voice-call.phone",
+  "image": "visual-testing-results/react/components.agent.voice-call.phone.png",
+  "viewport": {
+    "width": 390,
+    "height": 1400,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 390,
+    "height": 1400,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.agent.voice-call.phone']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1051
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 1051
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:40:58.258Z"
+}

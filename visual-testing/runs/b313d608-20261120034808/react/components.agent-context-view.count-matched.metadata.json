@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent-context-view.count-matched",
+  "image": "visual-testing-results/react/components.agent-context-view.count-matched.png",
+  "viewport": {
+    "width": 1280,
+    "height": 1000,
+    "density": 1
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 1000,
+    "density": 1
+  },
+  "selector": "[data-visual-case='components.agent-context-view.count-matched']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 1000
+    },
+    "targetRect": {
+      "x": 840,
+      "y": 0,
+      "width": 440,
+      "height": 1000
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:20:25.657Z"
+}

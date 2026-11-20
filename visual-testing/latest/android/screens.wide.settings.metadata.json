@@ -1,0 +1,53 @@
+            {
+              "provider": "android",
+              "providerType": "android-kuikly-shared-page",
+              "source": "kmp-shared",
+              "caseId": "screens.wide.settings",
+              "appLocale": null,
+              "stringDescLocale": null,
+              "route": {"pageName":"compose_wide_shell_visual","realProductRoute":false},
+              "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/screens.wide.settings.png",
+              "viewport": { "width": 2560, "height": 1600, "density": 1 },
+              "systemBars": "hidden",
+              "crop": {
+                "mode": "manual-rect",
+                "contract": "viewport-bounds",
+                "rect": { "x": 0, "y": 0, "width": 1280, "height": 800 }
+              },
+              "capture": {
+                "method": "app-window-root-draw-viewport-density-resize",
+                "fullscreen": true,
+                "systemBars": "hidden",
+                "validation": {
+                  "uniqueColors": 566,
+                  "dominantRatio": 0.85773826
+                },
+                "readyTokenObserved": false,
+                "readyTokenRequired": false,
+                "stableFrameCount": 1
+              },
+              "diagnostics": {
+    "displayWidthPx": 2560,
+    "displayHeightPx": 1406,
+    "densityDpi": 320,
+    "rootWidthPx": 2560,
+    "rootHeightPx": 1600,
+    "hardwareAccelerated": true,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
+    "targetPackage": "build.raft.app.connectedtest",
+    "processId": 4709,
+    "processUid": 10192
+},
+              "captureIdentity": {
+                "attempt": 1,
+                "generation": "4593ed18ba15f7e5986e10c0599819d9",
+                "bootId": "8e7b3b1b-209c-4b0a-bbe4-c6a31d6401e2",
+                "capturedAtEpochMs": 1795146313323,
+                "capturedAtMonotonicNs": 88062954586
+              },
+              "clampedToShortWindow": false,
+              "fullLength": null,
+              "capturedAt": "1795146313323"
+            }

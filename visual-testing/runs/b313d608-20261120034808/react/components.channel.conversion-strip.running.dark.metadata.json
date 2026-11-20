@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.channel.conversion-strip.running.dark",
+  "image": "visual-testing-results/react/components.channel.conversion-strip.running.dark.png",
+  "viewport": {
+    "width": 800,
+    "height": 600,
+    "density": 3
+  },
+  "captureViewport": {
+    "width": 800,
+    "height": 600,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.channel.conversion-strip.running.dark']",
+  "crop": {
+    "mode": "element",
+    "contract": "page-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 800,
+      "height": 360
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 800,
+      "height": 360
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": false,
+    "fine": true,
+    "hoverNone": false,
+    "desktopDensity": true,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:19:20.523Z"
+}

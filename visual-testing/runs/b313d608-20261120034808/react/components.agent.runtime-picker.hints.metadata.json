@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.agent.runtime-picker.hints",
+  "image": "visual-testing-results/react/components.agent.runtime-picker.hints.png",
+  "viewport": {
+    "width": 480,
+    "height": 560,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 480,
+    "height": 560,
+    "density": 2
+  },
+  "selector": "body",
+  "crop": {
+    "mode": "element",
+    "contract": "modal-viewport",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 560
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 480,
+      "height": 560
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2.0000000596046448
+  },
+  "capturedAt": "2026-11-20T03:18:57.554Z"
+}

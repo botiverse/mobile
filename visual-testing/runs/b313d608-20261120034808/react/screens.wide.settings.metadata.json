@@ -1,0 +1,45 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "screens.wide.settings",
+  "image": "visual-testing-results/react/screens.wide.settings.png",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "density": 2,
+    "pointer": "coarse"
+  },
+  "captureViewport": {
+    "width": 1280,
+    "height": 800,
+    "density": 2,
+    "pointer": "coarse"
+  },
+  "selector": "[data-visual-case='screens.wide.settings']",
+  "crop": {
+    "mode": "element",
+    "contract": "viewport-with-portal",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 800
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 1280,
+      "height": 800
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2
+  },
+  "capturedAt": "2026-11-20T03:42:12.789Z"
+}

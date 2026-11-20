@@ -1,0 +1,43 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.message-card.markdown",
+  "image": "visual-testing-results/react/components.message-card.markdown.png",
+  "viewport": {
+    "width": 640,
+    "height": 700,
+    "density": 2
+  },
+  "captureViewport": {
+    "width": 640,
+    "height": 700,
+    "density": 2
+  },
+  "selector": "[data-visual-case='components.message-card.markdown']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 295
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 295
+    },
+    "outset": null
+  },
+  "fullLength": null,
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 2.0000000596046448
+  },
+  "capturedAt": "2026-11-20T03:40:46.663Z"
+}

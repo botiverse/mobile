@@ -42,5 +42,12 @@
     "maxHeight": 2700,
     "scroller": null
   },
-  "capturedAt": "2026-11-19T18:30:08.188Z"
+  "pointerMedia": {
+    "coarse": true,
+    "fine": false,
+    "hoverNone": true,
+    "desktopDensity": false,
+    "devicePixelRatio": 3
+  },
+  "capturedAt": "2026-11-20T03:17:58.850Z"
 }
