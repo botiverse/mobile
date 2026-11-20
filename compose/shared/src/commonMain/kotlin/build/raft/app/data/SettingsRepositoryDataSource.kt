@@ -378,6 +378,25 @@ class RealSettingsRepository(
         )
     }
 
+    override suspend fun updateAccountDescription(description: String?): DataResult<AccountDescriptionUpdateResult> {
+        sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.updateSettingsAccount(
+                    DataRequestPriority.Foreground,
+                    buildSharedAccountDescriptionUpdateBody(description)
+                )
+            },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+            errorCodeDecoder = HomeNetworkResponse::settingsAccountRouteErrorCodeOrNull,
+            mapper = { bodyText ->
+                parseSharedAccountDescriptionUpdateResult(bodyText)
+                    ?: throw IllegalStateException("Account description response missing user")
+            }
+        )
+    }
+
     override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
         return executeSettings(
@@ -2525,13 +2544,19 @@ private suspend fun <T> executeSettingsWithDiagnostics(
     source: String? = null,
     warningLogger: (String) -> Unit = {},
     errorTextDecoder: (HomeNetworkResponse) -> String? = { null },
+    errorCodeDecoder: (HomeNetworkResponse) -> String? = { null },
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
     return try {
         val response = block()
         statusCode = response.code
-        if (!response.isSuccessful) return response.toSettingsDataError(errorTextDecoder(response))
+        if (!response.isSuccessful) {
+            return response.toSettingsDataError(
+                serverMessage = errorTextDecoder(response),
+                serverCode = errorCodeDecoder(response)
+            )
+        }
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
         val sourceLabel = source ?: "settings"
@@ -2576,7 +2601,10 @@ private fun DataResult<*>.settingsDiagnosticsResult(): String =
         is DataResult.NoPermission -> "result=no_permission:${blocker.code}"
     }
 
-private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? = null): DataResult<T> {
+private fun <T> HomeNetworkResponse.toSettingsDataError(
+    serverMessage: String? = null,
+    serverCode: String? = null
+): DataResult<T> {
     secondFactorStepUpErrorOrNull<T>(serverMessage)?.let { return it }
     return when (code) {
         401 -> authRequired(serverMessage)
@@ -2585,22 +2613,33 @@ private fun <T> HomeNetworkResponse.toSettingsDataError(serverMessage: String? =
                 PermissionBlocker(
                     code = "server_forbidden",
                     requiredCapability = "server_access",
-                    serverMessage = serverMessage
+                    serverMessage = serverMessage,
+                    serverCode = serverCode
                 )
             )
         in 500..599 ->
             DataResult.Error(
-                ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage)
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode
+                )
             )
         else ->
             DataResult.Error(
-                ScreenError(code = "http_$code", retryable = code != 404, serverMessage = serverMessage)
+                ScreenError(
+                    code = "http_$code",
+                    retryable = code != 404,
+                    serverMessage = serverMessage,
+                    serverCode = serverCode
+                )
             )
     }
 }
 
 @Serializable
-private data class SettingsAccountRouteErrorDto(val error: String? = null)
+private data class SettingsAccountRouteErrorDto(val error: String? = null, val code: String? = null)
 
 @Serializable
 private data class SettingsConnectedAppsRouteErrorDto(val error: String? = null)
@@ -2625,6 +2664,9 @@ private data class SettingsMemberMutationErrorDto(val error: String? = null)
 
 internal fun HomeNetworkResponse.settingsAccountRouteErrorTextOrNull(): String? =
     settingsErrorTextOrNull(SettingsAccountRouteErrorDto.serializer()) { it.error }
+
+internal fun HomeNetworkResponse.settingsAccountRouteErrorCodeOrNull(): String? =
+    settingsErrorTextOrNull(SettingsAccountRouteErrorDto.serializer()) { it.code }
 
 internal fun HomeNetworkResponse.settingsConnectedAppsRouteErrorTextOrNull(): String? =
     settingsErrorTextOrNull(SettingsConnectedAppsRouteErrorDto.serializer()) { it.error }
@@ -3346,6 +3388,18 @@ data class ShareUsageDataUpdateRequestBody(
 
 fun buildSharedShareUsageDataUpdateBody(enabled: Boolean): String =
     settingsRepositoryJson.encodeToString(ShareUsageDataUpdateRequestBody(shareUsageData = enabled))
+
+/**
+ * `PATCH /api/auth/me` `{ description }` (slock `routes/auth.ts` #15664): explicit `null` clears
+ * the stored description (`settingsRepositoryJson` sets `explicitNulls = false`, so this builds
+ * the JSON object directly).
+ */
+fun buildSharedAccountDescriptionUpdateBody(description: String?): String {
+    val normalized = description?.let(::profileDescriptionComparable)?.takeIf { it.isNotEmpty() }
+    return buildJsonObject {
+        put("description", normalized?.let(::JsonPrimitive) ?: JsonNull)
+    }.toString()
+}
 
 fun buildSharedAppearanceUpdateBody(request: SettingsAppearanceUpdateRequest): String =
     settingsRepositoryJson.encodeToString(

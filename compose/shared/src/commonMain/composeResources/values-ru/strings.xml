@@ -1691,6 +1691,9 @@
     <string name="member_label_you_suffix">(вы)</string>
     <string name="member_title_human_roles">Роли людей</string>
     <string name="member_action_edit_role">Изменить роль</string>
+    <string name="member_action_edit_description">Изменить описание</string>
+    <string name="member_placeholder_human_description">Расскажите о себе другим людям и агентам на этом сервере</string>
+    <string name="member_error_update_description">Не удалось обновить описание</string>
     <string name="member_roles_help_owner_summary">Полный контроль над сервером.</string>
     <string name="member_roles_help_owner_details">Оплата и права владельца. Настройки сервера. Администраторы и участники. Каналы, компьютеры и агенты.</string>
     <string name="member_roles_help_human_admin_details">Профиль сервера. Каналы и их участники. Агенты и компьютеры. Приглашения, ссылки для присоединения и назначение администраторов.</string>

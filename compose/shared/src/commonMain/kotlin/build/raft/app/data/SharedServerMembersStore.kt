@@ -1861,6 +1861,76 @@ class SharedServerMembersStore internal constructor(
     }
 
     /**
+     * Confirmed self description edit (`PATCH /api/auth/me` `{ description }`, botiverse/slock
+     * #15664): updates or clears (`null`) the signed-in person's description everywhere this store
+     * holds them (every loaded server roster, profile cache, and channel member slice) and writes
+     * loaded rosters through to the durable store.
+     */
+    internal suspend fun updateHumanDescription(userId: MemberId, description: String?): Boolean {
+        val userKey = userId.value.normalizedServerMembersId() ?: return false
+        val normalized = description?.takeIf { it.isNotBlank() }
+        fun MemberProfile.isPerson(): Boolean = kind == MemberKind.Human && id.value.trim() == userKey
+        fun MemberProfile.patched(): MemberProfile = copy(description = normalized)
+        val durableEpoch = durableStore?.epoch
+        var changed = false
+        val persistedEntries = mutableListOf<Pair<SharedServerChannelMembersOwnerBinding, MemberSnapshot>>()
+        mutex.withLock {
+            val current = _state.value
+            val nextEntries =
+                current.entriesByServerId.mapValues { (serverKey, entry) ->
+                    if (entry.members.none { it.isPerson() && it.description != normalized }) {
+                        entry
+                    } else {
+                        val nextMembers = entry.members.map { member -> if (member.isPerson()) member.patched() else member }
+                        val binding = currentDirectoryOwnerBinding(ServerId(serverKey))
+                        if (binding != null && entry.matches(binding) && entry.status == SharedServerMembersLoadStatus.Loaded) {
+                            entry.server?.let { server ->
+                                persistedEntries += binding to MemberSnapshot(server = server, members = nextMembers)
+                            }
+                        }
+                        entry.copy(members = nextMembers)
+                    }
+                }
+            val nextCaches =
+                current.profileCacheByServerId.mapValues { (_, cache) ->
+                    val existing = cache[userKey]
+                    if (existing != null && existing.isPerson() && existing.description != normalized) {
+                        cache + (userKey to existing.patched())
+                    } else {
+                        cache
+                    }
+                }
+            val nextSlices =
+                current.channelMemberSlices.mapValues { (_, slice) ->
+                    if (slice.members.none { it.isPerson() && it.description != normalized }) {
+                        slice
+                    } else {
+                        slice.copy(members = slice.members.map { member -> if (member.isPerson()) member.patched() else member })
+                    }
+                }
+            if (nextEntries == current.entriesByServerId &&
+                nextCaches == current.profileCacheByServerId &&
+                nextSlices == current.channelMemberSlices
+            ) {
+                return@withLock
+            }
+            changed = true
+            _state.value =
+                current.copy(
+                    entriesByServerId = nextEntries,
+                    profileCacheByServerId = nextCaches,
+                    channelMemberSlices = nextSlices,
+                )
+        }
+        if (durableEpoch != null) {
+            persistedEntries.forEach { (binding, snapshot) ->
+                durableStore?.write(binding.durableKey(), snapshot, durableEpoch)
+            }
+        }
+        return changed
+    }
+
+    /**
      * Incremental sync (`GET /api/sync/changes`), socket RE-connect or foreground return: agent
      * online state is not in the change log, so only `/agents` is read again (Ray / Tenny 10-27);
      * humans, machines and lists come from the pull. The fetched agents replace the loaded roster's

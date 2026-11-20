@@ -8,6 +8,7 @@ import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.AccountDescriptionUpdateResult
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationStore
@@ -161,7 +162,9 @@ internal class MembersHumanRoleInputs(
     val humanActorRole: String? = null,
     val humanOwnerCount: Int? = null,
     val humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null
+    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
+    val onUpdateHumanDescription: (suspend (String?) -> DataResult<AccountDescriptionUpdateResult>)? = null,
+    val onApplyHumanDescription: ((String?) -> Unit)? = null
 )
 
 internal class MembersAgentDetailCallbacks(
@@ -1432,6 +1435,8 @@ internal fun MembersDetailContent(
                             currentServerId = currentServerId,
                             ownerCount = humanOwnerCount,
                             onUpdateRole = onUpdateHumanRole,
+                            onUpdateDescription = humanRole.onUpdateHumanDescription,
+                            onApplyDescription = humanRole.onApplyHumanDescription,
                             onRemoveMember = onRemoveMember?.takeIf {
                                 member.membershipStatus != "removed"
                             },

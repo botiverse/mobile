@@ -1592,6 +1592,19 @@ internal fun MemberDetailPageContent(
                         humanAccessMode = current.accessMode,
                         onUpdateHumanRole = { memberId, role ->
                             provider.updateHumanRole(current.server.id.value, memberId, role)
+                        },
+                        onUpdateHumanDescription = { description ->
+                            provider.updateHumanDescription(current.member.id, description)
+                        },
+                        onApplyHumanDescription = { savedDescription ->
+                            routeState =
+                                (routeState as? MemberDetailRouteState.Human)?.let { state ->
+                                    if (state.member.id == current.member.id) {
+                                        state.copy(member = state.member.copy(description = savedDescription))
+                                    } else {
+                                        state
+                                    }
+                                } ?: routeState
                         }
                     ),
                     agentCallbacks = MembersAgentDetailCallbacks(

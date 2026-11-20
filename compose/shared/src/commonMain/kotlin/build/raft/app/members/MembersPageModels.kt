@@ -255,6 +255,16 @@ internal fun membersHumanIsSelf(member: MemberProfile, currentUserId: String?): 
 }
 
 /**
+ * Web HumanDetailPanel (`isSelf && human.membershipStatus === "active"`): a signed-in person
+ * can edit their own profile description while active (or when membershipStatus is omitted).
+ */
+internal fun membersHumanCanEditDescription(member: MemberProfile, currentUserId: String?): Boolean {
+    if (!membersHumanIsSelf(member, currentUserId)) return false
+    val status = member.membershipStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    return status == null || status == "active"
+}
+
+/**
  * Web shows Info and Created Agents only for a person of this server; a profile reached
  * through another server (`isRemoteJointHuman`) shows the name, handle and description.
  */

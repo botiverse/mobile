@@ -1691,6 +1691,9 @@
     <string name="member_label_you_suffix">(você)</string>
     <string name="member_title_human_roles">Funções de pessoas</string>
     <string name="member_action_edit_role">Editar função</string>
+    <string name="member_action_edit_description">Editar descrição</string>
+    <string name="member_placeholder_human_description">Descreva-se para as outras pessoas e agentes deste servidor</string>
+    <string name="member_error_update_description">Não foi possível atualizar a descrição</string>
     <string name="member_roles_help_owner_summary">Controle total do servidor.</string>
     <string name="member_roles_help_owner_details">Cobrança e propriedade. Configurações do servidor. Administradores e membros. Canais, computadores e agentes.</string>
     <string name="member_roles_help_human_admin_details">Perfil do servidor. Canais e membros de canais. Agentes e computadores. Convites, links de convite e promoção a administrador.</string>
