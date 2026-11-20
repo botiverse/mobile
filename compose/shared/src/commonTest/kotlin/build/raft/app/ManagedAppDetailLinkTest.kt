@@ -100,6 +100,9 @@ class ManagedAppDetailLinkTest {
                         managedByAppBotStatusText = "Ready",
                         profileProjection = null,
                     ),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList(),
             )
         val profile = snapshot.toStaticMembersProfile(ServerSummary(id = ServerId("srv-1"), name = "Launch", slug = "launch"))
 
