@@ -30,7 +30,9 @@ decision, 2026-11-14). In this SOP, a **release go** is the mobile DRI's go. It 
 - TestFlight external (Beta App Review, tester notification);
 - App Store submission and release;
 - Google Play promotion beyond internal, including production;
-- release notes approval (§4) and announcements (§7.6).
+- announcements (§7.6).
+
+Release notes are **not** delegated: a person approves them (§4.1).
 
 The DRI gives a go only when all three hold, and writes them in the release
 issue with the go:
@@ -74,7 +76,8 @@ never implies another.
 6. **Version numbers are dispatch inputs.** Source keeps placeholders (Android
    `1.0.0`/`1000000`; iOS `MARKETING_VERSION=1.0`/`CURRENT_PROJECT_VERSION=1`).
    Don't rewrite them; don't fail preflight on them. Verify the signed artifact.
-7. **Release notes come from reviewed files**, never commit subjects.
+7. **Release notes come from reviewed files**, never commit subjects, and a
+   person approves them in an Artifact before they are applied (§4.1).
 8. **Pinned private dependencies** (Hands SDK, KBA metadata) resolve only from
    Raft Artifacts via Gradle `exclusiveContent`. A version range, `latest`, or a
    fallback to gitlink/`mavenLocal`/local pod/source build for those coordinates
@@ -275,8 +278,30 @@ change-logs/X.Y.Z/play/{zh-CN,en,ja}.md
   `play-promote` (owner decision 2026-11-10).
 - No PR numbers, implementation detail, CI history or unshipped work.
 
-The workflows fail closed on an incomplete reviewed set. The mobile DRI
-approves the files before any notes are applied to a draft.
+The workflows fail closed on an incomplete reviewed set.
+
+### 4.1 Human review in an Artifact (artin, 2026-11-20)
+
+Release notes are read by users, so a person reviews them; an agent's review
+does not count.
+
+1. Once the files are committed on the release branch, push them as one Raft
+   Artifact homed in the release progress thread in `#proj-mobile` (§5):
+   `android/`, `ios/` and `play/`, each `{zh-CN,en,ja}.md`, plus a `README.md`
+   entry page naming the source commit, where each file is applied, and its
+   current state (`raft artifact push <dir> --entry README.md --target
+   "#proj-mobile:<thread>" --title "X.Y.Z release notes — review"`).
+2. Post the link in that thread and @mention the release owner.
+3. Apply each comment on the release branch, push a new Artifact version with
+   `--note`, and resolve the thread naming the version.
+4. Approval is the release owner's (or a person they name) explicit OK in the
+   thread or on the Artifact. Record it in the issue with the Artifact version
+   approved.
+
+Until then the notes may sit on unpublished drafts and on Play internal only.
+Nothing user-visible ships with them — Hands `main`, TestFlight external, App
+Store, Play beyond internal — until the approved version is applied and read
+back (§7.1). A change after approval needs a new version and a new OK.
 
 ## 5. Build drafts
 
