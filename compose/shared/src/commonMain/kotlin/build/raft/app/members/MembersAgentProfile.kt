@@ -932,6 +932,10 @@ private fun MembersAgentProfileFieldsSection(
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
     // The failed save's trace id, shown under its error (AGENTS.md "Errors carry the trace ID").
     var roleErrorTraceId by remember(member.id.value) { mutableStateOf<String?>(null) }
+    // slock #15236: a saved description's links some of its readers can't open, shown under it until dismissed.
+    var descriptionLinkWarnings by remember(member.id.value) {
+        mutableStateOf<List<build.raft.app.data.DescriptionLinkWarning>>(emptyList())
+    }
     // Web AgentProfileEditDialog (slock #15664): one saved under the older, longer limit stays as it
     // is; once edited, the 300 limit applies. Save waits for a change that fits.
     val trimmedDraftRole = draftRole.trim()
@@ -1044,6 +1048,7 @@ private fun MembersAgentProfileFieldsSection(
         // The field already says so and Save is off; nothing to send.
         if (!descriptionChanged || descriptionTooLong) return
         roleErrorTraceId = null
+        descriptionLinkWarnings = emptyList()
         scope.launch {
             if (roleEditorAuthority != currentProfileEditAuthority) {
                 onUnavailableAction(profileEditingUnavailable)
@@ -1075,7 +1080,8 @@ private fun MembersAgentProfileFieldsSection(
             if (roleEditorAuthority != currentProfileEditAuthority) return@launch
             when (result) {
                 is DataResult.Content -> {
-                    onApplyAgentProfileResult(result.data)
+                    descriptionLinkWarnings = result.data.descriptionLinkWarnings
+                    onApplyAgentProfileResult(result.data.withoutConfigApply())
                     if (storeBackedProfileEdit) {
                         profileStore.dispatch(SharedAgentDetailIntent.FinishSaveRole)
                     } else {
@@ -1342,6 +1348,11 @@ private fun MembersAgentProfileFieldsSection(
                 color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
                 maxLines = 6,
                 overflow = TextOverflow.Ellipsis
+            )
+            RaftDescriptionLinkWarnings(
+                warnings = descriptionLinkWarnings,
+                subject = build.raft.app.data.DescriptionLinkSubject.Agent,
+                onDismiss = { descriptionLinkWarnings = emptyList() },
             )
         }
     }
