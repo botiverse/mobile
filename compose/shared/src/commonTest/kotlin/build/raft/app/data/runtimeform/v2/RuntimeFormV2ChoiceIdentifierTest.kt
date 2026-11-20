@@ -1,6 +1,10 @@
 package build.raft.app.data.runtimeform.v2
 
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.buildJsonObject
+import build.raft.designsystem.components.RaftComboboxSheetThreshold
 import build.raft.app.runtimeChoiceIdentifier
+import build.raft.app.runtimeFormV2ChoiceSearchKeywords
 import build.raft.app.runtimeFormV2ListedOption
 import build.raft.app.runtimeFormV2ShowsChoiceIdentifiers
 import build.raft.designsystem.components.raftComboboxFilter
@@ -53,8 +57,33 @@ class RuntimeFormV2ChoiceIdentifierTest {
         assertEquals("openai/gpt-5", options[1].identifier)
         assertEquals(listOf("anthropic/claude-opus-4-1"), raftComboboxFilter(options, "claude-opus-4").map { it.value })
         assertEquals(listOf("openai/gpt-5"), raftComboboxFilter(options, "openai").map { it.value })
-        // A plain select (no id line) adds nothing to search.
-        assertEquals(emptyList<String>(), runtimeFormV2ListedOption(described, group = null, showsIdentifiers = false).keywords)
+        // A plain select (no id line) still finds a choice by its id, as web runtimeChoiceMatches does on every list.
+        val plainSelect = listOf(described, plain).map { runtimeFormV2ListedOption(it, group = null, showsIdentifiers = false) }
+        assertEquals(listOf("anthropic/claude-opus-4-1"), raftComboboxFilter(plainSelect, "claude-opus-4").map { it.value })
+        assertEquals(listOf("openai/gpt-5"), raftComboboxFilter(plainSelect, "OPENAI").map { it.value })
+    }
+
+    @Test
+    fun aLongProviderListIsSearchedByNameIdGroupAndDescription() {
+        // #wg-runtime-form:#28: the Built-in provider list (33 providers) opens as the searchable sheet
+        // (more than RaftComboboxSheetThreshold options); search matches like web runtimeChoiceMatches.
+        val providers = (1..33).map { i ->
+            RuntimeFormV2Choice("provider-$i", "Provider $i", attributes = buildJsonObject { put("group", if (i % 2 == 0) "Gateways" else "Direct") })
+        } + RuntimeFormV2Choice("openrouter", "OpenRouter", description = "Many models through one key")
+        val options = providers.map { runtimeFormV2ListedOption(it, group = null, showsIdentifiers = false) }
+        assertTrue(options.size > RaftComboboxSheetThreshold)
+        // Every word must match somewhere, case-insensitive.
+        assertEquals(listOf("provider-12"), raftComboboxFilter(options, "PROVIDER-12").map { it.value })
+        assertEquals(listOf("openrouter"), raftComboboxFilter(options, "one key").map { it.value })
+        assertEquals(listOf("provider-2", "provider-20", "provider-22", "provider-24", "provider-26", "provider-28"), raftComboboxFilter(options, "gateways provider-2").map { it.value })
+        // The label is matched by the combobox, so a value that only repeats it is not a keyword.
+        assertEquals(listOf("Many models through one key"), options.last().keywords)
+    }
+
+    @Test
+    fun searchKeywordsLeaveOutBlankAndLabelEcho() {
+        val choice = RuntimeFormV2Choice("Default", "default", description = " ")
+        assertEquals(emptyList<String>(), runtimeFormV2ChoiceSearchKeywords(choice, description = null))
     }
 
     @Test

@@ -210,9 +210,11 @@ private const val RUNTIME_CHOICE_CONNECTION_PREFIX = "connection:"
  * but cannot be picked again. A choice's description (`choice.labels`) is the row's second line, as
  * web draws it in the list (RuntimeChoiceCombobox `renderOption`, RuntimeSelectControl
  * `SelectItemDescription` when it says more than the label); the closed field never repeats it. With
- * [showsIdentifiers], a row without a description has its id under the name; a described one keeps
- * the value as a search keyword, so search still finds the model id, as web `runtimeChoiceMatches`
- * always searches the value.
+ * [showsIdentifiers], a row without a description has its id under the name. Search matches what web
+ * `runtimeChoiceMatches` (RuntimeChoiceCombobox.tsx) matches on every list, searchable or not: the
+ * name, the stored value (the id), the group (a model's provider) and the description; the value,
+ * the server's group and the description ride as keywords (#wg-runtime-form:#28), so typing an id
+ * or a provider finds a choice whether or not its id line is drawn.
  */
 internal fun runtimeFormV2ListedOption(
     option: RuntimeFormV2Choice,
@@ -228,7 +230,7 @@ internal fun runtimeFormV2ListedOption(
         group = group,
         enabled = !option.unavailable,
         identifier = if (showsIdentifiers && !described) runtimeChoiceIdentifier(option.value, option.label) else null,
-        keywords = if (showsIdentifiers && described) listOf(option.value) else emptyList()
+        keywords = runtimeFormV2ChoiceSearchKeywords(option, description)
     )
 }
 
@@ -285,6 +287,16 @@ private fun runtimeFormV2RefreshAction(
         )
     }
 }
+
+/**
+ * Web `runtimeChoiceMatches`: a choice is found by its label, value, group or description. The label
+ * is matched by the combobox itself; the rest are keywords (blank and label-equal ones left out).
+ */
+internal fun runtimeFormV2ChoiceSearchKeywords(option: RuntimeFormV2Choice, description: String?): List<String> =
+    listOfNotNull(option.value, option.group, description ?: option.description)
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.equals(option.label, ignoreCase = true) }
+        .distinct()
 
 /**
  * The combobox value for a select whose stored value is [current]. "" means "nothing chosen" unless the
