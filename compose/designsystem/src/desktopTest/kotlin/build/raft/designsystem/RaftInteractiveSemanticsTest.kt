@@ -37,7 +37,7 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodes
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -622,11 +622,13 @@ class RaftInteractiveSemanticsTest {
                     }
                 },
             )
-            val links = onAllNodesWithText("Docs")
+            // The links' own nodes (a RaftText whose whole text is "Docs" has a text node too).
+            val links = onAllNodes(hasText("Docs") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            links.assertCountEquals(2)
             val inside = links[0].fetchSemanticsNode().size.width / density.density
             val outside = links[1].fetchSemanticsNode().size.width / density.density
             // 0.857em of the body type (14 or 16) plus the 2dp gap: 14 to 15.7dp.
-            assertTrue(outside - inside in 13f..17f, "the mark (2dp + 0.857em) is inside the target: ${'$'}inside → ${'$'}outside")
+            assertTrue(outside - inside in 13f..17f, "the mark (2dp + 0.857em) is inside the target: $inside → $outside")
             links[1].performClick()
             onNodeWithText("Standalone", substring = true).performClick()
             assertEquals(2, opened, "both links open")
