@@ -1,6 +1,7 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevision
@@ -9,8 +10,12 @@ import com.tencent.kuiklybase.markdown.compose.raftMarkdownAnnotatedStringMemoKe
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import build.raft.app.markdown.raftMarkdownBlockDirection
+import build.raft.app.markdown.toComposeLayoutDirection
+import build.raft.app.markdown.withRaftTextDirection
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.annotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
@@ -33,6 +38,9 @@ fun MarkdownParagraph(
 ) {
     val paragraphFillWidth = LocalRaftMarkdownParagraphFillWidth.current
     val resolvedModifier = modifier ?: if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier
+    val blockDirection = remember(content, node) { raftMarkdownBlockDirection(content, node) }
+    val resolvedStyle = style.withRaftTextDirection(blockDirection)
+    val resolvedLayoutDirection = blockDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
     // t6-a paragraph sub-phases: annotate = AnnotatedString build (plain
     // block, measured via the timing's clock), textCall = MarkdownText
     // composable call (sequential enter/exit). Null timing = untimed path.
@@ -47,20 +55,20 @@ fun MarkdownParagraph(
     // legacy rebuild is never misreported as a memo rebuild.
     val nodeTiming = LocalRaftMarkdownRenderTiming.current
     val memoKeys = raftMarkdownAnnotatedStringMemoKeys(
-        content, node, style, annotatorSettings, LocalRaftMarkdownAnnotationRevision.current
+        content, node, resolvedStyle, annotatorSettings, LocalRaftMarkdownAnnotationRevision.current
     )
     val buildStyledText = {
         if (nodeTiming != null) {
             nodeTiming.measureParagraphAnnotate {
                 buildAnnotatedString {
-                    pushStyle(style.toSpanStyle())
+                    pushStyle(resolvedStyle.toSpanStyle())
                     buildMarkdownAnnotatedString(content = content, node = node, annotatorSettings = annotatorSettings)
                     pop()
                 }
             }
         } else {
             buildAnnotatedString {
-                pushStyle(style.toSpanStyle())
+                pushStyle(resolvedStyle.toSpanStyle())
                 buildMarkdownAnnotatedString(content = content, node = node, annotatorSettings = annotatorSettings)
                 pop()
             }
@@ -86,13 +94,15 @@ fun MarkdownParagraph(
     }
 
     // 套个娃，解决placeholder span位置不对的问题
-    Column(modifier = if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier) {
-        nodeTiming?.enterParagraphText()
-        MarkdownText(
-            styledText,
-            modifier = resolvedModifier,
-            style = style,
-        )
-        nodeTiming?.exitParagraphText()
+    CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
+        Column(modifier = if (paragraphFillWidth) Modifier.fillMaxWidth() else Modifier) {
+            nodeTiming?.enterParagraphText()
+            MarkdownText(
+                styledText,
+                modifier = resolvedModifier,
+                style = resolvedStyle,
+            )
+            nodeTiming?.exitParagraphText()
+        }
     }
 }

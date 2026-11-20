@@ -1,6 +1,8 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -13,9 +15,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import build.raft.app.markdown.raftMarkdownBlockDirection
+import build.raft.app.markdown.toComposeLayoutDirection
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownDimens
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
@@ -46,69 +51,73 @@ fun MarkdownBlockQuote(
     val blockQuoteText = LocalMarkdownPadding.current.blockQuoteText
     val blockQuoteBar = LocalMarkdownPadding.current.blockQuoteBar
     val markdownComponents = LocalMarkdownComponents.current
+    val blockDirection = remember(content, node) { raftMarkdownBlockDirection(content, node) }
+    val resolvedLayoutDirection = blockDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
 
-    Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        Spacer(
-            modifier = Modifier
-                .padding(blockQuoteBar)
-                .width(blockQuoteThickness)
-                .fillMaxHeight()
-                .background(blockQuoteColor)
-        )
+    CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            Spacer(
+                modifier = Modifier
+                    .padding(blockQuoteBar)
+                    .width(blockQuoteThickness)
+                    .fillMaxHeight()
+                    .background(blockQuoteColor)
+            )
 
-        Column(
-            modifier = Modifier
-                .padding(blockQuote)
-                .fillMaxWidth()
-        ) {
-            val nonBlockquotes = node.children.filter { it.type != MarkdownElementTypes.BLOCK_QUOTE }
-            val nestedQuote = node.findChildOfType(MarkdownElementTypes.BLOCK_QUOTE)
+            Column(
+                modifier = Modifier
+                    .padding(blockQuote)
+                    .fillMaxWidth()
+            ) {
+                val nonBlockquotes = node.children.filter { it.type != MarkdownElementTypes.BLOCK_QUOTE }
+                val nestedQuote = node.findChildOfType(MarkdownElementTypes.BLOCK_QUOTE)
 
-            if (nonBlockquotes.isNotEmpty()) {
-                Column(modifier = Modifier.fillMaxWidth().padding(blockQuoteText)) {
-                    // Slock: quoted paragraphs keep the web's `mb-1` between them.
-                    val blockGaps = LocalRaftMarkdownBlockMargins.current?.let(::RaftMarkdownBlockGapTracker)
-                    nonBlockquotes.onEach { quote ->
-                        blockGaps?.Before(quote.type)
-                        when {
-                            requiresBlockQuotePlainTextFallback(quote) -> {
-                                MarkdownText(
-                                    content = blockQuoteTablePlainText(
-                                        quote.getTextInNode(content).toString()
-                                    ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    style = style.merge(fontFamily = FontFamily.Monospace)
-                                )
-                            }
+                if (nonBlockquotes.isNotEmpty()) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(blockQuoteText)) {
+                        // Slock: quoted paragraphs keep the web's `mb-1` between them.
+                        val blockGaps = LocalRaftMarkdownBlockMargins.current?.let(::RaftMarkdownBlockGapTracker)
+                        nonBlockquotes.onEach { quote ->
+                            blockGaps?.Before(quote.type)
+                            when {
+                                requiresBlockQuotePlainTextFallback(quote) -> {
+                                    MarkdownText(
+                                        content = blockQuoteTablePlainText(
+                                            quote.getTextInNode(content).toString()
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        style = style.merge(fontFamily = FontFamily.Monospace)
+                                    )
+                                }
 
-                            quote.type == PARAGRAPH -> {
-                                // Slock (task #800): quoted paragraphs keep the
-                                // legacy fill regardless of the paragraph fill local.
-                                MarkdownParagraph(content, quote, modifier = Modifier.fillMaxWidth(), style = style)
-                            }
+                                quote.type == PARAGRAPH -> {
+                                    // Slock (task #800): quoted paragraphs keep the
+                                    // legacy fill regardless of the paragraph fill local.
+                                    MarkdownParagraph(content, quote, modifier = Modifier.fillMaxWidth(), style = style)
+                                }
 
-                            else -> {
-                                handleElement(
-                                    node = quote,
-                                    components = markdownComponents,
-                                    content = content,
-                                    includeSpacer = false
-                                )
+                                else -> {
+                                    handleElement(
+                                        node = quote,
+                                        components = markdownComponents,
+                                        content = content,
+                                        includeSpacer = false
+                                    )
+                                }
                             }
                         }
                     }
+
+                    if (nestedQuote != null) Spacer(Modifier.height(8.dp))
                 }
 
-                if (nestedQuote != null) Spacer(Modifier.height(8.dp))
-            }
-
-            if (nestedQuote != null) {
-                MarkdownBlockQuote(
-                    content = content,
-                    node = nestedQuote,
-                    style = style,
-                    barColor = barColor
-                )
+                if (nestedQuote != null) {
+                    MarkdownBlockQuote(
+                        content = content,
+                        node = nestedQuote,
+                        style = style,
+                        barColor = barColor
+                    )
+                }
             }
         }
     }

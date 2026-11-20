@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -17,11 +19,16 @@ import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.layout.MultiContentMeasurePolicy
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import build.raft.app.markdown.RaftTextDirection
+import build.raft.app.markdown.raftMarkdownBlockDirection
+import build.raft.app.markdown.toComposeLayoutDirection
+import build.raft.app.markdown.withRaftTextDirection
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
@@ -312,20 +319,25 @@ fun MarkdownTableBasicText(
     overflow: TextOverflow = TextOverflow.Clip,
     annotatorSettings: AnnotatorSettings = annotatorSettings(),
 ) {
+    val cellDirection = remember(content, cell) { raftMarkdownBlockDirection(content, cell) }
+    val resolvedLayoutDirection = cellDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
+    val resolvedStyle = style.withRaftTextDirection(cellDirection)
     val str = content.buildMarkdownAnnotatedString(
         textNode = cell,
-        style = style,
+        style = resolvedStyle,
         annotatorSettings = annotatorSettings,
     )
 
-    MarkdownText(
-        content = str,
-        modifier = modifier,
-        style = style.merge(
-            color = LocalMarkdownColors.current.tableText,
-        ),
-        maxLines = maxLines,
-        overflow = overflow,
-        onTextLayout = null
-    )
+    CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
+        MarkdownText(
+            content = str,
+            modifier = if (cellDirection != null) modifier.fillMaxWidth() else modifier,
+            style = resolvedStyle.merge(
+                color = LocalMarkdownColors.current.tableText,
+            ),
+            maxLines = maxLines,
+            overflow = overflow,
+            onTextLayout = null
+        )
+    }
 }

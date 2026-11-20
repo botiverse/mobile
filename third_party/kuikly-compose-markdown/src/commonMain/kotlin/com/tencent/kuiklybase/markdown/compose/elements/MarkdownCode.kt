@@ -1,6 +1,7 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,7 +14,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -36,23 +39,25 @@ fun MarkdownCode(
     val backgroundCodeColor = LocalMarkdownColors.current.codeBackground
     val codeBackgroundCornerSize = LocalMarkdownDimens.current.codeBackgroundCornerSize
     val codeBlockPadding = LocalMarkdownPadding.current.codeBlock
-    MarkdownCodeBackground(
-        color = backgroundCodeColor,
-        shape = RoundedCornerShape(codeBackgroundCornerSize),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-    ) {
-        MarkdownBasicText(
-            text = code,
-            color = LocalMarkdownColors.current.codeText,
-            style = style,
-            modifier = Modifier/*.horizontalScroll(rememberScrollState())*/
-                .padding(
-                    start = codeBlockPadding.calculateLeftPadding(LayoutDirection.Ltr),
-                    end = codeBlockPadding.calculateRightPadding(LayoutDirection.Ltr),
-                    top = codeBlockPadding.calculateTopPadding(),
-                    bottom = codeBlockPadding.calculateBottomPadding(),
-                ),
-        )
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        MarkdownCodeBackground(
+            color = backgroundCodeColor,
+            shape = RoundedCornerShape(codeBackgroundCornerSize),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+        ) {
+            MarkdownBasicText(
+                text = code,
+                color = LocalMarkdownColors.current.codeText,
+                style = if (style.textDirection == TextDirection.Ltr) style else style.copy(textDirection = TextDirection.Ltr),
+                modifier = Modifier/*.horizontalScroll(rememberScrollState())*/
+                    .padding(
+                        start = codeBlockPadding.calculateLeftPadding(LayoutDirection.Ltr),
+                        end = codeBlockPadding.calculateRightPadding(LayoutDirection.Ltr),
+                        top = codeBlockPadding.calculateTopPadding(),
+                        bottom = codeBlockPadding.calculateBottomPadding(),
+                    ),
+            )
+        }
     }
 }
 

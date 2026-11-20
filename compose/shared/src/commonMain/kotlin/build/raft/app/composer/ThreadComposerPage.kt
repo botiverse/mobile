@@ -37,6 +37,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.markdown.raftTextDirection
+import build.raft.app.markdown.toComposeLayoutDirection
+import build.raft.app.markdown.toComposeTextDirection
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.designsystem.components.RaftCheckboxIndicator
@@ -3226,6 +3229,11 @@ internal fun ThreadComposerContentLeaf(
                             }
                         }
                         val imagePasteClipboard = LocalClipboard.current as? ThreadComposerImagePasteClipboard
+                        // Hebrew, Arabic: right to left from the first letter, skipping mentions (slock #15039).
+                        val composerDirection = remember(fieldValue.text) { raftTextDirection(fieldValue.text) }
+                        val composerLayoutDirection =
+                            composerDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
+                        CompositionLocalProvider(LocalLayoutDirection provides composerLayoutDirection) {
                         TextField(
                             value = fieldValue,
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
@@ -3314,7 +3322,8 @@ internal fun ThreadComposerContentLeaf(
                             keyboardActions = composerKeyboardActions,
                             // RaftType.Input uses the shared content size, same as message text.
                             textStyle = RaftType.Input.copy(
-                                color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
+                                color = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
+                                textDirection = composerDirection.toComposeTextDirection(),
                             ),
                             // Kuikly produces keyboardHeightChange from the native input node on
                             // every platform. The height is host/window geometry, not editor
@@ -3350,6 +3359,7 @@ internal fun ThreadComposerContentLeaf(
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 }
                         )
+                        }
                     }
                     if (state.hookLabels.isNotEmpty()) {
                         Text(
