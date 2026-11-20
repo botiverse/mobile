@@ -288,12 +288,14 @@ internal fun ThreadAssistantPanelSheet(
 ) {
     val wide = threadAssistantPanelWide()
     // The drawer is composed from opening until its slide down has ended; the popover only while open.
+    // Both follow `panelShown`: a page pushed over the conversation hides the panel (its window goes
+    // at once) without closing it, and it comes back with the conversation (ThreadAssistantPanelState).
     var drawerShown by remember { mutableStateOf(false) }
-    if (!wide && otter.panelOpen && !drawerShown) drawerShown = true
-    val coversPage = !wide && otter.panelOpen
+    if (!wide && otter.panelShown && !drawerShown) drawerShown = true
+    val coversPage = !wide && otter.panelShown
     val coversPageChange by rememberUpdatedState(onCoversPageChange)
     SideEffect { coversPageChange(coversPage) }
-    if (if (wide) !otter.panelOpen else !drawerShown) return
+    if (if (wide) !otter.panelShown else !drawerShown) return
     val close by rememberUpdatedState { otter.onPanelOpenChange(false) }
     val panel: @Composable () -> Unit = {
         CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
@@ -325,7 +327,7 @@ internal fun ThreadAssistantPanelSheet(
             onDismissRequest = { close() },
             modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
             clearNavigationBar = false,
-            visible = otter.panelOpen,
+            visible = otter.panelShown,
             onHidden = { drawerShown = false },
             overlay = windowOverlay,
             state = drawerState,
@@ -334,7 +336,7 @@ internal fun ThreadAssistantPanelSheet(
             // Composed in the drawer's window, after its own Back (which closes it): pulled up to
             // the whole window, Back first brings it back down to 82%.
             RaftBackHandler(
-                enabled = otter.panelOpen && drawerState.snapPoint == RaftDrawerSnapPoint.Full,
+                enabled = otter.panelShown && drawerState.snapPoint == RaftDrawerSnapPoint.Full,
                 label = "assistant-panel-full",
             ) {
                 scope.launch { drawerState.animateTo(RaftDrawerSnapPoint.Default) }
@@ -422,8 +424,9 @@ private fun ThreadAssistantPanelPopover(
                 ): IntOffset = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt())
             }
         }
-    // A page pushed over this one (a thread ref in the panel's DM) closes the popover first: the
-    // covered page stops composing, so the close on its `pageActive` came too late.
+    // A page pushed over this one (a thread ref in the panel's DM) takes the popover down first: the
+    // covered page stops composing (iOS), so a popover left to its `pageActive` stayed over the new
+    // page. The panel's owner only hides it then (ThreadAssistantPanelState): it is back on return.
     RaftDismissOnPageCover(onDismissRequest)
     Popup(
         popupPositionProvider = positioner,
