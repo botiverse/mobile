@@ -1643,7 +1643,11 @@ class RealConversationRepository private constructor(
             ).withConversationDetail(
                 detail = detailDeferred.await(),
                 canonicalReplyThread = true,
-            ).copy(rawMessagePage = rawMessagePage)
+            ).copy(
+                rawMessagePage = rawMessagePage,
+                // The open answer names the thread's total; the reply page below it is one window of it.
+                replyThreadReplyCount = createOrOpen.data.replyCount.coerceAtLeast(0),
+            )
         warningLogger(
             "reply_thread_load_result source=$source " +
                 "result=${messagesResult.conversationDiagnosticsResult()} " +

@@ -3420,6 +3420,11 @@ internal class SharedThreadStore(
                                 "openPage=${openPageThreadId.orEmpty()} cachePatched=$patched"
                         )
                     }
+                    dataSource.rememberReplyParentReplyCount(
+                        parentChannelId = currentPayload.threadUpdatedParentChannelId(event),
+                        parentMessageId = event.parentMessageId.value,
+                        replyCount = event.replyCount
+                    )
                 }
                 val storeEvent =
                     if (event is ThreadUpdated) event.copy(latestReply = null) else event

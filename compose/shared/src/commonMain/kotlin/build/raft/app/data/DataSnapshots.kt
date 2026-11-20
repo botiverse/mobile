@@ -700,6 +700,13 @@ data class ThreadSnapshot(
      */
     @Transient
     val rawMessagePage: RawMessagePageWitness = RawMessagePageWitness.None,
+    /**
+     * A reply thread's total reply count as its own load reported it: `replyCount` of the
+     * `POST /channels/:id/threads` answer (server `getThreadInfoForChannel`) that opens the thread.
+     * `null` on every other load. The thread page counts from this, not from what its opener knew.
+     */
+    @Transient
+    val replyThreadReplyCount: Int? = null,
 )
 
 /**

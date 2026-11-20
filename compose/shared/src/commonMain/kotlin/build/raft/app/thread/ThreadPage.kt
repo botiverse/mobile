@@ -8483,7 +8483,8 @@ private fun SharedThreadRouteContentContent(
                             serverId = currentServerId,
                             parentChannelId = parentChannelId,
                             parentMessage = parentMessage,
-                            threadChannelId = parentReplyMetadata.threadChannelId
+                            threadChannelId = parentReplyMetadata.threadChannelId,
+                            replyCount = parentReplyMetadata.replyCount
                         )
                     ) {
                         bridge.logWarn("thread_reply_parent_seed_rejected reason=stale_provenance")
@@ -8903,7 +8904,8 @@ private fun SharedThreadRouteContentContent(
                                     serverId = currentServerId,
                                     parentChannelId = parentChannelId,
                                     parentMessage = parentMessage,
-                                    threadChannelId = parentReplyMetadata.threadChannelId
+                                    threadChannelId = parentReplyMetadata.threadChannelId,
+                                    replyCount = parentReplyMetadata.replyCount
                                 )
                         if (parentMessage != null && !loadedParentProvenanceAccepted) {
                             bridge.logWarn("thread_task_parent_seed_rejected reason=stale_provenance")
