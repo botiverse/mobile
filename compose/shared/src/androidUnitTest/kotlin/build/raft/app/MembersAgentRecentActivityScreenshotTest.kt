@@ -43,7 +43,7 @@ import org.robolectric.annotation.GraphicsMode
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h360dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h440dp-xxhdpi")
 class MembersAgentRecentActivityScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -55,12 +55,10 @@ class MembersAgentRecentActivityScreenshotTest {
     fun recentActivityDark() = capture("members.agent-profile.recent-activity.dark", RaftAppAppearance.Dark)
 
     @Test
-    @Config(qualifiers = ACROSS_DAYS_QUALIFIERS)
     fun recentActivityAcrossDaysLight() =
         capture("members.agent-profile.recent-activity.across-days", RaftAppAppearance.Light, agentRecentActivityAcrossDays())
 
     @Test
-    @Config(qualifiers = ACROSS_DAYS_QUALIFIERS)
     fun recentActivityAcrossDaysDark() =
         capture("members.agent-profile.recent-activity.across-days.dark", RaftAppAppearance.Dark, agentRecentActivityAcrossDays())
 
@@ -75,9 +73,6 @@ class MembersAgentRecentActivityScreenshotTest {
             }
         }
 }
-
-/** Taller than the class's: the dated labels narrow the text column, so the rows wrap more. */
-private const val ACROSS_DAYS_QUALIFIERS = "w390dp-h440dp-xxhdpi"
 
 /** The card's turns and the viewer's clock they are read against. */
 internal class AgentRecentActivityCase(
