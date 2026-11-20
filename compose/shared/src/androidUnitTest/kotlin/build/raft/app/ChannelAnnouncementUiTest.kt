@@ -2,10 +2,12 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
@@ -20,6 +22,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
+import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ChannelAnnouncementChangeKind
 import build.raft.app.data.ChannelAnnouncementNotice
 import build.raft.app.data.ChannelAnnouncementSlice
@@ -27,8 +30,11 @@ import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.RaftChannelAnnouncementActor
 import build.raft.app.data.RaftChannelAnnouncementActorType
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -79,13 +85,27 @@ class ChannelAnnouncementUiTest {
         StringDesc.localeType = previousLocale
     }
 
-    private fun ComposeUiTest.show(content: @Composable () -> Unit) {
+    private val fixedTimeContext =
+        RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = raftEpochDayForDate(2026, 11, 10),
+            // 45 minutes after channelAnnouncementFixture.updatedAt (2026-11-10T09:30:00Z).
+            nowEpochMillis = 1_794_305_700_000L,
+        )
+
+    private fun ComposeUiTest.show(
+        timeContext: RaftTimeContext = fixedTimeContext,
+        content: @Composable () -> Unit,
+    ) {
         setContent {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalRaftTimeContextProvider provides remember(timeContext) { RaftTimeContextProvider(timeContext) },
+            ) {
                 RaftDesignSystemTheme { Column(Modifier.fillMaxSize()) { content() } }
             }
         }
@@ -177,7 +197,7 @@ class ChannelAnnouncementUiTest {
             onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).assertDoesNotExist()
         }
 
-    /** slock #14461: for an editor, Replace and Remove are in a ⋯ menu at the row's end, not a row of buttons. */
+    /** slock #15659: for an editor, Replace pin and Unpin live in a ⋯ menu before the chevron. */
     @Test
     fun anEditorFindsReplaceAndRemoveInTheRowsMenu() =
         runRobolectricComposeUiTest {
@@ -194,24 +214,27 @@ class ChannelAnnouncementUiTest {
                     onRemove = { removes++ },
                 )
             }
+            onNodeWithText("Pinned content").assertExists()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).performClick()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).performClick()
+            onNodeWithText("Replace pin").assertExists()
+            onNodeWithText("Unpin").assertExists()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).performClick()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).performClick()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).performClick()
             runOnIdle {
-                assertEquals(1, opens, "⋯ is a button of its own: pressing it doesn't open the announcement")
+                assertEquals(1, opens, "⋯ is a button of its own: pressing it doesn't open the pinned content")
                 assertEquals(1, replaces)
                 assertEquals(1, removes)
             }
         }
 
-    /** ⋯ sits on the row's end, inside its height, and the row keeps room for it (web `pe-14`). */
+    /** ⋯ sits inside the row's height, immediately before the trailing chevron. */
     @Test
-    fun theMenuButtonSitsOnTheRowsEnd() =
+    fun theMenuButtonSitsBeforeTheChevron() =
         runRobolectricComposeUiTest {
             show {
                 ChannelAnnouncementDetailsRow(
@@ -225,8 +248,11 @@ class ChannelAnnouncementUiTest {
             }
             val item = onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).getBoundsInRoot()
             val actions = onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).getBoundsInRoot()
+            val meta = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMeta, useUnmergedTree = true).getBoundsInRoot()
             assertTrue(actions.top >= item.top && actions.bottom <= item.bottom, "⋯ inside the row's height: $actions in $item")
-            assertTrue(item.right - actions.right <= 12.dp, "⋯ at the row's end: ${item.right - actions.right}")
+            assertTrue(meta.right <= actions.left, "subtitle clears ⋯ without running under it: meta=$meta actions=$actions")
+            val endGap = item.right - actions.right
+            assertTrue(endGap >= 36.dp && endGap <= 50.dp, "⋯ sits before the chevron: endGap=$endGap")
         }
 
     @Test
@@ -240,9 +266,12 @@ class ChannelAnnouncementUiTest {
                     onSet = {},
                     onReplace = {},
                     onRemove = {},
+                    artifactKind = ArtifactKind.Html,
                 )
             }
+            onNodeWithText("Pinned content").assertExists()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).assertExists()
+            onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).assertDoesNotExist()
         }
@@ -269,10 +298,113 @@ class ChannelAnnouncementUiTest {
                     onRemove = {},
                 )
             }
-            onNodeWithText("No announcement").assertExists()
+            onNodeWithText("Pinned content").assertExists()
+            onNodeWithText("Nothing pinned").assertExists()
+            onNodeWithText("Pin an Artifact").assertExists()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).performClick()
             runOnIdle { assertEquals(1, sets) }
         }
+
+    /** slock #15693: a long updater name truncates while the short relative time stays unclipped. */
+    @Test
+    @Config(qualifiers = "w360dp-h900dp")
+    fun longUpdaterNameTruncatesWhileRelativeTimeStaysWhole() =
+        runRobolectricComposeUiTest {
+            val longNameFixture =
+                channelAnnouncementFixture.copy(
+                    updatedBy =
+                        RaftChannelAnnouncementActor(
+                            RaftChannelAnnouncementActorType.Agent,
+                            "agent-long",
+                            "qa-wa-bot-very-long-agent-name-that-must-truncate-before-time",
+                        ),
+                )
+            show {
+                Column(Modifier.padding(horizontal = 20.dp)) {
+                    ChannelAnnouncementDetailsRow(
+                        slice = ChannelAnnouncementSlice(read = true, announcement = longNameFixture),
+                        canEdit = true,
+                        onOpen = {},
+                        onSet = {},
+                        onReplace = {},
+                        onRemove = {},
+                    )
+                    RaftText(
+                        text = "45m ago",
+                        modifier = Modifier.testTag("ref-time-label"),
+                        style = RaftTheme.typography.monoMeta,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+            val meta = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMeta, useUnmergedTree = true).getBoundsInRoot()
+            val name = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMetaName, useUnmergedTree = true).getBoundsInRoot()
+            val time = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMetaTime, useUnmergedTree = true).getBoundsInRoot()
+            val refTime = onNodeWithTag("ref-time-label", useUnmergedTree = true).getBoundsInRoot()
+            assertTrue((name.right - name.left) > 0.dp, "name remains visible while truncating: name=$name")
+            assertTrue(name.right <= time.left, "name stays left of time without overlap: name=$name time=$time")
+            assertTrue(time.right <= meta.right + 1.dp, "time fits inside meta row: time=$time meta=$meta")
+            assertTrue(
+                (time.right - time.left) >= (refTime.right - refTime.left) - 1.dp,
+                "short relative time stays completely unclipped: time=$time ref=$refTime",
+            )
+        }
+
+    @Test
+    fun pickerDialogRendersArtifactChoicesWithKindsAndSelectsChoice() =
+        runRobolectricComposeUiTest {
+            val chosen = mutableListOf<ChannelAnnouncementChoice>()
+            show {
+                ChannelAnnouncementPickerDialog(
+                    replacing = false,
+                    channelName = "engineering",
+                    view =
+                        ChannelAnnouncementPickerView.Ready(
+                            choices =
+                                listOf(
+                                    ChannelAnnouncementChoice("a1", "Release checklist", "v2", ArtifactKind.Markdown),
+                                    ChannelAnnouncementChoice("a2", "Architecture diagram", "v1", ArtifactKind.Html),
+                                ),
+                            hasMore = false,
+                            loadingMore = false,
+                        ),
+                    running = false,
+                    error = null,
+                    onRetry = {},
+                    onShowMore = {},
+                    onConfirm = { chosen += it },
+                    onDismiss = {},
+                )
+            }
+            onNodeWithText("Architecture diagram").assertExists().performClick()
+            onNodeWithTag(ChannelAnnouncementTestTags.PickerConfirm).performClick()
+            runOnIdle {
+                assertEquals(1, chosen.size)
+                assertEquals(ArtifactKind.Html, chosen.single().kind)
+            }
+        }
+
+    @Test
+    fun metaTemplateSplitHandlesEveryLocaleWordOrder() {
+        assertEquals(
+            listOf(
+                ChannelAnnouncementMetaPart.Literal("Updated by "),
+                ChannelAnnouncementMetaPart.Name,
+                ChannelAnnouncementMetaPart.Literal(" · "),
+                ChannelAnnouncementMetaPart.Time,
+            ),
+            splitChannelAnnouncementMetaTemplate("Updated by \u0001 · \u0002"),
+        )
+        assertEquals(
+            listOf(
+                ChannelAnnouncementMetaPart.Name,
+                ChannelAnnouncementMetaPart.Literal(" 更新 · "),
+                ChannelAnnouncementMetaPart.Time,
+            ),
+            splitChannelAnnouncementMetaTemplate("\u0001 更新 · \u0002"),
+        )
+    }
 
     @Test
     fun theChangeLineIsSaidInTheReadersLanguage() =
@@ -282,7 +414,7 @@ class ChannelAnnouncementUiTest {
                 RaftText(channelAnnouncementNoticeLine(ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Set, actor, "pt_a", "Release rules for 1.9")))
                 RaftText(channelAnnouncementNoticeLine(ChannelAnnouncementNotice(ChannelAnnouncementChangeKind.Removed, actor.copy(name = null), "pt_a", null)))
             }
-            onNodeWithText("Martin set the announcement: Release rules for 1.9").assertExists()
-            onNodeWithText("Someone removed the channel announcement").assertExists()
+            onNodeWithText("Martin pinned Release rules for 1.9").assertExists()
+            onNodeWithText("Someone unpinned the channel’s pinned content").assertExists()
         }
 }

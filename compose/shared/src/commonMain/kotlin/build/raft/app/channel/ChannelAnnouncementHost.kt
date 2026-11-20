@@ -12,7 +12,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import build.raft.app.base.BridgeModule
+import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY
 import build.raft.app.data.ChannelAnnouncementIntent
 import build.raft.app.data.ChannelAnnouncementKey
@@ -30,11 +32,13 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.SharedChannelAnnouncementStore
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.data.answersFor
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.channelTypeSupportsAnnouncement
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import kotlinx.coroutines.flow.flowOf
 
 /*
  * Channel announcements wired to a page: the flag, the shared store's slice, the reads (open,
@@ -197,7 +201,7 @@ private sealed interface ChannelAnnouncementStep {
 }
 
 /**
- * Channel details › Announcement, wired: the row, the picker, the confirmations, and the change
+ * Channel details › Pinned content, wired: the row, the picker, the confirmations, and the change
  * through the shared store (a refusal stays in its dialog with the server's sentence and the
  * trace id; success closes it).
  */
@@ -236,6 +240,37 @@ internal fun ChannelSettingsAnnouncementSection(
     }
     val running = finished?.status == ChannelAnnouncementMutationStatus.Running
     val error = (finished?.status as? ChannelAnnouncementMutationStatus.Failed)?.error
+    // Web `useChannelAnnouncementKind`: resolve the Artifact kind from object summaries;
+    // falls back to Markdown (document icon) until the batched summary arrives.
+    val artifactId = slice.announcement?.artifactId
+    val artifactVersion = slice.announcement?.version
+    val artifactTargets = remember(artifactId) { artifactId?.let { listOf(ArtifactLinkTarget(it)) }.orEmpty() }
+    val summaryStore = remember(sharedStores, artifactTargets.isNotEmpty()) {
+        if (artifactTargets.isEmpty()) null else sharedStores.artifactSummaryStore
+    }
+    LaunchedEffect(summaryStore, key.serverId, artifactTargets, artifactVersion) {
+        if (summaryStore != null && artifactTargets.isNotEmpty()) {
+            summaryStore.request(key.serverId, artifactTargets)
+        }
+    }
+    val initialSummaryAnswers = remember(summaryStore, key.serverId, artifactTargets) {
+        if (summaryStore == null || artifactTargets.isEmpty()) {
+            emptyMap<String, ArtifactSummaryAnswer>()
+        } else {
+            summaryStore.state.value.answersFor(key.serverId, artifactTargets)
+        }
+    }
+    val summaryAnswers by remember(summaryStore, key.serverId, artifactTargets) {
+        if (summaryStore == null || artifactTargets.isEmpty()) {
+            flowOf(emptyMap<String, ArtifactSummaryAnswer>())
+        } else {
+            summaryStore.answersFlow(key.serverId, artifactTargets)
+        }
+    }.collectAsState(initialSummaryAnswers)
+    val artifactKind =
+        artifactTargets.firstOrNull()?.let { target ->
+            (summaryAnswers[target.key] as? ArtifactSummaryAnswer.Ok)?.summary?.kind
+        } ?: ArtifactKind.Markdown
 
     ChannelAnnouncementDetailsRow(
         slice = slice,
@@ -245,6 +280,7 @@ internal fun ChannelSettingsAnnouncementSection(
         onReplace = { step = ChannelAnnouncementStep.Pick(replacing = true) },
         onRemove = { step = ChannelAnnouncementStep.ConfirmRemove },
         modifier = modifier,
+        artifactKind = artifactKind,
     )
 
     when (val current = step) {
@@ -339,6 +375,7 @@ private fun ChannelAnnouncementPickerRoute(
                                 meta =
                                     stringResource(Res.string.artifacts_card_version, artifact.summary.latestVersion) +
                                         " · " + raftRelativeTimestampLabel(artifact.updatedAt),
+                                kind = artifact.summary.kind,
                             )
                         },
                     hasMore = state.nextCursor != null,

@@ -22,20 +22,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ChannelAnnouncementChangeKind
 import build.raft.app.data.ChannelAnnouncementNotice
 import build.raft.app.data.ChannelAnnouncementSlice
 import build.raft.app.data.RaftChannelAnnouncement
 import build.raft.app.data.ScreenError
+import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
+import build.raft.designsystem.components.LocalRaftListRowInks
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftHoverTier
@@ -51,6 +56,8 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftRowTone
+import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.text.RaftText
@@ -75,6 +82,9 @@ internal object ChannelAnnouncementTestTags {
     const val StripSettings = "channel-announcement-strip-settings"
     const val Details = "channel-settings-announcement"
     const val DetailsItem = "channel-settings-announcement-item"
+    const val DetailsMeta = "channel-settings-announcement-meta"
+    const val DetailsMetaName = "channel-settings-announcement-meta-name"
+    const val DetailsMetaTime = "channel-settings-announcement-meta-time"
     const val DetailsEmpty = "channel-settings-announcement-empty"
     const val DetailsSet = "channel-settings-announcement-set"
     const val DetailsReplace = "channel-settings-announcement-replace"
@@ -260,10 +270,15 @@ internal fun channelAnnouncementNoticeLine(notice: ChannelAnnouncementNotice): S
     }
 }
 
-// ---- Channel details › Announcement --------------------------------------------------------------
+// ---- Channel details › Pinned content ------------------------------------------------------------
 
 /** One of the channel's Artifacts, as the picker lists it. */
-internal data class ChannelAnnouncementChoice(val artifactId: String, val title: String, val meta: String)
+internal data class ChannelAnnouncementChoice(
+    val artifactId: String,
+    val title: String,
+    val meta: String,
+    val kind: ArtifactKind = ArtifactKind.Markdown,
+)
 
 /** What the picker shows. */
 internal sealed interface ChannelAnnouncementPickerView {
@@ -274,11 +289,177 @@ internal sealed interface ChannelAnnouncementPickerView {
     data class Ready(val choices: List<ChannelAnnouncementChoice>, val hasMore: Boolean, val loadingMore: Boolean) : ChannelAnnouncementPickerView
 }
 
+internal sealed interface ChannelAnnouncementMetaPart {
+    data class Literal(val text: String) : ChannelAnnouncementMetaPart
+
+    data object Name : ChannelAnnouncementMetaPart
+
+    data object Time : ChannelAnnouncementMetaPart
+}
+
+private const val ChannelAnnouncementMetaNameToken = "\u0001"
+private const val ChannelAnnouncementMetaTimeToken = "\u0002"
+
 /**
- * The Announcement row of the channel details, after the members (web `ChannelAnnouncementField`):
- * with an announcement, the Artifact itself (opens it, with a chevron); for who may change it, a ⋯
- * in the chevron's place whose menu has Replace and Remove (slock #14461, raft-design #1212); without, for who may set one, a line on what it is for and Set announcement;
- * nothing for anyone else, nor before the first read.
+ * Splits the localized `"Updated by {name} · {time}"` template into literal runs and the name /
+ * time slots so ONLY the updater name truncates on a narrow row while the relative time stays
+ * whole across every locale's word order (botiverse/slock #15693).
+ */
+internal fun splitChannelAnnouncementMetaTemplate(
+    template: String,
+    nameToken: String = ChannelAnnouncementMetaNameToken,
+    timeToken: String = ChannelAnnouncementMetaTimeToken,
+): List<ChannelAnnouncementMetaPart> {
+    val parts = mutableListOf<ChannelAnnouncementMetaPart>()
+    var cursor = 0
+    while (cursor < template.length) {
+        val nextName = template.indexOf(nameToken, cursor)
+        val nextTime = template.indexOf(timeToken, cursor)
+        val (matchIndex, tokenLength, part) =
+            when {
+                nextName >= 0 && (nextTime < 0 || nextName < nextTime) ->
+                    Triple(nextName, nameToken.length, ChannelAnnouncementMetaPart.Name)
+                nextTime >= 0 ->
+                    Triple(nextTime, timeToken.length, ChannelAnnouncementMetaPart.Time)
+                else -> {
+                    parts += ChannelAnnouncementMetaPart.Literal(template.substring(cursor))
+                    break
+                }
+            }
+        if (matchIndex > cursor) {
+            parts += ChannelAnnouncementMetaPart.Literal(template.substring(cursor, matchIndex))
+        }
+        parts += part
+        cursor = matchIndex + tokenLength
+    }
+    return parts
+}
+
+@Composable
+private fun ChannelAnnouncementDetailsMetaSubtitle(
+    authorName: String,
+    timeLabel: String,
+) {
+    val template =
+        stringResource(
+            Res.string.channel_announcement_details_meta,
+            ChannelAnnouncementMetaNameToken,
+            ChannelAnnouncementMetaTimeToken,
+        )
+    val parts = remember(template) { splitChannelAnnouncementMetaTemplate(template) }
+    val activeParts =
+        remember(parts, timeLabel) {
+            if (timeLabel.isNotBlank()) {
+                parts
+            } else {
+                parts.filterNot { part ->
+                    part == ChannelAnnouncementMetaPart.Time ||
+                        (part is ChannelAnnouncementMetaPart.Literal && part.text.contains('·'))
+                }
+            }
+        }
+    val style = RaftTheme.typography.monoMeta
+    val color = LocalRaftListRowInks.current?.ink2 ?: RaftTheme.colors.foregroundMuted
+    // Measure Time first so the relative timestamp always stays whole, then reserve literals,
+    // and let Name take the remaining width with ellipsis (botiverse/slock #15693).
+    Layout(
+        modifier = Modifier.fillMaxWidth().testTag(ChannelAnnouncementTestTags.DetailsMeta),
+        content = {
+            activeParts.forEach { part ->
+                when (part) {
+                    is ChannelAnnouncementMetaPart.Literal ->
+                        RaftText(
+                            text = part.text,
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    ChannelAnnouncementMetaPart.Name ->
+                        RaftText(
+                            text = authorName,
+                            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsMetaName),
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    ChannelAnnouncementMetaPart.Time ->
+                        RaftText(
+                            text = timeLabel,
+                            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsMetaTime),
+                            style = style,
+                            color = color,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                }
+            }
+        },
+    ) { measurables, constraints ->
+        val maxWidth = constraints.maxWidth
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeables = arrayOfNulls<androidx.compose.ui.layout.Placeable>(measurables.size)
+        var remaining = maxWidth
+        // 1. Measure Time first at full width so it is never clipped.
+        activeParts.forEachIndexed { index, part ->
+            if (part == ChannelAnnouncementMetaPart.Time) {
+                val p = measurables[index].measure(loose)
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 2. Measure separator ("·") literals next so they stay intact beside Time.
+        activeParts.forEachIndexed { index, part ->
+            if (part is ChannelAnnouncementMetaPart.Literal && part.text.contains('·')) {
+                val p = measurables[index].measure(loose.copy(maxWidth = remaining))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 3. Measure remaining literals, keeping at least a small reserve for Name on ultra-narrow rows.
+        val hasName = activeParts.any { it == ChannelAnnouncementMetaPart.Name }
+        val minNameReserve = if (hasName) 32.dp.roundToPx() else 0
+        activeParts.forEachIndexed { index, part ->
+            if (placeables[index] == null && part is ChannelAnnouncementMetaPart.Literal) {
+                val cap = if (remaining > minNameReserve) remaining - minNameReserve else remaining
+                val p = measurables[index].measure(loose.copy(maxWidth = cap.coerceAtLeast(0)))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        // 4. Measure Name in whatever width remains (truncates with ellipsis).
+        activeParts.forEachIndexed { index, part ->
+            if (placeables[index] == null && part == ChannelAnnouncementMetaPart.Name) {
+                val p = measurables[index].measure(loose.copy(maxWidth = remaining))
+                placeables[index] = p
+                remaining = (remaining - p.width).coerceAtLeast(0)
+            }
+        }
+        val measured = placeables.map { requireNotNull(it) }
+        val totalWidth = measured.sumOf { it.width }.coerceIn(constraints.minWidth, maxWidth)
+        val totalHeight = (measured.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(totalWidth, totalHeight) {
+            var x = 0
+            measured.forEach { placeable ->
+                placeable.placeRelative(x, (totalHeight - placeable.height) / 2)
+                x += placeable.width
+            }
+        }
+    }
+}
+
+/**
+ * Channel details › Pinned content, after the members (web `ChannelAnnouncementField` +
+ * `PinnedArtifactRow`, botiverse/slock #15659 #15693):
+ * a section heading with the pin icon above one box:
+ * - pinned: one clickable row with the Artifact kind's 16dp icon, title on one line,
+ *   "Updated by {name} · {time}" (only the name truncates), and chevron (for editors, ⋯ with
+ *   Replace pin and Unpin sits before the chevron);
+ * - nothing pinned: for editors, one row with muted "Nothing pinned" and "Pin an Artifact";
+ *   nothing at all for anyone else, nor before the first read.
  */
 @Composable
 internal fun ChannelAnnouncementDetailsRow(
@@ -289,58 +470,62 @@ internal fun ChannelAnnouncementDetailsRow(
     onReplace: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
+    artifactKind: ArtifactKind = ArtifactKind.Markdown,
 ) {
     if (!slice.read) return
     val announcement = slice.announcement
     if (announcement == null && !canEdit) return
-    RaftListRowGroup(modifier.testTag(ChannelAnnouncementTestTags.Details)) {
-        if (announcement != null) {
-            val meta =
-                stringResource(
-                    Res.string.channel_announcement_details_meta,
-                    announcement.version.toString(),
-                    channelAnnouncementAuthorName(announcement.updatedBy.name),
-                    raftRelativeTimestampLabel(announcement.updatedAt),
-                )
-            if (canEdit) {
-                ChannelAnnouncementDetailsItemWithActions(
-                    title = announcement.title,
-                    meta = meta,
-                    onOpen = onOpen,
-                    onReplace = onReplace,
-                    onRemove = onRemove,
-                )
+    Column(
+        modifier = modifier.fillMaxWidth().testTag(ChannelAnnouncementTestTags.Details),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        RaftSectionEyebrow(
+            text = stringResource(Res.string.channel_announcement_label),
+            icon = { RaftComputersIcon(RaftLucideIconName.Pin, size = 16.dp) },
+        )
+        RaftListRowGroup(Modifier.fillMaxWidth()) {
+            if (announcement != null) {
+                val authorName = channelAnnouncementAuthorName(announcement.updatedBy.name)
+                val timeLabel = raftShortRelativeTimestampLabel(announcement.updatedAt)
+                if (canEdit) {
+                    ChannelAnnouncementDetailsItemWithActions(
+                        title = announcement.title,
+                        authorName = authorName,
+                        timeLabel = timeLabel,
+                        artifactKind = artifactKind,
+                        onOpen = onOpen,
+                        onReplace = onReplace,
+                        onRemove = onRemove,
+                    )
+                } else {
+                    RaftListRow(
+                        title = announcement.title,
+                        modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
+                        onClick = onOpen,
+                        variant = RaftListRowVariant.Plain,
+                        subtitleContent = {
+                            ChannelAnnouncementDetailsMetaSubtitle(authorName = authorName, timeLabel = timeLabel)
+                        },
+                        leading = { RaftSlotIcon(artifactKind.lucideIcon(), size = 16.dp) },
+                        trailing = { RaftListRowChevron() },
+                    )
+                }
             } else {
                 RaftListRow(
-                    title = announcement.title,
-                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
-                    onClick = onOpen,
+                    title = stringResource(Res.string.channel_announcement_details_empty_title),
+                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsEmpty),
                     variant = RaftListRowVariant.Plain,
-                    subtitle = meta,
-                    leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
-                    trailing = { RaftListRowChevron() },
-                )
-            }
-        } else {
-            RaftListRow(
-                title = stringResource(Res.string.channel_announcement_details_empty_title),
-                modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsEmpty),
-                variant = RaftListRowVariant.Plain,
-                description = stringResource(Res.string.channel_announcement_details_empty_body),
-                wrapDescription = true,
-                leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
-            )
-            // On a phone the button goes under the line (web: at its end, which leaves the text a few
-            // words a line at 390dp), in a row that belongs to it.
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                RaftButton(
-                    text = stringResource(Res.string.channel_announcement_details_set),
-                    onClick = onSet,
-                    modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsSet),
-                    variant = RaftButtonVariant.Default,
+                    tone = RaftRowTone.Muted,
+                    titleMaxLines = Int.MAX_VALUE,
+                    trailing = {
+                        RaftButton(
+                            text = stringResource(Res.string.channel_announcement_details_set),
+                            onClick = onSet,
+                            modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsSet),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Md,
+                        )
+                    },
                 )
             }
         }
@@ -348,21 +533,24 @@ internal fun ChannelAnnouncementDetailsRow(
 }
 
 /**
- * The announcement row for who may change it (web `AnnouncementItem` with `actions`, slock #14461):
- * the row opens the announcement; ⋯ takes the chevron's place, on top of the row's end as a button
- * of its own, never inside the row's target (raft-ui InboxItem's pattern). The row keeps room for
- * it so its text never runs under it, and keeps its hover fill while the menu is open. The menu has
- * Replace and Remove, neither coloured: the confirmation carries the consequence (DropdownMenu's rule).
+ * The pinned Artifact row for who may change it (web `PinnedArtifactRow` with `actions`, slock
+ * #15659): the whole row opens the Artifact; ⋯ (Replace pin, Unpin) sits right before the chevron
+ * as a sibling button layered above the row, never inside the row's click target. The row reserves
+ * space for ⋯ before the chevron so text never runs under it, and keeps its hover fill while the
+ * menu is open.
  */
 @Composable
 private fun ChannelAnnouncementDetailsItemWithActions(
     title: String,
-    meta: String,
+    authorName: String,
+    timeLabel: String,
+    artifactKind: ArtifactKind,
     onOpen: () -> Unit,
     onReplace: () -> Unit,
     onRemove: () -> Unit,
 ) {
     val colors = RaftTheme.colors
+    val actionsRoom = RaftTheme.controls.rowHeight ?: ChannelAnnouncementActionsRoom
     var open by remember { mutableStateOf(false) }
     val actionsLabel = stringResource(Res.string.channel_announcement_details_actions)
     Box(Modifier.fillMaxWidth()) {
@@ -371,13 +559,18 @@ private fun ChannelAnnouncementDetailsItemWithActions(
             modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsItem),
             onClick = onOpen,
             variant = RaftListRowVariant.Plain,
-            subtitle = meta,
-            leading = { RaftSlotIcon(RaftLucideIconName.Megaphone, size = 20.dp) },
-            // Room for ⋯ (web `pe-14`), so the title and the line under it end before it.
-            trailing = { Spacer(Modifier.width(ChannelAnnouncementActionsRoom)) },
+            subtitleContent = {
+                ChannelAnnouncementDetailsMetaSubtitle(authorName = authorName, timeLabel = timeLabel)
+            },
+            leading = { RaftSlotIcon(artifactKind.lucideIcon(), size = 16.dp) },
+            // Reserve room for ⋯ before the chevron so title and subtitle end before it.
+            trailing = {
+                Spacer(Modifier.width(actionsRoom))
+                RaftListRowChevron()
+            },
             menuOpen = open,
         )
-        Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) {
+        Box(Modifier.align(Alignment.CenterEnd).padding(end = ChannelAnnouncementActionsEndOffset)) {
             RaftIconButton(
                 onClick = { open = true },
                 tooltip = actionsLabel,
@@ -403,15 +596,18 @@ private fun ChannelAnnouncementDetailsItemWithActions(
                         onRemove()
                     },
                     modifier = Modifier.testTag(ChannelAnnouncementTestTags.DetailsRemove),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.PinOff) },
                 )
             }
         }
     }
 }
 
-/** What the row's end keeps clear for ⋯: the button (32) past the row's own end padding, plus a gap. */
+/** Width of the ⋯ icon button reserved inside `trailing` immediately before the chevron. */
 private val ChannelAnnouncementActionsRoom = 32.dp
+
+/** End offset of ⋯: row end padding (16dp) + chevron (20dp) + trailing gap (6dp). */
+private val ChannelAnnouncementActionsEndOffset = 42.dp
 
 /** A refused or failed change, in the dialog: the server's sentence (else the generic one) and the trace id. */
 @Composable
@@ -426,8 +622,8 @@ private fun ChannelAnnouncementErrorNote(error: ScreenError) {
 }
 
 /**
- * Set / Replace: one of the channel's own Artifacts (a Dialog md with a ChoiceList), the current
- * announcement left out. Set confirms here; Replace goes on to its confirmation ([onNext]).
+ * Pin / Replace pin: one of the channel's own Artifacts (a Dialog md with a ChoiceList), the
+ * currently pinned Artifact left out. Pin confirms here; Replace pin goes on to its confirmation.
  */
 @Composable
 internal fun ChannelAnnouncementPickerDialog(
@@ -487,6 +683,13 @@ internal fun ChannelAnnouncementPickerDialog(
                                     label = choice.title,
                                     descriptions = listOf(androidx.compose.ui.text.AnnotatedString(choice.meta)),
                                     searchText = choice.title,
+                                    media = {
+                                        RaftSlotIcon(
+                                            choice.kind.lucideIcon(),
+                                            size = 16.dp,
+                                            color = if (running) colors.foregroundDisabled else colors.foregroundMuted,
+                                        )
+                                    },
                                 )
                             },
                         value = chosen,
