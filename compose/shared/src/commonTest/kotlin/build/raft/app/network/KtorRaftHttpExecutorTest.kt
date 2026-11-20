@@ -137,6 +137,76 @@ class KtorRaftHttpExecutorTest {
         assertFalse(harness.logs.any { "X-Amz" in it || "bucket.r2" in it || "secret-body" in it }, harness.logs.joinToString("\n"))
     }
 
+    /** `slock.attachment.upload_finished`: what the transport hands up for the two upload requests. */
+    @Test
+    fun uploadRequestsReportBodySizePhaseTimesAndEdgeLocation() = runBlocking {
+        val facts = "reusedConnection=true requestBodyMs=1840 responseWaitMs=312"
+        val harness =
+            Harness(transportFacts = { requestId -> facts.takeIf { requestId.startsWith("mobile-") } }) {
+                respond("{}", HttpStatusCode.OK, headersOf("X-Amz-Cf-Pop", "NRT57-P2"))
+            }
+        val traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+
+        val legacy =
+            harness.executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = "https://api.raft.test/api/attachments/upload",
+                fields = mapOf("channelId" to "c1"),
+                files = listOf(MultipartFile(name = "files", fileName = "a.jpg", mimeType = "image/jpeg", bytes = ByteArray(64) { 1 })),
+                headers = mapOf("Authorization" to "Bearer access-1", "traceparent" to traceparent),
+            )
+        val direct =
+            harness.executor.executeBytes(
+                priority = RaftRequestPriority.Foreground,
+                url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc",
+                method = "PUT",
+                headers = mapOf("Content-Type" to "image/jpeg"),
+                bodyBytes = ByteArray(10) { it.toByte() },
+            )
+        val ordinary = harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
+
+        val (post, put, _) = harness.requests
+        // The caller's traceparent (the upload's trace) goes to the API; the storage host gets none.
+        assertEquals(traceparent, post.headers["traceparent"])
+        assertNull(put.headers["traceparent"])
+        assertTrue(put.headers["x-request-id"].orEmpty().startsWith("mobile-"))
+        // The whole multipart body, framing included, as declared to the engine.
+        val legacyFacts = requireNotNull(legacy.uploadFacts) { "multipart upload facts" }
+        assertTrue((legacyFacts.requestBytes ?: 0L) > 64L, "requestBytes=${legacyFacts.requestBytes}")
+        assertEquals(
+            RaftUploadWireFacts(requestBytes = legacyFacts.requestBytes, requestBodyMs = 1_840L, responseWaitMs = 312L, edgePop = "NRT57-P2"),
+            legacyFacts,
+        )
+        // A presigned PUT keeps none of the storage answer's headers, only the edge location's code.
+        assertTrue(direct.responseHeaders.isEmpty())
+        assertEquals(
+            RaftUploadWireFacts(requestBytes = 10L, requestBodyMs = 1_840L, responseWaitMs = 312L, edgePop = "NRT57-P2"),
+            direct.uploadFacts,
+        )
+        assertNull(ordinary.uploadFacts, "only upload requests carry upload facts")
+    }
+
+    @Test
+    fun anUploadThatGotNoAnswerReportsNoPhaseItCouldNotMeasure() = runBlocking {
+        // The body went out, then the connection died: a body time, no response wait, no edge.
+        val harness =
+            Harness(transportFacts = { "reusedConnection=false requestBodyMs=700" }) {
+                throw SocketTimeoutException("no answer")
+            }
+
+        val response =
+            harness.executor.executeBytes(
+                priority = RaftRequestPriority.Foreground,
+                url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc",
+                method = "PUT",
+                headers = emptyMap(),
+                bodyBytes = ByteArray(10),
+            )
+
+        assertEquals(0, response.code)
+        assertEquals(RaftUploadWireFacts(requestBytes = 10L, requestBodyMs = 700L), response.uploadFacts)
+    }
+
     @Test
     fun aMultipartUploadResetByTheConnectionIsSentOnceMore() = runBlocking {
         // Hands a5eae49e: a VPN reset the upload's stream after the body reached the server.
@@ -462,6 +532,7 @@ class KtorRaftHttpExecutorTest {
         coordinator: RaftNetworkRequestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
         engineReportsProtocol: Boolean = true,
         failedTraceIds: RaftRecentFailedTraceId = RaftRecentFailedTraceId(),
+        transportFacts: (requestId: String) -> String? = { null },
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) {
         val requests = mutableListOf<HttpRequestData>()
@@ -482,7 +553,7 @@ class KtorRaftHttpExecutorTest {
                     client
                 },
                 requestLifetimeCoordinator = coordinator,
-                transportFacts = { null },
+                transportFacts = transportFacts,
                 engineLabel = "ktor_test",
                 engineReportsProtocol = engineReportsProtocol,
                 // MockEngine consumes the body itself: count at the body writer here.

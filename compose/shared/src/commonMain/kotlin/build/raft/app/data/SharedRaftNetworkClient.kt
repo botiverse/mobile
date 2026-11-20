@@ -26,6 +26,7 @@ import build.raft.app.network.RAFT_KTOR_CONNECT_TIMEOUT_MILLIS
 import build.raft.app.network.combineDownloadedChunks
 import build.raft.app.network.raftStreamingGet
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlin.time.TimeSource
 
 internal const val RAFT_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
@@ -543,8 +544,11 @@ internal class SharedRaftNetworkClient(
         priority: DataRequestPriority,
         request: AttachmentUploadSessionCreateRequest,
         expectedAuthority: RaftExpectedAuthBinding,
-    ): HomeNetworkResponse =
-        requestInternal(
+    ): HomeNetworkResponse {
+        // A composer upload's first request: its preparation ends here, and the call joins its trace.
+        val uploadTiming = currentCoroutineContext()[RaftAttachmentUploadTimingRecorder]
+        uploadTiming?.uploadRequestStarting(RaftAttachmentUploadRouteDirect)
+        return requestInternal(
             priority = priority,
             path = "attachments/upload-sessions",
             method = "POST",
@@ -552,7 +556,9 @@ internal class SharedRaftNetworkClient(
             serverIdOverride = ServerId(expectedAuthority.serverId),
             bodyText = encodeSharedAttachmentUploadSessionCreateRequest(request),
             expectedAuthority = expectedAuthority,
+            extraHeaders = uploadTiming?.traceHeaders().orEmpty(),
         )
+    }
 
     override suspend fun completeAttachmentUploadSessionBound(
         priority: DataRequestPriority,
@@ -571,6 +577,7 @@ internal class SharedRaftNetworkClient(
             serverIdOverride = ServerId(expectedAuthority.serverId),
             bodyText = null,
             expectedAuthority = expectedAuthority,
+            extraHeaders = currentCoroutineContext()[RaftAttachmentUploadTimingRecorder]?.traceHeaders().orEmpty(),
         )
     }
 
@@ -763,6 +770,9 @@ internal class SharedRaftNetworkClient(
         onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
     ): HomeNetworkResponse {
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
+        // A composer upload (RaftAttachmentUploadTelemetry.kt): the POST joins its trace and reports
+        // what the transport measured. Any other caller has no recorder.
+        val uploadTiming = currentCoroutineContext()[RaftAttachmentUploadTimingRecorder]
         return uploadMultipart(
             priority = priority,
             path = "attachments/upload",
@@ -773,7 +783,9 @@ internal class SharedRaftNetworkClient(
             requestBytes = resolvedFiles.uploadByteEstimate(),
             key = "attachments/upload",
             expectedAuthority = expectedAuthority,
-            onUploadProgress = onProgress
+            onUploadProgress = onProgress,
+            extraHeaders = uploadTiming?.traceHeaders().orEmpty(),
+            uploadTiming = uploadTiming,
         )
     }
 
@@ -821,6 +833,7 @@ internal class SharedRaftNetworkClient(
             )
         }
         val key = "attachments/upload-sessions/presigned-put"
+        val uploadTiming = currentCoroutineContext()[RaftAttachmentUploadTimingRecorder]
         return try {
             val schedulerTimeoutMillis =
                 if (bodyFile != null) {
@@ -872,6 +885,8 @@ internal class SharedRaftNetworkClient(
                         openedFileStream?.cancel()
                         throw failure
                     }
+                // Times, body size and edge location only; nothing of the URL or the answer.
+                uploadTiming?.transferFinished(RaftAttachmentUploadRouteDirect, response.uploadFacts)
                 // Deliberately log only the stable category; the signed URL is never emitted.
                 // The presigned URL is a bearer capability.  Redact URL-bearing transport error
                 // text before it can reach repository error mapping or a user-facing message.
@@ -1109,6 +1124,7 @@ internal class SharedRaftNetworkClient(
         onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
         extraHeaders: Map<String, String> = emptyMap(),
         serverIdOverride: ServerId? = null,
+        uploadTiming: RaftAttachmentUploadTimingRecorder? = null,
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
@@ -1140,6 +1156,7 @@ internal class SharedRaftNetworkClient(
                         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             return@authenticated routeEnvironmentChangedResponse()
                         }
+                        uploadTiming?.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
                         val response =
                             executor.executeMultipart(
                                 priority = priority.toNetworkPriority(),
@@ -1157,7 +1174,10 @@ internal class SharedRaftNetworkClient(
                                             HEADER_SERVER_ID to auth.serverId
                                         ),
                                 onUploadProgress = onUploadProgress
-                            ).toHomeNetworkResponse()
+                            ).also { sent ->
+                                // A send after a token refresh replaces the earlier one.
+                                uploadTiming?.transferFinished(RaftAttachmentUploadRouteLegacy, sent.uploadFacts)
+                            }.toHomeNetworkResponse()
                         if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             response
                         } else {

@@ -10,7 +10,11 @@ import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.RaftByteStreamSink
+import build.raft.app.network.RaftTraceIds
+import build.raft.app.network.RaftUploadWireFacts
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -99,6 +103,101 @@ class DirectAttachmentUploadNetworkContractTest {
         assertEquals(PresignedUrl, executor.byteBodies.single().url)
         assertEquals(listOf<Byte>(1, 2, 3), executor.byteBodies.single().bytes.toList())
         assertTrue("Authorization" !in executor.byteBodies.single().headers)
+    }
+
+    /**
+     * `slock.attachment.upload_finished`: a composer upload's recorder travels in the coroutine
+     * context, so the network client fills it in without any repository carrying telemetry. The
+     * session calls join the attempt's trace; the presigned PUT to the store gets no `traceparent`.
+     */
+    @Test
+    fun directUploadFillsTheTimingRecorderAndJoinsItsTraceOnTheSessionCalls() = runBlocking {
+        val putFacts = RaftUploadWireFacts(requestBytes = 3L, requestBodyMs = 40L, responseWaitMs = 15L, edgePop = "NRT57-P2")
+        val executor =
+            RecordingExecutor(
+                respond = { method, url ->
+                    when {
+                        url.endsWith("/attachments/upload-capabilities") ->
+                            response(
+                                body =
+                                    """{"directUploadEnabled":true,"maxBytes":1048576,"sessionExpiresInSeconds":600}"""
+                            )
+                        method == "POST" && url.endsWith("/attachments/upload-sessions") ->
+                            response(
+                                body =
+                                    """{"uploadId":"$UploadId","attachmentId":"$AttachmentIdValue","state":"pending","expiresAt":"2026-09-02T00:00:00Z","upload":{"method":"PUT","url":"$PresignedUrl","headers":{"Content-Type":"image/jpeg","If-None-Match":"*"}}}"""
+                            )
+                        method == "POST" && url.endsWith("/attachments/upload-sessions/$UploadId/complete") ->
+                            response(
+                                body =
+                                    """{"uploadId":"$UploadId","state":"completed","attachment":{"id":"$AttachmentIdValue","filename":"photo.jpg","mimeType":"image/jpeg","sizeBytes":3}}"""
+                            )
+                        else -> error("unexpected request: $method $url")
+                    }
+                },
+                bytesResponse = response().copy(uploadFacts = putFacts),
+            )
+        val repository =
+            RealConversationRepository(
+                sessionStore = authenticatedSessionStore(),
+                networkClient = client(executor = executor),
+                routeEnvironmentIdProvider = { ApiBaseUrl },
+            )
+        val operation = requireNotNull(repository.directAttachmentUploadOperation(expectedBinding()))
+        val recorder =
+            RaftAttachmentUploadTimingRecorder(
+                elapsedMs = { 120L },
+                traceIds = RaftTraceIds(traceId = "0af7651916cd43dd8448eb211c80319c", spanId = "b7ad6b7169203331"),
+            )
+
+        val result =
+            withContext(recorder) {
+                operation.upload(ChannelId("channel-1"), listOf(file(bytes = byteArrayOf(1, 2, 3))))
+            }
+
+        assertIs<DataResult.Content<DirectAttachmentUploadBatch>>(result)
+        val timing = recorder.snapshot()
+        assertEquals(RaftAttachmentUploadRouteDirect, timing.route)
+        assertEquals(120L, timing.prepareMs, "preparation ends at the session create call")
+        assertEquals(putFacts, timing.facts)
+        val traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+        val sessionCalls = executor.requests.filter { it.method == "POST" }
+        assertEquals(2, sessionCalls.size, "create and complete")
+        sessionCalls.forEach { call -> assertEquals(traceparent, call.headers["traceparent"], call.url) }
+        assertTrue(executor.byteBodies.single().headers.keys.none { it.equals("traceparent", ignoreCase = true) })
+    }
+
+    @Test
+    fun legacyUploadFillsTheTimingRecorderAndSendsItsTraceparent() = runBlocking {
+        val postFacts = RaftUploadWireFacts(requestBytes = 420L, requestBodyMs = 900L, responseWaitMs = 300L, edgePop = "SFO53-P7")
+        val executor = RecordingExecutor(respond = { _, _ -> response().copy(uploadFacts = postFacts) })
+        val network = client(executor = executor)
+        val recorder =
+            RaftAttachmentUploadTimingRecorder(
+                elapsedMs = { 75L },
+                traceIds = RaftTraceIds(traceId = "0af7651916cd43dd8448eb211c80319c", spanId = "b7ad6b7169203331"),
+            )
+        val files = listOf(MultipartFile(name = "files", fileName = "photo.jpg", mimeType = "image/jpeg", bytes = byteArrayOf(1, 2, 3)))
+
+        // The context survives the hops the upload path makes (withContext adds to it).
+        withContext(recorder) {
+            withContext(NonCancellable) {
+                network.uploadAttachments(DataRequestPriority.Foreground, ChannelId("channel-1"), files)
+            }
+        }
+        // An upload started anywhere else has no recorder: nothing is recorded and no header is added.
+        network.uploadAttachments(DataRequestPriority.Foreground, ChannelId("channel-1"), files)
+
+        val timing = recorder.snapshot()
+        assertEquals(RaftAttachmentUploadRouteLegacy, timing.route)
+        assertEquals(75L, timing.prepareMs)
+        assertEquals(postFacts, timing.facts)
+        assertEquals(2, executor.multipartCalls)
+        assertEquals(
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+            executor.multipartHeaders.first()["traceparent"],
+        )
+        assertNull(executor.multipartHeaders.last()["traceparent"], "the executor adds its own below this layer")
     }
 
     @Test
@@ -573,12 +672,13 @@ class DirectAttachmentUploadNetworkContractTest {
         private val bytesResponse: RaftHttpExecutorResponse = response(),
         private val bytesFailure: Throwable? = null,
     ) : RaftHttpExecutor {
-        data class Request(val method: String, val url: String)
+        data class Request(val method: String, val url: String, val headers: Map<String, String> = emptyMap())
         data class ByteBody(val url: String, val headers: Map<String, String>, val bytes: ByteArray)
 
         val requests = mutableListOf<Request>()
         val byteBodies = mutableListOf<ByteBody>()
         val fileBodies = mutableListOf<RaftHttpFileBody>()
+        val multipartHeaders = mutableListOf<Map<String, String>>()
         var multipartCalls: Int = 0
             private set
 
@@ -593,7 +693,7 @@ class DirectAttachmentUploadNetworkContractTest {
             bodyText: String?,
             jsonBody: Boolean,
         ): RaftHttpExecutorResponse {
-            requests += Request(method = method, url = url)
+            requests += Request(method = method, url = url, headers = headers)
             return respond(method, url)
         }
 
@@ -606,6 +706,7 @@ class DirectAttachmentUploadNetworkContractTest {
             onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): RaftHttpExecutorResponse {
             multipartCalls += 1
+            multipartHeaders += headers
             return respond("POST", url)
         }
 

@@ -204,6 +204,10 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
         private var protocol: String? = null
         private var addressFamily: String? = null
         private var tlsVersion: String? = null
+        private var requestBodyStartNs = 0L
+        private var requestBodyEndNs = 0L
+        private var requestBodyMs = -1L
+        private var responseWaitMs = -1L
 
         @Synchronized
         override fun dnsStart(call: Call, domainName: String) {
@@ -245,6 +249,29 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
             protocol = connection.protocol().toString()
         }
 
+        // The body's send time and the wait after its last byte, for uploads. A body sent again on
+        // the same call (a follow-up request) starts over, so the last send is the one reported.
+        @Synchronized
+        override fun requestBodyStart(call: Call) {
+            requestBodyStartNs = System.nanoTime()
+            requestBodyEndNs = 0L
+            requestBodyMs = -1L
+            responseWaitMs = -1L
+        }
+
+        @Synchronized
+        override fun requestBodyEnd(call: Call, byteCount: Long) {
+            if (requestBodyStartNs == 0L) return
+            requestBodyEndNs = System.nanoTime()
+            requestBodyMs = TimeUnit.NANOSECONDS.toMillis(requestBodyEndNs - requestBodyStartNs)
+        }
+
+        @Synchronized
+        override fun responseHeadersStart(call: Call) {
+            if (requestBodyEndNs == 0L || responseWaitMs >= 0L) return
+            responseWaitMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - requestBodyEndNs)
+        }
+
         override fun callEnd(call: Call) = publishFacts()
 
         override fun callFailed(call: Call, ioe: IOException) = publishFacts()
@@ -257,7 +284,10 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
                 requestId,
                 "reusedConnection=$reused connectionAttempts=$connectAttempts dnsMs=$dnsMs " +
                     "connectTotalMs=$connectMs tlsMs=$tlsMs negotiatedProtocol=${protocol ?: "none"} " +
-                    "addressFamily=${addressFamily ?: "none"} tlsVersion=${tlsVersion ?: "none"}"
+                    "addressFamily=${addressFamily ?: "none"} tlsVersion=${tlsVersion ?: "none"}" +
+                    // Only when measured: a request without a body, or one that got no answer, has none.
+                    (if (requestBodyMs >= 0L) " $RAFT_FACT_REQUEST_BODY_MS=$requestBodyMs" else "") +
+                    (if (responseWaitMs >= 0L) " $RAFT_FACT_RESPONSE_WAIT_MS=$responseWaitMs" else "")
             )
         }
 

@@ -135,14 +135,19 @@ internal object RaftDarwinTransportFacts {
     fun record(task: NSURLSessionTask, metrics: NSURLSessionTaskMetrics) {
         val requestId = task.originalRequest?.valueForHTTPHeaderField(REQUEST_ID_HEADER) ?: return
         val transaction = metrics.transactionMetrics.lastOrNull() as? NSURLSessionTaskTransactionMetrics ?: return
+        // Sending the request (headers and body) and the wait after its last byte, each only when
+        // NSURLSession measured it: a request that never finished sending, or got no answer, has none.
+        val requestBodyMs = measuredMillisBetween(transaction.requestStartDate, transaction.requestEndDate)
+        val responseWaitMs = measuredMillisBetween(transaction.requestEndDate, transaction.responseStartDate)
         val facts =
             "reusedConnection=${transaction.reusedConnection} " +
                 "dnsMs=${millisBetween(transaction.domainLookupStartDate, transaction.domainLookupEndDate)} " +
                 "connectTotalMs=${millisBetween(transaction.connectStartDate, transaction.connectEndDate)} " +
                 "tlsMs=${millisBetween(transaction.secureConnectionStartDate, transaction.secureConnectionEndDate)} " +
-                "responseWaitMs=${millisBetween(transaction.requestEndDate, transaction.responseStartDate)} " +
                 "negotiatedProtocol=${transaction.networkProtocolName?.toSafeDiagnosticsToken() ?: "none"} " +
-                "transactions=${metrics.transactionMetrics.size}"
+                "transactions=${metrics.transactionMetrics.size}" +
+                (requestBodyMs?.let { " $RAFT_FACT_REQUEST_BODY_MS=$it" } ?: "") +
+                (responseWaitMs?.let { " $RAFT_FACT_RESPONSE_WAIT_MS=$it" } ?: "")
         synchronized(lock) {
             completed.remove(requestId)
             completed[requestId] = facts
@@ -157,4 +162,7 @@ internal object RaftDarwinTransportFacts {
 
     private fun millisBetween(start: NSDate?, end: NSDate?): Long =
         if (start == null || end == null) 0L else (end.timeIntervalSinceDate(start) * 1000.0).toLong().coerceAtLeast(0L)
+
+    private fun measuredMillisBetween(start: NSDate?, end: NSDate?): Long? =
+        if (start == null || end == null) null else (end.timeIntervalSinceDate(start) * 1000.0).toLong().coerceAtLeast(0L)
 }

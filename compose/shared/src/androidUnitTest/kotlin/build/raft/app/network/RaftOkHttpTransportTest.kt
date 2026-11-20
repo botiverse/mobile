@@ -234,11 +234,12 @@ class RaftOkHttpTransportTest {
         assertEquals("image/jpeg", recorded.headers["Content-Type"])
         assertEquals(null, recorded.headers["Authorization"])
         // Nothing beyond what OkHttp / Ktor always send (Accept */*, Accept-Encoding, User-Agent, Connection)
-        // and the trace ids: no Authorization or other header that would break a SigV4 signature.
+        // and the request id: no Authorization or other header that would break a SigV4 signature, and
+        // no traceparent to the storage host (the web's direct PUT sends none).
         assertEquals(
             setOf(
                 "content-length", "content-type", "host", "connection", "accept", "accept-encoding", "user-agent",
-                "x-request-id", "traceparent",
+                "x-request-id",
             ),
             recorded.headers.names().map { it.lowercase() }.toSet()
         )
@@ -287,6 +288,57 @@ class RaftOkHttpTransportTest {
         assertTrue("name=\"channelId\"\r\n\r\nc1\r\n" in text)
         assertTrue("name=\"files\"; filename=\"85734.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n" in text)
         assertTrue(text.endsWith("--\r\n"))
+    }
+
+    /**
+     * `slock.attachment.upload_finished`: the real OkHttp EventListener times the body's send and the
+     * wait after its last byte, and the executor hands them up with the body size and the edge location.
+     */
+    @Test
+    fun uploadsReportBodySendTimeResponseWaitSizeAndEdgeLocation() = runBlocking {
+        val executor =
+            KtorRaftHttpExecutor(
+                clients = RaftOkHttpLanes(buildRaftBaseOkHttpClient()).ktorProvider(),
+                requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+                engineLabel = "ktor_okhttp",
+            )
+        val fileBytes = ByteArray(150 * 1024) { 9 }
+        server.enqueue(
+            MockResponse.Builder().code(200).addHeader("X-Amz-Cf-Pop", "NRT57-P2").body("""{"attachments":[{"id":"a1"}]}""").build()
+        )
+        server.enqueue(MockResponse.Builder().code(200).body("").build())
+
+        val legacy =
+            executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/api/attachments/upload").toString(),
+                fields = mapOf("channelId" to "c1"),
+                files = listOf(MultipartFile(name = "files", fileName = "85734.jpg", mimeType = "image/jpeg", bytes = fileBytes)),
+                headers = mapOf("Authorization" to "Bearer access-1"),
+            )
+        val direct =
+            executor.executeBytes(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/bucket/obj?X-Amz-Signature=ab").toString(),
+                method = "PUT",
+                headers = mapOf("Content-Type" to "image/jpeg"),
+                bodyBytes = fileBytes,
+            )
+
+        assertEquals(200, legacy.code, legacy.transportDiagnostics)
+        assertEquals(200, direct.code, direct.transportDiagnostics)
+        val post = server.takeRequest()
+        val put = server.takeRequest()
+        val legacyFacts = requireNotNull(legacy.uploadFacts) { "multipart upload facts" }
+        assertEquals(post.headers["Content-Length"], legacyFacts.requestBytes.toString())
+        assertTrue(legacyFacts.requestBodyMs != null && legacyFacts.responseWaitMs != null, legacy.transportDiagnostics)
+        assertEquals("NRT57-P2", legacyFacts.edgePop)
+        assertTrue(post.headers["traceparent"].orEmpty().startsWith("00-"))
+        val directFacts = requireNotNull(direct.uploadFacts) { "presigned PUT facts" }
+        assertEquals(fileBytes.size.toLong(), directFacts.requestBytes)
+        assertTrue(directFacts.requestBodyMs != null && directFacts.responseWaitMs != null, direct.transportDiagnostics)
+        assertEquals(null, directFacts.edgePop, "this answer did not pass CloudFront")
+        assertEquals(null, put.headers["traceparent"])
     }
 
     /**

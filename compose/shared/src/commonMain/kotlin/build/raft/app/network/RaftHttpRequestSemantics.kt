@@ -107,6 +107,15 @@ internal fun withRaftApiClientHeaders(headers: Map<String, String>): Map<String,
     withRaftClientVersion(withRaftClientPlatform(withRaftNetworkUserAgent(headers)))
 private const val RAFT_TRACEPARENT_HEADER = "traceparent"
 
+/** A W3C trace id (32 hex digits) and span id (16), neither all zero. */
+internal class RaftTraceIds(val traceId: String, val spanId: String) {
+    /** `traceparent` with the sampled flag, as every app API request sends it. */
+    val traceparent: String get() = "00-$traceId-$spanId-01"
+}
+
+internal fun newRaftTraceIds(randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }): RaftTraceIds =
+    RaftTraceIds(traceId = randomBytes(16).toNonZeroLowerHex(), spanId = randomBytes(8).toNonZeroLowerHex())
+
 internal fun raftTraceHeaders(
     headers: Map<String, String>,
     randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
@@ -115,13 +124,25 @@ internal fun raftTraceHeaders(
     val traceparentEntry = headers.entries.firstOrNull { it.key.equals(RAFT_TRACEPARENT_HEADER, true) }
     if (requestIdEntry != null && traceparentEntry != null) return headers
 
-    val traceId = randomBytes(16).toNonZeroLowerHex()
-    val spanId = randomBytes(8).toNonZeroLowerHex()
+    val ids = newRaftTraceIds(randomBytes)
     return buildMap {
         putAll(headers)
-        if (requestIdEntry == null) put(RAFT_REQUEST_ID_HEADER, "mobile-$traceId")
-        if (traceparentEntry == null) put(RAFT_TRACEPARENT_HEADER, "00-$traceId-$spanId-01")
+        if (requestIdEntry == null) put(RAFT_REQUEST_ID_HEADER, "mobile-${ids.traceId}")
+        if (traceparentEntry == null) put(RAFT_TRACEPARENT_HEADER, ids.traceparent)
     }
+}
+
+/**
+ * Headers of a presigned object-store PUT: the `x-request-id` the engine keys its connection facts
+ * by, and no `traceparent`. The storage host is a third party and no server span of ours answers it;
+ * the web's direct PUT sends none either (botiverse/slock `directAttachmentUpload.ts`).
+ */
+internal fun raftRequestIdHeaders(
+    headers: Map<String, String>,
+    randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
+): Map<String, String> {
+    if (headers.keys.any { it.equals(RAFT_REQUEST_ID_HEADER, true) }) return headers
+    return headers + (RAFT_REQUEST_ID_HEADER to "mobile-${randomBytes(16).toNonZeroLowerHex()}")
 }
 
 private fun ByteArray.toLowerHex(): String = joinToString(separator = "") { byte ->
