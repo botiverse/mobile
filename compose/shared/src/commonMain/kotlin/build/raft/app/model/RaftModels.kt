@@ -1445,6 +1445,20 @@ data class LinkCardOperationChanged(
 ) : RealtimeEvent
 
 /**
+ * `link_card.changed` `{ app, object_key_sha256 }` (botiverse/slock shared `LinkCardChangedEvent`,
+ * `services/linkCardChangedHints.ts`): an App told Raft the object behind one of the cards this
+ * viewer read on the connection's server changed. A nudge only, no content: the cards that carry
+ * [objectKeySha256] (the digest their read item carried) are read again (web
+ * `linkCardChangedRereads.ts`). [app] is the App's id; the digest already names it, so only the
+ * digest is compared.
+ */
+@Serializable
+data class LinkCardChanged(
+    val app: String,
+    val objectKeySha256: String,
+) : RealtimeEvent
+
+/**
  * `actor:updated` (botiverse/slock `actorResolveContract.ts` `actorUpdatedEventSchema`): an agent whose
  * home is another server, seen through a joint channel, changed its display identity. Exactly the
  * external projection `POST /api/actors/resolve` gives; only agents emit it today.
