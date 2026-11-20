@@ -15,6 +15,7 @@ import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.DiagnosticFeatureFlagScope
+import build.raft.app.network.sync.DiagnosticFeatureFlagScopeKind
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 
 /*
@@ -35,17 +36,18 @@ internal fun resolveShareLoopEnabled(
     environmentId: String,
     accountId: String,
     serverId: String,
-): Boolean =
-    registry.decide(
-        key = SHARE_LOOP_FEATURE_FLAG_KEY,
-        serverEffective = serverEffective,
-        scope =
-            DiagnosticFeatureFlagScope(
-                environmentId = environmentId.trim().trimEnd('/'),
-                accountId = accountId,
-                serverId = serverId,
-            ),
-    ).finalEffective
+): Boolean {
+    val scope =
+        DiagnosticFeatureFlagScope(
+            environmentId = environmentId.trim().trimEnd('/'),
+            accountId = accountId,
+            serverId = serverId,
+        )
+    // Without the whole identity (signed out, the session not read yet) there is nothing to override
+    // for, and the registry reports every such read as a change: the server's answer stands.
+    if (!scope.isValidFor(DiagnosticFeatureFlagScopeKind.ServerExact)) return serverEffective
+    return registry.decide(key = SHARE_LOOP_FEATURE_FLAG_KEY, serverEffective = serverEffective, scope = scope).finalEffective
+}
 
 /** The host's share-out platform, or null where there is no system share sheet for it (desktop). */
 internal fun currentRaftShareOutPlatform(): RaftShareOutPlatform? =

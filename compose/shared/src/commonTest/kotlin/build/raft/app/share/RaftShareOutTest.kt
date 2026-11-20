@@ -240,6 +240,16 @@ class RaftShareOutTest {
         assertFalse(enabled(serverEffective = true))
         registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
         assertFalse(enabled(serverEffective = false))
+        // No whole identity (the session not read yet): the server's answer, and the registry is not touched.
+        registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
+        val revision = registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value
+        assertFalse(resolveShareLoopEnabled(registry, false, "https://api.example/", "", "server-a"))
+        assertEquals(revision, registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value)
+        // The same read twice changes nothing either (a composition re-reads on every revision).
+        assertTrue(enabled(serverEffective = false))
+        val settled = registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value
+        assertTrue(enabled(serverEffective = false))
+        assertEquals(settled, registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value)
     }
 
     @Test
