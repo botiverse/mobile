@@ -71,9 +71,24 @@ class RaftAppBotTest {
     @Test
     fun appBotIdentityIsOnlyForManagedAgents() {
         val members = members()
-        assertEquals(RaftAppBotIdentity("stamp", "Stamp", removed = false), members.getValue("agent-bot").appBotIdentityOrNull())
         assertEquals(
-            RaftAppBotIdentity("listing-bot", "Listing Bot App", removed = true),
+            RaftAppBotIdentity(
+                handle = "stamp",
+                appName = "Stamp",
+                removed = false,
+                appClientId = "client-1",
+                appLogoUrl = "https://cdn.example/stamp.png",
+            ),
+            members.getValue("agent-bot").appBotIdentityOrNull(),
+        )
+        assertEquals(
+            RaftAppBotIdentity(
+                handle = "listing-bot",
+                appName = "Listing Bot App",
+                removed = true,
+                appClientId = "client-2",
+                appLogoUrl = null,
+            ),
             members.getValue("agent-removed").appBotIdentityOrNull(),
         )
         assertNull(members.getValue("agent-plain").appBotIdentityOrNull())
