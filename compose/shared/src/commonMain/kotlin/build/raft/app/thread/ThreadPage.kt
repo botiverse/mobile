@@ -6082,7 +6082,14 @@ private fun SharedThreadRouteContentContent(
     // copy holds the upload store of an account the page does not know yet (no session loaded),
     // so its uploads landed where this composer never looks and the tile stayed on "Checking
     // file…" (Android 1.27.0, artin).
-    val latestUploadComposerAttachmentFiles by rememberUpdatedState(::uploadComposerAttachmentFiles)
+    // A lambda, not `::uploadComposerAttachmentFiles`: a local function reference compares equal
+    // across compositions (it ignores what it captured), so rememberUpdatedState would keep the
+    // first frame's copy (found by Reef in the alpha's dex).
+    val latestUploadComposerAttachmentFiles by rememberUpdatedState<
+        suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean
+    > { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
+        uploadComposerAttachmentFiles(files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId)
+    }
     // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
@@ -6335,7 +6342,7 @@ private fun SharedThreadRouteContentContent(
     // The external-share auto-send below runs in an effect keyed only on the thread: it must
     // send with the latest session, provenance and upload store, not the first frame's (null
     // before the session loads, so the queued share was silently never sent).
-    val latestPerformComposerSend by rememberUpdatedState(::performComposerSend)
+    val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
         if (externalShareSendRequested) {
             bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
