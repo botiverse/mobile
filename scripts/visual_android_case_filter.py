@@ -18,6 +18,13 @@ DEFAULT_SOURCE = Path(
 TEST_CLASS = "build.raft.app.visual.KmpVisualScreenshotCaptureTest"
 CASE_ID_RE = re.compile(r'"([A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9._-]+)"')
 CANONICAL_EXCLUDED_MARKER = "VISUAL_CANONICAL_EXCLUDED:"
+# Cases captured on the wide lane (1280x800dp, wm size 2560x1600 @ 320dpi), never on the phone
+# display: the workflow's `form: wide` shard runs them, the phone shards leave them out.
+WIDE_CASE_PREFIX = "screens.wide."
+
+
+def case_form(case_id: str) -> str:
+    return "wide" if case_id.startswith(WIDE_CASE_PREFIX) else "phone"
 
 
 def parse_csv(raw: str) -> list[str]:
@@ -60,6 +67,7 @@ def enumerate_capture_tests(source: str) -> list[dict[str, object]]:
         entries.append(
             {
                 "caseId": case_id,
+                "form": case_form(case_id),
                 "class": TEST_CLASS,
                 "method": method,
                 "selector": f"{TEST_CLASS}#{method}",
@@ -111,6 +119,12 @@ def main() -> int:
     parser.add_argument("--require-testbox-eligible", action="store_true")
     parser.add_argument("--shard-index", type=int)
     parser.add_argument("--shard-total", type=int)
+    parser.add_argument(
+        "--form",
+        choices=("phone", "wide", "any"),
+        default=None,
+        help="Display form: --all defaults to phone (the canonical phone shards); --cases/--selectors to any",
+    )
     args = parser.parse_args()
 
     try:
@@ -126,6 +140,10 @@ def main() -> int:
         payload, missing = select_selectors(entries, parse_csv(args.selectors))
     else:
         payload, missing = select_cases(entries, parse_csv(args.cases or ""))
+    form = args.form or ("phone" if args.all else "any")
+    every_form = payload
+    if form != "any":
+        payload = [entry for entry in payload if entry["form"] == form]
 
     if missing and not args.allow_missing:
         print("No unique canonical Android visual capture for: " + ", ".join(missing), file=sys.stderr)
@@ -156,8 +174,15 @@ def main() -> int:
         if "\n" in value:
             print("GitHub output only supports the single-line filter format", file=sys.stderr)
             return 2
+        by_form = {
+            name: ",".join(str(entry["selector"]) for entry in every_form if entry["form"] == name)
+            for name in ("phone", "wide")
+        }
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"filter={value}\n")
+            # A targeted round routes each case to its display: phone shard 0 and the wide shard.
+            output.write(f"filter_phone={by_form['phone']}\n")
+            output.write(f"filter_wide={by_form['wide']}\n")
     print(value)
     return 0
 

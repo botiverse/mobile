@@ -59,15 +59,35 @@ permissions:
 jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
-    name: React capture (playwright)
+    name: React capture (playwright, shard ${{ matrix.shard }}/4)
     # GitHub standard runner (4 vCPU / 16 GB), free on this public repo (was Blacksmith 8 vCPU).
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # React was the round's critical path (one worker, ~200 cases, ~22 min; headers-and-visual.md):
+    # four jobs each take every fourth case of the manifest. A targeted case_filter round uses
+    # shard 0 only; the other shards no-op.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     defaults:
       run:
         working-directory: slock-source
     steps:
+      - name: Plan shard
+        id: plan
+        working-directory: .
+        env:
+          CASE_FILTER: ${{ inputs.case_filter }}
+        run: |
+          if [ -n "$CASE_FILTER" ] && [ "${{ matrix.shard }}" != "0" ]; then
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "active=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout slock source (React + visual CLI)
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/checkout@v7
         with:
           repository: botiverse/slock
@@ -76,11 +96,13 @@ jobs:
           path: slock-source
 
       - name: Setup pnpm
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: pnpm/action-setup@v6
         with:
           package_json_file: slock-source/package.json
 
       - name: Setup Node
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -88,6 +110,7 @@ jobs:
           cache-dependency-path: slock-source/pnpm-lock.yaml
 
       - name: Assert workspace packages present (fail-fast guard)
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: |
           if [ -z "$(pnpm ls --filter "@botiverse/raft-web" --depth -1 --parseable 2>/dev/null)" ]; then
             echo "::error::Package @botiverse/raft-web not found in slock workspace. Possible package rename or branch desync."
@@ -99,9 +122,11 @@ jobs:
           fi
 
       - name: Install web + visual-testing workspace deps
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: pnpm install --frozen-lockfile --filter "@botiverse/raft-web..." --filter "@botiverse/raft-visual-testing..."
 
       - name: Install playwright chromium
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: pnpm --filter "@botiverse/raft-web" exec playwright install --with-deps chromium
 
       # Playwright's deps bring only WenQuanYi Zen Hei and IPA Gothic for CJK, so the
@@ -109,6 +134,7 @@ jobs:
       # a Simplified Chinese face). Noto Sans CJK SC is what fontconfig picks for
       # lang=zh-CN once installed; the fc-match line records it in the log.
       - name: Install Simplified Chinese font
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends fonts-noto-cjk
@@ -117,12 +143,24 @@ jobs:
       # continue-on-error: single broken cases must surface as "missing" in the
       # diff report instead of killing the whole pipeline.
       - name: Capture React visuals
+        if: ${{ steps.plan.outputs.active == 'true' }}
         continue-on-error: true
         env:
           CASE_FILTER: ${{ inputs.case_filter }}
+          SHARD: ${{ matrix.shard }}
         run: |
           if [ -z "$CASE_FILTER" ]; then
-            node packages/visual-testing/src/cli.mjs capture --providers react
+            # The cases an unfiltered capture takes (cli.mjs selectedCases: not pending, not
+            # skipped), every fourth one from this shard's index.
+            SHARD_CASES="$(python3 -c 'import json,sys
+          m = json.load(open("packages/visual-testing/shared/sharedCases.json"))
+          def skipped(c):
+              v = c.get("skip")
+              return v is True or (isinstance(v, dict) and v.get("enabled") is not False)
+          ids = [c["id"] for c in m.get("cases", []) if c.get("baselineStatus") != "pending" and not skipped(c)]
+          print(",".join(i for n, i in enumerate(ids) if n % 4 == int(sys.argv[1])))' "$SHARD")"
+            echo "react shard $SHARD: $(echo "$SHARD_CASES" | tr ',' '\n' | grep -c .) cases"
+            node packages/visual-testing/src/cli.mjs capture --providers react --case "$SHARD_CASES"
             exit $?
           fi
 
@@ -140,9 +178,10 @@ jobs:
           exit "$status"
 
       - name: Upload react results
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: visual-results-react
+          name: visual-results-react-shard-${{ matrix.shard }}
           path: slock-source/visual-testing-results/react
           # A targeted case_filter may name Android-only cases (e.g. the compact
           # message menu), which React legitimately has no counterpart for. In
@@ -162,6 +201,8 @@ jobs:
     timeout-minutes: 90
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
+      method_filter_phone: ${{ steps.methods.outputs.filter_phone }}
+      method_filter_wide: ${{ steps.methods.outputs.filter_wide }}
       full_length_cases: ${{ steps.full_length.outputs.cases }}
     steps:
       - name: Checkout mobile
@@ -350,7 +391,7 @@ jobs:
         uses: ./.github/actions/gradle-failure-diagnostics
 
   android-capture:
-    name: Android capture (shard ${{ matrix.shard }}/8)
+    name: Android capture (${{ matrix.form }} shard ${{ matrix.shard }})
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
     # Blacksmith runners expose /dev/kvm for the emulator (the Enable KVM step below still applies).
     # Stays on Blacksmith (2026-11-18): on GitHub ubuntu-latest the long-press search Pin-menu
@@ -361,57 +402,89 @@ jobs:
     needs: android-build
     # Build once, capture many: shards skip Gradle entirely — install the
     # prebuilt APKs and drive AndroidJUnitRunner sharding via adb directly.
+    # Two displays on the same emulator: `phone` (390x844dp: wm size 1170x2532 @ 480dpi) in
+    # eight shards, and `wide` (1280x800dp: wm size 2560x1600 @ 320dpi, a 10-11" tablet in
+    # landscape, by touch) in one shard for the `screens.wide.*` cases
+    # (scripts/visual_android_case_filter.py). The phone shards never change size mid-run.
     strategy:
       fail-fast: false
       matrix:
+        form: [phone]
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        include:
+          - form: wide
+            shard: 0
+    env:
+      SHARD_TOTAL: ${{ matrix.form == 'wide' && 1 || 8 }}
+      ARTIFACT_SHARD: ${{ matrix.form == 'wide' && 'wide-0' || matrix.shard }}
     steps:
+      # Unfiltered: every job runs. A case_filter round: phone shard 0 takes the phone cases it
+      # names, the wide shard the wide ones; a form with none no-ops.
+      - name: Plan shard
+        id: plan
+        env:
+          FILTER: ${{ needs.android-build.outputs.method_filter }}
+          FILTER_PHONE: ${{ needs.android-build.outputs.method_filter_phone }}
+          FILTER_WIDE: ${{ needs.android-build.outputs.method_filter_wide }}
+        run: |
+          active=false
+          methods=""
+          if [ -z "$FILTER" ]; then
+            active=true
+          elif [ "${{ matrix.form }}" = "wide" ]; then
+            [ -n "$FILTER_WIDE" ] && { active=true; methods="$FILTER_WIDE"; }
+          elif [ "${{ matrix.shard }}" = "0" ] && [ -n "$FILTER_PHONE" ]; then
+            active=true; methods="$FILTER_PHONE"
+          fi
+          echo "active=$active" >> "$GITHUB_OUTPUT"
+          echo "methods=$methods" >> "$GITHUB_OUTPUT"
+
       - name: Checkout mobile capture runner
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/checkout@v7
 
       # Targeted case_filter runs only use shard 0; the other shards no-op
       # so the round finishes in one emulator's time.
       - name: Free runner disk space for emulator
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: |
           sudo rm -rf /usr/share/dotnet /opt/hostedtoolcache/CodeQL
           df -h /
 
       # sdkmanager needs JDK 17+; Blacksmith images default to 11.
       - name: Setup JDK 17
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Setup Android SDK
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
       - name: Install APK identity tools
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: sdkmanager "platform-tools" "build-tools;36.0.0"
 
       - name: Download APKs
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: actions/download-artifact@v8
         with:
           name: visual-test-apks
           path: apks
 
       - name: Enable KVM
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Run visual capture shard
-        if: ${{ needs.android-build.outputs.method_filter == '' || matrix.shard == 0 }}
+        if: ${{ steps.plan.outputs.active == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -426,31 +499,31 @@ jobs:
           # The runner executes each script line as a separate command;
           # backslash line continuations break ("Task '\' not found").
           script: |
-            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ needs.android-build.outputs.method_filter }}" --shard-index "${{ matrix.shard }}" --shard-total 8 --capture-locale "${{ inputs.capture_locale }}" --full-length-cases "${{ needs.android-build.outputs.full_length_cases }}" --output-dir visual-testing-results --defer-verdict
+            bash scripts/run_android_visual_capture.sh --app-apk "$(find apks -name '*connectedTest.apk' -not -name '*androidTest*' | sort | head -1)" --test-apk "$(find apks -name '*androidTest.apk' | sort | head -1)" --method-filter "${{ steps.plan.outputs.methods }}" --display "${{ matrix.form }}" --shard-index "${{ matrix.shard }}" --shard-total "$SHARD_TOTAL" --capture-locale "${{ inputs.capture_locale }}" --full-length-cases "${{ needs.android-build.outputs.full_length_cases }}" --output-dir visual-testing-results --defer-verdict
 
       - name: Upload android results
-        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        if: ${{ always() && steps.plan.outputs.active == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: visual-results-android-shard-${{ matrix.shard }}
+          name: visual-results-android-shard-${{ env.ARTIFACT_SHARD }}
           path: visual-testing-results/android
           if-no-files-found: warn
 
       - name: Upload capture logcat (per-case timing)
-        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        if: ${{ always() && steps.plan.outputs.active == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: visual-logcat-shard-${{ matrix.shard }}
+          name: visual-logcat-shard-${{ env.ARTIFACT_SHARD }}
           path: |
             visual-testing-results/logcat-shard-${{ matrix.shard }}.txt
             visual-testing-results/crash-shard-${{ matrix.shard }}.txt
           if-no-files-found: warn
 
       - name: Upload capture harness evidence
-        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        if: ${{ always() && steps.plan.outputs.active == 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: visual-harness-shard-${{ matrix.shard }}
+          name: visual-harness-shard-${{ env.ARTIFACT_SHARD }}
           path: |
             visual-testing-results/android-visual-runner-receipt.json
             visual-testing-results/device-reset.txt
@@ -466,7 +539,7 @@ jobs:
           if-no-files-found: error
 
       - name: Finalize Android capture verdict
-        if: ${{ always() && (needs.android-build.outputs.method_filter == '' || matrix.shard == 0) }}
+        if: ${{ always() && steps.plan.outputs.active == 'true' }}
         shell: bash
         run: |
           rc_file="visual-testing-results/instr-rc-${{ matrix.shard }}.txt"
@@ -869,7 +942,8 @@ jobs:
         continue-on-error: ${{ inputs.case_filter != '' }}
         uses: actions/download-artifact@v8
         with:
-          name: visual-results-react
+          pattern: visual-results-react-shard-*
+          merge-multiple: true
           path: mobile/visual-testing-results/react
 
       - name: Download android results (merge shards)
