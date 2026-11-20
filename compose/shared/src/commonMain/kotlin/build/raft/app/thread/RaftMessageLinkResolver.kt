@@ -109,30 +109,44 @@ internal class RaftMessageLinkResolver(
                 val context = parseSharedMessageContext(contextResponse?.bodyText.orEmpty(), ThreadId(link.channelId))
                 val target = context.canonicalTarget?.takeIf { it.kind == "thread" }
                 val targetParentId = target?.threadParentMessageId?.value
+                // slock #15521: a link may name its message or thread parent by an 8-hex short id;
+                // the lookup answers the full one, which is what the conversation is opened with
+                // (a short id never reaches the thread or message reads, which want the full id).
+                val lookedUp = context.targetMessageId?.value?.takeIf { raftMessageIdMatches(focusMessageId, it) } ?: focusMessageId
                 when {
                     // A reply link: the reply must sit in the named thread of this channel.
                     link.isThread && link.messageId != null && link.messageId != link.threadParentMessageId ->
-                        if (target == null || targetParentId != link.threadParentMessageId) {
+                        if (target == null || targetParentId == null || !raftMessageIdMatches(link.threadParentMessageId, targetParentId)) {
                             notFound("thread_reply_mismatch")
                         } else {
-                            open(server.id, link, conversationKind, threadChannelId = target.threadChannelId?.value)
+                            open(
+                                server.id,
+                                link.copy(messageId = lookedUp, threadParentMessageId = targetParentId),
+                                conversationKind,
+                                threadChannelId = target.threadChannelId?.value,
+                            )
                         }
                     // The thread parent itself is a top-level message of this channel.
                     link.isThread ->
                         if (target != null) {
                             notFound("thread_parent_is_reply")
                         } else {
-                            open(server.id, link, conversationKind, threadChannelId = null)
+                            open(
+                                server.id,
+                                link.copy(messageId = link.messageId?.let { lookedUp }, threadParentMessageId = lookedUp),
+                                conversationKind,
+                                threadChannelId = null,
+                            )
                         }
                     // A channel link to what is a reply opens its thread, as the web does.
                     target != null && targetParentId != null ->
                         open(
                             server.id,
-                            link.copy(threadParentMessageId = targetParentId),
+                            link.copy(messageId = lookedUp, threadParentMessageId = targetParentId),
                             conversationKind,
                             threadChannelId = target.threadChannelId?.value,
                         )
-                    else -> open(server.id, link, conversationKind, threadChannelId = null)
+                    else -> open(server.id, link.copy(messageId = lookedUp), conversationKind, threadChannelId = null)
                 }
             }
             RaftLinkProbeOutcome.NotFound ->
@@ -189,7 +203,15 @@ internal class RaftMessageLinkResolver(
             val context = parseSharedMessageContext(response?.bodyText.orEmpty(), ThreadId(link.channelId))
             val thread = context.canonicalTarget?.takeIf { it.kind == "thread" }
             val localChannelId = (if (thread != null) thread.channelId else context.channelId)?.value ?: continue
-            val localThreadParentId = if (thread != null) thread.threadParentMessageId?.value else link.threadParentMessageId
+            // A thread-only link looked its parent up: take the full id for a short one (slock #15521).
+            val localThreadParentId =
+                if (thread != null) {
+                    thread.threadParentMessageId?.value
+                } else {
+                    link.threadParentMessageId?.let { parent ->
+                        context.targetMessageId?.value?.takeIf { raftMessageIdMatches(parent, it) } ?: parent
+                    }
+                }
             val moved =
                 link.copy(
                     serverSlug = other.slug ?: link.serverSlug,
@@ -306,3 +328,15 @@ internal fun RaftMessageLink.toConversationOpenSourceMessageIdentity(
         )
     }
 }
+
+/** An 8-hex short message id: the first eight hex digits of the message's UUID (slock `threadLinkIds`). */
+private val RaftShortMessageId = Regex("^[0-9a-fA-F]{8}$")
+
+/**
+ * Whether [linkId], as a link wrote it, names [fullId]: the same id, or its 8-hex short form
+ * (slock #15521). Null [linkId] names nothing.
+ */
+internal fun raftMessageIdMatches(linkId: String?, fullId: String): Boolean =
+    linkId != null &&
+        (linkId.equals(fullId, ignoreCase = true) ||
+            (RaftShortMessageId.matches(linkId) && fullId.length > linkId.length && fullId.startsWith(linkId, ignoreCase = true)))
