@@ -4673,6 +4673,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">컴퓨터를 사용하지 않은 지 1분 후</string>
     <string name="settings_notifications_mobile_delay_minutes">컴퓨터를 사용하지 않은 지 %1$d분 후</string>
     <string name="message_mention_sender">@%1$s 멘션</string>
+    <string name="message_sender_copy_name">이름 복사</string>
+    <string name="message_sender_copy_handle">핸들 복사</string>
     <string name="thread_message_avatar_view_profile">%1$s 프로필 보기</string>
     <string name="thread_message_avatar_mention">%1$s 멘션</string>
     <string name="rail_tab_move_up">위로 이동</string>

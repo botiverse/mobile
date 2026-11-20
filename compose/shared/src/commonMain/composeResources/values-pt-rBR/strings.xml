@@ -4673,6 +4673,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">1 minuto após ficar inativo no computador</string>
     <string name="settings_notifications_mobile_delay_minutes">%1$d minutos após ficar inativo no computador</string>
     <string name="message_mention_sender">Mencionar @%1$s</string>
+    <string name="message_sender_copy_name">Copiar nome</string>
+    <string name="message_sender_copy_handle">Copiar identificador</string>
     <string name="thread_message_avatar_view_profile">Ver perfil de %1$s</string>
     <string name="thread_message_avatar_mention">Mencionar %1$s</string>
     <string name="rail_tab_move_up">Mover para cima</string>

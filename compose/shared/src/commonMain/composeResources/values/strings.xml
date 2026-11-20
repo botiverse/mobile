@@ -4858,6 +4858,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">1 minute after going inactive on a computer</string>
     <string name="settings_notifications_mobile_delay_minutes">%1$d minutes after going inactive on a computer</string>
     <string name="message_mention_sender">Mention @%1$s</string>
+    <string name="message_sender_copy_name">Copy name</string>
+    <string name="message_sender_copy_handle">Copy handle</string>
     <string name="thread_message_avatar_view_profile">View profile of %1$s</string>
     <string name="thread_message_avatar_mention">Mention %1$s</string>
     <string name="rail_tab_move_up">Move up</string>

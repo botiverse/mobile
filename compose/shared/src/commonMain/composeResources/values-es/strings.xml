@@ -4673,6 +4673,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">1 minuto después de dejar de estar activo en una computadora</string>
     <string name="settings_notifications_mobile_delay_minutes">%1$d minutos después de dejar de estar activo en una computadora</string>
     <string name="message_mention_sender">Mencionar a @%1$s</string>
+    <string name="message_sender_copy_name">Copiar nombre</string>
+    <string name="message_sender_copy_handle">Copiar identificador</string>
     <string name="thread_message_avatar_view_profile">Ver perfil de %1$s</string>
     <string name="thread_message_avatar_mention">Mencionar a %1$s</string>
     <string name="rail_tab_move_up">Mover arriba</string>
