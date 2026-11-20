@@ -333,6 +333,8 @@ internal data class AppLinkCardReadAnswer(
     val results: Map<String, AppLinkResult>,
     val limited: Map<String, Int>,
     val tickets: Map<String, String?>,
+    /** How many items Raft sent: more than the cards and rate_limited links read means some were refused here (diagnostics). */
+    val itemCount: Int = 0,
 )
 
 /**
@@ -375,7 +377,7 @@ internal fun parseAppLinkCardReadAnswer(
         }
     }
     val prompts = (body["prompts"] as? JsonArray)?.toList().orEmpty()
-    return AppLinkCardReadAnswer(appLinkResultsWithPrompts(results, prompts, resolveIcon), limited, tickets)
+    return AppLinkCardReadAnswer(appLinkResultsWithPrompts(results, prompts, resolveIcon), limited, tickets, itemCount = items.size)
 }
 
 /** The item without its `object_key_sha256`, so each kind's strict key check stays as it was. */

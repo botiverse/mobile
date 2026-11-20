@@ -508,13 +508,23 @@ class SharedAppLinkPreviewStore internal constructor(
             if (read is AppLinkFetch.Answer) batchedReadMissing = true
             return if (seq == view.seq) read else AppLinkFetch.Stale
         }
-        if (seq != view.seq) return AppLinkFetch.Stale
+        // One line per batched read, so a card that does not change can be read from a log: which
+        // message (its id's first 8 characters, never a link), the whole message or some links, and
+        // what came back. `items` above `cards + limited` means this client refused an item.
+        val asked = "message=${messageId.take(8)} links=${urls?.size ?: "all"}"
+        if (seq != view.seq) {
+            diagnosticsLogger("app_link_cards_read $asked result=superseded code=${response?.code ?: -1}")
+            return AppLinkFetch.Stale
+        }
         val parsed = response?.takeIf { it.isSuccessful }?.bodyText?.let { parseAppLinkCardReadAnswer(it, resolveIcon) }
         if (parsed == null) {
             diagnosticsLogger("app_link_cards_read_failed code=${response?.code ?: -1}")
+            diagnosticsLogger("app_link_cards_read $asked result=failed code=${response?.code ?: -1}")
             return AppLinkFetch.Failed
         }
         parsed.tickets.forEach { (url, ticket) -> if (ticket != null) view.tickets[url] = ticket else view.tickets.remove(url) }
+        val cards = parsed.results.values.count { it is AppLinkResult.Card }
+        diagnosticsLogger("app_link_cards_read $asked result=answered code=${response?.code ?: -1} items=${parsed.itemCount} cards=$cards limited=${parsed.limited.size}")
         return AppLinkFetch.Answer(parsed.results.stampedReadAt(nowMillis()), parsed.limited)
     }
 
@@ -590,24 +600,43 @@ class SharedAppLinkPreviewStore internal constructor(
         keepWithoutCard: Boolean,
     ): AppLinkReread {
         val askedGeneration = _state.value.generation
+        // Why it is read again: the person's own press (Refresh, or a button's re-read), or a card that changed.
+        val line = "app_link_card_reread message=${messageId.take(8)} why=${if (keepWithoutCard) "changed" else "press"} links=${urls.size}"
         val fetched =
             when (val read = fetch(messageId, serverId, batch, urls)) {
                 is AppLinkFetch.Answer -> read
-                AppLinkFetch.Failed -> return AppLinkReread.Failed
-                AppLinkFetch.Stale -> return AppLinkReread.Superseded
+                AppLinkFetch.Failed -> {
+                    diagnosticsLogger("$line result=failed")
+                    return AppLinkReread.Failed
+                }
+                AppLinkFetch.Stale -> {
+                    diagnosticsLogger("$line result=dropped reason=superseded")
+                    return AppLinkReread.Superseded
+                }
             }
         val limited = urls.mapNotNull { url -> fetched.limited[url]?.let { url to it } }.toMap()
         val answered = urls.filter { it !in limited }
         val fresh = answered.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.let { url to it } }
         // Answered with nothing at all (no card, no prompt): no longer previewed.
         val gone = if (keepWithoutCard) emptyList() else answered.filter { it !in fetched.results }
+        // What became of the answer: applied, or dropped and why (never in silence).
+        var outcome = if (limited.size == urls.size) "kept reason=rate_limited" else "kept reason=no_card"
         if (fresh.isNotEmpty() || gone.isNotEmpty()) {
             _state.update { state ->
-                if (state.generation != askedGeneration) return@update state
-                val entry = state.entries[readScope] ?: return@update state
+                if (state.generation != askedGeneration) {
+                    outcome = "dropped reason=signed_out"
+                    return@update state
+                }
+                val entry = state.entries[readScope]
+                if (entry == null) {
+                    outcome = "dropped reason=no_answer_held"
+                    return@update state
+                }
+                outcome = "applied"
                 state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results - gone.toSet() + fresh)))
             }
         }
+        diagnosticsLogger("$line result=$outcome cards=${fresh.size} gone=${gone.size} limited=${limited.size}")
         return AppLinkReread.Read(limited)
     }
 

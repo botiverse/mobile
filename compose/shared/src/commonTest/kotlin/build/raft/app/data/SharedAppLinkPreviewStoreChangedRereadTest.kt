@@ -57,10 +57,12 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         val api = FakeAppLinkPreviewApi()
         val nudges = MutableSharedFlow<RaftLinkCardChangedHint>(extraBufferCapacity = 16)
         val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        val diagnostics = mutableListOf<String>()
         val store =
             SharedAppLinkPreviewStore(
                 api = api,
                 scope = scope.backgroundScope,
+                diagnosticsLogger = diagnostics::add,
                 retryJitterMs = { 0L },
                 monotonicMillis = { scope.testScheduler.currentTime },
                 changedJitterMs = { 1_000L },
@@ -397,6 +399,11 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Completed"))
         assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageB, "Again $CPr1", otherBack.batch, CPr1))
         assertEquals("Completed", otherBack.title(CPr1))
+        // The next report can be read from a log: each press says what became of its answer, and names no link.
+        val presses = harness.diagnostics.filter { "app_link_card_reread" in it && "why=press" in it }
+        assertEquals(2, presses.size)
+        assertEquals(true, presses.all { "result=applied" in it })
+        assertEquals(false, harness.diagnostics.any { "https://" in it || "stamp.example" in it })
     }
 
     @Test
@@ -413,6 +420,11 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1))
         assertEquals(null, row.title(CPr1))
         assertEquals("Open", row.title(CPr2), "only the link that was read again")
+        assertEquals(
+            listOf("result=failed", "result=kept reason=rate_limited", "result=applied"),
+            harness.diagnostics.filter { "app_link_card_reread" in it }.map { line -> line.substringAfter("links=1 ").substringBefore(" cards=") },
+            "each press leaves its outcome in the diagnostics",
+        )
 
         // A nudge's re-read with no card keeps the card: only the person's own Refresh shows it gone.
         harness.api.cardReadResponses += changedAnswer()
