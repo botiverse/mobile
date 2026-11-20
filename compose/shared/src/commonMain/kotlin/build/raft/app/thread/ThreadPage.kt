@@ -2133,41 +2133,35 @@ private fun SharedThreadRouteContentContent(
         remember(payload, stableHeaderProjection, sidebarOrder) {
             payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
         }
-    var threadFirstContentRevealed by remember(threadInstanceKey) { mutableStateOf(false) }
-    val threadPageInMotion = LocalRaftStackPageInMotion.current
-    val holdFirstContentReveal =
-        threadHoldsFirstContentReveal(
-            contentRevealed = threadFirstContentRevealed,
-            accessResolution = renderSlice.accessResolution,
-            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete,
-            pageInMotion = threadPageInMotion
-        )
-    if (!holdFirstContentReveal && !threadFirstContentRevealed) {
-        SideEffect { threadFirstContentRevealed = true }
-    }
-    // Diagnostics: content was ready mid slide and its first reveal waits for the push to settle.
-    val revealWaitsForPush =
-        holdFirstContentReveal &&
-            !threadHoldsFirstContentReveal(
-                contentRevealed = threadFirstContentRevealed,
-                accessResolution = renderSlice.accessResolution,
-                initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
-            ) &&
-            !payload.shouldRenderThreadLoadingShell(timelineSlice, renderSlice.accessResolution)
-    LaunchedEffect(threadInstanceKey, revealWaitsForPush) {
-        if (revealWaitsForPush) {
-            bridge.log(
-                "thread_first_reveal_waits_for_push threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                    "messages=${timelineSlice.messages.size}"
-            )
-        }
-    }
     val routeMountPlan =
         payload.threadRouteMountPlan(
             timelineSlice = timelineSlice,
-            accessResolution = renderSlice.accessResolution,
-            holdFirstContentReveal = holdFirstContentReveal
+            accessResolution = renderSlice.accessResolution
         )
+    // #171 diagnostics: the first content frame lands while the page is still sliding in (it used to
+    // wait for the slide behind the loading shell). Compare with nav_transition_frames on device.
+    val threadPageInMotion = LocalRaftStackPageInMotion.current
+    var threadFirstContentLogged by remember(threadInstanceKey) { mutableStateOf(false) }
+    if (!threadFirstContentLogged && routeMountPlan == ThreadRouteMountPlan.FeatureSurfaces) {
+        val revealedInMotion = threadPageInMotion
+        val revealAccess = renderSlice.accessResolution
+        val revealLookupComplete = renderSlice.initialHomeAccessLookupComplete
+        val revealMessages = timelineSlice.messages.size
+        SideEffect {
+            threadFirstContentLogged = true
+            bridge.log(
+                "thread_first_reveal threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                    "inMotion=$revealedInMotion access=$revealAccess homeLookupComplete=$revealLookupComplete " +
+                    "messages=$revealMessages"
+            )
+            if (revealedInMotion) {
+                bridge.log(
+                    "thread_first_reveal_in_motion threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                        "messages=$revealMessages"
+                )
+            }
+        }
+    }
     val realtimeRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
     val roomLeaseActive = shouldHoldThreadRoomLease(adaptiveCloseRequest, active)

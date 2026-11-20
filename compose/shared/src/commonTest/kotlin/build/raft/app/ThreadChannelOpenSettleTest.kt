@@ -181,28 +181,32 @@ class ThreadChannelOpenSettleTest {
         val access: ThreadAccessResolution,
         val homeLookupComplete: Boolean,
         val payload: RaftThreadScreenPayload,
-        /** LocalRaftStackPageInMotion: the page is still sliding in on the Android page stack. */
-        val inMotion: Boolean = false,
     )
 
-    /** Runs the route's reveal latch over [emissions]; returns, per emission, the mount plan. */
-    private fun mountPlans(emissions: List<Emission>): List<ThreadRouteMountPlan> {
-        var revealed = false
-        return emissions.map { emission ->
-            val hold = threadHoldsFirstContentReveal(revealed, emission.access, emission.homeLookupComplete, emission.inMotion)
-            if (!hold) revealed = true
+    /** The route's mount plan per emission (#171: no hold, ready content is shown). */
+    private fun mountPlans(emissions: List<Emission>): List<ThreadRouteMountPlan> =
+        emissions.map { emission ->
             emission.payload.threadRouteMountPlan(
                 timelineSlice = emission.payload.toThreadTimelineSlice(),
-                accessResolution = emission.access,
-                holdFirstContentReveal = hold
+                accessResolution = emission.access
             )
         }
-    }
+
+    private fun reservesComposerSlot(emission: Emission): Boolean =
+        threadReservesPendingComposerSlot(
+            accessResolution = emission.access,
+            payloadStatus = emission.payload.status,
+            joined = emission.payload.joined,
+            showComposer = emission.payload.showComposer,
+            selectedTab = emission.payload.selectedTab,
+            composerLocked = false
+        )
 
     @Test
-    fun theStandInIsRevealedTogetherWithItsComposer() {
-        // The logged sequence: stand-in published, refresh resets the Home lookup, the lookup resolves
-        // access, the network answer replaces the stand-in, and a later refresh re-runs the lookup.
+    fun aCachedStandInIsShownAtOnceWithTheComposerSlotReserved() {
+        // #171: the stand-in is shown while the Home lookup is still running (it used to wait behind
+        // "Loading"); the composer's slot keeps its resting height until access resolves, so the
+        // bottom-pinned list is laid out at its final height on the first content frame.
         val standIn = contentPayload().copy(durableLastKnown = true)
         val emissions =
             listOf(
@@ -212,30 +216,24 @@ class ThreadChannelOpenSettleTest {
                 Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = contentPayload()),
                 Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = contentPayload().copy(backgroundRefreshing = true)),
             )
-        val plans = mountPlans(emissions)
-        assertEquals(
-            listOf(
-                ThreadRouteMountPlan.LoadingShell,
-                ThreadRouteMountPlan.LoadingShell,
-                ThreadRouteMountPlan.FeatureSurfaces,
-                ThreadRouteMountPlan.FeatureSurfaces,
-                ThreadRouteMountPlan.FeatureSurfaces,
-            ),
-            plans,
-            "held until the lookup answers, never hidden again by a later refresh"
-        )
-        val firstRevealed = emissions[plans.indexOf(ThreadRouteMountPlan.FeatureSurfaces)]
-        assertTrue(
-            firstRevealed.payload.isThreadPrimaryFooterReady(firstRevealed.payload.toThreadTimelineSlice(), firstRevealed.access),
-            "the first content frame already has its composer"
-        )
-        assertFalse(threadOfflineLastKnownChrome(firstRevealed.payload).tipVisible, "no offline tip while online")
+        assertEquals(List(emissions.size) { ThreadRouteMountPlan.FeatureSurfaces }, mountPlans(emissions), "never Loading over ready content")
+        val first = emissions.first()
+        assertFalse(first.payload.isThreadPrimaryFooterReady(first.payload.toThreadTimelineSlice(), first.access), "access still resolving")
+        assertTrue(reservesComposerSlot(first), "the composer slot is reserved on the first content frame")
+        assertFalse(threadOfflineLastKnownChrome(first.payload).tipVisible, "no offline tip while online")
     }
 
     @Test
-    fun anOfflineStandInIsNotHeldForTheNetwork() {
-        // Home has no access candidate: the lookup answers with access still Loading. The stand-in is
-        // revealed then (bounded local lookup), not after the network times out.
+    fun aReadOnlyAnswerCollapsesTheReservedComposerSlot() {
+        val cached = contentPayload()
+        val pending = Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached)
+        val readOnly = Emission(ThreadAccessResolution.NoPermission, homeLookupComplete = true, payload = cached)
+        assertTrue(reservesComposerSlot(pending))
+        assertFalse(reservesComposerSlot(readOnly), "no permission: the slot collapses")
+    }
+
+    @Test
+    fun anOfflineStandInIsShownWithoutWaitingForTheNetwork() {
         val standIn = contentPayload().copy(durableLastKnown = true)
         val plans =
             mountPlans(
@@ -249,10 +247,7 @@ class ThreadChannelOpenSettleTest {
                     ),
                 )
             )
-        assertEquals(
-            listOf(ThreadRouteMountPlan.LoadingShell, ThreadRouteMountPlan.FeatureSurfaces, ThreadRouteMountPlan.FeatureSurfaces),
-            plans
-        )
+        assertEquals(List(3) { ThreadRouteMountPlan.FeatureSurfaces }, plans)
         assertTrue(
             threadOfflineLastKnownChrome(standIn.copy(mainLoadFailed = true, errorCode = "network_timeout")).tipVisible,
             "the tip appears once the load really failed"
@@ -260,48 +255,22 @@ class ThreadChannelOpenSettleTest {
     }
 
     @Test
-    fun contentReadyMidPushIsRevealedWhenTheSlideSettlesAndNeverHiddenByALaterMotion() {
-        // Device trace (HUAWEI CMU-AL10): the cached timeline and the Home lookup answer a few frames
-        // into the push slide. Revealing then built the whole list on the slide's frames.
-        val cached = contentPayload()
-        val plans =
-            mountPlans(
-                listOf(
-                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = true),
-                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = true),
-                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = false),
-                    // A later motion with the chat on top (a pop back onto it) keeps the content.
-                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = true),
-                )
-            )
+    fun withNothingToShowTheLoadingShellStays() {
+        val loading = RaftThreadScreenPayload(instanceId = "shared-shell-thread-dm-1", sourceThreadId = "dm-1", status = "loading")
         assertEquals(
-            listOf(
-                ThreadRouteMountPlan.LoadingShell,
-                ThreadRouteMountPlan.LoadingShell,
-                ThreadRouteMountPlan.FeatureSurfaces,
-                ThreadRouteMountPlan.FeatureSurfaces,
-            ),
-            plans,
-            "the first content build waits for the slide, and only the first one"
+            ThreadRouteMountPlan.LoadingShell,
+            loading.threadRouteMountPlan(loading.toThreadTimelineSlice(), ThreadAccessResolution.Loading)
         )
     }
 
     @Test
-    fun contentStillLoadingWhenTheSlideSettlesIsRevealedWhenItArrivesAsBefore() {
-        // A cold open: the slide settles first, the content then reveals on its own answer, as without motion.
-        val cached = contentPayload()
-        val plans =
-            mountPlans(
-                listOf(
-                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = true),
-                    Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached, inMotion = false),
-                    Emission(ThreadAccessResolution.Resolved, homeLookupComplete = true, payload = cached, inMotion = false),
-                )
-            )
-        assertEquals(
-            listOf(ThreadRouteMountPlan.LoadingShell, ThreadRouteMountPlan.LoadingShell, ThreadRouteMountPlan.FeatureSurfaces),
-            plans
-        )
+    fun theScrollAheadWindowWaitsForThePushSlide() {
+        // #171 cost at the source: content shows mid slide, but only the rows on screen are composed
+        // until the slide settles.
+        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = true, pageInMotion = true))
+        assertTrue(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = true, pageInMotion = false))
+        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = false, viewportMeasurementReady = true, pageInMotion = false))
+        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = false, pageInMotion = false))
     }
 
     private fun contentPayload(): RaftThreadScreenPayload =

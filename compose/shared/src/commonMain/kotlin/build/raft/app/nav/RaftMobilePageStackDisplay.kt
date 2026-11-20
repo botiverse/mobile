@@ -201,8 +201,9 @@ private const val RaftMobileStackSettleFallbackMillis = 1_000L
  * True while the enclosing stack page is the top page and its motion (the push slide, a pop landing
  * on it) has not settled yet; false once settled, under the top page, and on every host without a
  * mobile page stack (iOS, Compose desktop, the Android stack flag off), so reading it changes nothing
- * there. A page whose first content build is heavy (the chat's message list) keeps a light stand-in
- * while this is true, so that build lands after the slide instead of on its frames.
+ * there. A page whose content is ready shows it during the slide (#proj-mobile:#171: never "Loading"
+ * when there is something to show) and defers only work beyond the screen until this turns false; the
+ * chat's message list opens its scroll-ahead window after the slide.
  */
 val LocalRaftStackPageInMotion = compositionLocalOf { false }
 
