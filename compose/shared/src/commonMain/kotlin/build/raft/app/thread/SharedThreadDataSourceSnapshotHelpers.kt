@@ -25,6 +25,17 @@ internal fun ThreadSnapshot.withReplyParentMessage(
         ?: this
 }
 
+/**
+ * The parent of a reply thread counts what the thread's own load reported
+ * ([ThreadSnapshot.replyThreadReplyCount]). The copy resolved for it can be older than that answer:
+ * the row the thread was opened from, or a parent read earlier in the session. Never lowers a count.
+ */
+internal fun ThreadSnapshot.withReplyThreadReplyCountOnParent(): ThreadSnapshot {
+    val total = replyThreadReplyCount ?: return this
+    val parent = parentMessage ?: return this
+    return if (total <= parent.replyCount) this else copy(parentMessage = parent.copy(replyCount = total))
+}
+
 internal fun Message.needsReplyOriginContextHydration(): Boolean =
     body.isBlank() && attachments.isEmpty()
 

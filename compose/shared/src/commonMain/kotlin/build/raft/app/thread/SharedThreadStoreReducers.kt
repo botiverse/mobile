@@ -66,6 +66,19 @@ internal fun RaftThreadScreenPayload.knownReplyCountFor(
         .maxOrNull()
 }
 
+/**
+ * The conversation [event]'s parent message lives in: the one its reply-window envelope names
+ * (server `parentMsgForThread.channelId`), else this page's parent conversation when the page is
+ * that parent's reply thread. Null when neither says.
+ */
+internal fun RaftThreadScreenPayload.threadUpdatedParentChannelId(event: ThreadUpdated): String? {
+    event.syncCoreReplyWindow?.parentScopeId?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null
+    val pageParentMessageId =
+        parentMessageId?.takeIf { it.isNotBlank() } ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    return parentChannelId?.takeIf { it.isNotBlank() && pageParentMessageId == event.parentMessageId.value }
+}
+
 /** The thread parents loaded in [payload] when it is a channel's timeline, else none. */
 internal fun loadedChannelThreadParents(payload: RaftThreadScreenPayload): Map<String, ThreadUnreadThreadParent> {
     val routeIdentity = payload.resolveThreadRouteIdentity()

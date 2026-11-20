@@ -1729,7 +1729,13 @@ internal class SharedThreadDataSource(
         serverId: String?,
         parentChannelId: String?,
         parentMessage: RaftThreadMessageItem,
-        threadChannelId: String?
+        threadChannelId: String?,
+        /**
+         * The reply count the opener shows for [parentMessage]. A timeline row carries no reply facts
+         * ([withoutThreadReplyMetadata]), so without it the remembered parent says "0 replies" and the
+         * thread counts only the replies it has loaded. A candidate: the thread's own load replaces it.
+         */
+        replyCount: Int = 0
     ): Boolean {
         val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return false
         if (parentMessage.id.isBlank()) return false
@@ -1761,7 +1767,17 @@ internal class SharedThreadDataSource(
                         provenance.messageStoreScopeId
                             ?: provenance.serverId.takeIf { messageStore == null && it.isNotBlank() }
                             ?: return@synchronized false
-                    messageResolver.upsertScoped(scopeId = scopeId, channelId = channelId, message = parent)
+                    val knownReplyCount =
+                        maxOf(
+                            parent.replyCount,
+                            replyCount,
+                            messageResolver.getScoped(scopeId, channelId, parent.id)?.replyCount ?: 0
+                        )
+                    messageResolver.upsertScoped(
+                        scopeId = scopeId,
+                        channelId = channelId,
+                        message = if (knownReplyCount == parent.replyCount) parent else parent.copy(replyCount = knownReplyCount)
+                    )
                 }
                 true
             }
@@ -1771,6 +1787,28 @@ internal class SharedThreadDataSource(
                 "parentMessageId=${parentMessage.id} threadChannelId=${threadChannelId.orEmpty()}"
         )
         return true
+    }
+
+    /**
+     * A [ThreadUpdated] reached the open page: the remembered parent (what the next open of its
+     * thread resolves its origin from) follows the server's count too. Events can arrive out of
+     * order, so the count only grows here, as the reply-count facts do. A parent that is not
+     * remembered stays unknown; its thread reads it when opened.
+     */
+    fun rememberReplyParentReplyCount(parentChannelId: String?, parentMessageId: String, replyCount: Int) {
+        val channelId = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId) ?: return
+        val messageId = parentMessageId.takeIf { it.isNotBlank() }?.let(::MessageId) ?: return
+        synchronized(replyCacheProvenanceLock) {
+            val provenance = replyCacheProvenance.value ?: return@synchronized
+            val scopeId =
+                provenance.messageStoreScopeId
+                    ?: provenance.serverId.takeIf { messageStore == null && it.isNotBlank() }
+                    ?: return@synchronized
+            val remembered = messageResolver.getScoped(scopeId, channelId, messageId) ?: return@synchronized
+            if (remembered.replyCount < replyCount) {
+                messageResolver.upsertScoped(scopeId, channelId, remembered.copy(replyCount = replyCount))
+            }
+        }
     }
 
     suspend fun withConversationAccessFallback(basePayload: RaftThreadScreenPayload): RaftThreadScreenPayload {
@@ -4905,6 +4943,7 @@ internal class SharedThreadDataSource(
                 val payload =
                     initialResult.data
                         .withReplyParentMessage(parentChannelId, parentMessageId, parentMessage)
+                        .withReplyThreadReplyCountOnParent()
                         .rememberReplyParentMessage(
                             parentChannelId,
                             parentMessageId,
