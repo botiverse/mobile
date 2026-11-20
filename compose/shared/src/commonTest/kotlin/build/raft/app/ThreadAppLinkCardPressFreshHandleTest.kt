@@ -44,9 +44,11 @@ class ThreadAppLinkCardPressFreshHandleTest {
             readAtMillis = readAt,
         )
 
+    /** In order: "reread", "execute:<handle>" (a press reads the card again after it runs, too). */
     private class Recorder {
-        var rereads = 0
-        val executes = mutableListOf<String>()
+        val events = mutableListOf<String>()
+        val executes get() = events.filter { it.startsWith("execute:") }.map { it.removePrefix("execute:") }
+        val rereadsBeforeExecute get() = events.takeWhile { !it.startsWith("execute:") }.count { it == "reread" }
         val toasts = mutableListOf<String>()
     }
 
@@ -61,11 +63,11 @@ class ThreadAppLinkCardPressFreshHandleTest {
             ThreadAppLinkCardActionHost(
                 prepare = { _, _ -> error("not a prepare button") },
                 execute = { handle, _, _ ->
-                    recorder.executes += handle
+                    recorder.events += "execute:$handle"
                     AppLinkActionResult.Ok(AppLinkExecuted("op-1", "done", null))
                 },
                 reread = {
-                    recorder.rereads += 1
+                    recorder.events += "reread"
                     rereadOk
                 },
                 toast = { recorder.toasts += it },
@@ -82,7 +84,7 @@ class ThreadAppLinkCardPressFreshHandleTest {
         val recorder = Recorder()
         press(this, recorder, readAt = now - APP_LINK_HANDLE_FRESH_MILLIS).click()
         advanceUntilIdle()
-        assertEquals(0, recorder.rereads)
+        assertEquals(0, recorder.rereadsBeforeExecute)
         assertEquals(listOf("h-old"), recorder.executes)
     }
 
@@ -92,7 +94,7 @@ class ThreadAppLinkCardPressFreshHandleTest {
             val recorder = Recorder()
             press(this, recorder, readAt = readAt).click()
             advanceUntilIdle()
-            assertEquals(1, recorder.rereads, "readAt=$readAt")
+            assertEquals(1, recorder.rereadsBeforeExecute, "readAt=$readAt")
             assertEquals(listOf("h-fresh"), recorder.executes, "readAt=$readAt")
             assertTrue(recorder.toasts.isEmpty(), "readAt=$readAt")
         }
@@ -104,6 +106,7 @@ class ThreadAppLinkCardPressFreshHandleTest {
         press(this, recorder, readAt = 0L, rereadOk = false).click()
         advanceUntilIdle()
         assertTrue(recorder.executes.isEmpty())
+        assertEquals(listOf("reread"), recorder.events)
         assertEquals(listOf("refresh failed"), recorder.toasts)
     }
 
