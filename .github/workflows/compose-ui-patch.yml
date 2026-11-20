@@ -1,0 +1,277 @@
+name: Compose UI patch (CMP 1.12.2 iOS klibs)
+
+# Rebuilds ONLY org.jetbrains.compose.ui:ui-iosarm64 and :ui-iossimulatorarm64 from upstream
+# compose-multiplatform-core v1.12.2 plus third_party/compose-ui-1.12.2/*.patch, as 1.12.2-raft.1.
+# Everything else in the app keeps resolving the official 1.12.2 artifacts.
+# See third_party/compose-ui-1.12.2/README.md. Manual only: never runs on push or pull_request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the verified klibs to the patched-dependency Maven repository
+        type: boolean
+        default: false
+      runner:
+        description: macOS arm64 runner label (upstream uses macos-26-xlarge; macos-26 is the 7 GB hosted runner)
+        type: string
+        default: macos-26
+      xcode_app_path:
+        description: Xcode used to build (upstream CI for v1.12.2 uses Xcode 26.5)
+        type: string
+        default: /Applications/Xcode_26.5.app
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-ui-patch
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/JetBrains/compose-multiplatform-core.git
+  UPSTREAM_TAG: v1.12.2
+  UPSTREAM_SHA: 5f017375d926c73f1937408601b6cb28c12a8812
+  UPSTREAM_VERSION: "1.12.2"
+  PATCHED_VERSION: 1.12.2-raft.1
+  # Kotlin compiler of the official 1.12.2 klibs (default/manifest compiler_version); upstream's
+  # gradle/libs.versions.toml at the tag pins the same, checked below.
+  KOTLIN_VERSION: 2.3.20
+  MAVEN_GROUP: org.jetbrains.compose.ui
+  ARTIFACTS: ui-iosarm64 ui-iossimulatorarm64
+  OFFICIAL_REPO: https://repo1.maven.org/maven2
+  PATCH_DIR: third_party/compose-ui-1.12.2
+
+jobs:
+  build:
+    name: Build, test and verify patched ui iOS klibs
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 330
+    env:
+      UPSTREAM_DIR: ${{ github.workspace }}/upstream
+      STAGING_DIR: ${{ github.workspace }}/compose-ui-patch-out/maven
+      OFFICIAL_DIR: ${{ github.workspace }}/compose-ui-patch-out/official
+      # The version property makes every compose project 1.12.2, so the project dependencies in the
+      # generated .pom/.module are written exactly as in the official release.
+      GRADLE_ARGS: -Pjetbrains.publication.version.COMPOSE=1.12.2 --stacktrace --console=plain
+    steps:
+      - name: Refuse to publish from a non-default branch
+        if: ${{ inputs.publish && github.ref_name != github.event.repository.default_branch }}
+        run: |
+          echo "::error::publish=true is only allowed from the default branch"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch upstream tag and verify commit
+        run: |
+          set -euo pipefail
+          git init -q "$UPSTREAM_DIR"
+          cd "$UPSTREAM_DIR"
+          git fetch --quiet --depth 1 --no-tags "$UPSTREAM_REPO" "+refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          sha="$(git rev-parse "refs/tags/$UPSTREAM_TAG^{commit}")"
+          if [ "$sha" != "$UPSTREAM_SHA" ]; then
+            echo "::error::$UPSTREAM_TAG is $sha, expected $UPSTREAM_SHA"
+            exit 1
+          fi
+          git -c advice.detachedHead=false checkout --quiet "$sha"
+          kotlin="$(sed -n 's/^kotlin[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' gradle/libs.versions.toml | head -n 1)"
+          if [ "$kotlin" != "$KOTLIN_VERSION" ]; then
+            echo "::error::upstream pins Kotlin $kotlin, expected $KOTLIN_VERSION"
+            exit 1
+          fi
+          echo "upstream $UPSTREAM_TAG = $sha, Kotlin $kotlin, Gradle wrapper: $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties)"
+
+      - name: Apply patches
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          patches=("$GITHUB_WORKSPACE/$PATCH_DIR"/*.patch)
+          [ "${#patches[@]}" -gt 0 ] || { echo "::error::no patches in $PATCH_DIR"; exit 1; }
+          cd "$UPSTREAM_DIR"
+          for patch in "${patches[@]}"; do
+            echo "== applying ${patch##*/}"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git status --short
+          git diff --stat
+
+      - name: Select Xcode
+        env:
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path }}
+        run: bash scripts/ci/select_ios_xcode.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Size Gradle for this runner
+        run: |
+          set -euo pipefail
+          mem_gb="$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))"
+          heap_gb="$(( mem_gb - 1 ))"
+          [ "$heap_gb" -le 12 ] || heap_gb=12
+          [ "$heap_gb" -ge 5 ] || { echo "::error::${mem_gb} GB RAM is too little for this build"; exit 1; }
+          workers=2
+          [ "$mem_gb" -lt 12 ] || workers="$(sysctl -n hw.ncpu)"
+          # User-home gradle.properties overrides upstream's -Xmx12g gradle.properties without
+          # touching upstream files. Kotlin compiles in-process so no second JVM competes for RAM.
+          props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+          mkdir -p "$(dirname "$props")"
+          {
+            echo "org.gradle.jvmargs=-Xmx${heap_gb}g -Xss4m -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+            echo "org.gradle.workers.max=${workers}"
+            echo "kotlin.compiler.execution.strategy=in-process"
+          } >> "$props"
+          echo "RAM ${mem_gb} GB, CPUs $(sysctl -n hw.ncpu)"; cat "$props"
+          java -version 2>&1
+
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-v1-compose-ui-patch-${{ runner.os }}-${{ runner.arch }}-kotlin-${{ env.KOTLIN_VERSION }}
+
+      # Proves the patch on the shipped toolchain: the patched FlushCoroutineDispatcherTest
+      # (skikoTest, includes the new reentrant_flush_* cases) on the iOS simulator target.
+      - name: Run FlushCoroutineDispatcherTest (iosSimulatorArm64)
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          ./gradlew :compose:ui:ui:iosSimulatorArm64Test \
+            --tests 'androidx.compose.ui.platform.FlushCoroutineDispatcherTest' $GRADLE_ARGS
+
+      - name: Check test results include the reentrant cases
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 -I - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          files = [f for f in glob.glob("out/**/TEST-*FlushCoroutineDispatcherTest*.xml", recursive=True)
+                   if "iosSimulatorArm64" in f]
+          if not files:
+              sys.exit("no iosSimulatorArm64 FlushCoroutineDispatcherTest results found under out/")
+          names, failed = set(), 0
+          for f in files:
+              root = ET.parse(f).getroot()
+              for case in root.iter("testcase"):
+                  names.add(case.get("name"))
+                  if case.find("failure") is not None or case.find("error") is not None:
+                      failed += 1
+              print(f, root.get("tests"), "tests,", root.get("failures"), "failures,", root.get("skipped"), "skipped")
+          print("\n".join(sorted(names)))
+          required = {"reentrant_flush_does_not_run_tasks_twice", "reentrant_flush_does_not_run_tasks_inside_running_task"}
+          missing = {r for r in required if not any(n.startswith(r) for n in names)}
+          if failed or missing:
+              sys.exit(f"failed={failed} missing={sorted(missing)}")
+          PY
+
+      - name: Build iosArm64 + iosSimulatorArm64 publications (local repo)
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :compose:ui:ui:publishIosArm64PublicationToMavenRepository \
+            :compose:ui:ui:publishIosSimulatorArm64PublicationToMavenRepository \
+            $GRADLE_ARGS
+          find out/repository/org/jetbrains/compose/ui/ui-ios* -type f | sort
+
+      - name: Re-version to ${{ env.PATCHED_VERSION }}
+        run: |
+          set -euo pipefail
+          rm -rf "$STAGING_DIR"
+          for artifact in $ARTIFACTS; do
+            python3 -I "$PATCH_DIR/reversion_artifact.py" "$UPSTREAM_DIR/out/repository" "$STAGING_DIR" \
+              "$MAVEN_GROUP" "$artifact" "$UPSTREAM_VERSION" "$PATCHED_VERSION"
+          done
+
+      - name: Verify against official ${{ env.UPSTREAM_VERSION }} (metadata, dependencies, klib manifest)
+        run: |
+          set -euo pipefail
+          mkdir -p "$OFFICIAL_DIR"
+          group_path="${MAVEN_GROUP//.//}"
+          for artifact in $ARTIFACTS; do
+            for ext in module pom klib; do
+              curl --fail --silent --show-error --location -o "$OFFICIAL_DIR/$artifact-$UPSTREAM_VERSION.$ext" \
+                "$OFFICIAL_REPO/$group_path/$artifact/$UPSTREAM_VERSION/$artifact-$UPSTREAM_VERSION.$ext"
+            done
+            python3 -I "$PATCH_DIR/compare_with_official.py" \
+              "$STAGING_DIR/$group_path/$artifact/$PATCHED_VERSION" "$OFFICIAL_DIR" \
+              "$artifact" "$UPSTREAM_VERSION" "$PATCHED_VERSION"
+          done
+
+      - name: Verify public ABI equals official ${{ env.UPSTREAM_VERSION }} (klib dump-abi)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          tools=("$HOME"/.konan/kotlin-native-prebuilt-macos-aarch64-"$KOTLIN_VERSION"/bin/klib)
+          [ "${#tools[@]}" -eq 1 ] || { echo "::error::Kotlin/Native $KOTLIN_VERSION klib tool not found in ~/.konan"; ls "$HOME/.konan" || true; exit 1; }
+          group_path="${MAVEN_GROUP//.//}"
+          for artifact in $ARTIFACTS; do
+            ours="$STAGING_DIR/$group_path/$artifact/$PATCHED_VERSION/$artifact-$PATCHED_VERSION.klib"
+            official="$OFFICIAL_DIR/$artifact-$UPSTREAM_VERSION.klib"
+            "${tools[0]}" dump-abi "$ours" > "$RUNNER_TEMP/$artifact-ours.abi"
+            "${tools[0]}" dump-abi "$official" > "$RUNNER_TEMP/$artifact-official.abi"
+            [ -s "$RUNNER_TEMP/$artifact-official.abi" ] || { echo "::error::empty ABI dump for $artifact"; exit 1; }
+            if diff -u "$RUNNER_TEMP/$artifact-official.abi" "$RUNNER_TEMP/$artifact-ours.abi"; then
+              echo "$artifact: public ABI identical to official ($(wc -l < "$RUNNER_TEMP/$artifact-ours.abi") lines)"
+            else
+              echo "::error::$artifact public ABI differs from official $UPSTREAM_VERSION"
+              exit 1
+            fi
+          done
+
+      - name: List staged files
+        run: |
+          set -euo pipefail
+          cd "$STAGING_DIR"
+          find . -type f | sort | while IFS= read -r f; do
+            printf '%10d  %s  %s\n' "$(stat -f %z "$f")" "$(shasum -a 256 "$f" | cut -c1-16)" "${f#./}"
+          done
+          count="$(find . -type f -name "*-$PATCHED_VERSION.klib" | wc -l | tr -d ' ')"
+          [ "$count" = 2 ] || { echo "::error::expected 2 klibs at $PATCHED_VERSION, found $count"; exit 1; }
+          if find . -type f | grep -v -- "-$PATCHED_VERSION" | grep -q .; then
+            echo "::error::staged files without $PATCHED_VERSION in their name"; exit 1
+          fi
+
+      - name: Upload staged Maven repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-ui-${{ env.PATCHED_VERSION }}-maven
+          path: compose-ui-patch-out/maven
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-ui-patch-test-reports
+          path: |
+            upstream/out/**/build/test-results/iosSimulatorArm64Test/**
+            upstream/out/**/build/reports/tests/iosSimulatorArm64Test/**
+          if-no-files-found: ignore
+
+      - name: Publish to patched-dependency Maven repository
+        if: ${{ inputs.publish }}
+        env:
+          MAVEN_URL: ${{ secrets.COMPOSE_PATCH_MAVEN_URL }}
+          MAVEN_USER: ${{ secrets.COMPOSE_PATCH_MAVEN_USER }}
+          MAVEN_PASS: ${{ secrets.COMPOSE_PATCH_MAVEN_TOKEN }}
+        run: bash third_party/compose-ui-1.12.2/upload_maven_dir.sh compose-ui-patch-out/maven
