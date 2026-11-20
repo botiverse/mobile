@@ -320,6 +320,9 @@ private fun RaftLinkUrl.queryParameters(): Map<String, String>? {
     return result
 }
 
+/** [value] percent-decoded as a link's parts are here; null for a malformed escape. */
+internal fun raftLinkPercentDecodeOrNull(value: String): String? = value.raftLinkPercentDecode()
+
 /** RFC 3986 percent-decoding (UTF-8; `+` is a space in a query); null for a malformed escape. */
 private fun String.raftLinkPercentDecode(): String? {
     if ('%' !in this && '+' !in this) return this
