@@ -233,7 +233,7 @@ class SecondFactorStepUpPasskeyUiTest {
         assertEquals(1, intents.size)
         onNodeWithTag(SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG).performClick()
         waitForIdle()
-        assertEquals(List(2) { SecondFactorStepUpIntent.ContinueInBrowser }, intents)
+        assertEquals(List<SecondFactorStepUpIntent>(2) { SecondFactorStepUpIntent.ContinueInBrowser }, intents)
 
         // Its banner cleared on the next try: still no second automatic open.
         runOnIdle { state.value = ready }
