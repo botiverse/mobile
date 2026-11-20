@@ -1538,7 +1538,7 @@
     <string name="member_report_issue_reference_copied">Copied</string>
     <string name="member_report_issue_disclosure_strong">prompt history, file paths, and command output</string>
     <string name="member_report_issue_runtime_transcript_hint">Taken from the agent's computer; it may not have one.</string>
-    <string name="member_report_issue_machine_log_tail">Machine runner log tail (your own machine only)</string>
+    <string name="member_report_issue_machine_log_tail">Machine runner log tail</string>
     <string name="member_report_issue_machine_log_tail_disclosure">The last lines of this computer's log. They may include lines from other agents on it.</string>
     <string name="member_report_issue_title_for_agent">Issue report for %1$s</string>
     <string name="member_report_issue_ticket_filed">We opened a feedback ticket for this report. Replies from the Raft team will show up there.</string>

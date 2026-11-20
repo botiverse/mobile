@@ -47,4 +47,18 @@ class MembersAgentIssueReportReceiptTest {
         assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = false, canIncludeMachineLog = true))
         assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = true, canIncludeMachineLog = false))
     }
+
+    @Test
+    fun ownerOrAdminIsOfferedAnotherPersonsMachineLogUnticked() {
+        // slock #15306: offered to whoever may edit the Computer, ticked only on one's own.
+        assertEquals(true, membersAgentIssueCanIncludeMachineLog(hasMachine = true, attachedByCurrentUser = true, serverRole = "member"))
+        assertEquals(true, membersAgentIssueCanIncludeMachineLog(hasMachine = true, attachedByCurrentUser = false, serverRole = "admin"))
+        assertEquals(true, membersAgentIssueCanIncludeMachineLog(hasMachine = true, attachedByCurrentUser = false, serverRole = "owner"))
+        assertEquals(false, membersAgentIssueCanIncludeMachineLog(hasMachine = true, attachedByCurrentUser = false, serverRole = "member"))
+        assertEquals(false, membersAgentIssueCanIncludeMachineLog(hasMachine = false, attachedByCurrentUser = false, serverRole = "owner"))
+
+        assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = true, ownAttachedMachine = false))
+        assertEquals(true, membersAgentIssueMachineLogTailChecked(choice = true, canIncludeMachineLog = true, ownAttachedMachine = false))
+        assertEquals(true, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = true, ownAttachedMachine = true))
+    }
 }
