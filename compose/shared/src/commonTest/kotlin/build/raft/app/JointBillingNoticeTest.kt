@@ -189,5 +189,34 @@ class JointBillingNoticeTest {
         )
         assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel), listOf("chan-1")))
         assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage), listOf("joint-1")))
+        // Task conversation whose parent channel is a joint channel (by task channelType or parent projection).
+        assertEquals(
+            true,
+            threadMessageSurfaceIsJoint(
+                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
+                emptyList(),
+                emptyMap(),
+                taskChannelType = "joint",
+            ),
+        )
+        assertEquals(
+            true,
+            threadMessageSurfaceIsJoint(
+                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
+                emptyList(),
+                projections,
+                taskParentChannelId = "joint-1",
+            ),
+        )
+        assertEquals(
+            false,
+            threadMessageSurfaceIsJoint(
+                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
+                emptyList(),
+                projections,
+                taskChannelType = "channel",
+                taskParentChannelId = "chan-1",
+            ),
+        )
     }
 }

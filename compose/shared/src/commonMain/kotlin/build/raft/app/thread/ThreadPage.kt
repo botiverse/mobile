@@ -7345,6 +7345,18 @@ private fun SharedThreadRouteContentContent(
             remember(currentSession?.servers) {
                 raftViewerServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl })
             }
+        val taskConversationJointSurface =
+            jointMessageSurface ||
+                parseConversationKindOrNull(taskConversationTask?.channelType) == ConversationKind.Joint ||
+                (taskConversationParentChannelId?.value?.let { id ->
+                    currentServerId?.let(::ServerId)?.let { server ->
+                        conversationIdentityProvider?.resolveProjection(server, id)?.conversationKind == ConversationKind.Joint
+                    }
+                } == true)
+        val effectiveMessageAvatarResolver =
+            remember(messageAvatarResolver, taskConversationJointSurface) {
+                messageAvatarResolver.forJointSurface(taskConversationJointSurface)
+            }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalRaftViewerServerLogos provides viewerServerLogos,
@@ -7401,9 +7413,10 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadViewerServerId provides currentServerId,
-                // A joint channel's conversation: every person's face (hand-off card, task head, typing,
-                // followers, composer chips) reads the other server's people as its message rows do.
-                LocalRaftJointActorSurface provides jointMessageSurface,
+                // A joint channel's conversation (including a task conversation in one, slock #14517):
+                // every person's face (hand-off card, task head, typing, followers, composer chips)
+                // reads the other server's people as its message rows do.
+                LocalRaftJointActorSurface provides taskConversationJointSurface,
                 // The Add Reaction picker keeps its skin tone and frequently used emoji per account.
                 LocalRaftEmojiPickerOwnerKey provides messageBodyOwnerKey,
                 LocalThreadActionCardNames provides actionCardNames,
@@ -7907,7 +7920,7 @@ private fun SharedThreadRouteContentContent(
             onExternalAuthor = onExternalAuthorHint,
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = messageAvatarResolver,
+            memberAvatarResolver = effectiveMessageAvatarResolver,
             memberModelLabelResolver = memberModelLabelResolver,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->

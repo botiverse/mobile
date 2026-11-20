@@ -102,6 +102,7 @@ import build.raft.app.data.earlierDiscussionVisible
 import build.raft.app.data.taskHeadSourceMessageId
 import build.raft.app.data.toTaskHistoryRows
 import build.raft.app.data.valueOrNull
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
@@ -1239,6 +1240,8 @@ internal data class TaskConversationHeaderChrome(
     val assigneeId: String? = null,
     /** The task's server: the assignee's face reads its member directory. */
     val avatarServerId: String? = null,
+    /** Task lives in a joint channel (`task.channelType == "joint"`): remote assignees fall back to actors/resolve. */
+    val isJointChannel: Boolean = false,
     val summarized: Boolean,
     val headFloatOpen: Boolean = false,
     /** Null: not known yet (no Follow row). */
@@ -1270,6 +1273,7 @@ internal fun TaskSummary.taskConversationHeaderChrome(
         assigneeAvatarWireValue = assignee?.avatarWireValueForRenderedAvatar(),
         assigneeId = assignee?.id?.value,
         avatarServerId = serverId?.trim()?.takeIf { it.isNotEmpty() },
+        isJointChannel = parseConversationKindOrNull(channelType) == ConversationKind.Joint,
         summarized = summarized,
         headFloatOpen = headFloatOpen && summarized,
         followed = followed,
@@ -1349,12 +1353,31 @@ internal fun TaskConversationBarTitle(chrome: TaskConversationHeaderChrome, modi
                 RaftTaskStatusBadge(chrome.status.raftTaskStatus(), chrome.status.localizedLabel(), size = RaftTaskStatusBadgeSize.Sm)
                 // The face only (Kirby: a cut name says less than the face), named for screen readers.
                 chrome.assigneeName?.let { name ->
+                    val jointSurface = chrome.isJointChannel || LocalRaftJointActorSurface.current
+                    val avatarResolver = rememberRaftMemberAvatarResolver(chrome.avatarServerId)
+                    val jointAvatarResolver =
+                        remember(avatarResolver, jointSurface) { avatarResolver.forJointSurface(jointSurface) }
+                    val jointActor =
+                        rememberRaftJointActor(
+                            memberAvatarResolver = jointAvatarResolver,
+                            kind = chrome.assigneeKind,
+                            memberId = chrome.assigneeId,
+                            enabled = jointSurface,
+                        )
+                    val assigneeLabel =
+                        threadMessageSourceTaskAssigneeName(
+                            assigneeIsViewer = false,
+                            viewerLabel = "",
+                            assigneeName = name,
+                            jointActor = jointActor,
+                        )
                     RaftMemberAvatar(
                         identity = RaftMemberAvatarIdentity(chrome.assigneeKind, chrome.assigneeId, chrome.avatarServerId),
-                        label = name,
-                        modifier = Modifier.semantics { contentDescription = name },
+                        label = assigneeLabel,
+                        modifier = Modifier.semantics { contentDescription = assigneeLabel },
                         avatarSize = RaftAvatarSize.Xs.edge,
                         carriedAvatarWireValue = chrome.assigneeAvatarWireValue,
+                        resolver = jointAvatarResolver,
                     )
                 }
                 TaskBarChevron(open = chrome.headFloatOpen)
