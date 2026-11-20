@@ -217,6 +217,7 @@
     <string name="settings_step_up_web_waiting">Aguardando você concluir no navegador…</string>
     <string name="settings_step_up_web_cancelled">O navegador foi fechado antes da confirmação. Tente novamente.</string>
     <string name="settings_step_up_web_expired">Esta solicitação expirou. Tente novamente.</string>
+    <string name="settings_step_up_web_new_passkey_hint">Para confirmar aqui mesmo da próxima vez, adicione uma nova chave de acesso no Raft na web (Conta › Login e segurança › Chaves de acesso).</string>
     <string name="settings_step_up_passkey_button">Usar chave de acesso</string>
     <string name="settings_step_up_use_passkey">Usar chave de acesso</string>
     <string name="settings_step_up_passkey_cancelled">A janela da chave de acesso foi fechada. Tente novamente ou use outro método.</string>

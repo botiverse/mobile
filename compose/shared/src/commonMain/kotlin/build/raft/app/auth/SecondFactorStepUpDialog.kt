@@ -8,7 +8,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -102,6 +105,18 @@ internal fun SecondFactorStepUpDialog(
         if (webSession != null) {
             val result = webStepUpBrowser.open(webSession.url, webSession.callbackScheme)
             currentOnIntent(SecondFactorStepUpIntent.WebStepUpBrowserFinished(webSession.id, result))
+        }
+    }
+    // Use passkey found only passkeys this device can't use: straight on to the browser, as the
+    // browser login does, without a second tap on Continue in browser. Once per dialog: after a
+    // closed page or a failure (a banner) the button is there to try again.
+    val freshWebOffer =
+        state.continuesInBrowser && state.webStepUp == SecondFactorWebStepUpPhase.Ready && state.banner == null && !state.submitting
+    var webOfferTaken by remember { mutableStateOf(false) }
+    LaunchedEffect(freshWebOffer) {
+        if (freshWebOffer && !webOfferTaken) {
+            webOfferTaken = true
+            currentOnIntent(SecondFactorStepUpIntent.ContinueInBrowser)
         }
     }
     val waitingOnWeb = state.webStepUp == SecondFactorWebStepUpPhase.Waiting
@@ -214,6 +229,11 @@ internal fun SecondFactorStepUpDialog(
                         stringResource(if (waiting) Res.string.settings_step_up_web_waiting else Res.string.settings_step_up_web_body),
                     status = RaftBannerStatus.Info,
                     size = RaftBannerSize.Sm
+                )
+                RaftText(
+                    stringResource(Res.string.settings_step_up_web_new_passkey_hint),
+                    style = RaftTheme.typography.footnote,
+                    color = RaftTheme.colors.foregroundMuted
                 )
             } else if (method == null) {
                 RaftBanner(

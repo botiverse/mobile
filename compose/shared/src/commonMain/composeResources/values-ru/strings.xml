@@ -217,6 +217,7 @@
     <string name="settings_step_up_web_waiting">Ожидаем завершения в браузере…</string>
     <string name="settings_step_up_web_cancelled">Браузер закрыт до подтверждения. Попробуйте ещё раз.</string>
     <string name="settings_step_up_web_expired">Срок действия запроса истёк. Попробуйте ещё раз.</string>
+    <string name="settings_step_up_web_new_passkey_hint">Чтобы в следующий раз подтверждать прямо здесь, добавьте новый ключ доступа в веб-версии Raft (Аккаунт › Вход и безопасность › Ключи доступа).</string>
     <string name="settings_step_up_passkey_button">Использовать ключ доступа</string>
     <string name="settings_step_up_use_passkey">Использовать ключ доступа</string>
     <string name="settings_step_up_passkey_cancelled">Окно ключа доступа закрыто. Попробуйте ещё раз или выберите другой способ.</string>
