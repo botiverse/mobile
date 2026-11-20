@@ -647,7 +647,7 @@ private fun SettingsAccountUsageDataRow(
             buildAnnotatedString {
                 append(description)
                 append(' ')
-                appendRaftTextLink(learnMore, onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) })
+                appendRaftTextLink(learnMore, onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) }, leavesRaft = true)
             }
         }
     RaftListRowGroup(Modifier.fillMaxWidth()) {

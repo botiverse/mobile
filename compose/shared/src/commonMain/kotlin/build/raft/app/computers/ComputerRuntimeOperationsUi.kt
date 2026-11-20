@@ -272,6 +272,7 @@ internal fun ComputerRuntimeInstallDialog(
                         onClick = { openUrl(source) },
                         variant = RaftTextLinkVariant.Strong,
                         style = typography.footnote,
+                        leavesRaft = true,
                     )
                 }
             }

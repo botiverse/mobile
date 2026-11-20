@@ -633,7 +633,8 @@ internal fun ComputerRuntimeSignInBody(
                             modifier = Modifier.testTag(COMPUTER_RUNTIME_SIGN_IN_OPEN_PAGE_TAG),
                             variant = if (state.codeEntered) RaftButtonVariant.Default else RaftButtonVariant.Primary,
                             size = RaftButtonSize.Lg,
-                            trailingIcon = { RaftComputersIcon(RaftLucideIconName.ExternalLink) },
+                            // raft-design "Links that leave Raft": one mark, ArrowUpRight (web LeavingRaftMark).
+                            trailingIcon = { RaftComputersIcon(RaftLucideIconName.ArrowUpRight) },
                         )
                     }
                 }
@@ -645,6 +646,7 @@ internal fun ComputerRuntimeSignInBody(
                             onClick = { openUrl(device.verificationUri) },
                             variant = RaftTextLinkVariant.Strong,
                             style = typography.subhead,
+                            leavesRaft = true,
                         )
                         ComputerRuntimeAuthCopyableCode(
                             device.userCode,

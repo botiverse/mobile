@@ -248,6 +248,28 @@ class RaftNavigationItemTest {
     }
 
     @Test
+    fun aTextLinkThatLeavesRaftEndsInTheMarkGluedToItsLastWord() {
+        var opened = 0
+        val text =
+            buildAnnotatedString {
+                append("Install it by hand. ")
+                appendRaftTextLink("View source", onClick = { opened++ }, leavesRaft = true)
+                append(" ")
+                appendRaftTextLink("Create One", onClick = {})
+            }
+        val links = raftTextLinks(text)
+        assertEquals(2, links.size)
+        val external = links[0]
+        assertTrue(external.leavesRaft)
+        assertEquals("View source", text.text.substring(external.start, external.wordsEnd), "the underline and the spoken words stop at the text")
+        assertEquals("\u2060\uFFFC", text.text.substring(external.wordsEnd, external.end), "a word joiner keeps the mark on the last word's line; the mark is part of the target")
+        assertFalse(links[1].leavesRaft, "a link inside Raft has no mark (raft-design navigation.md)")
+        assertEquals(links[1].end, links[1].wordsEnd)
+        external.annotation.linkInteractionListener?.onClick(external.annotation)
+        assertEquals(1, opened)
+    }
+
+    @Test
     fun aTabStripScrollsOnlyAsFarAsTheSelectedTabNeeds() {
         // A 200px strip scrolled to 100, content scrolls up to 500; 8px room round the tab.
         fun target(start: Int, end: Int) = raftRevealScrollTarget(start, end, room = 8, viewport = 200, current = 100, max = 500)
