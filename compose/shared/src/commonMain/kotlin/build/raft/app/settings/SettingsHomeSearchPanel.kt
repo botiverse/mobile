@@ -386,6 +386,11 @@ internal fun SharedHomeSearchPanel(
         }
         if (request.query.isNotBlank()) onIntent(SharedHomeSearchSavedIntent.SubmitSearch)
         onExternalQueryApplied()
+        // A conversation search's "Search all" moved the query here: keep typing in this box, as
+        // the user was in the one they left (artin 11-20: the Search tab did not take focus).
+        delay(100)
+        // Not attached when the tab is not showing yet: then the next visit's autofocus applies.
+        runCatching { searchFocusRequester.requestFocus() }
     }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
