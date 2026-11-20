@@ -112,11 +112,11 @@ internal fun ThreadArchivedChannelNotice(
  */
 @Composable
 internal fun ThreadFooterNoticeDock(
+    modifier: Modifier = Modifier,
     bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
     horizontalPadding: Dp = RaftAppSpacing.Sm,
     topPadding: Dp = RaftAppSpacing.Sm,
     bottomPadding: Dp = RaftAppSpacing.Sm,
-    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Box(

@@ -49,6 +49,7 @@ class ThreadFooterBottomInsetUiTest {
     val activities = RobolectricComposeActivityRule()
 
     private var previousLocale = StringDesc.localeType
+    private val createdWindowIds = mutableListOf<String>()
 
     @BeforeTest
     fun english() {
@@ -59,17 +60,22 @@ class ThreadFooterBottomInsetUiTest {
     @AfterTest
     fun restore() {
         StringDesc.localeType = previousLocale
+        createdWindowIds.forEach(RaftHostWindowInsets::remove)
+        createdWindowIds.clear()
     }
 
     @Test
-    fun archivedChannelNoticeClearsThreeButtonAndGestureNavigationBars() {
-        // xxhdpi = 3px/dp: 144px = 48dp (3-button nav), 72px = 24dp (gesture nav).
+    fun archivedChannelNoticeClearsThreeButtonNavigationBar() =
+        // xxhdpi = 3px/dp: 144px = 48dp (Android 3-button nav).
         assertArchivedNoticeClearsNavBar(navBarPx = 144, minClearancePx = 144f)
-        assertArchivedNoticeClearsNavBar(navBarPx = 72, minClearancePx = 72f)
-    }
 
     @Test
-    fun agentLoungeFootersClearThreeButtonNavigationBar() =
+    fun archivedChannelNoticeClearsGestureNavigationBar() =
+        // xxhdpi = 3px/dp: 72px = 24dp (Android gesture nav).
+        assertArchivedNoticeClearsNavBar(navBarPx = 72, minClearancePx = 72f)
+
+    @Test
+    fun archivedAgentLoungeFooterClearsThreeButtonNavigationBar() =
         runRobolectricComposeUiTest {
             val lounge =
                 RaftAgentLounge(
@@ -110,10 +116,28 @@ class ThreadFooterBottomInsetUiTest {
         }
 
     @Test
-    fun joinFooterClearsThreeButtonAndGestureNavigationBars() {
+    fun readOnlyAgentLoungeFooterClearsThreeButtonNavigationBar() =
+        runRobolectricComposeUiTest {
+            showAtBottom(navBarPx = 144) {
+                ThreadFooterNoticeDock {
+                    AgentLoungeFooter(kind = AgentLoungeFooterKind.ReadOnly, inputs = null)
+                }
+            }
+            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
+            val composerBottom = onNodeWithTag(AgentLoungeTestTags.ReadOnlyComposer).fetchSemanticsNode().boundsInRoot.bottom
+            assertTrue(
+                pageBottom - composerBottom >= 144f,
+                "Expected read-only Lounge footer to clear 48dp nav bar (pageBottom=$pageBottom, composerBottom=$composerBottom)",
+            )
+        }
+
+    @Test
+    fun joinFooterClearsThreeButtonNavigationBar() =
         assertJoinFooterClearsNavBar(navBarPx = 144, minClearancePx = 144f)
+
+    @Test
+    fun joinFooterClearsGestureNavigationBar() =
         assertJoinFooterClearsNavBar(navBarPx = 72, minClearancePx = 72f)
-    }
 
     @Test
     fun archivedNoticeAddsNoExtraInsetWhenHostExcludesNavigationBar() =
@@ -172,6 +196,7 @@ class ThreadFooterBottomInsetUiTest {
         footer: @Composable () -> Unit,
     ) {
         val windowId = "thread-footer-inset-$navBarPx-$hostExcludesNavBar-${nextWindowId++}"
+        createdWindowIds += windowId
         setContent {
             val pager =
                 remember(windowId) {

@@ -1479,6 +1479,7 @@ private fun ThreadPageContentContent(
                     label = localizedThreadJoinLabel(payload.joinLabel),
                     onJoin = { onThreadEvent("joinChannel", null, null, null) },
                     joining = ThreadChannelJoinsInFlight.isJoining(payload.joinChannelTargetId()),
+                    bottomSafeArea = composerBottomSafeArea,
                 )
             } else if (shareSelectionActive) {
                 // Preserve the footer's layout height while capture owns the
