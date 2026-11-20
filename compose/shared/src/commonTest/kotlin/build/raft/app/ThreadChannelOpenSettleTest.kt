@@ -17,7 +17,7 @@ import kotlin.test.assertTrue
  * several times before it settled. The numbers below are the ones the feedback log recorded
  * (density 3.375): a reversed list 1941px tall with a 135px top inset, the bottom padding row
  * and a 2118px newest message. The padding row was 54px (16dp) then; it is the production
- * [ThreadBottomSpacerAndAnchorTrailingHeight] here, the one height the list's last row and the
+ * [threadBottomSpacerAndAnchorTrailingHeight] here, the one height the list's last row and the
  * scroll owners' trailing padding share (it holds the typing line's slot whether or not the line
  * shows, so a line already showing at open changes none of this).
  *
@@ -290,7 +290,7 @@ class ThreadChannelOpenSettleTest {
         const val Density = 3.375f
 
         /** The list's last row, and the trailing padding the owners anchor the newest message with. */
-        val PaddingRowPx = (ThreadBottomSpacerAndAnchorTrailingHeight.value * Density).toInt()
+        val PaddingRowPx = (threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value * Density).toInt()
         const val NewestRowPx = 2118
         const val OlderRowPx = 525
 

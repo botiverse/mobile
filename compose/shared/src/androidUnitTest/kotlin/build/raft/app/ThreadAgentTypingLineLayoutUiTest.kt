@@ -53,8 +53,9 @@ import org.robolectric.annotation.GraphicsMode
  * list made room for it with a taller last row only while it showed, and the scroll owners parked
  * the newest message for the short row.
  *
- * The list's end always holds the line's slot now, and the scroll owners use the same height
- * (`ThreadBottomSpacerAndAnchorTrailingHeight`). Composes the production [ThreadMessagesList]
+ * The list's end holds the line's slot in every conversation that can show the line, whether or
+ * not it shows, and the scroll owners use the same height
+ * ([threadBottomSpacerAndAnchorTrailingHeight]). Composes the production [ThreadMessagesList]
  * bottom-up, the way [ThreadMessageMenuSurvivesPayloadUpdateUiTest] does, parked at the newest
  * message both ways the app parks there (opened on that message, as from Inbox or Activity: an
  * anchored viewport; and following the latest message), and shows and hides the line as the typing
@@ -107,7 +108,9 @@ class ThreadAgentTypingLineLayoutUiTest {
         RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
     }
 
-    private class Harness(val payload: RaftThreadScreenPayload) {
+    private class Harness(payload: RaftThreadScreenPayload) {
+        var payload by mutableStateOf(payload)
+
         /** What `rememberThreadAgentTyping` gives the page: null until somebody types or works here. */
         var typing by mutableStateOf<ThreadAgentTypingUi?>(null)
         val log = java.util.concurrent.CopyOnWriteArrayList<String>()
@@ -179,7 +182,8 @@ class ThreadAgentTypingLineLayoutUiTest {
      */
     private fun ComposeUiTest.clearOfTheLine(newest: Rect, line: Rect): Boolean =
         line.top - newest.bottom >=
-            (ThreadBottomSpacerAndAnchorTrailingHeight - ThreadAgentTypingLineHeight).value * density.density - 0.5f
+            (threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true) - ThreadAgentTypingLineHeight).value *
+            density.density - 0.5f
 
     private fun ComposeUiTest.assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest: Boolean) {
         val harness = Harness(threadPayload(focusedMessageId = NewestId.takeIf { focusNewest }))
@@ -243,6 +247,39 @@ class ThreadAgentTypingLineLayoutUiTest {
             val initialAnchor = harness.log.filter { it.startsWith("thread_initial_bottom_anchor ") }
             assertTrue(initialAnchor.none { "result=retry" in it }, "the initial anchor retried: $initialAnchor")
             assertTrue(initialAnchor.any { "result=anchored" in it }, "the initial anchor never reported anchored: $initialAnchor")
+        }
+
+    /**
+     * A channel previewed without joining has no composer, so it never shows the line and its list
+     * keeps the plain 16dp end: the initial bottom anchor holds on its first attempt there too.
+     * Joining gives the conversation a composer, and with it the line's slot: the newest message
+     * then ends exactly the slot's height further from the list's edge, still at the list's end.
+     */
+    @Test
+    fun aConversationWithoutAComposerKeepsThePlainEndAndGetsTheSlotWhenJoined() =
+        runRobolectricComposeUiTest {
+            val harness = Harness(threadPayload(focusedMessageId = null).copy(joined = false))
+            host(harness)
+            val page = onRoot().fetchSemanticsNode().boundsInRoot
+            val plain = newestMessage() ?: error("the page did not open at the newest message: ${state(harness)}")
+            val initialAnchor = harness.log.filter { it.startsWith("thread_initial_bottom_anchor ") }
+            assertTrue(initialAnchor.none { "result=retry" in it }, "the initial anchor retried: $initialAnchor")
+            assertTrue(initialAnchor.any { "result=anchored" in it }, "the initial anchor never reported anchored: $initialAnchor")
+
+            runOnIdle { harness.payload = harness.payload.copy(joined = true) }
+            settle()
+
+            val joined = newestMessage() ?: error("the newest message left the screen on joining: ${state(harness)}")
+            val slotPx =
+                (threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true) -
+                    threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = false)).value * density.density
+            val plainGap = page.bottom - plain.bottom
+            val joinedGap = page.bottom - joined.bottom
+            assertTrue(
+                kotlin.math.abs(joinedGap - plainGap - slotPx) <= 0.5f,
+                "the list's end is not the plain end without a composer and the slot more with one: " +
+                    "plainGap=$plainGap joinedGap=$joinedGap slot=$slotPx ${state(harness)}"
+            )
         }
 
     private companion object {

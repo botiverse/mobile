@@ -80,6 +80,12 @@ internal data class ThreadTimelineSlice(
     val originHiddenTarget: build.raft.app.data.MessageContextHiddenTarget? = null,
     /** [RaftThreadScreenPayload.historyStartFocusRequest]: a new value scrolls the list to its history start. */
     val historyStartFocusRequest: Int = 0,
+    /**
+     * [RaftThreadScreenPayload.agentTypingLineCanShow]: the list's end holds the typing / working
+     * line's slot (`threadBottomSpacerAndAnchorTrailingHeight`). A property of the conversation,
+     * not of agent activity.
+     */
+    val agentTypingLineSlot: Boolean = true,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
@@ -136,7 +142,8 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         historyChannelId = (streamChannelId ?: sourceThreadId)?.trim()?.takeIf { it.isNotEmpty() },
         joined = joined,
         originHiddenTarget = threadOriginHiddenTargetOrNull(),
-        historyStartFocusRequest = historyStartFocusRequest
+        historyStartFocusRequest = historyStartFocusRequest,
+        agentTypingLineSlot = agentTypingLineCanShow()
     )
 
 internal fun RaftThreadMessageItem.toThreadReplyMetadata(): ThreadReplyMetadata =

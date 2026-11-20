@@ -169,6 +169,18 @@ private val NoChannelWorkingLineKinds =
 internal val LocalThreadAgentTyping = compositionLocalOf<ThreadAgentTypingUi?> { null }
 
 /**
+ * Whether this conversation can ever show the typing / working line: only where it has a composer
+ * to sit on (web renders the line with the composer only). Not for a channel previewed without
+ * joining (the join footer) or an archived one (the archived banner).
+ *
+ * The one condition for the line itself ([rememberThreadAgentTyping]) and for its slot at the
+ * list's end ([ThreadTimelineSlice.agentTypingLineSlot]): a line without its slot would cover the
+ * newest message. Read from the conversation's own flags only, never from access resolution,
+ * write authority or agent activity, which change while a conversation is open.
+ */
+internal fun RaftThreadScreenPayload.agentTypingLineCanShow(): Boolean = showComposer && joined && !channelArchived
+
+/**
  * The conversation an `agent:typing` names for this page: a reply thread is its parent channel and
  * root message (web ThreadPanel `typingChannelId` + `parentMessageId`); a channel or DM is itself.
  */
@@ -277,7 +289,7 @@ internal fun rememberThreadAgentTyping(
         } else {
             null
         }
-    if (server == null || (agentIds.isEmpty() && working.isEmpty()) || !payload.showComposer) return null
+    if (server == null || (agentIds.isEmpty() && working.isEmpty()) || !payload.agentTypingLineCanShow()) return null
     val membersState = serverMembersStore?.state?.collectAsState()?.value
     val serverMembers =
         remember(membersState, server) { serverMembersStore?.currentServerMembers(ServerId(server)).orEmpty() }
@@ -296,9 +308,10 @@ internal fun rememberThreadAgentTyping(
 internal val ThreadAgentTypingLineHeight = 24.dp
 
 /**
- * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. Always part of the list's
- * end ([ThreadBottomSpacerAndAnchorTrailingHeight]), not only while the line shows, so the line
- * coming or going moves no message.
+ * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. Part of the list's end
+ * ([threadBottomSpacerAndAnchorTrailingHeight]) in every conversation that can show the line
+ * ([agentTypingLineCanShow]), not only while the line shows, so the line coming or going moves no
+ * message.
  */
 internal val ThreadAgentTypingListEndHeight = 30.dp
 
