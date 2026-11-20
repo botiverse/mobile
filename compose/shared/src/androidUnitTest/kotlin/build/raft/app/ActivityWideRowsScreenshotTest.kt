@@ -44,7 +44,7 @@ import org.robolectric.annotation.GraphicsMode
  * selected (the open conversation), so its shape shows.
  *  - `screens.activity.wide.rows.touch` / `.dark`: by touch, content 20dp from the column's edge, rows at least 56dp;
  *  - `screens.activity.wide.rows.fine`: a mouse or trackpad, content 16dp in, the third row hovered.
- * The phone keeps its own rows (two reserved excerpt lines, hairlines): [ActivityConversationRowsScreenshotTest].
+ * The phone takes the same cell with two reserved excerpt lines: [ActivityConversationRowsScreenshotTest].
  * Verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
