@@ -123,7 +123,11 @@ if (raftComposeUiPatchOn) {
                         }
                         target.binaries.forEach { binary ->
                             val link = binary.linkTaskProvider.get()
-                            links += Triple("$projectPath:${link.name}", module, project.files(link.libraries, link.exportLibraries))
+                            val linked = project.files(link.libraries, link.exportLibraries)
+                            // Run after whatever produces those files (e.g. downloadKotlinNativeDistribution,
+                            // other projects' klibs); reading them earlier is an error in Gradle 9.
+                            dependsOn(linked)
+                            links += Triple("$projectPath:${link.name}", module, linked)
                         }
                     }
                 doLast {
