@@ -85,34 +85,6 @@ internal fun RaftThreadScreenPayload.shouldRenderThreadLoadingShell(
     ) ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
-/**
- * Hands e0a5248d: whether this thread open still holds its first content frame behind the loading
- * shell. A memory or durable candidate frame is often ready a few frames before the local Home
- * access lookup answers; revealing it then shows the timeline without its composer, which mounts
- * one emission later and pushes the bottom-anchored list up by the composer height. The hold lasts
- * only until that bounded, offline-safe local lookup has answered (or access settled another way),
- * so timeline and composer appear in the same frame. Once revealed, a later refresh that re-runs
- * the lookup never puts the shell back over the content.
- *
- * [pageInMotion] ([LocalRaftStackPageInMotion]): the page is still sliding in on the Android page
- * stack. The first content build (the message list's rows, markdown, avatars, the composer) takes
- * 80-340 ms on a mid-range phone; landing mid slide it froze the push (nav_transition_frames: 3-19
- * frames in 440-840 ms). The light shell slides in instead and the content is built the frame the
- * slide settles, when the page also turns active. Only the first reveal waits: content already
- * shown (a pop back onto the chat) is never hidden again.
- */
-internal fun threadHoldsFirstContentReveal(
-    contentRevealed: Boolean,
-    accessResolution: ThreadAccessResolution,
-    initialHomeAccessLookupComplete: Boolean,
-    pageInMotion: Boolean = false
-): Boolean =
-    !contentRevealed &&
-        (
-            pageInMotion ||
-                (accessResolution == ThreadAccessResolution.Loading && !initialHomeAccessLookupComplete)
-        )
-
 internal enum class ThreadRouteMountPlan {
     LoadingShell,
     FeatureSurfaces
@@ -172,13 +144,24 @@ internal fun threadFeatureOwnerMountPlan(
     )
 }
 
+/**
+ * #proj-mobile:#171: a conversation whose content is ready (a memory or durable candidate frame)
+ * is shown at once; "Loading" is shown only while there is nothing to show. Two holds used to keep
+ * ready content behind the loading shell:
+ * - while the local Home access lookup had not answered (Hands e0a5248d), so the timeline would not
+ *   appear a frame before its composer. The composer's slot is now reserved at its resting height
+ *   while a composer is still expected ([threadReservesPendingComposerSlot], #4207), so the list is
+ *   laid out at its final height on the first content frame without waiting;
+ * - while the page was sliding in on the Android page stack (#4184), because the first content build
+ *   landed on the slide's frames. That build is now kept to the visible rows until the slide settles
+ *   (ThreadMessagesList enables its scroll-ahead window only after the motion), and the reveal is
+ *   logged (`thread_first_reveal_in_motion`) so nav_transition_frames can be compared.
+ */
 internal fun RaftThreadScreenPayload.threadRouteMountPlan(
     timelineSlice: ThreadTimelineSlice,
-    accessResolution: ThreadAccessResolution,
-    holdFirstContentReveal: Boolean = false
+    accessResolution: ThreadAccessResolution
 ): ThreadRouteMountPlan {
-    val showLoadingShell =
-        holdFirstContentReveal || shouldRenderThreadLoadingShell(timelineSlice, accessResolution)
+    val showLoadingShell = shouldRenderThreadLoadingShell(timelineSlice, accessResolution)
     return if (showLoadingShell) {
         ThreadRouteMountPlan.LoadingShell
     } else {

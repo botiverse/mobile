@@ -3057,14 +3057,21 @@ private fun ThreadMessagesListContent(
             dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.HeightChange))
         }
     }
+    // #171: content now shows while the page is still sliding in, so the scroll-ahead window also
+    // waits for the slide to settle: during the push only the visible rows are composed.
+    val listPageInMotion = build.raft.app.nav.LocalRaftStackPageInMotion.current
     LaunchedEffect(
         threadInstanceKey,
         initialBottomAnchorReady,
-        viewportMeasurementReady
+        viewportMeasurementReady,
+        listPageInMotion
     ) {
         if (
-            !initialBottomAnchorReady ||
-            !viewportMeasurementReady ||
+            !threadScrollAheadWindowMayOpen(
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                viewportMeasurementReady = viewportMeasurementReady,
+                pageInMotion = listPageInMotion
+            ) ||
             postFirstFrameBeyondBoundsEnabled
         ) {
             return@LaunchedEffect
@@ -5361,3 +5368,14 @@ private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 
 private const val ThreadFocusedTailMeasurementRetryFrames = 2
 private const val ThreadViewportPixelProbeTimeoutMs = 2_500L
+
+/**
+ * Whether the message list may open its scroll-ahead (beyond-bounds) window: after the initial
+ * bottom placement and the viewport measurement, and not while the page is still sliding in (#171),
+ * so a push composes only the rows on screen.
+ */
+internal fun threadScrollAheadWindowMayOpen(
+    initialBottomAnchorReady: Boolean,
+    viewportMeasurementReady: Boolean,
+    pageInMotion: Boolean
+): Boolean = initialBottomAnchorReady && viewportMeasurementReady && !pageInMotion
