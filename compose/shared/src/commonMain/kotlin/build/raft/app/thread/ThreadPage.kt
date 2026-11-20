@@ -16,11 +16,7 @@ import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftRatingPrompt
-import build.raft.app.data.RaftAttachmentUploadFinished
-import build.raft.app.data.RaftAttachmentUploadTimingRecorder
-import build.raft.app.data.RaftClientTraceEvents
-import build.raft.app.data.raftAttachmentUploadFinishedAttrs
-import build.raft.app.data.raftAttachmentUploadFinishedLogLine
+import build.raft.app.data.RaftAttachmentUploadAttempt
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
@@ -5451,6 +5447,9 @@ private fun SharedThreadRouteContentContent(
     ): Boolean {
         // slock.attachment.upload_finished: the clock of each upload starts as the picked files arrive.
         val uploadPickedAt = TimeSource.Monotonic.markNow()
+        // ... and the event is filed under the server the upload started on, whatever the session
+        // says by the time it ends.
+        val uploadSessionServerId = latestCurrentSession?.currentServerId
         // Upload callbacks must retain the store-owned draft identity they were admitted under.
         // A route can remain mounted while the composer store transitions to another key; using
         // the key captured here makes every progress/success/failure publication fail closed.
@@ -5470,6 +5469,8 @@ private fun SharedThreadRouteContentContent(
             bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
             return false
         }
+        val uploadServerId =
+            directUploadOperation?.authority?.serverId?.takeIf { it.isNotBlank() } ?: uploadSessionServerId
         // Never await the capabilities request on the per-file pick path: on a weak network it
         // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
         // otherwise the background upload task resolves it after the chip is admitted.  The
@@ -6000,6 +6001,8 @@ private fun SharedThreadRouteContentContent(
                 } else {
                     newAttachmentUploadClientRequestId()
                 }
+            // 1 for the first upload of this picked file, 2 for its first Retry, ...
+            val uploadAttemptNumber = identity?.let { threadDirectUploadClientRequestIds.nextAttempt(it) } ?: 1
             val attemptToken =
                 draftUploads.launch(
                     draftKey = draftKey,
@@ -6011,43 +6014,15 @@ private fun SharedThreadRouteContentContent(
                         draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode)
                     }
                     // Where this attempt's time goes (RaftAttachmentUploadTelemetry.kt); the network
-                    // layer fills it in through the coroutine context. Reported once, when it settles.
-                    val uploadTiming =
-                        RaftAttachmentUploadTimingRecorder(
-                            elapsedMs = { uploadPickedAt.elapsedNow().inWholeMilliseconds }
+                    // layer fills its recorder in through the coroutine context. Reported once.
+                    val uploadAttempt =
+                        RaftAttachmentUploadAttempt(
+                            serverId = uploadServerId,
+                            attempt = uploadAttemptNumber,
+                            pickedSizeBytes = file.sizeBytes,
+                            elapsedMs = { uploadPickedAt.elapsedNow().inWholeMilliseconds },
+                            log = { line -> bridge.log(line) },
                         )
-                    var uploadFinishedReported = false
-                    fun reportUploadFinished(errorCode: String?, cancelled: Boolean = false) {
-                        if (uploadFinishedReported) return
-                        uploadFinishedReported = true
-                        runCatching {
-                            val timing = uploadTiming.snapshot()
-                            val attrs =
-                                raftAttachmentUploadFinishedAttrs(
-                                    RaftAttachmentUploadFinished(
-                                        route = timing.route,
-                                        errorCode = errorCode,
-                                        cancelled = cancelled,
-                                        sizeBytes = file.sizeBytes,
-                                        durationMs = uploadPickedAt.elapsedNow().inWholeMilliseconds,
-                                        prepareMs = timing.prepareMs,
-                                        facts = timing.facts,
-                                    )
-                                )
-                            bridge.log(raftAttachmentUploadFinishedLogLine(attrs, uploadTiming.traceIds.traceId))
-                            val uploadServerId =
-                                directUploadOperation?.authority?.serverId?.takeIf { it.isNotBlank() }
-                                    ?: latestCurrentSession?.currentServerId
-                            if (!uploadServerId.isNullOrBlank()) {
-                                RaftClientTraceEvents.emitAttachmentUploadFinished(
-                                    serverId = uploadServerId,
-                                    attrs = attrs,
-                                    traceId = uploadTiming.traceIds.traceId,
-                                    spanId = uploadTiming.traceIds.spanId,
-                                )
-                            }
-                        }
-                    }
                     try {
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
@@ -6064,7 +6039,7 @@ private fun SharedThreadRouteContentContent(
                             }
                         }
                         val uploadResult =
-                            withContext(Dispatchers.Default + uploadTiming) {
+                            withContext(Dispatchers.Default + uploadAttempt.recorder) {
                                 attachmentUploadSemaphore.withPermit {
                                     val resolvedUpload =
                                         when (
@@ -6165,17 +6140,13 @@ private fun SharedThreadRouteContentContent(
                                             )
                                         }
                                     }
+                                }.also { settled ->
+                                    // Inside the context: a scope cancelled as this returns cannot
+                                    // turn a finished upload into a cancelled one.
+                                    uploadAttempt.settle(settled)
                                 }
                             }
-                        reportUploadFinished(
-                            errorCode =
-                                when (uploadResult) {
-                                    is DataResult.Content -> null
-                                    is DataResult.Error -> uploadResult.error.code
-                                    is DataResult.NoPermission -> uploadResult.blocker.code
-                                    is DataResult.Empty -> "empty_upload_result"
-                                }
-                        )
+                        uploadAttempt.report()
                         val published =
                             draftUploads.orchestrator.publishIfAccepted(
                                 localAttachmentId,
@@ -6244,14 +6215,14 @@ private fun SharedThreadRouteContentContent(
                         // The user removed this uploading tile; RemoveAttachment already hid it.
                         // A gallery caller still receives a false completion below, so its
                         // session cannot be committed as if cancellation were a transfer.
-                        reportUploadFinished(errorCode = null, cancelled = true)
+                        uploadAttempt.report(cancelled = true)
                     } catch (error: Throwable) {
                         bridge.logWarn(
                             "thread_composer_attachment_upload_exception " +
                                 "attachmentId=$localAttachmentId " +
                                 "error=${error::class.simpleName.orEmpty()}"
                         )
-                        reportUploadFinished(errorCode = "attachment_upload_failed")
+                        uploadAttempt.report(failureCode = "attachment_upload_failed")
                         publishTerminalFailure("attachment_upload_failed")
                     }
                 }

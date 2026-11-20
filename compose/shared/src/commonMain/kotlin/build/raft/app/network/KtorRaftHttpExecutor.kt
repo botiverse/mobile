@@ -147,7 +147,8 @@ internal class KtorRaftHttpExecutor(
             "slock_http_multipart_retry path=${raftRedactSensitivePath(spec.path)} reason=connection_reset " +
                 "firstError=${first.errorBodyText?.take(80)?.toSafeHeaderValue()}"
         )
-        return perform(spec)
+        val second = perform(spec)
+        return second.copy(uploadFacts = second.uploadFacts?.copy(sends = 2))
     }
 
     override suspend fun executeBytes(
@@ -278,6 +279,8 @@ internal class KtorRaftHttpExecutor(
             "${spec.logPrefix}_start $common " +
                 "configTotalTimeoutMillis=${spec.totalTimeoutMillis} " +
                 "configConnectTimeoutMillis=${spec.connectTimeoutMillis} " +
+                // The trace this request joins (an upload's API calls share one), beside its own request id.
+                "sentTraceId=${spec.headers.raftSentTraceIdOrNull() ?: "none"} " +
                 "clientRequestId=$clientRequestId headers=${spec.headers.toSafeKtorHeaderDiagnostics()}"
         )
         return try {
@@ -367,11 +370,10 @@ internal class KtorRaftHttpExecutor(
         socketTimeoutOverrideMillis: Long?,
     ): KtorAttempt {
         val upload = spec.kind == RaftKtorCallKind.MultipartUpload || spec.kind == RaftKtorCallKind.PresignedUpload
-        // The body length this attempt declared; the caller's byte estimate when the body has none.
-        var requestBodyBytes: Long? = spec.requestBytes.takeIf { it > 0L }
+        // The file bytes of the body: a multipart POST's framing (which holds the file name) is not counted.
+        val requestBodyBytes: Long? = spec.requestBytes.takeIf { it > 0L }
         return try {
             val content = spec.content()
-            content?.contentLength?.takeIf { it >= 0L }?.let { requestBodyBytes = it }
             // Ktor 3 reads the whole body inside request(), so the response is consumed within this
             // call's scope (no channel outlives it).
             val response: HttpResponse =
@@ -472,7 +474,18 @@ internal class KtorRaftHttpExecutor(
                         totalMs = startedAt.elapsedNow().inWholeMilliseconds,
                         facts = facts,
                     ),
-                uploadFacts = if (upload) raftUploadWireFacts(requestBodyBytes, facts, edgePop = null) else null,
+                uploadFacts =
+                    if (upload) {
+                        raftUploadWireFacts(
+                            requestBytes = requestBodyBytes,
+                            facts = facts,
+                            edgePop = null,
+                            failureKind = kind,
+                            transportError = raftTransportErrorToken(error),
+                        )
+                    } else {
+                        null
+                    },
             )
             // A socket / connect timeout says the connection gave nothing; the call's own total budget
             // running out (HttpRequestTimeoutException) does not, and leaves nothing to retry with.

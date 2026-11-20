@@ -139,6 +139,16 @@ internal object RaftDarwinTransportFacts {
         // NSURLSession measured it: a request that never finished sending, or got no answer, has none.
         val requestBodyMs = measuredMillisBetween(transaction.requestStartDate, transaction.requestEndDate)
         val responseWaitMs = measuredMillisBetween(transaction.requestEndDate, transaction.responseStartDate)
+        // DNS + TCP + TLS of a new connection (connectEndDate comes after the TLS handshake); none when reused.
+        val connectSetupMs =
+            if (transaction.reusedConnection) {
+                null
+            } else {
+                measuredMillisBetween(
+                    transaction.domainLookupStartDate ?: transaction.connectStartDate,
+                    transaction.connectEndDate ?: transaction.secureConnectionEndDate,
+                )
+            }
         val facts =
             "reusedConnection=${transaction.reusedConnection} " +
                 "dnsMs=${millisBetween(transaction.domainLookupStartDate, transaction.domainLookupEndDate)} " +
@@ -146,6 +156,7 @@ internal object RaftDarwinTransportFacts {
                 "tlsMs=${millisBetween(transaction.secureConnectionStartDate, transaction.secureConnectionEndDate)} " +
                 "negotiatedProtocol=${transaction.networkProtocolName?.toSafeDiagnosticsToken() ?: "none"} " +
                 "transactions=${metrics.transactionMetrics.size}" +
+                (connectSetupMs?.let { " $RAFT_FACT_CONNECT_SETUP_MS=$it" } ?: "") +
                 (requestBodyMs?.let { " $RAFT_FACT_REQUEST_BODY_MS=$it" } ?: "") +
                 (responseWaitMs?.let { " $RAFT_FACT_RESPONSE_WAIT_MS=$it" } ?: "")
         synchronized(lock) {

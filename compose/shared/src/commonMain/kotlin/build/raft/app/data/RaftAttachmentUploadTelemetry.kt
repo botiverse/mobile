@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.network.RAFT_TRANSPORT_ERROR_OTHER
 import build.raft.app.network.RaftTraceIds
+import build.raft.app.network.RaftTransportFailureKind
 import build.raft.app.network.RaftUploadWireFacts
 import build.raft.app.network.newRaftTraceIds
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -15,27 +17,49 @@ import kotlinx.serialization.json.put
  * `slock.attachment.upload_finished` from the app: how one composer attachment upload ended and where
  * its time went, with the web's event and attribute names (botiverse/slock
  * `packages/web/src/utils/attachmentUploadOutcomeTrace.ts`, slock #15924) so web, desktop and app read
- * in one table. One event per upload attempt, when it settles.
+ * in one table. One event per upload attempt, when it settles: the first upload of a picked file, and
+ * each Retry the user taps, is its own attempt with its own trace id. Re-sends inside an attempt (the
+ * multipart POST after a connection reset or a token refresh, the complete call's retries, the
+ * recovery after an uncertain PUT) stay in that attempt's one event.
  *
  * Attributes (an absent value is left out, never written as 0 or null):
  * - `route`: `legacy` (multipart POST to `/api/attachments/upload`), `direct` (upload session and a
  *   presigned PUT to the object store) or `unknown` (ended before a request was made).
- * - `outcome`: `ok` / `error` / `timeout` / `cancelled`; `error_code`: the app's error code.
+ * - `outcome`: `ok` / `error` / `timeout` / `cancelled`. `timeout_phase` (only with `timeout`): the
+ *   web's `create` / `transfer` / `response` / `complete` / `status`. `error_code`: a bounded set
+ *   ([raftAttachmentUploadErrorCode]).
+ * - `attempt`: 1 for the first upload of a picked file, 2 for its first Retry, and so on (counted
+ *   while the conversation stays open).
  * - `size_bucket`, `elapsed_bucket`, `duration_ms`: as the web. The clock starts when the picked
  *   files reach the composer.
- * - `prepare_ms`: from there to the first upload request (the multipart POST, or the upload session's
- *   create call): capability lookup, waiting for an upload slot, reading the file's size.
- * - `request_body_ms`, `response_wait_ms`, `request_bytes`, `edge_pop`: [RaftUploadWireFacts], of the
- *   multipart POST or the presigned PUT (the last send when the body went twice).
+ * - `prepare_ms`: from there to the first upload request being handed to the network client (the
+ *   multipart POST, or the upload session's create call), before it queues for a request slot:
+ *   capability lookup, waiting for an upload slot, reading the file's size.
+ * - `connect_ms`, `request_body_ms`, `response_wait_ms`, `request_bytes`, `edge_pop`:
+ *   [RaftUploadWireFacts], of the multipart POST or the presigned PUT. When the body went more than
+ *   once they describe the last send, and `body_sends` says how many there were.
+ * - `request_body_partial_ms`, `request_bytes_sent`: only when the body never finished (a failure,
+ *   timeout or cancel mid-send): how long it had been going out and how many file bytes were reported
+ *   sent. The time is the engine's on Android / desktop when the transport returned
+ *   ([RaftUploadWireFacts.requestBodyPartialMs]); otherwise (iOS, and every cancellation) it is the
+ *   span between the first and the last upload-progress report.
  *
- * The rest of `duration_ms` is the control calls (session create / complete) and connection setup.
- * No file name, id, URL or user identifier. `clientPlatform` and `appVersion` are added by the sender.
+ * The four phases never add up to more than `duration_ms`; the rest is the control calls (session
+ * create / complete / status) and queueing. No file name, id, URL, error text or user identifier.
+ * `clientPlatform` and `appVersion` are added by the sender.
  */
 internal const val RaftAttachmentUploadFinishedTraceName = "slock.attachment.upload_finished"
 
 internal const val RaftAttachmentUploadRouteLegacy = "legacy"
 internal const val RaftAttachmentUploadRouteDirect = "direct"
 internal const val RaftAttachmentUploadRouteUnknown = "unknown"
+
+/** The web's `AttachmentUploadPhase` values the app can tell apart. */
+internal const val RaftAttachmentUploadPhaseCreate = "create"
+internal const val RaftAttachmentUploadPhaseTransfer = "transfer"
+internal const val RaftAttachmentUploadPhaseResponse = "response"
+internal const val RaftAttachmentUploadPhaseComplete = "complete"
+internal const val RaftAttachmentUploadPhaseStatus = "status"
 
 /**
  * One upload attempt's timing, filled in by the network layer as the upload runs. The composer puts
@@ -44,8 +68,9 @@ internal const val RaftAttachmentUploadRouteUnknown = "unknown"
  * has none and records nothing.
  *
  * It also owns the attempt's trace id: the API requests of the upload (the multipart POST, the
- * session create and complete calls) send [traceHeaders], so their `server.http.request` spans join
- * the trace id the event carries. The presigned PUT to the object store sends no `traceparent`.
+ * session create, complete, status and cancel calls) send [traceHeaders], so their
+ * `server.http.request` spans join the trace id the event carries. The presigned PUT to the object
+ * store sends no `traceparent`.
  */
 internal class RaftAttachmentUploadTimingRecorder(
     /** Milliseconds since the picked files reached the composer. */
@@ -54,21 +79,64 @@ internal class RaftAttachmentUploadTimingRecorder(
 ) : AbstractCoroutineContextElement(Key) {
     companion object Key : CoroutineContext.Key<RaftAttachmentUploadTimingRecorder>
 
-    internal class Snapshot(val route: String?, val prepareMs: Long?, val facts: RaftUploadWireFacts?)
+    internal class Snapshot(
+        val route: String?,
+        val prepareMs: Long?,
+        val facts: RaftUploadWireFacts?,
+        /** Times the body was sent in this attempt, over every call of the transport. */
+        val bodySends: Int,
+        /** Bytes the last send's progress reports had reached, and the span between its first and last report. */
+        val bytesSent: Long?,
+        val progressSpanMs: Long?,
+        /** The control call that timed out last, unless a later call of the attempt answered. */
+        val controlTimeoutPhase: String?,
+    )
 
     private val lock = SynchronizedObject()
     private var route: String? = null
     private var prepareMs: Long? = null
     private var facts: RaftUploadWireFacts? = null
+    private var bodySends = 0
+    private var bytesSent: Long? = null
+    private var firstProgressAtMs: Long? = null
+    private var lastProgressAtMs: Long? = null
+    private var controlTimeoutPhase: String? = null
+
+    private fun now(): Long? = runCatching(elapsedMs).getOrNull()
 
     fun traceHeaders(): Map<String, String> = mapOf("traceparent" to traceIds.traceparent)
 
-    /** The first request of the upload is about to be made: preparation ends here (first call only). */
+    /** The first request of the upload is handed to the network client: preparation ends here (first call only). */
     fun uploadRequestStarting(route: String) {
-        val now = runCatching(elapsedMs).getOrNull()
+        val at = now()
         synchronized(lock) {
             this.route = route
-            if (prepareMs == null) prepareMs = now
+            if (prepareMs == null) prepareMs = at
+        }
+    }
+
+    /** A control call of the upload (create / complete / status) ended; [timedOut] when it got no answer in time. */
+    fun controlCallFinished(phase: String, timedOut: Boolean) {
+        synchronized(lock) { controlTimeoutPhase = if (timedOut) phase else null }
+    }
+
+    /** The body is handed to the transport (again): the progress of an earlier send no longer counts. */
+    fun transferStarting(route: String) {
+        synchronized(lock) {
+            this.route = route
+            bytesSent = null
+            firstProgressAtMs = null
+            lastProgressAtMs = null
+        }
+    }
+
+    /** The transport reported [bytes] of the body sent so far. */
+    fun transferProgress(bytes: Long) {
+        val at = now()
+        synchronized(lock) {
+            bytesSent = bytes.coerceAtLeast(0L)
+            if (firstProgressAtMs == null) firstProgressAtMs = at
+            lastProgressAtMs = at
         }
     }
 
@@ -77,22 +145,38 @@ internal class RaftAttachmentUploadTimingRecorder(
         synchronized(lock) {
             this.route = route
             this.facts = facts
+            bodySends += (facts?.sends ?: 1).coerceAtLeast(1)
+            controlTimeoutPhase = null
         }
     }
 
-    fun snapshot(): Snapshot = synchronized(lock) { Snapshot(route, prepareMs, facts) }
+    fun snapshot(): Snapshot =
+        synchronized(lock) {
+            val first = firstProgressAtMs
+            val last = lastProgressAtMs
+            Snapshot(
+                route = route,
+                prepareMs = prepareMs,
+                facts = facts,
+                bodySends = bodySends,
+                bytesSent = bytesSent,
+                progressSpanMs = if (first != null && last != null) (last - first).coerceAtLeast(0L) else null,
+                controlTimeoutPhase = controlTimeoutPhase,
+            )
+        }
 }
 
 internal data class RaftAttachmentUploadPhases(
     val prepareMs: Long? = null,
+    val connectMs: Long? = null,
     val requestBodyMs: Long? = null,
     val responseWaitMs: Long? = null,
 )
 
 /**
- * The three phases as reported: a phase that was not measured stays null, the response wait needs a
- * body time, and together they never exceed [durationMs] (the engine's clock and the app's are read
- * separately, so each phase is capped by what is left of the total).
+ * The phases as reported, in the order they happen: a phase that was not measured stays null, the
+ * response wait needs a body time, and together they never exceed [durationMs] (the engine's clock
+ * and the app's are read separately, so each phase is capped by what is left of the total).
  */
 internal fun raftAttachmentUploadPhases(
     durationMs: Long,
@@ -107,21 +191,29 @@ internal fun raftAttachmentUploadPhases(
         return kept
     }
     val prepare = capped(prepareMs)
+    val connect = capped(facts?.connectMs)
     val body = capped(facts?.requestBodyMs)
     val wait = if (body == null) null else capped(facts?.responseWaitMs)
-    return RaftAttachmentUploadPhases(prepareMs = prepare, requestBodyMs = body, responseWaitMs = wait)
+    return RaftAttachmentUploadPhases(prepareMs = prepare, connectMs = connect, requestBodyMs = body, responseWaitMs = wait)
 }
 
 internal data class RaftAttachmentUploadFinished(
     val route: String?,
-    /** Null for a success. */
+    /** The app's error code ([ScreenError.code] / [PermissionBlocker.code]); null for a success. */
     val errorCode: String? = null,
+    /** The server's contract code of the refusal, when it sent one. */
+    val serverCode: String? = null,
     val cancelled: Boolean = false,
-    /** The size of the file sent, when known. */
+    val attempt: Int = 1,
+    /** The size of the picked file, used when the transport reported none. */
     val sizeBytes: Long? = null,
     val durationMs: Long,
     val prepareMs: Long? = null,
     val facts: RaftUploadWireFacts? = null,
+    val bodySends: Int = 0,
+    val bytesSent: Long? = null,
+    val progressSpanMs: Long? = null,
+    val controlTimeoutPhase: String? = null,
 )
 
 /** Web `directPutSizeBucket`. */
@@ -145,37 +237,162 @@ internal fun raftAttachmentUploadElapsedBucket(ms: Long): String =
         else -> ">5m"
     }
 
-private val RaftAttachmentUploadErrorCodePattern = Regex("""^[A-Za-z0-9_.:-]{1,64}$""")
+/**
+ * Which step ran out of time, as the web's `timeout_phase`: the body's request when the transport
+ * classified its failure as a timeout (`response` once every byte was sent, else `transfer`), else the
+ * control call that timed out last. The web's `channel` and `capability` do not occur: the app
+ * resolves neither inside an upload attempt.
+ */
+internal fun raftAttachmentUploadTimeoutPhase(facts: RaftUploadWireFacts?, controlTimeoutPhase: String?): String? =
+    when {
+        facts?.failureKind == RaftTransportFailureKind.TIMEOUT ->
+            if (facts?.requestBodyMs != null) RaftAttachmentUploadPhaseResponse else RaftAttachmentUploadPhaseTransfer
+        else -> controlTimeoutPhase
+    }
 
-/** `ok` / `error` / `timeout` / `cancelled`, the web's closed set. */
-internal fun raftAttachmentUploadOutcome(errorCode: String?, cancelled: Boolean): String =
+/** The app's own codes for "a request of the upload ran out of time". */
+private val RaftAttachmentUploadTimeoutAppCodes = setOf("network_timeout", "attachment_presigned_upload_timeout")
+
+/**
+ * `ok` / `error` / `timeout` / `cancelled`, the web's closed set. A failed upload is a `timeout` when
+ * the transport said so ([timeoutPhase]) or the app's code is one of its two timeout codes; no error
+ * text is searched.
+ */
+internal fun raftAttachmentUploadOutcome(errorCode: String?, cancelled: Boolean, timeoutPhase: String? = null): String =
     when {
         cancelled || errorCode == "cancelled" -> "cancelled"
         errorCode == null -> "ok"
-        errorCode.contains("timeout", ignoreCase = true) || errorCode.contains("timed_out", ignoreCase = true) -> "timeout"
+        timeoutPhase != null || errorCode in RaftAttachmentUploadTimeoutAppCodes -> "timeout"
         else -> "error"
     }
 
+/**
+ * The upload contract's codes: what the server answers on the upload routes and what the web's client
+ * reports on this event (botiverse/slock `packages/server`, `packages/web/src/utils/directAttachmentUpload.ts`
+ * at 080597aea).
+ */
+internal val RaftAttachmentUploadContractCodes: Set<String> =
+    setOf(
+        "UPLOAD_STALLED", "UPLOAD_OBJECT_PUT_UNCERTAIN", "UPLOAD_OBJECT_PUT_FAILED", "UPLOAD_OBJECT_NOT_FOUND",
+        "UPLOAD_OBJECT_MISMATCH", "UPLOAD_VERIFICATION_IN_PROGRESS", "UPLOAD_COMPLETE_FAILED",
+        "UPLOAD_SESSION_CREATE_FAILED", "UPLOAD_SESSION_STATUS_FAILED", "UPLOAD_SESSION_EXPIRED",
+        "UPLOAD_SESSION_CANCELED", "UPLOAD_SESSION_NOT_FOUND", "UPLOAD_INVALID_REQUEST", "UPLOAD_TOO_LARGE",
+        "UPLOAD_FORBIDDEN", "UPLOAD_RATE_LIMITED", "UPLOAD_IDEMPOTENCY_CONFLICT", "UPLOAD_QUOTA_EXCEEDED",
+        "FILE_UPLOAD_QUOTA_EXCEEDED", "ATTACHMENT_UPLOAD_DISABLED", "ATTACHMENT_TOO_LARGE",
+    )
+
+/** App conditions the web names with a contract code. */
+private val RaftAttachmentUploadAppToContractCodes =
+    mapOf(
+        "attachment_too_large" to "UPLOAD_TOO_LARGE",
+        "attachment_upload_file_empty" to "UPLOAD_INVALID_REQUEST",
+    )
+
+/** The app's codes for "the request got no HTTP answer"; the platform's error name replaces them when known. */
+private val RaftAttachmentUploadTransportAppCodes =
+    setOf("network_unavailable", "network_connect_failed", "network_dns_failed")
+
+/** The app's own upload codes that are reported as they are. */
+internal val RaftAttachmentUploadAppCodes: Set<String> =
+    RaftAttachmentUploadTransportAppCodes +
+        setOf(
+            "network_request_failed", "network_parse_failed", "server_unavailable", "server_forbidden", "auth_required", "auth_authority_changed",
+            "empty_upload_result", "attachment_upload_failed", "attachment_upload_unavailable", "attachment_read_failed",
+            "attachment_size_unavailable", "attachment_size_mismatch", "attachment_file_input_conflict",
+            "attachment_direct_upload_unavailable", "attachment_upload_capabilities_unavailable",
+            "attachment_upload_file_preflight_invalid", "attachment_upload_session_create_failed",
+            "attachment_upload_session_put_failed", "attachment_upload_session_complete_failed",
+            "attachment_upload_session_contract_invalid", "attachment_upload_session_empty_body",
+            "attachment_upload_session_invalid_request", "attachment_upload_authority_binding_required",
+            "attachment_upload_authority_binding_unsupported", "attachment_upload_method_invalid",
+            "attachment_upload_contract_invalid", "file_ref_upload_requires_app_scope_file_resolver",
+            "missing_channel_id",
+        )
+
+private val RaftAttachmentUploadHttpCodePattern = Regex("""^http_[1-5][0-9]{2}$""")
+
+/** `okhttp:<class>` / `ktor:<class>` / `<NSError domain>:<code>` as [build.raft.app.network.raftTransportErrorToken] builds them. */
+private val RaftAttachmentUploadTransportErrorPattern = Regex("""^[A-Za-z][A-Za-z0-9]{1,39}:(?:[A-Za-z][A-Za-z0-9]{1,47}|-?[0-9]{1,6})$""")
+
+/**
+ * The event's `error_code`: always one of a bounded set, never error text. In order:
+ * 1. a `timeout`: `UPLOAD_OBJECT_PUT_UNCERTAIN` when that is the app's result, else `UPLOAD_STALLED`
+ *    (as the web; `timeout_phase` says which step);
+ * 2. the server's contract code, when it is one of [RaftAttachmentUploadContractCodes];
+ * 3. the app's code when it is itself a contract code, or names a condition the web has a code for
+ *    (`attachment_too_large` -> `UPLOAD_TOO_LARGE`, `attachment_upload_file_empty` -> `UPLOAD_INVALID_REQUEST`);
+ * 4. a request that got no HTTP answer: the platform's error name from the transport
+ *    (`okhttp:SocketTimeoutException`, `NSURLErrorDomain:-1005`, `ktor:HttpRequestTimeoutException`),
+ *    else the app's `network_unavailable` / `network_connect_failed` / `network_dns_failed`;
+ * 5. `http_<status>`;
+ * 6. one of [RaftAttachmentUploadAppCodes];
+ * 7. anything else: `other`.
+ * Null for `ok` and `cancelled`.
+ */
+internal fun raftAttachmentUploadErrorCode(
+    outcome: String,
+    errorCode: String?,
+    serverCode: String?,
+    transportError: String?,
+): String? {
+    if (outcome != "error" && outcome != "timeout") return null
+    val contractServerCode = serverCode?.trim()?.uppercase()?.takeIf { it in RaftAttachmentUploadContractCodes }
+    if (outcome == "timeout") {
+        return if (errorCode == "UPLOAD_OBJECT_PUT_UNCERTAIN" || contractServerCode == "UPLOAD_OBJECT_PUT_UNCERTAIN") {
+            "UPLOAD_OBJECT_PUT_UNCERTAIN"
+        } else {
+            "UPLOAD_STALLED"
+        }
+    }
+    if (contractServerCode != null) return contractServerCode
+    val code = errorCode ?: return RAFT_TRANSPORT_ERROR_OTHER
+    if (code in RaftAttachmentUploadContractCodes) return code
+    RaftAttachmentUploadAppToContractCodes[code]?.let { return it }
+    if (code in RaftAttachmentUploadTransportAppCodes) {
+        val native = transportError?.takeIf { it != RAFT_TRANSPORT_ERROR_OTHER && RaftAttachmentUploadTransportErrorPattern.matches(it) }
+        return native ?: code
+    }
+    if (RaftAttachmentUploadHttpCodePattern.matches(code)) return code
+    if (code in RaftAttachmentUploadAppCodes) return code
+    return RAFT_TRANSPORT_ERROR_OTHER
+}
+
 internal fun raftAttachmentUploadFinishedAttrs(finished: RaftAttachmentUploadFinished): JsonObject {
     val durationMs = finished.durationMs.coerceAtLeast(0L)
-    val outcome = raftAttachmentUploadOutcome(finished.errorCode, finished.cancelled)
-    val phases = raftAttachmentUploadPhases(durationMs, finished.prepareMs, finished.facts)
-    val sizeBytes = finished.sizeBytes?.takeIf { it > 0L } ?: finished.facts?.requestBytes?.takeIf { it > 0L }
+    val facts = finished.facts
+    val timeoutPhase = raftAttachmentUploadTimeoutPhase(facts, finished.controlTimeoutPhase)
+    val outcome = raftAttachmentUploadOutcome(finished.errorCode, finished.cancelled, timeoutPhase)
+    val errorCode = raftAttachmentUploadErrorCode(outcome, finished.errorCode, finished.serverCode, facts?.transportError)
+    val phases = raftAttachmentUploadPhases(durationMs, finished.prepareMs, facts)
+    // The file actually sent, when the transport reported its length; else the picked file's.
+    val requestBytes = facts?.requestBytes?.takeIf { it > 0L }
+    val sizeBytes = requestBytes ?: finished.sizeBytes?.takeIf { it > 0L }
+    val bodyUnfinished = outcome != "ok" && phases.requestBodyMs == null
     return buildJsonObject {
         put("route", finished.route ?: RaftAttachmentUploadRouteUnknown)
         put("outcome", outcome)
-        if (outcome == "error" || outcome == "timeout") {
-            // A code is an identifier; anything else (a message, a path) is not recorded.
-            finished.errorCode?.let { code -> put("error_code", if (RaftAttachmentUploadErrorCodePattern.matches(code)) code else "other") }
-        }
+        if (outcome == "timeout") timeoutPhase?.let { put("timeout_phase", it) }
+        errorCode?.let { put("error_code", it) }
+        put("attempt", finished.attempt.coerceAtLeast(1))
         sizeBytes?.let { put("size_bucket", raftAttachmentUploadSizeBucket(it)) }
         put("elapsed_bucket", raftAttachmentUploadElapsedBucket(durationMs))
         put("duration_ms", durationMs)
         phases.prepareMs?.let { put("prepare_ms", it) }
+        phases.connectMs?.let { put("connect_ms", it) }
         phases.requestBodyMs?.let { put("request_body_ms", it) }
         phases.responseWaitMs?.let { put("response_wait_ms", it) }
-        finished.facts?.requestBytes?.takeIf { it > 0L }?.let { put("request_bytes", it) }
-        finished.facts?.edgePop?.let { put("edge_pop", it) }
+        if (bodyUnfinished) {
+            (facts?.requestBodyPartialMs ?: finished.progressSpanMs)
+                ?.takeIf { it >= 0L }
+                ?.let { put("request_body_partial_ms", minOf(it, durationMs)) }
+            finished.bytesSent
+                ?.takeIf { it >= 0L }
+                // Progress counts multipart framing too; never more than the file itself.
+                ?.let { sent -> put("request_bytes_sent", if (sizeBytes != null) minOf(sent, sizeBytes) else sent) }
+        }
+        requestBytes?.let { put("request_bytes", it) }
+        if (finished.bodySends > 1) put("body_sends", finished.bodySends)
+        facts?.edgePop?.let { put("edge_pop", it) }
     }
 }
 
@@ -184,3 +401,77 @@ internal fun raftAttachmentUploadFinishedLogLine(attrs: JsonObject, traceId: Str
     "thread_composer_attachment_upload_finished " +
         attrs.entries.joinToString(" ") { (name, value) -> "$name=${value.toString().trim('"')}" } +
         " traceId=$traceId"
+
+/**
+ * One composer upload attempt's report: owns the attempt's [recorder] and emits its event exactly
+ * once. The server the event is filed under is the one the attempt started on, and the outcome is the
+ * upload's own result when it has one ([settle]): a scope cancelled as the upload returns, or a server
+ * switch while it ran, changes neither.
+ */
+internal class RaftAttachmentUploadAttempt(
+    /** The server this attempt was started on; without one the event is only logged. */
+    private val serverId: String?,
+    private val attempt: Int,
+    private val pickedSizeBytes: Long?,
+    private val elapsedMs: () -> Long,
+    private val log: (String) -> Unit,
+    private val emit: (serverId: String, attrs: JsonObject, traceId: String, spanId: String) -> Unit =
+        RaftClientTraceEvents::emitAttachmentUploadFinished,
+) {
+    private class Settled(val errorCode: String?, val serverCode: String?)
+
+    val recorder = RaftAttachmentUploadTimingRecorder(elapsedMs)
+
+    private val lock = SynchronizedObject()
+    private var settled: Settled? = null
+    private var reported = false
+
+    /** The upload returned [result]. The first result stands. */
+    fun settle(result: DataResult<*>) {
+        val next =
+            when (result) {
+                is DataResult.Content -> Settled(errorCode = null, serverCode = null)
+                is DataResult.Error -> Settled(result.error.code, result.error.serverCode)
+                is DataResult.NoPermission -> Settled(result.blocker.code, result.blocker.serverCode)
+                is DataResult.Empty -> Settled("empty_upload_result", serverCode = null)
+            }
+        synchronized(lock) { if (settled == null) settled = next }
+    }
+
+    /**
+     * Emits the attempt's event, once. A settled upload reports its result whatever [cancelled] says;
+     * an unsettled one is `cancelled`, or failed with [failureCode]. Never throws.
+     */
+    fun report(cancelled: Boolean = false, failureCode: String = "attachment_upload_failed") {
+        val result =
+            synchronized(lock) {
+                if (reported) return
+                reported = true
+                settled
+            }
+        runCatching {
+            val timing = recorder.snapshot()
+            val attrs =
+                raftAttachmentUploadFinishedAttrs(
+                    RaftAttachmentUploadFinished(
+                        route = timing.route,
+                        errorCode = if (result != null) result.errorCode else if (cancelled) null else failureCode,
+                        serverCode = result?.serverCode,
+                        cancelled = result == null && cancelled,
+                        attempt = attempt,
+                        sizeBytes = pickedSizeBytes,
+                        durationMs = elapsedMs(),
+                        prepareMs = timing.prepareMs,
+                        facts = timing.facts,
+                        bodySends = timing.bodySends,
+                        bytesSent = timing.bytesSent,
+                        progressSpanMs = timing.progressSpanMs,
+                        controlTimeoutPhase = timing.controlTimeoutPhase,
+                    )
+                )
+            log(raftAttachmentUploadFinishedLogLine(attrs, recorder.traceIds.traceId))
+            val server = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return@runCatching
+            emit(server, attrs, recorder.traceIds.traceId, recorder.traceIds.spanId)
+        }
+    }
+}

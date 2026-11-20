@@ -137,12 +137,23 @@ internal fun raftTraceHeaders(
  * by, and no `traceparent`. The storage host is a third party and no server span of ours answers it;
  * the web's direct PUT sends none either (botiverse/slock `directAttachmentUpload.ts`).
  */
+/** The trace id of a W3C `traceparent` header among [headers], for the request's log line. */
+internal fun Map<String, String>.raftSentTraceIdOrNull(): String? =
+    entries.firstOrNull { it.key.equals(RAFT_TRACEPARENT_HEADER, true) }
+        ?.value
+        ?.split('-')
+        ?.getOrNull(1)
+        ?.takeIf { id -> id.length == 32 && id.all { it in '0'..'9' || it in 'a'..'f' } }
+
 internal fun raftRequestIdHeaders(
     headers: Map<String, String>,
     randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
 ): Map<String, String> {
-    if (headers.keys.any { it.equals(RAFT_REQUEST_ID_HEADER, true) }) return headers
-    return headers + (RAFT_REQUEST_ID_HEADER to "mobile-${randomBytes(16).toNonZeroLowerHex()}")
+    // The session's PUT headers are Content-Type and If-None-Match only
+    // (requireValidAttachmentUploadPutHeaders); a traceparent from any other caller is dropped here.
+    val kept = headers.filterKeys { !it.equals(RAFT_TRACEPARENT_HEADER, true) }
+    if (kept.keys.any { it.equals(RAFT_REQUEST_ID_HEADER, true) }) return kept
+    return kept + (RAFT_REQUEST_ID_HEADER to "mobile-${randomBytes(16).toNonZeroLowerHex()}")
 }
 
 private fun ByteArray.toLowerHex(): String = joinToString(separator = "") { byte ->
