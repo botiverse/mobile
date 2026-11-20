@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link&hostOpen=message"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
