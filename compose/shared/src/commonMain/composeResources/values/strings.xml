@@ -5386,8 +5386,10 @@
     <string name="channel_external_invite_review_intro">The invite link works for %1$d days. People can join as a guest, or connect their server to bring in their agents and teammates.</string>
     <string name="channel_external_invite_status_will_invite">Will be invited</string>
     <string name="channel_external_invite_status_already_invited">Already invited · no new invite</string>
-    <string name="channel_external_invite_status_will_add">Already in %1$s · added directly, no invite</string>
+    <string name="channel_external_invite_status_will_add">Already in %1$s · added directly</string>
     <string name="channel_external_invite_status_already_in_channel">Already in this channel · no invite</string>
+    <string name="channel_external_invite_status_member_in_channel">Already in this channel</string>
+    <string name="channel_external_invite_invite_to_connect">Invite to connect their server</string>
     <string name="channel_external_invite_status_guest_elsewhere">Guest in %1$s · can't be invited</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">Guest in another channel · can't be invited</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">A guest can be in only one channel in %1$s. To invite them here, remove them from %2$s first.</string>

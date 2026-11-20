@@ -5209,8 +5209,10 @@
     <string name="channel_external_invite_review_intro">O link de convite vale por %1$d dias. As pessoas podem entrar com acesso de convidado ou conectar o próprio servidor para trazer seus agentes e colegas de equipe.</string>
     <string name="channel_external_invite_status_will_invite">Convite será enviado</string>
     <string name="channel_external_invite_status_already_invited">Convite já enviado · sem novo convite</string>
-    <string name="channel_external_invite_status_will_add">Já está em %1$s · adição direta, sem convite</string>
+    <string name="channel_external_invite_status_will_add">Já está em %1$s · adição direta</string>
     <string name="channel_external_invite_status_already_in_channel">Já está neste canal · sem convite</string>
+    <string name="channel_external_invite_status_member_in_channel">Já está neste canal</string>
+    <string name="channel_external_invite_invite_to_connect">Convidar para conectar o próprio servidor</string>
     <string name="channel_external_invite_status_guest_elsewhere">Convidado em %1$s · não pode receber convite</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">Convidado em outro canal · não pode receber convite</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">Em %1$s, cada convidado só pode estar em um canal. Para convidar essa pessoa para cá, remova-a de %2$s primeiro.</string>

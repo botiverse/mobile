@@ -5209,8 +5209,10 @@
     <string name="channel_external_invite_review_intro">Ссылка-приглашение действует %1$d дня. Приглашённые смогут присоединиться как гости или подключить свой сервер, чтобы добавить в канал своих агентов и коллег.</string>
     <string name="channel_external_invite_status_will_invite">Будет отправлено приглашение</string>
     <string name="channel_external_invite_status_already_invited">Приглашение уже отправлено · новое не отправим</string>
-    <string name="channel_external_invite_status_will_add">Уже на сервере %1$s · добавим сразу, без приглашения</string>
+    <string name="channel_external_invite_status_will_add">Уже на сервере %1$s · добавим сразу</string>
     <string name="channel_external_invite_status_already_in_channel">Уже в этом канале · без приглашения</string>
+    <string name="channel_external_invite_status_member_in_channel">Уже в этом канале</string>
+    <string name="channel_external_invite_invite_to_connect">Пригласить подключить свой сервер</string>
     <string name="channel_external_invite_status_guest_elsewhere">Гость в канале %1$s · пригласить нельзя</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">Гость в другом канале · пригласить нельзя</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">На сервере %1$s гость может состоять только в одном канале. Чтобы пригласить этого человека сюда, сначала удалите его из канала %2$s.</string>

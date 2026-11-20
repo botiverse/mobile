@@ -166,6 +166,8 @@ internal enum class ExternalInviteReviewStatus {
     Duplicate,
     AlreadyInvited,
     AlreadyInChannel,
+    /** A member of the server already in the channel: may still be invited to connect (web `memberInChannel`). */
+    MemberInChannel,
     GuestElsewhere,
     GuestElsewhereUnnamed,
     Invalid,
@@ -177,6 +179,12 @@ internal data class ExternalInviteReviewRow(
     val status: ExternalInviteReviewStatus,
     /** [ExternalInviteReviewStatus.GuestElsewhere]: the channel they are a guest in, with its #. */
     val channel: String? = null,
+    /**
+     * A member of the server (added directly, or already in the channel) who may also be sent an
+     * invite to connect a server of theirs: the row's "Invite to connect their server" box (web
+     * `connectInvite`, slock #15279).
+     */
+    val connectInvite: Boolean = false,
 ) {
     val invites: Boolean
         get() = status == ExternalInviteReviewStatus.WillInvite || status == ExternalInviteReviewStatus.WillAdd
@@ -189,10 +197,20 @@ internal data class ExternalInviteReviewRow(
 internal fun externalInviteReviewRows(preview: ExternalInvitePreview): List<ExternalInviteReviewRow> {
     val rows = mutableListOf<ExternalInviteReviewRow>()
     preview.valid.forEach { rows += ExternalInviteReviewRow("valid:$it", it, ExternalInviteReviewStatus.WillInvite) }
-    preview.alreadyMembers.forEach { rows += ExternalInviteReviewRow("member:$it", it, ExternalInviteReviewStatus.WillAdd) }
+    preview.alreadyMembers.forEach { rows += ExternalInviteReviewRow("member:$it", it, ExternalInviteReviewStatus.WillAdd, connectInvite = true) }
     preview.duplicates.distinct().forEach { rows += ExternalInviteReviewRow("duplicate:$it", it, ExternalInviteReviewStatus.Duplicate) }
     preview.alreadyPending.forEach { rows += ExternalInviteReviewRow("pending:$it", it, ExternalInviteReviewStatus.AlreadyInvited) }
-    preview.alreadyInChannel.forEach { rows += ExternalInviteReviewRow("in-channel:$it", it, ExternalInviteReviewStatus.AlreadyInChannel) }
+    // A member of the server already here may still be invited to connect: the box, not the
+    // status, says whether they are; the channel's own Guest may not.
+    val inChannelMembers = preview.alreadyInChannelMembers.toSet()
+    preview.alreadyInChannel.forEach {
+        rows +=
+            if (it in inChannelMembers) {
+                ExternalInviteReviewRow("in-channel:$it", it, ExternalInviteReviewStatus.MemberInChannel, connectInvite = true)
+            } else {
+                ExternalInviteReviewRow("in-channel:$it", it, ExternalInviteReviewStatus.AlreadyInChannel)
+            }
+    }
     preview.guestsElsewhere.forEach { guest ->
         val channelName = guest.channelName?.takeIf(String::isNotBlank)
         rows +=
@@ -273,6 +291,8 @@ internal data class ExternalInviteDialogState(
     val servers: List<InviteConnectableServer> = emptyList(),
     /** The checked servers' ids. */
     val serverIds: Set<String> = emptySet(),
+    /** Members whose "Invite to connect their server" is unchecked (all are checked when a review opens). */
+    val noConnectInvite: Set<String> = emptySet(),
 ) {
     val entries: List<String> get() = parseExternalInviteEmailEntries(text)
 
@@ -284,8 +304,25 @@ internal data class ExternalInviteDialogState(
 
     val inviteCount: Int get() = preview?.valid?.size ?: 0
 
-    /** Invited, added to the channel as members of the server, or servers connected: what the commit does. */
-    val actionCount: Int get() = inviteCount + (preview?.alreadyMembers?.size ?: 0) + chosenServers.size
+    /** The server's members already in the channel whose "Invite to connect" is checked: only an invite to send. */
+    val inChannelInvites: List<String> get() = preview?.alreadyInChannelMembers.orEmpty().filterNot { it in noConnectInvite }
+
+    /**
+     * What the send carries (web `ExternalInviteSteps` confirm): the invites, the server's members
+     * it adds to the channel, and those already in it who are invited to connect (not added again).
+     */
+    val sendAddresses: List<String>
+        get() = preview?.let { it.valid + it.alreadyMembers + inChannelInvites }.orEmpty()
+
+    /** The server's members among [sendAddresses] who are also sent an invite to connect. */
+    val connectMemberEmails: List<String>
+        get() = preview?.let { p -> p.alreadyMembers.filterNot { it in noConnectInvite } + inChannelInvites }.orEmpty()
+
+    /**
+     * Invited, added to the channel as members of the server, members here invited to connect, or
+     * servers connected: what the commit does.
+     */
+    val actionCount: Int get() = inviteCount + (preview?.alreadyMembers?.size ?: 0) + inChannelInvites.size + chosenServers.size
 
     /** Each invite and each server checked takes a slot; members added none. */
     val overSlots: Int get() = preview?.slotsLeft?.let { inviteCount + chosenServers.size - it } ?: 0
@@ -294,6 +331,10 @@ internal data class ExternalInviteDialogState(
 
     val canSend: Boolean get() = !busy && preview != null && actionCount > 0 && overSlots <= 0
 }
+
+/** The review's "Invite to connect" box for [email]; ignored while sending. */
+internal fun ExternalInviteDialogState.withConnectInvite(email: String, checked: Boolean): ExternalInviteDialogState =
+    if (busy) this else copy(noConnectInvite = if (checked) noConnectInvite - email else noConnectInvite + email)
 
 internal sealed interface ExternalInvitesEffect {
     data class Sent(val count: Int) : ExternalInvitesEffect
@@ -419,6 +460,9 @@ internal sealed interface ExternalInvitesIntent {
     /** The checked "Your servers". */
     data class SetServers(val serverIds: Set<String>) : ExternalInvitesIntent
 
+    /** A member's "Invite to connect their server" box on the review. */
+    data class SetConnectInvite(val email: String, val checked: Boolean) : ExternalInvitesIntent
+
     data object Next : ExternalInvitesIntent
 
     data object Back : ExternalInvitesIntent
@@ -442,7 +486,11 @@ internal interface ExternalInvitesDataSource {
 
     suspend fun preview(emails: List<String>): DataResult<ExternalInviteAnswer<ExternalInvitePreview>>
 
-    suspend fun send(emails: List<String>, makePrivate: Boolean): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>>
+    suspend fun send(
+        emails: List<String>,
+        makePrivate: Boolean,
+        connectMemberEmails: List<String>,
+    ): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>>
 
     suspend fun resend(inviteId: String): DataResult<ExternalInviteAnswer<SentExternalInvite>>
 
@@ -476,7 +524,8 @@ internal class RealExternalInvitesDataSource(
 
     override suspend fun preview(emails: List<String>) = api { it.preview(channelId, emails) }
 
-    override suspend fun send(emails: List<String>, makePrivate: Boolean) = api { it.send(channelId, emails, makePrivate) }
+    override suspend fun send(emails: List<String>, makePrivate: Boolean, connectMemberEmails: List<String>) =
+        api { it.send(channelId, emails, makePrivate, connectMemberEmails) }
 
     override suspend fun resend(inviteId: String) = api { it.resend(channelId, inviteId) }
 
@@ -526,6 +575,7 @@ internal class ExternalInvitesStore(
                 mutableState.update { if (it.dialog?.busy == true) it else it.copy(dialog = null) }
             is ExternalInvitesIntent.SetText -> updateDialog { it.copy(text = intent.text, failure = null) }
             is ExternalInvitesIntent.SetServers -> updateDialog { if (it.busy) it else it.copy(serverIds = intent.serverIds) }
+            is ExternalInvitesIntent.SetConnectInvite -> updateDialog { it.withConnectInvite(intent.email, intent.checked) }
             ExternalInvitesIntent.Next -> next()
             ExternalInvitesIntent.Back -> updateDialog { if (it.busy) it else it.copy(preview = null, failure = null) }
             is ExternalInvitesIntent.Send -> send(intent.makePrivate)
@@ -615,7 +665,7 @@ internal class ExternalInvitesStore(
             val answer = (result as? DataResult.Content)?.data
             updateDialog { current ->
                 when (answer) {
-                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value)
+                    is ExternalInviteAnswer.Ok -> current.copy(busy = false, preview = answer.value, noConnectInvite = emptySet())
                     is ExternalInviteAnswer.Refused -> current.copy(busy = false, failure = answer.refusal.toFailure())
                     null -> current.copy(busy = false, failure = result.toFailure())
                 }
@@ -628,7 +678,8 @@ internal class ExternalInvitesStore(
         val preview = dialog.preview ?: return
         if (!dialog.canSend) return
         // The previewed addresses, so what is sent is what was reviewed.
-        val addresses = preview.valid + preview.alreadyMembers
+        val addresses = dialog.sendAddresses
+        val connectMemberEmails = dialog.connectMemberEmails
         val chosen = dialog.chosenServers
         updateDialog { it.copy(busy = true, failure = null) }
         scope.launch {
@@ -637,7 +688,7 @@ internal class ExternalInvitesStore(
             var sent = 0
             var added = 0
             if (addresses.isNotEmpty()) {
-                val result = dataSource.send(addresses, makePrivate)
+                val result = dataSource.send(addresses, makePrivate, connectMemberEmails)
                 when (val answer = (result as? DataResult.Content)?.data) {
                     is ExternalInviteAnswer.Ok -> {
                         sent = answer.value.sent.size

@@ -18,7 +18,7 @@ import kotlinx.serialization.json.Json
  *    guestsElsewhere: [{ email, channelName | null }], slotsLeft }`.
  *  - `POST channels/external-invites/preview` `{ emails }` (staging 97a3e293d71a, Create
  *    Channel's External): the same answer for the current server, before the channel exists.
- *  - `POST channels/:id/external-invites` `{ emails, makePrivate? }` →
+ *  - `POST channels/:id/external-invites` `{ emails, makePrivate?, connectInviteMemberEmails? }` →
  *    `{ sent: [{ id, email, expiresAt }], added: string[], skipped: { duplicates, invalid,
  *    alreadyPending, alreadyMembers, alreadyInChannel, guestsElsewhere } }`.
  *  - `GET channels/:id/external-invites` → `{ invites: [{ id, email, awaitingApproval, connecting,
@@ -73,6 +73,11 @@ data class ExternalInvitePreview(
     /** Members of the host server not in the channel yet: the send adds them to it. */
     val alreadyMembers: List<String> = emptyList(),
     val alreadyInChannel: List<String> = emptyList(),
+    /**
+     * The host server's members (not Guests) among [alreadyInChannel], who may still be sent an
+     * invite to connect a server of theirs (slock #15279). Absent from an older server.
+     */
+    val alreadyInChannelMembers: List<String> = emptyList(),
     val guestsElsewhere: List<ExternalInviteGuestElsewhere> = emptyList(),
     /** How many people the channel can still be invited, before these. Absent from an older server. */
     val slotsLeft: Int? = null,
@@ -150,7 +155,16 @@ internal fun parseSharedOwnConnectableServers(bodyText: String): OwnConnectableS
         }
 
 @Serializable
-internal data class ExternalInviteEmailsBody(val emails: List<String>, val makePrivate: Boolean? = null)
+internal data class ExternalInviteEmailsBody(
+    val emails: List<String>,
+    val makePrivate: Boolean? = null,
+    /**
+     * The host's members among [emails] who are also sent an invite to connect a server of theirs
+     * ("Invite to connect their server", slock #15279); every member is added to the channel either
+     * way. Left out when empty, as the web does.
+     */
+    val connectInviteMemberEmails: List<String>? = null,
+)
 
 @Serializable
 private data class WireExternalInviteErrorBody(
@@ -177,10 +191,14 @@ sealed interface ExternalInviteAnswer<out T> {
     data class Refused(val refusal: ExternalInviteRefusal) : ExternalInviteAnswer<Nothing>
 }
 
-internal fun buildSharedExternalInviteEmailsBody(emails: List<String>, makePrivate: Boolean = false): String =
+internal fun buildSharedExternalInviteEmailsBody(
+    emails: List<String>,
+    makePrivate: Boolean = false,
+    connectInviteMemberEmails: List<String> = emptyList(),
+): String =
     externalInvitesJson.encodeToString(
         ExternalInviteEmailsBody.serializer(),
-        ExternalInviteEmailsBody(emails, makePrivate.takeIf { it }),
+        ExternalInviteEmailsBody(emails, makePrivate.takeIf { it }, connectInviteMemberEmails.takeIf { it.isNotEmpty() }),
     )
 
 internal fun parseSharedExternalInvitePreview(bodyText: String): ExternalInvitePreview? =
@@ -248,13 +266,14 @@ internal class ExternalInvitesApi(
         channelId: ChannelId,
         emails: List<String>,
         makePrivate: Boolean,
+        connectInviteMemberEmails: List<String> = emptyList(),
     ): DataResult<ExternalInviteAnswer<SendExternalInvitesResult>> =
         call(
             "send",
             DataRequestPriority.Foreground,
             base(channelId),
             "POST",
-            buildSharedExternalInviteEmailsBody(emails, makePrivate),
+            buildSharedExternalInviteEmailsBody(emails, makePrivate, connectInviteMemberEmails),
             ::parseSharedSendExternalInvitesResult,
         )
 

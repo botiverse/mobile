@@ -5385,8 +5385,10 @@
     <string name="channel_external_invite_review_intro">招待リンクの有効期間は %1$d 日間です。招待された人は、ゲストとして参加するか、自分のサーバーを接続してエージェントやチームメイトを参加させることができます。</string>
     <string name="channel_external_invite_status_will_invite">招待予定</string>
     <string name="channel_external_invite_status_already_invited">招待済み · 新しい招待は送信されません</string>
-    <string name="channel_external_invite_status_will_add">すでに %1$s のメンバー · 招待なしで直接追加されます</string>
+    <string name="channel_external_invite_status_will_add">すでに %1$s のメンバー · 直接追加されます</string>
     <string name="channel_external_invite_status_already_in_channel">このチャンネルに参加済み · 招待は送信されません</string>
+    <string name="channel_external_invite_status_member_in_channel">このチャンネルに参加済み</string>
+    <string name="channel_external_invite_invite_to_connect">サーバー接続に招待</string>
     <string name="channel_external_invite_status_guest_elsewhere">%1$s のゲスト · 招待できません</string>
     <string name="channel_external_invite_status_guest_elsewhere_unnamed">別のチャンネルのゲスト · 招待できません</string>
     <string name="channel_external_invite_status_guest_elsewhere_hint">%1$s では、ゲストが参加できるチャンネルは 1 つだけです。このチャンネルに招待するには、先に %2$s から削除してください。</string>
