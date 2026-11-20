@@ -6077,6 +6077,12 @@ private fun SharedThreadRouteContentContent(
         }
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
     }
+    // Effects keyed only on the thread (the event-bus subscriptions below) live across
+    // recompositions, so they must call the latest copy of the upload function. The first frame's
+    // copy holds the upload store of an account the page does not know yet (no session loaded),
+    // so its uploads landed where this composer never looks and the tile stayed on "Checking
+    // file…" (Android 1.27.0, artin).
+    val latestUploadComposerAttachmentFiles by rememberUpdatedState(::uploadComposerAttachmentFiles)
     // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
@@ -6179,7 +6185,7 @@ private fun SharedThreadRouteContentContent(
                             },
                             log = bridge::log,
                         )
-                    uploadComposerAttachmentFiles(prepared)
+                    latestUploadComposerAttachmentFiles(prepared, null, false, emptyMap())
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
                 }
             },
@@ -6386,7 +6392,7 @@ private fun SharedThreadRouteContentContent(
                         bridge.toast(attachmentRetryUnavailableLabel)
                         return@launch
                     }
-                    val uploadStarted = uploadComposerAttachmentFiles(files)
+                    val uploadStarted = latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
                     if (!uploadStarted) {
                         externalShareSendRequested = false
                         externalShareExpectedAuthority = null
@@ -6535,7 +6541,7 @@ private fun SharedThreadRouteContentContent(
                 // editor output.  Defer the server-size gate until the confirmed
                 // PNG/original or compressor-produced JPEG reaches upload.
                 openComposerImageAnnotation(files)
-            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
+            ThreadPickedAttachmentComposerAction.UploadToComposer -> latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
             ThreadPickedAttachmentComposerAction.None -> Unit
         }
     }
@@ -6780,12 +6786,13 @@ private fun SharedThreadRouteContentContent(
                             // Otherwise the `finally` below would retire ownership while a real
                             // network transfer was still in flight.
                             withContext(NonCancellable) {
-                                uploadComposerAttachmentFiles(
-                                    files = files,
+                                latestUploadComposerAttachmentFiles(
+                                    files,
+                                    null,
                                     // Per-file admission: one oversize or failed image must not
                                     // reject the rest. Direct vs multipart is chosen per file.
-                                    requireAllFiles = false,
-                                    replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
+                                    false,
+                                    replaceAttachmentIdsByLocalId
                                 )
                             }
                     } catch (cancelled: CancellationException) {
