@@ -132,6 +132,7 @@ import build.raft.app.FeedbackDiagnosticsFailureReason
 import build.raft.app.FeedbackDiagnosticsLifecycle
 import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.RaftHostStrings
+import build.raft.app.RaftShareOutResumeNotice
 import build.raft.app.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
@@ -1642,6 +1643,7 @@ internal open class RaftCmpActivity :
     }
 
     override fun onDestroy() {
+        RaftShareOutResumeNotice.onHostDestroyed(System.identityHashCode(this))
         RaftActivityPageOpens.Process.destroyed(this)
         AndroidLoginTransitionRouting.onDestroyed(
             this, loginTransitionToken, isChangingConfigurations,
@@ -1872,6 +1874,8 @@ internal open class RaftCmpActivity :
     }
 
     override fun onPause() {
+        RaftShareOutResumeNotice.installClock(SystemClock::elapsedRealtime)
+        RaftShareOutResumeNotice.onHostPaused(System.identityHashCode(this))
         RaftResumeFrameProbe.onActivityPaused(this)
         RaftScrollFrameProbe.onActivityPaused(this)
         if (nav3Stack != null) nav3TransitionProbe.onPaused()
@@ -1920,6 +1924,22 @@ internal open class RaftCmpActivity :
         // A tapped conversation notification auto-cancels and lands here; drop its server's summary
         // if it was the last one.
         AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(applicationContext)
+        if (!isFinishing && !isDestroyed) {
+            RaftShareOutResumeNotice.installClock(SystemClock::elapsedRealtime)
+            RaftShareOutResumeNotice.onHostResumed(System.identityHashCode(this))?.let(::showDeferredShareOutNotice)
+        }
+    }
+
+    private fun showDeferredShareOutNotice(notice: String) {
+        val show = {
+            if (!isFinishing && !isDestroyed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                RaftAppLog.record("SlockShare", "share_out_resume_notice_shown")
+                if (!RaftCmpToasts.post(notice, durationMillis = RaftShareOutResumeNotice.durationMillis)) {
+                    Toast.makeText(applicationContext, notice, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        window?.decorView?.post(show) ?: show()
     }
 
     private fun reportRealtimeVisibility(

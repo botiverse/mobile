@@ -46,9 +46,173 @@ class RaftShareOutTest {
             listOf(RaftShareOutAction.SendText, RaftShareOutAction.SendImage),
             raftShareOutPlan(subject(link, "hello", image = true), RaftShareOutPlatform.Ios)?.actions,
         )
-        // A channel: a link and nothing else to pick.
-        assertEquals(listOf(RaftShareOutAction.CopyLink), raftShareOutPlan(subject(link), RaftShareOutPlatform.Android)?.actions)
-        assertEquals(emptyList(), raftShareOutPlan(subject(link), RaftShareOutPlatform.Ios)?.actions)
+        // Message long-press / multi-select keep Copy link alongside Share link + text + image.
+        val selection =
+            RaftShareOutSubject(
+                obj = RaftShareActionObject.MessageSelection,
+                surface = RaftShareActionSurface.SelectionToolbar,
+                title = "design-review · 2 messages",
+                link = link,
+                text = "**Kirby**: hello",
+                imageAvailable = true,
+            )
+        assertEquals(
+            listOf(RaftShareOutAction.CopyLink, RaftShareOutAction.SendText, RaftShareOutAction.SendImage),
+            raftShareOutPlan(selection, RaftShareOutPlatform.Android)?.actions,
+        )
+        // Conversation / task ⋯ menus already place Copy link right next to Share, so no actions
+        // are attached (Android <= 13 goes straight to the system share sheet with no second ask).
+        listOf(
+            RaftShareOutSubject(RaftShareActionObject.Channel, RaftShareActionSurface.ConversationMenu, "#design", link = link),
+            RaftShareOutSubject(RaftShareActionObject.Lounge, RaftShareActionSurface.ConversationMenu, "Lagoon's Lounge", link = link),
+            RaftShareOutSubject(RaftShareActionObject.Thread, RaftShareActionSurface.ConversationMenu, "Thread", link = link),
+            RaftShareOutSubject(RaftShareActionObject.Task, RaftShareActionSurface.TaskMenu, "Ship it", link = link),
+        ).forEach { menuSubject ->
+            assertEquals(RaftShareOutPayloadKind.Link, raftShareOutPlan(menuSubject, RaftShareOutPlatform.Android)?.primary)
+            assertEquals(emptyList(), raftShareOutPlan(menuSubject, RaftShareOutPlatform.Android)?.actions, menuSubject.obj.wire)
+            assertEquals(emptyList(), raftShareOutPlan(menuSubject, RaftShareOutPlatform.Ios)?.actions, menuSubject.obj.wire)
+        }
+    }
+
+    @Test
+    fun pendingTaskShareSubjectBuildsTaskLinkWithoutAConversation() {
+        val subject =
+            raftTaskHeaderShareSubject(
+                webBaseUrl = "https://staging.raft.build/",
+                taskId = "cf5d7bb5-6bbe-4304-bc87-1ab40601a98e",
+                title = "Pending task",
+                fallbackTitle = "#all:#1",
+                directMessage = false,
+            )
+        assertEquals(RaftShareActionObject.Task, subject?.obj)
+        assertEquals(RaftShareActionSurface.TaskMenu, subject?.surface)
+        assertEquals("Pending task", subject?.title)
+        assertEquals("https://staging.raft.build/tasks/ScAiFjjtiUvoyEYA6Ry12u", subject?.link)
+        // Blank title falls back to the task ref; Android plan goes straight to the sheet.
+        val fallback =
+            raftTaskHeaderShareSubject(
+                webBaseUrl = null,
+                taskId = "task-1",
+                title = "  ",
+                fallbackTitle = "#all:#1",
+                directMessage = false,
+            )
+        assertEquals("#all:#1", fallback?.title)
+        assertEquals(emptyList(), raftShareOutPlan(fallback!!, RaftShareOutPlatform.Android)?.actions)
+        // DM rule & missing id return null.
+        assertNull(raftTaskHeaderShareSubject(null, "task-1", "DM task", "#dm:#1", directMessage = true))
+        assertNull(raftTaskHeaderShareSubject(null, " ", "No id", "#all:#1", directMessage = false))
+        // Cross-channel public/joint tasks opened from a DM keep Share task; DM/unknown tasks follow the DM rule.
+        assertFalse(taskPendingShareIsDirectMessage("channel", hostDirectMessage = true))
+        assertFalse(taskPendingShareIsDirectMessage("joint", hostDirectMessage = true))
+        assertTrue(taskPendingShareIsDirectMessage("dm", hostDirectMessage = false))
+        assertTrue(taskPendingShareIsDirectMessage(null, hostDirectMessage = true))
+        assertFalse(taskPendingShareIsDirectMessage(null, hostDirectMessage = false))
+    }
+
+    @Test
+    fun openedNoticeWaitsForActivityResumeDropsAfterExpiryAndStaysSilentOnCancel() {
+        var now = 10_000L
+        val pending = RaftShareOutPendingNotice(nowMillis = { now }, maxAgeMillis = 180_000L)
+
+        // Normal Android share: chooser pauses Raft, user picks an app while paused, notice waits until resume.
+        pending.clear()
+        pending.onHostPaused()
+        assertNull(pending.onNotice("Opened Messaging"))
+        now += 5_000L
+        assertEquals("Opened Messaging", pending.onHostResumed())
+        // Consumed once: a later resume does not repeat it.
+        assertNull(pending.onHostResumed())
+
+        // Returning after maxAgeMillis drops the stale notice.
+        pending.clear()
+        pending.onHostPaused()
+        assertNull(pending.onNotice("Opened WeChat"))
+        now += 180_001L
+        assertNull(pending.onHostResumed())
+
+        // Exact boundary (maxAgeMillis) is still shown.
+        pending.clear()
+        pending.onHostPaused()
+        assertNull(pending.onNotice("Opened WeChat"))
+        now += 180_000L
+        assertEquals("Opened WeChat", pending.onHostResumed())
+
+        // Cancelling never calls onNotice: resume shows nothing.
+        pending.clear()
+        pending.onHostPaused()
+        now += 1_000L
+        assertNull(pending.onHostResumed())
+
+        // Android 14+ multi-step share (Send text -> second sheet while still paused) + fast return:
+        // clearing before the second sheet does not lose pause/resume state.
+        pending.clear()
+        pending.onHostPaused()
+        pending.clear()
+        assertNull(pending.onHostResumed())
+        assertEquals("Opened Messaging", pending.onNotice("Opened Messaging"))
+        assertNull(pending.onHostResumed())
+
+        // Multi-window where host stays resumed: notice shows immediately instead of waiting for a later resume.
+        pending.clear()
+        assertEquals("Opened Notes", pending.onNotice("Opened Notes"))
+        assertNull(pending.onHostResumed())
+
+        // Opening a new share clears any earlier unconsumed notice; blank notices are ignored.
+        pending.clear()
+        pending.onHostPaused()
+        assertNull(pending.onNotice("Opened OldApp"))
+        pending.clear()
+        assertNull(pending.onHostResumed())
+        pending.onHostPaused()
+        assertNull(pending.onNotice("   "))
+        assertNull(pending.onHostResumed())
+
+        // Overlapping multi-activity lifecycle: B resumes before A pauses -> host stays resumed until B pauses too.
+        pending.clear()
+        assertNull(pending.onHostResumed(hostId = 1))
+        assertNull(pending.onHostResumed(hostId = 2))
+        pending.onHostPaused(hostId = 1)
+        assertEquals("Opened Notes", pending.onNotice("Opened Notes"))
+        pending.onHostPaused(hostId = 2)
+        assertNull(pending.onNotice("Opened Mail"))
+        assertEquals("Opened Mail", pending.onHostResumed(hostId = 2))
+
+        // Multi-window dual-Raft-activity: A and B are both resumed, B opens share sheet and pauses
+        // behind the target app while A stays resumed -> notice still waits for B to resume.
+        pending.clear()
+        assertNull(pending.onHostResumed(hostId = 1))
+        assertNull(pending.onHostResumed(hostId = 2))
+        pending.onShareSheetOpened(hostId = 2)
+        pending.onHostPaused(hostId = 2)
+        assertNull(pending.onNotice("Opened Messaging"))
+        // An unrelated resume of A does not steal B's deferred toast.
+        assertNull(pending.onHostResumed(hostId = 1))
+        assertEquals("Opened Messaging", pending.onHostResumed(hostId = 2))
+
+        // Config-change recreation: B is destroyed while in the target app; recreated B' (hostId=3)
+        // consumes the deferred toast on resume.
+        pending.onShareSheetOpened(hostId = 2)
+        pending.onHostPaused(hostId = 2)
+        assertNull(pending.onNotice("Opened Mail"))
+        pending.onHostDestroyed(hostId = 2)
+        assertEquals("Opened Mail", pending.onHostResumed(hostId = 3))
+
+        // Deep sleep / installed boottime clock: replacing the clock governs expiry across sleep.
+        var bootTime = 50_000L
+        pending.installClock { bootTime }
+        pending.onShareSheetOpened(hostId = 3)
+        pending.onHostPaused(hostId = 3)
+        assertNull(pending.onNotice("Opened WeChat"))
+        bootTime += 180_001L
+        assertNull(pending.onHostResumed(hostId = 3))
+
+        // Only Android's "Opened <App>" defers to resume; Android Copied and all iOS notices show immediately.
+        assertTrue(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Android, RaftShareOutNotice.Opened("Messaging")))
+        assertFalse(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Android, RaftShareOutNotice.Copied))
+        assertFalse(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Ios, RaftShareOutNotice.SharedTo("Messages")))
+        assertFalse(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Ios, RaftShareOutNotice.Shared))
+        assertFalse(raftShareOutShouldDeferNotice(RaftShareOutPlatform.Ios, RaftShareOutNotice.Copied))
     }
 
     @Test

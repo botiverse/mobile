@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.base.Utils
@@ -16,8 +17,10 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.RaftShareActionObject
 import build.raft.app.data.RaftShareActionSurface
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -112,6 +115,23 @@ internal fun ThreadNewMessageMenuActionAvailability.withShareOut(
     directMessage: Boolean,
 ): ThreadNewMessageMenuActionAvailability = copy(share = shareable, copyLink = copyLink && !directMessage)
 
+/** The Share / Copy link subject for a task (with or without a conversation); null in a DM or without an id. */
+internal fun raftTaskHeaderShareSubject(
+    webBaseUrl: String?,
+    taskId: String?,
+    title: String?,
+    fallbackTitle: String?,
+    directMessage: Boolean,
+): RaftShareOutSubject? {
+    val link = raftTaskShareLink(webBaseUrl, taskId, directMessage = directMessage) ?: return null
+    return RaftShareOutSubject(
+        obj = RaftShareActionObject.Task,
+        surface = RaftShareActionSurface.TaskMenu,
+        title = title?.takeIf { it.isNotBlank() } ?: fallbackTitle.orEmpty(),
+        link = link,
+    )
+}
+
 @Stable
 internal class ThreadShareOut(
     private val launcher: RaftShareOutLauncher,
@@ -133,15 +153,13 @@ internal class ThreadShareOut(
     fun headerEntry(task: TaskConversationHeaderChrome?): ThreadHeaderShareEntry? {
         val subject =
             if (payload.isTaskConversationSurface()) {
-                val link =
-                    raftTaskShareLink(webBaseUrl(), task?.taskId, directMessage = task?.directMessage != false || directMessage)
-                        ?: return null
-                RaftShareOutSubject(
-                    obj = RaftShareActionObject.Task,
-                    surface = RaftShareActionSurface.TaskMenu,
-                    title = task?.title?.takeIf { it.isNotBlank() } ?: task?.ref.orEmpty(),
-                    link = link,
-                )
+                raftTaskHeaderShareSubject(
+                    webBaseUrl = webBaseUrl(),
+                    taskId = task?.taskId,
+                    title = task?.title,
+                    fallbackTitle = task?.ref,
+                    directMessage = task?.directMessage != false || directMessage,
+                ) ?: return null
             } else {
                 val link = payload.threadConversationShareLink(serverSlug, webBaseUrl()) ?: return null
                 RaftShareOutSubject(
@@ -269,6 +287,66 @@ internal fun rememberThreadShareOut(
     }
     SideEffect { handle?.shareOut = shareOut }
     return shareOut
+}
+
+/**
+ * Whether a pending task is subject to the DM share rule: explicit DM channel type is always a DM,
+ * explicit public/private/joint channel types are never DM (even if opened via a cross-channel ref
+ * from a DM), and missing/thread channel types inherit the hosting page's DM flag.
+ */
+internal fun taskPendingShareIsDirectMessage(taskChannelType: String?, hostDirectMessage: Boolean): Boolean =
+    when (parseConversationKindOrNull(taskChannelType)) {
+        ConversationKind.DirectMessage -> true
+        ConversationKind.Channel, ConversationKind.Joint -> false
+        else -> hostDirectMessage
+    }
+
+/**
+ * Share task / Copy link for a pending task page (no conversation yet): gated by `share_loop_v0`,
+ * host share-sheet support, and the DM rule, reading the Developer environment web URL at share
+ * time. Null when the flag is off, the host has no sheet, or the task has no link (a DM task).
+ */
+@Composable
+internal fun rememberTaskHeaderShareEntry(
+    task: TaskSummary,
+    serverId: String?,
+    directMessage: Boolean = false,
+    scope: CoroutineScope = rememberCoroutineScope(),
+): ThreadHeaderShareEntry? {
+    val enabled = rememberShareLoopEnabled(serverId?.takeIf { it.isNotBlank() }?.let(::ServerId))
+    val platform = remember { currentRaftShareOutPlatform() }
+    val pager = LocalActivity.current.getPager() as Pager
+    val isDirectMessage = taskPendingShareIsDirectMessage(task.channelType, hostDirectMessage = directMessage)
+    if (!enabled || platform == null || isDirectMessage) return null
+    if (raftTaskShareLink(null, task.id.value, directMessage = false) == null) return null
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val launcher = remember(pager.pagerId, platform, scope) { RaftShareOutLauncher(bridge, platform, scope) }
+    val currentTask by rememberUpdatedState(task)
+    val currentDirectMessage by rememberUpdatedState(isDirectMessage)
+    return remember(launcher, bridge) {
+        val subject: () -> RaftShareOutSubject? = {
+            val latest = currentTask
+            val fallbackRef =
+                latest.taskNumber?.let { formatTaskConversationRef(it, latest.channelName, parseConversationKindOrNull(latest.channelType)) }
+                    ?: latest.title
+            val webBaseUrl =
+                sharedSettingsResolvedWebBaseUrl(
+                    standaloneSettingsWebBaseUrl(RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore)
+                )
+            raftTaskHeaderShareSubject(
+                webBaseUrl = webBaseUrl,
+                taskId = latest.id.value,
+                title = latest.title,
+                fallbackTitle = fallbackRef,
+                directMessage = currentDirectMessage,
+            )
+        }
+        ThreadHeaderShareEntry(
+            shareLabel = RaftShareActionObject.Task.threadShareMenuLabel(),
+            onShare = { subject()?.let { launcher.share(it) } },
+            onCopyLink = { subject()?.let { launcher.copyLink(it) } },
+        )
+    }
 }
 
 /**

@@ -9,6 +9,9 @@ import build.raft.app.data.RaftShareActionSelectedProperties
 import build.raft.app.data.RaftShareActionSurface
 import build.raft.app.data.encodeArtifactShortId
 import build.raft.app.model.ConversationKind
+import kotlin.time.TimeSource
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /*
  * Share out (share loop, first batch; #proj-mobile:#212 design v10): one "Share" action, app-wide,
@@ -79,11 +82,17 @@ internal data class RaftShareOutPlan(
     val actions: List<RaftShareOutAction>,
 )
 
+/** Surfaces whose ⋯ menu already offers Copy link beside Share, so the sheet does not repeat it. */
+private fun RaftShareActionSurface.hasCopyLinkBesideShare(): Boolean =
+    this == RaftShareActionSurface.ConversationMenu || this == RaftShareActionSurface.TaskMenu
+
 /**
  * The first sheet for [subject]: its link when it has one (with Copy link, Send text, Send image as
  * far as each applies), else its text (a DM message; Send image beside it), else its image; null
  * when there is nothing to share. iOS has no Copy link action: the system's own Copy copies the
- * link the sheet carries.
+ * link the sheet carries. Conversation / task ⋯ menus already place Copy link right next to Share,
+ * so their link sheet carries no Copy link action (and Android 13 and older go straight to the
+ * system share sheet with no in-between picker).
  */
 internal fun raftShareOutPlan(subject: RaftShareOutSubject, platform: RaftShareOutPlatform): RaftShareOutPlan? =
     when {
@@ -92,7 +101,9 @@ internal fun raftShareOutPlan(subject: RaftShareOutSubject, platform: RaftShareO
                 primary = RaftShareOutPayloadKind.Link,
                 actions =
                     buildList {
-                        if (platform == RaftShareOutPlatform.Android) add(RaftShareOutAction.CopyLink)
+                        if (platform == RaftShareOutPlatform.Android && !subject.surface.hasCopyLinkBesideShare()) {
+                            add(RaftShareOutAction.CopyLink)
+                        }
                         if (subject.hasText) add(RaftShareOutAction.SendText)
                         if (subject.imageAvailable) add(RaftShareOutAction.SendImage)
                     },
@@ -306,6 +317,132 @@ internal fun raftShareOutNotice(event: RaftShareOutHostEvent, kind: RaftShareOut
     }
 
 internal const val RaftShareOutNoticeMillis: Long = 2_000
+
+/**
+ * How long a remembered Android "Opened <App>" notice stays valid waiting for Raft's activity to
+ * resume; returning later (or after process death) drops it.
+ */
+internal const val RaftShareOutPendingNoticeMaxAgeMillis: Long = 3L * 60L * 1_000L
+
+/**
+ * In-memory hold for Android's "Opened <App>" notice between the chooser reporting the picked
+ * target (`ACTION_CHOSEN`, while Raft is paused behind the chooser and the target app is opening)
+ * and Raft's activity next resuming.
+ *
+ * - Opening a share clears any earlier remembered notice without altering pause state.
+ * - Recording a notice while paused holds it until [onHostResumed]; recording while the host is
+ *   already resumed (a late broadcast after a fast return, or multi-window where the host stayed
+ *   resumed) returns it immediately.
+ * - Returning after [maxAgeMillis] (or in a fresh process) drops it.
+ * - Cancelling the sheet never calls [onNotice], so nothing is remembered or shown.
+ */
+internal class RaftShareOutPendingNotice(
+    nowMillis: () -> Long,
+    private val maxAgeMillis: Long = RaftShareOutPendingNoticeMaxAgeMillis,
+) {
+    private data class Entry(val message: String, val recordedAtMillis: Long)
+
+    private val lock = SynchronizedObject()
+    private var clock: () -> Long = nowMillis
+    private val resumedHosts = mutableSetOf<Int>()
+    private var hostResumed: Boolean = true
+    private var sharingHostId: Int? = null
+    private var pending: Entry? = null
+
+    fun installClock(nowMillis: () -> Long) =
+        synchronized(lock) {
+            clock = nowMillis
+        }
+
+    fun onShareSheetOpened(hostId: Int?) =
+        synchronized(lock) {
+            pending = null
+            sharingHostId = hostId
+        }
+
+    fun onHostPaused(hostId: Int = DEFAULT_HOST_ID) =
+        synchronized(lock) {
+            resumedHosts.remove(hostId)
+            if (resumedHosts.isEmpty()) hostResumed = false
+        }
+
+    fun onHostDestroyed(hostId: Int) =
+        synchronized(lock) {
+            resumedHosts.remove(hostId)
+            if (resumedHosts.isEmpty()) hostResumed = false
+            if (sharingHostId == hostId) sharingHostId = null
+        }
+
+    fun onNotice(message: String): String? =
+        synchronized(lock) {
+            val text = message.trim()
+            if (text.isEmpty()) return null
+            // In multi-window with two Raft windows, another window staying resumed must not
+            // make the sharing window's toast fire immediately while it sits behind the target app.
+            val targetResumed = sharingHostId?.let { it in resumedHosts } ?: hostResumed
+            if (targetResumed) {
+                pending = null
+                sharingHostId = null
+                return text
+            }
+            pending = Entry(text, clock())
+            null
+        }
+
+    fun onHostResumed(hostId: Int = DEFAULT_HOST_ID): String? =
+        synchronized(lock) {
+            resumedHosts.add(hostId)
+            hostResumed = true
+            val target = sharingHostId
+            if (target != null && target != hostId) return null
+            val entry =
+                pending ?: run {
+                    if (target == hostId) sharingHostId = null
+                    return null
+                }
+            pending = null
+            sharingHostId = null
+            val elapsed = clock() - entry.recordedAtMillis
+            if (elapsed in 0..maxAgeMillis) entry.message else null
+        }
+
+    fun clear() =
+        synchronized(lock) {
+            pending = null
+            sharingHostId = null
+        }
+
+    private companion object {
+        const val DEFAULT_HOST_ID = 0
+    }
+}
+
+/**
+ * Process-scoped bridge between the shared share-out launcher and the Android host activity for
+ * deferring "Opened <App>" until Raft next resumes. In-memory only: process death clears it.
+ * Android installs `SystemClock.elapsedRealtime` so the 3-minute TTL advances during deep sleep.
+ */
+object RaftShareOutResumeNotice {
+    private val epoch = TimeSource.Monotonic.markNow()
+    private val pending = RaftShareOutPendingNotice(nowMillis = { epoch.elapsedNow().inWholeMilliseconds })
+
+    /** How long the deferred "Opened <App>" toast stays visible once shown on resume. */
+    val durationMillis: Long get() = RaftShareOutNoticeMillis
+
+    fun installClock(nowMillis: () -> Long) = pending.installClock(nowMillis)
+
+    fun onShareSheetOpened(hostId: Int?) = pending.onShareSheetOpened(hostId)
+
+    internal fun clear() = pending.clear()
+
+    internal fun onOpenedNotice(message: String): String? = pending.onNotice(message)
+
+    fun onHostPaused(hostId: Int = 0) = pending.onHostPaused(hostId)
+
+    fun onHostDestroyed(hostId: Int) = pending.onHostDestroyed(hostId)
+
+    fun onHostResumed(hostId: Int = 0): String? = pending.onHostResumed(hostId)
+}
 
 /**
  * `share_action_selected` for what the host reported about a sheet of [kind] for [subject]; null

@@ -62,6 +62,7 @@ internal class RaftShareOutLauncher(
     ) {
         retireActive?.invoke()
         retireActive = null
+        if (platform == RaftShareOutPlatform.Android) RaftShareOutResumeNotice.clear()
         sequence += 1
         val command =
             raftShareOutHostCommand(
@@ -111,15 +112,21 @@ internal class RaftShareOutLauncher(
             bridge.toast(Res.string.share_open_failed.desc().resolve())
             return
         }
+        val note = raftShareOutNotice(event, kind) ?: return
         val notice =
-            when (val note = raftShareOutNotice(event, kind)) {
+            when (note) {
                 is RaftShareOutNotice.Opened -> Res.string.share_out_opened.format(note.app).resolve()
                 is RaftShareOutNotice.SharedTo -> Res.string.share_out_shared_to.format(note.app).resolve()
                 RaftShareOutNotice.Shared -> Res.string.share_out_shared.desc().resolve()
                 RaftShareOutNotice.Copied -> Res.string.common_copied.desc().resolve()
-                null -> return
             }
-        bridge.timedToast(notice, RaftShareOutNoticeMillis)
+        if (raftShareOutShouldDeferNotice(platform, note)) {
+            // Android reports the picked target while the other app is opening: hold the notice
+            // until Raft's activity resumes so the 2-second timer does not run out in the background.
+            RaftShareOutResumeNotice.onOpenedNotice(notice)?.let { bridge.timedToast(it, RaftShareOutNoticeMillis) }
+        } else {
+            bridge.timedToast(notice, RaftShareOutNoticeMillis)
+        }
     }
 
     private fun saveImage(path: String) {
@@ -150,3 +157,10 @@ internal class RaftShareOutLauncher(
             RaftShareOutPayloadKind.Image -> Res.string.share_out_send_image
         }.desc().resolve()
 }
+
+/**
+ * Only Android's "Opened <App>" waits for the next Activity resume; Android "Copied" and all iOS
+ * completion notices fire after control is already back in Raft.
+ */
+internal fun raftShareOutShouldDeferNotice(platform: RaftShareOutPlatform, note: RaftShareOutNotice): Boolean =
+    platform == RaftShareOutPlatform.Android && note is RaftShareOutNotice.Opened

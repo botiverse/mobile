@@ -14,11 +14,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.service.chooser.ChooserAction
 import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import build.raft.app.R
+import build.raft.app.RaftShareOutResumeNotice
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import java.io.File
 import java.util.UUID
@@ -43,6 +45,14 @@ import org.json.JSONObject
  * Answers (each ends the command, `terminal`): `{event: "action", id}`, `{event: "chosen", app}`,
  * `{event: "cancelled"}` (the Android 13 list only), `{event: "failed"}`.
  */
+/**
+ * Whether Android must ask the person to pick before opening the share sheet: only on Android 13
+ * and older (no `EXTRA_CHOOSER_CUSTOM_ACTIONS`) AND only when there is at least one Raft action to
+ * choose between. Conversation / task ⋯ menus send no actions so they go straight to the sheet.
+ */
+internal fun androidShareOutNeedsPreSheetPicker(actionCount: Int, sdkInt: Int): Boolean =
+    actionCount > 0 && sdkInt < Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
 internal object AndroidShareOut {
     private const val ACTION_CUSTOM = "build.raft.app.share.CUSTOM_ACTION"
     private const val ACTION_CHOSEN = "build.raft.app.share.TARGET_CHOSEN"
@@ -76,7 +86,7 @@ internal object AndroidShareOut {
         session = Session(token, callback)
         val customActionsSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
         val liveActivity = activity?.takeUnless { it.isFinishing || it.isDestroyed }
-        if (actions.isNotEmpty() && !customActionsSupported && liveActivity != null) {
+        if (androidShareOutNeedsPreSheetPicker(actions.size, Build.VERSION.SDK_INT) && liveActivity != null) {
             chooseFirst(context, liveActivity, request, actions, token)
             return
         }
@@ -133,6 +143,8 @@ internal object AndroidShareOut {
                 if (actions.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     chooser.putExtra(Intent.EXTRA_CHOOSER_CUSTOM_ACTIONS, chooserActions(context, actions, token))
                 }
+                RaftShareOutResumeNotice.installClock(SystemClock::elapsedRealtime)
+                RaftShareOutResumeNotice.onShareSheetOpened(activity?.let(System::identityHashCode))
                 if (activity != null) {
                     activity.startActivity(chooser)
                 } else {
@@ -140,6 +152,7 @@ internal object AndroidShareOut {
                 }
             }
         opened.onFailure { throwable ->
+            RaftShareOutResumeNotice.onShareSheetOpened(null)
             RaftAppLog.record("SlockShare", "share_out_open_failed kind=$kind error=${throwable.javaClass.simpleName}")
             answer(token, mapOf("event" to "failed"))
         }
