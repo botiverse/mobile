@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-20T03:50:05.224Z",
+  "generatedAt": "2026-11-20T04:18:25.696Z",
   "runId": "b313d608-20261120034808",
   "commit": "b313d608-20261120034808",
   "commitSubject": "test(visual): Android wide capture lane, first five wide cases, React capture in 4 shards (#5075)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 175,
-        "ready": 33,
-        "pending": 142
+        "ready": 44,
+        "pending": 131
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 175,
-    "ready": 33,
-    "pending": 142
+    "ready": 44,
+    "pending": 131
   },
   "componentMatrixSummary": {
     "total": 204,

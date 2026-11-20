@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-11-20 03:50:05 UTC
+Generated: 2026-11-20 04:18:25 UTC
 Latest run: b313d608-20261120034808
 Latest commit: b313d608-20261120034808
 Commit subject: test(visual): Android wide capture lane, first five wide cases, React capture in 4 shards (#5075)
 Providers: react vs android
 Summary: total 175, same 0, pass 1, basic-pass 8, different 87, missing 79
-AI analysis: ready 33 / total 175, pending 142
+AI analysis: ready 44 / total 175, pending 131
 Visual coverage matrix: active 184 / total 204, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
