@@ -363,6 +363,7 @@ private fun MembersHumanDescriptionSection(
     val descriptionTooLongMessage =
         stringResource(Res.string.agent_create_error_description_length, PROFILE_DESCRIPTION_MAX_LENGTH)
     val updateFailedFallback = stringResource(Res.string.member_error_update_description)
+    val edgeBlockedMessage = stringResource(Res.string.error_edge_blocked)
     val editDescriptionLabel = stringResource(Res.string.member_action_edit_description)
     val canEdit = onUpdateDescription != null && membersHumanCanEditDescription(member, currentUserId)
     val scope = rememberCoroutineScope()
@@ -447,7 +448,7 @@ private fun MembersHumanDescriptionSection(
                         saveError =
                             when {
                                 result.error.serverCode == PROFILE_DESCRIPTION_INVALID_CODE -> descriptionTooLongMessage
-                                result.error.serverMessage.isEdgeBlockedMarker() -> errorStrings.value(ErrorPresentationKey.EdgeBlocked)
+                                result.error.serverMessage.isEdgeBlockedMarker() -> edgeBlockedMessage
                                 !result.error.serverMessage.isNullOrBlank() -> result.error.serverMessage
                                 else -> updateFailedFallback
                             }
