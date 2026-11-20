@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.LocalActivity
@@ -14,8 +13,7 @@ import build.raft.app.data.currentFeatureFlagClientContext
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
-import build.raft.app.network.sync.DiagnosticFeatureFlagScope
-import build.raft.app.network.sync.DiagnosticFeatureFlagScopeKind
+import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 
 /*
@@ -29,24 +27,20 @@ import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
  * open page.
  */
 
-/** The server's answer with the diagnostics override applied (as [resolveActivityStableOrderEnabled]). */
-internal fun resolveShareLoopEnabled(
-    registry: DiagnosticFeatureFlagOverrideRegistry,
-    serverEffective: Boolean,
-    environmentId: String,
-    accountId: String,
-    serverId: String,
-): Boolean {
-    val scope =
-        DiagnosticFeatureFlagScope(
-            environmentId = environmentId.trim().trimEnd('/'),
-            accountId = accountId,
-            serverId = serverId,
-        )
-    // Without the whole identity (signed out, the session not read yet) there is nothing to override
-    // for, and the registry reports every such read as a change: the server's answer stands.
-    if (!scope.isValidFor(DiagnosticFeatureFlagScopeKind.ServerExact)) return serverEffective
-    return registry.decide(key = SHARE_LOOP_FEATURE_FLAG_KEY, serverEffective = serverEffective, scope = scope).finalEffective
+/**
+ * The server's answer with the diagnostics override on top: Force on / Force off of an entitled
+ * (debug / alpha) build, else the server's. Read from the registry's snapshot, not as a decision:
+ * a decision is recorded and announced per read, and pages of servers with different answers
+ * would then wake each other without end.
+ */
+internal fun resolveShareLoopEnabled(registry: DiagnosticFeatureFlagOverrideRegistry, serverEffective: Boolean): Boolean {
+    val override = registry.snapshot(SHARE_LOOP_FEATURE_FLAG_KEY)
+    if (!override.entitled) return serverEffective
+    return when (override.mode) {
+        DiagnosticFeatureFlagOverrideMode.ForceOn -> true
+        DiagnosticFeatureFlagOverrideMode.ForceOff -> false
+        DiagnosticFeatureFlagOverrideMode.Server -> serverEffective
+    }
 }
 
 /** The host's share-out platform, or null where there is no system share sheet for it (desktop). */
@@ -68,18 +62,7 @@ internal fun rememberShareLoopEnabled(serverId: ServerId?): Boolean {
     val serverEffective = rememberServerFeatureLatched(sharedStores.serverFeatureFlags, server, SHARE_LOOP_FEATURE_FLAG_KEY)
     val overrideRevision by
         ProcessDiagnosticFeatureFlagOverrides.registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).collectAsState()
-    val accountId by
-        produceState("", sharedStores) {
-            value = runCatching { sharedStores.authStore.readSession()?.user?.id }.getOrNull().orEmpty()
-        }
-    return remember(sharedStores, serverEffective, overrideRevision, server?.value, accountId) {
-        server != null &&
-            resolveShareLoopEnabled(
-                registry = ProcessDiagnosticFeatureFlagOverrides.registry,
-                serverEffective = serverEffective,
-                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                accountId = accountId,
-                serverId = server.value,
-            )
+    return remember(sharedStores, serverEffective, overrideRevision, server?.value) {
+        server != null && resolveShareLoopEnabled(ProcessDiagnosticFeatureFlagOverrides.registry, serverEffective)
     }
 }

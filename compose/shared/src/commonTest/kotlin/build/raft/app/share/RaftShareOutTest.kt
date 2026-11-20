@@ -223,10 +223,9 @@ class RaftShareOutTest {
     @Test
     fun theFlagIsRegisteredAndOffByDefault() {
         assertTrue(SHARE_LOOP_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
-        val now = 1_000L
+        var now = 1_000L
         val registry = DiagnosticFeatureFlagOverrideRegistry({ now }, ReadStateV1DiagnosticOverrideController { now })
-        fun enabled(serverEffective: Boolean) =
-            resolveShareLoopEnabled(registry, serverEffective, "https://api.example/", "account-a", "server-a")
+        fun enabled(serverEffective: Boolean) = resolveShareLoopEnabled(registry, serverEffective)
         assertFalse(enabled(serverEffective = false))
         assertTrue(enabled(serverEffective = true))
         // A build without the diagnostics entitlement cannot force it on.
@@ -236,20 +235,19 @@ class RaftShareOutTest {
         registry.configureEntitlement(true)
         registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
         assertTrue(enabled(serverEffective = false))
+        // Reading the gate never changes the registry (a composition re-reads it on every revision).
+        val revision = registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value
+        assertTrue(enabled(serverEffective = false))
+        assertTrue(enabled(serverEffective = true))
+        assertEquals(revision, registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value)
         registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOff)
         assertFalse(enabled(serverEffective = true))
         registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.Server)
         assertFalse(enabled(serverEffective = false))
-        // No whole identity (the session not read yet): the server's answer, and the registry is not touched.
+        // The override ends with its 15 minutes.
         registry.setMode(SHARE_LOOP_FEATURE_FLAG_KEY, DiagnosticFeatureFlagOverrideMode.ForceOn)
-        val revision = registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value
-        assertFalse(resolveShareLoopEnabled(registry, false, "https://api.example/", "", "server-a"))
-        assertEquals(revision, registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value)
-        // The same read twice changes nothing either (a composition re-reads on every revision).
-        assertTrue(enabled(serverEffective = false))
-        val settled = registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value
-        assertTrue(enabled(serverEffective = false))
-        assertEquals(settled, registry.revisionFor(SHARE_LOOP_FEATURE_FLAG_KEY).value)
+        now += 16L * 60L * 1000L
+        assertFalse(enabled(serverEffective = false))
     }
 
     @Test
