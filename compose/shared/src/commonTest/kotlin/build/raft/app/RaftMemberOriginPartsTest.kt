@@ -43,7 +43,26 @@ class RaftMemberOriginPartsTest {
         assertTrue(small.dot)
         assertEquals(7.98f, small.tile.value, 0.01f)
         assertEquals(3.dp, small.overhang)
-        assertTrue(raftAvatarOriginCornerGeometry(35.dp, forceDot = true).dot)
+        assertTrue(raftAvatarOriginCornerGeometry(35.dp, small = true).dot)
+    }
+
+    @Test
+    fun aSmallFacesRoundLogoIsAtLeastTenDpAndTheDotKeepsTheFormula() {
+        // #proj-raft-ui:#276: a small face's corner shows the server's logo, round, never under 10dp;
+        // without a logo it stays the plain dot at 42% (7dp floor).
+        val mention = 19.dp
+        val withLogo = raftAvatarOriginCornerGeometry(mention, small = true, hasLogo = true)
+        assertTrue(withLogo.dot)
+        assertEquals(10.dp, withLogo.tile)
+        val withoutLogo = raftAvatarOriginCornerGeometry(mention, small = true, hasLogo = false)
+        assertTrue(withoutLogo.dot)
+        assertEquals(7.98f, withoutLogo.tile.value, 0.01f)
+        // A face big enough for 42% to clear 10dp keeps the formula with a logo too.
+        assertEquals(10.5f, raftAvatarOriginCornerGeometry(25.dp, hasLogo = true).tile.value, 0.01f)
+        // Large faces are unchanged: a tile, the 7dp floor does not move.
+        val large = raftAvatarOriginCornerGeometry(35.dp, hasLogo = true)
+        assertFalse(large.dot)
+        assertEquals(14.7f, large.tile.value, 0.01f)
     }
 
     @Test
