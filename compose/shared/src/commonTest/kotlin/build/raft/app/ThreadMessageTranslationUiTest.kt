@@ -182,4 +182,20 @@ class ThreadMessageTranslationUiTest {
             )
         )
     }
+
+    @Test
+    fun aPendingTranslationDrawsOneBarPerLineOfTheOriginal() {
+        // 12px bars, 8px apart: a 20px pitch.
+        listOf(
+            0 to 1, // nothing measured yet: the web's single line
+            11 to 1, // shorter than a bar
+            20 to 1, // one text line
+            48 to 2,
+            120 to 6,
+            10_000 to ThreadTranslationPlaceholderMaxLines, // capped
+        ).forEach { (heightPx, expected) ->
+            assertEquals(expected, threadTranslationPlaceholderLineCount(heightPx, lineHeightPx = 12, gapPx = 8), "height $heightPx")
+        }
+        assertEquals(1, threadTranslationPlaceholderLineCount(100, lineHeightPx = 0, gapPx = 0), "a zero pitch never divides")
+    }
 }
