@@ -491,6 +491,8 @@ class SharedActivityStore internal constructor(
             log = { diagnosticsLogger(it) },
             sink = { serverId, lowered -> listRowLoweredSink(serverId, lowered) }
         )
+    /** `inbox_row_position_v1`: one report per lowering per 90 s (web #15560); under the realtime lock. */
+    private val listRowLoweredDedupe = ActivityListRowLoweredDedupe()
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
     /** Wall time the shown rows were last read from the server (any refresh, background too). */
@@ -2322,13 +2324,30 @@ class SharedActivityStore internal constructor(
     }
 
     /** One `activity:inplace_check` to [serverId]'s trace stream (web `emitStateTransitionTrace`). */
-    private fun emitInPlaceCheckLocked(serverId: String?, check: ActivityInPlaceCheck) {
+    private fun emitInPlaceCheckLocked(serverId: String?, unmarked: ActivityInPlaceCheck) {
+        val check = unmarked.copy(selected = inPlaceCheckSelectedLocked(unmarked.entityId))
         diagnosticsLogger(
             "activity_inplace_check entity=${check.entityId} trigger=${check.trigger.wireValue} " +
                 "outcome=${check.outcome.wireValue} result=${check.result} scope=${check.scope ?: "-"}" +
+                " selected=${check.selected?.let { if (it) 1 else 0 } ?: "-"}" +
                 (check.notJudgedCause?.let { " cause=${it.wireValue}" } ?: "")
         )
         if (serverId != null) inPlaceCheckSink(serverId, check)
+    }
+
+    /**
+     * `inbox.inplace.selected`: whether the checked row's conversation is open on screen now (a page
+     * reads its stream on sight, [conversationsReadOnSight]); null without that registry. The row
+     * is found by its key in the list shown; a row no longer listed reads its key's own id.
+     */
+    private fun inPlaceCheckSelectedLocked(rowKey: String): Boolean? {
+        val reading = conversationsReadOnSight() ?: return null
+        val item = _state.value.snapshot?.items?.firstOrNull { it.key == rowKey }
+        val streamId =
+            item?.let { it.threadChannelId?.value ?: it.channelId.value }
+                ?: rowKey.substringAfter(':', "").takeIf { it.isNotBlank() }
+                ?: return false
+        return streamId in reading
     }
 
     /** Web `recordAuditNotJudged` for a waiting entry that is an audit (no-op otherwise). */
@@ -3134,7 +3153,14 @@ class SharedActivityStore internal constructor(
             rowPosition = true,
             nowMillis = nowEpochMillis(),
             ledgerOf = ledgerOf
-        ).forEach { lowered ->
+        ).forEach { found ->
+            // Web #15560: the same lowering of a row is reported once per window (a local read's hold
+            // re-lowers its row on every re-read); the next one after it says how many were not sent.
+            val lowered =
+                listRowLoweredDedupe.admit(found, nowMillis()) ?: run {
+                    diagnosticsLogger("activity_list_row_lowered_suppressed step=${found.step.wireValue} served=${found.served} after=${found.after}")
+                    return@forEach
+                }
             // Web (slock #15197): a `local_read` lowering waits up to 5 s for this client's read ack.
             // Only queued here (its own lock and a timer on the store's scope), never sent.
             if (lowered.step == ActivityListRowStep.LocalRead && lowered.scopeId != null) {

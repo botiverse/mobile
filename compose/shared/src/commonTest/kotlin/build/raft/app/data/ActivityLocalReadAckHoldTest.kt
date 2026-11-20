@@ -215,4 +215,36 @@ class ActivityLocalReadAckHoldTest {
         assertEquals(null, parseListRowSeq(-1L))
         assertEquals("0", parseListRowSeq(0L))
     }
+
+    // slock #15560: an ack that landed before the answer registered the hold settles it at once
+    // (`ack_before_hold`, negative delay) when it covers the served latest activity; an older one
+    // that doesn't leaves the row held.
+    @Test
+    fun anEarlierAckThatCoversTheLatestActivitySettlesTheHoldAtOnce() = runTest {
+        val f = fixture()
+        f.hold.noteAck("channel-1", maxReadSeq = 100L)
+        advanceTimeBy(2_000L)
+        f.hold.hold("server-1", localRead("channel-1"))
+        val row = f.rows.single()
+        assertEquals("activity:list_row_corrected", row.event)
+        assertEquals(listOf("100", "-2000", "ack_before_hold"), row.newAttrs())
+        assertEquals(ActivityListRowLoweredClass.Expected, row.loweredClass)
+
+        f.hold.noteAck("channel-2", maxReadSeq = 99L)
+        f.hold.hold("server-1", localRead("channel-2"))
+        assertEquals(1, f.rows.size, "an ack below the latest activity does not settle it")
+        advanceTimeBy(ActivityLocalReadAckWindowMillis + 1)
+        runCurrent()
+        assertEquals(ActivityListRowHeldEnd.Window, f.rows.last().heldEnd)
+        assertEquals(ActivityListRowLoweredClass.AckPending, f.rows.last().loweredClass)
+    }
+
+    @Test
+    fun anAckOlderThanTheRecentWindowDoesNotSettleALaterHold() = runTest {
+        val f = fixture()
+        f.hold.noteAck("channel-1", maxReadSeq = 100L)
+        advanceTimeBy(ActivityLocalReadRecentAckMillis + 1)
+        f.hold.hold("server-1", localRead("channel-1"))
+        assertEquals(emptyList(), f.sent, "held")
+    }
 }

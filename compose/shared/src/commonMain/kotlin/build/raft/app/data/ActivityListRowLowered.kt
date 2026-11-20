@@ -26,6 +26,22 @@ import kotlinx.serialization.json.putJsonObject
  * - `activity:list_row_lowered` (outcome `conflict`): every other step (and a ledger or local_read
  *   step whose facts don't show that cover). This is the defect count.
  *
+ * Added with web #15560 (event names unchanged, so the existing counts keep their meaning):
+ * - `inbox.lowered.class` ([ActivityListRowLowered.loweredClass]): `expected` (a correction, or a
+ *   merge lowering of a row whose answer was read under an older read than this client's accepted
+ *   one), `ack_pending` (a `local_read` hold that ended with no read ack: the window, or the app's
+ *   own flushes, its pagehide), `unexplained` (everything else: the defect count is
+ *   `list_row_lowered` with class `unexplained`).
+ * - `inbox.lowered.dedupe` / `inbox.lowered.suppressed` ([ActivityListRowLoweredDedupe]): the same
+ *   lowering of a row is sent once per [ActivityListRowLoweredReportWindowMillis] (`first`); the
+ *   re-reads inside the window send nothing, and when some were left unsent the next one after the
+ *   window (within one more window) is sent as `repeat` with how many were not sent.
+ * - `held_end=ack_before_hold`: this client's read ack landed before the answer registered the hold
+ *   (kept [ActivityLocalReadRecentAckMillis]) and covers the answer's latest activity;
+ *   `ack_delay_ms` is then negative (the ack's lead).
+ * - `inbox.lowered.proj_*`: always `-`. They describe web's loaded-messages projection step, which
+ *   the app does not have.
+ *
  * The app applies an answer in this order: `local_read` (a Read here, and reads from elsewhere the
  * app held: the local read overlay), `done` (a local Done), `merge` (the realtime fold and the
  * per-row position merge). The app has no ledger step of its own: [ledgerAdjudicated] is web's
@@ -44,6 +60,8 @@ internal const val ActivityListRowCorrectedTraceEvent = "activity:list_row_corre
 enum class ActivityListRowHeldEnd(val wireValue: String) {
     /** This client's read ack for the scope settled it. */
     Ack("ack"),
+    /** This client's read ack landed before the hold and covers the answer's latest activity (web #15560). */
+    AckBeforeHold("ack_before_hold"),
     /** No usable ack within [ActivityLocalReadAckWindowMillis]. */
     Window("window"),
     /** The app went to the background. */
@@ -52,6 +70,13 @@ enum class ActivityListRowHeldEnd(val wireValue: String) {
     ServerSwitch("server_switch"),
     /** The session was cleared or the store's shell scope was released. */
     Signout("signout"),
+}
+
+/** Web `LoweredClass` (`inbox.lowered.class`, slock #15560). */
+enum class ActivityListRowLoweredClass(val wireValue: String) {
+    Expected("expected"),
+    AckPending("ack_pending"),
+    Unexplained("unexplained"),
 }
 
 /** Web `ListRowStep`. */
@@ -98,6 +123,12 @@ data class ActivityListRowLowered(
     val ackDelayMs: Long? = null,
     /** `local_read` only: how the hold ended; null for a row that was never held. */
     val heldEnd: ActivityListRowHeldEnd? = null,
+    /** Web `inbox.lowered.dedupe`: false for the first report of this lowering, true for a `repeat`. */
+    val repeat: Boolean = false,
+    /** Web `inbox.lowered.suppressed`: the re-reads of this lowering not sent in the window before (0 on `first`). */
+    val suppressed: Int = 0,
+    /** Web `getInboxItemKey` of the row (not sent; part of [dedupeKey]). */
+    val rowKey: String = "",
 ) {
     /**
      * Web `isLedgerCorrection` on the `ledger` step; on the `local_read` step, this client's read ack
@@ -113,6 +144,79 @@ data class ActivityListRowLowered(
 
     val event: String
         get() = if (corrected) ActivityListRowCorrectedTraceEvent else ActivityListRowLoweredTraceEvent
+
+    /**
+     * Web `classify`: a correction is expected; a `local_read` hold that ended with no ack is
+     * `ack_pending` (the app's background / server switch / sign-out flushes are its pagehide); a
+     * merge lowering of an answer behind this client's read is expected; anything else unexplained.
+     */
+    val loweredClass: ActivityListRowLoweredClass
+        get() =
+            when {
+                corrected -> ActivityListRowLoweredClass.Expected
+                step == ActivityListRowStep.LocalRead && heldEnd != null &&
+                    heldEnd != ActivityListRowHeldEnd.Ack && heldEnd != ActivityListRowHeldEnd.AckBeforeHold ->
+                    ActivityListRowLoweredClass.AckPending
+                (step == ActivityListRowStep.Merge || step == ActivityListRowStep.Projection) && answerBehindClientRead() ->
+                    ActivityListRowLoweredClass.Expected
+                else -> ActivityListRowLoweredClass.Unexplained
+            }
+
+    /** Web `answerBehindClientRead` (no projection here): a newer accepted read, or one covering the answer's latest activity. */
+    private fun answerBehindClientRead(): Boolean {
+        if (servedReadVersion != null && ledgerReadVersion != null && ledgerReadVersion > servedReadVersion) return true
+        return listRowSeqCovers(ledgerReadSeq, servedLatestActivitySeq)
+    }
+
+    /** Web `dedupeKey`: the same lowering of the same row (row, step, served read facts, served, after). */
+    internal val dedupeKey: String
+        get() =
+            listOf(rowKey, step.wireValue, servedReadVersion?.toString() ?: "-", servedReadSeq ?: "-", servedLatestActivitySeq ?: "-", served, after)
+                .joinToString("|")
+}
+
+/** Web `LOWERED_REPORT_WINDOW_MS`: the same lowering of a row is sent once per this window. */
+internal const val ActivityListRowLoweredReportWindowMillis = 90_000L
+
+/**
+ * Web `reportedLowerings` / `repeatOf` / `expireReported` (slock #15560): one report per lowering
+ * per [windowMillis] (a local read's hold re-lowers its row on every re-read). [admit] answers null
+ * for a re-read inside the window (counted as suppressed), else the row with `dedupe` and
+ * `suppressed` set. Not thread-safe: the store calls it under its lock.
+ */
+internal class ActivityListRowLoweredDedupe(private val windowMillis: Long = ActivityListRowLoweredReportWindowMillis) {
+    private class Reported(val at: Long, var suppressed: Int)
+    private class Repeat(val suppressed: Int, val endedAt: Long)
+
+    private val reported = mutableMapOf<String, Reported>()
+    private val repeatOf = mutableMapOf<String, Repeat>()
+
+    fun admit(row: ActivityListRowLowered, nowMillis: Long): ActivityListRowLowered? {
+        val key = row.dedupeKey
+        expire(nowMillis)
+        reported[key]?.let { seen ->
+            seen.suppressed += 1
+            return null
+        }
+        val previous = repeatOf.remove(key)?.suppressed
+        reported[key] = Reported(nowMillis, 0)
+        return row.copy(repeat = previous != null, suppressed = previous ?: 0)
+    }
+
+    private fun expire(nowMillis: Long) {
+        repeatOf.entries.removeAll { (_, entry) -> nowMillis - entry.endedAt > windowMillis }
+        val ended = reported.entries.filter { (_, entry) -> nowMillis - entry.at > windowMillis }
+        ended.forEach { (key, entry) ->
+            reported.remove(key)
+            // The window ended at its end, not when this pass noticed it.
+            if (entry.suppressed > 0) repeatOf[key] = Repeat(entry.suppressed, entry.at + windowMillis)
+        }
+    }
+
+    fun clear() {
+        reported.clear()
+        repeatOf.clear()
+    }
 }
 
 /** Web `isLedgerCorrection`: a newer server-issued read covers the answer's latest activity. */
@@ -218,6 +322,7 @@ internal fun listRowsLowered(
             servedLatestActivitySeq = item.readStateLatestActivitySeq,
             ledgerReadVersion = ledger?.readStateVersion,
             ledgerReadSeq = ledger?.maxReadSeq?.toString(),
+            rowKey = key,
         )
     }
 }
@@ -254,4 +359,20 @@ internal fun ActivityListRowLowered.stateTransitionTraceAttrs(): JsonObject =
         put("inbox.lowered.ack_read_seq", ackReadSeq ?: "-")
         put("inbox.lowered.ack_delay_ms", ackDelayMs?.toString() ?: "-")
         put("inbox.lowered.held_end", heldEnd?.wireValue ?: "-")
+        put("inbox.lowered.class", loweredClass.wireValue)
+        put("inbox.lowered.dedupe", if (repeat) "repeat" else "first")
+        put("inbox.lowered.suppressed", suppressed.toString())
+        // Web's loaded-messages projection step; the app has none (`-`, as web without a projection).
+        ActivityListRowProjectionAttrs.forEach { put(it, "-") }
     }
+
+private val ActivityListRowProjectionAttrs =
+    listOf(
+        "inbox.lowered.proj_unread",
+        "inbox.lowered.proj_read_seq",
+        "inbox.lowered.proj_through_seq",
+        "inbox.lowered.proj_loaded_above_read",
+        "inbox.lowered.proj_loaded_count",
+        "inbox.lowered.proj_loaded_min_seq",
+        "inbox.lowered.proj_coverage",
+    )
