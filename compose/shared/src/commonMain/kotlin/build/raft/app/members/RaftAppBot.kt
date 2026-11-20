@@ -1,15 +1,39 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -17,6 +41,11 @@ import build.raft.app.model.ServerId
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import coil3.compose.AsyncImagePainter
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -40,6 +69,10 @@ internal data class RaftAppBotIdentity(
     val appName: String?,
     /** Web `isRemovedAppBot`: removed from the server (or deleted), so it cannot answer. */
     val removed: Boolean,
+    /** The owning App's row id (`managedByApp.clientId` = `oauth_clients.id`, slock #14286). */
+    val appClientId: String? = null,
+    /** The owning App's logo URL (`managedByApp.logoUrl`, slock #14286). */
+    val appLogoUrl: String? = null,
 )
 
 /** The App Bot identity of a directory profile; null for humans and ordinary agents. */
@@ -49,7 +82,250 @@ internal fun MemberProfile.appBotIdentityOrNull(): RaftAppBotIdentity? {
         handle = handle,
         appName = managedByAppName?.trim()?.takeIf { it.isNotBlank() },
         removed = !agentDeletedAt.isNullOrBlank() || inMemberLists == false,
+        appClientId = managedByAppClientId?.trim()?.takeIf { it.isNotBlank() },
+        appLogoUrl = managedByAppLogoUrl?.trim()?.takeIf { it.isNotBlank() },
     )
+}
+
+/**
+ * An App bot profile's link target to its owning App's installed detail on the Apps page
+ * (`?installed_app=<appId>`, botiverse/slock #14286 `useManagedAppDetailLink`).
+ */
+@Immutable
+internal data class MembersManagedAppDetailTarget(
+    /** The App's row id (`managedByApp.clientId` = `oauth_clients.id`), never its public `client_id`. */
+    val appId: String,
+    val appName: String,
+)
+
+/**
+ * Web `useManagedAppDetailLink` (botiverse/slock #14286): returns the App detail target when the
+ * viewer can open this server's installed App detail; null for guests, another server's bot in a
+ * joint channel, bounded public projections (`channel_summary`), or missing App row id/name.
+ */
+internal fun membersManagedAppDetailTarget(
+    member: MemberProfile,
+    summary: AgentDetailSummary? = null,
+    viewerServerRole: String?,
+    currentServerId: String?,
+    accessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
+): MembersManagedAppDetailTarget? {
+    if (accessMode != MemberDetailAccessMode.LocalFull) return null
+    val installId =
+        (summary?.managedByAppInstallId ?: member.managedByAppInstallId)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+    if (installId.isEmpty()) return null
+    val appId =
+        (summary?.managedByAppClientId ?: member.managedByAppClientId)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+    val appName =
+        (summary?.managedByAppName ?: member.managedByAppName)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return null
+    val role = viewerServerRole?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    if (role == "guest") return null
+    val activeServer = currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+    val agentServer = member.serverId?.value?.trim()?.takeIf { it.isNotEmpty() }
+    if (activeServer != null && agentServer != null && agentServer != activeServer) return null
+    val projection = (summary?.profileProjection ?: member.profileProjection)?.trim()?.lowercase()
+    if (projection == "channel_summary") return null
+    return MembersManagedAppDetailTarget(appId = appId, appName = appName)
+}
+
+private const val ManagedAppFromPlaceholder = "\u0000"
+
+/** Splits a formatted `"From <placeholder>"` template into `(before, after)` text fragments. */
+internal fun membersManagedAppFromParts(
+    formatted: String,
+    placeholder: String = ManagedAppFromPlaceholder,
+): Pair<String, String> {
+    val index = formatted.indexOf(placeholder)
+    if (index < 0) return formatted.trim() to ""
+    val before = formatted.substring(0, index).trimEnd()
+    val after = formatted.substring(index + placeholder.length).trimStart()
+    return before to after
+}
+
+/** Web `ManagedAppIdentity` `AppLogo`: 16dp rounded-sm logo, omitted when absent or broken. */
+@Composable
+internal fun RaftManagedAppLogo(logoUrl: String?) {
+    val cleanUrl = logoUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return
+    var broken by remember(cleanUrl) { mutableStateOf(false) }
+    if (broken) return
+    Box(
+        modifier = Modifier.size(16.dp).clip(RoundedCornerShape(2.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftCachedImage(
+            source = cleanUrl,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            onImageStateChange = { state -> if (state is AsyncImagePainter.State.Error) broken = true },
+        )
+    }
+}
+
+@Composable
+private fun RaftManagedAppIdentityRow(
+    openAppDetailsLabel: String?,
+    onOpenManagedApp: (() -> Unit)?,
+    testTag: String,
+    spacing: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.(linked: Boolean, active: Boolean) -> Unit,
+) {
+    val click = onOpenManagedApp
+    val label = openAppDetailsLabel?.takeIf { it.isNotBlank() }
+    if (click == null || label == null) {
+        Row(
+            modifier = modifier,
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            content(false, false)
+        }
+        return
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val active = pressed || hovered
+    Row(
+        modifier =
+            modifier
+                .testTag(testTag)
+                .raftClickable(
+                    onClick = click,
+                    role = Role.Button,
+                    shape = RoundedCornerShape(RaftAppRadius.Chip),
+                    tier = RaftHoverTier.None,
+                    interactionSource = interactionSource,
+                )
+                .semantics(mergeDescendants = true) {
+                    contentDescription = label
+                },
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        content(true, active)
+    }
+}
+
+/**
+ * Web `AppBotFromApp` (botiverse/slock #14286): the profile hero's `"From <logo> <App>"` after the
+ * App badge, linking to the App's installed detail when [onOpenManagedApp] is provided.
+ */
+@Composable
+internal fun RaftAppBotFromAppLine(
+    appName: String,
+    logoUrl: String?,
+    onOpenManagedApp: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val formatted = stringResource(Res.string.member_label_app_from_app, ManagedAppFromPlaceholder)
+    val (before, after) = remember(formatted) { membersManagedAppFromParts(formatted) }
+    val openLabel =
+        if (onOpenManagedApp != null) {
+            stringResource(Res.string.member_detail_open_app_details, appName)
+        } else {
+            null
+        }
+    Row(
+        modifier = modifier.testTag("agent-profile-bot-from-app"),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (before.isNotEmpty()) {
+            RaftText(
+                text = before,
+                style = typography.footnote,
+                color = colors.foregroundMuted,
+                maxLines = 1,
+            )
+        }
+        RaftManagedAppIdentityRow(
+            openAppDetailsLabel = openLabel,
+            onOpenManagedApp = onOpenManagedApp,
+            testTag = "agent-profile-bot-from-app-link",
+            spacing = 4.dp,
+        ) { linked, active ->
+            RaftManagedAppLogo(logoUrl)
+            RaftText(
+                text = appName,
+                style =
+                    typography.footnote.let { base ->
+                        if (linked) {
+                            base.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                textDecoration = if (active) TextDecoration.Underline else TextDecoration.None,
+                            )
+                        } else {
+                            base
+                        }
+                    },
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (after.isNotEmpty()) {
+            RaftText(
+                text = after,
+                style = typography.footnote,
+                color = colors.foregroundMuted,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Web `ManagedByAppValue` (botiverse/slock #14286): the `"Managed by app"` row's value
+ * (`logo + App badge + name`), as one link to the App's detail when [onOpenManagedApp] is set.
+ */
+@Composable
+internal fun RaftManagedByAppRowValue(
+    identity: RaftAppBotIdentity,
+    onOpenManagedApp: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val appName = identity.appName
+    val openLabel =
+        if (onOpenManagedApp != null && !appName.isNullOrBlank()) {
+            stringResource(Res.string.member_detail_open_app_details, appName)
+        } else {
+            null
+        }
+    RaftManagedAppIdentityRow(
+        openAppDetailsLabel = openLabel,
+        onOpenManagedApp = onOpenManagedApp?.takeIf { !appName.isNullOrBlank() },
+        testTag = "agent-profile-managed-by-app-link",
+        spacing = 6.dp,
+        modifier = modifier,
+    ) { linked, active ->
+        RaftManagedAppLogo(identity.appLogoUrl)
+        RaftAppBotBadge(identity = identity, botName = appName)
+        RaftText(
+            text = appName ?: stringResource(Res.string.profile_preview_unknown_app),
+            style =
+                membersInfoValueStyle().let { base ->
+                    if (linked) {
+                        base.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            textDecoration = if (active) TextDecoration.Underline else TextDecoration.None,
+                        )
+                    } else {
+                        base
+                    }
+                },
+            color = RaftTheme.colors.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+    }
 }
 
 /**

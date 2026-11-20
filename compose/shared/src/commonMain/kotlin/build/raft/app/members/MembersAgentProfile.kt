@@ -442,6 +442,8 @@ internal fun MembersAgentProfileHeader(
      * identity-and-presence, the step links to the computer); null when there is none to open.
      */
     onOpenComputer: (() -> Unit)? = null,
+    /** Opens an App bot's owning App installed detail (`?installed_app=`, slock #14286); null when unavailable. */
+    onOpenManagedApp: (() -> Unit)? = null,
     /**
      * Web AgentDetailPanel: the status sits under the tags unless the profile shows the Recent
      * activity card, whose first line it is then ([MembersAgentProfileStatus]).
@@ -523,16 +525,14 @@ internal fun MembersAgentProfileHeader(
                 ) {
                     val appBot = member.appBotIdentityOrNull()
                     if (appBot != null) {
-                        // botiverse/slock #11273 profile hero: an App Bot is a Bot from its App,
-                        // not an "Agent", and runs on no runtime.
+                        // botiverse/slock #11273 / #14286 profile hero: an App Bot is a Bot from its App,
+                        // not an "Agent", and runs on no runtime; "From <logo> <App>" links to App details.
                         RaftAppBotBadge(identity = appBot, botName = appBot.appName)
                         appBot.appName?.let { appName ->
-                            RaftText(
-                                text = stringResource(Res.string.member_label_app_from_app, appName),
-                                style = typography.footnote,
-                                color = colors.foregroundMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            RaftAppBotFromAppLine(
+                                appName = appName,
+                                logoUrl = appBot.appLogoUrl ?: summary?.managedByAppLogoUrl,
+                                onOpenManagedApp = onOpenManagedApp,
                             )
                         }
                     } else {
@@ -819,6 +819,8 @@ internal class MembersAgentLifecycleInputs(
     val onCopyText: (String) -> Unit = {},
     val onReportIssue: () -> Unit = {},
     val onOpenComputer: (() -> Unit)? = null,
+    /** Opens an App bot's owning App installed detail (`?installed_app=`, slock #14286); null when unavailable. */
+    val onOpenManagedApp: (() -> Unit)? = null,
     /** Stop Current Turn on the "stuck on a tool call" notice; null when the viewer may not. */
     val onStopTurn: (() -> Unit)? = null,
     val stopTurnInProgress: Boolean = false,
@@ -1387,6 +1389,7 @@ private fun MembersAgentInfoSection(
     edit: MembersAgentProfileEditInputs,
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     onOpenComputer: (() -> Unit)?,
+    onOpenManagedApp: (() -> Unit)? = null,
     timeContext: RaftTimeContext,
     memberAvatarResolver: RaftMemberAvatarResolver
 ) {
@@ -1506,69 +1509,75 @@ private fun MembersAgentInfoSection(
     // stacks: one item per row, the label above its value. Order: Role, Computer, Computer
     // status, Computer Version, Created, Creator.
     MembersProfileSection(title = stringResource(Res.string.member_section_info)) {
-        // Role: the label carries the "Agent roles" help and, for whoever may change it, the pencil;
-        // the value is the plain role word (hidden role = empty value, web parity #261).
-        MembersAgentInfoField(
-            label = stringResource(Res.string.member_label_role),
-            labelActions = {
-                MembersProfileIconAction(
-                    iconName = RaftLucideIconName.CircleQuestionMark,
-                    contentDescription = stringResource(Res.string.member_title_agent_roles),
-                    onClick = { roleHelpOpen = true }
-                )
-                if (canEditServerRole && !editingServerRole) {
-                    MembersProfilePencilButton(
-                        contentDescription = stringResource(Res.string.member_action_edit_role),
-                        onClick = {
-                            serverRoleEditorAuthority = agentProfileEditAuthority
+        val isAppBot = !member.managedByAppInstallId.isNullOrBlank() || !summary?.managedByAppInstallId.isNullOrBlank()
+        // Role: web AgentProfileInfo hides server-role editing for an App bot (its authority is
+        // the App's grant, not a server role).
+        if (!isAppBot) {
+            // Role: the label carries the "Agent roles" help and, for whoever may change it, the pencil;
+            // the value is the plain role word (hidden role = empty value, web parity #261).
+            MembersAgentInfoField(
+                label = stringResource(Res.string.member_label_role),
+                labelActions = {
+                    MembersProfileIconAction(
+                        iconName = RaftLucideIconName.CircleQuestionMark,
+                        contentDescription = stringResource(Res.string.member_title_agent_roles),
+                        onClick = { roleHelpOpen = true }
+                    )
+                    if (canEditServerRole && !editingServerRole) {
+                        MembersProfilePencilButton(
+                            contentDescription = stringResource(Res.string.member_action_edit_role),
+                            onClick = {
+                                serverRoleEditorAuthority = agentProfileEditAuthority
+                                draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                serverRoleError = null
+                                serverRoleMenuExpanded = true
+                                editingServerRole = true
+                            }
+                        )
+                    }
+                }
+            ) {
+                if (editingServerRole) {
+                    val serverRoleLabels = MembersAgentServerRole.entries.associateWith { it.localizedLabel() }
+                    MembersServerRoleEditor(
+                        displayValue = draftServerRole.localizedLabel(),
+                        expanded = serverRoleMenuExpanded,
+                        enabled = !savingServerRole,
+                        saving = savingServerRole,
+                        saveEnabled = draftServerRole != currentServerRole,
+                        options = membersAgentServerRoleOptions(draftServerRole) { serverRoleLabels.getValue(it) },
+                        selectedId = draftServerRole.wireValue,
+                        error = serverRoleError,
+                        onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
+                        onSelect = { roleId ->
+                            roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
+                                draftServerRole = nextRole
+                                serverRoleMenuExpanded = false
+                                serverRoleError = null
+                            }
+                        },
+                        onSave = { saveServerRole() },
+                        onCancel = {
                             draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                             serverRoleError = null
-                            serverRoleMenuExpanded = true
-                            editingServerRole = true
+                            serverRoleMenuExpanded = false
+                            editingServerRole = false
                         }
                     )
+                } else {
+                    MembersAgentServerRoleChip(serverRoleDisplay)
                 }
             }
-        ) {
-            if (editingServerRole) {
-                val serverRoleLabels = MembersAgentServerRole.entries.associateWith { it.localizedLabel() }
-                MembersServerRoleEditor(
-                    displayValue = draftServerRole.localizedLabel(),
-                    expanded = serverRoleMenuExpanded,
-                    enabled = !savingServerRole,
-                    saving = savingServerRole,
-                    saveEnabled = draftServerRole != currentServerRole,
-                    options = membersAgentServerRoleOptions(draftServerRole) { serverRoleLabels.getValue(it) },
-                    selectedId = draftServerRole.wireValue,
-                    error = serverRoleError,
-                    onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
-                    onSelect = { roleId ->
-                        roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
-                            draftServerRole = nextRole
-                            serverRoleMenuExpanded = false
-                            serverRoleError = null
-                        }
-                    },
-                    onSave = { saveServerRole() },
-                    onCancel = {
-                        draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                        serverRoleError = null
-                        serverRoleMenuExpanded = false
-                        editingServerRole = false
-                    }
-                )
-            } else {
-                MembersAgentServerRoleChip(serverRoleDisplay)
+            if (roleHelpOpen) {
+                MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
             }
-        }
-        if (roleHelpOpen) {
-            MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
         }
         MembersAgentComputerInfoRows(
             member = member,
             summary = summary,
             machineStatusRow = machineStatusRow,
             onOpenComputer = onOpenComputer,
+            onOpenManagedApp = onOpenManagedApp,
             timeContext = timeContext,
             memberAvatarResolver = memberAvatarResolver
         )
@@ -1703,6 +1712,7 @@ internal fun MembersAgentProfileTab(
                 edit = edit,
                 machineStatusRow = machineStatusRow,
                 onOpenComputer = onOpenComputer,
+                onOpenManagedApp = lifecycle.onOpenManagedApp,
                 timeContext = timeContext,
                 memberAvatarResolver = memberAvatarResolver
             )
@@ -1824,6 +1834,7 @@ private fun MembersAgentProfileIdentity(
                 onRetry = lifecycle.onRetryRestart,
                 retryInProgress = lifecycle.retryRestartInProgress,
                 onOpenComputer = lifecycle.onOpenComputer,
+                onOpenManagedApp = lifecycle.onOpenManagedApp,
                 // With Recent activity the status is the card's first line (web).
                 showStatus = recentActivity == null
             )

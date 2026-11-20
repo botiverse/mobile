@@ -563,6 +563,23 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentDetailDecodesManagedByAppAttributionAndProfileProjection() = runPortableCoroutineTest {
+        val body =
+            """{"id":"agent-bot","name":"stamp","displayName":"Stamp","runtime":"external","status":"active","managedByAppInstallId":"install-1","managedByApp":{"clientId":"stamp-row-id","name":"Stamp","logoUrl":"https://cdn.example.test/stamp.png","description":"Code review","botStatusText":"Watching PRs"},"profileProjection":"channel_summary"}"""
+        val summary =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-bot"))
+            ).data.toAgentDetailSummary()
+
+        assertEquals("install-1", summary.managedByAppInstallId)
+        assertEquals("stamp-row-id", summary.managedByAppClientId)
+        assertEquals("Stamp", summary.managedByAppName)
+        assertEquals("https://cdn.example.test/stamp.png", summary.managedByAppLogoUrl)
+        assertEquals("Watching PRs", summary.managedByAppBotStatusText)
+        assertEquals("channel_summary", summary.profileProjection)
+    }
+
+    @Test
     fun typedAgentsApiPreservesCustomRuntimeModelKind() = runPortableCoroutineTest {
         val client =
             RaftAgentsApiClient(
