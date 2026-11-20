@@ -4827,6 +4827,8 @@
     <string name="agent_status_retrying">重新啟動中…</string>
     <string name="agent_status_retry_failed">無法重設 Agent</string>
     <string name="agent_status_credential_sign_in">需要重新登入 %1$s</string>
+    <string name="agent_status_runtime_sign_in_full">需要登入 %1$s</string>
+    <string name="agent_status_runtime_sign_in_short">需要登入</string>
     <string name="agent_status_credential_plan_model">方案不包含 %1$s</string>
     <string name="agent_status_credential_plan_default_model">方案不包含這個模型</string>
     <string name="agent_status_credential_billing">服務商餘額已用完</string>

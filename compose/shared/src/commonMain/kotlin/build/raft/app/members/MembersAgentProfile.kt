@@ -623,6 +623,20 @@ internal fun MembersAgentProfileStatus(
                 blocked = blocked,
             )
         }
+    // Web `runtimeSignInNeededOf` (slock #15282): the runtime is not signed in on the Computer, so
+    // the agent cannot start. The error light and "Sign-in needed for {runtime}"; the chip opens
+    // the Computer, where the runtime is signed in.
+    val runtimeSignInNeeded =
+        !appBot &&
+            credentialReason == null &&
+            membersAgentRuntimeSignInNeeded(
+                indicator = agentStatusIndicatorState,
+                summary = summary,
+                external = external,
+                blocked = blocked,
+                liveSpawnFailureReason = spawnFailure?.spawnFailure?.reason,
+                paused = !member.assistantPausedAt.isNullOrBlank(),
+            )
     val showRetry =
         onRetry != null &&
             !appBot &&
@@ -658,6 +672,8 @@ internal fun MembersAgentProfileStatus(
             AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
         } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
+        } else if (runtimeSignInNeeded) {
+            agentRuntimeSignInText(runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime, full = showActivityDetail)
         } else if (credentialReason != null) {
             if (showActivityDetail) {
                 agentCredentialInvalidText(
@@ -680,8 +696,9 @@ internal fun MembersAgentProfileStatus(
     // An App Bot renders no presence (web: always-offline on a signal that does
     // not apply to it).
     // Web: held or not, an invalid credential cannot run until someone acts: the error light.
-    val chipStatus = if (credentialReason != null) AgentStatus.Error else agentStatusObservedState?.status
-    val chipColor = if (credentialReason != null) RaftColor.AccentOrange else agentStatusObservedState?.color
+    val errorLight = credentialReason != null || runtimeSignInNeeded
+    val chipStatus = if (errorLight) AgentStatus.Error else agentStatusObservedState?.status
+    val chipColor = if (errorLight) RaftColor.AccentOrange else agentStatusObservedState?.color
     val statusChip: @Composable (Modifier) -> Unit = { chipModifier ->
         RaftBadge(
             text = statusLabel,
@@ -698,7 +715,7 @@ internal fun MembersAgentProfileStatus(
             }
         )
     }
-    val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired }
+    val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired || runtimeSignInNeeded }
     // Nothing known about its presence (e.g. a joint channel's agent of another server
     // whose profile read failed): no chip, never an empty "—" one.
     if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {

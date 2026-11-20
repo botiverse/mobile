@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import build.raft.app.data.AgentActivityDetailKindIdle
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.getModelLabel
@@ -105,4 +106,64 @@ internal fun membersAgentErrorRecordStaleDetail(liveStatus: AgentStatus?, summar
     if (liveStatus != AgentStatus.Error || summary == null) return null
     val detail = summary.activityDetail?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return detail.takeIf { it != summary.lastRuntimeErrorMessage?.trim() }
+}
+
+/** Shared `SpawnFailureReason` `runtime_login_required` (slock #15273): the runtime is not signed in on the Computer. */
+internal const val RuntimeLoginRequiredSpawnFailure = "runtime_login_required"
+
+/**
+ * Web `runtimeSignInNeededOf` (utils/activity.ts, slock #15282): the agent cannot start because its
+ * runtime is not signed in on its Computer, from the live failed start ([spawnFailureReason]) or the
+ * kept record ([lastRuntimeErrorSpawnFailureReason]). Only while it is offline or in error, and
+ * never for a held, paused, external or only-guessed-online agent.
+ */
+internal fun agentRuntimeSignInNeeded(
+    status: AgentStatus?,
+    spawnFailureReason: String?,
+    lastRuntimeErrorSpawnFailureReason: String?,
+    blocked: Boolean,
+    likelyOnline: Boolean,
+    external: Boolean,
+    paused: Boolean = false,
+): Boolean {
+    if (status != AgentStatus.Offline && status != AgentStatus.Error) return false
+    if (blocked || paused || likelyOnline || external) return false
+    return spawnFailureReason?.trim() == RuntimeLoginRequiredSpawnFailure ||
+        lastRuntimeErrorSpawnFailureReason?.trim() == RuntimeLoginRequiredSpawnFailure
+}
+
+/**
+ * [agentRuntimeSignInNeeded] for the agent profile: the live status when known, else the loaded
+ * profile's; the failed start's reason from the live carrier or the profile.
+ */
+internal fun membersAgentRuntimeSignInNeeded(
+    indicator: RaftAgentStatusIndicatorState?,
+    summary: AgentDetailSummary?,
+    external: Boolean,
+    blocked: AgentBlockedState?,
+    liveSpawnFailureReason: String?,
+    paused: Boolean = false,
+): Boolean {
+    if (summary == null) return false
+    val status = indicator?.status ?: normalizedAgentRuntimeStatus(activity = summary.activity, lifecycleStatus = summary.status)
+    return agentRuntimeSignInNeeded(
+        status = status,
+        spawnFailureReason = liveSpawnFailureReason ?: summary.spawnFailure?.reason,
+        lastRuntimeErrorSpawnFailureReason = summary.lastRuntimeErrorSpawnFailureReason,
+        blocked = blocked != null,
+        likelyOnline = indicator?.likelyOnline == true,
+        external = external,
+        paused = paused,
+    )
+}
+
+/** Web `agent.status.runtimeSignIn.full` / `.short`: the status words, naming the runtime when [full]. */
+@Composable
+internal fun agentRuntimeSignInText(runtime: String?, full: Boolean): String {
+    val name = runtime?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftAgentRuntimeDisplayName)
+    return if (full && name != null) {
+        stringResource(Res.string.agent_status_runtime_sign_in_full, name)
+    } else {
+        stringResource(Res.string.agent_status_runtime_sign_in_short)
+    }
 }

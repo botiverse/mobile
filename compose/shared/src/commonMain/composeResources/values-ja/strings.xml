@@ -5003,6 +5003,8 @@
     <string name="agent_status_retrying">再起動中…</string>
     <string name="agent_status_retry_failed">エージェントをリセットできませんでした</string>
     <string name="agent_status_credential_sign_in">%1$s へのログインが必要です</string>
+    <string name="agent_status_runtime_sign_in_full">%1$s へのログインが必要です</string>
+    <string name="agent_status_runtime_sign_in_short">ログインが必要です</string>
     <string name="agent_status_credential_plan_model">プランに %1$s が含まれていません</string>
     <string name="agent_status_credential_plan_default_model">プランにこのモデルが含まれていません</string>
     <string name="agent_status_credential_billing">プロバイダーの残高がありません</string>

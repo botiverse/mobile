@@ -819,6 +819,8 @@ internal data class AgentSummary(
     val lastRuntimeErrorRequiredAction: AgentCredentialHoldReason? = null,
     /** `lastRuntimeError.code` (web #13985): the kept error's code, for every viewer; null when none or unknown. */
     val lastRuntimeErrorCode: AgentRuntimeErrorCode? = null,
+    /** `lastRuntimeError.spawnFailureReason` (slock #15273): the failed start's reason kept with the error. */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
     /** `activityErrorCode` (web #13985): the code of the error [activity] shows; only while it is `error`. */
     val activityErrorCode: AgentRuntimeErrorCode? = null,
     /** The agent is stuck on one tool call (`toolStuck`, served with any activity); null when not. */
@@ -874,6 +876,7 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         lastRuntimeErrorReason = lastRuntimeErrorReason,
         lastRuntimeErrorRequiredAction = lastRuntimeErrorRequiredAction,
         lastRuntimeErrorCode = lastRuntimeErrorCode,
+        lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
         activityErrorCode = activityErrorCode,
         toolStuck = toolStuck,
         credentialHold = credentialHold,
@@ -1154,6 +1157,8 @@ private data class AgentLastRuntimeErrorWireDto(
     val requiredAction: String? = null,
     /** #wg-rbac:#57: the error's code (shared `RuntimeErrorCode`), sent to every viewer; absent without one. */
     val code: String? = null,
+    /** slock #15273: a failed start's reason (shared `SpawnFailureReason`) kept with the error; absent without one. */
+    val spawnFailureReason: String? = null,
 )
 
 /** Shared `RUNTIME_ERROR_REQUIRED_ACTIONS`: only `user_reauth` and `user_model_access`; anything else is none. */
@@ -1220,6 +1225,7 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         lastRuntimeErrorReason = lastRuntimeError?.errorReason?.trim()?.takeIf { it.isNotEmpty() },
         lastRuntimeErrorRequiredAction = lastRuntimeError?.requiredAction.toRuntimeErrorRequiredAction(),
         lastRuntimeErrorCode = AgentRuntimeErrorCode.fromWire(lastRuntimeError?.code),
+        lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotEmpty() },
         // Web activityTypedCarriers: the code rides only an error.
         activityErrorCode = AgentRuntimeErrorCode.fromWire(activityErrorCode).takeIf { activity?.trim() == "error" },
         toolStuck = toolStuck.toAgentToolStuck(),
