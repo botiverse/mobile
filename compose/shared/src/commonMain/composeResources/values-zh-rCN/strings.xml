@@ -2697,7 +2697,9 @@
     <string name="search_action_load_more_results">加载更多结果</string>
     <string name="search_filter_scope">范围</string>
     <string name="search_scope_in_channel">在 %1$s 中</string>
-    <string name="search_scope_expand_all">全部</string>
+    <string name="search_scope_everywhere">搜索全部</string>
+    <string name="search_scope_everywhere_for">在全部内容中搜索“%1$s”</string>
+    <string name="search_scope_everywhere_hint">用同样的关键词打开搜索标签页</string>
     <string name="search_filter_from">发送者</string>
     <string name="search_filter_from_value">发送者：%1$s</string>
     <string name="search_filter_search_senders">搜索发送者</string>

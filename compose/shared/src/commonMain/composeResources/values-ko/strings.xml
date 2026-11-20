@@ -2694,7 +2694,9 @@
     <string name="search_action_load_more_results">결과 더 불러오기</string>
     <string name="search_filter_scope">범위</string>
     <string name="search_scope_in_channel">%1$s에서</string>
-    <string name="search_scope_expand_all">전체 검색</string>
+    <string name="search_scope_everywhere">전체 검색</string>
+    <string name="search_scope_everywhere_for">전체에서 ‘%1$s’ 검색</string>
+    <string name="search_scope_everywhere_hint">같은 검색어로 검색 탭을 열어요</string>
     <string name="search_filter_from">소속 서버</string>
     <string name="search_filter_from_value">보낸 사람: %1$s</string>
     <string name="search_filter_search_senders">보낸 사람 검색</string>
