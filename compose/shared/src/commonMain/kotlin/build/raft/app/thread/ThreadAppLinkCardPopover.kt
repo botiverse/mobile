@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -27,6 +29,8 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
+import build.raft.app.data.RaftLinkCardButtonAction
+import build.raft.app.data.RaftLinkCardV2Element
 import build.raft.app.data.artifactWebUrl
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
@@ -51,6 +55,14 @@ internal class ThreadAppLinkCards(
     var opened by mutableStateOf<ThreadAppLinkOpenCard?>(null)
         private set
 
+    /**
+     * The links whose card was opened in this message, in that order: each keeps the pressing of
+     * its buttons ([ThreadAppLinkCardPress]) while the message is on screen, so closing the card
+     * (or opening another) never drops an action on its way or an Undo window.
+     */
+    private val openedUrls = mutableStateListOf<String>()
+    val pressed: List<String> get() = openedUrls
+
     fun anchor(url: String): Modifier = Modifier.raftCaptureLiveRootAnchor(ref(url))
 
     fun resolve(url: String): RaftPopoverAnchor? = ref(url).resolve(RaftPopoverLocalPoint.BottomStart)
@@ -61,6 +73,7 @@ internal class ThreadAppLinkCards(
             openLink(card.url)
             return
         }
+        if (card.url !in openedUrls) openedUrls += card.url
         opened = ThreadAppLinkOpenCard(card.url, anchor)
     }
 
@@ -102,6 +115,10 @@ internal val LocalThreadAppLinkCardFixture = staticCompositionLocalOf<ThreadAppL
 /**
  * The card [cards] has open, while the message still has it (a card read again without its
  * body, or a link no longer previewed, closes it), in its own window over the thread.
+ *
+ * [actions] runs the card's buttons as a block card's are run ([ThreadAppLinkCardPress]: Raft's
+ * confirmation or an Undo window for an action, Refresh reads the card again); null (a message
+ * read without the batched read): the App's links only.
  */
 @Composable
 internal fun ThreadAppLinkCardPopoverHost(
@@ -109,8 +126,11 @@ internal fun ThreadAppLinkCardPopoverHost(
     cards: ThreadAppLinkCards,
     artifacts: Map<String, ArtifactSummary> = emptyMap(),
     artifactWebBaseUrl: String = "",
+    actions: ThreadAppLinkCardActionHost? = null,
 ) {
     val fixture = LocalThreadAppLinkCardFixture.current
+    // Before every return below: the presses live with the message row, not with the open card.
+    val presses = rememberThreadAppLinkChipCardPresses(results, cards, actions)
     val openedArtifact = cards.opened?.url?.let(::threadArtifactRefKeyOrNull)
     if (fixture == null && openedArtifact != null) {
         val opened = cards.opened ?: return
@@ -163,38 +183,96 @@ internal fun ThreadAppLinkCardPopoverHost(
         }
         return
     }
-    val opened = cards.opened ?: return
-    val card = (results[opened.url] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
+    val opened = cards.opened
+    val card = opened?.let { (results[it.url] as? AppLinkResult.Card)?.takeIf { shown -> shown.hasCardBody } }
+    // A confirmation asked from a card that was closed meanwhile is still asked, over the thread.
+    for ((url, press) in presses) {
+        if (url != card?.url && press.confirmation != null) {
+            key(url) { RaftDesignSystemTheme { press.Confirmation() } }
+        }
+    }
+    if (opened == null) return
     LaunchedEffect(opened, card == null) {
         if (card == null) cards.close()
     }
     if (card == null) return
     val openInSystemBrowser = rememberRaftSystemBrowserOpener()
+    val press = presses[card.url]
+    // A link of the card (the App's, or Raft's Open Link) closes the card and opens its address.
+    val openAddress: (String) -> Unit = { address ->
+        cards.close()
+        openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
+    }
     Modal(onWillDismiss = { cards.close() }) {
         RaftDesignSystemTheme {
             ThreadAppLinkCardPopover(
                 card = card,
                 anchor = opened.anchor,
                 onDismiss = cards::close,
-                onOpenLink = {
-                    cards.close()
-                    val address = card.connectUrl ?: card.url
-                    openThreadAppLinkAddress(address, card.connectUrl, cards.openLink, openInSystemBrowser)
+                onOpenLink = { openAddress(card.connectUrl ?: card.url) },
+                buttons = { openLink ->
+                    card.chipCardButtons(
+                        openUri = openAddress,
+                        openLink = openLink,
+                        read = { button -> press?.readButton(button) },
+                    ) { button, action -> press?.button(button, action) }
                 },
             )
+            // In the card's window, so Raft's confirmation opens over the card.
+            press?.Confirmation()
         }
     }
+}
+
+/**
+ * The pressing of the buttons of each chip card opened in this message ([ThreadAppLinkCards.pressed]),
+ * by link: only a card with the App's v2 tree has buttons to press (a block card keeps its own
+ * press, [ThreadAppLinkBlockCard]).
+ */
+@Composable
+private fun rememberThreadAppLinkChipCardPresses(
+    results: Map<String, AppLinkResult>,
+    cards: ThreadAppLinkCards,
+    actions: ThreadAppLinkCardActionHost?,
+): Map<String, ThreadAppLinkCardPress> {
+    val presses = LinkedHashMap<String, ThreadAppLinkCardPress>()
+    for (url in cards.pressed) {
+        val card = (results[url] as? AppLinkResult.Card)?.takeIf { it.cardV2 != null } ?: continue
+        presses[url] = key(url) { rememberThreadAppLinkCardPress(card, actions) }
+    }
+    return presses
+}
+
+/**
+ * The buttons of the card a chip opens, as the web's hover card has them (botiverse/slock
+ * `LinkCardActions.tsx`) and as a block card's are made ([blockCardButtons]): the App's buttons in
+ * its order, its links ([openUri]), Refresh ([read]) and its actions ([execute]; null: not drawn),
+ * then Raft's [openLink] unless one of the App's links already goes to the link. A card without
+ * the App's v2 tree (a v1 card, `connect_account`) has [openLink] alone.
+ * [build.raft.designsystem.components.RaftPreviewCardItemActions] lays them out (web
+ * `linkCardRowLayout`): the first two actions on the row, or the first link when the card has no
+ * action; everything else in the More menu.
+ */
+internal fun AppLinkResult.Card.chipCardButtons(
+    openUri: (String) -> Unit,
+    openLink: RaftPreviewCardButton,
+    read: (RaftLinkCardV2Element.Button) -> RaftPreviewCardButton? = { null },
+    execute: (RaftLinkCardV2Element.Button, RaftLinkCardButtonAction.Execute) -> RaftPreviewCardButton? = { _, _ -> null },
+): List<RaftPreviewCardButton> {
+    val tree = cardV2 ?: return listOf(openLink)
+    return tree.blockCardButtons(url, openUri, openLink, read, execute)
 }
 
 /**
  * An App link's item card by its chip (web `AppLinkChip` `PreviewCardContent size="item"`: 400
  * wide, start aligned with the chip, 6 below it, or above it when it doesn't fit below; artin
  * chose a popover on the phone, #proj-raft-ui). On a phone it takes the window's width less 8 each
- * side. [RaftAppLinkCardView] with [appButtons] (the App's, in its order) and then Raft's Open
- * Link (a bordered link out of Raft, ↗), laid out as raft-design #939 says: the App's first two
- * actions on the row, or the first link; the rest in the More menu. Taller than the window, its
- * body scrolls and its footer, where the link goes, stays. A tap outside or Back closes it.
- * v1 cards have no buttons of their own: an action is only logged.
+ * side. [RaftAppLinkCardView] with [buttons]: what the card offers given Raft's Open Link (a
+ * bordered link out of Raft, ↗; [chipCardButtons] puts the App's buttons before it), laid out as
+ * raft-design #939 says: the App's first two actions on the row, or the first link; the rest in
+ * the More menu. Taller than the window, its body scrolls and its footer, where the link goes,
+ * stays. A tap outside or Back closes it. v1 cards have no buttons of their own: an action is
+ * only logged.
  */
 @Composable
 internal fun ThreadAppLinkCardPopover(
@@ -202,7 +280,7 @@ internal fun ThreadAppLinkCardPopover(
     anchor: RaftPopoverAnchor,
     onDismiss: () -> Unit,
     onOpenLink: () -> Unit,
-    appButtons: List<RaftPreviewCardButton> = emptyList(),
+    buttons: (openLink: RaftPreviewCardButton) -> List<RaftPreviewCardButton> = { listOf(it) },
     eyebrow: String? = null,
     details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
@@ -218,7 +296,7 @@ internal fun ThreadAppLinkCardPopover(
             card = card,
             onAction = { elementId -> raftLogInfo(ThreadAppLinkCardLogTag, "app_link_card_action_ignored element=$elementId") },
             modifier = modifier,
-            buttons = appButtons + openLink,
+            buttons = buttons(openLink),
             eyebrow = eyebrow,
             details = details,
         )

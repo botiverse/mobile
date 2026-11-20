@@ -281,7 +281,13 @@ internal fun ThreadAppLinkPreviewScope(
         LocalRaftMarkdownBlockCardHost provides blockHost,
         content = content,
     )
-    ThreadAppLinkCardPopoverHost(results = view.results, cards = cards, artifacts = artifacts.summaries, artifactWebBaseUrl = artifactWebBaseUrl)
+    ThreadAppLinkCardPopoverHost(
+        results = view.results,
+        cards = cards,
+        artifacts = artifacts.summaries,
+        artifactWebBaseUrl = artifactWebBaseUrl,
+        actions = actionHost,
+    )
     // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
     RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())
     val prompt = asking

@@ -33,7 +33,8 @@ import kotlinx.serialization.json.JsonObject
  * the App sent (RFC 076 section 14; the block card is drawn after its paragraph, raft-design #1010);
  * and, as AppFather decided for touch clients (#proj-raft-ui), the full list `button.v1`,
  * `confirm.v1` and `undo.v1`: a block card's buttons work by touch, with Raft's confirmation and a
- * plain Undo button (the hover card and the popover stay read-only). `block.v1`, as the web declares
+ * plain Undo button, and so do the buttons of the card a chip opens (#proj-mobile:#218; it was
+ * read-only before). `block.v1`, as the web declares
  * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one,
  * then `unreviewed_app.v1` and `badge.color.v1` (below), as the web's `LINK_CARD_READ_CAPABILITIES`.
  */
@@ -402,10 +403,13 @@ private fun readLinkCardReadItem(raw: JsonElement): LinkCardReadItem? {
                     if (!preview.hasOnlyKeys(keys)) return null
                     val title = preview["title"].cardString()?.takeIf { isCardText(it, 1, 160) } ?: return null
                     if (preview["card_revision"].cardString()?.length !in 1..512) return null
-                    if (preview["business_revision"].cardString()?.length !in 1..512) return null
+                    val businessRevision = preview["business_revision"].cardString()?.takeIf { it.length in 1..512 } ?: return null
                     val card = parseRaftAppLinkCardV2(preview["card"] ?: return null, appLinkHrefOrigin(url)) ?: return null
                     val inline = if ("inline" in preview) readAppLinkInline(preview["inline"]) ?: return null else null
-                    LinkCardReadItem.Card(url, AppLinkResult.Card(url = url, app = app, title = title, cardV2 = card, inline = inline), ticket)
+                    // The handles and the revision are the chip card's buttons' (web `appLinkResultOfItem`).
+                    val result =
+                        AppLinkResult.Card(url = url, app = app, title = title, cardV2 = card, inline = inline, handles = handles, businessRevision = businessRevision)
+                    LinkCardReadItem.Card(url, result, ticket)
                 }
                 // The link stays plain: `link` is no item, as on the web, and a version 2 connect_account is not drawn
                 // (a client that declares `preview.v3` gets it as a version 3 item).
@@ -470,7 +474,7 @@ private val APP_LINK_V3_ITEM_TYPE = Regex("^[a-z0-9._]{1,32}$")
  *
  * What the items draw (raft-design #1010, "What an app's answer lists"):
  *  - `inline`: the link is the chip with the item's title ([AppLinkResult.Card.inline]);
- *  - `card` `hover`: the chip's card ([AppLinkResult.Card.cardV2]); without `inline` the chip takes the card's title;
+ *  - `card` `hover`: the chip's card ([AppLinkResult.Card.cardV2]), with its handles and revision; without `inline` the chip takes the card's title;
  *  - `card` `block`: [AppLinkResult.Card.block], drawn after the link's paragraph; the link is the
  *    chip only when the answer lists `inline` ([AppLinkResult.Card.chip]), else the author's plain link;
  *  - `connect_account`: [AppLinkResult.Card.connectUrl];
@@ -530,7 +534,15 @@ private fun readLinkCardV3Preview(url: String, app: AppLinkApp, ticket: String?,
                 handles = handles,
             )
         } else {
-            AppLinkResult.Card(url = url, app = app, title = blockOrHover.title, cardV2 = blockOrHover.card, inline = chipLabel)
+            AppLinkResult.Card(
+                url = url,
+                app = app,
+                title = blockOrHover.title,
+                cardV2 = blockOrHover.card,
+                inline = chipLabel,
+                handles = handles,
+                businessRevision = blockOrHover.businessRevision,
+            )
         }
     return LinkCardReadItem.Card(url, result, ticket)
 }
