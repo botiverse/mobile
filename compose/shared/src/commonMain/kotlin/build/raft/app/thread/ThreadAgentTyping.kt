@@ -295,7 +295,11 @@ internal fun rememberThreadAgentTyping(
 /** web `h-6`: the line's row. */
 internal val ThreadAgentTypingLineHeight = 24.dp
 
-/** web `AgentTypingListEnd` `h-7.5`: the list's extra end while the line shows. */
+/**
+ * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. Always part of the list's
+ * end ([ThreadBottomSpacerAndAnchorTrailingHeight]), not only while the line shows, so the line
+ * coming or going moves no message.
+ */
 internal val ThreadAgentTypingListEndHeight = 30.dp
 
 private const val ThreadAgentTypingMaxFaces = 3

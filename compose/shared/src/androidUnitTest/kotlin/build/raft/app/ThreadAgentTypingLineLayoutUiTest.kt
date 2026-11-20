@@ -178,7 +178,8 @@ class ThreadAgentTypingLineLayoutUiTest {
      * (the end minus the line) above the line: its text ends at least that far above the line.
      */
     private fun ComposeUiTest.clearOfTheLine(newest: Rect, line: Rect): Boolean =
-        line.top - newest.bottom >= (ListEndDp - LineDp) * density.density - 0.5f
+        line.top - newest.bottom >=
+            (ThreadBottomSpacerAndAnchorTrailingHeight - ThreadAgentTypingLineHeight).value * density.density - 0.5f
 
     private fun ComposeUiTest.assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest: Boolean) {
         val harness = Harness(threadPayload(focusedMessageId = NewestId.takeIf { focusNewest }))
@@ -250,10 +251,6 @@ class ThreadAgentTypingLineLayoutUiTest {
 
         /** thread_agent_typing_one. */
         const val TypingSentence = "Niko is typing…"
-
-        /** The list's end under the newest message, and the line floating over the bottom of it. */
-        const val ListEndDp = 46f
-        const val LineDp = 24f
 
         fun nikoTyping() = ThreadAgentTypingUi(serverId = "srv-1", agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null)))
 

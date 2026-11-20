@@ -607,10 +607,11 @@ private fun ThreadMessagesListContent(
             bottomPaddingItemIndex = latestItemIndex
         )
     val threadDensity = LocalDensity.current
+    // The spacer row's own height (ThreadBottomSpacerAndAnchorTrailingHeight): one constant for both.
     val initialBottomAnchorTrailingPaddingPx =
         if (latestMessageListItemIndex >= 0) {
             with(threadDensity) {
-                ThreadBottomScrollPaddingHeight.roundToPx()
+                ThreadBottomSpacerAndAnchorTrailingHeight.roundToPx()
             }
         } else {
             0
@@ -4447,10 +4448,11 @@ private fun ThreadMessagesListContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(
-                            ThreadBottomScrollPaddingHeight +
-                                // The line floats over the list's end: give the end its height, so at
-                                // the bottom it never covers the last message (web AgentTypingListEnd).
-                                (if (agentTyping != null) ThreadAgentTypingListEndHeight else 0.dp) +
+                            // Always the full end, the typing line's slot included, whether or
+                            // not the line shows: the row never changes height when the line
+                            // comes or goes, so nothing moves and the reading anchor has nothing
+                            // to put back. The scroll owners read the same constant.
+                            ThreadBottomSpacerAndAnchorTrailingHeight +
                                 (if (shareSelectionCaptureTailPaddingActive) {
                                     ThreadShareCaptureBottomScrollPaddingHeight
                                 } else {
@@ -5322,7 +5324,18 @@ private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
-private val ThreadBottomScrollPaddingHeight = 16.dp
+/**
+ * The blank end of the list under the newest message: the list's own 16dp end plus the slot the
+ * typing / working line floats over ([ThreadAgentTypingListEndHeight]), reserved whether or not the
+ * line shows.
+ *
+ * The one source for both sides of "the newest message at the bottom": the height of the list's
+ * last (spacer) row, and the trailing padding every scroll owner uses for it
+ * (`initialBottomAnchorTrailingPaddingPx`: the initial-anchor check, the focused-tail fit, the
+ * RenderedBottom anchor). They must stay the same number: a spacer taller than the anchors' padding
+ * parks the newest message under the line (Android 1.27.0, #proj-mobile #227).
+ */
+internal val ThreadBottomSpacerAndAnchorTrailingHeight = 16.dp + ThreadAgentTypingListEndHeight
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 /** The list's top inset for the find bar until the bar is measured (its usual height). */
 private val ThreadInlineSearchBarTopInset = 58.dp
