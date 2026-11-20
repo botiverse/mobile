@@ -292,6 +292,12 @@ private val RaftAttachmentUploadAppToContractCodes =
 private val RaftAttachmentUploadTransportAppCodes =
     setOf("network_unavailable", "network_connect_failed", "network_dns_failed")
 
+/**
+ * The upload's task was ended from below while nobody cancelled it (the network client was retired
+ * under it): the tile's own code for it (`ThreadComposerUploadInterruptedErrorCode`).
+ */
+internal const val RaftAttachmentUploadInterruptedCode = "upload_interrupted"
+
 /** The app's own upload codes that are reported as they are. */
 internal val RaftAttachmentUploadAppCodes: Set<String> =
     RaftAttachmentUploadTransportAppCodes +
@@ -306,7 +312,7 @@ internal val RaftAttachmentUploadAppCodes: Set<String> =
             "attachment_upload_session_invalid_request", "attachment_upload_authority_binding_required",
             "attachment_upload_authority_binding_unsupported", "attachment_upload_method_invalid",
             "attachment_upload_contract_invalid", "file_ref_upload_requires_app_scope_file_resolver",
-            "missing_channel_id",
+            "missing_channel_id", RaftAttachmentUploadInterruptedCode,
         )
 
 private val RaftAttachmentUploadHttpCodePattern = Regex("""^http_[1-5][0-9]{2}$""")
@@ -436,6 +442,16 @@ internal class RaftAttachmentUploadAttempt(
                 is DataResult.Empty -> Settled("empty_upload_result", serverCode = null)
             }
         synchronized(lock) { if (settled == null) settled = next }
+    }
+
+    /**
+     * The upload's task ended with a CancellationException and no result. [taskCancelled]: its own job
+     * was cancelled, which only the tile's removal, the draft being sent or cleared, or sign-out /
+     * losing the server do; that is `cancelled`. Otherwise the exception came from below while the
+     * task was still wanted: an `error` with [RaftAttachmentUploadInterruptedCode], never `cancelled`.
+     */
+    fun reportCancellation(taskCancelled: Boolean) {
+        if (taskCancelled) report(cancelled = true) else report(failureCode = RaftAttachmentUploadInterruptedCode)
     }
 
     /**

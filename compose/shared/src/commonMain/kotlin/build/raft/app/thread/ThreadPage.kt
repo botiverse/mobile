@@ -252,6 +252,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -6215,7 +6217,9 @@ private fun SharedThreadRouteContentContent(
                         // The user removed this uploading tile; RemoveAttachment already hid it.
                         // A gallery caller still receives a false completion below, so its
                         // session cannot be committed as if cancellation were a transfer.
-                        uploadAttempt.report(cancelled = true)
+                        // The event says `cancelled` only when this upload's own job was cancelled
+                        // (remove, draft sent or cleared, sign-out), not for a cancellation from below.
+                        uploadAttempt.reportCancellation(taskCancelled = !currentCoroutineContext().isActive)
                     } catch (error: Throwable) {
                         bridge.logWarn(
                             "thread_composer_attachment_upload_exception " +

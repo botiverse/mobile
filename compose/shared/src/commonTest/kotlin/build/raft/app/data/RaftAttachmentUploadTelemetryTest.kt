@@ -481,11 +481,55 @@ class RaftAttachmentUploadTelemetryTest {
             report()
         }
 
-        assertEquals(listOf("ok", "cancelled", "error", "error", "error"), emitted.map { it.attrs.text("outcome") })
+        // A CancellationException with the task's own job cancelled is a cancel ...
+        attempt(emitted = emitted).reportCancellation(taskCancelled = true)
+        // ... one from below, while nobody cancelled the task, is not.
+        attempt(emitted = emitted).reportCancellation(taskCancelled = false)
+        // ... and a result that arrived first stands either way.
+        attempt(emitted = emitted).apply {
+            settle(DataResult.Error(ScreenError(code = "http_503")))
+            reportCancellation(taskCancelled = true)
+        }
+
         assertEquals(
-            listOf(null, null, "attachment_upload_failed", "UPLOAD_FORBIDDEN", "empty_upload_result"),
+            listOf("ok", "cancelled", "error", "error", "error", "cancelled", "error", "error"),
+            emitted.map { it.attrs.text("outcome") },
+        )
+        assertEquals(
+            listOf(null, null, "attachment_upload_failed", "UPLOAD_FORBIDDEN", "empty_upload_result", null, "upload_interrupted", "http_503"),
             emitted.map { it.attrs.text("error_code") },
         )
+    }
+
+    /** The composer's own report: a result whose texts hold a URL, a host and a file name puts none of them in the event or its log line. */
+    @Test
+    fun aResultCarryingAUrlOrAFileNameLeavesNoneOfItInTheReportedEvent() {
+        val url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc123"
+        val fileName = "IMG_0042 holiday in Kyoto.jpg"
+        val results =
+            listOf<DataResult<*>>(
+                DataResult.Error(ScreenError(code = "PUT $url failed", serverMessage = "could not store $fileName at $url", serverCode = url)),
+                DataResult.Error(ScreenError(code = "http_500", serverMessage = "$fileName: $url", serverCode = "see $fileName")),
+                DataResult.NoPermission(PermissionBlocker(code = fileName, serverCode = url)),
+            )
+
+        results.forEach { result ->
+            val emitted = mutableListOf<Emitted>()
+            val logs = mutableListOf<String>()
+            attempt(logs = logs, emitted = emitted).apply {
+                recorder.uploadRequestStarting(RaftAttachmentUploadRouteDirect)
+                recorder.transferFinished(
+                    RaftAttachmentUploadRouteDirect,
+                    RaftUploadWireFacts(requestBytes = 1_024L, transportError = "failed to connect to $url"),
+                )
+                settle(result)
+                report()
+            }
+            val everything = emitted.single().attrs.toString() + logs.single()
+            listOf("bucket.r2", "r2.test", "Signature", "abc123", "IMG_0042", "holiday", "Kyoto", "https", "obj/key").forEach { fragment ->
+                assertFalse(fragment in everything, "$fragment leaked: $everything")
+            }
+        }
     }
 
     @Test
