@@ -367,14 +367,58 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         assertEquals(1, row.batch.view.rereads, "one of the view's rate-limited re-reads")
     }
 
+    /**
+     * The report on 1.27.0: a card still said "waiting for approval" long after the request was done,
+     * and Refresh changed nothing however often it was pressed. The row had been composed again since
+     * the message was read (scrolled away, or the conversation left and reopened), so its view was a
+     * new one, and the answer to its Refresh was applied only to an answer read by that same view.
+     */
     @Test
-    fun aRefreshOnARowShownAgainReplacesTheCardTheRowBeforeItRead() = runTest(StandardTestDispatcher()) {
-        val (harness, first) = shown(changedCard(CPr1, KeyA))
+    fun aRefreshOnARowShownAgainReplacesTheCardAlthoughItsRevisionsAreTheSame() = runTest(StandardTestDispatcher()) {
+        // No object key: an App that never tells Raft of changes, so only Refresh can update the card.
+        val (harness, first) = shown(changedCard(CPr1, null, title = "Waiting for approval"))
         first.leave()
-        // The row scrolled away and came back: a new view, the same answer.
+        // The same link posted in another message: its own card, read on its own.
+        val other = harness.Row(CMessageB, "Again $CPr1")
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Waiting for approval"))
+        other.read()
+        runCurrent()
+        other.leave()
+
+        // Both rows come back: new views, the same answers. The App now answers the same card_revision
+        // and business_revision with other content.
         val back = harness.Row()
-        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA, title = "Merged"))
+        val otherBack = harness.Row(CMessageB, "Again $CPr1")
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Completed"))
         assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, back.batch, CPr1))
-        assertEquals("Merged", back.title(CPr1))
+        assertEquals(listOf(CPr1), harness.api.cardReads.last().urls)
+        assertEquals("Completed", back.title(CPr1), "the answer replaces the card")
+        assertEquals("Waiting for approval", otherBack.title(CPr1), "the other message's card is its own (as on the web)")
+        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, null, title = "Completed"))
+        assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageB, "Again $CPr1", otherBack.batch, CPr1))
+        assertEquals("Completed", otherBack.title(CPr1))
+    }
+
+    @Test
+    fun aRefreshRaftAnswersWithNoCardShowsTheAuthorsLinkAndAFailedOneKeepsTheCard() = runTest(StandardTestDispatcher()) {
+        val (harness, row) = shown(changedCard(CPr1, KeyA), changedCard(CPr2, KeyB))
+        // Failed or rate_limited: false (the press says so in a toast), and the card stays.
+        harness.api.cardReadResponses += HomeNetworkResponse(500, null)
+        assertEquals(false, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1))
+        harness.api.cardReadResponses += changedAnswer(changedLimited(CPr1, 5))
+        assertEquals(false, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1))
+        assertEquals("Open", row.title(CPr1))
+        // No item for the link: it is no longer previewed (web `reread`), never an old card kept in silence.
+        harness.api.cardReadResponses += changedAnswer()
+        assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1))
+        assertEquals(null, row.title(CPr1))
+        assertEquals("Open", row.title(CPr2), "only the link that was read again")
+
+        // A nudge's re-read with no card keeps the card: only the person's own Refresh shows it gone.
+        harness.api.cardReadResponses += changedAnswer()
+        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyB))
+        after(1_000)
+        assertEquals(5, harness.api.cardReads.size)
+        assertEquals("Open", row.title(CPr2))
     }
 }

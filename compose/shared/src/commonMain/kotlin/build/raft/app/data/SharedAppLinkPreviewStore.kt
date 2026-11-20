@@ -558,14 +558,16 @@ class SharedAppLinkPreviewStore internal constructor(
     /**
      * Reads one link of a message again (after a button was pressed, or its card went stale): the
      * batched read of [batch]'s view for [url] alone, which sends back the view's ticket. Its answer
-     * replaces that link's result; a link that is no longer previewed keeps what is shown.
+     * replaces that link's result whatever its revisions say and whichever row read the message
+     * first; a link Raft answers with no card is the author's link again (web `reread`: "No result:
+     * the link is the author's link now").
      *
      * False when the read failed or Raft answered the link `rate_limited` (the card stays as it
      * was): a Refresh says so (web `LinkCardReread` `failed`). A read superseded by a later one
      * of the view is not a failure.
      */
     suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean =
-        when (val read = rereadLinks(appLinkReadScope(viewerKey, messageId, content, batch.mode), serverId, messageId, batch, listOf(url))) {
+        when (val read = rereadLinks(appLinkReadScope(viewerKey, messageId, content, batch.mode), serverId, messageId, batch, listOf(url), keepWithoutCard = false)) {
             AppLinkReread.Failed -> false
             AppLinkReread.Superseded -> true
             is AppLinkReread.Read -> url !in read.limited
@@ -575,9 +577,18 @@ class SharedAppLinkPreviewStore internal constructor(
      * Reads [urls] of a message again, alone, in one request of [batch]'s view (web `readSome`). A
      * link answered with a card replaces the card shown, whichever view read the message first (a
      * row shown again reuses the answer of the row before it, as the web's cache does); a link
-     * answered `rate_limited`, or with no card, keeps what is shown.
+     * answered `rate_limited` keeps what is shown. A link answered with no card keeps its card when
+     * [keepWithoutCard] (a nudge's re-read: only the person's own Refresh shows it gone), else it is
+     * the author's link again.
      */
-    private suspend fun rereadLinks(readScope: String, serverId: String, messageId: String, batch: AppLinkBatchRead, urls: List<String>): AppLinkReread {
+    private suspend fun rereadLinks(
+        readScope: String,
+        serverId: String,
+        messageId: String,
+        batch: AppLinkBatchRead,
+        urls: List<String>,
+        keepWithoutCard: Boolean,
+    ): AppLinkReread {
         val askedGeneration = _state.value.generation
         val fetched =
             when (val read = fetch(messageId, serverId, batch, urls)) {
@@ -586,12 +597,15 @@ class SharedAppLinkPreviewStore internal constructor(
                 AppLinkFetch.Stale -> return AppLinkReread.Superseded
             }
         val limited = urls.mapNotNull { url -> fetched.limited[url]?.let { url to it } }.toMap()
-        val fresh = urls.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.takeIf { url !in limited }?.let { url to it } }
-        if (fresh.isNotEmpty()) {
+        val answered = urls.filter { it !in limited }
+        val fresh = answered.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.let { url to it } }
+        // Answered with nothing at all (no card, no prompt): no longer previewed.
+        val gone = if (keepWithoutCard) emptyList() else answered.filter { it !in fetched.results }
+        if (fresh.isNotEmpty() || gone.isNotEmpty()) {
             _state.update { state ->
                 if (state.generation != askedGeneration) return@update state
                 val entry = state.entries[readScope] ?: return@update state
-                state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + fresh)))
+                state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results - gone.toSet() + fresh)))
             }
         }
         return AppLinkReread.Read(limited)
@@ -762,7 +776,7 @@ class SharedAppLinkPreviewStore internal constructor(
             val busy = presence.busyUrls.value
             val reading = _state.value.entries[readScope]?.keyedUrls(objectKey).orEmpty().filter { it in urls && it !in busy }
             if (reading.isEmpty()) break
-            when (val read = presence.reading.withLock { rereadLinks(readScope, presence.serverId, presence.messageId, batch, reading) }) {
+            when (val read = presence.reading.withLock { rereadLinks(readScope, presence.serverId, presence.messageId, batch, reading, keepWithoutCard = true) }) {
                 AppLinkReread.Failed -> {
                     noteReadFailed(readScope, sentAt)
                     return false
