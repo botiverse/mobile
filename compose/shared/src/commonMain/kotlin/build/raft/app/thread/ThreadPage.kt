@@ -7219,25 +7219,27 @@ private fun SharedThreadRouteContentContent(
             createAgentFormStore = createAgentFormStore,
         )
     // The route's thread events, read through one object for the same reason (and so the content
-    // lambda below captures it instead of the values it reads). Rebuilt every composition.
+    // lambda below captures it instead of the values it reads). Rebuilt every composition, by a
+    // local function: a method of its own, so this one only loads what it captures for the call
+    // (no remembered lambdas here). data and callbacks are immutable: data.bridge is `bridge`.
     val settingsPageLinkKey = "thread-settings:$threadInstanceKey"
-    val threadRouteEventHandler =
+    fun buildThreadRouteEventHandler(): ThreadRouteEventHandler =
         ThreadRouteEventHandler(
-            bridge = bridge,
-            dataSource = dataSource,
-            tasksDataSource = tasksDataSource,
-            tasksDataStore = tasksDataStore,
-            serverMembersStore = serverMembersStore,
-            conversationIdentityProvider = conversationIdentityProvider,
-            storeScope = storeScope,
-            eventBus = eventBus,
-            adaptiveCloseRequest = adaptiveCloseRequest,
-            onBack = onBack,
-            onOpenThreadPayload = onOpenThreadPayload,
-            onOpenParentThread = onOpenParentThread,
-            onOpenMemberProfile = onOpenMemberProfile,
-            onOpenMembersPager = onOpenMembersPager,
-            onOpenChannelSettings = onOpenChannelSettings,
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            tasksDataSource = data.tasksDataSource,
+            tasksDataStore = data.tasksDataStore,
+            serverMembersStore = data.serverMembersStore,
+            conversationIdentityProvider = data.conversationIdentityProvider,
+            storeScope = data.storeScope,
+            eventBus = data.eventBus,
+            adaptiveCloseRequest = data.adaptiveCloseRequest,
+            onBack = callbacks.onBack,
+            onOpenThreadPayload = callbacks.onOpenThreadPayload,
+            onOpenParentThread = callbacks.onOpenParentThread,
+            onOpenMemberProfile = callbacks.onOpenMemberProfile,
+            onOpenMembersPager = callbacks.onOpenMembersPager,
+            onOpenChannelSettings = callbacks.onOpenChannelSettings,
             pager = pager,
             sharedStores = sharedStores,
             sharedHomeStore = sharedHomeStore,
@@ -7298,6 +7300,7 @@ private fun SharedThreadRouteContentContent(
             openCanonicalTask = openCanonicalTask,
             settingsPageLinkKey = settingsPageLinkKey,
         )
+    val threadRouteEventHandler = buildThreadRouteEventHandler()
     RaftForegroundBannerHost(
         banner =
             foregroundMessageBanner?.takeIf {
