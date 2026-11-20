@@ -972,6 +972,10 @@ private fun ThreadMessagesListContent(
         if (menuState.authorDescriptionPopover != null) menuState.authorDescriptionPopover = null
     }
 
+    val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
+    // Expand reveal (ThreadExpandReveal.kt, artin dm:@artin:#151): after a user expand keeps its
+    // control in place, this owner smoothly brings the opened content into view.
+    val expandRevealOwner = remember(threadInstanceKey) { ThreadExpandRevealOwner() }
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
     // whole thread open, so a row keeps its state when it scrolls away and back.
     val longMessageCollapseController = remember(threadInstanceKey) { RaftLongMessageCollapseController() }
@@ -980,6 +984,7 @@ private fun ThreadMessagesListContent(
         longMessageCollapseController.autoExpand(renderPayload.focusedMessageId)
     }
     val longMessageItemHeights = remember(threadInstanceKey) { mutableMapOf<String, Int>() }
+    val longMessageToggleRowPx = with(LocalDensity.current) { RaftLongMessageCollapseToggleRowDp.dp.roundToPx() }
     val recordMessageItemHeight: (String, Int) -> Unit = { messageId, height ->
         val previousHeight = longMessageItemHeights.put(messageId, height)
         if (previousHeight != null && previousHeight != height) {
@@ -990,11 +995,15 @@ private fun ThreadMessagesListContent(
         }
     }
     // Direct user action (docs/programmatic-scroll-ownership-contract.md): the toggled message's
-    // top stays put and the change grows/shrinks downward. The raw position is requested in the
-    // same frame as the height change (no visible jump, also for the bottom-up list), and the
-    // viewport controller is re-anchored on the message so later HeightChange replays agree.
+    // top stays put and the change grows/shrinks downward. On the reversed list the message
+    // becomes the reading anchor (`keepTappedRowForToggle` -> `keepReadingAnchorFor`, set below:
+    // declared after this toggle); the forward list, and a collapse of a message whose top is
+    // above the viewport (its top is brought back to the viewport top), request the raw position
+    // in the same frame as the height change, and the viewport controller is re-anchored on the
+    // message so later HeightChange replays agree.
     // Fences: an active scroll owns the viewport; a collapse while following the latest row
     // leaves bottom ownership alone.
+    var keepTappedRowForLongMessage: (String, Int, Boolean) -> Unit = { _, _, _ -> }
     val toggleLongMessage: (String, Int) -> Unit = { messageId, listItemIndex ->
         val expanding = !longMessageCollapseController.isExpanded(messageId)
         val heightDelta = longMessageCollapseController.toggleHeightDelta(messageId, expanding)
@@ -1008,7 +1017,11 @@ private fun ThreadMessagesListContent(
                 rawItem != null &&
                 !listState.isScrollInProgress &&
                 (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
-        if (ownsViewport && forwardItem != null && rawItem != null) {
+        val keptByReadingAnchor =
+            ownsViewport && forwardItem != null && reverseLayout && (expanding || forwardItem.offset >= 0)
+        if (keptByReadingAnchor && forwardItem != null) {
+            keepTappedRowForLongMessage(messageId, forwardItem.offset, expanding)
+        } else if (ownsViewport && forwardItem != null && rawItem != null) {
             val plan =
                 raftLongMessageToggleScrollPlan(
                     reverseLayout = reverseLayout,
@@ -1031,6 +1044,17 @@ private fun ThreadMessagesListContent(
                     fallback = LazyViewportAnchorFallback.Free
                 )
             )
+        }
+        if (expanding && forwardItem != null && !listState.isScrollInProgress) {
+            // The opened text starts where the "Show more" control was (the clipped body's end).
+            expandRevealOwner.request(
+                firstMessageId = messageId,
+                controlTopInRow = (forwardItem.size - longMessageToggleRowPx).coerceAtLeast(0),
+                rowSizeBefore = forwardItem.size,
+                userScrollGeneration = userScrollGeneration.value,
+            )
+        } else if (!expanding) {
+            expandRevealOwner.cancel()
         }
         diagnosticsLogger(
             "thread_long_message_toggle messageId=${messageId.take(8)} expanded=$expanding " +
@@ -1088,7 +1112,6 @@ private fun ThreadMessagesListContent(
     var backToBottomLoading by backToBottomLoadingState
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(threadInstanceKey) { mutableStateOf(0) }
-    val userScrollGeneration = remember(threadInstanceKey) { ThreadUserScrollGeneration() }
     // Reading anchor (artin #proj-mobile #201, ThreadReadingAnchorKeeper.kt): while the reader is
     // not following the latest row, a visible row that changes height in place (Saved marker,
     // reactions, edits, cards and images resolving) no longer moves the row being read. The one
@@ -1320,36 +1343,108 @@ private fun ThreadMessagesListContent(
         openedSystemGroupTargets = openedSystemGroupTargets + opened
         expandedSystemMessageGroups = expandedSystemMessageGroups + groups
     }
-    // Direct user action (docs/programmatic-scroll-ownership-contract.md), like the long-message
-    // toggle: the group's summary row keeps its top and the change grows/shrinks below it. The
-    // viewport controller is anchored on the summary row, so the HeightChange replays of the rows
-    // that open or close agree. Fences: the summary row is laid out and no scroll is active; a
-    // close while following the latest row leaves bottom ownership alone.
-    val toggleSystemMessageGroup: (String, String) -> Unit = { groupId, summaryMessageId ->
-        val expanding = groupId !in expandedSystemMessageGroups
-        expandedSystemMessageGroups =
-            if (expanding) expandedSystemMessageGroups + groupId else expandedSystemMessageGroups - groupId
-        val listItemIndex = renderPayload.threadMessageListItemIndex(summaryMessageId)
-        val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
-        val ownsViewport =
-            listItemIndex >= 0 &&
-                summaryItem != null &&
-                !listState.isScrollInProgress &&
-                (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
-        if (ownsViewport && summaryItem != null) {
+    // A user expand/collapse of a laid-out row (artin dm:@artin:#151): the row whose control was
+    // tapped becomes the reading anchor (`keepReadingAnchorFor`, ThreadReadingAnchorKeeper.kt), so it
+    // keeps its top in the frame its content opens or closes and the change grows/shrinks below it;
+    // the controller's HeightChange replay targets the same row. An expand while following the
+    // latest row first anchors the controller on the tapped row (expanding is a reading action, as
+    // on the web), so the keeper owns it; a collapse there leaves bottom ownership alone.
+    val keepTappedRowForToggle: (String, Int, Boolean) -> Unit = { messageId, rowTop, expanding ->
+        if (expanding && viewportControllerState.intent == LazyViewportIntent.FollowingLatest) {
             dispatchViewportEvent(
                 LazyViewportEvent.Anchor(
-                    target = LazyViewportAnchorTarget.Message(summaryMessageId),
-                    offset = summaryItem.offset,
+                    target = LazyViewportAnchorTarget.Message(messageId),
+                    offset = rowTop,
                     layoutGeneration = viewportLayoutGeneration,
                     fallback = LazyViewportAnchorFallback.Free
                 )
             )
         }
+        keepReadingAnchorFor(messageId)
+    }
+    keepTappedRowForLongMessage = keepTappedRowForToggle
+    // Direct user action (docs/programmatic-scroll-ownership-contract.md) on the group's summary
+    // row: the summary is the reading anchor ([keepTappedRowForToggle]), so the opened/closed rows
+    // grow/shrink below it in the frame they change. Before, only a controller anchor was set: the
+    // reversed list kept the newest row and moved the summary for a frame until the HeightChange
+    // replay put it back, and an opened group stayed below the viewport. An opened group that ends
+    // below the viewport is now brought into view by [expandRevealOwner].
+    // Fences: the summary row is laid out and no scroll is active.
+    val toggleSystemMessageGroup: (String, String, String) -> Unit = { groupId, summaryMessageId, lastMemberId ->
+        val expanding = groupId !in expandedSystemMessageGroups
+        expandedSystemMessageGroups =
+            if (expanding) expandedSystemMessageGroups + groupId else expandedSystemMessageGroups - groupId
+        val listItemIndex = renderPayload.threadMessageListItemIndex(summaryMessageId)
+        val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
+        val ownsViewport = listItemIndex >= 0 && summaryItem != null && !listState.isScrollInProgress
+        if (ownsViewport && summaryItem != null) {
+            keepTappedRowForToggle(summaryMessageId, summaryItem.offset, expanding)
+        }
+        if (expanding && ownsViewport && summaryItem != null) {
+            expandRevealOwner.request(
+                firstMessageId = summaryMessageId,
+                lastMessageId = lastMemberId,
+                rowSizeBefore = summaryItem.size,
+                userScrollGeneration = userScrollGeneration.value,
+            )
+        } else if (!expanding) {
+            expandRevealOwner.cancel()
+        }
         diagnosticsLogger(
             "thread_system_group_toggle messageId=${summaryMessageId.take(8)} expanded=$expanding " +
                 "anchored=$ownsViewport reverse=$reverseLayout"
         )
+    }
+    // A row's own disclosure (a system line's details): direct user action, like the group toggle.
+    // Fence: the row is laid out, no scroll is active.
+    val requestRowExpandReveal: (String) -> Unit = { messageId ->
+        val index = renderPayload.threadMessageListItemIndex(messageId)
+        val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+        if (item != null && !listState.isScrollInProgress) {
+            keepTappedRowForToggle(messageId, item.offset, true)
+            expandRevealOwner.request(
+                firstMessageId = messageId,
+                rowSizeBefore = item.size,
+                userScrollGeneration = userScrollGeneration.value,
+            )
+        }
+    }
+    // The expand reveal owner (ThreadExpandReveal.kt): after a user expand, the opened content is
+    // scrolled into view as far as it fits under the tapped control. It and the reading anchor
+    // keeper do not fight: during the reveal a scroll is in progress, and afterwards the scroll
+    // position changed, so the keeper re-reads its anchor instead of correcting. Re-anchors keeper
+    // and controller on the row where the reveal left it, or hands the list back to following the
+    // latest row when the reveal reached the tail (web: an expansion at the bottom keeps the bottom).
+    ThreadExpandRevealEffect(
+        owner = expandRevealOwner,
+        listState = listState,
+        instanceKey = threadInstanceKey,
+        listItemIndexOf = { messageId -> renderPayload.threadMessageListItemIndex(messageId) },
+        userScrollGeneration = { userScrollGeneration.value },
+        controllerSettled = { viewportControllerState.pendingCommand == null },
+        topMarginPx = with(LocalDensity.current) { ThreadExpandRevealTopMargin.roundToPx() },
+    ) { request, outcome ->
+        when (outcome) {
+            is ThreadExpandRevealOutcome.Revealed -> {
+                if (outcome.delta > 0) {
+                    if (outcome.atBottom && !renderPayload.canLoadMoreAfter) {
+                        dispatchViewportEvent(LazyViewportEvent.FollowLatest(canOverrideUserDragging = false))
+                    } else {
+                        // The keeper re-read its anchor when the reveal scrolled; this re-anchors
+                        // it and the controller on the tapped row at its new top.
+                        keepReadingAnchorFor(request.firstMessageId)
+                    }
+                }
+                diagnosticsLogger(
+                    "thread_expand_reveal messageId=${request.firstMessageId.take(8)} delta=${outcome.delta} " +
+                        "rowTop=${outcome.rowTop} atBottom=${outcome.atBottom}"
+                )
+            }
+            is ThreadExpandRevealOutcome.Skipped ->
+                diagnosticsLogger(
+                    "thread_expand_reveal messageId=${request.firstMessageId.take(8)} skipped=${outcome.reason}"
+                )
+        }
     }
     val activeInlineSearchMessage =
         activeInlineSearchMessageId?.let { messageId ->
@@ -4109,7 +4204,7 @@ private fun ThreadMessagesListContent(
                                 ThreadSystemMessageGroupHeader(
                                     summary = threadSystemMessageGroupSummary(systemFold.categories),
                                     expanded = systemGroupExpanded,
-                                    onToggle = { toggleSystemMessageGroup(systemFold.groupId, message.id) },
+                                    onToggle = { toggleSystemMessageGroup(systemFold.groupId, message.id, systemFold.memberIds.last()) },
                                 )
                                 if (systemGroupExpanded) {
                                     ThreadSystemMessageRow(
@@ -4118,6 +4213,7 @@ private fun ThreadMessagesListContent(
                                         timeline = renderPayload.messages,
                                         serverSlug = currentServerSlug,
                                         onOpenUrl = onOpenMarkdownUrl,
+                                        onExpand = { requestRowExpandReveal(message.id) },
                                     )
                                 }
                             }
@@ -4128,6 +4224,7 @@ private fun ThreadMessagesListContent(
                                 timeline = renderPayload.messages,
                                 serverSlug = currentServerSlug,
                                 onOpenUrl = onOpenMarkdownUrl,
+                                onExpand = { requestRowExpandReveal(message.id) },
                             )
                         } else {
                             val translationUi =

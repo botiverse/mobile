@@ -70,6 +70,8 @@ internal fun ThreadSystemMessageRow(
      */
     serverSlug: String? = null,
     onOpenUrl: ((String) -> Unit)? = null,
+    /** The user opened the line's details (the thread list's expand reveal, ThreadExpandReveal.kt). */
+    onExpand: (() -> Unit)? = null,
 ) {
     // The assistant DM's delegated-send receipt and WeChat connected notice are cards (web MessageItem).
     if (onOpenUrl != null && ThreadAssistantDmCardRow(message, serverSlug, onOpenUrl)) return
@@ -93,7 +95,13 @@ internal fun ThreadSystemMessageRow(
         modifier =
             Modifier.fillMaxWidth()
                 .background(RaftColor.SurfaceWhite)
-                .raftClickable(onClick = { expanded = !expanded }, tier = RaftHoverTier.Subtle)
+                .raftClickable(
+                    onClick = {
+                        expanded = !expanded
+                        if (expanded) onExpand?.invoke()
+                    },
+                    tier = RaftHoverTier.Subtle
+                )
                 // raft-ui SystemMessage `pt-timeline-lead pb-timeline-row`: an event line starts a
                 // turn, 16 from the text on either side (spacing.md#timeline-rhythm).
                 .padding(
