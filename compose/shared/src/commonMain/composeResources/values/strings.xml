@@ -4719,6 +4719,7 @@
     <string name="artifacts_facts_pages_many">%1$d pages</string>
     <string name="artifacts_scope_server">Whole server</string>
     <string name="artifacts_scope_public">Anyone with the link</string>
+    <string name="artifacts_scope_shared_channel">Shared channel</string>
     <string name="artifacts_home_dm">Direct message with %1$s</string>
     <string name="artifacts_activity_mentioned_you">%1$s mentioned you</string>
     <string name="artifacts_activity_commented">%1$s commented</string>

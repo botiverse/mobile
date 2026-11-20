@@ -677,6 +677,20 @@ private fun ArtifactsHomeMore(state: ArtifactsHomeState, onIntent: (ArtifactsHom
     }
 }
 
+/**
+ * A conversation home's label (web `homeConversationLabel`): `#name` for a channel, a shared
+ * channel by its bare name, and "Shared channel" for one the reader's server has no copy of; a DM
+ * by its peer (the caller says "Direct message with"). Null for a deleted conversation (no name).
+ */
+@Composable
+internal fun artifactHomeConversationLabel(home: ArtifactHome.Conversation): String? =
+    when {
+        home.sharedChannelWithoutCopy -> stringResource(Res.string.artifacts_scope_shared_channel)
+        home.dm -> (home.peerDisplayName ?: home.name).takeIf { it.isNotBlank() }
+        home.joint -> home.name
+        else -> home.name.takeIf { it.isNotBlank() }?.let { "#$it" }
+    }
+
 /** Where it lives, in words (web `artifactHomeWords`). */
 @Composable
 internal fun artifactsHomePlaceWords(row: ArtifactsHomeRow, serverName: String?): String =
@@ -684,7 +698,7 @@ internal fun artifactsHomePlaceWords(row: ArtifactsHomeRow, serverName: String?)
         is ArtifactHome.Conversation ->
             when {
                 home.dm -> stringResource(Res.string.artifacts_home_dm, home.peerDisplayName ?: home.name)
-                else -> "#${home.name}"
+                else -> artifactHomeConversationLabel(home) ?: "#"
             }
         ArtifactHome.Server -> artifactsHomeScopeLabel(ArtifactsHomeScope.Server, serverName)
         ArtifactHome.Public ->

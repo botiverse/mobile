@@ -4534,6 +4534,7 @@
     <string name="artifacts_facts_pages_many">%1$d 頁</string>
     <string name="artifacts_scope_server">整個 server</string>
     <string name="artifacts_scope_public">知道連結的任何人</string>
+    <string name="artifacts_scope_shared_channel">共享頻道</string>
     <string name="artifacts_home_dm">與 %1$s 的私訊</string>
     <string name="artifacts_activity_mentioned_you">%1$s 提到了你</string>
     <string name="artifacts_activity_commented">%1$s 發表了留言</string>
