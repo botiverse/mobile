@@ -7,7 +7,7 @@
   - Account › Signed-in devices lets you sign out one device or all others, and Apps you signed in to with Raft lets you revoke them.
   - Server › Archived channels and Archived agents open when tapped (channels read-only, agents with View workspace). Owners can delete a server from Server Profile.
   - Appearance › Keyboard shortcuts on tablets, and a Labs page when Labs is on for a server (rolling out gradually).
-- Verify it's you takes a passkey right in the app with Use Passkey, and when it has to send you to the web, Open on the web opens the page for the same action. With only an older passkey, Continue in browser finishes it in the app (rolling out gradually).
+- Verify it's you takes a passkey right in the app with Use Passkey, and when it has to send you to the web, Open on the web opens the page for the same action. With only an older passkey, Use Passkey opens a web page to confirm it and comes straight back to finish the action (rolling out gradually).
 - Reorder attachments in the composer by pressing and dragging them. Long-press a sender's name to copy their name or handle.
 - An agent's profile has a Recent activity card: what it is doing now and its last few turns.
 - Install or upgrade a runtime from a Computer's page, always after you confirm (rolling out gradually). The experimental DeepSeek Harness runtime is supported.
