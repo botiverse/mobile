@@ -303,11 +303,18 @@ internal fun artifactScreenshotPhoneLayout(windowWidth: Dp): Boolean = windowWid
 /** web `ArtifactCardPicture` for a screenshot: none, its place kept while it is read, or shown. */
 @Immutable
 internal sealed interface ArtifactCardScreenshotView {
-    /** No screenshot, or it can't be read (no spinner, no error). */
+    /** No screenshot. */
     data object None : ArtifactCardScreenshotView
 
     /** Being read: the card keeps its place, so the conversation doesn't move when it comes. */
     data object Pending : ArtifactCardScreenshotView
+
+    /**
+     * The card names a screenshot that couldn't be read: its place stays, an empty box (no spinner,
+     * no error), as one still being read does, so the card doesn't shrink under the reader (web
+     * `artifactCardPicture.ts` `unreadable`, #proj-uiux:#1311).
+     */
+    data object Unreadable : ArtifactCardScreenshotView
 
     /** Read: [bytes] of file [fileId] of card [cardId], drawn by the image loader. */
     class Shown(val cardId: String, val fileId: String, val bytes: ByteArray) : ArtifactCardScreenshotView
@@ -334,7 +341,7 @@ internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactC
     val shown = bytes
     return when {
         shown != null -> ArtifactCardScreenshotView.Shown(cardId, fileId, shown)
-        failed -> ArtifactCardScreenshotView.None
+        failed -> ArtifactCardScreenshotView.Unreadable
         else -> ArtifactCardScreenshotView.Pending
     }
 }
@@ -584,17 +591,34 @@ internal fun ArtifactDeletedCard(deleted: ArtifactDeletedShown, modifier: Modifi
     }
 }
 
-/** web `ArtifactMessageCardLoading`: a skeleton in the card's shape, announced as loading. */
+/**
+ * web `ArtifactMessageCardLoading`, sized as the card it turns into: the header's 40dp kind glyph
+ * and two lines, and the footer's badge line, so a card without a picture replaces it at about its
+ * own height instead of growing under the reader (#proj-mobile:#201; the web's skeleton has the
+ * header with two lines only). Whether the card will have a picture is not known before its summary is read, so
+ * a picture's 16:10 box is not reserved here. Announced as loading.
+ */
 @Composable
 private fun ArtifactMessageCardLoading(animated: Boolean) {
     val label = stringResource(Res.string.artifacts_card_loading)
     RaftMessageEmbed(Modifier.semantics { contentDescription = label }) {
         RaftMessageEmbedHeader {
-            RaftSkeleton(Modifier.size(32.dp), animated = animated)
+            RaftSkeleton(Modifier.size(ArtifactCardLoadingGlyph), animated = animated)
+            // The title, then a description's two lines: the common card (web: title and one line).
             Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
-                RaftSkeleton(Modifier.fillMaxWidth(0.8f), variant = RaftSkeletonVariant.Line, animated = animated)
+                RaftSkeleton(Modifier.fillMaxWidth(0.9f), variant = RaftSkeletonVariant.Line, animated = animated)
+                RaftSkeleton(Modifier.fillMaxWidth(0.7f), variant = RaftSkeletonVariant.Line, animated = animated)
             }
+        }
+        RaftMessageEmbedFooter {
+            RaftSkeleton(Modifier.size(width = 96.dp, height = ArtifactCardLoadingFooterLine), animated = animated)
         }
     }
 }
+
+/** The card header's kind glyph ([RaftFilePreview], 40dp). */
+private val ArtifactCardLoadingGlyph: Dp = 40.dp
+
+/** The card footer's tallest item, an outline Badge (20dp). */
+private val ArtifactCardLoadingFooterLine: Dp = 20.dp

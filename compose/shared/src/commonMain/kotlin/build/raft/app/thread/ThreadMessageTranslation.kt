@@ -12,6 +12,7 @@ import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +31,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.Layout
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
@@ -278,4 +280,40 @@ internal fun ThreadMessageTranslationIndicator(
 @Composable
 internal fun ThreadMessageTranslationPendingPlaceholder() {
     RaftSkeleton(modifier = Modifier.width(176.dp), variant = RaftSkeletonVariant.Line)
+}
+
+/**
+ * A message body while its automatic translation is read (#proj-mobile:#201). The web draws only
+ * the 176dp placeholder line there, so a long message shrinks to one line and grows again when the
+ * translation comes, moving everything above it on the reversed list. Here the original [body] is
+ * still composed and measured, so the row keeps the original's height, but it is not placed: it
+ * draws nothing, takes no taps and is not read out, and the reader sees the placeholder, not the
+ * untranslated text (as on the web). When [pending] is false the body is simply the body.
+ */
+@Composable
+internal fun ThreadMessageTranslationPendingFrame(
+    pending: Boolean,
+    alignEnd: Boolean,
+    body: @Composable () -> Unit,
+) {
+    if (!pending) {
+        body()
+        return
+    }
+    val measuredOnly: @Composable () -> Unit = { Box(Modifier.clearAndSetSemantics { }) { body() } }
+    Layout(contents = listOf(measuredOnly, { ThreadMessageTranslationPendingPlaceholder() })) { measurables, constraints ->
+        val reserved = measurables[0].map { it.measure(constraints) }
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val placeholder = measurables[1].map { it.measure(loose) }
+        val width =
+            maxOf(reserved.maxOfOrNull { it.width } ?: 0, placeholder.maxOfOrNull { it.width } ?: 0)
+                .coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height =
+            maxOf(reserved.maxOfOrNull { it.height } ?: 0, placeholder.maxOfOrNull { it.height } ?: 0)
+                .coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(width, height) {
+            // The original is measured only: an unplaced child draws nothing and is not hit.
+            placeholder.forEach { it.place(if (alignEnd) width - it.width else 0, 0) }
+        }
+    }
 }
