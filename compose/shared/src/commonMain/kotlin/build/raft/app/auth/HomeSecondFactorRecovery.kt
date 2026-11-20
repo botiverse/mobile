@@ -102,7 +102,7 @@ internal fun rememberHomeSecondFactorRecovery(
     val fallbackFlow = remember { MutableStateFlow(SharedSecondFactorRecoveryState()) }
     val state by (store?.state ?: fallbackFlow).collectAsState()
     LaunchedEffect(store, active) {
-        if (active) store?.dispatch(SharedSecondFactorRecoveryIntent.Refresh)
+        if (active) store?.dispatch(SharedSecondFactorRecoveryIntent.RefreshIfStale)
     }
     val cancelled = stringResource(Res.string.home_second_factor_recovery_cancelled)
     val cancelFailed = stringResource(Res.string.home_second_factor_recovery_cancel_failed)
