@@ -274,6 +274,13 @@ internal class SharedThreadStore(
     // Foreground priority lease for this page's first-content load (see [SharedForegroundLoadGate]).
     private val foregroundLoadLeaseLock = SynchronizedObject()
     private var foregroundLoadLease: SharedForegroundLoadGate.Lease? = null
+    // The authority-verified producer context captured by this store's own [start], exposed for
+    // frame-1 seeding when `ensureStarted()` completes inline (fail-closed null if it suspended).
+    private val initialProducerContextLock = SynchronizedObject()
+    private var initialProducerContextRef: ReplyCacheProducerContext? = null
+
+    internal fun currentInitialProducerContext(): ReplyCacheProducerContext? =
+        synchronized(initialProducerContextLock) { initialProducerContextRef }
     /** Message storage Phase 2b: the durable write of the last refresh's own page (a context page write waits for it). */
     private var threadJoinCatchUpJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
@@ -712,6 +719,7 @@ internal class SharedThreadStore(
         pendingReadMarker = null
         lastCompletedReadMarker = null
         lastCompletedReadAt = null
+        synchronized(initialProducerContextLock) { initialProducerContextRef = null }
     }
 
     /**
@@ -721,6 +729,7 @@ internal class SharedThreadStore(
      */
     private suspend fun start(initialPayload: RaftThreadScreenPayload) {
         val producerContext = dataSource.captureReplyCacheProducerContext()
+        synchronized(initialProducerContextLock) { initialProducerContextRef = producerContext }
         val lease = acquireForegroundLoadLease(initialPayload, producerContext?.session?.currentServerId)
         try {
             startRoute(initialPayload, producerContext)
@@ -6082,6 +6091,8 @@ internal class SharedThreadViewModel(
         get() = store.state.value.highlightedMentions
     val currentRenderSlice: SharedThreadRenderSlice
         get() = store.state.value.toRenderSlice()
+    internal val initialProducerContext: ReplyCacheProducerContext?
+        get() = store.currentInitialProducerContext()
 
     fun payloadFlow(): Flow<RaftThreadScreenPayload> = store.payloadFlow()
 

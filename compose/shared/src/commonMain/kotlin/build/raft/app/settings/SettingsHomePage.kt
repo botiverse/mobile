@@ -3776,7 +3776,7 @@ private fun RaftAppShellReadyContent(
                             }
                             // Web: the reset notice is read again whenever the window comes back.
                             if (latestReadySession != null) {
-                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.Refresh)
+                                secondFactorRecoveryStore.dispatch(build.raft.app.data.SharedSecondFactorRecoveryIntent.RefreshIfStale)
                             }
                         }
                         if (visibleLifecycleEvent && !latestPageVisible) {
@@ -6045,9 +6045,11 @@ private fun RaftAppShellReadyContent(
                                 }
                             }
                         // The phone Home's Assistant row (web `mobileInline` only; the wide layout has the rail).
+                        // The layout decides, not the "Desktop mode on large screens" setting: that is on by
+                        // default on every device, a phone included, and a phone has no rail.
                         val homeAssistantEntry =
                             rememberAppShellHomeAssistantEntry(
-                                phone = !desktopModeOnLargeScreen,
+                                phone = appShellHomeCarriesAssistantRow(navRailActive),
                                 sharedStores = sharedStores,
                                 storeScope = storeScope,
                             ) { pager.openAssistantPage(navigationStoreScope, threadTimeContext) }

@@ -1,14 +1,20 @@
 package build.raft.app
 
 import build.raft.app.data.PeerReadCountAtSeq
+import build.raft.app.data.PeerReadReceiptHydrateResult
+import build.raft.app.data.PeerReadReceiptIntent
+import build.raft.app.data.PeerReadReceiptOwner
 import build.raft.app.data.PeerReadReceiptScope
 import build.raft.app.data.PeerReadState
 import build.raft.app.data.PeerReadSummary
+import build.raft.app.data.SharedPeerReadReceiptStore
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageMention
 import build.raft.app.model.ReadReceiptPeerKind
+import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -126,5 +132,28 @@ class ThreadPeerReadReceiptsTest {
         assertTrue(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage).isPeerReadReceiptDmSurface())
         assertTrue(thread.copy(parentChannelKind = "dm").isPeerReadReceiptDmSurface())
         assertFalse(thread.isPeerReadReceiptDmSurface())
+    }
+
+    @Test fun unresolvedNullOwnerDoesNotWipeShellPeerReadReceipts() {
+        val owner = PeerReadReceiptOwner("https://api.raft.test", "user-1", "srv-1")
+        val otherOwner = owner.copy(serverId = "srv-2")
+        val store =
+            SharedPeerReadReceiptStore(
+                scope = CoroutineScope(EmptyCoroutineContext),
+                fetchHydrate = { _, _ -> PeerReadReceiptHydrateResult.Loaded(null) },
+            )
+        bindThreadPeerReadReceiptsOwner(store, owner)
+        store.dispatch(PeerReadReceiptIntent.HydrateLoaded(owner, "ch-1", peers))
+        assertEquals(peers, store.state.value.scopes["ch-1"])
+
+        // Opening another conversation before its session loads passes owner=null: keep existing scopes.
+        bindThreadPeerReadReceiptsOwner(store, null)
+        assertEquals(owner, store.state.value.owner)
+        assertEquals(peers, store.state.value.scopes["ch-1"])
+
+        // Switching to a different resolved owner still clears the previous owner's scopes.
+        bindThreadPeerReadReceiptsOwner(store, otherOwner)
+        assertEquals(otherOwner, store.state.value.owner)
+        assertTrue(store.state.value.scopes.isEmpty())
     }
 }

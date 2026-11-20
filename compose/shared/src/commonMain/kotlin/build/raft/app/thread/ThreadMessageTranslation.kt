@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.animation.core.CubicBezierEasing
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
@@ -279,7 +281,25 @@ internal fun ThreadMessageTranslationIndicator(
 
 @Composable
 internal fun ThreadMessageTranslationPendingPlaceholder() {
-    RaftSkeleton(modifier = Modifier.width(176.dp), variant = RaftSkeletonVariant.Line)
+    RaftSkeleton(modifier = Modifier.width(ThreadTranslationPlaceholderLastLineWidth), variant = RaftSkeletonVariant.Line)
+}
+
+/** The web's single placeholder line; here also the width of the last line of a taller block. */
+private val ThreadTranslationPlaceholderLastLineWidth = 176.dp
+private val ThreadTranslationPlaceholderLineHeight = 12.dp
+private val ThreadTranslationPlaceholderLineGap = 8.dp
+
+/** At most this many bars are drawn; a taller original keeps its height with the rest left empty. */
+internal const val ThreadTranslationPlaceholderMaxLines = 16
+
+/**
+ * How many 12dp placeholder bars, [gapPx] apart, fit in the original body's [reservedHeightPx]:
+ * one per text line, roughly, and never fewer than one.
+ */
+internal fun threadTranslationPlaceholderLineCount(reservedHeightPx: Int, lineHeightPx: Int, gapPx: Int): Int {
+    val pitch = lineHeightPx + gapPx
+    if (pitch <= 0 || reservedHeightPx < lineHeightPx) return 1
+    return ((reservedHeightPx + gapPx) / pitch).coerceIn(1, ThreadTranslationPlaceholderMaxLines)
 }
 
 /**
@@ -287,8 +307,10 @@ internal fun ThreadMessageTranslationPendingPlaceholder() {
  * the 176dp placeholder line there, so a long message shrinks to one line and grows again when the
  * translation comes, moving everything above it on the reversed list. Here the original [body] is
  * still composed and measured, so the row keeps the original's height, but it is not placed: it
- * draws nothing, takes no taps and is not read out, and the reader sees the placeholder, not the
- * untranslated text (as on the web). When [pending] is false the body is simply the body.
+ * draws nothing, takes no taps and is not read out, and the reader sees placeholder bars, not the
+ * untranslated text (as on the web). The bars fill that height, one per line of the original
+ * (artin: a tall row with one bar at the top looked empty), full width with a 176dp last line.
+ * When [pending] is false the body is simply the body.
  */
 @Composable
 internal fun ThreadMessageTranslationPendingFrame(
@@ -301,19 +323,38 @@ internal fun ThreadMessageTranslationPendingFrame(
         return
     }
     val measuredOnly: @Composable () -> Unit = { Box(Modifier.clearAndSetSemantics { }) { body() } }
-    Layout(contents = listOf(measuredOnly, { ThreadMessageTranslationPendingPlaceholder() })) { measurables, constraints ->
+    val bars: @Composable () -> Unit = {
+        repeat(ThreadTranslationPlaceholderMaxLines) {
+            RaftSkeleton(modifier = Modifier.fillMaxWidth(), variant = RaftSkeletonVariant.Line)
+        }
+    }
+    Layout(contents = listOf(measuredOnly, bars)) { measurables, constraints ->
         val reserved = measurables[0].map { it.measure(constraints) }
-        val loose = constraints.copy(minWidth = 0, minHeight = 0)
-        val placeholder = measurables[1].map { it.measure(loose) }
+        val reservedWidth = reserved.maxOfOrNull { it.width } ?: 0
+        val reservedHeight = reserved.maxOfOrNull { it.height } ?: 0
+        val lineHeight = ThreadTranslationPlaceholderLineHeight.roundToPx()
+        val gap = ThreadTranslationPlaceholderLineGap.roundToPx()
+        val lastLineWidth = ThreadTranslationPlaceholderLastLineWidth.roundToPx()
+        val lineCount = threadTranslationPlaceholderLineCount(reservedHeight, lineHeight, gap)
+        val fullWidth = maxOf(reservedWidth, lastLineWidth).coerceAtMost(constraints.maxWidth)
+        // Only the bars that are placed are measured; the others draw nothing.
+        val placed =
+            measurables[1].take(lineCount).mapIndexed { index, bar ->
+                val barWidth = if (index == lineCount - 1) minOf(lastLineWidth, fullWidth) else fullWidth
+                bar.measure(Constraints.fixedWidth(barWidth).copy(maxHeight = constraints.maxHeight))
+            }
+        val barsHeight = placed.sumOf { it.height } + gap * (placed.size - 1).coerceAtLeast(0)
         val width =
-            maxOf(reserved.maxOfOrNull { it.width } ?: 0, placeholder.maxOfOrNull { it.width } ?: 0)
+            maxOf(reservedWidth, placed.maxOfOrNull { it.width } ?: 0)
                 .coerceIn(constraints.minWidth, constraints.maxWidth)
-        val height =
-            maxOf(reserved.maxOfOrNull { it.height } ?: 0, placeholder.maxOfOrNull { it.height } ?: 0)
-                .coerceIn(constraints.minHeight, constraints.maxHeight)
+        val height = maxOf(reservedHeight, barsHeight).coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(width, height) {
             // The original is measured only: an unplaced child draws nothing and is not hit.
-            placeholder.forEach { it.place(if (alignEnd) width - it.width else 0, 0) }
+            var y = 0
+            placed.forEach { bar ->
+                bar.place(if (alignEnd) width - bar.width else 0, y)
+                y += bar.height + gap
+            }
         }
     }
 }

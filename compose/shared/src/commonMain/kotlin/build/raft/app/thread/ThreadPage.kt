@@ -100,8 +100,10 @@ import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.canWriteTasksInChannel
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.unfollowThreadProjectingHome
 import build.raft.app.data.SharedMembersIntent
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
@@ -121,7 +123,9 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.TaskConversationDetailsViewModel
 import build.raft.app.data.TaskConversationHeaderEvent
+import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskConversationHeaderViewModel
+import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksScope
@@ -1437,6 +1441,285 @@ internal fun RaftThreadScreenPayload.accessLostChannelIdOrNull(): ChannelId? =
         }
         ?.let(::ChannelId)
 
+private data class ThreadProducerContextState(
+    val session: StoredAuthSession?,
+    val provenanceOwner: ReplyCacheProvenance?,
+    val serverSlug: String?,
+    val captured: Boolean,
+)
+
+@Composable
+private fun rememberThreadProducerContext(
+    threadViewModel: SharedThreadViewModel,
+    dataSource: SharedThreadDataSource,
+    threadInstanceKey: String,
+): ThreadProducerContextState {
+    // Since #5104, a cached conversation renders its full page on frame 1 (no LoadingShell wait).
+    // `threadViewModel.ensureStarted()` already captured this page's authority-verified producer
+    // context inline when serving that cached frame; seed from that capture (fenced against the
+    // live provenance) so session/provenance/slug are ready on frame 1 without risking a stale
+    // leftover from a previous page on a reused dataSource when start() suspended.
+    val initial =
+        remember(threadViewModel, dataSource, threadInstanceKey) {
+            threadViewModel.initialProducerContext?.takeIf { context ->
+                dataSource.isCurrentReplyCacheProvenance(context.provenance)
+            }
+        }
+    var currentSession by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.session)
+    }
+    var replyCacheProvenanceOwner by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.provenance)
+    }
+    var currentServerSlug by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial?.session?.currentServerSlug())
+    }
+    var captured by remember(threadViewModel, dataSource, threadInstanceKey) {
+        mutableStateOf(initial != null)
+    }
+    LaunchedEffect(threadViewModel, dataSource, threadInstanceKey) {
+        val producerContext = dataSource.captureReplyCacheProducerContext()
+        currentSession = producerContext?.session
+        replyCacheProvenanceOwner = producerContext?.provenance
+        currentServerSlug = producerContext?.session?.currentServerSlug()
+        captured = true
+        // task #1153: the captured session snapshot can precede server-roster
+        // population, leaving the slug permanently null and silently disabling
+        // quoted permalink cards for the whole thread session. Re-read the
+        // (freshly captured) session for a bounded window until it resolves.
+        if (currentServerSlug == null) {
+            currentServerSlug =
+                resolveThreadServerSlugWithRetry {
+                    dataSource
+                        .captureReplyCacheProducerContext()
+                        ?.session
+                        ?.currentServerSlug()
+                }
+        }
+    }
+    return ThreadProducerContextState(
+        session = currentSession,
+        provenanceOwner = replyCacheProvenanceOwner,
+        serverSlug = currentServerSlug,
+        captured = captured,
+    )
+}
+
+@Composable
+private fun ObserveThreadFirstContentPerformanceGate(
+    bridge: build.raft.app.base.BridgeModule,
+    payload: RaftThreadScreenPayload,
+    timelineSlice: ThreadTimelineSlice,
+    threadInstanceKey: String,
+    threadTimelineKey: String?,
+    threadReverseLayoutEnabled: Boolean,
+    plainCandidateCensusSession: RaftMarkdownPlainCandidateSession?,
+    threadOpenStartedAt: () -> TimeMark?,
+) {
+    var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
+
+    // Read-only evidence of the per-open decision (QA asked for one on every platform).
+    LaunchedEffect(threadInstanceKey, threadReverseLayoutEnabled) {
+        bridge.log(
+            "thread_reverse_layout threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                "enabled=$threadReverseLayoutEnabled " +
+                "buildType=${currentFeatureFlagClientContext().buildType ?: "none"}"
+        )
+    }
+    LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
+        if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
+            firstContentLoggedThreadId = threadInstanceKey
+            // Census open-level aggregate flush (task #20 Option B P1 v3):
+            // effects run after the apply pass's RememberObserver callbacks,
+            // so every committed row of this first content batch has already
+            // submitted to this open's session instance.
+            plainCandidateCensusSession?.flush()
+            val payloadReadyMs = threadOpenStartedAt()?.elapsedNow()?.inWholeMilliseconds
+            val payloadReadyBudget =
+                evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
+            bridge.performanceMarker(
+                phase = "thread_payload_ready",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadTimelineKey ?: threadInstanceKey,
+                durationMs = payloadReadyMs,
+                metadata =
+                    mapOf(
+                        "status" to timelineSlice.status.ifBlank { "unknown" },
+                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice),
+                        "messages" to timelineSlice.messages.size.toString(),
+                        "budgetMs" to ThreadPayloadReadyBudgetMs.toString(),
+                        "withinBudget" to payloadReadyBudget.payloadReadyWithinBudget.toString()
+                    )
+            )
+            bridge.log(
+                "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
+                    "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
+                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)} " +
+                    "durationMs=${payloadReadyMs ?: -1} budgetMs=$ThreadPayloadReadyBudgetMs " +
+                    "pass=${payloadReadyBudget.passed}"
+            )
+            if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
+                performanceSnapshotLoggedThreadId = threadInstanceKey
+                delay(ThreadFirstContentTaskJoinDelayMs)
+                val firstFrameReason =
+                    if (payload.isRenderableEmptyReplyThread()) {
+                        "thread_first_empty_reply"
+                    } else {
+                        "thread_first_content"
+                    }
+                requestKuiklyThreadPerformanceSnapshot(
+                    bridge = bridge,
+                    threadId = (threadTimelineKey ?: threadInstanceKey).orEmpty(),
+                    reason = firstFrameReason,
+                    status = timelineSlice.status.ifBlank { "unknown" }
+                )
+            }
+        }
+    }
+}
+
+private data class ThreadTaskConversationState(
+    val conversationId: ChannelId?,
+    val headerViewModel: TaskConversationHeaderViewModel?,
+    val headerState: TaskConversationHeaderState?,
+    val parentChannelId: ChannelId?,
+    val tasksViewModel: SharedTasksViewModel?,
+    val tasksState: TasksUiState?,
+    val task: TaskSummary?,
+    val detailsRepository: TaskConversationDetailsRepository,
+    val detailsViewModel: TaskConversationDetailsViewModel?,
+    val detailsState: TaskConversationDetailsState,
+)
+
+@Composable
+private fun rememberThreadTaskConversationState(
+    payload: RaftThreadScreenPayload,
+    authStore: RaftAuthSessionStore,
+    dataSource: SharedThreadDataSource,
+    tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore?,
+    sharedHomeStore: SharedHomeStore?,
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    bridge: build.raft.app.base.BridgeModule,
+    currentServerId: String?,
+    onBack: () -> Unit,
+): ThreadTaskConversationState {
+    // Task v2 (web TaskConversationBar): a task conversation's bar resolves the task and its channel
+    // from the conversation, then reads the task from that channel's shared task projection, so a
+    // status / assignee write and a `task:updated` fold take the Tasks board's path.
+    val taskConversationId =
+        payload.resolvedAuxiliaryThreadId()
+            ?.takeIf { payload.channelKind == RaftTaskConversationChannelKind }
+            ?.let(::ChannelId)
+    val taskConversationHeaderViewModel: TaskConversationHeaderViewModel? =
+        taskConversationId?.let { conversationId ->
+            viewModel(key = "task-conversation-header-${conversationId.value}") {
+                TaskConversationHeaderViewModel(
+                    conversationChannelId = conversationId,
+                    loadRef = dataSource::loadTaskConversationRef,
+                    follow = dataSource::followTaskConversation,
+                    unfollow = { conversationId ->
+                        unfollowThreadProjectingHome(
+                            conversationId,
+                            project = { intent -> sharedHomeStore?.dispatch(intent) },
+                            unfollow = dataSource::unfollowThread,
+                        )
+                    },
+                    log = { bridge.log(it) },
+                    loadTask = { serverId, parentChannelId, taskNumber ->
+                        tasksDataSource
+                            .loadChannelTaskByNumber(ServerId(serverId), parentChannelId, taskNumber, DataRequestPriority.Background)
+                            .map { it.task }
+                    },
+                )
+            }
+        }
+    val taskConversationHeaderState =
+        taskConversationHeaderViewModel?.state?.collectAsState()?.value
+    LaunchedEffect(taskConversationHeaderViewModel) { taskConversationHeaderViewModel?.start() }
+    val taskConversationParentChannelId = taskConversationHeaderState?.ref?.parentChannelId
+    // The task channel's tasks store, shared with the pending task page ([TaskOpenSurfaceHost]).
+    val taskConversationTasksViewModel: SharedTasksViewModel? =
+        rememberTaskChannelTasksViewModel(taskConversationParentChannelId, authStore, tasksDataSource, tasksDataStore) { bridge.log(it) }
+    val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
+    val taskConversationListedTask =
+        taskConversationHeaderState?.ref?.taskId?.let { taskId ->
+            (taskConversationTasksState?.loadState as? ScreenLoadState.Content)
+                ?.data
+                ?.tasks
+                ?.firstOrNull { it.id == taskId }
+        }
+    // The channel list can be status-filtered, so a task moved to Done / Closed may leave it: the
+    // bar keeps the last copy seen, and only `task:deleted` marks the task deleted.
+    LaunchedEffect(taskConversationListedTask) {
+        taskConversationListedTask?.let { taskConversationHeaderViewModel?.onTaskSeen(it) }
+    }
+    val taskConversationTask = taskConversationHeaderState?.barTask(taskConversationListedTask)
+    val taskConversationDeletedLabel = stringResource(Res.string.task_conversation_deleted)
+    val taskConversationFollowFailedLabel = stringResource(Res.string.task_conversation_follow_failed)
+    val latestOnBack by rememberUpdatedState(onBack)
+    val latestFollowFailedLabel by rememberUpdatedState(taskConversationFollowFailedLabel)
+    LaunchedEffect(taskConversationHeaderState?.removed == true) {
+        if (taskConversationHeaderState?.removed == true) {
+            // Web closes the task dialog when its task is deleted; the page says why, then closes.
+            bridge.log("task_conversation_removed conversationId=${taskConversationId?.value.orEmpty()}")
+            bridge.toast(taskConversationDeletedLabel)
+            latestOnBack()
+        }
+    }
+    LaunchedEffect(taskConversationHeaderViewModel) {
+        taskConversationHeaderViewModel?.events?.collect { event ->
+            when (event) {
+                is TaskConversationHeaderEvent.FollowFailed -> bridge.toast(latestFollowFailedLabel)
+            }
+        }
+    }
+    // Task v2 (web TaskConversationDialog head): the task's history, its source message and a pre-v2
+    // task's earlier discussion, read for the task the head shows (again for each newer revision).
+    val taskConversationDetailsServerId by rememberUpdatedState(currentServerId)
+    val taskConversationDetailsRepository =
+        remember(sharedStores, storeScope) { TaskConversationDetailsRepository(sharedStores.networkClient(storeScope)) }
+    val taskConversationDetailsViewModel: TaskConversationDetailsViewModel? =
+        taskConversationId?.let { conversationId ->
+            viewModel(key = "task-conversation-details-${conversationId.value}") {
+                fun server(): ServerId? = taskConversationDetailsServerId?.let(::ServerId)
+                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true))
+                TaskConversationDetailsViewModel(
+                    loadHistory = { taskId ->
+                        server()?.let { taskConversationDetailsRepository.loadHistory(it, taskId) } ?: noServer
+                    },
+                    loadSource = { channelId, messageId ->
+                        server()?.let { taskConversationDetailsRepository.loadSourceMessage(it, channelId, messageId) } ?: noServer
+                    },
+                    loadEarlierDiscussion = { channelId, hostMessageId ->
+                        server()?.let { taskConversationDetailsRepository.loadEarlierDiscussion(it, channelId, hostMessageId) } ?: noServer
+                    },
+                    log = { bridge.log(it) },
+                )
+            }
+        }
+    val taskConversationDetailsState =
+        taskConversationDetailsViewModel?.state?.collectAsState()?.value ?: TaskConversationDetailsState()
+    LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
+        if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
+    }
+    return ThreadTaskConversationState(
+        conversationId = taskConversationId,
+        headerViewModel = taskConversationHeaderViewModel,
+        headerState = taskConversationHeaderState,
+        parentChannelId = taskConversationParentChannelId,
+        tasksViewModel = taskConversationTasksViewModel,
+        tasksState = taskConversationTasksState,
+        task = taskConversationTask,
+        detailsRepository = taskConversationDetailsRepository,
+        detailsViewModel = taskConversationDetailsViewModel,
+        detailsState = taskConversationDetailsState,
+    )
+}
+
 @Composable
 private fun SharedThreadRouteContentContent(
     data: SharedThreadRouteContentData,
@@ -1716,9 +1999,16 @@ private fun SharedThreadRouteContentContent(
         payloadRouteIdentity.timelineChannelId
             ?: initialRouteIdentity.timelineChannelId
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
-    var currentSession by remember(initialThreadInstanceKey) {
-        mutableStateOf<StoredAuthSession?>(null)
-    }
+    val producerContextState =
+        rememberThreadProducerContext(
+            threadViewModel = threadViewModel,
+            dataSource = dataSource,
+            threadInstanceKey = initialThreadInstanceKey,
+        )
+    val currentSession = producerContextState.session
+    val replyCacheProvenanceOwner = producerContextState.provenanceOwner
+    val currentServerSlug = producerContextState.serverSlug
+    val producerContextCaptured = producerContextState.captured
     val messageBodyOwnerKey =
         remember(currentSession?.user?.id, sharedStores.apiEnvironmentStore.current().apiBaseUrl) {
             threadMessageBodyOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, currentSession?.user?.id)
@@ -1731,15 +2021,9 @@ private fun SharedThreadRouteContentContent(
     }
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
     val resolvedMessageBodyTextStyle = rememberRaftMessageBodyTextStyle(selectedMessageBodyFontSize)
-    var replyCacheProvenanceOwner by remember(initialThreadInstanceKey) {
-        mutableStateOf<ReplyCacheProvenance?>(null)
-    }
     val publishedReplyCacheProvenance by dataSource.replyCacheProvenanceState.collectAsState()
     val replyCacheProvenance =
         publishedReplyCacheProvenance.currentRevisionForReplyCacheOwner(replyCacheProvenanceOwner)
-    var currentServerSlug by remember(initialThreadInstanceKey) {
-        mutableStateOf<String?>(null)
-    }
     var startedRouteIdentity by remember(initialThreadInstanceKey) {
         mutableStateOf<ThreadRouteIdentity?>(null)
     }
@@ -1747,25 +2031,6 @@ private fun SharedThreadRouteContentContent(
         mutableStateOf<TimeMark?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(dataSource, initialThreadInstanceKey) {
-        val producerContext = dataSource.captureReplyCacheProducerContext()
-        currentSession = producerContext?.session
-        replyCacheProvenanceOwner = producerContext?.provenance
-        currentServerSlug = producerContext?.session?.currentServerSlug()
-        // task #1153: the captured session snapshot can precede server-roster
-        // population, leaving the slug permanently null and silently disabling
-        // quoted permalink cards for the whole thread session. Re-read the
-        // (freshly captured) session for a bounded window until it resolves.
-        if (currentServerSlug == null) {
-            currentServerSlug =
-                resolveThreadServerSlugWithRetry {
-                    dataSource
-                        .captureReplyCacheProducerContext()
-                        ?.session
-                        ?.currentServerSlug()
-                }
-        }
-    }
     LaunchedEffect(initialPayload, initialThreadInstanceKey) {
         if (!initialRouteIdentity.canRetainThreadPageFor(incomingRouteIdentity)) {
             return@LaunchedEffect
@@ -2640,14 +2905,10 @@ private fun SharedThreadRouteContentContent(
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
         MarkdownTaskNumberOpenRequestGate()
     }
-    val createAgentComputerServerIdState = remember(threadInstanceKey) { mutableStateOf<String?>(null) }
-    var createAgentComputerServerId by createAgentComputerServerIdState
-    val createAgentComputerServerResolvedState = remember(threadInstanceKey) { mutableStateOf(false) }
-    var createAgentComputerServerResolved by createAgentComputerServerResolvedState
-    LaunchedEffect(threadInstanceKey, currentSession?.currentServerId) {
-        createAgentComputerServerId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }
-        createAgentComputerServerResolved = true
-    }
+    val createAgentComputerServerIdState =
+        rememberUpdatedState(currentSession?.currentServerId?.takeIf { it.isNotBlank() })
+    val createAgentComputerServerResolvedState =
+        rememberUpdatedState(producerContextCaptured || currentSession != null)
     var attachmentOpenStates by remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
@@ -2918,8 +3179,6 @@ private fun SharedThreadRouteContentContent(
         attachmentCommentsDialogState =
             attachmentCommentsDialogState.retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
     }
-    var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
 
     // Diagnostics only (task #20 t4): marks the START of the first content
     // composition for this thread instance, splitting the previously unmarked
@@ -2987,65 +3246,16 @@ private fun SharedThreadRouteContentContent(
     // mobile_thread_reverse_layout_v0 flag are gone; a stored choice from older builds is ignored).
     val threadReverseLayoutEnabled = true
 
-    // Read-only evidence of the per-open decision (QA asked for one on every platform).
-    LaunchedEffect(threadInstanceKey, threadReverseLayoutEnabled) {
-        bridge.log(
-            "thread_reverse_layout threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                "enabled=$threadReverseLayoutEnabled " +
-                "buildType=${currentFeatureFlagClientContext().buildType ?: "none"}"
-        )
-    }
-    LaunchedEffect(threadInstanceKey, threadTimelineKey, timelineSlice.status, timelineSlice.messages.size) {
-        if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadInstanceKey) {
-            firstContentLoggedThreadId = threadInstanceKey
-            // Census open-level aggregate flush (task #20 Option B P1 v3):
-            // effects run after the apply pass's RememberObserver callbacks,
-            // so every committed row of this first content batch has already
-            // submitted to this open's session instance.
-            plainCandidateCensusSession?.flush()
-            val payloadReadyMs = threadOpenStartedAt?.elapsedNow()?.inWholeMilliseconds
-            val payloadReadyBudget =
-                evaluateThreadFirstContentPerformanceBudget(payloadReadyMs = payloadReadyMs)
-            bridge.performanceMarker(
-                phase = "thread_payload_ready",
-                routeName = "kuikly_thread",
-                event = "instant",
-                threadId = threadTimelineKey ?: threadInstanceKey,
-                durationMs = payloadReadyMs,
-                metadata =
-                    mapOf(
-                        "status" to timelineSlice.status.ifBlank { "unknown" },
-                        "source" to payload.threadRenderDiagnosticsSource(timelineSlice),
-                        "messages" to timelineSlice.messages.size.toString(),
-                        "budgetMs" to ThreadPayloadReadyBudgetMs.toString(),
-                        "withinBudget" to payloadReadyBudget.payloadReadyWithinBudget.toString()
-                    )
-            )
-            bridge.log(
-                "thread_payload_ready_gate threadId=${(threadTimelineKey ?: threadInstanceKey).orEmpty()} " +
-                    "status=${timelineSlice.status} messages=${timelineSlice.messages.size} " +
-                    "source=${payload.threadRenderDiagnosticsSource(timelineSlice)} " +
-                    "durationMs=${payloadReadyMs ?: -1} budgetMs=$ThreadPayloadReadyBudgetMs " +
-                    "pass=${payloadReadyBudget.passed}"
-            )
-            if (performanceSnapshotLoggedThreadId != threadInstanceKey) {
-                performanceSnapshotLoggedThreadId = threadInstanceKey
-                delay(ThreadFirstContentTaskJoinDelayMs)
-                val firstFrameReason =
-                    if (payload.isRenderableEmptyReplyThread()) {
-                        "thread_first_empty_reply"
-                    } else {
-                        "thread_first_content"
-                    }
-                requestKuiklyThreadPerformanceSnapshot(
-                    bridge = bridge,
-                    threadId = (threadTimelineKey ?: threadInstanceKey).orEmpty(),
-                    reason = firstFrameReason,
-                    status = timelineSlice.status.ifBlank { "unknown" }
-                )
-            }
-        }
-    }
+    ObserveThreadFirstContentPerformanceGate(
+        bridge = bridge,
+        payload = payload,
+        timelineSlice = timelineSlice,
+        threadInstanceKey = threadInstanceKey,
+        threadTimelineKey = threadTimelineKey,
+        threadReverseLayoutEnabled = threadReverseLayoutEnabled,
+        plainCandidateCensusSession = plainCandidateCensusSession,
+        threadOpenStartedAt = { threadOpenStartedAt },
+    )
     val taskChannelId =
         payload
             .resolvedTaskLookupChannelId(writeActionsEnabled = renderSlice.writeActionsEnabled)
@@ -3062,78 +3272,25 @@ private fun SharedThreadRouteContentContent(
                 )
             }
         }
-    // Task v2 (web TaskConversationBar): a task conversation's bar resolves the task and its channel
-    // from the conversation, then reads the task from that channel's shared task projection, so a
-    // status / assignee write and a `task:updated` fold take the Tasks board's path.
-    val taskConversationId =
-        payload.resolvedAuxiliaryThreadId()
-            ?.takeIf { payload.channelKind == RaftTaskConversationChannelKind }
-            ?.let(::ChannelId)
-    val taskConversationHeaderViewModel: TaskConversationHeaderViewModel? =
-        taskConversationId?.let { conversationId ->
-            viewModel(key = "task-conversation-header-${conversationId.value}") {
-                TaskConversationHeaderViewModel(
-                    conversationChannelId = conversationId,
-                    loadRef = dataSource::loadTaskConversationRef,
-                    follow = dataSource::followTaskConversation,
-                    unfollow = { conversationId ->
-                        unfollowThreadProjectingHome(
-                            conversationId,
-                            project = { intent -> sharedHomeStore?.dispatch(intent) },
-                            unfollow = dataSource::unfollowThread,
-                        )
-                    },
-                    log = { bridge.log(it) },
-                    loadTask = { serverId, parentChannelId, taskNumber ->
-                        tasksDataSource
-                            .loadChannelTaskByNumber(ServerId(serverId), parentChannelId, taskNumber, DataRequestPriority.Background)
-                            .map { it.task }
-                    },
-                )
-            }
-        }
-    val taskConversationHeaderState =
-        taskConversationHeaderViewModel?.state?.collectAsState()?.value
-    LaunchedEffect(taskConversationHeaderViewModel) { taskConversationHeaderViewModel?.start() }
-    val taskConversationParentChannelId = taskConversationHeaderState?.ref?.parentChannelId
-    // The task channel's tasks store, shared with the pending task page ([TaskOpenSurfaceHost]).
-    val taskConversationTasksViewModel: SharedTasksViewModel? =
-        rememberTaskChannelTasksViewModel(taskConversationParentChannelId, authStore, tasksDataSource, tasksDataStore) { bridge.log(it) }
-    val taskConversationTasksState = taskConversationTasksViewModel?.state?.collectAsState()?.value
+    val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    val taskConversation =
+        rememberThreadTaskConversationState(
+            payload = payload,
+            authStore = authStore,
+            dataSource = dataSource,
+            tasksDataSource = tasksDataSource,
+            tasksDataStore = tasksDataStore,
+            sharedHomeStore = sharedHomeStore,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            bridge = bridge,
+            currentServerId = currentServerId,
+            onBack = onBack,
+        )
     // The channel a bare `#N` chips and opens against (Web `taskContextChannelId`): the task's host
     // channel in a task conversation, and never gated on write access (unlike [taskChannelId]).
     val markdownTaskContextChannelId =
-        payload.markdownTaskContextChannelId(taskConversationParentChannelId?.value)?.let(::ChannelId)
-    val taskConversationListedTask =
-        taskConversationHeaderState?.ref?.taskId?.let { taskId ->
-            (taskConversationTasksState?.loadState as? ScreenLoadState.Content)
-                ?.data
-                ?.tasks
-                ?.firstOrNull { it.id == taskId }
-        }
-    // The channel list can be status-filtered, so a task moved to Done / Closed may leave it: the
-    // bar keeps the last copy seen, and only `task:deleted` marks the task deleted.
-    LaunchedEffect(taskConversationListedTask) {
-        taskConversationListedTask?.let { taskConversationHeaderViewModel?.onTaskSeen(it) }
-    }
-    val taskConversationTask = taskConversationHeaderState?.barTask(taskConversationListedTask)
-    val taskConversationDeletedLabel = stringResource(Res.string.task_conversation_deleted)
-    val taskConversationFollowFailedLabel = stringResource(Res.string.task_conversation_follow_failed)
-    LaunchedEffect(taskConversationHeaderState?.removed == true) {
-        if (taskConversationHeaderState?.removed == true) {
-            // Web closes the task dialog when its task is deleted; the page says why, then closes.
-            bridge.log("task_conversation_removed conversationId=${taskConversationId?.value.orEmpty()}")
-            bridge.toast(taskConversationDeletedLabel)
-            onBack()
-        }
-    }
-    LaunchedEffect(taskConversationHeaderViewModel) {
-        taskConversationHeaderViewModel?.events?.collect { event ->
-            when (event) {
-                is TaskConversationHeaderEvent.FollowFailed -> bridge.toast(taskConversationFollowFailedLabel)
-            }
-        }
-    }
+        payload.markdownTaskContextChannelId(taskConversation.parentChannelId?.value)?.let(::ChannelId)
     val memberSuggestionScopePayload =
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
@@ -3146,36 +3303,6 @@ private fun SharedThreadRouteContentContent(
     }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
-    val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-    // Task v2 (web TaskConversationDialog head): the task's history, its source message and a pre-v2
-    // task's earlier discussion, read for the task the head shows (again for each newer revision).
-    val taskConversationDetailsServerId by rememberUpdatedState(currentServerId)
-    val taskConversationDetailsRepository =
-        remember(sharedStores, storeScope) { TaskConversationDetailsRepository(sharedStores.networkClient(storeScope)) }
-    val taskConversationDetailsViewModel: TaskConversationDetailsViewModel? =
-        taskConversationId?.let { conversationId ->
-            viewModel(key = "task-conversation-details-${conversationId.value}") {
-                fun server(): ServerId? = taskConversationDetailsServerId?.let(::ServerId)
-                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true))
-                TaskConversationDetailsViewModel(
-                    loadHistory = { taskId ->
-                        server()?.let { taskConversationDetailsRepository.loadHistory(it, taskId) } ?: noServer
-                    },
-                    loadSource = { channelId, messageId ->
-                        server()?.let { taskConversationDetailsRepository.loadSourceMessage(it, channelId, messageId) } ?: noServer
-                    },
-                    loadEarlierDiscussion = { channelId, hostMessageId ->
-                        server()?.let { taskConversationDetailsRepository.loadEarlierDiscussion(it, channelId, hostMessageId) } ?: noServer
-                    },
-                    log = { bridge.log(it) },
-                )
-            }
-        }
-    val taskConversationDetailsState =
-        taskConversationDetailsViewModel?.state?.collectAsState()?.value ?: TaskConversationDetailsState()
-    LaunchedEffect(taskConversationDetailsViewModel, taskConversationTask, currentServerId) {
-        if (currentServerId != null) taskConversationTask?.let { taskConversationDetailsViewModel?.onTask(it) }
-    }
     val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
     // `feedback:submit` cards open the native feedback form on their draft once the viewing server is
     // known (every platform, 1.24; no server flag). A done card's "View in Settings" opens the native
@@ -3315,7 +3442,15 @@ private fun SharedThreadRouteContentContent(
     // composer that opens this draft again picks up their progress or result. Keyed on this page's
     // own account and server (the shell scope's server, else the page's captured provenance), never
     // on whichever server the session selects later.
-    val attachmentUploadAccountId = currentSession?.user?.id?.trim()?.takeIf(String::isNotBlank)
+    // The account comes from the signed-in route owner at once, not only from the session this
+    // page loads asynchronously: a cached conversation renders its full page on the first frame
+    // (#5104), and an upload started from that frame (or by a handler it registered) must land in
+    // the same store the composer watches. Before, the first frame keyed the store on account ""
+    // and the tile stayed on "Checking file…" (Android 1.27.0, artin; reproduced by Reef).
+    val attachmentUploadAccountId =
+        (currentSession?.user?.id ?: sharedStores.currentAuthenticatedRouteOwner(storeScope)?.accountId)
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
     val attachmentUploadServerId =
         threadComposerUploadOwnerServerId(
             shellServerId = storeScope.initialServerId,
@@ -3985,8 +4120,8 @@ private fun SharedThreadRouteContentContent(
             )
         }
 
-    LaunchedEffect(taskConversationTasksViewModel, unableToUpdateTaskLabel) {
-        taskConversationTasksViewModel?.uiEvents?.collect { event ->
+    LaunchedEffect(taskConversation.tasksViewModel, unableToUpdateTaskLabel) {
+        taskConversation.tasksViewModel?.uiEvents?.collect { event ->
             when (event) {
                 is SharedTasksEvent.OperationFailed -> {
                     when {
@@ -4040,14 +4175,14 @@ private fun SharedThreadRouteContentContent(
         { serverId, event ->
             if (event is TaskUpdated) {
                 tasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
-                taskConversationTasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
-                taskConversationHeaderViewModel?.onTaskSeen(event.task)
+                taskConversation.tasksViewModel?.applyRealtimeTaskUpdate(serverId, event.task)
+                taskConversation.headerViewModel?.onTaskSeen(event.task)
             }
             if (event is TaskDeleted) {
-                taskConversationHeaderViewModel?.onTaskDeleted(event.taskId, event.conversationChannelId)
+                taskConversation.headerViewModel?.onTaskDeleted(event.taskId, event.conversationChannelId)
             }
             if (event is ThreadFollowersUpdated) {
-                taskConversationHeaderViewModel?.onFollowersUpdated(serverId, event.threadChannelId)
+                taskConversation.headerViewModel?.onFollowersUpdated(serverId, event.threadChannelId)
             }
             if (
                 event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId) &&
@@ -6069,6 +6204,19 @@ private fun SharedThreadRouteContentContent(
         }
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
     }
+    // Effects keyed only on the thread (the event-bus subscriptions below) live across
+    // recompositions, so they must call the latest copy of the upload function. The first frame's
+    // copy holds the upload store of an account the page does not know yet (no session loaded),
+    // so its uploads landed where this composer never looks and the tile stayed on "Checking
+    // file…" (Android 1.27.0, artin).
+    // A lambda, not `::uploadComposerAttachmentFiles`: a local function reference compares equal
+    // across compositions (it ignores what it captured), so rememberUpdatedState would keep the
+    // first frame's copy (found by Reef in the alpha's dex).
+    val latestUploadComposerAttachmentFiles by rememberUpdatedState<
+        suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean
+    > { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
+        uploadComposerAttachmentFiles(files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId)
+    }
     // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
@@ -6171,7 +6319,7 @@ private fun SharedThreadRouteContentContent(
                             },
                             log = bridge::log,
                         )
-                    uploadComposerAttachmentFiles(prepared)
+                    latestUploadComposerAttachmentFiles(prepared, null, false, emptyMap())
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
                 }
             },
@@ -6318,6 +6466,10 @@ private fun SharedThreadRouteContentContent(
         )
         return true
     }
+    // The external-share auto-send below runs in an effect keyed only on the thread: it must
+    // send with the latest session, provenance and upload store, not the first frame's (null
+    // before the session loads, so the queued share was silently never sent).
+    val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
     fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
         if (externalShareSendRequested) {
             bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
@@ -6378,7 +6530,7 @@ private fun SharedThreadRouteContentContent(
                         bridge.toast(attachmentRetryUnavailableLabel)
                         return@launch
                     }
-                    val uploadStarted = uploadComposerAttachmentFiles(files)
+                    val uploadStarted = latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
                     if (!uploadStarted) {
                         externalShareSendRequested = false
                         externalShareExpectedAuthority = null
@@ -6422,7 +6574,7 @@ private fun SharedThreadRouteContentContent(
                     externalShareSendRequested = false
                     externalShareExpectedAuthority = null
                     if (authorityCurrent) {
-                        performComposerSend()
+                        latestPerformComposerSend()
                     } else {
                         bridge.logWarn(
                             "external_share_send_rejected reason=auth_generation_changed_after_upload"
@@ -6527,7 +6679,7 @@ private fun SharedThreadRouteContentContent(
                 // editor output.  Defer the server-size gate until the confirmed
                 // PNG/original or compressor-produced JPEG reaches upload.
                 openComposerImageAnnotation(files)
-            ThreadPickedAttachmentComposerAction.UploadToComposer -> uploadComposerAttachmentFiles(files)
+            ThreadPickedAttachmentComposerAction.UploadToComposer -> latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
             ThreadPickedAttachmentComposerAction.None -> Unit
         }
     }
@@ -6772,12 +6924,13 @@ private fun SharedThreadRouteContentContent(
                             // Otherwise the `finally` below would retire ownership while a real
                             // network transfer was still in flight.
                             withContext(NonCancellable) {
-                                uploadComposerAttachmentFiles(
-                                    files = files,
+                                latestUploadComposerAttachmentFiles(
+                                    files,
+                                    null,
                                     // Per-file admission: one oversize or failed image must not
                                     // reject the rest. Direct vs multipart is chosen per file.
-                                    requireAllFiles = false,
-                                    replaceAttachmentIdsByLocalId = replaceAttachmentIdsByLocalId
+                                    false,
+                                    replaceAttachmentIdsByLocalId
                                 )
                             }
                     } catch (cancelled: CancellationException) {
@@ -6990,7 +7143,7 @@ private fun SharedThreadRouteContentContent(
 
     TaskOpenSurfaceHost(
         flow = taskOpenSurfaceFlow,
-        detailsRepository = taskConversationDetailsRepository,
+        detailsRepository = taskConversation.detailsRepository,
         membersStore = serverMembersStore,
         serverId = currentServerId,
         // The conversation page's head writes: the same task channel store, gates and failure toasts.
@@ -7345,6 +7498,15 @@ private fun SharedThreadRouteContentContent(
             remember(currentSession?.servers) {
                 raftViewerServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl })
             }
+        val taskConversationId = taskConversation.conversationId
+        val taskConversationHeaderViewModel = taskConversation.headerViewModel
+        val taskConversationHeaderState = taskConversation.headerState
+        val taskConversationParentChannelId = taskConversation.parentChannelId
+        val taskConversationTasksViewModel = taskConversation.tasksViewModel
+        val taskConversationTasksState = taskConversation.tasksState
+        val taskConversationTask = taskConversation.task
+        val taskConversationDetailsViewModel = taskConversation.detailsViewModel
+        val taskConversationDetailsState = taskConversation.detailsState
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalRaftViewerServerLogos provides viewerServerLogos,
@@ -8466,6 +8628,8 @@ private fun SharedThreadRouteContentContent(
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
                     val savedOwnerSession = currentSession
                     coroutineScope.launch {
+                        val unsaveOwnerSession =
+                            if (!nextSaved) savedOwnerSession ?: dataSource.readSession() else null
                         val result =
                             if (nextSaved) {
                                 dataSource.saveMessage(itemId)
@@ -8478,13 +8642,16 @@ private fun SharedThreadRouteContentContent(
                                 sharedStores.homeSavedStateCache.recordSavedWrite()
                                 // A confirmed unsave leaves the Saved list's stored copy (a save shows up
                                 // with the list's next refresh: the row needs the server's saved entry).
-                                val savedServerId = savedOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
-                                if (!nextSaved && savedOwnerSession != null && savedServerId != null) {
-                                    sharedStores.homeSavedStateCache.recordMessageUnsaved(
-                                        serverId = savedServerId,
-                                        userId = savedOwnerSession.user.id,
-                                        messageId = MessageId(itemId),
-                                    )
+                                if (!nextSaved) {
+                                    val savedServerId =
+                                        unsaveOwnerSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+                                    if (unsaveOwnerSession != null && savedServerId != null) {
+                                        sharedStores.homeSavedStateCache.recordMessageUnsaved(
+                                            serverId = savedServerId,
+                                            userId = unsaveOwnerSession.user.id,
+                                            messageId = MessageId(itemId),
+                                        )
+                                    }
                                 }
                             }
                             is DataResult.Empty,
