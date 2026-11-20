@@ -10,6 +10,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSData
+import platform.Foundation.create
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURLResponse
@@ -1008,7 +1009,7 @@ internal class RaftIosWebViewDownloadDelegate(
 
     override fun downloadDidFinish(download: WKDownload) {
         val target = destination
-        val data = target?.let { NSData.dataWithContentsOfURL(it) }
+        val data: NSData? = target?.let { NSData.create(contentsOfURL = it) }
         target?.URLByDeletingLastPathComponent?.let { NSFileManager.defaultManager.removeItemAtURL(it, null) }
         finish(
             if (data == null) RaftWebViewDownload.Failed("read_failed")
