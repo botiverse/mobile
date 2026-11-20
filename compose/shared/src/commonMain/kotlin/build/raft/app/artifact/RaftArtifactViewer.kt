@@ -873,11 +873,101 @@ internal fun raftArtifactViewerLeaveAction(
         RaftArtifactViewerLeaveAction.Leave
     }
 
+/** The fragment the page's address carries while it asks the App to open a conversation ([raftArtifactViewerHostLinksScript]). */
+internal const val RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX = "host=open&to="
+
+/**
+ * Added to what the viewer's WebView injects ([script]): the page then asks the App to open a
+ * conversation instead of routing itself to it. The web opens the Artifact's original message with
+ * its router (`history.pushState` to `/s/<slug>/channel|dm/<id>…`, no document load the WebView could
+ * refuse), which takes the Artifact off the page before the App can open anything over it (a blank
+ * frame, #5160's device check). While the address is an Artifact's, such a move is not made: the
+ * address gets `#host=open&to=<path and query>` instead (replaced, as the page's own `#host=<name>`
+ * requests are; the hash it had is kept for [raftArtifactViewerHostLinkTakenScript]), the router
+ * finds the address where it was and the Artifact stays drawn. Every other history write goes
+ * through. Guarded like the rest (a top-level document of the web origin) and installed once per document.
+ */
+internal fun raftArtifactViewerWithHostLinks(webOrigin: String, script: String): String {
+    val guard = raftArtifactViewerHostLinksScript(webOrigin)
+    return if (script.isBlank()) guard else script + "\n" + guard
+}
+
+internal fun raftArtifactViewerHostLinksScript(webOrigin: String): String {
+    val prefix = Json.encodeToString(String.serializer(), "#$RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX")
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        if (window.__raftArtifactHostLinks) return;
+        window.__raftArtifactHostLinks = true;
+        var history = window.history;
+        var replaceState = history.replaceState;
+        var prefix = $prefix;
+        var guarded = function(original) {
+          return function(state, unused, url) {
+            try {
+              var here = window.location;
+              if (url != null && /^\/(s\/[^\/]+\/)?artifacts\/[^\/]+/.test(here.pathname)) {
+                var to = new URL(String(url), here.href);
+                if (to.origin === here.origin && /^\/s\/[^\/]+\/(channel|dm)\/[^\/]+\/?${'$'}/.test(to.pathname)) {
+                  if (here.hash.indexOf(prefix) !== 0) window.__raftArtifactHostLinkHash = here.hash;
+                  replaceState.call(history, history.state, '', here.pathname + here.search + prefix + to.pathname + to.search);
+                  return;
+                }
+              }
+            } catch (error) {}
+            return original.apply(this, arguments);
+          };
+        };
+        history.pushState = guarded(history.pushState);
+        history.replaceState = guarded(replaceState);
+        """.trimIndent(),
+    )
+}
+
+/** The request is taken ([raftArtifactViewerHostOpenLink]): the address gets back the hash it had (its open list). */
+internal fun raftArtifactViewerHostLinkTakenScript(webOrigin: String): String {
+    val prefix = Json.encodeToString(String.serializer(), "#$RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX")
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        var here = window.location;
+        if (here.hash.indexOf($prefix) === 0) {
+          window.history.replaceState(window.history.state, '', here.pathname + here.search + (window.__raftArtifactHostLinkHash || ''));
+        }
+        """.trimIndent(),
+    )
+}
+
+/**
+ * The conversation link the page at [url] asks the App to open (`#host=open&to=<path and query>`,
+ * [raftArtifactViewerHostLinksScript]) on [webOrigin], or null: no such request, or what it names is
+ * not a link the App opens itself ([RaftArtifactViewerNavigation.OpenMessage]; nothing else is taken
+ * from the page). Identity only: the shell resolves the link as one from outside.
+ */
+internal fun raftArtifactViewerHostOpenLink(
+    url: String,
+    webOrigin: String,
+    artifactId: String,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): String? {
+    val fragment = url.substringAfter('#', "")
+    if (!fragment.startsWith(RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX)) return null
+    val path = fragment.removePrefix(RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX)
+    if (!path.startsWith("/s/") || '#' in path) return null
+    val link = webOrigin.trim().trimEnd('/') + path
+    return link.takeIf { raftArtifactViewerNavigation(it, webOrigin, artifactId, appHosts) is RaftArtifactViewerNavigation.OpenMessage }
+}
+
+/** Whether [url] carries a request to open a link, whatever it names (never an address to put the page back on). */
+internal fun raftArtifactViewerAsksHostOpen(url: String): Boolean =
+    url.substringAfter('#', "").startsWith(RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX)
+
 /** How long the page has to come back to the Artifact after [raftArtifactViewerReturnScript] before it is loaded again in a new WebView. */
 internal const val RAFT_ARTIFACT_VIEWER_RETURN_TIMEOUT_MS = 4_000L
 
 /**
- * Whether a Raft link the page moved to in place ([RaftArtifactViewerNavigation.OpenMessage]: its
+ * Whether a Raft link the page asked for ([raftArtifactViewerHostOpenLink]) or, where its router was
+ * not held ([raftArtifactViewerHostLinksScript] not in the document), moved to in place ([RaftArtifactViewerNavigation.OpenMessage]: its
  * original message, named by the conversation, so a DM's by the person or agent; a "Linked from"
  * discussion) opens over the viewer, which stays: Back from the conversation returns to the Artifact,
  * as the web's own page does (the message is a new history entry; Back comes back to the Artifact).

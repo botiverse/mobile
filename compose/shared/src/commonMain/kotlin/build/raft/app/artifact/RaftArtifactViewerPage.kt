@@ -342,7 +342,10 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
                     url = raftArtifactViewerWarmUrl(host.webBaseUrl, conversation),
                     scope = scope,
                     injectedJavaScript =
-                        raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
+                        raftArtifactViewerWithHostLinks(
+                            scope.webOrigin,
+                            raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
+                        ),
                     desktopMode = desktopMode,
                 )
             }
@@ -873,6 +876,11 @@ private fun RaftArtifactViewerWebBody(
     // The conversation address last opened over the viewer: the same one again right after (a platform's second
     // callback) is the same tap, so the page is put back again and nothing opens twice.
     var openedOverUrl by remember { mutableStateOf<String?>(null) }
+    // A conversation the page asks the App to open (`#host=open&to=…`: the page stays on the Artifact), being handled:
+    // the link and the address that asked. The same address again right after is the same tap.
+    var pendingOpenLink by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var handledOpenLinkUrl by remember { mutableStateOf<String?>(null) }
+    var handledOpenLinkAt by remember { mutableStateOf(kotlin.time.TimeSource.Monotonic.markNow()) }
     var openedOverAt by remember { mutableStateOf(kotlin.time.TimeSource.Monotonic.markNow()) }
     fun onAddress(url: String) {
         if (left) return
@@ -897,6 +905,15 @@ private fun RaftArtifactViewerWebBody(
             handledHostActionAt = kotlin.time.TimeSource.Monotonic.markNow()
             handledHostActionCleared = false
             pendingHostAction = hostAction to url
+        }
+        val asksOpen = raftArtifactViewerAsksHostOpen(url)
+        if (
+            asksOpen && armed && pendingOpenLink == null &&
+            (url != handledOpenLinkUrl || handledOpenLinkAt.elapsedNow().inWholeMilliseconds >= RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS)
+        ) {
+            handledOpenLinkUrl = url
+            handledOpenLinkAt = kotlin.time.TimeSource.Monotonic.markNow()
+            pendingOpenLink = raftArtifactViewerHostOpenLink(url, scope.webOrigin, shownTarget.id).orEmpty() to url
         }
         val addressNavigation = raftArtifactViewerNavigation(url, scope.webOrigin, shownTarget.id)
         val switched = if (armed) raftArtifactViewerSwitchesInPlace(addressNavigation, conversationId) else null
@@ -924,7 +941,7 @@ private fun RaftArtifactViewerWebBody(
                     )
                 }
                 armed = true
-                if (hostAction == null) artifactAddress = url
+                if (hostAction == null && !asksOpen) artifactAddress = url
                 returningTo = null
                 currentOnStay(navigation)
             }
@@ -939,7 +956,7 @@ private fun RaftArtifactViewerWebBody(
                     if (openedOverUrl != url || openedOverAt.elapsedNow().inWholeMilliseconds > RAFT_ARTIFACT_VIEWER_RETURN_TIMEOUT_MS) {
                         openedOverUrl = url
                         openedOverAt = kotlin.time.TimeSource.Monotonic.markNow()
-                        host.bridge.log("artifact_viewer_opened_over action=open_message to=${raftArtifactViewerLogDestination(url)}")
+                        host.bridge.log("artifact_viewer_opened_over action=open_message how=moved to=${raftArtifactViewerLogDestination(url)}")
                         RaftMessageLinkIngress.accept(url, "artifact_viewer", scope.webOrigin)
                     }
                 } else if (armed && returningTo == null) {
@@ -966,6 +983,24 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
+    LaunchedEffect(pendingOpenLink) {
+        val (link, asked) = pendingOpenLink ?: return@LaunchedEffect
+        // The request comes off the address first (the hash it had goes back); the page never left the Artifact.
+        controller.evaluateJavaScript(raftArtifactViewerHostLinkTakenScript(scope.webOrigin))
+        val to = raftArtifactViewerLogDestination(link)
+        if (link.isEmpty()) {
+            host.bridge.log("artifact_viewer_open_link_ignored reason=not_a_raft_link")
+        } else if (inColumn) {
+            // The wide layout's Artifact column closes for it, as before.
+            left = true
+            currentOnLeave(RaftArtifactViewerNavigation.OpenMessage(link), to)
+        } else {
+            // Over the viewer, which stays as it is: Back from the conversation returns to it.
+            host.bridge.log("artifact_viewer_opened_over action=open_message how=asked to=$to")
+            RaftMessageLinkIngress.accept(link, "artifact_viewer", scope.webOrigin)
+        }
+        if (pendingOpenLink?.second == asked) pendingOpenLink = null
+    }
     LaunchedEffect(returningTo) {
         val back = returningTo ?: return@LaunchedEffect
         // Cancelled once the page is on the Artifact again. One that cannot be put back (or is not seen to be) is
@@ -990,7 +1025,10 @@ private fun RaftArtifactViewerWebBody(
     }
     val injected =
         remember(scope, session.accessToken, binding?.webViewGeneration, desktopMode) {
-            raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode)
+            raftArtifactViewerWithHostLinks(
+                scope.webOrigin,
+                raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
+            )
         }
     LaunchedEffect(documentReady, navigated) {
         if (!documentReady || navigated) return@LaunchedEffect

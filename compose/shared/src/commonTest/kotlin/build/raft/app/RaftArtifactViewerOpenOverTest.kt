@@ -8,7 +8,8 @@ import kotlin.test.assertTrue
 /**
  * The Artifact's original message in the viewer's page (named by its conversation: a DM's by the
  * person or agent) used to close the viewer before the conversation opened. On a phone the
- * conversation now opens over the viewer, which is put back on the Artifact, so Back returns to it.
+ * conversation now opens over the viewer, so Back returns to it: the page asks the App for the
+ * conversation and stays on the Artifact; one whose router moved anyway is put back on it.
  */
 class RaftArtifactViewerOpenOverTest {
     private val web = "https://app.raft.build"
@@ -43,6 +44,48 @@ class RaftArtifactViewerOpenOverTest {
                 "$web/artifacts/pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21",
             )
         for (url in closes) assertFalse(opensOver(url), url)
+    }
+
+    @Test
+    fun thePageAsksForAConversationInsteadOfRoutingToIt() {
+        val path = "/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002?msg=a0a0a0a0-0000-4000-8000-000000000003"
+        val asked = shownAt.substringBefore('#') + "#" + RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX + path
+        // The page is still on the Artifact (nothing leaves, so nothing is drawn again) and names the link.
+        assertEquals(RaftArtifactViewerNavigation.Stay(2), raftArtifactViewerNavigation(asked, web, id))
+        assertTrue(raftArtifactViewerAsksHostOpen(asked))
+        assertEquals(dmMessage, raftArtifactViewerHostOpenLink(asked, web, id))
+        assertEquals(null, raftArtifactViewerHostAction(asked))
+        // Only a link the App opens itself is taken from the page; no request, no link.
+        val refused =
+            listOf(
+                "/s/acme/agent/a0a0a0a0-0000-4000-8000-000000000004",
+                "/s/acme",
+                "//evil.test/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002",
+                "https://evil.test/s/acme/dm/d0d0d0d0-0000-4000-8000-000000000002",
+                "/artifacts/pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21",
+            )
+        for (to in refused) {
+            val url = "$web/artifacts/$id?$embed#$RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX$to"
+            assertEquals(null, raftArtifactViewerHostOpenLink(url, web, id), to)
+        }
+        assertFalse(raftArtifactViewerAsksHostOpen(shownAt))
+        assertEquals(null, raftArtifactViewerHostOpenLink(shownAt, web, id))
+    }
+
+    @Test
+    fun theRoutersMoveToAConversationIsHeldInTheDocument() {
+        val session = raftArtifactViewerGuardedScript(web, "window.localStorage.setItem('k','v')")
+        val script = raftArtifactViewerWithHostLinks(web, session)
+        // After the session writes, once per document, and only in a top-level document of the web origin.
+        assertTrue(script.startsWith(session))
+        val guard = raftArtifactViewerHostLinksScript(web)
+        assertEquals(guard, raftArtifactViewerWithHostLinks(web, ""))
+        assertTrue("window.location.origin !== \"$web\"" in guard)
+        assertTrue("if (window.__raftArtifactHostLinks) return;" in guard)
+        assertTrue("history.pushState = guarded(history.pushState)" in guard)
+        assertTrue("\"#$RAFT_ARTIFACT_VIEWER_OPEN_LINK_FRAGMENT_PREFIX\"" in guard)
+        // The request comes off with the hash the address had.
+        assertTrue("__raftArtifactHostLinkHash" in raftArtifactViewerHostLinkTakenScript(web))
     }
 
     @Test
