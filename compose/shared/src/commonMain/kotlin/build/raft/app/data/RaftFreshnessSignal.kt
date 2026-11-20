@@ -17,8 +17,15 @@ enum class RaftFreshnessTrigger(val wireName: String) {
     NetworkRestored("network"),
 }
 
-/** One "re-check what you show" moment. [serverId] names the server for [RaftFreshnessTrigger.Reconnect] only. */
-data class RaftFreshnessEvent(val trigger: RaftFreshnessTrigger, val serverId: String? = null)
+/**
+ * One "re-check what you show" moment. [serverId] and [transportEpoch] (the host's number for that
+ * server's socket connection) are set for [RaftFreshnessTrigger.Reconnect] only.
+ */
+data class RaftFreshnessEvent(
+    val trigger: RaftFreshnessTrigger,
+    val serverId: String? = null,
+    val transportEpoch: Long? = null,
+)
 
 /**
  * The one process-wide signal that what the app shows may be stale (#proj-mobile:#198 ②): the app
@@ -42,9 +49,10 @@ object RaftFreshnessSignal {
         mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
     }
 
-    fun onReconnected(serverId: String) {
+    /** [transportEpoch]: the socket connection that came back; its `connected` and `rooms:joined` share it. */
+    fun onReconnected(serverId: String, transportEpoch: Long) {
         val id = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, id))
+        mutableEvents.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, id, transportEpoch.takeIf { it > 0L }))
     }
 
     fun onNetworkRestored() {
@@ -58,13 +66,16 @@ const val RAFT_FRESHNESS_COALESCE_MILLIS = 10_000L
 /**
  * Turns [RaftFreshnessSignal] events into at most one catch-up per return for one subscriber.
  *
- * - [RaftFreshnessTrigger.Reconnect] counts only for the subscriber's own server. It is the moment
- *   pushes resume, so it always catches up (a second one for the same server within
- *   [coalesceMillis] does not).
+ * - [RaftFreshnessTrigger.Reconnect] counts only for the subscriber's own server. A socket
+ *   connection the gate has not seen for that server ([RaftFreshnessEvent.transportEpoch]) is the
+ *   moment pushes resume, so it always catches up, however recent the last catch-up is; the same
+ *   connection reported again (`connected`, then `rooms:joined`) does not. One without an epoch is
+ *   coalesced like the two below.
  * - [RaftFreshnessTrigger.Foreground] and [RaftFreshnessTrigger.NetworkRestored] are skipped when a
  *   catch-up ran less than [coalesceMillis] ago (one return fires several of them).
- * - While the subscriber is not visible, the first event is kept and fires when it shows again
- *   (HarmonyOS widgets: record while hidden, refresh once visible).
+ * - While the subscriber is not visible, one event is kept and fires when it shows again
+ *   (HarmonyOS widgets: record while hidden, refresh once visible): the first, or a new socket
+ *   connection once one arrives, which then fires whatever the window says.
  *
  * Not thread-safe: confine it to one coroutine (the UI thread or the store's).
  */
@@ -75,23 +86,36 @@ class RaftFreshnessGate(
     private val nowMillis: () -> Long,
 ) {
     private var lastCatchUpAt: Long? = null
-    private var lastReconnectAt: Long? = null
+
+    /** The last socket connection seen per server: a page may move to another server. */
+    private val lastTransportEpochs = mutableMapOf<String, Long>()
     private var pending: RaftFreshnessTrigger? = null
+
+    /** The kept event is a new socket connection: it fires inside the coalescing window too. */
+    private var pendingNewConnection = false
 
     fun onEvent(event: RaftFreshnessEvent, serverId: String?, visible: Boolean): RaftFreshnessTrigger? {
         val trigger = classify(event, serverId) ?: return null
+        val newConnection = trigger == RaftFreshnessTrigger.Reconnect && noteNewConnection(event)
         if (!visible) {
-            if (pending == null) pending = trigger
+            if (pending == null || (newConnection && !pendingNewConnection)) pending = trigger
+            pendingNewConnection = pendingNewConnection || newConnection
             return null
         }
-        return fire(trigger)
+        // A kept event is answered by this catch-up (or was just answered by a recent one).
+        val force = newConnection || pendingNewConnection
+        pending = null
+        pendingNewConnection = false
+        return fire(trigger, force)
     }
 
     fun onVisibilityChanged(visible: Boolean): RaftFreshnessTrigger? {
         if (!visible) return null
         val trigger = pending ?: return null
+        val force = pendingNewConnection
         pending = null
-        return fire(trigger)
+        pendingNewConnection = false
+        return fire(trigger, force)
     }
 
     private fun classify(event: RaftFreshnessEvent, serverId: String?): RaftFreshnessTrigger? =
@@ -100,19 +124,27 @@ class RaftFreshnessGate(
             RaftFreshnessTrigger.NetworkRestored -> if (reconnect) event.trigger else null
             RaftFreshnessTrigger.Reconnect -> {
                 val own = serverId?.trim()?.takeIf { it.isNotEmpty() }
-                if (reconnect && own != null && event.serverId == own) event.trigger else null
+                when {
+                    !reconnect || own == null || event.serverId != own -> null
+                    // The same connection again (`connected` + `rooms:joined`): already caught up or kept.
+                    event.transportEpoch != null && lastTransportEpochs[own] == event.transportEpoch -> null
+                    else -> event.trigger
+                }
             }
         }
 
-    private fun fire(trigger: RaftFreshnessTrigger): RaftFreshnessTrigger? {
+    /** Records the connection of an own-server reconnect; false when the event does not name one. */
+    private fun noteNewConnection(event: RaftFreshnessEvent): Boolean {
+        val server = event.serverId ?: return false
+        val epoch = event.transportEpoch ?: return false
+        lastTransportEpochs[server] = epoch
+        return true
+    }
+
+    private fun fire(trigger: RaftFreshnessTrigger, force: Boolean): RaftFreshnessTrigger? {
         val now = nowMillis()
-        val recent = { at: Long? -> at != null && now - at < coalesceMillis }
-        if (trigger == RaftFreshnessTrigger.Reconnect) {
-            if (recent(lastReconnectAt)) return null
-            lastReconnectAt = now
-        } else if (recent(lastCatchUpAt)) {
-            return null
-        }
+        val last = lastCatchUpAt
+        if (!force && last != null && now - last < coalesceMillis) return null
         lastCatchUpAt = now
         return trigger
     }

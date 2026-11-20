@@ -2895,7 +2895,7 @@ class SharedSettingsStore(
                     cached.applyToState(destination) { copy(computerDetail = it) }
                     val fresh = dataSource.loadComputerDetail(machineId, forceComputers = true)
                     fresh.applyToState(destination) { copy(computerDetail = it) }
-                    if (fresh is DataResult.Content) computersValidatedAtMillis = nowMillis()
+                    if (fresh is DataResult.Content) computerDetailValidatedAt = machineId to nowMillis()
                     // The machine was deleted or access was lost: its cached page was forgotten.
                     if (fresh !is DataResult.Content && dataSource.cachedComputerDetail(machineId) == null) {
                         _state.value = _state.value.copy(computerDetail = fresh.toScreenLoadState())
@@ -2960,9 +2960,10 @@ class SharedSettingsStore(
     }
 
     private suspend fun refreshComputers() {
-        dataSource.loadComputers(forceComputers = true)
-            .applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
-        if (_state.value.computers is ScreenLoadState.Content) computersValidatedAtMillis = nowMillis()
+        val fresh = dataSource.loadComputers(forceComputers = true)
+        fresh.applyToState(SharedSettingsDestination.Computers) { copy(computers = it) }
+        // Only a read that succeeded confirms the list: a failed one keeps the rows, not their age.
+        if (fresh is DataResult.Content) computersValidatedAtMillis = nowMillis()
     }
 
     /**
@@ -2972,7 +2973,12 @@ class SharedSettingsStore(
      */
     private suspend fun catchUpComputers() {
         val destination = _state.value.route.destination
-        val validatedAt = computersValidatedAtMillis
+        val validatedAt =
+            when (destination) {
+                SharedSettingsDestination.ComputerDetail ->
+                    computerDetailValidatedAt?.takeIf { it.first == _state.value.route.itemId.orEmpty() }?.second
+                else -> computersValidatedAtMillis
+            }
         val ageMillis = validatedAt?.let { nowMillis() - it }
         if (ageMillis != null && ageMillis < COMPUTERS_SHOWN_STALE_MILLIS) {
             diagnosticsLogger("settings_computers_catch_up mode=silent destination=${destination.name} ageMs=$ageMillis")
@@ -2983,8 +2989,11 @@ class SharedSettingsStore(
         }
     }
 
-    /** When the computers the page shows were last confirmed by the server (a fresh, successful read). */
+    /** When the computers list was last confirmed by the server (a fresh, successful read). */
     private var computersValidatedAtMillis: Long? = null
+
+    /** The same for a computer page: its machine id and when the server last confirmed it. */
+    private var computerDetailValidatedAt: Pair<String, Long>? = null
 
     private suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false) {
         if (machineId.isBlank()) {
@@ -2997,7 +3006,7 @@ class SharedSettingsStore(
         }
         val result = dataSource.loadComputerDetail(machineId, forceComputers = forceComputers)
         result.applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
-        if (result is DataResult.Content) computersValidatedAtMillis = nowMillis()
+        if (result is DataResult.Content) computerDetailValidatedAt = machineId to nowMillis()
     }
 
     private suspend fun loadAboutWithUpdateStatus() {

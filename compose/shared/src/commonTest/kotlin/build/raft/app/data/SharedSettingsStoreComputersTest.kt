@@ -198,6 +198,28 @@ class SharedSettingsStoreComputersTest {
     }
 
     @Test
+    fun aFailedRefreshDoesNotMakeTheKeptListCountAsFresh() = runTest {
+        var now = 1_000_000L
+        val repository = FakeSettingsRepository(computersResult = DataResult.Content(computers(machine("m-1", "Studio"))))
+        val store = store(repository, standalone = true, nowMillis = { now })
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+
+        now += COMPUTERS_SHOWN_STALE_MILLIS + 1
+        repository.computersResult = DataResult.Error(ScreenError("server_unavailable", retryable = true))
+        store.accept(SharedSettingsIntent.RefreshComputers)
+        assertEquals(listOf("Studio"), listNames(store), "the list stays")
+
+        now += 1_000
+        val block = BlockingCall()
+        repository.computersBlock = block
+        store.dispatch(SharedSettingsIntent.CatchUpComputers)
+        runCurrent()
+        assertTrue(store.state.value.isRefreshing(SharedSettingsDestination.Computers), "the list was not confirmed: indicator")
+        block.release()
+        runCurrent()
+    }
+
+    @Test
     fun catchUpLeavesOtherSettingsPagesAlone() = runTest {
         val repository = FakeSettingsRepository(computersResult = DataResult.Content(computers(machine("m-1", "Studio"))))
         val store = store(repository, standalone = true)
