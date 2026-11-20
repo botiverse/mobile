@@ -162,7 +162,6 @@ class HumanProfileDescriptionUpdateTest {
 
                 override suspend fun getChannelMembers(
                     priority: DataRequestPriority,
-                    serverId: ServerId,
                     channelId: ChannelId
                 ): DataResult<ChannelMemberSnapshot> =
                     DataResult.Content(ChannelMemberSnapshot(channelId = channelId, members = listOf(selfA, otherA)))
@@ -202,7 +201,7 @@ class HumanProfileDescriptionUpdateTest {
         assertEquals("Bob bio", store.memberProfile(serverA, "user-2")?.description)
         assertEquals(
             "New bio",
-            store.currentChannelMembers(serverA, channelA).members.first { it.id == MemberId("user-1") }.description
+            store.currentChannelMembers(serverA, channelA).first { it.id == MemberId("user-1") }.description
         )
         assertEquals(
             "New bio",
@@ -227,7 +226,7 @@ class HumanProfileDescriptionUpdateTest {
         assertTrue(store.updateHumanDescription(MemberId("user-1"), null))
         assertNull(store.memberProfile(serverA, "user-1")?.description)
         assertNull(store.memberProfile(serverB, "user-1")?.description)
-        assertNull(store.currentChannelMembers(serverA, channelA).members.first { it.id == MemberId("user-1") }.description)
+        assertNull(store.currentChannelMembers(serverA, channelA).first { it.id == MemberId("user-1") }.description)
         assertNull(store.state.value.memberSuggestionSlice(serverA).suggestions.first { it.memberId == "user-1" }.description)
         assertNull(
             durable.read(RaftServerMembersDurableKey("https://api.example", "user-1", serverA.value))
