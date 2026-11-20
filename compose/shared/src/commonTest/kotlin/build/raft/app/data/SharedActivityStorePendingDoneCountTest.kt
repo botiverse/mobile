@@ -317,12 +317,22 @@ class SharedActivityStorePendingDoneCountTest {
 
     @Test
     fun newerActivityDuringUndoWindowSkipsDoneAndRestoresUpdatedCountsOnExpiry() = runTest {
-        val initialA = channelA.copy(latestActivityMessageId = MessageId("m-10"), latestActivitySeq = "10")
+        val initialA =
+            channelA.copy(
+                latestActivityMessageId = MessageId("m-10"),
+                latestActivitySeq = "10",
+                doneFrontierSeqPresent = true,
+                doneFrontierSeq = "10",
+                latestActivityAt = "2026-10-01T00:00:00Z",
+            )
         val newerA =
             initialA.copy(
                 unreadCount = 3,
                 latestActivityMessageId = MessageId("m-11"),
                 latestActivitySeq = "11",
+                doneFrontierSeqPresent = true,
+                doneFrontierSeq = "11",
+                latestActivityAt = "2026-10-01T00:05:00Z",
             )
         val repo =
             FakeInboxRepository(
