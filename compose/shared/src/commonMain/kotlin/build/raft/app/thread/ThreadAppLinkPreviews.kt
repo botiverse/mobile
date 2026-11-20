@@ -251,6 +251,8 @@ internal fun ThreadAppLinkPreviewScope(
                     prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
                     execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
                     reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
+                    held = { url -> host.store.heldLinkCard(host.viewerKey, messageId, body, batchRead, url) },
+                    nowMillis = host.store.nowMillis,
                     toast = host.toast,
                     toastWithIntent = host.toastWithIntent,
                     status = { operationId -> host.store.operationStatus(host.serverId, operationId) },

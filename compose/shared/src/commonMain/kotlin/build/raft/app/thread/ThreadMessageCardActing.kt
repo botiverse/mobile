@@ -17,6 +17,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -144,6 +145,7 @@ internal fun messageCardPressCard(card: RaftMessageCard, live: RaftMessageCardLi
         title = "",
         handles = live?.handles?.associate { it.actionId to it.handle }.orEmpty(),
         block = AppLinkBlockCard(title = "", card = card.card, businessRevision = live?.cardRevision ?: card.revision.toString()),
+        readAtMillis = live?.readAtMillis,
     )
 
 /** What the card view needs from the conversation to run its acting buttons; null where it can't (fixtures, a share image). */
@@ -176,6 +178,7 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
     LaunchedEffect(host.store, host.viewerKey, host.serverId, messageId, view, card.acting, epoch, declined) {
         host.store.readMessageCard(host.viewerKey, host.serverId, messageId, view, locale, cardRevision = card.revision.toString())
     }
+    val currentCard by rememberUpdatedState(card)
     val actions =
         remember(host, messageId, view, locale) {
             ThreadAppLinkCardActionHost(
@@ -186,6 +189,8 @@ internal fun rememberThreadMessageCardActingHost(messageId: String?, card: RaftM
                 toastWithIntent = host.toastWithIntent,
                 status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
                 operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
+                held = { _ -> host.store.heldMessageCard(host.viewerKey, messageId)?.let { messageCardPressCard(currentCard, it) } },
+                nowMillis = host.store.nowMillis,
             )
         }
     return ThreadMessageCardActingHost(host, live, actions, status)

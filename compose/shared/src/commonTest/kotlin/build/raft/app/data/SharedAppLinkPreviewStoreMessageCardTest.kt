@@ -92,4 +92,23 @@ class SharedAppLinkPreviewStoreMessageCardTest {
         assertFalse(store.readMessageCard(CViewer, CServer, CMessage, view, "en"))
         assertEquals(RaftMessageCardConsent.Declined, store.live()?.consent)
     }
+
+    @Test
+    fun eachReadStampsWhenItsHandlesWereRead() = runTest(StandardTestDispatcher()) {
+        // #198: a press re-reads a card whose handles are older than 9 minutes; the store records the read time.
+        val api =
+            FakeAppLinkPreviewApi().apply {
+                cardReadResponses += HomeNetworkResponse(200, messageCardReadBody("""{"card_revision":"1","app":$MessageCardActingApp,"actions":${handles("t-1")}}"""))
+                cardReadResponses += HomeNetworkResponse(200, messageCardReadBody("""{"card_revision":"1","app":$MessageCardActingApp,"actions":${handles("t-2")}}"""))
+            }
+        var clock = 1_000L
+        val store = SharedAppLinkPreviewStore(api = api, scope = backgroundScope, retryJitterMs = { 0L }, nowMillis = { clock })
+        val view = AppLinkCardView.create()
+        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, view, "en"))
+        assertEquals(1_000L, store.live()?.readAtMillis)
+        assertEquals(1_000L, store.heldMessageCard(CViewer, CMessage)?.readAtMillis)
+        clock = 700_000L
+        assertTrue(store.readMessageCard(CViewer, CServer, CMessage, view, "en", force = true))
+        assertEquals(700_000L, store.live()?.readAtMillis)
+    }
 }

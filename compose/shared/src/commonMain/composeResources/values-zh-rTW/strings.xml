@@ -4823,6 +4823,7 @@
     <string name="thread_link_preview_connect_body">在 %1$s 連結帳號後，這裡會顯示這個連結的內容。</string>
     <string name="thread_link_preview_action_failed">無法執行此操作，請再試一次。</string>
     <string name="thread_link_preview_refresh_failed">無法重新整理此卡片，請再試一次。</string>
+    <string name="thread_link_preview_action_changed">此卡片內容已變更，請確認後再試一次。</string>
     <string name="thread_link_preview_unreviewed_run_title">執行「%1$s」？</string>
     <string name="thread_link_preview_unreviewed_run_by">由 %1$s 執行</string>
     <string name="thread_link_preview_unreviewed_note">%1$s 由本伺服器建立，未經 Raft 審核。它會收到你的名字，並用自己的權限執行。</string>

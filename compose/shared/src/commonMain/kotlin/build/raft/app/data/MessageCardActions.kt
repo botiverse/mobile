@@ -131,6 +131,8 @@ data class RaftMessageCardLive(
     val consent: RaftMessageCardConsent? = null,
     /** `consent: "needed"`: the App's first-view prompt (`prompts[0]`, the link card read's shape). */
     val prompt: AppLinkResult.Consent? = null,
+    /** When this read answered (epoch ms): its [handles] are signed for at most 10 minutes. */
+    val readAtMillis: Long? = null,
 ) {
     /** The handle for the acting button [elementId], or null. */
     fun handleFor(elementId: String): RaftMessageCardHandle? = handles.firstOrNull { it.elementId == elementId }

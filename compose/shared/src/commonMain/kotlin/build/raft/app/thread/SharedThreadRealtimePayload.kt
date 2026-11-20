@@ -280,10 +280,15 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
     // RFC 077: the loaded copy stays, but the page's explicit `delegatedBy` (newer) fills or
     // replaces its label; a page copy without one never clears a known label.
     // A retracted page copy likewise replaces the loaded copy's words, attachments and reactions.
+    // #198 (web messageStore `mergeIncomingMessage`): the server's copy of a message already on
+    // screen is newer than the loaded one, so it is merged in like a live update. An App card
+    // rewritten while the app was in the background lands on the resume catch-up page; only an
+    // older card revision is ignored (RFC 082), and local sends keep their own state.
     val baseMessages =
         messages.absorbingCanonicalSendEchoes(pageMessages)
             .withIncomingDelegatedLabels(pageMessages)
             .withKnownRetractionsFrom(pageMessages)
+            .withNewerServerCopiesFrom(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
     val mergedMessages =
         if (before) {
@@ -302,6 +307,35 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
         newerMessagesStatus = if (before) newerMessagesStatus else "idle"
     ).withOriginReplyCountAtLeastLoadedReplies()
         .asLoadedEmptyReplyThreadPayload()
+}
+
+/**
+ * #198: each loaded message the page also carries takes the page's copy through
+ * [mergeRealtimeUpdate] (the page is the newer read; an older card revision is ignored, sparse
+ * fields keep the loaded value). A local send (pending or still sending) keeps its own row.
+ */
+internal fun List<RaftThreadMessageItem>.withNewerServerCopiesFrom(
+    pageMessages: List<RaftThreadMessageItem>
+): List<RaftThreadMessageItem> {
+    if (isEmpty() || pageMessages.isEmpty()) return this
+    val pageById = pageMessages.associateBy { it.id }
+    var changed = false
+    val merged = map { loaded ->
+        val pageCopy = pageById[loaded.id]
+        if (
+            pageCopy == null ||
+            loaded.id.isBlank() ||
+            loaded.pendingSendContext != null ||
+            loaded.isTransientLocalSendingMessage()
+        ) {
+            loaded
+        } else {
+            val next = loaded.mergeRealtimeUpdate(pageCopy)
+            if (next != loaded) changed = true
+            next
+        }
+    }
+    return if (changed) merged else this
 }
 
 /**
