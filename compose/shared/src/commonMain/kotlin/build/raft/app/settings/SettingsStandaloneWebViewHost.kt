@@ -53,6 +53,7 @@ import build.raft.app.compat.pager.Pager
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
 internal const val SETTINGS_WEB_VIEW_VERSION_CODE = "versionCode"
+internal const val SETTINGS_WEB_VIEW_INSTALLED_APP_ID = "installedAppId"
 
 @Page(SETTINGS_WEB_VIEW_PAGE, supportInLocal = true)
 internal class ComposeSettingsWebViewPage : AuthenticatedProductPager(AuthenticatedProductRoute.SettingsWebView) {
@@ -68,6 +69,8 @@ internal fun settingsWebViewPageData(
     versionCode: String = "",
     /** A search result's setting: the web page opens at `#<id>` (Billing, Administration). */
     anchor: SettingsSearchAnchorRequest? = null,
+    /** An App bot's owning App row id (`?installed_app=<id>`, botiverse/slock #14286). */
+    installedAppId: String? = null,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
@@ -80,7 +83,15 @@ internal fun settingsWebViewPageData(
                 put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
             }
         }
+        if (surface == SettingsWebViewSurface.Marketplace) {
+            installedAppId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                put(SETTINGS_WEB_VIEW_INSTALLED_APP_ID, it)
+            }
+        }
     }
+
+internal fun settingsInstalledAppIdFromPageData(params: JSONObject): String? =
+    params.optString(SETTINGS_WEB_VIEW_INSTALLED_APP_ID).trim().takeIf { it.isNotEmpty() }
 
 internal fun settingsWebViewSurfaceFromPageData(params: JSONObject): SettingsWebViewSurface? {
     val surfaceName = params.optString(SETTINGS_WEB_VIEW_SURFACE).trim()
@@ -92,10 +103,11 @@ internal fun Pager.openSettingsWebViewPage(
     storeScope: build.raft.app.data.RaftShellStoreScope,
     versionCode: String = "",
     anchor: SettingsSearchAnchorRequest? = null,
+    installedAppId: String? = null,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, anchor),
+        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId),
     )
 }
 
@@ -183,13 +195,16 @@ private fun SettingsWebViewScreen() {
                     )
                 SettingsBillingOpenTarget.ViewOnly -> SettingsBillingViewOnlyPage(pager)
             }
-        SettingsWebViewSurface.Marketplace ->
+        SettingsWebViewSurface.Marketplace -> {
+            val installedAppId =
+                remember(pager.pageData.params) { settingsInstalledAppIdFromPageData(pager.pageData.params) }
             StandaloneSettingsWebViewPage(
                 pager = pager,
                 title = stringResource(Res.string.settings_connected_apps_title),
                 iconName = RaftLucideIconName.Link2,
-                spec = settingsMarketplaceWebViewSpec,
+                spec = remember(installedAppId) { settingsMarketplaceWebViewSpec(installedAppId) },
             )
+        }
         SettingsWebViewSurface.Administration ->
             StandaloneSettingsWebViewPage(
                 pager = pager,

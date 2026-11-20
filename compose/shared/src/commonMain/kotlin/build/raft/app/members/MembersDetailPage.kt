@@ -937,6 +937,23 @@ internal fun MemberDetailPageContent(
                                 )
                             }
                         }
+                    val managedAppDetailTarget =
+                        membersManagedAppDetailTarget(
+                            member = member,
+                            summary = selectedAgentDetail.summary,
+                            viewerServerRole = current.server.role,
+                            currentServerId = activeServerId ?: current.server.id.value,
+                            accessMode = current.accessMode,
+                        )
+                    val onOpenManagedApp: (() -> Unit)? =
+                        managedAppDetailTarget?.let { target ->
+                            {
+                                pager.openSettingsMarketplacePage(
+                                    storeScope = provider.storeScope,
+                                    installedAppId = target.appId,
+                                )
+                            }
+                        }
                     val agentRuntimeModelsByRuntime =
                         agentMachineId
                             ?.let { machineId ->
@@ -1226,6 +1243,7 @@ internal fun MemberDetailPageContent(
                                 }
                             },
                             onOpenComputer = onOpenComputer,
+                            onOpenManagedApp = onOpenManagedApp,
                             onCopyMemberId = {
                                 provider.copyMemberId(member, memberIdCopied)
                             },

@@ -1017,6 +1017,18 @@ data class AgentDetailSummary(
     val deletedAt: String? = null,
     /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
     val assistantOwnerUserId: String? = null,
+    /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
+    val managedByAppInstallId: String? = null,
+    /** App Bots only: owning App row id (`managedByApp.clientId` = `oauth_clients.id`, slock #14286). */
+    val managedByAppClientId: String? = null,
+    /** App Bots only: owning App display name (`managedByApp.name`). */
+    val managedByAppName: String? = null,
+    /** App Bots only: owning App logo URL (`managedByApp.logoUrl`). */
+    val managedByAppLogoUrl: String? = null,
+    /** App Bots only: app-published status line (`managedByApp.botStatusText`). */
+    val managedByAppBotStatusText: String? = null,
+    /** Bounded public profile projection marker (`"channel_summary"`, `routes/agents.ts`). */
+    val profileProjection: String? = null,
     /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
     val lastSeenAt: String? = null,
     /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */

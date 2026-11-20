@@ -99,79 +99,93 @@ internal fun MembersAgentComputerInfoRows(
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
     onOpenComputer: (() -> Unit)?,
     timeContext: RaftTimeContext,
-    memberAvatarResolver: RaftMemberAvatarResolver
+    memberAvatarResolver: RaftMemberAvatarResolver,
+    onOpenManagedApp: (() -> Unit)? = null,
 ) {
-    // Truth source is the computers store, not `machineId != null` (task #259).
-    val statusRow = machineStatusRow(summary?.machineId)
-    val machineName = summary?.machineName?.takeIf { it.isNotBlank() } ?: member.membersComputerName
-    MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
-        when (statusRow) {
-            // artin: 甲 -- until the store has answered, the row has no value (web
-            // `agentMachineRow.kind === "pending" ? null`), so it cannot flash
-            // "No computer assigned" before flipping to the machine.
-            MembersMachineStatusRow.Loading -> Unit
-            // Web `text-foreground-hint` on the callout.
-            MembersMachineStatusRow.NoComputer ->
-                RaftText(
-                    text = stringResource(Res.string.member_machine_no_computer_assigned),
-                    style = membersInfoValueStyle(),
-                    color = RaftTheme.colors.foregroundHint
-                )
-            is MembersMachineStatusRow.Machine -> {
-                // Web: a `font-mono text-foreground` button that opens the computer, underlined on
-                // hover. Android has no hover, so the underline shows whenever it is tappable.
-                val machineNameStyle =
-                    membersInfoValueStyle(mono = true).let { base ->
-                        if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
-                    }
-                RaftText(
-                    text = machineName.orDash(),
-                    style = machineNameStyle,
-                    color = RaftTheme.colors.foreground,
-                    // No maxLines/ellipsis on purpose: truncating a machine name hides exactly
-                    // the part that distinguishes two similar hosts; it wraps instead.
-                    softWrap = true,
-                    // Long press copies the name; a tap still opens the computer.
-                    modifier = Modifier
-                        .raftCopyable(machineName?.takeIf { it.isNotBlank() }, onClick = onOpenComputer)
-                        .fillMaxWidth()
+    val appBotIdentity =
+        member.appBotIdentityOrNull()
+            ?: summary?.managedByAppInstallId?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                RaftAppBotIdentity(
+                    handle = member.handle,
+                    appName = summary.managedByAppName?.trim()?.takeIf { name -> name.isNotEmpty() },
+                    removed = !summary.deletedAt.isNullOrBlank() || member.inMemberLists == false,
+                    appClientId = summary.managedByAppClientId?.trim()?.takeIf { id -> id.isNotEmpty() },
+                    appLogoUrl = summary.managedByAppLogoUrl?.trim()?.takeIf { url -> url.isNotEmpty() },
                 )
             }
+    if (appBotIdentity == null) {
+        // Truth source is the computers store, not `machineId != null` (task #259).
+        val statusRow = machineStatusRow(summary?.machineId)
+        val machineName = summary?.machineName?.takeIf { it.isNotBlank() } ?: member.membersComputerName
+        MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
+            when (statusRow) {
+                // artin: 甲 -- until the store has answered, the row has no value (web
+                // `agentMachineRow.kind === "pending" ? null`), so it cannot flash
+                // "No computer assigned" before flipping to the machine.
+                MembersMachineStatusRow.Loading -> Unit
+                // Web `text-foreground-hint` on the callout.
+                MembersMachineStatusRow.NoComputer ->
+                    RaftText(
+                        text = stringResource(Res.string.member_machine_no_computer_assigned),
+                        style = membersInfoValueStyle(),
+                        color = RaftTheme.colors.foregroundHint
+                    )
+                is MembersMachineStatusRow.Machine -> {
+                    // Web: a `font-mono text-foreground` button that opens the computer, underlined on
+                    // hover. Android has no hover, so the underline shows whenever it is tappable.
+                    val machineNameStyle =
+                        membersInfoValueStyle(mono = true).let { base ->
+                            if (onOpenComputer != null) base.copy(textDecoration = TextDecoration.Underline) else base
+                        }
+                    RaftText(
+                        text = machineName.orDash(),
+                        style = machineNameStyle,
+                        color = RaftTheme.colors.foreground,
+                        // No maxLines/ellipsis on purpose: truncating a machine name hides exactly
+                        // the part that distinguishes two similar hosts; it wraps instead.
+                        softWrap = true,
+                        // Long press copies the name; a tap still opens the computer.
+                        modifier = Modifier
+                            .raftCopyable(machineName?.takeIf { it.isNotBlank() }, onClick = onOpenComputer)
+                            .fillMaxWidth()
+                    )
+                }
+            }
         }
-    }
-    if (statusRow is MembersMachineStatusRow.Machine) {
-        // web `agent-computer-connection`: "Computer status", not "Status" -- the hero already
-        // shows the agent's own activity. <StatusDot> (Status md, 10px) then the word.
-        MembersAgentInfoField(label = stringResource(Res.string.member_label_computer_status)) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-                verticalAlignment = Alignment.CenterVertically
+        if (statusRow is MembersMachineStatusRow.Machine) {
+            // web `agent-computer-connection`: "Computer status", not "Status" -- the hero already
+            // shows the agent's own activity. <StatusDot> (Status md, 10px) then the word.
+            MembersAgentInfoField(label = stringResource(Res.string.member_label_computer_status)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftStatusDot(
+                        presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
+                        size = RaftStatusSize.Md
+                    )
+                    RaftText(
+                        text = stringResource(
+                            if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
+                        ),
+                        style = membersInfoValueStyle(),
+                        color = RaftTheme.colors.foreground
+                    )
+                }
+            }
+            // web `agent-computer-version` (#14585): the version only, "v1.0.53"; "—" while the
+            // Computer is offline or reports none. Whether it is online is the row above.
+            val runLabel = membersAgentComputerVersionText(statusRow.runLabel)
+            MembersAgentInfoField(
+                label = stringResource(Res.string.settings_computers_label_version),
+                copyText = runLabel
             ) {
-                RaftStatusDot(
-                    presence = if (statusRow.online) RaftPresence.Online else RaftPresence.Offline,
-                    size = RaftStatusSize.Md
-                )
                 RaftText(
-                    text = stringResource(
-                        if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
-                    ),
-                    style = membersInfoValueStyle(),
+                    text = runLabel,
+                    style = membersInfoValueStyle(mono = true),
                     color = RaftTheme.colors.foreground
                 )
             }
-        }
-        // web `agent-computer-version` (#14585): the version only, "v1.0.53"; "—" while the
-        // Computer is offline or reports none. Whether it is online is the row above.
-        val runLabel = membersAgentComputerVersionText(statusRow.runLabel)
-        MembersAgentInfoField(
-            label = stringResource(Res.string.settings_computers_label_version),
-            copyText = runLabel
-        ) {
-            RaftText(
-                text = runLabel,
-                style = membersInfoValueStyle(mono = true),
-                color = RaftTheme.colors.foreground
-            )
         }
     }
     summary?.createdAt.membersLocalizedCreatedDateOrNull(timeContext)?.let { createdDate ->
@@ -185,6 +199,28 @@ internal fun MembersAgentComputerInfoRows(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+    if (appBotIdentity != null) {
+        // Web AgentProfileInfo (botiverse/slock #14286): an App bot's owning App IS its identity
+        // (logo + App badge + name, linking to App details when eligible), followed by any
+        // app-published status line.
+        val botStatusText =
+            (summary?.managedByAppBotStatusText ?: member.managedByAppBotStatusText)?.trim()?.takeIf { it.isNotEmpty() }
+        MembersAgentInfoField(label = stringResource(Res.string.profile_preview_managed_by_app)) {
+            RaftManagedByAppRowValue(
+                identity = appBotIdentity,
+                onOpenManagedApp = onOpenManagedApp,
+            )
+            if (botStatusText != null) {
+                RaftText(
+                    text = botStatusText,
+                    style = RaftTheme.typography.caption,
+                    color = RaftTheme.colors.foregroundMuted,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        return
     }
     // Creator value stays a clickable identity chip (web opens the profile).
     val creatorProfile = summary?.creator?.toStrictMemberProfile()

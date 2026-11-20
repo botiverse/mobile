@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -7,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 class SettingsMarketplaceWebViewTest {
     @Test
@@ -17,6 +19,44 @@ class SettingsMarketplaceWebViewTest {
             "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host",
             settingsMarketplaceWebViewUrl("https://app.raft.build/", session)
         )
+    }
+
+    @Test
+    fun marketplaceUrlCarriesInstalledAppQueryWhenProvided() {
+        val session = marketplaceSession()
+
+        assertEquals(
+            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host&installed_app=stamp-app",
+            settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = "stamp-app")
+        )
+        assertEquals(
+            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host&installed_app=app%2F1%26b%3D2",
+            settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = " app/1&b=2 ")
+        )
+        assertEquals(
+            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host",
+            settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = "   ")
+        )
+    }
+
+    @Test
+    fun marketplacePageDataRoundTripsInstalledAppIdOnlyOnMarketplaceSurface() {
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-apps", initialServerId = "server-1")
+        val marketplaceData =
+            settingsWebViewPageData(
+                surface = SettingsWebViewSurface.Marketplace,
+                storeScope = scope,
+                installedAppId = " stamp-row-id ",
+            )
+        assertEquals("stamp-row-id", settingsInstalledAppIdFromPageData(marketplaceData))
+
+        val billingData =
+            settingsWebViewPageData(
+                surface = SettingsWebViewSurface.Billing,
+                storeScope = scope,
+                installedAppId = "stamp-row-id",
+            )
+        assertNull(settingsInstalledAppIdFromPageData(billingData))
     }
 
     @Test
