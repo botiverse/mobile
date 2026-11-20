@@ -320,7 +320,7 @@ internal fun rememberThreadAssistantOtter(
             // The panel mounts on each open (web), so each open attaches the conversation afresh.
             onOpen = {
                 contextAttachment.attach()
-                panelState.setOpen(true)
+                panelState.requestOpen(true)
             },
             assistantName = assistant.name,
             agentId = agentId,
@@ -332,7 +332,7 @@ internal fun rememberThreadAssistantOtter(
             panelShown = panelShown,
             onPanelOpenChange = { open ->
                 if (open && !panelState.open) contextAttachment.attach()
-                panelState.setOpen(open)
+                panelState.requestOpen(open)
             },
             panelEmbed = panelEmbed,
             rest = rest,
@@ -359,7 +359,7 @@ internal class ThreadAssistantPanelState {
     /** Whether the panel's window is on screen. */
     val shown: Boolean get() = open && !covered
 
-    fun setOpen(value: Boolean) {
+    fun requestOpen(value: Boolean) {
         // The panel's window asks to close as its page is covered (RaftWindowDialog, the popover
         // both close on the page cover signal): that only hides it.
         if (!value && covered) return

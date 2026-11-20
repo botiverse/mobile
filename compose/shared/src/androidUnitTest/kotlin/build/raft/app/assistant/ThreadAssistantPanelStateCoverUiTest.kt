@@ -46,14 +46,14 @@ class ThreadAssistantPanelStateCoverUiTest {
             mood = RaftOtterMood.Idle,
             scale = RaftAssistantOtterDefaults.PhoneScale,
             endInset = RaftAssistantOtterDefaults.PhoneEndInset,
-            onOpen = { state.setOpen(true) },
+            onOpen = { state.requestOpen(true) },
             assistantName = "Ottie",
             agentId = "agent-ottie",
             serverId = "server-1",
             dmChannelId = "dm-ottie",
             panelOpen = state.open,
             panelShown = state.shown,
-            onPanelOpenChange = state::setOpen,
+            onPanelOpenChange = state::requestOpen,
             panelEmbed = ThreadAssistantPanelEmbed(agentId = "agent-ottie", onWaitingActionCard = {}),
         )
 
@@ -93,7 +93,7 @@ class ThreadAssistantPanelStateCoverUiTest {
     /** Opens the panel, opens a task from its DM, comes back; the panel is open and on screen again. */
     private fun ComposeUiTest.openTaskFromPanelAndComeBack(panelTag: String): () -> ThreadAssistantPanelState {
         val (state, setPageActive) = showConversation()
-        runOnIdle { state().setOpen(true) }
+        runOnIdle { state().requestOpen(true) }
         mainClock.advanceTimeBy(600)
         onNode(hasTestTag(panelTag)).assertExists()
 
