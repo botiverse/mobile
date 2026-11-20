@@ -158,6 +158,8 @@ internal class RaftAndroidSandboxWebView(
     private val pendingBlobDownloads = LinkedHashMap<String, RaftWebViewBlobDownloadAssembler>()
     private var downloadMessageListener: WebViewCompat.WebMessageListener? = null
     private var downloadNameScriptHandler: ScriptHandler? = null
+    /** The page's `navigator.share` calls in flight ([raftWebViewShareShimScript]). */
+    private val shareAssembler = RaftWebViewShareAssembler()
     private var documentStartScriptHandler: ScriptHandler? = null
     /** [raftWebViewFirstPaintThemeScript] at document start; separate from the auth/bridge script. */
     private var firstPaintScriptHandler: ScriptHandler? = null
@@ -842,7 +844,8 @@ internal class RaftAndroidSandboxWebView(
         notifyNavigationState()
         val documentStartInstalled = installDocumentStartScript(normalized)
         installHostMessageListener(normalized)
-        if (events.onDownloadRequested != null) installDownloadSupport(normalized) else removeDownloadSupport()
+        // The page's downloads and `navigator.share`: for a host that takes downloads, or any origin-locked page.
+        if (events.onDownloadRequested != null || mainFrameOrigin != null) installDownloadSupport(normalized) else removeDownloadSupport()
         if (shouldBootstrapInjectedJavaScript(documentStartInstalled)) {
             val bootstrapDocumentUrl = raftInjectedJavaScriptBootstrapBaseUrl(documentUrl) ?: documentUrl
             bootstrapNavigationFence.begin(targetUrl = documentUrl)
@@ -1108,6 +1111,76 @@ internal class RaftAndroidSandboxWebView(
         }
     }
 
+    /**
+     * The page's `navigator.share` ([raftWebViewShareShimScript]): its files are written to the app's
+     * share folder (served by the app's FileProvider) and the system share sheet opens; the page's
+     * Promise resolves once it is shown, or is rejected when it cannot be.
+     */
+    private fun presentShare(request: RaftWebViewShareRequest) {
+        val context = webView.context
+        val result =
+            runCatching {
+                val intent =
+                    if (request.files.isEmpty()) {
+                        android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, raftWebViewShareText(request.title, request.text, request.url))
+                            if (request.title.isNotBlank()) putExtra(android.content.Intent.EXTRA_SUBJECT, request.title)
+                        }
+                    } else {
+                        val folder =
+                            java.io.File(context.cacheDir, "slock-share-files/web-share/" + request.id.filter { it.isLetterOrDigit() || it == '_' })
+                        folder.deleteRecursively()
+                        check(folder.mkdirs()) { "share folder" }
+                        val uris =
+                            ArrayList(
+                                request.files.map { file ->
+                                    val target = java.io.File(folder, file.name)
+                                    target.writeBytes(file.bytes)
+                                    androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
+                                }
+                            )
+                        val type =
+                            request.files.map { it.mimeType }.distinct().singleOrNull()
+                                ?: request.files.map { it.mimeType.substringBefore('/') }.distinct().singleOrNull()?.let { "$it/*" }
+                                ?: "*/*"
+                        (
+                            if (uris.size == 1) {
+                                android.content.Intent(android.content.Intent.ACTION_SEND).putExtra(android.content.Intent.EXTRA_STREAM, uris[0])
+                            } else {
+                                android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE)
+                                    .putParcelableArrayListExtra(android.content.Intent.EXTRA_STREAM, uris)
+                            }
+                        ).apply {
+                            this.type = type
+                            if (request.title.isNotBlank()) putExtra(android.content.Intent.EXTRA_SUBJECT, request.title)
+                            raftWebViewShareText("", request.text, request.url).takeIf { it.isNotBlank() }
+                                ?.let { putExtra(android.content.Intent.EXTRA_TEXT, it) }
+                            clipData =
+                                android.content.ClipData.newRawUri(request.files.first().name, uris[0]).also { clip ->
+                                    uris.drop(1).forEach { clip.addItem(android.content.ClipData.Item(it)) }
+                                }
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                    }
+                val chooser = android.content.Intent.createChooser(intent, request.title.takeIf { it.isNotBlank() })
+                if (context !is android.app.Activity) chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+            }
+        if (result.isSuccess) {
+            diagnosticsInfo("page_share result=shown files=${request.files.size}")
+            settleShare(request.id, null)
+        } else {
+            diagnosticsWarn("page_share result=failed type=${result.exceptionOrNull()?.javaClass?.simpleName}")
+            settleShare(request.id, "AbortError")
+        }
+    }
+
+    private fun settleShare(id: String, errorName: String?) {
+        if (destroyed) return
+        webView.evaluateJavascript(raftWebViewShareSettleScript(id, errorName), null)
+    }
+
     private fun installDownloadSupport(targetUrl: String) {
         removeDownloadSupport()
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER) ||
@@ -1129,6 +1202,17 @@ internal class RaftAndroidSandboxWebView(
                     ) {
                         if (destroyed || !isMainFrame || sourceOrigin.toString() != originRule) return
                         val raw = message.data ?: return
+                        if (raftWebViewIsShareMessage(raw)) {
+                            when (val share = shareAssembler.accept(raw)) {
+                                is RaftWebViewShareAssembly.Ready -> presentShare(share.request)
+                                is RaftWebViewShareAssembly.Failed -> {
+                                    diagnosticsWarn("page_share result=failed reason=${share.reason}")
+                                    settleShare(share.id, "DataError")
+                                }
+                                null -> Unit
+                            }
+                            return
+                        }
                         val token = runCatching { AndroidJSONObject(raw).optString("t") }.getOrNull() ?: return
                         val assembler = pendingBlobDownloads[token] ?: return
                         val result = assembler.accept(raw) ?: return
@@ -1144,7 +1228,11 @@ internal class RaftAndroidSandboxWebView(
             WebViewCompat.addWebMessageListener(webView, RaftWebViewDownloadPortName, setOf(originRule), listener)
             downloadMessageListener = listener
             downloadNameScriptHandler =
-                WebViewCompat.addDocumentStartJavaScript(webView, RaftWebViewDownloadNameHookScript, setOf(originRule))
+                WebViewCompat.addDocumentStartJavaScript(
+                    webView,
+                    RaftWebViewDownloadNameHookScript + "\n" + raftWebViewShareShimScript(),
+                    setOf(originRule)
+                )
         }.onFailure { Log.w(LOG_TAG, "download_support unavailable", it) }
     }
 
