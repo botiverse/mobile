@@ -4857,6 +4857,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">电脑端不活跃 1 分钟后</string>
     <string name="settings_notifications_mobile_delay_minutes">电脑端不活跃 %1$d 分钟后</string>
     <string name="message_mention_sender">提及 @%1$s</string>
+    <string name="message_sender_copy_name">复制名称</string>
+    <string name="message_sender_copy_handle">复制 Handle</string>
     <string name="thread_message_avatar_view_profile">查看 %1$s 的资料</string>
     <string name="thread_message_avatar_mention">提及 %1$s</string>
     <string name="rail_tab_move_up">上移</string>

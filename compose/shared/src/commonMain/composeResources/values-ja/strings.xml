@@ -4857,6 +4857,8 @@
     <string name="settings_notifications_mobile_delay_minute_1">パソコンで操作しなくなって 1 分後</string>
     <string name="settings_notifications_mobile_delay_minutes">パソコンで操作しなくなって %1$d 分後</string>
     <string name="message_mention_sender">@%1$s をメンション</string>
+    <string name="message_sender_copy_name">名前をコピー</string>
+    <string name="message_sender_copy_handle">ハンドルをコピー</string>
     <string name="thread_message_avatar_view_profile">%1$s のプロフィールを表示</string>
     <string name="thread_message_avatar_mention">%1$s をメンション</string>
     <string name="rail_tab_move_up">上へ移動</string>

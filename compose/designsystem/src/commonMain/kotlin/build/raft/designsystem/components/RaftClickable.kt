@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -30,6 +32,9 @@ import androidx.compose.ui.semantics.Role
  * target is the element's own box (no widening: use [RaftIconButton] for small icon actions
  * that need the 44dp target).
  *
+ * [onLongClick], when set, is the control's long press (a finger's context menu, as a right
+ * click is on the web); without it the element takes taps only.
+ *
  * Not for gestures that are not a tap on a control: scrims, tap sinks that keep taps off what
  * is under a popup, drags, message rows (their own tap, long press and selection) or hidden
  * shortcuts that show no press (a title's scroll to top). Pass [interactionSource] when the
@@ -45,6 +50,7 @@ fun Modifier.raftClickable(
     surface: RaftPressSurface = RaftPressSurface.Paper,
     selected: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
+    onLongClick: (() -> Unit)? = null,
 ): Modifier =
     composed(
         inspectorInfo =
@@ -64,12 +70,27 @@ fun Modifier.raftClickable(
         Modifier
             .raftStateOverlay(overlay, shape)
             .raftPointerHover(source, enabled = enabled)
-            .clickable(
-                interactionSource = source,
-                indication = null,
-                enabled = enabled,
-                onClickLabel = onClickLabel,
-                role = role,
-                onClick = onClick,
+            .then(
+                if (onLongClick == null) {
+                    Modifier.clickable(
+                        interactionSource = source,
+                        indication = null,
+                        enabled = enabled,
+                        onClickLabel = onClickLabel,
+                        role = role,
+                        onClick = onClick,
+                    )
+                } else {
+                    @OptIn(ExperimentalFoundationApi::class)
+                    Modifier.combinedClickable(
+                        interactionSource = source,
+                        indication = null,
+                        enabled = enabled,
+                        onClickLabel = onClickLabel,
+                        role = role,
+                        onLongClick = onLongClick,
+                        onClick = onClick,
+                    )
+                },
             )
     }

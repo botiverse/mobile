@@ -1329,6 +1329,13 @@ private fun ThreadMessageCardContent(
                                         }
                                     }
                                 ) { inCluster, nameText ->
+                                    // Web MessageItem sender context menu: a long press (a finger's
+                                    // right click) on the name offers Copy name / Copy handle.
+                                    var senderMenuOpen by remember(message.id) { mutableStateOf(false) }
+                                    val senderMenuItems =
+                                        remember(localizedAuthorName, nameMentionHandle) {
+                                            threadSenderMenuItems(localizedAuthorName, nameMentionHandle)
+                                        }
                                     val authorNameText: @Composable (Modifier) -> Unit = { nameModifier ->
                                         Text(
                                             text = localizedAuthorName,
@@ -1345,7 +1352,22 @@ private fun ThreadMessageCardContent(
                                                         },
                                                         shape = RoundedCornerShape(RaftAppRadius.Sm),
                                                         tier = RaftHoverTier.Subtle,
+                                                        onLongClick =
+                                                            if (shareSelectionActive || senderMenuItems.isEmpty()) {
+                                                                null
+                                                            } else {
+                                                                {
+                                                                    diagnosticsLogger("thread_sender_menu_open messageId=${message.id}")
+                                                                    senderMenuOpen = true
+                                                                }
+                                                            },
                                                     )
+                                        )
+                                        ThreadMessageSenderMenu(
+                                            expanded = senderMenuOpen,
+                                            items = senderMenuItems,
+                                            onDismiss = { senderMenuOpen = false },
+                                            diagnosticsLogger = diagnosticsLogger,
                                         )
                                     }
                                     if (nameMentionHandle != null) {
