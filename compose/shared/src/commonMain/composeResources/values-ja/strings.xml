@@ -4741,6 +4741,7 @@
     <string name="artifacts_facts_pages_many">%1$d ページ</string>
     <string name="artifacts_scope_server">サーバー全体</string>
     <string name="artifacts_scope_public">リンクを知っている全員</string>
+    <string name="artifacts_scope_shared_channel">共有チャンネル</string>
     <string name="artifacts_home_dm">%1$s さんとのダイレクトメッセージ</string>
     <string name="artifacts_activity_mentioned_you">%1$s があなたをメンションしました</string>
     <string name="artifacts_activity_commented">%1$s がコメントしました</string>

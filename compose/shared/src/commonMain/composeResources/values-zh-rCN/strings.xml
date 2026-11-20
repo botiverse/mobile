@@ -4741,6 +4741,7 @@
     <string name="artifacts_facts_pages_many">%1$d 页</string>
     <string name="artifacts_scope_server">整个 server</string>
     <string name="artifacts_scope_public">知道链接的任何人</string>
+    <string name="artifacts_scope_shared_channel">共享频道</string>
     <string name="artifacts_home_dm">与 %1$s 的私信</string>
     <string name="artifacts_activity_mentioned_you">%1$s 提到了你</string>
     <string name="artifacts_activity_commented">%1$s 发表了评论</string>

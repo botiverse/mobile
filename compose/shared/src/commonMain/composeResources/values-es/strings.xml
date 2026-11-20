@@ -4557,6 +4557,7 @@
     <string name="artifacts_facts_pages_many">%1$d páginas</string>
     <string name="artifacts_scope_server">Todo el servidor</string>
     <string name="artifacts_scope_public">Cualquier persona con el enlace</string>
+    <string name="artifacts_scope_shared_channel">Canal compartido</string>
     <string name="artifacts_home_dm">Mensaje directo con %1$s</string>
     <string name="artifacts_activity_mentioned_you">%1$s te mencionó</string>
     <string name="artifacts_activity_commented">%1$s comentó</string>

@@ -515,7 +515,14 @@ private fun ArtifactCardScopeLabel(home: ArtifactHome) {
     val ink = RaftTheme.colors.foregroundMuted
     val text =
         when (home) {
-            is ArtifactHome.Conversation -> (home.peerDisplayName ?: home.name).takeIf { it.isNotBlank() } ?: return
+            // The chip names a channel bare (its icon says its kind); a shared channel the reader's
+            // server has no copy of reads "Shared channel" (web #15244).
+            is ArtifactHome.Conversation ->
+                if (home.sharedChannelWithoutCopy) {
+                    stringResource(Res.string.artifacts_scope_shared_channel)
+                } else {
+                    (home.peerDisplayName ?: home.name).takeIf { it.isNotBlank() } ?: return
+                }
             ArtifactHome.Server -> stringResource(Res.string.artifacts_scope_server)
             ArtifactHome.Public -> stringResource(Res.string.artifacts_scope_public)
         }

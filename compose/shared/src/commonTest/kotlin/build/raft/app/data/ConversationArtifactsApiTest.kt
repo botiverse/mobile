@@ -76,6 +76,29 @@ class ConversationArtifactsApiTest {
     }
 
     @Test
+    fun aSharedChannelHomeIsNamedBareAndOneWithoutTheReadersCopyHasNoName() {
+        // botiverse/slock #15244: a joint the reader's server has no copy of comes as
+        // { id: null, name: "", type: "joint" } (never the joint's storage name).
+        val body =
+            """
+            {
+              "rows": [
+                { "card": ${card("pt_joint", "Shared", "html", 1, "2026-10-28T09:30:00.000Z", """{ "kind": "conversation", "conversation": { "id": "ch-j", "name": "partners", "type": "joint" } }""")} },
+                { "card": ${card("pt_orphan", "Orphan", "html", 1, "2026-10-28T09:00:00.000Z", """{ "kind": "conversation", "conversation": { "id": null, "name": "", "type": "joint" } }""")} }
+              ],
+              "nextCursor": null
+            }
+            """.trimIndent()
+        val (joint, orphan) = parseConversationArtifactsPage(body)!!.artifacts.map { it.summary.home as ArtifactHome.Conversation }
+        assertEquals(ArtifactHome.Conversation("partners", dm = false, joint = true), joint)
+        assertEquals(false, joint.sharedChannelWithoutCopy)
+        assertEquals(true, orphan.sharedChannelWithoutCopy)
+        assertEquals(ArtifactHome.Conversation("proj-workspace", dm = false), parseConversationArtifactsPage(
+            """{ "rows": [ { "card": ${card("pt_c", "C", "html", 1, "2026-10-28T09:00:00.000Z", channelHome)} } ], "nextCursor": null }"""
+        )!!.artifacts.single().summary.home)
+    }
+
+    @Test
     fun aCardWithAHomeItCantReadIsLeftOutAndABrokenAnswerIsNone() {
         val body =
             """

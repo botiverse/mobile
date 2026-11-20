@@ -4533,6 +4533,7 @@
     <string name="artifacts_facts_pages_many">Страниц: %1$d</string>
     <string name="artifacts_scope_server">Весь сервер</string>
     <string name="artifacts_scope_public">Все, у кого есть ссылка</string>
+    <string name="artifacts_scope_shared_channel">Общий канал</string>
     <string name="artifacts_home_dm">Личный чат: %1$s</string>
     <string name="artifacts_activity_mentioned_you">%1$s упоминает вас</string>
     <string name="artifacts_activity_commented">%1$s — новый комментарий</string>

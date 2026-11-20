@@ -204,7 +204,16 @@ sealed interface ArtifactHome {
         val peerDisplayName: String? = null,
         /** The conversation is archived (search's Artifact row says so). */
         val archived: Boolean = false,
-    ) : ArtifactHome
+        /** A shared (`joint`) channel: named bare, without `#` (web `conversationLabel`). */
+        val joint: Boolean = false,
+    ) : ArtifactHome {
+        /**
+         * A shared channel the reader's server has no copy of (it left the joint): the server sends
+         * it with no id and no name (`{ id: null, name: "", type: "joint" }`, botiverse/slock #15244)
+         * and never the joint's storage name; it reads "Shared channel" (web `homeConversationLabel`).
+         */
+        val sharedChannelWithoutCopy: Boolean get() = joint && name.isBlank()
+    }
     data object Server : ArtifactHome
     data object Public : ArtifactHome
 }
@@ -364,6 +373,7 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
                         private = it.type == "private",
                         peerDisplayName = it.peerDisplayName?.takeIf { peer -> peer.isNotBlank() },
                         archived = it.archived == true,
+                        joint = it.type == "joint",
                     )
                 } ?: run {
                     reportProjectionRowDropped("artifact_summary", "conversation_home_missing")

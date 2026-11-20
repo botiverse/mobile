@@ -140,8 +140,10 @@ internal fun RaftArtifactLinkCardView(
     val home =
         when (val where = summary.home) {
             is ArtifactHome.Conversation ->
-                where.name.takeIf { it.isNotBlank() }?.let {
-                    if (where.dm) stringResource(Res.string.artifacts_home_dm, it) else "#$it"
+                if (where.dm) {
+                    where.name.takeIf { it.isNotBlank() }?.let { stringResource(Res.string.artifacts_home_dm, it) }
+                } else {
+                    artifactHomeConversationLabel(where)
                 }
             ArtifactHome.Server -> stringResource(Res.string.artifacts_scope_server)
             ArtifactHome.Public -> stringResource(Res.string.artifacts_scope_public)
