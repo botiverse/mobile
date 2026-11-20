@@ -1334,12 +1334,13 @@ internal fun activityFilterBarHeight(scale: RaftScale, pointerInput: RaftPointer
     }
 
 /**
- * The Activity column's margin, where its head, its toolbar and its rows start (raft-design
- * lists.md, One edge; raft-ui `listColumnMargin`): 16 on a phone (unchanged); on the wide layout
- * 20 with a finger and 16 under a mouse or trackpad.
+ * The Activity column's margin, where its toolbar and its rows start (raft-design lists.md, One
+ * edge; raft-ui `listColumnMargin`: `[--column-margin:20px] md:pointer-fine:[--column-margin:
+ * var(--page-inset)]`): 20 on a phone, with a finger or a mouse, and on the wide layout with a
+ * finger; 16 only on the wide layout under a mouse or trackpad.
  */
 internal fun activityColumnMargin(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
-    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Touch) 20.dp else 16.dp
+    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Fine) 16.dp else 20.dp
 
 /** web `@max-[30rem]` on the toolbar's content box: the row less its [edge] on both sides. */
 internal fun activityMarkAllReadIconOnly(toolbarWidth: Dp, edge: Dp = 16.dp): Boolean = toolbarWidth - edge * 2 < 480.dp

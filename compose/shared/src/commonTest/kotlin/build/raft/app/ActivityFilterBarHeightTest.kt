@@ -23,9 +23,10 @@ class ActivityFilterBarHeightTest {
 
     @Test
     fun columnMarginIsTheRowsEdge() {
-        // raft-design lists.md, One edge: 20 from the column's edge on a touch screen from 768, 16 with a
-        // mouse; the phone keeps its 16 here.
-        assertEquals(16.dp, activityColumnMargin(RaftScale.Compact, RaftPointerInput.Touch))
+        // raft-ui listColumnMargin: 20 everywhere, 16 only from 768 under a mouse or trackpad. The
+        // phone's toolbar sits on the rows' 20 line, with a finger or a mouse.
+        assertEquals(20.dp, activityColumnMargin(RaftScale.Compact, RaftPointerInput.Touch))
+        assertEquals(20.dp, activityColumnMargin(RaftScale.Compact, RaftPointerInput.Fine))
         assertEquals(20.dp, activityColumnMargin(RaftScale.Wide, RaftPointerInput.Touch))
         assertEquals(16.dp, activityColumnMargin(RaftScale.Wide, RaftPointerInput.Fine))
     }
