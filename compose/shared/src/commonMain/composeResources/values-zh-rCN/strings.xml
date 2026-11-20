@@ -1535,7 +1535,7 @@
     <string name="member_report_issue_reference_copied">已复制</string>
     <string name="member_report_issue_disclosure_strong">提示词历史、文件路径和命令输出</string>
     <string name="member_report_issue_runtime_transcript_hint">从 Agent 所在的电脑取，可能取不到。</string>
-    <string name="member_report_issue_machine_log_tail">机器运行日志尾部（仅你自己的机器）</string>
+    <string name="member_report_issue_machine_log_tail">机器运行日志尾部</string>
     <string name="member_report_issue_machine_log_tail_disclosure">日志最后几行，可能含这台电脑上其他 Agent 的内容。</string>
     <string name="member_report_issue_title_for_agent">针对 %1$s 的问题报告</string>
     <string name="member_report_issue_ticket_filed">我们已为这次报告创建反馈工单，Raft 团队的回复会显示在那里。</string>

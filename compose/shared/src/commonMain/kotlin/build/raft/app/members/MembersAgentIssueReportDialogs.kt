@@ -58,24 +58,44 @@ internal data class MembersAgentIssueReportSelection(
 )
 
 /**
- * The machine-log-tail box (web `includeMachineLogTail`): until the reporter touches it, it
- * follows ownership ([canIncludeMachineLog]), so a machine list that loads after the panel opened
- * still ticks it; once touched, the reporter's [choice] wins.
+ * The machine-log-tail box (web `includeMachineLogTail`, slock #15306). It is offered when
+ * [canIncludeMachineLog] (whoever may edit the Computer: the person who attached it, or an owner
+ * or admin, [membersAgentIssueCanIncludeMachineLog]). Until the reporter touches it, it follows
+ * [ownAttachedMachine]: ticked only on the reporter's own attached machine (an owner or admin on
+ * someone else's machine sees it unticked, since the tail may hold other people's agents' lines),
+ * so a machine list that loads after the panel opened still ticks it. Once touched, the
+ * reporter's [choice] wins.
  */
-internal fun membersAgentIssueMachineLogTailChecked(choice: Boolean?, canIncludeMachineLog: Boolean): Boolean =
-    canIncludeMachineLog && (choice ?: true)
+internal fun membersAgentIssueMachineLogTailChecked(
+    choice: Boolean?,
+    canIncludeMachineLog: Boolean,
+    ownAttachedMachine: Boolean = canIncludeMachineLog,
+): Boolean = canIncludeMachineLog && (choice ?: ownAttachedMachine)
+
+/**
+ * Web ReportIssueDialog `canIncludeMachineLog` (slock #15306, server #15305 `canManageComputer`
+ * edit): the agent has a machine, and the reporter attached it or holds `editMachines` (server
+ * owner or admin). The server checks the same.
+ */
+internal fun membersAgentIssueCanIncludeMachineLog(
+    hasMachine: Boolean,
+    attachedByCurrentUser: Boolean,
+    serverRole: String?,
+): Boolean = hasMachine && (attachedByCurrentUser || serverRole?.trim() == "owner" || serverRole?.trim() == "admin")
 
 /**
  * The agent "Report Issue" panel, web parity with packages/web/src/components/agent/
  * ReportIssueDialog.tsx: agent card, optional description, the "Include" section (all on by
- * default; runtime transcript needs a machine; the runner log tail only for the reporter's own
- * machine and only with the transcript), and the warning box holding the consent checkbox.
+ * default; runtime transcript needs a machine; the runner log tail for whoever may edit the
+ * machine, ticked only on the reporter's own, and only with the transcript), and the warning box holding the consent checkbox.
  */
 @Composable
 internal fun MembersAgentIssueReportDialog(
     agentName: String,
     runtimeTranscriptAvailable: Boolean,
     canIncludeMachineLog: Boolean,
+    /** The reporter attached the agent's machine: the log-tail box starts ticked only then. */
+    ownAttachedMachine: Boolean = canIncludeMachineLog,
     busy: Boolean,
     errorMessage: String?,
     errorTraceId: String? = null,
@@ -99,7 +119,7 @@ internal fun MembersAgentIssueReportDialog(
         mutableStateOf(runtimeTranscriptAvailable)
     }
     var machineLogTailChoice by remember(agentName) { mutableStateOf<Boolean?>(null) }
-    val includeMachineLogTail = membersAgentIssueMachineLogTailChecked(machineLogTailChoice, canIncludeMachineLog)
+    val includeMachineLogTail = membersAgentIssueMachineLogTailChecked(machineLogTailChoice, canIncludeMachineLog, ownAttachedMachine)
     // The one commit: the footer's Submit on a wide window, the phone sheet's head button.
     val commitLabel =
         if (busy) {

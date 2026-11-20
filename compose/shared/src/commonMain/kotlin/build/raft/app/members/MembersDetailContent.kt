@@ -1527,14 +1527,21 @@ internal fun MembersDetailContent(
         }
         if (reportIssueDialogOpen && member.kind == MemberKind.Agent) {
             val reportState = effectiveDiagnosticActionState?.takeIf { it.actionKey == "report" }
-            // Web `canIncludeMachineLog`: the agent's machine was attached by the reporter.
+            // Web `canIncludeMachineLog` (slock #15306): the reporter attached the agent's
+            // machine, or is a server owner/admin; ticked by default only on their own.
+            val reportMachine = machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine
+            val ownAttachedMachine = reportMachine?.attachedByCurrentUser == true
             val canIncludeMachineLog =
-                (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)
-                    ?.attachedByCurrentUser == true
+                membersAgentIssueCanIncludeMachineLog(
+                    hasMachine = reportMachine != null,
+                    attachedByCurrentUser = ownAttachedMachine,
+                    serverRole = remoteControls?.serverRole,
+                )
             MembersAgentIssueReportDialog(
                 agentName = member.displayName,
                 runtimeTranscriptAvailable = detail?.summary?.machineId?.isNotBlank() == true,
                 canIncludeMachineLog = canIncludeMachineLog,
+                ownAttachedMachine = ownAttachedMachine,
                 busy = reportState?.inProgress == true,
                 errorMessage =
                     reportState?.error?.let { error ->
