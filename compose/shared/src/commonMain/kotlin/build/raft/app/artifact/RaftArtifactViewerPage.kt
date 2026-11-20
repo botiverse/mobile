@@ -870,6 +870,10 @@ private fun RaftArtifactViewerWebBody(
     // being put back on it after a conversation it moved to opened over the viewer, that address.
     var artifactAddress by remember { mutableStateOf<String?>(null) }
     var returningTo by remember { mutableStateOf<String?>(null) }
+    // The conversation address last opened over the viewer: the same one again right after (a platform's second
+    // callback) is the same tap, so the page is put back again and nothing opens twice.
+    var openedOverUrl by remember { mutableStateOf<String?>(null) }
+    var openedOverAt by remember { mutableStateOf(kotlin.time.TimeSource.Monotonic.markNow()) }
     fun onAddress(url: String) {
         if (left) return
         address = url
@@ -932,8 +936,12 @@ private fun RaftArtifactViewerWebBody(
                     // Its original message (a DM's is named by the person): the conversation opens over the viewer,
                     // which stays on this Artifact, so Back returns to it (the web: Back comes back to the page).
                     returningTo = artifactAddress
-                    host.bridge.log("artifact_viewer_opened_over action=open_message to=${raftArtifactViewerLogDestination(url)}")
-                    RaftMessageLinkIngress.accept((navigation as RaftArtifactViewerNavigation.OpenMessage).url, "artifact_viewer", scope.webOrigin)
+                    if (openedOverUrl != url || openedOverAt.elapsedNow().inWholeMilliseconds > RAFT_ARTIFACT_VIEWER_RETURN_TIMEOUT_MS) {
+                        openedOverUrl = url
+                        openedOverAt = kotlin.time.TimeSource.Monotonic.markNow()
+                        host.bridge.log("artifact_viewer_opened_over action=open_message to=${raftArtifactViewerLogDestination(url)}")
+                        RaftMessageLinkIngress.accept(url, "artifact_viewer", scope.webOrigin)
+                    }
                 } else if (armed && returningTo == null) {
                     left = true
                     val to = raftArtifactViewerLogDestination(url)
