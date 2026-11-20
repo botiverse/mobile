@@ -10,6 +10,7 @@ import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
 import build.raft.app.data.ReplyPreviewWireSenderTypes
 import build.raft.app.data.agentToolLogLabel
+import build.raft.app.data.isAppLinkObjectKeySha256
 import build.raft.app.data.agentToolStartHiddenInActivityLog
 import build.raft.app.data.TaskSourceMessageIdAbsent
 import build.raft.app.data.reportedSourceMessageId
@@ -101,6 +102,7 @@ import build.raft.app.model.ServerFeaturesChanged
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerAppearanceUpdated
 import build.raft.app.model.UserProfileUpdated
+import build.raft.app.model.LinkCardChanged
 import build.raft.app.model.LinkCardOperationChanged
 import build.raft.app.model.ActorUpdated
 import build.raft.app.model.MessageDisplayPrefsChanged
@@ -427,6 +429,8 @@ class RealtimeEventMapper(
                 decodeOrNull(ProductFeedbackAppUnreadDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.LinkCardOperationChanged ->
                 decodeOrNull(LinkCardOperationChangedDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.LinkCardChanged ->
+                decodeOrNull(LinkCardChangedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ActorUpdated ->
                 decodeOrNull(ActorUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.MessageDisplayPrefsUpdated ->
@@ -1137,6 +1141,22 @@ private data class LinkCardOperationChangedDto(
         val id = operationId.trim().takeIf { it.isNotEmpty() } ?: return null
         if (receiptRevision < 0) return null
         return LinkCardOperationChanged(id, receiptRevision)
+    }
+}
+
+/**
+ * `link_card.changed` (slock shared `LinkCardChangedEvent`): snake_case on the wire. Read as the web
+ * reads it (`linkCardChangedRereads.ts` `eventSchema`): `app` of 1-200 characters and a digest of 64
+ * lowercase hex characters, anything else is no event.
+ */
+@Serializable
+private data class LinkCardChangedDto(
+    val app: String,
+    @SerialName("object_key_sha256") val objectKeySha256: String,
+) {
+    fun toDomain(): LinkCardChanged? {
+        if (app.length !in 1..200 || !isAppLinkObjectKeySha256(objectKeySha256)) return null
+        return LinkCardChanged(app, objectKeySha256)
     }
 }
 

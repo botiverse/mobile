@@ -147,6 +147,7 @@ def generate_kotlin(contract):
         "notificationRetract": "NotificationRetract",
         "jointInvitesChanged": "JointInvitesChanged",
         "linkCardOperationChanged": "LinkCardOperationChanged",
+        "linkCardChanged": "LinkCardChanged",
         "actorUpdated": "ActorUpdated",
         "messageDisplayPrefsUpdated": "MessageDisplayPrefsUpdated",
     }
@@ -297,6 +298,7 @@ def generate_swift(contract):
         "notificationRetract": "notificationRetract",
         "jointInvitesChanged": "jointInvitesChanged",
         "linkCardOperationChanged": "linkCardOperationChanged",
+        "linkCardChanged": "linkCardChanged",
         "actorUpdated": "actorUpdated",
         "messageDisplayPrefsUpdated": "messageDisplayPrefsUpdated",
     }

@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -71,7 +73,32 @@ internal class ThreadAppLinkCardActionHost(
     val held: ((url: String) -> AppLinkResult.Card?)? = null,
     /** The clock a handle's age is measured with ([AppLinkResult.Card.readAtMillis]). */
     val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Where the message's presses are seen from ([ThreadAppLinkCardActivity]); null where nothing follows them. */
+    val activity: ThreadAppLinkCardActivity? = null,
 )
+
+/**
+ * What the cards of one message are doing, for the re-read after a `link_card.changed` nudge (web
+ * `linkCardChangedRereads.ts`): it waits while Raft's confirmation is open on one of them
+ * ([confirming], web `busy === "confirming"`), and leaves a card whose buttons are at work to that
+ * work ([busyUrls], web `linkCardViewBusy`). Snapshot state: read it in a composition or a
+ * `snapshotFlow`.
+ */
+internal class ThreadAppLinkCardActivity {
+    private val presses = mutableStateListOf<ThreadAppLinkCardPress>()
+
+    fun add(press: ThreadAppLinkCardPress) {
+        if (press !in presses) presses += press
+    }
+
+    fun remove(press: ThreadAppLinkCardPress) {
+        presses -= press
+    }
+
+    val confirming: Boolean get() = presses.any { it.confirmation != null }
+
+    val busyUrls: Set<String> get() = presses.filter { it.busy }.mapTo(LinkedHashSet<String>()) { it.card.url }
+}
 
 @Composable
 internal fun rememberThreadAppLinkCardPress(
@@ -95,6 +122,13 @@ internal fun rememberThreadAppLinkCardPress(
         }
     // The card is read again after a press: its handles and revision are the latest one's.
     press.card = card
+    val activity = actions?.activity
+    if (activity != null) {
+        DisposableEffect(activity, press) {
+            activity.add(press)
+            onDispose { activity.remove(press) }
+        }
+    }
     return press
 }
 
@@ -153,6 +187,12 @@ internal class ThreadAppLinkCardPress(
 
     /** The confirmation waiting on the person, or null. */
     internal val confirmation: PendingConfirmation? get() = confirming
+
+    /** An open operation is being followed: its end reads the card again. */
+    private var following by mutableStateOf(false)
+
+    /** A button of this card is at work (sending, counting down its Undo, or following its operation): that work reads the card again. */
+    internal val busy: Boolean get() = running != null || undoing != null || following
 
     /** Cancel (or dismiss) the confirmation: nothing is sent. */
     internal fun dismissConfirmation() {
@@ -323,9 +363,14 @@ internal class ThreadAppLinkCardPress(
         // (a long-running operation), and read the card again as the operation would be polled.
         if (executed.isOpen) {
             follow(host, executed)
-            for (wait in RereadWaitsMs) {
-                delay(wait)
-                host.reread(card.url)
+            following = true
+            try {
+                for (wait in RereadWaitsMs) {
+                    delay(wait)
+                    host.reread(card.url)
+                }
+            } finally {
+                following = false
             }
         }
     }

@@ -4656,6 +4656,11 @@ internal class SharedRealtimeDomainEventOwner(
             if (acceptedEvent is build.raft.app.model.LinkCardOperationChanged) {
                 RaftLinkCardOperationHints.publish(serverId, acceptedEvent)
             }
+            // `link_card.changed` goes to the viewer's room on this server too: the cards of that
+            // object are read again (RaftLinkCardChangedHints -> SharedAppLinkPreviewStore).
+            if (acceptedEvent is build.raft.app.model.LinkCardChanged) {
+                RaftLinkCardChangedHints.publish(serverId, acceptedEvent)
+            }
             if (acceptedEvent is build.raft.app.model.ActorUpdated) {
                 actorUpdatedSink?.invoke(serverId, acceptedEvent)
             }

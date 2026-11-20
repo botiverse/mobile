@@ -7,13 +7,19 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.random.Random
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
@@ -42,7 +48,94 @@ data class AppLinkLoaded(
     val limited: Map<String, Int> = emptyMap(),
     /** The message view ([AppLinkCardView.id]) whose read this is; null for the GET. */
     val viewId: String? = null,
-)
+    /** The Server it was read on: a `link_card.changed` nudge and a socket's return are that Server's. */
+    val serverId: String? = null,
+    /**
+     * Not 0: one of its cards may be out of date (web `Loaded.changed`), because a `link_card.changed`
+     * nudge named its object while no row showed it, or the app came back since it was read. The
+     * answer stays as it is; a row shown with it reads those cards again once it is on screen
+     * ([SharedAppLinkPreviewStore.keepFresh]). The number tells one mark from the next.
+     */
+    val changed: Int = 0,
+) {
+    /** The links whose card carries [objectKey] ([APP_LINK_ALL_OBJECTS]: any digest), in link order. */
+    internal fun keyedUrls(objectKey: String): List<String> =
+        results.values.mapNotNull { result ->
+            val key = (result as? AppLinkResult.Card)?.objectKey ?: return@mapNotNull null
+            result.url.takeIf { objectKey == APP_LINK_ALL_OBJECTS || key == objectKey }
+        }
+}
+
+/** Every card whose App named its object, whichever it is (the catch-up after the app came back). */
+internal const val APP_LINK_ALL_OBJECTS = "*"
+
+/** Web `LINK_CARD_CHANGED_JITTER_MS`: a nudged card is read again after a random 1 ms to this, so its readers don't all ask the App at once. */
+internal const val APP_LINK_CARD_CHANGED_JITTER_MS = 2_000L
+
+/** Web `LINK_CARD_CHANGED_MIN_INTERVAL_MS`: an object is read again at most once per this per message view. */
+internal const val APP_LINK_CARD_CHANGED_MIN_INTERVAL_MS = 10_000L
+
+/** Web `LINK_CARD_REENTRY_COOLDOWN_MS`: a message whose read failed is read again no sooner than this after that read went out. */
+internal const val APP_LINK_CARD_REENTRY_COOLDOWN_MS = 30_000L
+
+/**
+ * One message row on a page (web: a mounted message view and its `target` element): what the store
+ * needs to read its cards again at the right moment. The row says when it is on screen, when the
+ * person is on it and which cards are busy; [SharedAppLinkPreviewStore.keepFresh] does the rest.
+ * The setters may be called from the UI thread; everything else is the store's.
+ */
+class AppLinkRowPresence internal constructor(
+    internal val viewerKey: String,
+    internal val serverId: String,
+    internal val messageId: String,
+    internal val content: String,
+    internal val batch: AppLinkBatchRead?,
+) {
+    internal val readScope: String = appLinkReadScope(viewerKey, messageId, content, batch?.mode ?: APP_LINK_READ_MODE_V1)
+    private val onScreenState = MutableStateFlow(false)
+    private val engagedState = MutableStateFlow(false)
+    private val busyState = MutableStateFlow<Set<String>>(emptySet())
+    private val shownState = MutableStateFlow(true)
+
+    internal val isOnScreen: StateFlow<Boolean> get() = onScreenState
+    internal val isEngaged: StateFlow<Boolean> get() = engagedState
+    internal val busyUrls: StateFlow<Set<String>> get() = busyState
+    internal val isShown: StateFlow<Boolean> get() = shownState
+
+    /** The row is drawn inside the window (not merely composed ahead of the scroll). */
+    fun onScreen(value: Boolean) {
+        onScreenState.value = value
+    }
+
+    /** The person is on this message (a card of it open, Raft's question or confirmation open on it): no card changes under them. */
+    fun engaged(value: Boolean) {
+        engagedState.value = value
+    }
+
+    /** The links whose card's buttons are at work: that work reads the card again when it ends. */
+    fun busy(urls: Set<String>) {
+        busyState.value = urls
+    }
+
+    /** The row left the page: nothing waits for it any more. */
+    fun left() {
+        shownState.value = false
+        onScreenState.value = false
+    }
+
+    // The store's own, touched only on its dispatcher.
+    internal val refreshes = HashMap<String, AppLinkCardRefresh>()
+    internal val lastRefreshAt = HashMap<String, Long>()
+    internal var quietMark = 0
+    internal val reading = Mutex()
+}
+
+/** One re-read of a row's cards of one object on its way (web `linkCardChangedRereads.ts` `Job`). */
+internal class AppLinkCardRefresh {
+    lateinit var job: Job
+    var reading = false
+    var again = false
+}
 
 /** The read mode of the GET: an answer read with it is keyed as before. */
 const val APP_LINK_READ_MODE_V1 = "v1"
@@ -206,6 +299,14 @@ class SharedAppLinkPreviewStore internal constructor(
     private val retryJitterMs: () -> Long = { Random.nextLong(APP_LINK_CARD_RETRY_JITTER_MS) },
     /** Stamps each read's answer ([AppLinkResult.Card.readAtMillis], [RaftMessageCardLive.readAtMillis]). */
     internal val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    /** Monotonic: the cooldown and the interval between re-reads must not follow wall-clock changes. */
+    private val monotonicMillis: () -> Long = ::raftForegroundGateNowMillis,
+    /** The wait before a nudged card is read again: 1 ms to [APP_LINK_CARD_CHANGED_JITTER_MS] at random. */
+    private val changedJitterMs: () -> Long = { 1L + Random.nextLong(APP_LINK_CARD_CHANGED_JITTER_MS) },
+    /** `link_card.changed` nudges, each with the Server it came on. */
+    changedHints: Flow<RaftLinkCardChangedHint> = RaftLinkCardChangedHints.hints,
+    /** The process's one "came back" signal (#proj-mobile:#198). */
+    freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
 ) {
     private val _state = raftStoreState(initialState, "SharedAppLinkPreviewStore")
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
@@ -234,13 +335,27 @@ class SharedAppLinkPreviewStore internal constructor(
 
     /**
      * Reads one message's App links unless its answer is current (or a read is on its way). A
-     * failed read is not kept, so the row tries again when it is composed again; a read again
-     * after Allow that fails drops that App's pending chips, not the links. With [batch] it is the
-     * batched link-card read of that message view, else the GET.
+     * failed read is not kept, so the row tries again when it is shown again (with [presence], no
+     * sooner than the re-entry cooldown); a read again after Allow that fails drops that App's
+     * pending chips, not the links. With [batch] it is the batched link-card read of that message
+     * view, else the GET.
      */
-    fun read(viewerKey: String, serverId: String, messageId: String, content: String, conversationId: String, batch: AppLinkBatchRead? = null) {
+    fun read(
+        viewerKey: String,
+        serverId: String,
+        messageId: String,
+        content: String,
+        conversationId: String,
+        batch: AppLinkBatchRead? = null,
+        /**
+         * The row that asks. With it, a message whose last read failed is read again no sooner than
+         * [APP_LINK_CARD_REENTRY_COOLDOWN_MS] after that read went out: a row back sooner waits for
+         * the rest, and leaving again ends the wait (web `useAppLinkPreviews` re-entry).
+         */
+        presence: AppLinkRowPresence? = null,
+    ) {
         if (!appLinkPreviewsApply(content)) return
-        scope.launch { readOnStore(viewerKey, serverId, messageId, content, conversationId, batch) }
+        scope.launch { readOnStore(viewerKey, serverId, messageId, content, conversationId, batch, presence) }
     }
 
     private suspend fun readOnStore(
@@ -250,14 +365,21 @@ class SharedAppLinkPreviewStore internal constructor(
         content: String,
         conversationId: String,
         batch: AppLinkBatchRead?,
+        presence: AppLinkRowPresence?,
     ) {
         val mode = batch?.mode ?: APP_LINK_READ_MODE_V1
         val readScope = appLinkReadScope(viewerKey, messageId, content, mode)
+        fun wanted(state: SharedAppLinkPreviewState): Boolean =
+            state.messageView(viewerKey, messageId, content, conversationId, artifactHosts(), mode, batch?.view?.id).wantsRead
+        if (!wanted(_state.value)) return
+        // Only a message with nothing to show yet waits: a read again after Allow is the person's own and goes at once.
+        if (presence != null && _state.value.entries[readScope] == null && !reentryCooldownPassed(readScope, presence)) return
         val before = _state.value
-        if (!before.messageView(viewerKey, messageId, content, conversationId, artifactHosts(), mode, batch?.view?.id).wantsRead) return
+        if (!wanted(before)) return
         if (!inFlight.add(readScope)) return
         val askedAt = before.epoch
         val askedGeneration = before.generation
+        val sentAt = monotonicMillis()
         val fetched =
             try {
                 fetch(messageId, serverId, batch, urls = null)
@@ -270,6 +392,7 @@ class SharedAppLinkPreviewStore internal constructor(
                 AppLinkFetch.Failed -> null
                 is AppLinkFetch.Answer -> fetched
             }
+        if (answer == null) noteReadFailed(readScope, sentAt) else readFailedAt.remove(readScope)
         if (answer == null) {
             _state.update { state ->
                 if (state.generation != askedGeneration) return@update state
@@ -297,7 +420,7 @@ class SharedAppLinkPreviewStore internal constructor(
             }
             val entries = LinkedHashMap(state.entries)
             entries.remove(readScope)
-            entries[readScope] = AppLinkLoaded(results, askedAt, limited = answer.limited, viewId = batch?.view?.id)
+            entries[readScope] = AppLinkLoaded(results, askedAt, limited = answer.limited, viewId = batch?.view?.id, serverId = serverId)
             while (entries.size > APP_LINK_RESULT_CACHE_MAX) entries.remove(entries.keys.first())
             state.copy(entries = entries, claims = claims)
         }
@@ -441,22 +564,226 @@ class SharedAppLinkPreviewStore internal constructor(
      * was): a Refresh says so (web `LinkCardReread` `failed`). A read superseded by a later one
      * of the view is not a failure.
      */
-    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean {
-        val readScope = appLinkReadScope(viewerKey, messageId, content, batch.mode)
+    suspend fun rereadLink(viewerKey: String, serverId: String, messageId: String, content: String, batch: AppLinkBatchRead, url: String): Boolean =
+        when (val read = rereadLinks(appLinkReadScope(viewerKey, messageId, content, batch.mode), serverId, messageId, batch, listOf(url))) {
+            AppLinkReread.Failed -> false
+            AppLinkReread.Superseded -> true
+            is AppLinkReread.Read -> url !in read.limited
+        }
+
+    /**
+     * Reads [urls] of a message again, alone, in one request of [batch]'s view (web `readSome`). A
+     * link answered with a card replaces the card shown, whichever view read the message first (a
+     * row shown again reuses the answer of the row before it, as the web's cache does); a link
+     * answered `rate_limited`, or with no card, keeps what is shown.
+     */
+    private suspend fun rereadLinks(readScope: String, serverId: String, messageId: String, batch: AppLinkBatchRead, urls: List<String>): AppLinkReread {
         val askedGeneration = _state.value.generation
         val fetched =
-            when (val read = fetch(messageId, serverId, batch, listOf(url))) {
+            when (val read = fetch(messageId, serverId, batch, urls)) {
                 is AppLinkFetch.Answer -> read
-                AppLinkFetch.Failed -> return false
-                AppLinkFetch.Stale -> return true
+                AppLinkFetch.Failed -> return AppLinkReread.Failed
+                AppLinkFetch.Stale -> return AppLinkReread.Superseded
             }
-        if (url in fetched.limited) return false
-        val fresh = fetched.results[url]?.takeIf { it is AppLinkResult.Card } ?: return true
-        _state.update { state ->
-            if (state.generation != askedGeneration) return@update state
-            val entry = state.entries[readScope]?.takeIf { it.viewId == batch.view.id } ?: return@update state
-            state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + (url to fresh))))
+        val limited = urls.mapNotNull { url -> fetched.limited[url]?.let { url to it } }.toMap()
+        val fresh = urls.mapNotNull { url -> (fetched.results[url] as? AppLinkResult.Card)?.takeIf { url !in limited }?.let { url to it } }
+        if (fresh.isNotEmpty()) {
+            _state.update { state ->
+                if (state.generation != askedGeneration) return@update state
+                val entry = state.entries[readScope] ?: return@update state
+                state.copy(entries = state.entries + (readScope to entry.copy(results = entry.results + fresh)))
+            }
         }
+        return AppLinkReread.Read(limited)
+    }
+
+    /** The rows on a page now ([keepFresh]). Store dispatcher only, like everything below. */
+    private val presences = LinkedHashSet<AppLinkRowPresence>()
+
+    /** By read scope: when the last read of a message that failed went out ([monotonicMillis]). Bounded. */
+    private val readFailedAt = LinkedHashMap<String, Long>()
+    private var changedMarks = 0
+    private val freshnessGate = RaftFreshnessGate(nowMillis = monotonicMillis)
+
+    private fun noteReadFailed(readScope: String, sentAt: Long) {
+        readFailedAt.remove(readScope)
+        readFailedAt[readScope] = sentAt
+        while (readFailedAt.size > APP_LINK_RESULT_CACHE_MAX) readFailedAt.remove(readFailedAt.keys.first())
+    }
+
+    /**
+     * Whether a read of [readScope] may go now. A message whose last read failed is read again no
+     * sooner than [APP_LINK_CARD_REENTRY_COOLDOWN_MS] after that read went out (web
+     * `LINK_CARD_REENTRY_COOLDOWN_MS`): the row waits for the rest while it stays, and is not read
+     * when it leaves meanwhile.
+     */
+    private suspend fun reentryCooldownPassed(readScope: String, presence: AppLinkRowPresence): Boolean {
+        val failedAt = readFailedAt[readScope] ?: return true
+        val rest = failedAt + APP_LINK_CARD_REENTRY_COOLDOWN_MS - monotonicMillis()
+        if (rest <= 0L) return true
+        return withTimeoutOrNull(rest) { presence.isShown.first { !it } } == null
+    }
+
+    /**
+     * Keeps a row's cards current while it is on its page; the caller cancels the job (after
+     * [AppLinkRowPresence.left]) when the row leaves. Nothing is read here for a card whose App named
+     * no object ([AppLinkResult.Card.objectKey]), and nothing by the clock:
+     *  - a `link_card.changed` nudge for an object one of its cards shows reads those cards again, as
+     *    the web does ([refreshCards]);
+     *  - an answer marked [AppLinkLoaded.changed] (a nudge that came while no row showed it, or the
+     *    app came back since it was read) has its keyed cards read again once the row is on screen.
+     */
+    fun keepFresh(presence: AppLinkRowPresence): Job =
+        scope.launch {
+            presences += presence
+            try {
+                var first = true
+                state.map { it.entries[presence.readScope]?.changed ?: 0 }.distinctUntilChanged().collect { mark ->
+                    // Marked before the row was shown: read at once when it is on screen. Marked under it: after the jitter.
+                    if (mark != 0 && mark != presence.quietMark) startRefresh(presence, APP_LINK_ALL_OBJECTS, jitter = !first)
+                    first = false
+                }
+            } finally {
+                presences -= presence
+                val pending = presence.refreshes.values.toList()
+                presence.refreshes.clear()
+                pending.forEach { it.job.cancel() }
+            }
+        }
+
+    /**
+     * A `link_card.changed` nudge on [serverId] (web `onLinkCardChanged`): each row whose answer shows
+     * a card of [objectKey] reads it again; an answer no row shows is marked, so the row shown with it
+     * later reads it then (web: the cached answer's `changed`).
+     */
+    private fun onLinkCardChanged(serverId: String, objectKey: String) {
+        val shown = HashSet<String>()
+        for (presence in presences.toList()) {
+            if (presence.serverId != serverId) continue
+            if (_state.value.entries[presence.readScope]?.keyedUrls(objectKey).isNullOrEmpty()) continue
+            shown += presence.readScope
+            startRefresh(presence, objectKey, jitter = true)
+        }
+        markChanged { readScope, entry -> readScope !in shown && entry.serverId == serverId && entry.keyedUrls(objectKey).isNotEmpty() }
+        diagnosticsLogger("app_link_card_changed rows=${shown.size}")
+    }
+
+    /**
+     * The app came back (the foreground, or [serverId]'s socket): nudges sent meanwhile were missed, so
+     * every answer with a card whose App named its object is marked (all Servers' for the foreground,
+     * [serverId]'s for its socket). Rows on screen read those cards once; the others when they are next
+     * on screen. The web has no such rule: a tab stays connected, a phone app does not.
+     */
+    private fun onCameBack(serverId: String?) {
+        markChanged { _, entry -> (serverId == null || entry.serverId == serverId) && entry.keyedUrls(APP_LINK_ALL_OBJECTS).isNotEmpty() }
+        diagnosticsLogger("app_link_card_came_back server=${serverId != null}")
+    }
+
+    /** Marks the answers [match] picks ([AppLinkLoaded.changed]) and returns the mark. */
+    private fun markChanged(match: (String, AppLinkLoaded) -> Boolean): Int {
+        changedMarks += 1
+        val mark = changedMarks
+        _state.update { state ->
+            if (state.entries.none { (readScope, entry) -> match(readScope, entry) }) return@update state
+            state.copy(entries = state.entries.mapValues { (readScope, entry) -> if (match(readScope, entry)) entry.copy(changed = mark) else entry })
+        }
+        return mark
+    }
+
+    /** The answer's cards were read again since [mark]: it is current, unless it was marked again meanwhile. */
+    private fun clearChanged(readScope: String, mark: Int) {
+        if (mark == 0) return
+        _state.update { state ->
+            val entry = state.entries[readScope]?.takeIf { it.changed == mark } ?: return@update state
+            state.copy(entries = state.entries + (readScope to entry.copy(changed = 0)))
+        }
+    }
+
+    /** One re-read per row and object at a time: a nudge while it waits is that read, one while it reads starts another after it. */
+    private fun startRefresh(presence: AppLinkRowPresence, objectKey: String, jitter: Boolean) {
+        val running = presence.refreshes[objectKey]
+        if (running != null) {
+            if (running.reading) running.again = true
+            return
+        }
+        if (presence !in presences) return
+        val refresh = AppLinkCardRefresh()
+        presence.refreshes[objectKey] = refresh
+        refresh.job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                var done = false
+                try {
+                    done = refreshCards(presence, objectKey, jitter, refresh)
+                } finally {
+                    if (presence.refreshes[objectKey] === refresh) presence.refreshes.remove(objectKey)
+                    // Not read (the row left first, or the read failed): the answer is marked, so the next row
+                    // shown with it reads. This row does not start over for its own mark.
+                    if (!done && objectKey != APP_LINK_ALL_OBJECTS) {
+                        presence.quietMark = markChanged { readScope, _ -> readScope == presence.readScope }
+                    }
+                }
+                if (refresh.again && presence in presences) startRefresh(presence, objectKey, jitter = true)
+            }
+        refresh.job.start()
+    }
+
+    /**
+     * Reads a row's cards of [objectKey] again (web `useLinkCardChangedRereads` `start`), in order:
+     *  1. waits until the row is on screen;
+     *  2. waits the jitter (when [jitter]), at least [APP_LINK_CARD_CHANGED_MIN_INTERVAL_MS] after this
+     *     row's last re-read of that object, and the rest of the cooldown of a read that failed;
+     *  3. waits while the person is on the message, then for the screen again;
+     *  4. reads those links in one request, as Refresh reads one. A card whose buttons are at work is
+     *     left to that work. A link answered `rate_limited` goes again after Raft's `retry_after`,
+     *     doubling, as one of the view's rate-limited re-reads ([APP_LINK_CARD_READ_RETRIES]).
+     * Silent: the card shown stays until the new one comes, and stays when none does. True when
+     * nothing is left to read.
+     */
+    private suspend fun refreshCards(presence: AppLinkRowPresence, objectKey: String, jitter: Boolean, refresh: AppLinkCardRefresh): Boolean {
+        val batch = presence.batch ?: return false
+        val readScope = presence.readScope
+        presence.isOnScreen.first { it }
+        val startedAt = monotonicMillis()
+        val sinceLast = presence.lastRefreshAt[objectKey]?.let { startedAt - it }
+        val cooldown = readFailedAt[readScope]?.let { it + APP_LINK_CARD_REENTRY_COOLDOWN_MS - startedAt } ?: 0L
+        var delayMs = maxOf(if (jitter) changedJitterMs() else 0L, sinceLast?.let { APP_LINK_CARD_CHANGED_MIN_INTERVAL_MS - it } ?: 0L, cooldown)
+        var urls = _state.value.entries[readScope]?.keyedUrls(objectKey).orEmpty()
+        var lastBackoffMs = 0L
+        while (urls.isNotEmpty()) {
+            if (delayMs > 0L) delay(delayMs)
+            presence.isEngaged.first { !it }
+            presence.isOnScreen.first { it }
+            // A read of the whole message on its way brings these cards.
+            if (readScope in inFlight) return true
+            refresh.reading = true
+            val sentAt = monotonicMillis()
+            presence.lastRefreshAt[objectKey] = sentAt
+            val mark = _state.value.entries[readScope]?.changed ?: 0
+            val busy = presence.busyUrls.value
+            val reading = _state.value.entries[readScope]?.keyedUrls(objectKey).orEmpty().filter { it in urls && it !in busy }
+            if (reading.isEmpty()) break
+            when (val read = presence.reading.withLock { rereadLinks(readScope, presence.serverId, presence.messageId, batch, reading) }) {
+                AppLinkReread.Failed -> {
+                    noteReadFailed(readScope, sentAt)
+                    return false
+                }
+                AppLinkReread.Superseded -> return false
+                is AppLinkReread.Read -> {
+                    urls = reading.filter { it in read.limited }
+                    if (urls.isEmpty()) {
+                        readFailedAt.remove(readScope)
+                        if (objectKey == APP_LINK_ALL_OBJECTS) clearChanged(readScope, mark)
+                        return true
+                    }
+                    if (batch.view.rereads >= APP_LINK_CARD_READ_RETRIES) return false
+                    batch.view.rereads += 1
+                    val backoffMs = appLinkRereadBackoffMs(lastBackoffMs, urls.maxOf { read.limited.getValue(it) })
+                    lastBackoffMs = backoffMs
+                    delayMs = minOf(60_000L, backoffMs + retryJitterMs())
+                }
+            }
+        }
+        if (objectKey == APP_LINK_ALL_OBJECTS) clearChanged(readScope, _state.value.entries[readScope]?.changed ?: 0)
         return true
     }
 
@@ -588,6 +915,31 @@ class SharedAppLinkPreviewStore internal constructor(
             diagnosticsLogger("$event error=${error::class.simpleName}")
             null
         }
+
+    // Last, so everything above is set before a collector can run.
+    init {
+        scope.launch { changedHints.collect { hint -> onLinkCardChanged(hint.serverId, hint.objectKey) } }
+        scope.launch {
+            freshness.collect { event ->
+                // The network alone brings no nudge back: the socket's own return follows it.
+                if (event.trigger == RaftFreshnessTrigger.NetworkRestored) return@collect
+                // One catch-up per return, and one for every new socket connection of a Server ([RaftFreshnessGate]).
+                if (freshnessGate.onEvent(event, event.serverId, visible = true) == null) return@collect
+                onCameBack(event.serverId.takeIf { event.trigger == RaftFreshnessTrigger.Reconnect })
+            }
+        }
+    }
+}
+
+/** How a read of some links of a message ended ([SharedAppLinkPreviewStore] `rereadLinks`). */
+private sealed interface AppLinkReread {
+    /** Read: [limited] are the links Raft answered `rate_limited` (their `retry_after` seconds), whose cards stay as they were. */
+    data class Read(val limited: Map<String, Int>) : AppLinkReread
+
+    data object Failed : AppLinkReread
+
+    /** The view sent a later request meanwhile: this answer was dropped. Not a failure. */
+    data object Superseded : AppLinkReread
 }
 
 /** What one read came to ([SharedAppLinkPreviewStore] `fetch`). */

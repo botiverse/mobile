@@ -39,7 +39,7 @@ private val appLinkPreviewsJson = Json {
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
  * result per link, one prompt per App. A conversation's messages are read with the batched
  * link-card read instead ([AppLinkCardV2.kt]), declaring
- * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`, `badge.color.v1`).
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`, `badge.color.v1`, `card.changed.v1`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
@@ -131,6 +131,12 @@ sealed interface AppLinkResult {
          * one): what preparing one of its buttons claims. A block card's is [AppLinkBlockCard.businessRevision].
          */
         val businessRevision: String = "",
+        /**
+         * Raft's digest of the App's object this card shows (the read item's `object_key_sha256`, sent to a
+         * client that declares `card.changed.v1`); null when the App named none. A `link_card.changed` nudge
+         * with the same digest reads the card again ([SharedAppLinkPreviewStore]). Only ever compared.
+         */
+        val objectKey: String? = null,
     ) : AppLinkResult {
         /** The revision a `confirm: "prepare"` button of this card claims (web `card.businessRevision`): the block card's, else the chip card's. */
         val claimedRevision: String get() = block?.businessRevision ?: businessRevision
