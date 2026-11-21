@@ -8,10 +8,14 @@ import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.links.planRaftMessageLinks
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
+import build.raft.app.model.raftEpochDayForDate
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 /**
  * The cards under a message (web `ArtifactMessageRefs.tsx` `artifactLinkOf` + the default export,
@@ -160,5 +164,22 @@ class ThreadArtifactMessageRefsTest {
         assertEquals(500, artifactCardScreenshotHeightPx(widthPx = 800, maxHeightPx = 576))
         // Wider than 16:10 at the max height: cut to it (cover, top-aligned).
         assertEquals(576, artifactCardScreenshotHeightPx(widthPx = 1320, maxHeightPx = 576))
+    }
+
+    @Test
+    fun theSettledTimeAlwaysNamesItsDay() {
+        // Read at UTC+8 on 2026-11-21 (web `shortDateTime` always says the day: "Nov 19, 14:02").
+        val context = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 11, 21), nowEpochMillis = 1_795_248_000_000L)
+        val cases =
+            mapOf(
+                "2026-11-18T09:30:00.000Z" to "11-18 17:30",
+                // Today's keeps its date ("settled it on 14:02" would read as a date).
+                "2026-11-21T01:00:00.000Z" to "11-21 09:00",
+                "2025-11-18T09:30:00.000Z" to "2025-11-18 17:30",
+            )
+        for ((at, label) in cases) assertEquals(label, artifactSettledTimeLabel(at, context), at)
+        assertEquals("11-18 05:30 PM", artifactSettledTimeLabel("2026-11-18T09:30:00.000Z", context.withTimeFormat(RaftTimeFormat12Hour)))
+        assertNull(artifactSettledTimeLabel("2026-11-18T09:30:00.000Z", null), "no time context: the tag alone")
+        assertNull(artifactSettledTimeLabel("yesterday", context))
     }
 }

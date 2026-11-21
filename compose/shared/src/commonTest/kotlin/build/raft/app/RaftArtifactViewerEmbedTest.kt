@@ -168,6 +168,40 @@ class RaftArtifactViewerEmbedTest {
         assertEquals(true, raftArtifactViewerAddressSaysDesktop("$web/artifacts/$id?$embed", null))
         val script = raftArtifactViewerHostDesktopScript(web, true, clearHostAction = true)
         assertTrue("\"hostDesktop\"" in script && "\"on\"" in script && "raft:host-state" in script)
+        // Desktop Mode toggle from the page's own ⋯ computes the next state before Android's reload runs.
+        assertEquals(true, raftArtifactViewerHostDesktopAfterAction(RaftArtifactViewerHostAction.DesktopMode, false))
+        assertEquals(false, raftArtifactViewerHostDesktopAfterAction(RaftArtifactViewerHostAction.DesktopMode, true))
+        assertEquals(null, raftArtifactViewerHostDesktopAfterAction(RaftArtifactViewerHostAction.DesktopMode, null))
+        assertEquals(true, raftArtifactViewerHostDesktopAfterAction(RaftArtifactViewerHostAction.OpenInBrowser, true))
+        assertEquals(false, raftArtifactViewerHostDesktopAfterAction(RaftArtifactViewerHostAction.CopyLink, false))
+    }
+
+    @Test
+    fun embedContractDetectionMatchesHostShellRequirements() {
+        assertEquals(true, raftArtifactViewerHasEmbedContract("$web/artifacts/$id?$embed"))
+        assertEquals(true, raftArtifactViewerHasEmbedContract(raftArtifactViewerWarmUrl(web)))
+        assertEquals(false, raftArtifactViewerHasEmbedContract("$web/artifacts/$id"))
+        assertEquals(false, raftArtifactViewerHasEmbedContract("$web/artifacts/$id?embed=raft-settings-v1&shell=web"))
+        assertEquals(false, raftArtifactViewerHasEmbedContract("$web/artifacts/$id?embed=other&shell=host"))
+        // Parked keep-alive document check uses currentUrl when committed, falling back to src on about:blank.
+        assertEquals(
+            true,
+            raftArtifactViewerKeptDocumentHasEmbedContract(
+                RaftWebViewKeptDocument(src = "$web/artifacts/$id?$embed", currentUrl = "about:blank", loaded = false)
+            ),
+        )
+        assertEquals(
+            true,
+            raftArtifactViewerKeptDocumentHasEmbedContract(
+                RaftWebViewKeptDocument(src = "$web/artifacts/$id?$embed", currentUrl = "$web/artifacts/$id?$embed&hostToolbar=1", loaded = true)
+            ),
+        )
+        assertEquals(
+            false,
+            raftArtifactViewerKeptDocumentHasEmbedContract(
+                RaftWebViewKeptDocument(src = "$web/artifacts/$id?$embed", currentUrl = "$web/artifacts/$id", loaded = true)
+            ),
+        )
     }
 
     @Test

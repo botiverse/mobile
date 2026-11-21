@@ -64,17 +64,52 @@ object RaftGeneralLogRing {
     @Volatile
     private var currentSessionDir: File? = null
 
+    private var initializedRoot: File? = null
+
+    @Volatile
+    internal var onInitTaskExecutedForTests: ((threadName: String) -> Unit)? = null
+
     fun init(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
-        synchronized(fileLock) {
-            if (currentSessionDir == null) {
-                val root = logDir(applicationContext).apply { mkdirs() }
-                currentSessionDir = File(root, RaftDiagnosticsLaunchSession.id).apply { mkdirs() }
-                pruneOldSessions(root, currentSessionDir)
-                pruneTotalBytes(root, File(requireNotNull(currentSessionDir), LogFileName))
+        // Run directory creation and retention pruning as the first queued task on the
+        // single-threaded writer executor so cold start performs zero disk I/O on Main while
+        // FIFO ordering still guarantees storage is ready before subsequent queued writes.
+        executor.execute {
+            initializeStorage(applicationContext)
+        }
+    }
+
+    private fun initializeStorage(applicationContext: Context) {
+        runCatching {
+            onInitTaskExecutedForTests?.invoke(Thread.currentThread().name)
+            synchronized(fileLock) {
+                val root = logDir(applicationContext)
+                if (initializedRoot == root) return
+                root.mkdirs()
+                val sessionDir =
+                    (currentSessionDir?.takeIf { it.parentFile == root }
+                        ?: File(root, RaftDiagnosticsLaunchSession.id).also { currentSessionDir = it })
+                        .apply { mkdirs() }
+                initializedRoot = root
+                pruneOldSessions(root, sessionDir)
+                pruneTotalBytes(root, File(sessionDir, LogFileName))
             }
         }
+    }
+
+    internal fun resetForTests() {
+        flush()
+        synchronized(fileLock) {
+            currentSessionDir = null
+            initializedRoot = null
+        }
+        synchronized(memoryLock) {
+            memoryEntries.clear()
+        }
+        droppedEntries.set(0L)
+        appContext = null
+        onInitTaskExecutedForTests = null
     }
 
     internal fun record(record: SanitizedDiagnosticLog) {
@@ -110,10 +145,13 @@ object RaftGeneralLogRing {
         logFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
 
     fun clearFiles(context: Context) {
+        flush()
         runCatching {
-            logDir(context.applicationContext).walkBottomUp()
-                .filter { it.isFile && isDiagnosticsLogFile(it) }
-                .forEach { it.delete() }
+            synchronized(fileLock) {
+                logDir(context.applicationContext).walkBottomUp()
+                    .filter { it.isFile && isDiagnosticsLogFile(it) }
+                    .forEach { it.delete() }
+            }
         }
     }
 
@@ -228,14 +266,17 @@ object RaftGeneralLogRing {
         }
         runCatching {
             synchronized(fileLock) {
-                val dir = currentSessionDir ?: File(logDir(context), RaftDiagnosticsLaunchSession.id).apply {
-                    mkdirs()
-                    currentSessionDir = this
-                }
+                val root = logDir(context)
+                val dir =
+                    currentSessionDir?.takeIf { it.parentFile == root }
+                        ?: File(root, RaftDiagnosticsLaunchSession.id).apply {
+                            mkdirs()
+                            currentSessionDir = this
+                        }
                 val active = File(dir, LogFileName)
                 val rotated = rotateLogsIfNeeded(active)
                 active.appendText(entry.toJsonLine() + "\n", StandardCharsets.UTF_8)
-                if (rotated) pruneTotalBytes(logDir(context), active)
+                if (rotated) pruneTotalBytes(root, active)
             }
         }.onFailure {
             droppedEntries.incrementAndGet()
@@ -289,10 +330,12 @@ object RaftGeneralLogRing {
 
     internal fun currentLaunchDir(context: Context): File =
         synchronized(fileLock) {
-            currentSessionDir ?: File(logDir(context.applicationContext), RaftDiagnosticsLaunchSession.id).apply {
-                mkdirs()
-                currentSessionDir = this
-            }
+            val root = logDir(context.applicationContext)
+            currentSessionDir?.takeIf { it.parentFile == root }
+                ?: File(root, RaftDiagnosticsLaunchSession.id).apply {
+                    mkdirs()
+                    currentSessionDir = this
+                }
         }
 
     internal fun relativeLogPathWithin(root: File, file: File): String? =

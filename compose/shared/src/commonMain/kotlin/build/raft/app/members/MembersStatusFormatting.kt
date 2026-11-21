@@ -14,6 +14,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.supportsRuntimeFastMode
+import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.ServerSummary
 import androidx.compose.runtime.key
 import androidx.compose.ui.graphics.Color
@@ -378,9 +379,50 @@ private fun String?.orBadgeFallback(fallback: String?): String =
     this?.takeIf { it.isNotBlank() } ?: fallback?.takeIf { it.isNotBlank() } ?: "—"
 
 /**
+ * Web `reasoningEffortDisplayLabel` (utils/reasoningEffortOptions.ts, botiverse/slock #15691): how an
+ * agent's reasoning effort reads wherever it is shown, the profile's Reasoning row and the Members
+ * list's agent rows alike. Null when [runtime] takes no reasoning effort (no row, nothing in the
+ * list); "Default" when no level is set; a shared level's label ([membersReasoningEffortLabel]); any
+ * other level as the runtime reported it (Kimi Code's model-reported levels, as its picker lists them).
+ */
+internal fun membersReasoningEffortDisplayLabel(runtime: String, reasoningEffort: String?): StringDesc? {
+    if (!membersRuntimeTakesReasoningEffort(runtime)) return null
+    val effort = reasoningEffort?.takeIf { it.isNotBlank() } ?: return Res.string.member_label_default.desc()
+    return membersReasoningEffortLabel(effort)?.desc() ?: effort.desc()
+}
+
+/**
+ * Shared `REASONING_EFFORT_RUNTIMES` whole: [supportsRuntimeReasoningEffort] plus `kimi-sdk`, which the
+ * app's pickers leave out (its levels follow the live model, task #275) but whose saved level reads
+ * like any other wherever it is shown.
+ */
+private fun membersRuntimeTakesReasoningEffort(runtime: String): Boolean =
+    supportsRuntimeReasoningEffort(runtime) || runtime == "kimi-sdk"
+
+/**
+ * Web `agentReasoningEffortFact` (features/members/memberEntryFacts.ts): an agent's reasoning effort
+ * as its profile's Reasoning row shows it ([membersReasoningEffortDisplayLabel] over
+ * [MemberProfile.agentReasoning]). Null for an App's identity, a runtime that takes no effort, or a
+ * row that carries no agent runtime facts.
+ */
+internal fun MemberProfile.membersAgentReasoningEffortLabel(): StringDesc? {
+    if (kind != MemberKind.Agent || !managedByAppInstallId.isNullOrBlank()) return null
+    val setting = agentReasoning ?: return null
+    return membersReasoningEffortDisplayLabel(setting.runtime, setting.reasoningEffort)
+}
+
+/**
+ * The Members agent row's Reasoning part, "Reasoning: High" (web `members.page.reasoningEffortDescription`,
+ * which describes the level on the web's row): a level alone says nothing in the row's line. Null
+ * where [membersAgentReasoningEffortLabel] is.
+ */
+internal fun MemberProfile.membersAgentReasoningEffortLine(): StringDesc? =
+    membersAgentReasoningEffortLabel()?.let { Res.string.members_agent_reasoning_effort.format(it) }
+
+/**
  * Web `REASONING_EFFORT_LABEL_ID` (packages/web/src/utils/reasoningEffortOptions.ts): the shared
  * effort id's display label (`xhigh` -> "Extra High"); null for an id the catalog doesn't know,
- * which the caller shows prettified.
+ * which [membersReasoningEffortDisplayLabel] shows as-is.
  */
 internal fun membersReasoningEffortLabel(effort: String): StringResource? =
     when (effort) {

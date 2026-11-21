@@ -15,7 +15,9 @@ import kotlin.test.assertFalse
  * `upgradeDialog.general.hint`, `layout.onboarding.proUnlimitedJointChannels` and
  * `layout.onboarding.freeJointChannelHosts`. The upgrade dialog's own copy for the external channel
  * gates (botiverse/slock #14533, staging 33f441958): `upgradeDialog.externalLimit.{title,hint}` and
- * `upgradeDialog.externalFrozen.{title,hint}` (`{server}` = `%1$s`).
+ * `upgradeDialog.externalFrozen.{title,hint}` (`{server}` = `%1$s`). Home's External section
+ * (botiverse/slock #15939, staging ad835ded6): `layout.sidebar.external` and
+ * `layout.sidebar.createExternalChannel`.
  */
 class ExternalChannelCopyCatalogTest {
     private val expected =
@@ -23,6 +25,8 @@ class ExternalChannelCopyCatalogTest {
             "base" to
                 mapOf(
                     "channel_settings_status_joint" to "External",
+                    "home_section_external" to "External",
+                    "home_section_create_external_channel" to "Create external channel",
                     "joint_disconnect_title" to "Disconnect external channel?",
                     "joint_connections_rule" to
                         "An external channel holds up to 30 servers and guests together, including the server that hosts it.",
@@ -52,6 +56,8 @@ class ExternalChannelCopyCatalogTest {
             "zh-rCN" to
                 mapOf(
                     "channel_settings_status_joint" to "外部",
+                    "home_section_external" to "外部",
+                    "home_section_create_external_channel" to "创建外部频道",
                     "joint_disconnect_title" to "断开外部频道？",
                     "joint_connections_rule" to "外部频道的服务器和访客加起来最多 30 个，包括托管频道的服务器。",
                     "upgrade_dialog_general_hint" to "升级到 Pro，免费版在消息历史、文件上传和外部频道上的限制都会解除。",
@@ -82,6 +88,8 @@ class ExternalChannelCopyCatalogTest {
             "ja" to
                 mapOf(
                     "channel_settings_status_joint" to "外部",
+                    "home_section_external" to "外部",
+                    "home_section_create_external_channel" to "外部チャンネルを作成",
                     "joint_disconnect_title" to "外部チャンネルの接続を解除しますか？",
                     "joint_connections_rule" to
                         "外部チャンネルに参加できるのは、ホストのサーバーを含め、サーバーとゲストを合わせて最大 30 までです。",

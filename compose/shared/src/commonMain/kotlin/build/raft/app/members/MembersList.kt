@@ -907,7 +907,8 @@ internal fun MembersMenuIcon(name: RaftLucideIconName) {
  * badge and the role tag (web `useMemberTileTag`: Owner, Admin or Guest, never Member; "You" or
  * "You · Owner" on the viewer's own row). The second line is, on the Agents tab ([runtimeLine]),
  * what the agent runs on (runtime · model · computer, the computer left out when [machineName] is
- * null); elsewhere an agent's model, a Guest's channel, or a person's description.
+ * null) and its reasoning effort (the web list's Reasoning column); elsewhere an agent's model, a
+ * Guest's channel, or a person's description.
  */
 @Composable
 private fun MembersListRow(
@@ -938,7 +939,10 @@ private fun MembersListRow(
                         (if (member.isExternal) "external" else member.roleDescription?.trim()?.takeIf { it.isNotEmpty() })
                             ?.let { runtimeLabelWithStatus(it, member.serverId?.value) }
                     }
-                listOfNotNull(runtime, member.modelLabel(), machineName?.takeIf { it.isNotBlank() })
+                // botiverse/slock #15691: the reasoning effort its profile shows ("Reasoning: High"),
+                // last, so on a phone it gives way before the computer does.
+                val reasoning = member.membersAgentReasoningEffortLine()?.localized()
+                listOfNotNull(runtime, member.modelLabel(), machineName?.takeIf { it.isNotBlank() }, reasoning)
                     .joinToString(" · ")
                     .takeIf { it.isNotEmpty() }
             }
@@ -1080,8 +1084,9 @@ private fun MembersListRowAvatar(
         // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
             ?.withoutActivityDetail()
+    val holdingReadiness = if (showsStatus) effectiveHoldingReadiness(rawStatus) else null
     val signIn =
-        if (showsStatus) {
+        if (showsStatus && holdingReadiness == null) {
             rememberAgentRuntimeSignInState(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
@@ -1090,7 +1095,12 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
-    val status = if (signIn != null) rawStatus?.copy(color = RaftColor.AccentOrange) else rawStatus
+    val status =
+        when {
+            holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
+            signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
+            else -> rawStatus
+        }
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,

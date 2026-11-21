@@ -35,12 +35,14 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : ComponentActivity() {
     private lateinit var externalShareAdmissionOwner: AndroidExternalShareAdmissionOwner<Intent>
+    private var pendingExternalShareLookupJob: Job? = null
     private val externalShareResultListener: (Long, AndroidExternalShareIntakeResult) -> Unit =
         { generation, result -> handleExternalShareAdmissionResult(generation, result) }
 
@@ -71,17 +73,30 @@ class MainActivity : ComponentActivity() {
                 "data=${intent.safeDataString()}"
         )
         if (rawShare == null && !resumedExternalShare) {
-            val durablePending = AndroidExternalShareProcessOwner.inbox(applicationContext).pendingLaunchOrNull()
-            if (durablePending == null) {
+            val readyInbox = AndroidExternalShareProcessOwner.peekInboxOrNull()
+            if (readyInbox != null && readyInbox.isKnownNoPendingLaunch()) {
                 handleLaunchIntent(intent)
             } else {
-                openSharedShellPageData(androidExternalSharePageData(durablePending))
+                val launchIntent = intent
+                pendingExternalShareLookupJob =
+                    lifecycleScope.launch {
+                        val durablePending =
+                            AndroidExternalShareProcessOwner.awaitPendingLaunchOrNull(applicationContext)
+                        if (isFinishing || isDestroyed) return@launch
+                        if (durablePending == null) {
+                            handleLaunchIntent(launchIntent)
+                        } else {
+                            openSharedShellPageData(androidExternalSharePageData(durablePending))
+                        }
+                    }
             }
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        pendingExternalShareLookupJob?.cancel()
+        pendingExternalShareLookupJob = null
         setIntent(intent)
         AndroidLoginTransitionRouting.observeNewIntent(this)
         RaftAppLog.d(
@@ -128,6 +143,8 @@ class MainActivity : ComponentActivity() {
         generation: Long,
         result: AndroidExternalShareIntakeResult
     ) {
+        pendingExternalShareLookupJob?.cancel()
+        pendingExternalShareLookupJob = null
         when (result) {
             is AndroidExternalShareIntakeResult.Admitted ->
                 openSharedShellPageData(androidExternalSharePageData(result.launch))

@@ -4,6 +4,7 @@ import build.raft.app.isConversationAccessLost
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.network.MultipartFile
+import build.raft.app.network.RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftHttpFileBody
@@ -14,7 +15,16 @@ import build.raft.app.network.RaftByteStreamSink
 import build.raft.app.network.RaftTraceIds
 import build.raft.app.network.RaftUploadWireFacts
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -26,6 +36,7 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.jsonPrimitive
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DirectAttachmentUploadNetworkContractTest {
     @Test
     fun unboundRepositoryDirectSessionOperationsNeverReachExecutorOrFileResolver() = runBlocking {
@@ -320,6 +331,145 @@ class DirectAttachmentUploadNetworkContractTest {
             raftAttachmentUploadOutcome(error.code, cancelled = false, raftAttachmentUploadTimeoutPhase(timing.facts, timing.controlTimeoutPhase)),
         )
         assertTrue(executor.byteBodies.isEmpty())
+    }
+
+    /**
+     * web slock #15743: a control call of an upload that never answers ends in a retryable timeout at
+     * its own budget, never a spinner. The capability probe and the session create get the 30 s of
+     * every API call (a probe that runs out of time sends the upload to multipart); the complete call
+     * gets 45 s, past the server's own 30 s storage check, so its answer is heard. A timed-out call is
+     * never sent again inside the attempt. Virtual time; only the hung call never answers.
+     */
+    @Test
+    fun aControlCallThatNeverAnswersEndsInARetryableTimeoutAtItsOwnBudget() = runTest {
+        class Case(
+            val name: String,
+            val budgetMillis: Long,
+            /** The attempt's `timeout_phase` for it; the probe has none (it falls back instead). */
+            val phase: String?,
+            val hangs: (method: String, url: String) -> Boolean,
+            val call: suspend (DirectAttachmentUploadOperation) -> DataResult<*>,
+        )
+        val upload: suspend (DirectAttachmentUploadOperation) -> DataResult<*> = { operation ->
+            operation.uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111111",
+            )
+        }
+        val cases =
+            listOf(
+                Case(
+                    name = "capability",
+                    budgetMillis = 30_000L,
+                    phase = null,
+                    hangs = { _, url -> url.endsWith("/attachments/upload-capabilities") },
+                    call = { operation -> operation.capabilities() },
+                ),
+                Case(
+                    name = RaftAttachmentUploadPhaseCreate,
+                    budgetMillis = 30_000L,
+                    phase = RaftAttachmentUploadPhaseCreate,
+                    hangs = { method, url -> method == "POST" && url.endsWith("/attachments/upload-sessions") },
+                    call = upload,
+                ),
+                Case(
+                    name = RaftAttachmentUploadPhaseComplete,
+                    budgetMillis = RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS,
+                    phase = RaftAttachmentUploadPhaseComplete,
+                    hangs = { method, url -> method == "POST" && url.endsWith("/complete") },
+                    call = upload,
+                ),
+            )
+        for (case in cases) {
+            // The real repository parses a successful answer (the session create) on its own parse
+            // thread: the budget is measured from the moment the hung call is sent, not from the start.
+            val hungCallSent = CompletableDeferred<Unit>()
+            var calledOff = 0
+            val executor =
+                RecordingExecutor(
+                    respond = { method, url ->
+                        when {
+                            case.hangs(method, url) -> {
+                                hungCallSent.complete(Unit)
+                                try {
+                                    awaitCancellation()
+                                } finally {
+                                    calledOff += 1
+                                }
+                            }
+                            url.endsWith("/attachments/upload-capabilities") ->
+                                response(body = """{"directUploadEnabled":true,"maxBytes":1048576,"sessionExpiresInSeconds":600}""")
+                            method == "POST" && url.endsWith("/attachments/upload-sessions") -> response(body = CreatedSessionBody)
+                            method == "POST" && url.endsWith("/complete") -> response(body = CompletedSessionBody)
+                            else -> error("unexpected request: $method $url")
+                        }
+                    },
+                )
+            val recorder = recorder()
+            val result = async { withContext(recorder) { case.call(composerUpload(executor)) } }
+            hungCallSent.await()
+            val startedAt = currentTime
+
+            advanceTimeBy(case.budgetMillis - 1)
+            runCurrent()
+            assertFalse(result.isCompleted, "${case.name}: still waiting 1 ms before its budget")
+            advanceTimeBy(1)
+            runCurrent()
+            assertTrue(result.isCompleted, "${case.name}: ended at its budget")
+
+            val error = assertIs<DataResult.Error>(result.await(), case.name).error
+            assertEquals(startedAt + case.budgetMillis, currentTime, case.name)
+            assertEquals("network_timeout", error.code, case.name)
+            assertTrue(error.retryable, case.name)
+            assertEquals(1, executor.requests.count { case.hangs(it.method, it.url) }, "${case.name}: sent once")
+            assertEquals(1, calledOff, "${case.name}: the hung request is called off, so a late answer cannot land")
+            assertEquals(case.phase, recorder.snapshot().controlTimeoutPhase, case.name)
+        }
+    }
+
+    /** web slock #15743: the upload's own cancel during a hung control call stays a cancel, never a timeout. */
+    @Test
+    fun aCancelDuringAHungControlCallStaysACancelAndLeavesNoDeadlineBehind() = runTest {
+        var calledOff = 0
+        val executor =
+            RecordingExecutor(
+                respond = { method, url ->
+                    if (method == "POST" && url.endsWith("/attachments/upload-sessions")) {
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            calledOff += 1
+                        }
+                    } else {
+                        error("unexpected request: $method $url")
+                    }
+                },
+            )
+        val recorder = recorder()
+        val upload =
+            async {
+                withContext(recorder) {
+                    composerUpload(executor).uploadOneThreadFile(
+                        channelId = ChannelId("channel-1"),
+                        file = file(bytes = byteArrayOf(1, 2, 3)),
+                        clientRequestId = "11111111-1111-4111-8111-111111111111",
+                    )
+                }
+            }
+        advanceTimeBy(1_000L)
+        runCurrent()
+        assertFalse(upload.isCompleted)
+
+        upload.cancel()
+        runCurrent()
+
+        assertTrue(upload.isCancelled)
+        assertEquals(1, calledOff, "the hung create is called off")
+        assertNull(recorder.snapshot().controlTimeoutPhase, "a cancel is no timeout")
+        // Nothing is left to fire later: the create's 30 s deadline went with it.
+        advanceUntilIdle()
+        assertEquals(1_000L, currentTime)
     }
 
     @Test

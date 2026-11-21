@@ -286,6 +286,7 @@ LUCIDE_ICONS = [
     "square-terminal",
     "store",
     "terminal",
+    "text-align-start",
     "text-quote",
     "timer-reset",
     "thread",

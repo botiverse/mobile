@@ -1,6 +1,7 @@
 package build.raft.app.core.data.auth
 
 import android.content.Context
+import build.raft.app.RaftStrictMode
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import build.raft.app.data.RAFT_DEVICE_STATE_MMKV_NAMESPACE
@@ -59,7 +60,9 @@ internal object AndroidAppScopeMMKV {
         if (initialized) return
         synchronized(this) {
             if (!initialized) {
-                MMKV.initialize(context.applicationContext)
+                RaftStrictMode.allowDiskWrites {
+                    MMKV.initialize(context.applicationContext)
+                }
                 initialized = true
             }
         }

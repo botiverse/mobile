@@ -33,7 +33,6 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.supportsRuntimeFastMode
-import build.raft.app.model.supportsRuntimeReasoningEffort
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -678,22 +677,13 @@ internal fun MembersAgentRuntimeConfigRows(
                 RaftText(text = modelLabel, style = membersInfoValueStyle(mono = true), color = RaftTheme.colors.foreground)
             }
         }
-        // kimi-sdk (task #275): the chip is gated on the selected model's LIVE
-        // catalog capability (never the static runtime set).
-        if (
-            supportsRuntimeReasoningEffort(runtimeId) ||
-            membersKimiSdkModelDeclaresReasoning(
-                runtime = runtimeId,
-                model = runtimeConfig.toMembersRuntimeModelValue(),
-                liveModels = runtimeModelsCatalog?.models.orEmpty()
-            )
-        ) {
+        // Web AgentProfileInfo `reasoningLabel` (botiverse/slock #15691): the value the Members list's
+        // agent rows show too; no row where the runtime takes no reasoning effort.
+        membersReasoningEffortDisplayLabel(runtimeId, runtimeConfig.reasoningEffort)?.let { reasoning ->
             MembersAgentInfoField(stringResource(Res.string.member_label_reasoning)) {
                 // Web `<span>`: the plain callout value.
                 RaftText(
-                    text = runtimeConfig.reasoningEffort?.let { effort ->
-                        membersReasoningEffortLabel(effort)?.let { stringResource(it) } ?: effort.toMembersDisplayLabel()
-                    } ?: stringResource(Res.string.member_label_default),
+                    text = reasoning.localized(),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
@@ -1142,22 +1132,6 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
         reasoningEffort = summary.reasoning?.takeIf { it.isNotBlank() },
         envVars = summary.envVars.takeIf { it.isNotEmpty() }
     ))
-}
-
-/**
- * kimi-sdk shows a reasoning row only when the computer's live catalog entry for [model] declares
- * efforts with a valid default (task #275); there is no static fallback for kimi-sdk.
- */
-private fun membersKimiSdkModelDeclaresReasoning(
-    runtime: String,
-    model: String,
-    liveModels: List<SharedCreateAgentRuntimeModelOption>
-): Boolean {
-    if (runtime != "kimi-sdk") return false
-    val live = liveModels.firstOrNull { it.id == model.trim() } ?: return false
-    val default = live.defaultReasoningEffort
-    val efforts = live.supportedReasoningEfforts.orEmpty()
-    return efforts.isNotEmpty() && !default.isNullOrBlank() && default in efforts
 }
 
 internal fun membersRuntimeModelConfig(

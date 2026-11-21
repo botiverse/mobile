@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.AgentReasoningSetting
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.MemberId
@@ -602,6 +603,38 @@ class MemberAgentParserTest {
         )
         assertTrue(external.isExternal)
         assertFalse(managed.isExternal)
+    }
+
+    /**
+     * `GET /agents` rows as botiverse/slock staging c0f6195c6 projects them (`routes/agents.ts`
+     * `buildAgentListItems`: `withAgentProjection` sends the hydrated `RuntimeConfig` to viewers who
+     * may edit the agent, `stripEnvVars` drops it for the rest). The `reasoningEffort` column never
+     * holds Pi's `off` (`agents.api.test.ts`, "Pi's off is kept in runtimeConfig only") nor Kimi
+     * Code's levels (`agents.mobileV1120SaveRequests.api.test.ts`), so the list reads the config
+     * first, as the profile does (web #15691; Kimi's `thinking-max` from its test).
+     */
+    @Test
+    fun agentsListReadsTheReasoningAsTheProfileDoes() {
+        val agents =
+            parseSharedSettingsAgentsAsMembers(
+                """
+                [
+                  {"id":"agent-pi","name":"pi-off","status":"active","runtime":"pi","model":"anthropic/sonnet-live","reasoningEffort":null,
+                   "runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"default"},"model":{"kind":"preset","id":"anthropic/sonnet-live"},"mode":{"kind":"default"},"reasoningEffort":"off","envVars":null}},
+                  {"id":"agent-kimi","name":"kimi","status":"active","runtime":"kimi-sdk","model":"kimi-k2","reasoningEffort":null,
+                   "runtimeConfig":{"version":1,"runtime":"kimi-sdk","model":{"kind":"default"},"mode":{"kind":"default"},"reasoningEffort":"thinking-max","envVars":null}},
+                  {"id":"agent-member-view","name":"builder","status":"active","runtime":"codex","model":"gpt-5.5","reasoningEffort":"high"},
+                  {"id":"agent-odd-config","name":"odd","status":"active","runtime":"claude","model":"sonnet","reasoningEffort":"medium",
+                   "runtimeConfig":{"version":1,"runtime":"gemini","reasoningEffort":{"level":"high"}}}
+                ]
+                """.trimIndent()
+            )
+        val byId = assertNotNull(agents).associateBy { it.id.value }
+        assertEquals(AgentReasoningSetting("pi", "off"), byId.getValue("agent-pi").agentReasoning)
+        assertEquals(AgentReasoningSetting("kimi-sdk", "thinking-max"), byId.getValue("agent-kimi").agentReasoning)
+        assertEquals(AgentReasoningSetting("codex", "high"), byId.getValue("agent-member-view").agentReasoning)
+        // A config this client can't read keeps the row, on the agent's own fields.
+        assertEquals(AgentReasoningSetting("claude", "medium"), byId.getValue("agent-odd-config").agentReasoning)
     }
 
     /**

@@ -6037,6 +6037,7 @@ private fun SharedThreadRouteContentContent(
                                 featureFlags = sharedStores.serverFeatureFlags,
                                 webBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl,
                                 screenshots = sharedStores.artifactScreenshotStore,
+                                readerId = viewerId,
                             ),
                         // The batched link-card read (App link cards v2).
                         batchedRead = true,

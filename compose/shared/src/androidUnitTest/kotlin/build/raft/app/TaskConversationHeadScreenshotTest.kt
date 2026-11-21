@@ -40,6 +40,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.TaskAmendResult
 import build.raft.app.data.TaskHistoryDetail
 import build.raft.app.data.TaskHistoryField
 import build.raft.app.data.TaskHistoryFieldChange
@@ -50,7 +51,9 @@ import build.raft.app.data.ThreadAgentFollowersState
 import build.raft.app.data.taskStatusOptions
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
+import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
@@ -144,6 +147,21 @@ class TaskConversationHeadScreenshotTest {
         capture("task.conversation.head.faces", RaftAppAppearance.Light) {
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
                 TaskHeadContent(model = FacesHeadModel)
+            }
+        }
+
+    /**
+     * No description, for a reader who may edit the task (web slock #15639): Add a description is
+     * an icon button beside the title's pencil, not a row of its own; no Created at row (Created by
+     * carries when the task was created).
+     */
+    @Test
+    fun addDescription() =
+        capture("task.conversation.head.add-description", RaftAppAppearance.Light) {
+            val editing =
+                remember { TaskHeadEditing(TaskHeadEditState(), EditableTask, send = { _, _ -> TaskAmendResult.Stale(currentRevision = null) }) }
+            Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+                TaskHeadContent(model = HeadModel.copy(description = null), onOpenSource = {}, onOpenEarlierDiscussion = {}, editing = editing)
             }
         }
 
@@ -445,6 +463,16 @@ private val FacesHeadModel
             creator = TaskHeadPerson(MemberKind.Agent, "agent-kirby"),
             history = TaskHeadHistory.Rows(emptyList()),
         )
+
+/** [HeadModel]'s task with no description: its title and description can be edited ([TaskHeadEditing]). */
+private val EditableTask =
+    TaskSummary(
+        id = TaskId("task-7"),
+        title = "Task detail parity with the web",
+        status = TaskStatus.InProgress,
+        taskNumber = 7,
+        updatedAtLabel = "2026-10-28T09:14:00.000Z",
+    )
 
 private fun follower(id: String, name: String) =
     ThreadAgentFollower(id = id, name = name, status = "active", serverId = "server-1", isCurrentServer = true, canRemove = true)

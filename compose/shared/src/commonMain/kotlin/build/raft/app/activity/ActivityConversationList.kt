@@ -746,6 +746,10 @@ internal fun activityObjectBodyText(line: ActivityObjectLine, senderStyle: SpanS
             ActivityObjectEventVerb.MentionedYou -> stringResource(Res.string.artifacts_activity_mentioned_you, ActivityObjectNameMark)
             ActivityObjectEventVerb.Commented -> stringResource(Res.string.artifacts_activity_commented, ActivityObjectNameMark)
             ActivityObjectEventVerb.EditedComment -> stringResource(Res.string.artifacts_activity_edited_comment, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Settled -> stringResource(Res.string.artifacts_activity_settled, ActivityObjectNameMark)
+            ActivityObjectEventVerb.Unsettled -> stringResource(Res.string.artifacts_activity_unsettled, ActivityObjectNameMark)
+            ActivityObjectEventVerb.PublishedVersionSinceSettled ->
+                stringResource(Res.string.artifacts_activity_published_version_since_settled, ActivityObjectNameMark, line.version ?: 0)
             ActivityObjectEventVerb.PublishedVersion ->
                 stringResource(Res.string.artifacts_activity_published_version, ActivityObjectNameMark, line.version ?: 0)
             ActivityObjectEventVerb.Published -> stringResource(Res.string.artifacts_activity_published, ActivityObjectNameMark)

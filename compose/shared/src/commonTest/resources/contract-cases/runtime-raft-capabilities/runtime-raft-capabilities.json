@@ -76,8 +76,8 @@
     },
     "dsh": {
       "midTurnSteering": true,
-      "subagents": false,
-      "compactionReported": false
+      "subagents": true,
+      "compactionReported": true
     }
   }
 }

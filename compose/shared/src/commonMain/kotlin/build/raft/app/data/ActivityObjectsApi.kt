@@ -57,10 +57,16 @@ internal data class WireObjectInboxPreview(
     val at: String? = null,
 )
 
+/**
+ * `ArtifactActivityTarget` (`webObjectsContract.ts`). [wasSettled] (botiverse/slock #15649, behind
+ * `artifact_settled_v0`): on a row whose newest event is a `version` that took a settled Artifact back
+ * to Working, the version it had been settled at; absent otherwise and from older servers.
+ */
 @Serializable
 internal data class WireObjectActivityTarget(
     val version: Int,
     val comment: String? = null,
+    val wasSettled: Int? = null,
 )
 
 /** `ObjectInboxItem` (summary kept raw: its shape is the kind's, Artifacts `ArtifactCard`). */
@@ -132,6 +138,8 @@ data class ActivityObjectRow(
     val previewText: String? = null,
     val targetVersion: Int? = null,
     val targetComment: String? = null,
+    /** `target.wasSettled` (#334): this version took it back to Working from the settle at that version. */
+    val targetWasSettled: Int? = null,
     val isFollowing: Boolean = true,
     val doneFrontierSeq: String = "",
 ) {
@@ -157,7 +165,35 @@ data class ActivityObjectRow(
 }
 
 /** What the row says the newest event was (web `artifactActivityRowParts`). */
-enum class ActivityObjectEventVerb { MentionedYou, Commented, EditedComment, PublishedVersion, Published, Updated }
+enum class ActivityObjectEventVerb {
+    MentionedYou,
+    Commented,
+    EditedComment,
+
+    /** "{name} settled it" (#334: recorded read, it adds no unread). */
+    Settled,
+
+    /** "{name} unsettled it" (#334). */
+    Unsettled,
+
+    /** "{name} published v{version}, a new version since it was settled" (#334, `target.wasSettled`). */
+    PublishedVersionSinceSettled,
+    PublishedVersion,
+    Published,
+    Updated,
+}
+
+/**
+ * Every event kind an Artifact records (botiverse/slock `packages/server/src/apps/artifacts/kinds.ts`
+ * `ARTIFACT_OBJECT_EVENTS`, origin/staging c0f6195c6, with `settled` / `unsettled` from #15649). Those
+ * the row has no words of its own for read "updated it", as on the web; any other is a newer server's
+ * and is logged ([parseActivityObjectInboxItem]).
+ */
+internal val ArtifactObjectEventKinds: Set<String> =
+    setOf(
+        "version", "comment", "comment_edited", "comment_deleted", "renamed", "moved", "deleted", "review",
+        "comment_resolved", "comment_reopened", "settled", "unsettled",
+    )
 
 /** web `artifactActivityRowParts`: the verb from (`eventKind`, `reason`), and the version a publish names. */
 fun ActivityObjectRow.eventVerb(): Pair<ActivityObjectEventVerb, Int?> {
@@ -166,6 +202,9 @@ fun ActivityObjectRow.eventVerb(): Pair<ActivityObjectEventVerb, Int?> {
         reasonKind == ActivityObjectReason.Mentioned && eventKind != "version" -> ActivityObjectEventVerb.MentionedYou to null
         eventKind == "comment" -> ActivityObjectEventVerb.Commented to null
         eventKind == "comment_edited" -> ActivityObjectEventVerb.EditedComment to null
+        eventKind == "settled" -> ActivityObjectEventVerb.Settled to null
+        eventKind == "unsettled" -> ActivityObjectEventVerb.Unsettled to null
+        eventKind == "version" && version != null && targetWasSettled != null -> ActivityObjectEventVerb.PublishedVersionSinceSettled to version
         eventKind == "version" && version != null -> ActivityObjectEventVerb.PublishedVersion to version
         eventKind == "version" -> ActivityObjectEventVerb.Published to null
         else -> ActivityObjectEventVerb.Updated to null
@@ -205,6 +244,10 @@ internal fun parseActivityObjectInboxItem(
         reportProjectionRowDropped("activity_object", "object_id_blank", diagnostics = diagnostics)
         return null
     }
+    if (wire.latestEvent.eventKind !in ArtifactObjectEventKinds) {
+        // A newer server's event: the row still shows, its line the generic "updated it" ([eventVerb]).
+        reportUnknownTypeDropped("activity_object", "event_kind", wire.latestEvent.eventKind, fallback = "updated", diagnostics = diagnostics)
+    }
     val card = wire.summary?.let { runCatching { activityObjectsJson.decodeFromJsonElement(ArtifactCardWireDto.serializer(), it) }.getOrNull() }
     val row =
         ActivityObjectRow(
@@ -225,6 +268,7 @@ internal fun parseActivityObjectInboxItem(
             previewText = wire.preview?.text,
             targetVersion = wire.target?.version,
             targetComment = wire.target?.comment,
+            targetWasSettled = wire.target?.wasSettled,
             isFollowing = wire.isFollowing,
             doneFrontierSeq = wire.doneFrontierSeq,
         )

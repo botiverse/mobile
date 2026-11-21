@@ -110,14 +110,19 @@ class MembersAgentsGroupingUiTest {
             showTab(MembersTab.Agents)
             onAllNodesWithText("artin").assertCountEquals(0)
             onNodeWithText("Volta").assertExists()
-            // Ungrouped, each agent's runtime line names its computer (web MemberPhoneRow).
+            // Ungrouped, each agent's runtime line names its computer (web MemberPhoneRow), then the
+            // reasoning effort its profile shows (botiverse/slock #15691; none where the runtime takes none).
             onAllNodesWithText("MacBook Pro", substring = true).fetchSemanticsNodes().isNotEmpty().let(::assertTrue)
+            onNodeWithText("Codex CLI · MacBook Pro · Reasoning: High").assertExists()
+            onNodeWithText("Claude Code · MacBook Pro · Reasoning: Default").assertExists()
+            onNodeWithText("OpenCode · daybed-earth").assertExists()
 
             pickGrouping(MembersAgentsGrouping.Computer)
 
             // By computer: the heading names it once; the rows' runtime lines leave it out.
             onAllNodesWithText("MacBook Pro", substring = true).assertCountEquals(1)
             onAllNodesWithText("daybed-earth", substring = true).assertCountEquals(1)
+            onNodeWithText("Codex CLI · Reasoning: High").assertExists()
             assertEquals(MembersAgentsGrouping.Computer, store.grouping)
         }
 

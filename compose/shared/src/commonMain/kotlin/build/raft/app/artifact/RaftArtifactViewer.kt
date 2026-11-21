@@ -432,6 +432,33 @@ private fun raftArtifactViewerQueryParam(url: String, name: String): String? =
 internal fun raftArtifactViewerPageDrawsHostBar(url: String): Boolean =
     raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_TOOLBAR_PARAM) == "1"
 
+/**
+ * Whether [url] carries the host-shell embed contract (`embed=raft-settings-v1` and `shell=host`,
+ * slock `embed.ts` `parseEmbedMode`). A full-document load without it latches `NOT_EMBEDDED` for
+ * the lifetime of that WebView document, breaking one-bar (`hostToolbar=1`), phone-layout Desktop
+ * Mode, and `hostOpen=message`.
+ */
+internal fun raftArtifactViewerHasEmbedContract(url: String): Boolean =
+    raftArtifactViewerQueryParam(url, "embed") == SharedSettingsEmbedContract &&
+        raftArtifactViewerQueryParam(url, "shell") == SharedSettingsEmbedHostShell
+
+/**
+ * Whether a parked keep-alive WebView document still carries the host-shell embed contract
+ * ([raftArtifactViewerHasEmbedContract]). Defense in depth so an un-embedded document is never
+ * reused across opens.
+ */
+internal fun raftArtifactViewerKeptDocumentHasEmbedContract(kept: RaftWebViewKeptDocument): Boolean {
+    val activeUrl = kept.currentUrl.takeUnless { it.isBlank() || it == "about:blank" } ?: kept.src
+    return activeUrl.isNotBlank() && raftArtifactViewerHasEmbedContract(activeUrl)
+}
+
+/** `hostDesktop` after the page's [action] is applied (null stays null when Desktop Mode is not offered). */
+internal fun raftArtifactViewerHostDesktopAfterAction(
+    action: RaftArtifactViewerHostAction,
+    current: Boolean?,
+): Boolean? =
+    if (action == RaftArtifactViewerHostAction.DesktopMode && current != null) !current else current
+
 /** Whether the page at [url] says its content loaded (`hostLoaded=1`, [RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM]). */
 internal fun raftArtifactViewerPageSaysLoaded(url: String): Boolean =
     raftArtifactViewerQueryParam(url, RAFT_ARTIFACT_VIEWER_HOST_LOADED_PARAM) == "1"
@@ -654,12 +681,14 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
 /**
  * Whether a new top-level document of the viewer's WebView (a full load the page started, never its
  * own client-side routing) is a link to route instead of loading it in the viewer: a Raft link the app
- * opens itself ([RaftArtifactViewerBlockedTarget.OpenMessage]), or a page of a server (`/s/<slug>/<page>`)
- * the app has no screen for (its web page, in the browser). Android's WebView, with one window, loads
- * the page's `window.open(link)` (an Artifact's own link, Porthole `openLink`) over the Artifact; routed
- * here, the viewer stays, as it does on the web (the link opens in a new tab) and on iOS (a new window
- * is a blocked navigation). The sign-in pages (`/`, `/login`: the page signing itself out), the Artifact,
- * another Artifact and the server's own page (`/s/<slug>`) load as before.
+ * opens itself ([RaftArtifactViewerBlockedTarget.OpenMessage]), another Artifact
+ * ([RaftArtifactViewerBlockedTarget.OpenArtifact] — e.g. a bare `<a href="/artifacts/…">` in "Linked
+ * from", which would reload without the embed contract and latch `NOT_EMBEDDED` for the document's
+ * lifetime), an un-embedded full reload of this same Artifact, or a page of a server (`/s/<slug>/<page>`)
+ * the app has no screen for (its web page, in the browser). Client-side switches (`history.pushState`
+ * from the page's title menu or version picker) never enter this hook. The sign-in pages (`/`, `/login`:
+ * the page signing itself out), an embedded load of this Artifact, and the server's own page (`/s/<slug>`)
+ * load as before.
  */
 internal fun raftArtifactViewerRoutesDocumentAsLink(
     url: String,
@@ -668,12 +697,16 @@ internal fun raftArtifactViewerRoutesDocumentAsLink(
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): Boolean =
     when (val routed = raftArtifactViewerBlockedNavigationTarget(url, webOrigin, artifactId, appHosts)) {
-        is RaftArtifactViewerBlockedTarget.OpenMessage -> true
+        is RaftArtifactViewerBlockedTarget.OpenMessage,
+        is RaftArtifactViewerBlockedTarget.OpenArtifact -> true
         is RaftArtifactViewerBlockedTarget.SystemBrowser ->
             raftOwnLinkRoute(routed.url, webOrigin, appHosts) is RaftOwnLinkRoute.WebPage &&
                 raftOwnWebLinkPath(routed.url, webOrigin, appHosts)?.path.orEmpty()
                     .split('/').filter(String::isNotEmpty).let { it.size >= 3 && it[0] == "s" }
-        else -> false
+        RaftArtifactViewerBlockedTarget.Ignore ->
+            raftArtifactViewerNavigation(url, webOrigin, artifactId, appHosts) is RaftArtifactViewerNavigation.Stay &&
+                !raftArtifactViewerHasEmbedContract(url)
+        RaftArtifactViewerBlockedTarget.Download -> false
     }
 
 /**

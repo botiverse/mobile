@@ -22,6 +22,7 @@ new product concept gets a Japanese rendering.
 | Human(s) | 人間 | Explicit contrast with エージェント (Members page sections) |
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
 | External (someone from another server) | 外部 | Profile card ribbon "外部：{servers}", author row "{servers} から"; copied from the web ja catalog `message.profilePreview.external*` / `fromServers` (botiverse/slock #14535) |
+| External (Home's section of external channels) / Create external channel | 外部 / 外部チャンネルを作成 | The section title and its "+"; replaces 共同チャンネル / 共同チャンネルを作成; copied from the web ja catalog `layout.sidebar.external` / `layout.sidebar.createExternalChannel` (botiverse/slock #15939) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Pinned content (Channel details) | ピン留めされたコンテンツ | One Artifact pinned as a strip above a channel's timeline ("Artifact をピン留め", "ピン留めされたコンテンツの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #15659). Not the product's AnnouncementDialog |
@@ -38,6 +39,7 @@ new product concept gets a Japanese rendering.
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |
 | Artifact / Artifacts | Artifact / Artifacts | Workspace Artifacts; kept in English as the web ja catalog does (「無題の Artifact」); the app name is always "Artifacts" |
+| Settled / Settle / Unsettle (an Artifact marked done) | 確定済み / 確定にする / 確定を取り消す | The Settled tag after an Artifact card's version and its Activity lines (「{name} が確定しました」, 「{name} が確定を取り消しました」, 「確定後の新しいバージョン v{n}」); Working = 作業中. Copied from the web ja catalog `artifacts.settled.*`, `artifacts.activity.settled` (botiverse/slock #15654) |
 | Saved | 保存済み | Bookmark feature |
 | Pinned / Pin | ピン留め | Unpin = ピン留めを解除 |
 | Follow (thread) | フォロー | Unfollow = フォロー解除 |
@@ -84,6 +86,7 @@ new product concept gets a Japanese rendering.
 | Licenses | ライセンス | |
 | Onboarding | オンボーディング | |
 | Runtime | ランタイム | Agent runtime config |
+| Reasoning (an agent's reasoning effort) | 推論の強度 | The profile's row and the Members agent rows (「推論の強度：High」); copied from the web ja catalog (`agent.runtimeConfig.reasoning`, `members.page.reasoningEffortDescription`, botiverse/slock #15691) |
 | Skill | スキル | |
 | Knowledge | ナレッジ | Agent manual/knowledge base |
 | Reminder | リマインダー | |

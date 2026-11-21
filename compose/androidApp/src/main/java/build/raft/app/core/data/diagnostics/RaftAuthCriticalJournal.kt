@@ -44,12 +44,34 @@ object RaftAuthCriticalJournal {
     @Volatile
     private var appContext: Context? = null
 
+    @Volatile
+    internal var onInitTaskExecutedForTests: ((threadName: String) -> Unit)? = null
+
     fun init(context: Context) {
         val applicationContext = context.applicationContext
         appContext = applicationContext
-        synchronized(fileLock) {
-            RaftGeneralLogRing.currentLaunchDir(applicationContext).mkdirs()
+        // Enqueue directory creation ahead of queued writes on the single-threaded journal
+        // executor so cold start performs zero disk I/O on Main; flush() / recentEntries() wait
+        // for this task via the same FIFO queue.
+        executor.execute {
+            initializeStorage(applicationContext)
         }
+    }
+
+    private fun initializeStorage(applicationContext: Context) {
+        runCatching {
+            onInitTaskExecutedForTests?.invoke(Thread.currentThread().name)
+            synchronized(fileLock) {
+                RaftGeneralLogRing.currentLaunchDir(applicationContext).mkdirs()
+            }
+        }
+    }
+
+    internal fun resetForTests() {
+        flush()
+        droppedEntries.set(0L)
+        appContext = null
+        onInitTaskExecutedForTests = null
     }
 
     fun isCritical(message: String): Boolean = classifyAuthCriticalEvent(message) != null
@@ -123,10 +145,13 @@ object RaftAuthCriticalJournal {
     }
 
     fun clearFiles(context: Context) {
+        flush()
         runCatching {
-            RaftGeneralLogRing.logRoot(context.applicationContext).walkTopDown()
-                .filter { it.isFile && it.name == JournalFileName }
-                .forEach { it.delete() }
+            synchronized(fileLock) {
+                RaftGeneralLogRing.logRoot(context.applicationContext).walkTopDown()
+                    .filter { it.isFile && it.name == JournalFileName }
+                    .forEach { it.delete() }
+            }
         }
     }
 

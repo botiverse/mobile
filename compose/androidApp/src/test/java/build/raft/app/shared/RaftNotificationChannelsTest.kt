@@ -4,7 +4,12 @@ import android.Manifest
 import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -17,6 +22,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class RaftNotificationChannelsTest {
     private val context: Context = RuntimeEnvironment.getApplication()
+
+    @After
+    fun tearDown() {
+        RaftNotificationChannels.resetForTests()
+    }
 
     @Test
     fun ensureAllCreatesEveryChannelWithoutNotificationPermission() {
@@ -42,5 +52,32 @@ class RaftNotificationChannelsTest {
         assertEquals(NotificationManager.IMPORTANCE_HIGH, importance[AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID])
         assertEquals(NotificationManager.IMPORTANCE_HIGH, importance[AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID])
         assertEquals(NotificationManager.IMPORTANCE_DEFAULT, importance[AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID])
+    }
+
+    @Test
+    fun ensureAllAsyncRunsOffCallingThreadAndCreatesEveryChannel() {
+        shadowOf(context as Application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notificationChannels.forEach { manager.deleteNotificationChannel(it.id) }
+        val callingThread = Thread.currentThread().name
+        val executedThread = AtomicReference<String?>(null)
+        RaftNotificationChannels.onEnsureAllExecutedForTests = { threadName -> executedThread.set(threadName) }
+
+        val job = RaftNotificationChannels.ensureAllAsync(context)
+        runBlocking { job.join() }
+
+        assertNotNull(executedThread.get())
+        assertNotEquals(callingThread, executedThread.get())
+        val expected =
+            setOf(
+                AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID,
+                AndroidUnreadNotificationPoster.UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID,
+                AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID,
+                AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID,
+                AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID,
+                RaftDownloadNotifications.CHANNEL_ID,
+                RaftBackgroundConnectionService.CHANNEL_ID,
+            )
+        assertEquals(expected, manager.notificationChannels.map { it.id }.toSet())
     }
 }

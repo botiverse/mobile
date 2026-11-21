@@ -83,9 +83,10 @@ class TaskHeadFactsAlignmentUiTest {
         entries.joinToString { (k, r) -> "$k@${r.left.value},${r.top.value}" }
 }
 
-private val Labels = listOf("Status", "Assignee", "Source", "Created by", "Created at", "Earlier discussion")
+/** No Created at: when the task was created rides on Created by (web slock #15639). */
+private val Labels = listOf("Status", "Assignee", "Source", "Created by", "Earlier discussion")
 
-/** Every kind of fact: chips, a link with a face, a face and name, mono text, a plain link. */
+/** Every kind of fact: chips, a link with a face, a face and name (with when it was created), a plain link. */
 private val FactsModel =
     TaskConversationHeadModel(
         bar =

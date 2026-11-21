@@ -349,6 +349,27 @@ class AgentsApiTest {
     }
 
     @Test
+    fun agentDetailReadsTheSavedReasoningLevelFirst() = runPortableCoroutineTest {
+        // botiverse/slock staging c0f6195c6 `agents.api.test.ts`: Pi's "off" is kept in runtimeConfig
+        // only, the `reasoningEffort` column stays empty. The profile reads the saved config's level
+        // first (web `hydrateRuntimeConfigForm`), as the Members list does.
+        val piOff =
+            """{"id":"agent-1","name":"pi-off","status":"active","runtime":"pi","model":"anthropic/sonnet-live","reasoningEffort":null,""" +
+                """"runtimeConfig":{"version":1,"runtime":"pi","provider":{"kind":"default"},"model":{"kind":"preset","id":"anthropic/sonnet-live"},""" +
+                """"mode":{"kind":"default"},"reasoningEffort":"off","envVars":null}}"""
+        suspend fun reasoning(body: String): String? =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1")))
+                .data.reasoning
+
+        assertEquals("off", reasoning(piOff))
+        // A config of another version is ignored: the agent's own field decides.
+        assertEquals(
+            "high",
+            reasoning(piOff.replace(""""reasoningEffort":null""", """"reasoningEffort":"high"""").replace(""""version":1""", """"version":2""")),
+        )
+    }
+
+    @Test
     fun agentDetailCarriesTheWakePauseOnlyWithItsDetailKind() = runPortableCoroutineTest {
         // GET /agents/:id at botiverse/slock 24873fd5be37 (routes/agents.ts): `activityDetailKind`
         // and the shared WakeCrashLoopActivityDiagnostic, `lastExitReason` from #10860.

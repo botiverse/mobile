@@ -3,6 +3,7 @@ package build.raft.app.core.data.diagnostics
 import android.os.Build
 import android.os.Process
 import android.os.SystemClock
+import build.raft.app.RaftStrictMode
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.Executors
@@ -177,10 +178,12 @@ internal object RaftStartupPhaseMarker {
     private fun writeLocked() {
         val target = dir ?: return
         val current = record ?: return
-        if (!target.isDirectory && !target.mkdirs()) return
-        val tmp = File(target, "${current.pid}.tmp")
-        FileOutputStream(tmp).use { it.write(current.encode().toByteArray(Charsets.UTF_8)) }
-        tmp.renameTo(File(target, current.pid.toString()))
+        RaftStrictMode.allowDiskWrites {
+            if (!target.isDirectory && !target.mkdirs()) return@allowDiskWrites
+            val tmp = File(target, "${current.pid}.tmp")
+            FileOutputStream(tmp).use { it.write(current.encode().toByteArray(Charsets.UTF_8)) }
+            tmp.renameTo(File(target, current.pid.toString()))
+        }
     }
 
     /** All records on disk (unreadable ones skipped). Off the main thread. */

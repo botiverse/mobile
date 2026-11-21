@@ -484,6 +484,13 @@ data class MemberProfile(
      */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
     /**
+     * `GET /agents` server-composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts` /
+     * `packages/shared/src/readiness.ts`), already trimmed per viewer. Carries holding states such
+     * as `quota_exhausted`, `rate_limited`, `verification_required`, `computer_restarting`, etc.
+     * Cleared by `withoutVolatileStatus()` so disk caches never flash stale holds on cold start.
+     */
+    val agentReadiness: AgentReadiness? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -510,6 +517,13 @@ data class MemberProfile(
      * never carried a model — the header label stays absent, never a raw id.
      */
     val model: String? = null,
+    /**
+     * The agent's runtime and reasoning effort as its profile reads them, from `GET /agents` and its
+     * sync rows ([build.raft.app.data.hydrateAgentReasoningSetting]): what the Members list's
+     * Reasoning shows (botiverse/slock #15691). Null when the payload carried no agent row (humans,
+     * identity seeds); the list then shows none.
+     */
+    val agentReasoning: AgentReasoningSetting? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
@@ -649,6 +663,18 @@ data class MemberProfile(
         if (configApply == null && configApplyNewSession == null && descriptionLinkWarnings.isEmpty()) this
         else copy(configApply = null, configApplyNewSession = null, descriptionLinkWarnings = emptyList())
 }
+
+/**
+ * An agent's runtime and reasoning effort as shared `hydrateRuntimeConfig` reads them (web
+ * `hydrateRuntimeConfigForm`, which the profile and the Members list read through): built by
+ * [build.raft.app.data.hydrateAgentReasoningSetting].
+ */
+@Serializable
+data class AgentReasoningSetting(
+    val runtime: String,
+    /** The saved level, raw: a shared id (`xhigh`) or a runtime's own (Kimi Code's); null when none is set. */
+    val reasoningEffort: String? = null,
+)
 
 /**
  * Slack-bridge (or future provider) participant projected into a channel's
