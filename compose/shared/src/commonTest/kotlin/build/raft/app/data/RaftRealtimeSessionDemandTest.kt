@@ -216,6 +216,30 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
+    fun shellShowingIsAnotherWindowOnThatServerNowTheMostRecentlySeenFirst() {
+        val demand = RaftRealtimeSessionDemand()
+        demand.claim("launcher", "s1")
+        demand.claim("shell-b", "s2")
+
+        assertEquals("launcher", demand.shellShowing(" s1 ", exceptShellInstanceId = "shell-b"))
+        assertNull(demand.shellShowing("s1", exceptShellInstanceId = "launcher"), "the asking window is not another window")
+        assertNull(demand.shellShowing("s3", exceptShellInstanceId = "shell-b"), "no window shows s3")
+        assertNull(demand.shellShowing(" ", exceptShellInstanceId = "shell-b"))
+
+        // Two windows on s1: the one seen last.
+        demand.claim("shell-a", "s1")
+        assertEquals("shell-a", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
+        demand.onVisibility("launcher", visible = true, nowMillis = 1L)
+        assertEquals("launcher", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
+
+        // A window that switched in place or closed no longer shows the server.
+        demand.claim("launcher", "s3")
+        assertEquals("shell-a", demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
+        demand.release("shell-a")
+        assertNull(demand.shellShowing("s1", exceptShellInstanceId = "shell-b"))
+    }
+
+    @Test
     fun blankShellIdsShareTheLegacyShell() {
         val demand = RaftRealtimeSessionDemand()
         demand.claim("", "s2")

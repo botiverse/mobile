@@ -12,6 +12,7 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.app.data.raftHostShowsContent
 import build.raft.app.data.raftProcessRealtimeOwnerGeneration
+import build.raft.app.data.raftProcessRealtimeSessionDemand
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftNavSurface
 import build.raft.app.data.RaftProductEvents
@@ -4454,7 +4455,12 @@ private fun RaftAppShellReadyContent(
                         serverId = serverId
                     ).normalizedOrNull(),
                 keepTab = keepTab,
-                sourceWindowServerId = pager.pageData.params.authenticatedRouteOwnerOrNull()?.serverId
+                sourceWindowServerId = pager.pageData.params.authenticatedRouteOwnerOrNull()?.serverId,
+                windowShowingPickedServer =
+                    raftProcessRealtimeSessionDemand.shellShowing(
+                        serverId = serverId,
+                        exceptShellInstanceId = navigationStoreScope.shellInstanceId
+                    )
             ) ?: return false
         pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, build.raft.app.data.raftNowEpochMillis())
         bridge.log(

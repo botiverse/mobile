@@ -4,6 +4,7 @@ import build.raft.app.network.raftDownloadFileName
 import build.raft.app.data.legacyOpenFields
 import android.Manifest
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
@@ -3557,8 +3558,22 @@ internal open class RaftCmpActivity :
                     KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                         .readMultiShellHostEnabledSync()
                 }.getOrDefault(false)
+            // A server switch to a server that already has a window: that window, and as it is
+            // when the switch names no destination (androidServerSwitchExistingWindowOrNull).
+            val existingWindow =
+                if (clearTask) null else androidServerSwitchExistingWindowOrNull(pageData, multiShellHostEnabled)
+            val forwardTaskId = existingWindow?.bringForwardTaskId
+            if (existingWindow != null && forwardTaskId != null && bringAppTaskToFront(context, forwardTaskId)) {
+                RaftAppLog.record(
+                    "SlockKuiklyActivity",
+                    "shell_window_brought_forward shellInstanceId=${existingWindow.target.shellInstanceId} " +
+                        "taskId=$forwardTaskId",
+                )
+                return
+            }
             val target =
-                androidShellLaunchTargetFromPageData(pageData, multiShellHostEnabled)
+                existingWindow?.target
+                    ?: androidShellLaunchTargetFromPageData(pageData, multiShellHostEnabled)
                     ?: resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
             val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
             val taskLaunch = target.taskLaunchPlan(clearTask)
@@ -3571,6 +3586,18 @@ internal open class RaftCmpActivity :
                 hostActivityClass = raftAppShellHostActivityClass(target)
             )
         }
+
+        /** Brings this app's task [taskId] to the front as it is (no Intent); false when it is gone. */
+        private fun bringAppTaskToFront(context: Context, taskId: Int): Boolean =
+            runCatching {
+                val task =
+                    context.getSystemService(ActivityManager::class.java)
+                        ?.appTasks
+                        ?.firstOrNull { it.taskInfo?.taskId == taskId }
+                        ?: return@runCatching false
+                task.moveToFront()
+                true
+            }.getOrDefault(false)
 
         fun startAuthChooseServer(
             context: Context,

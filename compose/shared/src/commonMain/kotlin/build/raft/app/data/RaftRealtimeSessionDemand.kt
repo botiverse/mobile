@@ -71,6 +71,23 @@ internal class RaftRealtimeSessionDemand {
         if (removed?.serverId != null) bumpRevision()
     }
 
+    /**
+     * The window that shows [serverId] now, other than [exceptShellInstanceId] (the window asking):
+     * the one seen most recently when several do. Null when no other window shows it. A server
+     * switch asks this so the server's existing window comes forward instead of a second one being
+     * opened; the launcher window counts for the server it shows now (Multiple app windows).
+     */
+    fun shellShowing(serverId: String, exceptShellInstanceId: String): String? {
+        val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val except = normalizeShell(exceptShellInstanceId)
+        return synchronized(lock) {
+            shells.entries
+                .filter { (shellId, shell) -> shellId != except && shell.serverId == server }
+                .maxByOrNull { (_, shell) -> shell.lastVisibleOrder }
+                ?.key
+        }
+    }
+
     /** The multi-session setting changed: the process reconcile re-reads the set (and the mode). */
     fun notifySettingChanged() = bumpRevision()
 
