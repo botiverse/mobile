@@ -92,10 +92,13 @@ class SettingsNotificationsChineseScreenshotTest {
         captureNotifications("settings.notifications.zh-CN", RaftAppAppearance.Light, activities) { NotificationsFixture() }
 }
 
-/** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
+/**
+ * The longer ja titles: each setting's title wraps to a second line instead of truncating. At xhdpi:
+ * the page is too tall for an xxhdpi bitmap plus Roborazzi's comparison canvas in the test heap.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h2800dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "ja-w390dp-h2800dp-xhdpi")
 class SettingsNotificationsJapaneseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
