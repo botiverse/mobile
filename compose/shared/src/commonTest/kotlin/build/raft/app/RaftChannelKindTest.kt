@@ -12,8 +12,10 @@ import kotlin.test.assertTrue
 /**
  * The one channel-kind glyph chooser (web components/channel/channelKind.ts `channelKindIconProps`,
  * channelKindIcon.tsx `ChannelKindIcon`, sidebarChannelVisibility.ts `isExternalMembersChannel` /
- * `isSlackChannel` / `isSidebarExternalSectionChannel`; botiverse/slock@44ce160f1, #13983, and
- * e60211734, #16042: a Slack channel draws the Slack mark and sits in External).
+ * `isSlackChannel` / `isSidebarExternalSectionChannel`; botiverse/slock 6b0965841, #16060, and its
+ * tests/channelKindIcon.behavior.test.tsx): the glyph is the widest group that can read the
+ * channel (the web > Slack > people from outside > members > the server), and the corner holds only
+ * the lock, for a channel private in the server.
  */
 class RaftChannelKindTest {
     private data class Case(
@@ -28,32 +30,34 @@ class RaftChannelKindTest {
     fun everyKind() {
         val cases =
             listOf(
+                // The whole server, its members only.
                 Case("channel", false, false, RaftChannelKindGlyph.Hash),
-                Case("channel", true, false, RaftChannelKindGlyph.PublicPage),
                 Case("private", false, false, RaftChannelKindGlyph.Lock),
-                // A joint channel is in the External section (guest servers) whatever its relation.
-                Case("joint", false, false, RaftChannelKindGlyph.External),
-                // A Guest or an open external invite: public, private or published alike.
-                Case("channel", false, true, RaftChannelKindGlyph.External),
-                Case("channel", true, true, RaftChannelKindGlyph.External),
-                Case("private", false, true, RaftChannelKindGlyph.External),
-                Case("JOINT", false, true, RaftChannelKindGlyph.External),
-                // Only a regular channel goes on the public page; an unknown type draws `#`.
+                // Anyone on the web: the globe, for a regular channel only.
+                Case("channel", true, false, RaftChannelKindGlyph.PublicPage),
                 Case("private", true, false, RaftChannelKindGlyph.Lock),
-                Case(null, false, false, RaftChannelKindGlyph.Hash),
-                Case("dm", false, true, RaftChannelKindGlyph.Hash),
-                // Connected to Slack (#16042): the Slack mark is the glyph and wins over the globe and the
-                // arrow; the corner lock when it is not public or has people from outside, and the
-                // private label only for a private channel.
+                // People from outside (a Guest, a guest server or an open invite; every joint channel):
+                // two people, with the corner lock only when the channel is private.
+                Case("channel", false, true, RaftChannelKindGlyph.External),
+                Case("joint", false, false, RaftChannelKindGlyph.External),
+                Case("JOINT", false, true, RaftChannelKindGlyph.External),
+                Case("private", false, true, RaftChannelKindGlyph.ExternalPrivate),
+                // People in Slack: the Slack mark, the corner lock only when private (no longer for a
+                // public Slack channel with Guests, nor a joint one).
                 Case("channel", false, false, RaftChannelKindGlyph.Slack, "slack"),
-                Case("channel", true, false, RaftChannelKindGlyph.Slack, "slack"),
+                Case("channel", false, true, RaftChannelKindGlyph.Slack, "slack"),
+                Case("joint", false, false, RaftChannelKindGlyph.Slack, "slack"),
                 Case("private", false, false, RaftChannelKindGlyph.SlackPrivate, "slack"),
-                Case("channel", false, true, RaftChannelKindGlyph.SlackLocked, "slack"),
                 Case("private", false, true, RaftChannelKindGlyph.SlackPrivate, "SLACK"),
-                Case("joint", false, false, RaftChannelKindGlyph.SlackLocked, "slack"),
-                // Another provider is not Slack; only a channel draws the Slack mark.
+                // The bigger audience wins: the globe over Slack and people from outside, Slack over
+                // people from outside.
+                Case("channel", true, true, RaftChannelKindGlyph.PublicPage, "slack"),
+                Case("channel", true, true, RaftChannelKindGlyph.PublicPage),
+                Case("channel", true, false, RaftChannelKindGlyph.PublicPage, "slack"),
+                // Another provider is not Slack; an unknown type draws `#`.
                 Case("channel", false, false, RaftChannelKindGlyph.Hash, "discord"),
-                Case("dm", false, false, RaftChannelKindGlyph.Hash, "slack"),
+                Case(null, false, false, RaftChannelKindGlyph.Hash),
+                Case("dm", false, true, RaftChannelKindGlyph.Hash, "slack"),
             )
         for (case in cases) {
             val name = "${case.type} publicPage=${case.onPublicPage} external=${case.hasExternalRelation} bridge=${case.bridgeProvider}"
@@ -101,9 +105,10 @@ class RaftChannelKindTest {
         assertEquals(RaftChannelKindGlyph.Lock, raftChannelKindGlyph("private"))
         assertEquals(RaftChannelKindGlyph.Hash, raftChannelKindGlyph("channel"))
         assertEquals(RaftChannelKindGlyph.PublicPage, raftChannelKindGlyph("channel", onPublicPage = true))
-        // `external` applies to a public, private or joint channel only.
+        // `external` and `slack` apply to a public, private or joint channel only.
         assertEquals(RaftChannelKindGlyph.External, raftChannelKindGlyph("joint", external = true))
-        assertEquals(RaftChannelKindGlyph.Hash, raftChannelKindGlyph("dm", external = true))
+        assertEquals(RaftChannelKindGlyph.ExternalPrivate, raftChannelKindGlyph("private", external = true))
+        assertEquals(RaftChannelKindGlyph.Hash, raftChannelKindGlyph("dm", external = true, slack = true))
     }
 
     @Test
@@ -113,24 +118,39 @@ class RaftChannelKindTest {
                 "#",
                 "lock",
                 "git-branch",
-                HomeChannelSymbolHashGlobe,
+                "public-page-channel",
                 "external-channel",
+                "external-channel-private",
                 "slack-channel",
-                "slack-channel-locked",
                 "slack-channel-private",
             ),
             RaftChannelKindGlyph.entries.map { it.symbol },
         )
-        assertEquals(RaftLucideIconName.ExternalChannel, RaftChannelKindGlyph.External.iconName)
-        // The Slack mark, and the mark with the corner lock (private, joint or with people from outside).
-        assertEquals(RaftLucideIconName.SlackChannel, RaftChannelKindGlyph.Slack.iconName)
-        assertEquals(RaftLucideIconName.SlackChannelLocked, RaftChannelKindGlyph.SlackLocked.iconName)
-        assertEquals(RaftLucideIconName.SlackChannelLocked, RaftChannelKindGlyph.SlackPrivate.iconName)
+        // Each glyph is one icon (web `SinglePathIcon`): the globe and two people as Lucide draws them,
+        // and the drawings with the corner lock.
         assertEquals(
-            listOf(RaftChannelKindGlyph.Slack, RaftChannelKindGlyph.SlackLocked, RaftChannelKindGlyph.SlackPrivate),
-            RaftChannelKindGlyph.entries.filter { it.isSlack },
+            listOf(
+                RaftLucideIconName.Hash,
+                RaftLucideIconName.Lock,
+                RaftLucideIconName.GitBranch,
+                RaftLucideIconName.PublicPageChannel,
+                RaftLucideIconName.ExternalChannel,
+                RaftLucideIconName.ExternalChannelPrivate,
+                RaftLucideIconName.SlackChannel,
+                RaftLucideIconName.SlackChannelPrivate,
+            ),
+            RaftChannelKindGlyph.entries.map { it.iconName },
         )
-        assertEquals("slack", RaftChannelKindGlyph.SlackPrivate.wireChannelKind())
+        assertEquals(listOf(RaftChannelKindGlyph.Slack, RaftChannelKindGlyph.SlackPrivate), RaftChannelKindGlyph.entries.filter { it.isSlack })
+        // Only the channel record knows people from outside and Slack.
+        assertEquals(
+            listOf(RaftChannelKindGlyph.External, RaftChannelKindGlyph.ExternalPrivate, RaftChannelKindGlyph.Slack, RaftChannelKindGlyph.SlackPrivate),
+            RaftChannelKindGlyph.entries.filter { it.needsChannelRecord },
+        )
+        assertEquals(
+            listOf("channel", "private", "joint", "channel", "external", "external", "slack", "slack"),
+            RaftChannelKindGlyph.entries.map { it.wireChannelKind() },
+        )
         RaftChannelKindGlyph.entries.forEach { assertEquals(it, RaftChannelKindGlyph.fromSymbol(it.symbol)) }
         // The type-only helpers other surfaces keep go through the chooser.
         assertEquals("git-branch", "joint".toRaftChannelSymbol())
@@ -145,33 +165,36 @@ class RaftChannelKindTest {
             HomeChannelRow(threadId = ThreadId("j"), channelId = ChannelId("j"), name = "partners", channelType = "channel", kind = ConversationKind.Joint)
         val lobby =
             HomeChannelRow(threadId = ThreadId("l"), channelId = ChannelId("l"), name = "lobby", channelType = "channel", guestVisible = true)
-        assertEquals(RaftChannelKindGlyph.External, vendor.raftChannelKindGlyph(serverPublicPageLive = true))
+        assertEquals(RaftChannelKindGlyph.ExternalPrivate, vendor.raftChannelKindGlyph(serverPublicPageLive = true))
         assertEquals(RaftChannelKindGlyph.External, joint.raftChannelKindGlyph(serverPublicPageLive = false))
         assertEquals(RaftChannelKindGlyph.PublicPage, lobby.raftChannelKindGlyph(serverPublicPageLive = true))
         assertEquals(RaftChannelKindGlyph.Hash, lobby.raftChannelKindGlyph(serverPublicPageLive = false))
+        // A Guest in a channel anyone can read on the web: the globe.
+        assertEquals(RaftChannelKindGlyph.PublicPage, lobby.copy(hasExternalRelation = true).raftChannelKindGlyph(serverPublicPageLive = true))
 
         val item = RaftHomeConversationItem(id = "v", name = "vendor", kind = "channel", channelType = "private", hasExternalRelation = true)
-        assertEquals("external-channel", item.homeChannelSymbol(serverPublicPageLive = false))
+        assertEquals("external-channel-private", item.homeChannelSymbol(serverPublicPageLive = false))
+        assertEquals("external-channel", item.copy(channelType = "channel").homeChannelSymbol(serverPublicPageLive = false))
         assertEquals("lock", item.copy(hasExternalRelation = false).homeChannelSymbol(serverPublicPageLive = false))
         // Interaction identities keep the plain kind symbol.
         assertEquals("lock", item.homeChannelSymbol())
 
-        // A Slack channel: the Slack mark on the Home row and the sidebar item alike.
-        val sync = lobby.copy(bridgeProvider = "slack")
-        assertEquals(RaftChannelKindGlyph.Slack, sync.raftChannelKindGlyph(serverPublicPageLive = true))
-        assertEquals(RaftChannelKindGlyph.SlackLocked, vendor.copy(channelType = "channel", bridgeProvider = "slack").raftChannelKindGlyph(false))
+        // A Slack channel: the Slack mark on the Home row and the sidebar item alike, with the lock only
+        // when it is private.
+        assertEquals(RaftChannelKindGlyph.Slack, lobby.copy(bridgeProvider = "slack").raftChannelKindGlyph(serverPublicPageLive = false))
+        assertEquals(RaftChannelKindGlyph.PublicPage, lobby.copy(bridgeProvider = "slack").raftChannelKindGlyph(serverPublicPageLive = true))
+        assertEquals(RaftChannelKindGlyph.Slack, vendor.copy(channelType = "channel", bridgeProvider = "slack").raftChannelKindGlyph(false))
         assertEquals("slack-channel-private", item.copy(bridgeProvider = "slack").homeChannelSymbol(serverPublicPageLive = false))
-        assertEquals("slack-channel", item.copy(channelType = "channel", hasExternalRelation = false, bridgeProvider = "slack").homeChannelSymbol(serverPublicPageLive = false))
-        assertEquals(RaftChannelKindGlyph.SlackPrivate, RaftChannelKindGlyph.fromSymbol("slack-channel-private"))
+        assertEquals("slack-channel", item.copy(channelType = "channel", bridgeProvider = "slack").homeChannelSymbol(serverPublicPageLive = false))
     }
 
     @Test
     fun aSurfaceThatKnowsOnlyTheIdTakesTheHomeRowsGlyphElseTheType() {
         val kinds =
             RaftChannelKinds(
-                glyphsByChannelId = mapOf("v" to RaftChannelKindGlyph.External, "l" to RaftChannelKindGlyph.PublicPage),
+                glyphsByChannelId = mapOf("v" to RaftChannelKindGlyph.ExternalPrivate, "l" to RaftChannelKindGlyph.PublicPage),
             )
-        assertEquals(RaftChannelKindGlyph.External, kinds.glyph("v", "private"))
+        assertEquals(RaftChannelKindGlyph.ExternalPrivate, kinds.glyph("v", "private"))
         assertEquals(RaftChannelKindGlyph.PublicPage, kinds.glyph("l", "channel"))
         // Not loaded here: by its type alone (web `<ChannelKindIcon type={type} />`): a joint channel
         // keeps git-branch, a channel `#`.
@@ -191,24 +214,34 @@ class RaftChannelKindTest {
                 channelKind = "private",
                 channelHasExternalRelation = true,
             )
-        assertEquals(RaftChannelKindGlyph.External, header.channelKindGlyph)
+        assertEquals(RaftChannelKindGlyph.ExternalPrivate, header.channelKindGlyph)
+        assertEquals(RaftChannelKindGlyph.External, header.copy(channelKind = "channel").channelKindGlyph)
         assertEquals(RaftChannelKindGlyph.Lock, header.copy(channelHasExternalRelation = false).channelKindGlyph)
         // A reply thread's header is not the channel's.
         assertEquals(
             RaftChannelKindGlyph.Lock,
             header.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread).channelKindGlyph,
         )
+        // The iOS bar's tile draws the same icon from the asset catalog.
         assertEquals(
-            "lucide-external-channel",
-            raftNativeNavBarImageAssetName(RaftNativeNavBarTitleLeading.Channel(RaftChannelKindGlyph.External).glyph.iconName),
+            "lucide-external-channel-private",
+            raftNativeNavBarImageAssetName(RaftNativeNavBarTitleLeading.Channel(header.channelKindGlyph).glyph.iconName),
         )
-        // A Slack channel's header: the Slack mark, with its lock when private (the iOS bar's asset too).
+        // A Slack channel's header: the Slack mark, with its lock when private.
         val slack = header.copy(channelKind = "channel", channelHasExternalRelation = false, bridgeProvider = "slack")
         assertEquals(RaftChannelKindGlyph.Slack, slack.channelKindGlyph)
+        assertEquals(RaftChannelKindGlyph.Slack, slack.copy(channelHasExternalRelation = true).channelKindGlyph)
         assertEquals(RaftChannelKindGlyph.SlackPrivate, slack.copy(channelKind = "private").channelKindGlyph)
         assertEquals(
-            "lucide-slack-channel-locked",
+            "lucide-slack-channel-private",
             raftNativeNavBarImageAssetName(RaftNativeNavBarTitleLeading.Channel(slack.copy(channelKind = "private").channelKindGlyph).glyph.iconName),
+        )
+        // Anyone on the web: the globe, over Slack.
+        val published = slack.copy(channelGuestVisible = true, serverPublicPageLive = true)
+        assertEquals(RaftChannelKindGlyph.PublicPage, published.channelKindGlyph)
+        assertEquals(
+            "lucide-public-page-channel",
+            raftNativeNavBarImageAssetName(RaftNativeNavBarTitleLeading.Channel(published.channelKindGlyph).glyph.iconName),
         )
         // A reply thread's header is not the channel's, Slack or not.
         assertEquals(RaftChannelKindGlyph.Hash, slack.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread).channelKindGlyph)

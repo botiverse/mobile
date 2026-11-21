@@ -171,7 +171,7 @@ internal data class ActivityConversationListContext(
     val currentMemberId: String? = null,
     /**
      * Home channel rows keyed by channel id: the glyph the Home sidebar draws for that channel
-     * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe, External).
+     * ([homeChannelSymbol]: `#`, lock, joint branch, the public-page globe, two people, the Slack mark).
      */
     val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
     /**
@@ -527,11 +527,12 @@ internal fun InboxItem.activityConversationMuted(
  * the row's channel (a thread: its parent channel). The type is the item's own wire `channelType` /
  * `parentChannelType` (private → lock, joint → branch, channel → `#`); the public-page globe needs the
  * Home channel row (guestVisible, archived) and the server's live page, so it comes from the Home
- * sidebar's symbol for that channel, and so do the External glyph (`hasExternalRelation`, or a
- * joint channel: [raftChannelKindGlyph]) and the Slack mark (`bridge`, botiverse/slock #16042). A
- * channel Home doesn't list draws its type alone, like the web `ChannelIcon` fallback (joint:
- * git-branch). An item without a wire type (built from a realtime event) uses the Home row's
- * symbol, else its folded kind (joint), else `#`.
+ * sidebar's symbol for that channel, and so do the glyphs only the channel record can choose
+ * ([RaftChannelKindGlyph.needsChannelRecord]: two people for `hasExternalRelation` or a joint
+ * channel, the Slack mark for `bridge`; botiverse/slock #16060). A channel Home doesn't list draws
+ * its type alone, like the web `ChannelIcon` fallback (joint: git-branch). An item without a wire
+ * type (built from a realtime event) uses the Home row's symbol, else its folded kind (joint), else
+ * `#`.
  */
 internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, String>): String {
     val thread = kind == InboxItemKind.Thread
@@ -543,10 +544,10 @@ internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, Str
             ?: raftChannelKindGlyph((if (thread) parentChannelKind else channelKind)?.toWireChannelKindOrNull()).symbol
     }
     val symbol = raftChannelKindGlyph(wireType).symbol
+    val homeGlyph = RaftChannelKindGlyph.fromSymbol(homeSymbol)
     return when {
-        homeSymbol == RaftChannelKindGlyph.External.symbol -> homeSymbol
-        homeSymbol != null && RaftChannelKindGlyph.fromSymbol(homeSymbol)?.isSlack == true -> homeSymbol
-        symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe -> homeSymbol
+        homeGlyph != null && homeGlyph.needsChannelRecord -> homeGlyph.symbol
+        symbol == "#" && homeGlyph == RaftChannelKindGlyph.PublicPage -> RaftChannelKindGlyph.PublicPage.symbol
         else -> symbol
     }
 }

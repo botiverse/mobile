@@ -3793,6 +3793,7 @@
     <string name="settings_public_visibility_failed_search_update">Failed to update search engine access</string>
     <string name="channel_public_page_readable">Anyone can read this channel on the public page</string>
     <string name="channel_external_members">External channel</string>
+    <string name="channel_external_members_private">Private external channel</string>
     <string name="channel_slack_connected">Connected to Slack</string>
     <string name="channel_slack_connected_private">Private channel connected to Slack</string>
     <string name="channel_slack_sync_paused">Sync paused</string>

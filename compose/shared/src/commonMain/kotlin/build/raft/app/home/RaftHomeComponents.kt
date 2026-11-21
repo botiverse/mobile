@@ -4887,11 +4887,10 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toRaftChannelSymbol()
 
 /**
- * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph]): the Slack mark for a channel
- * connected to Slack, the External glyph for an external channel, the public-page hash-globe for a
- * regular channel readable on the server's live public page (web channelKindIcon.tsx), else the
- * kind's own. Interaction identities keep using the plain [homeChannelSymbol] so they never change
- * with it.
+ * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph], web channelKindIcon.tsx): the
+ * globe for a regular channel readable on the server's live public page, the Slack mark for a
+ * channel connected to Slack, two people for one with people from outside, else the kind's own.
+ * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
  */
 internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String {
     val type = homeChannelKind()
@@ -4924,8 +4923,6 @@ internal fun RaftHomeConversationItem.isHomeExternalSectionChannel(): Boolean =
  */
 internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean): String =
     raftChannelKindGlyph(serverPublicPageLive).symbol
-
-internal const val HomeChannelSymbolHashGlobe = "hash-globe"
 
 internal fun String?.toRaftChannelSymbol(): String =
     raftChannelKindGlyph(this).symbol
@@ -7540,8 +7537,8 @@ internal fun homeConversationRowTone(
 
 /**
  * A channel in the Home list: raft-ui SidebarChannelItem ([RaftSidebarChannelItem]) for `#`
- * and private channels; a joint channel's `git-branch`, a public-page channel's
- * hash-globe, the External glyph and the Slack mark go through the same [RaftSidebarItem] with
+ * and private channels; a joint channel's `git-branch`, a public-page channel's globe, the
+ * external channel's two people and the Slack mark go through the same [RaftSidebarItem] with
  * their own glyph. Right after the name (it truncates, they do not): a Slack channel's stopped
  * sync ([RaftSlackSyncBadge]; no "Slack" label, the glyph says it, botiverse/slock #16042) and the
  * muted bell. Web ChannelRow aside: the pink unread count, else the grey number of a quiet
@@ -7673,7 +7670,7 @@ private fun HomeSidebarChannelRow(
 
 /**
  * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch, the
- * External glyph, the Slack mark or the public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
+ * external channel's two people, the Slack mark or the public-page globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
  * draw it at the row's icon size; Activity draws it in a list row's channel tile and as a card's
  * title icon.
  */

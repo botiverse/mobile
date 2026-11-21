@@ -3792,6 +3792,7 @@
     <string name="settings_public_visibility_failed_search_update">検索エンジンの設定を更新できませんでした</string>
     <string name="channel_public_page_readable">誰でも公開ページでこのチャンネルを閲覧できます</string>
     <string name="channel_external_members">外部チャンネル</string>
+    <string name="channel_external_members_private">非公開の外部チャンネル</string>
     <string name="channel_slack_connected">Slack と連携中</string>
     <string name="channel_slack_connected_private">Slack と連携中の非公開チャンネル</string>
     <string name="channel_slack_sync_paused">同期を一時停止中</string>

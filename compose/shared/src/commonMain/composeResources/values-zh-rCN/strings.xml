@@ -3792,6 +3792,7 @@
     <string name="settings_public_visibility_failed_search_update">无法更新搜索引擎收录设置</string>
     <string name="channel_public_page_readable">任何人都能在公开页阅读这个频道</string>
     <string name="channel_external_members">外部频道</string>
+    <string name="channel_external_members_private">私有外部频道</string>
     <string name="channel_slack_connected">已连接 Slack</string>
     <string name="channel_slack_connected_private">已连接 Slack 的私有频道</string>
     <string name="channel_slack_sync_paused">同步已暂停</string>

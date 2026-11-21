@@ -44,10 +44,10 @@ class PublicPageMarkPredicateTest {
     }
 
     @Test
-    fun homeRowSymbolSwapsHashForHashGlobeOnlyOnALiveServer() {
+    fun homeRowSymbolSwapsHashForTheGlobeOnlyOnALiveServer() {
         val publicChannel = RaftHomeConversationItem(id = "c1", name = "news", kind = "channel", channelType = "channel", guestVisible = true)
 
-        assertEquals(HomeChannelSymbolHashGlobe, publicChannel.homeChannelSymbol(serverPublicPageLive = true))
+        assertEquals(RaftChannelKindGlyph.PublicPage.symbol, publicChannel.homeChannelSymbol(serverPublicPageLive = true))
         assertEquals("#", publicChannel.homeChannelSymbol(serverPublicPageLive = false))
         assertEquals("#", publicChannel.copy(archived = true).homeChannelSymbol(serverPublicPageLive = true))
         assertEquals("lock", publicChannel.copy(channelType = "private").homeChannelSymbol(serverPublicPageLive = true))

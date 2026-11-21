@@ -3613,6 +3613,7 @@
     <string name="settings_public_visibility_failed_search_update">無法更新搜尋引擎存取設定</string>
     <string name="channel_public_page_readable">任何人都能在公開頁面閱讀這個頻道</string>
     <string name="channel_external_members">外部頻道</string>
+    <string name="channel_external_members_private">私人外部頻道</string>
     <string name="channel_slack_connected">已連接 Slack</string>
     <string name="channel_slack_connected_private">已連接 Slack 的私人頻道</string>
     <string name="channel_slack_sync_paused">同步已暫停</string>
