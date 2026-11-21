@@ -1,11 +1,14 @@
 package build.raft.app.shared
 
+import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.App
 import build.hands.update.models.LatestUpdate
 import build.hands.update.models.Patch
 import build.hands.update.models.UpdateAsset
 import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.BuildConfig
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.lang.reflect.Modifier
 import kotlinx.coroutines.CompletableDeferred
@@ -529,6 +532,147 @@ class HandsDeltaUpdateGateTest {
         assertFalse(invoked)
         assertFalse(owner.isRunning())
     }
+
+    /**
+     * hands-android-sdk 0.14 stops an update that may not be installed at READY_TO_INSTALL with
+     * install_permission_required and opens nothing; the Alpha route reads that against the
+     * permission at the time of the call.
+     */
+    @Test
+    fun installPermissionDecisionFollowsThePermissionAtCallTime() {
+        val ready = SharedSettingsUpdateTransactionState.ReadyToInstall
+        val opened = SharedSettingsUpdateTransactionState.InstallerOpened
+        val toSwitch =
+            HandsDeltaInstallPermissionDecision(
+                openPermissionSettings = true,
+                presentation = HandsDeltaInstallPresentation.PermissionRequired,
+                errorCode = INSTALL_PERMISSION_REQUIRED
+            )
+        fun asReported(errorCode: String?) =
+            HandsDeltaInstallPermissionDecision(
+                openPermissionSettings = false,
+                presentation = HandsDeltaInstallPresentation.AsReported,
+                errorCode = errorCode
+            )
+        val cases =
+            listOf(
+                // An APK waits and Raft may not install: Install leads to the switch, whatever code the SDK kept.
+                InstallPermissionCase(ready, INSTALL_PERMISSION_REQUIRED, canInstall = false, declared = true, expected = toSwitch),
+                InstallPermissionCase(ready, null, canInstall = false, declared = true, expected = toSwitch),
+                InstallPermissionCase(opened, null, canInstall = false, declared = true, expected = toSwitch),
+                // Allowed since the SDK stopped: a plain Install, the stale code dropped.
+                InstallPermissionCase(ready, INSTALL_PERMISSION_REQUIRED, canInstall = true, declared = true, expected = asReported(null)),
+                InstallPermissionCase(opened, null, canInstall = true, declared = true, expected = asReported(null)),
+                // No REQUEST_INSTALL_PACKAGES in the manifest: no switch to open, the installer cannot open.
+                InstallPermissionCase(
+                    ready,
+                    INSTALL_PERMISSION_REQUIRED,
+                    canInstall = false,
+                    declared = false,
+                    expected =
+                        HandsDeltaInstallPermissionDecision(
+                            openPermissionSettings = false,
+                            presentation = HandsDeltaInstallPresentation.InstallUnsupported,
+                            errorCode = "install_unsupported"
+                        )
+                ),
+                // Nothing waits: a download is not held back, other codes stay, a stale permission code goes.
+                InstallPermissionCase(
+                    SharedSettingsUpdateTransactionState.Idle,
+                    null,
+                    canInstall = false,
+                    declared = true,
+                    expected = asReported(null)
+                ),
+                InstallPermissionCase(
+                    SharedSettingsUpdateTransactionState.Stale,
+                    "target_changed",
+                    canInstall = false,
+                    declared = true,
+                    expected = asReported("target_changed")
+                ),
+                InstallPermissionCase(
+                    SharedSettingsUpdateTransactionState.Installed,
+                    INSTALL_PERMISSION_REQUIRED,
+                    canInstall = false,
+                    declared = true,
+                    expected = asReported(null)
+                )
+            )
+
+        cases.forEach { case ->
+            assertEquals(
+                case.toString(),
+                case.expected,
+                handsDeltaInstallPermissionDecision(
+                    state = case.state,
+                    errorCode = case.errorCode,
+                    canInstall = case.canInstall,
+                    permissionDeclared = case.declared
+                )
+            )
+        }
+    }
+
+    /**
+     * Android kills Raft when "Install unknown apps" changes, so the marker is stored: the resume
+     * after the restart (a new repository over the same store) takes it once, whatever the answer.
+     */
+    @Test
+    fun permissionResumeReopensOnceWhenAllowedAndNeverLeadsBackToSettings() = runTest {
+        listOf(
+            Triple(false, true, HandsDeltaPermissionResume.NotWaiting),
+            Triple(true, true, HandsDeltaPermissionResume.Reopened),
+            Triple(true, false, HandsDeltaPermissionResume.StillDenied)
+        ).forEach { (marked, allowed, expected) ->
+            val stored = InMemoryRaftKeyValueStore()
+            if (marked) RaftAppUpdatePermissionResumeRepository { stored }.mark()
+            val afterRestart = RaftAppUpdatePermissionResumeRepository { stored }
+            var permissionReads = 0
+            var reopens = 0
+            val resume: suspend () -> HandsDeltaPermissionResume = {
+                handsDeltaPermissionResume(
+                    marker = afterRestart,
+                    canInstall = {
+                        permissionReads += 1
+                        allowed
+                    },
+                    reopen = { reopens += 1 }
+                )
+            }
+
+            val case = "marked=$marked allowed=$allowed"
+            assertEquals(case, expected, resume())
+            assertEquals(case, HandsDeltaPermissionResume.NotWaiting, resume())
+            assertEquals(case, if (expected == HandsDeltaPermissionResume.Reopened) 1 else 0, reopens)
+            assertEquals(case, if (marked) 1 else 0, permissionReads)
+        }
+
+        // A store that cannot be opened keeps nothing: the resume neither throws nor opens anything.
+        val unavailable = RaftAppUpdatePermissionResumeRepository { error("store unavailable") }
+        unavailable.mark()
+        var touched = false
+        assertEquals(
+            HandsDeltaPermissionResume.NotWaiting,
+            handsDeltaPermissionResume(
+                marker = unavailable,
+                canInstall = {
+                    touched = true
+                    true
+                },
+                reopen = { touched = true }
+            )
+        )
+        assertFalse(touched)
+    }
+
+    private data class InstallPermissionCase(
+        val state: SharedSettingsUpdateTransactionState,
+        val errorCode: String?,
+        val canInstall: Boolean,
+        val declared: Boolean,
+        val expected: HandsDeltaInstallPermissionDecision
+    )
 
     private fun updateTarget(
         versionCode: Long?,

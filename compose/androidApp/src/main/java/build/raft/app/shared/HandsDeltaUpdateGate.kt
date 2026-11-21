@@ -1,6 +1,8 @@
 package build.raft.app.shared
 
+import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
+import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
 import build.raft.app.data.SharedSettingsUpdateTransactionState
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -217,6 +219,103 @@ internal fun handsUpdateBridgeDecision(
             },
         targetDrifted = targetDrifted
     )
+}
+
+/** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
+internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
+
+/** How the Alpha delta route shows its transaction. */
+internal enum class HandsDeltaInstallPresentation {
+    /** The state's own status and detail. */
+    AsReported,
+
+    /** "Permission required", with the copy that leads to Raft's "Install unknown apps" switch. */
+    PermissionRequired,
+
+    /** No REQUEST_INSTALL_PACKAGES in the manifest: no switch for Raft, the installer cannot open. */
+    InstallUnsupported
+}
+
+internal data class HandsDeltaInstallPermissionDecision(
+    /** Install leads to the switch (explained first) instead of calling `UpdateChecker.install()`. */
+    val openPermissionSettings: Boolean,
+    val presentation: HandsDeltaInstallPresentation,
+    /** The error code the bridge reports for the transaction. */
+    val errorCode: String?
+)
+
+/**
+ * The Alpha delta route while Android may block installs from Raft. Since hands-android-sdk 0.14
+ * an update downloaded or patched without that permission stops at READY_TO_INSTALL with
+ * [INSTALL_PERMISSION_REQUIRED] and the SDK opens nothing; another `install()` only checks Hands
+ * again. The code stays until the installer opens, so it is read against [canInstall]
+ * (`UpdateChecker.canInstallUpdates()`) at the time of the call:
+ *
+ * - An APK waits (ready, or opened before) and Raft may not install: Install leads to the switch,
+ *   and the update shows "Permission required". Without the permission in the manifest
+ *   ([permissionDeclared] false) there is no switch to lead to: nothing opens.
+ * - The permission code once Raft may install, or on a transaction that no longer waits: dropped,
+ *   so a granted permission shows a plain Install.
+ * - Anything else as the SDK reports it. A download is not held back: the permission is asked for
+ *   once the APK is ready.
+ */
+internal fun handsDeltaInstallPermissionDecision(
+    state: SharedSettingsUpdateTransactionState,
+    errorCode: String?,
+    canInstall: Boolean,
+    permissionDeclared: Boolean
+): HandsDeltaInstallPermissionDecision {
+    val waiting =
+        state == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            state == SharedSettingsUpdateTransactionState.InstallerOpened
+    return when {
+        waiting && !canInstall && permissionDeclared ->
+            HandsDeltaInstallPermissionDecision(
+                openPermissionSettings = true,
+                presentation = HandsDeltaInstallPresentation.PermissionRequired,
+                errorCode = INSTALL_PERMISSION_REQUIRED
+            )
+        waiting && !canInstall ->
+            HandsDeltaInstallPermissionDecision(
+                openPermissionSettings = false,
+                presentation = HandsDeltaInstallPresentation.InstallUnsupported,
+                errorCode = HANDS_DELTA_INSTALL_UNSUPPORTED
+            )
+        else ->
+            HandsDeltaInstallPermissionDecision(
+                openPermissionSettings = false,
+                presentation = HandsDeltaInstallPresentation.AsReported,
+                errorCode = errorCode.takeUnless { it == INSTALL_PERMISSION_REQUIRED }
+            )
+    }
+}
+
+/** What one resume did about an update that waited for the install permission. */
+internal enum class HandsDeltaPermissionResume(val diagnosticName: String) {
+    /** Nothing waited (every ordinary resume). */
+    NotWaiting("not_waiting"),
+
+    /** Raft may install now: the waiting installer was reopened. */
+    Reopened("reopened"),
+
+    /** Still not allowed: nothing opens; Install leads to the switch again only when tapped. */
+    StillDenied("still_denied")
+}
+
+/**
+ * One resume after Raft led to its "Install unknown apps" switch ([marker]). Reopens the waiting
+ * installer ([reopen], `UpdateChecker.reopenPendingInstaller()`: no new check, no new download) when
+ * [canInstall] now. The marker is taken either way, so a denial never leads back into Settings.
+ */
+internal suspend fun handsDeltaPermissionResume(
+    marker: RaftAppUpdatePermissionResumeRepository,
+    canInstall: () -> Boolean,
+    reopen: suspend () -> Unit
+): HandsDeltaPermissionResume {
+    if (!marker.take()) return HandsDeltaPermissionResume.NotWaiting
+    if (!canInstall()) return HandsDeltaPermissionResume.StillDenied
+    reopen()
+    return HandsDeltaPermissionResume.Reopened
 }
 
 private fun normalizedBuildId(value: String?): String? =
