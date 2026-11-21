@@ -4,6 +4,7 @@ import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +33,9 @@ data class SharedMembersMemberSuggestion(
     val description: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
-    val memberId: String? = null
+    val memberId: String? = null,
+    /** Someone from another server ([memberOrigin]): carries `servers[].avatarUrl` for the @ badge. */
+    val originServers: List<MemberServerRef> = emptyList(),
 )
 
 data class SharedMembersChannelSuggestion(

@@ -4,6 +4,7 @@ import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
 import androidx.compose.runtime.Composable
@@ -66,7 +67,8 @@ internal val EmptyRaftMemberModelLabelResolver =
 
 internal fun raftMemberModelLabelResolver(
     serverMembersStore: SharedServerMembersStore?,
-    serverId: String?
+    serverId: String?,
+    knownServers: List<MemberServerRef> = emptyList(),
 ): RaftMemberModelLabelResolver {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
         ?: return EmptyRaftMemberModelLabelResolver
@@ -88,7 +90,7 @@ internal fun raftMemberModelLabelResolver(
             }
         },
         currentAuthorFacts = { memberId ->
-            serverMembersStore?.state?.value?.memberProfile(cleanServerId, memberId)?.authorFacts(cleanServerId)
+            serverMembersStore?.state?.value?.memberProfile(cleanServerId, memberId)?.authorFacts(cleanServerId, knownServers)
         },
         authorFactsFlow = { memberId ->
             if (serverMembersStore == null) {
@@ -96,7 +98,7 @@ internal fun raftMemberModelLabelResolver(
             } else {
                 serverMembersStore
                     .memberProfileFlow(cleanServerId, memberId)
-                    .map { profile -> profile?.authorFacts(cleanServerId) }
+                    .map { profile -> profile?.authorFacts(cleanServerId, knownServers) }
                     .distinctUntilChanged()
             }
         },
@@ -119,8 +121,11 @@ internal fun build.raft.app.model.MemberProfile.authorRowModelLabel(viewerServer
 }
 
 /** The author row's directory facts about [this] sender, as seen from [viewerServerId]. */
-internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: ServerId?): RaftMemberAuthorFacts {
-    val origin = memberOrigin(this, viewerServerId?.value)
+internal fun build.raft.app.model.MemberProfile.authorFacts(
+    viewerServerId: ServerId?,
+    knownServers: List<MemberServerRef> = emptyList(),
+): RaftMemberAuthorFacts {
+    val origin = memberOrigin(this, viewerServerId?.value, knownServers)
     return RaftMemberAuthorFacts(
         description = description?.trim()?.takeIf { it.isNotEmpty() },
         // web `isViewerServerGuest`: a Guest label is a fact of the viewed server only.

@@ -111,6 +111,7 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         jointPeerServerName = jointPeerServerName ?: fallback.jointPeerServerName.takeIf { sameConversation },
         jointPeerServerSlug = jointPeerServerSlug ?: fallback.jointPeerServerSlug.takeIf { sameConversation },
         jointPeerStatus = jointPeerStatus ?: fallback.jointPeerStatus.takeIf { sameConversation },
+        jointServers = if (jointServers.isNotEmpty()) jointServers else fallback.jointServers.takeIf { sameConversation }.orEmpty(),
         jointBillingLocked = jointBillingLocked ?: fallback.jointBillingLocked.takeIf { sameConversation },
         jointOverLimitGraceEndsAt =
             jointOverLimitGraceEndsAt ?: fallback.jointOverLimitGraceEndsAt.takeIf { sameConversation },

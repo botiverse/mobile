@@ -77,14 +77,39 @@ class RaftMemberOriginPartsTest {
             mapOf("server-acme" to "https://cdn.example/acme.png"),
             raftViewerServerLogos(listOf(" server-acme " to "https://cdn.example/acme.png", "server-1" to null, "server-2" to " ")),
         )
+
+        // slock #15817: row's own `servers[].avatarUrl` wins, else channel `jointServers[].serverAvatarUrl`,
+        // else viewer's joined server logo, else null (dot/initial).
+        val joined = raftViewerServerLogos(listOf(acme.id to "/joined-acme.webp", peer.id to "/joined-peer.webp"))
+        val channelLogo = "/channel-acme.webp"
+        val rowLogo = "/row-acme.webp"
+        val combined =
+            raftOriginServerLogos(
+                viewerServers = listOf(acme.id to "/joined-acme.webp", peer.id to "/joined-peer.webp"),
+                channelJointServers = listOf(acme.copy(avatarUrl = channelLogo), peer.copy(avatarUrl = null)),
+            )
+        assertEquals(channelLogo, combined[acme.id])
+        // Null/absent channel logo preserves the viewer's joined server logo.
+        assertEquals("/joined-peer.webp", combined[peer.id])
+        assertEquals(rowLogo, raftOriginServerLogo(acme.copy(avatarUrl = rowLogo), combined))
+        assertEquals(channelLogo, raftOriginServerLogo(acme, combined))
+        assertEquals("/joined-acme.webp", raftOriginServerLogo(acme, joined))
+        assertNull(raftOriginServerLogo(MemberServerRef("server-unknown", "Unknown"), combined))
+        assertNull(raftOriginServerLogo(null, combined))
     }
 
     @Test
     fun theMentionListMarksOnlyANamedCandidateFromAnotherServer() {
         val candidate = RaftComposerMemberItem(displayName = "Ada", handle = "ada", sourceServerId = peer.id, isLocalServer = false, sourceServerLabel = "Peer Labs +1")
         assertEquals(listOf(MemberServerRef(peer.id, "Peer Labs +1")), candidate.mentionOriginServers())
+        // Candidate carrying `originServers` keeps `servers[].avatarUrl` for the @ badge.
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
+        assertEquals(
+            listOf(peerWithLogo),
+            candidate.copy(originServers = listOf(peerWithLogo)).mentionOriginServers(),
+        )
         // One of the viewed server's own, even when they are also in another server.
-        assertEquals(emptyList(), candidate.copy(isLocalServer = true).mentionOriginServers())
+        assertEquals(emptyList(), candidate.copy(isLocalServer = true, originServers = listOf(peerWithLogo)).mentionOriginServers())
         // From another server, but its server was not named: nothing to mark (web: no first server).
         assertEquals(emptyList(), candidate.copy(sourceServerLabel = null).mentionOriginServers())
     }

@@ -24,7 +24,11 @@ internal data class MemberOrigin(
     }
 }
 
-internal fun memberOrigin(member: MemberProfile?, viewerServerId: String?): MemberOrigin {
+internal fun memberOrigin(
+    member: MemberProfile?,
+    viewerServerId: String?,
+    knownServers: List<MemberServerRef> = emptyList(),
+): MemberOrigin {
     val viewer = viewerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return MemberOrigin.Local
     if (member == null) return MemberOrigin.Local
     val home = member.homeServerRef()
@@ -33,7 +37,14 @@ internal fun memberOrigin(member: MemberProfile?, viewerServerId: String?): Memb
     val servers = mutableListOf<MemberServerRef>()
     for (server in member.servers ?: listOfNotNull(home)) {
         if (server.id == viewer || servers.any { it.id == server.id }) continue
-        if (server.label().isNotEmpty()) servers += server
+        val known = knownServers.firstOrNull { it.id == server.id }
+        val name = server.name.trim().ifBlank { known?.name?.trim().orEmpty() }
+        val slug = server.slug.trim().ifBlank { known?.slug?.trim().orEmpty() }
+        if (name.isEmpty() && slug.isEmpty()) continue
+        val avatarUrl =
+            server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() }
+                ?: known?.avatarUrl?.trim()?.takeIf { it.isNotEmpty() }
+        servers += MemberServerRef(id = server.id, name = name, slug = slug, avatarUrl = avatarUrl)
     }
     return MemberOrigin(external = true, servers = servers)
 }
@@ -69,8 +80,12 @@ internal fun memberServerNamesLabel(names: List<String>): String? =
  * another server, the servers they are from; anyone else, [memberServerBadgeLabels] (a person of
  * the viewed server who is also in another keeps that tag). Null for none.
  */
-internal fun memberRowServerLabel(member: MemberProfile, viewerServerId: String?): String? {
-    val origin = memberOrigin(member, viewerServerId)
+internal fun memberRowServerLabel(
+    member: MemberProfile,
+    viewerServerId: String?,
+    knownServers: List<MemberServerRef> = emptyList(),
+): String? {
+    val origin = memberOrigin(member, viewerServerId, knownServers)
     return memberServerNamesLabel(
         if (origin.external) origin.servers.map { it.label() } else memberServerBadgeLabels(member, viewerServerId),
     )

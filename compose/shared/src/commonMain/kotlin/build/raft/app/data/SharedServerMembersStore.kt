@@ -4645,7 +4645,8 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
                 avatarWireValue = avatar.effectiveAvatarWireValue,
                 avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
                     ?: member.displayName.toRaftAvatarLabel().ifBlank { handle.toRaftAvatarLabel() },
-                memberId = memberId
+                memberId = memberId,
+                originServers = if (origin.external) origin.servers else emptyList(),
             )
         val key = suggestion.memberSuggestionIdentityKey()
         if (!deduped.containsKey(key)) {
@@ -4763,7 +4764,14 @@ private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
         description = description ?: patch.description,
         avatarWireValue = avatarWireValue.preferServerMembersConcreteSuggestionAvatar(patch.avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { patch.avatarLabel },
-        memberId = memberId ?: patch.memberId
+        memberId = memberId ?: patch.memberId,
+        originServers =
+            when {
+                originServers.isEmpty() -> patch.originServers
+                patch.originServers.any { !it.avatarUrl.isNullOrBlank() } &&
+                    originServers.none { !it.avatarUrl.isNullOrBlank() } -> patch.originServers
+                else -> originServers
+            },
     )
 
 private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: String?): String? =

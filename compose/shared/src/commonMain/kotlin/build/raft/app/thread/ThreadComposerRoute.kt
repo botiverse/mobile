@@ -794,7 +794,8 @@ private fun ThreadComposerContentWithSuggestions(
                         description = suggestion.description,
                         avatarWireValue = suggestion.avatarWireValue,
                         avatarLabel = suggestion.avatarLabel,
-                        memberId = suggestion.memberId
+                        memberId = suggestion.memberId,
+                        originServers = suggestion.originServers,
                     )
                 }
         }

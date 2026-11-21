@@ -59,9 +59,10 @@ import build.raft.designsystem.tokens.RaftUiPalette
  */
 
 /**
- * The logos of the servers the viewer belongs to (session servers, id → `avatarUrl`), as the web
- * reads `serverStore.servers`: the API names another server but sends no logo for it, so only a
- * server the viewer is also a member of shows its image; any other shows its initial.
+ * Fallback server logos (id → `avatarUrl`) for origin badges: the viewer's own joined servers
+ * overlaid with the active external channel's `jointServers[].serverAvatarUrl` (slock #15809/#15817).
+ * A member row's own `servers[].avatarUrl` ([MemberServerRef.avatarUrl]) takes precedence in
+ * [raftOriginServerLogo]; anything absent still falls back to an initial tile or plain dot.
  */
 internal val LocalRaftViewerServerLogos = compositionLocalOf<Map<String, String>> { emptyMap() }
 
@@ -74,6 +75,39 @@ internal fun raftViewerServerLogos(servers: List<Pair<String, String?>>): Map<St
             put(cleanId, url)
         }
     }
+
+/**
+ * [LocalRaftViewerServerLogos]'s value combining the viewer's joined servers with an external
+ * channel's `jointServers[]` (slock #15809/#15817). A channel-sent logo wins over the viewer's
+ * cached copy; a missing/null channel logo still falls back to the viewer's joined server logo.
+ */
+internal fun raftOriginServerLogos(
+    viewerServers: List<Pair<String, String?>>,
+    channelJointServers: List<MemberServerRef> = emptyList(),
+): Map<String, String> =
+    buildMap {
+        putAll(raftViewerServerLogos(viewerServers))
+        for (server in channelJointServers) {
+            val cleanId = server.id.trim().takeIf { it.isNotEmpty() } ?: continue
+            val url = server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            put(cleanId, url)
+        }
+    }
+
+/**
+ * The logo to draw on a server's origin mark (web `originServerLogo`, slock #15817): the one the
+ * server sent with the person ([MemberServerRef.avatarUrl]), else [fallbackServerLogos] (the active
+ * external channel's `jointServers[].serverAvatarUrl` and the viewer's joined servers), else null.
+ */
+internal fun raftOriginServerLogo(
+    server: MemberServerRef?,
+    fallbackServerLogos: Map<String, String>,
+): String? {
+    if (server == null) return null
+    server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+    val id = server.id.trim().takeIf { it.isNotEmpty() } ?: return null
+    return fallbackServerLogos[id]?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 /** "Acme Corp, Lumen Labs": every server's name (web `originServerNames`). */
 internal fun raftOriginServerNames(servers: List<MemberServerRef>): String =
@@ -147,7 +181,7 @@ internal fun RaftAvatarWithOriginCorner(
     }
     Box(modifier) {
         avatar()
-        val logo = LocalRaftViewerServerLogos.current[first.id.trim()]
+        val logo = raftOriginServerLogo(first, LocalRaftViewerServerLogos.current)
         RaftAvatarOriginCorner(
             server = first,
             logo = logo,
@@ -219,7 +253,7 @@ private fun RaftAvatarOriginCorner(
  */
 @Composable
 internal fun RaftServerOriginTile(server: MemberServerRef, edge: Dp, initialSize: TextUnit) {
-    val logo = LocalRaftViewerServerLogos.current[server.id.trim()]
+    val logo = raftOriginServerLogo(server, LocalRaftViewerServerLogos.current)
     val stickerEdge = RaftTheme.colors.stickerEdge
     val shape = RoundedCornerShape(RaftRadius.Sticker)
     val initial: @Composable () -> Unit = {

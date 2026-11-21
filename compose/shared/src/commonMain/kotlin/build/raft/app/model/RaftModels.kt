@@ -163,6 +163,8 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    /** Connected servers of a joint channel (`jointServers[]`, slock #15809) with each server's logo. */
+    val jointServers: List<MemberServerRef> = emptyList(),
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     val externalFreezeAt: String? = null,
@@ -424,6 +426,8 @@ data class MemberServerRef(
     val id: String,
     val name: String = "",
     val slug: String = "",
+    /** The server's logo as the server sent it (`servers[].avatarUrl` or `jointServers[].serverAvatarUrl`); null when absent. */
+    val avatarUrl: String? = null,
 )
 
 /**

@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.markdown.LocalRaftMarkdownMentionReadStates
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberServerRef
 import build.raft.designsystem.components.RaftPreviewCardPopup
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.rememberRaftPreviewCardState
@@ -40,6 +41,7 @@ internal class RaftMemberPreviewCardSource(
     val agentStatusResolver: RaftAgentStatusResolver,
     val memberAvatarResolver: RaftMemberAvatarResolver,
     val resolveMention: (label: String) -> MemberDetailIdentity?,
+    val knownServers: List<MemberServerRef> = emptyList(),
     val model: @Composable (
         identity: MemberDetailIdentity,
         fallbackHandle: String?,
@@ -56,6 +58,7 @@ internal class RaftMemberPreviewCardSource(
             memberAvatarResolver = memberAvatarResolver,
             // Where the member is from is read against the server the card opens on.
             viewerServerId = serverId,
+            knownServers = knownServers,
         )
     },
 )

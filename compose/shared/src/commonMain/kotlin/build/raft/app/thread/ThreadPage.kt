@@ -2094,13 +2094,6 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
-    val memberModelLabelResolver =
-        remember(serverMembersStore, headerProjectionServerId) {
-            raftMemberModelLabelResolver(
-                serverMembersStore = serverMembersStore,
-                serverId = headerProjectionServerId?.value,
-            )
-        }
     val memberAppBotResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             raftMemberAppBotResolver(
@@ -6067,13 +6060,33 @@ private fun SharedThreadRouteContentContent(
         // The profile card an @mention in a message, or an author's avatar, opens under a mouse or
         // trackpad pointer (web MentionLink): a mention is the member its click opens.
         val currentMentionThread by rememberUpdatedState(renderedThread)
+        // Connected servers of this external channel (or parent channel for reply threads / tasks):
+        // feeds server logos & names into message authors, @ badges, and profile preview cards.
+        val channelJointServers =
+            rememberThreadChannelJointServers(
+                lookupIds = conversationDirectoryLookupIds,
+                parentChannelId = renderedThread.parentChannelId,
+                taskParentChannelId = taskConversation.parentChannelId?.value,
+                serverId = currentServerId,
+                projections = billingDirectoryProjections,
+                conversationIdentityProvider = conversationIdentityProvider,
+            )
+        val memberModelLabelResolver =
+            remember(serverMembersStore, headerProjectionServerId, channelJointServers) {
+                raftMemberModelLabelResolver(
+                    serverMembersStore = serverMembersStore,
+                    serverId = headerProjectionServerId?.value,
+                    knownServers = channelJointServers,
+                )
+            }
         val memberPreviewCardSource =
-            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId) {
+            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId, channelJointServers) {
                 RaftMemberPreviewCardSource(
                     serverMembersStore = serverMembersStore,
                     serverId = headerProjectionServerId?.value,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    knownServers = channelJointServers,
                     resolveMention = { label ->
                         val serverMembers =
                             if (serverMembersStore == null || threadMembersServerId == null) {
@@ -6088,11 +6101,11 @@ private fun SharedThreadRouteContentContent(
                     },
                 )
             }
-        // Member labels (web #14535): another server's tile shows its logo only when the viewer is
-        // also a member of it (the session's servers); otherwise its initial.
+        // Member labels (web #14535/#15817): viewer's joined servers overlaid with this external
+        // channel's `jointServers[].serverAvatarUrl` so badges show other servers' logos too.
         val viewerServerLogos =
-            remember(currentSession?.servers) {
-                raftViewerServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl })
+            remember(currentSession?.servers, channelJointServers) {
+                raftOriginServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl }, channelJointServers)
             }
         val taskConversationId = taskConversation.conversationId
         val taskConversationHeaderViewModel = taskConversation.headerViewModel
@@ -7390,3 +7403,52 @@ private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient):
         webStepUp = repository.webStepUp(),
     )
 }
+
+/**
+ * Connected servers of the active external channel (or parent channel for reply threads and task
+ * conversations), out of SharedThreadRouteContentContent to stay below its JVM method-size cap.
+ */
+internal fun threadChannelJointServers(
+    lookupIds: List<String>,
+    parentChannelId: String?,
+    taskParentChannelId: String?,
+    serverId: String?,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+): List<build.raft.app.model.MemberServerRef> {
+    val candidates = buildList {
+        parentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+        taskParentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+        addAll(lookupIds)
+    }
+    for (id in candidates) {
+        val joint = projections[id]?.jointServers
+        if (!joint.isNullOrEmpty()) return joint
+    }
+    val server = serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId) ?: return emptyList()
+    for (id in candidates) {
+        val joint = conversationIdentityProvider?.resolveProjection(server, id)?.jointServers
+        if (!joint.isNullOrEmpty()) return joint
+    }
+    return emptyList()
+}
+
+@Composable
+private fun rememberThreadChannelJointServers(
+    lookupIds: List<String>,
+    parentChannelId: String?,
+    taskParentChannelId: String?,
+    serverId: String?,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+): List<build.raft.app.model.MemberServerRef> =
+    remember(lookupIds, parentChannelId, taskParentChannelId, serverId, projections) {
+        threadChannelJointServers(
+            lookupIds = lookupIds,
+            parentChannelId = parentChannelId,
+            taskParentChannelId = taskParentChannelId,
+            serverId = serverId,
+            projections = projections,
+            conversationIdentityProvider = conversationIdentityProvider,
+        )
+    }
