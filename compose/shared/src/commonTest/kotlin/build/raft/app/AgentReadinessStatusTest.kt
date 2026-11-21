@@ -76,7 +76,7 @@ class AgentReadinessStatusTest {
                 "id": "agent-2",
                 "name": "TrimmedAgent",
                 "status": "active",
-                "runtime": "claude-code",
+                "runtime": "claude",
                 "readiness": {
                   "state": "blocked",
                   "primary": null,
@@ -214,7 +214,7 @@ class AgentReadinessStatusTest {
                 state = "blocked",
                 primary =
                     AgentReadinessFact(
-                        resource = AgentReadinessResource(kind = "login", key = "shared:claude-code"),
+                        resource = AgentReadinessResource(kind = "login", key = "shared:claude"),
                         code = "verification_required",
                     ),
                 scope = "computer",
@@ -577,7 +577,7 @@ class AgentReadinessStatusTest {
                         actor = "   ",
                         action = "fix",
                     ),
-                fallbackRuntimeId = "claude-code",
+                fallbackRuntimeId = "claude",
                 nowEpochMillis = 1_795_246_000_000L,
             )
         assertNull(spec.actor)
