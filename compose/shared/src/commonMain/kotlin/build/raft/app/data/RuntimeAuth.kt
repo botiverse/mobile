@@ -187,7 +187,14 @@ internal sealed interface RuntimeAuthStatus {
         override val wire = "logged_in"
     }
 
-    data object LoggedOut : RuntimeAuthStatus { override val wire = "logged_out" }
+    /**
+     * [lastAccount]: who was signed in last (slock #15931, OAR `lastAccount` on an expired sign-in):
+     * the masked email, or the provider's display name when there is no email. Null when the
+     * runtime remembers none, or the server or Computer predates it. Grants nothing.
+     */
+    data class LoggedOut(val lastAccount: String? = null) : RuntimeAuthStatus {
+        override val wire = "logged_out"
+    }
 
     /** The query failed: never a guess either way. */
     data object Unknown : RuntimeAuthStatus { override val wire = "unknown" }
@@ -323,7 +330,7 @@ internal fun JsonElement.toRuntimeAuthStatus(): RuntimeAuthStatus? {
                 account = obj["account"]?.toRuntimeAuthAccount(),
                 providers = (obj["providers"] as? JsonArray)?.mapNotNull { it.toRuntimeAuthSignedInProvider() }.orEmpty(),
             )
-        "logged_out" -> RuntimeAuthStatus.LoggedOut
+        "logged_out" -> RuntimeAuthStatus.LoggedOut(lastAccount = obj["lastAccount"]?.toRuntimeAuthLastAccount())
         "unknown" -> RuntimeAuthStatus.Unknown
         "unavailable" -> RuntimeAuthUnavailableReason.fromWire(obj.plainString("reason"))?.let(RuntimeAuthStatus::Unavailable)
         else -> {
@@ -331,6 +338,18 @@ internal fun JsonElement.toRuntimeAuthStatus(): RuntimeAuthStatus? {
             null
         }
     }
+}
+
+/**
+ * slock `runtimeAuthLastAccountSchema` (#15931), read tolerantly: the masked email (with its mask
+ * marker) or else the display name, each up to 80 characters with no control characters. Anything
+ * else, or neither, is no last account; the status itself is kept.
+ */
+private fun JsonElement.toRuntimeAuthLastAccount(): String? {
+    val obj = this as? JsonObject ?: return null
+    val masked = obj.safeText("maskedLabel", 80)?.takeIf { label -> label.any { it == '*' || it == '•' || it == '…' } }
+    val displayName = obj.safeText("displayName", 80)?.takeIf { name -> name.none { it.code < 0x20 } }
+    return masked ?: displayName
 }
 
 private fun JsonElement.toRuntimeAuthAccount(): RuntimeAuthAccountLabel? {

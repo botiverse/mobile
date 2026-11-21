@@ -207,9 +207,9 @@ private fun SignInDialog(name: String, state: ComputerRuntimeSignInState, runtim
 @Composable
 private fun RuntimeAuthCards() {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // Signed out: no usage, only the way to sign in.
-        AuthCard("Claude Code", RuntimeAuthRuntime.Claude, "claude", RuntimeAuthStatus.LoggedOut, usage = CODEX_USAGE)
-        // Signed in: the usage names the account; Sign Out is the quiet action under it.
+        // Signed out: no usage, who was signed in last (slock #15931), and one full-width Sign in.
+        AuthCard("Claude Code", RuntimeAuthRuntime.Claude, "claude", RuntimeAuthStatus.LoggedOut(lastAccount = "x*****n@botiverse.dev"), usage = CODEX_USAGE)
+        // Signed in: the usage names the account; Sign out is in the account's "…" menu (slock #15482).
         AuthCard("Codex CLI", RuntimeAuthRuntime.Codex, "codex", RuntimeAuthStatus.LoggedIn(), usage = CODEX_USAGE)
         // Its CLI is missing on the Computer: why, and the command to install it.
         AuthCard("Codex CLI", RuntimeAuthRuntime.Codex, "codex", RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled), usage = null)

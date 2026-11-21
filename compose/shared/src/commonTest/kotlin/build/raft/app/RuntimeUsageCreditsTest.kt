@@ -69,6 +69,7 @@ class RuntimeUsageCreditsTest {
             assertTrue("runtime-usage-credits@1" in tokens, "$call: $raw")
             assertTrue("runtime-usage-window-scope@2" in tokens, "$call keeps the window scope: $raw")
             assertTrue("runtime-usage-account-folders@1" in tokens, "$call reads agents' account folders: $raw")
+            assertTrue("runtime-usage-unsupported-reason@1" in tokens, "$call reads why an account is unsupported: $raw")
         }
         // A request that is not a usage read does not declare it.
         api.runtimeModels(server, "m1", "codex")
@@ -135,8 +136,9 @@ class RuntimeUsageCreditsTest {
         assertEquals(RuntimeAccountUsageCreditsLine.Balance("30784"), codex(w, RuntimeAccountUsageCredits(available = true, balance = "30784")).creditsLine)
         assertEquals(RuntimeAccountUsageCreditsLine.Unlimited, codex(w, RuntimeAccountUsageCredits(available = true, unlimited = true, balance = "5")).creditsLine)
         assertEquals(RuntimeAccountUsageCreditsLine.Available, codex(w, RuntimeAccountUsageCredits(available = true)).creditsLine)
-        assertEquals(RuntimeAccountUsageCreditsLine.Balance("0"), codex(w, RuntimeAccountUsageCredits(available = false, balance = "0")).creditsLine)
-        assertNull(codex(w, RuntimeAccountUsageCredits(available = false)).creditsLine)
+        // None available reads "No credits left" whatever the balance says (web `usageCreditsText`, slock #15482).
+        assertEquals(RuntimeAccountUsageCreditsLine.None, codex(w, RuntimeAccountUsageCredits(available = false, balance = "0")).creditsLine)
+        assertEquals(RuntimeAccountUsageCreditsLine.None, codex(w, RuntimeAccountUsageCredits(available = false)).creditsLine)
         assertNull(codex(w, null).creditsLine)
     }
 
@@ -193,13 +195,15 @@ class RuntimeUsageCreditsTest {
     }
 
     @Test
-    fun aResetIsStillOfferedButIsNotTheMainActionWhileCreditsCarryTheAccount() {
+    fun aUsedUpWindowMakesTheResetTheMainActionAndOnCreditsItSaysItSavesThem() {
+        // Web `limitResetOffer` + `surfaceLimitReset` (slock #15482): limited on the all-models basis leads
+        // with the reset, also on credits past a full window (the reset then saves the credits: the callout).
         val actor = RuntimeAuthView(canAct = true, availability = RuntimeAuthAvailability.Ok, status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedIn()))
         val full = window(1.0, RuntimeAccountUsageWindowStatus.LimitReached)
         fun offer(credits: RuntimeAccountUsageCredits?) =
             computerRuntimeLimitResetOffer(loaded(codex(full, credits).copy(limitResetsAvailable = 1)), actor, RuntimeAccountUsageProvider.Codex)
-        assertEquals(ComputerRuntimeLimitResetOffer(primary = false), offer(RuntimeAccountUsageCredits(available = true, balance = "30784")))
-        assertEquals(ComputerRuntimeLimitResetOffer(primary = false), offer(RuntimeAccountUsageCredits(available = true, unlimited = true)))
+        assertEquals(ComputerRuntimeLimitResetOffer(primary = true, onCredits = true), offer(RuntimeAccountUsageCredits(available = true, balance = "30784")))
+        assertEquals(ComputerRuntimeLimitResetOffer(primary = true, onCredits = true), offer(RuntimeAccountUsageCredits(available = true, unlimited = true)))
         assertEquals(ComputerRuntimeLimitResetOffer(primary = true), offer(null))
         assertEquals(ComputerRuntimeLimitResetOffer(primary = true), offer(RuntimeAccountUsageCredits(available = false)))
     }

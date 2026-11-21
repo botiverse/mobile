@@ -27,6 +27,29 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.Dp
+import build.raft.app.data.RuntimeAccountUsageBadge
+import build.raft.app.data.RuntimeAccountUsageUnsupportedReason
+import build.raft.app.data.RuntimePlanHeading
+import build.raft.app.data.RuntimeQuotaWindowKind
+import build.raft.app.data.cardWindowKind
+import build.raft.app.data.isDefaultAccount
+import build.raft.app.data.runtimeCatalogDisplayName
+import build.raft.app.data.runtimePlanHeading
+import build.raft.app.data.unsupportedReasonLine
+import build.raft.app.data.usageBadge
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
@@ -289,6 +312,7 @@ internal class ComputerRuntimeUsageController(
     private val onIdentityChanged: () -> Unit = {},
     private val followUpDelayMillis: Long = COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS,
     private val followUpAttempts: Int = COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS,
+    private val signInFollowUpAttempts: Int = COMPUTER_RUNTIME_USAGE_SIGN_IN_FOLLOW_UP_ATTEMPTS,
 ) {
     var load by mutableStateOf<RuntimeAccountUsageLoad?>(null)
         private set
@@ -741,6 +765,31 @@ internal class ComputerRuntimeUsageController(
         }
     }
 
+    /**
+     * A sign-in on this card just succeeded (web `startFollowUpReads(afterSignIn)`, slock #15786): the
+     * server asks the Computer for fresh usage, so read again until a fresh snapshot other than the one
+     * shown lands, for about as long as the server's relay waits on a slow read, and end quietly
+     * either way (nobody pressed Refresh).
+     */
+    fun readAfterSignIn() {
+        val replacing = ((load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.collectedAt
+        log("computer_runtime_usage_read_after_sign_in provider=${key.provider.wire}")
+        followUp?.cancel()
+        followUp =
+            scope.launch {
+                repeat(signInFollowUpAttempts) {
+                    delay(followUpDelayMillis)
+                    store.invalidate(key)
+                    val next = (read(force = true) as? RuntimeAccountUsageLoad.Loaded)?.read
+                    if (next is RuntimeAccountUsageRead.Available && !next.stale && next.snapshot.collectedAt != replacing) {
+                        refresh = ComputerRuntimeUsageRefreshStatus.Idle
+                        return@launch
+                    }
+                }
+                refresh = ComputerRuntimeUsageRefreshStatus.Idle
+            }
+    }
+
     /** Web `startFollowUpReads`: re-read until the snapshot is fresh, then give up as unconfirmed. */
     private fun startFollowUpReads() {
         followUp?.cancel()
@@ -762,6 +811,23 @@ internal class ComputerRuntimeUsageController(
 
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_DELAY_MILLIS: Long = 1_200L
 internal const val COMPUTER_RUNTIME_USAGE_FOLLOW_UP_ATTEMPTS: Int = 8
+
+/** Web `SIGN_IN_MAX_READ_ATTEMPTS`: after a sign-in, about the server's relay budget for a usage read (25 s). */
+internal const val COMPUTER_RUNTIME_USAGE_SIGN_IN_FOLLOW_UP_ATTEMPTS: Int = 21
+
+/**
+ * Binds a card's sign-in to its usage (web `RuntimeSignInDialog onSignedIn={handleSignedIn}`, slock
+ * #15786): a sign-in that succeeds reads the usage again at once.
+ */
+@Composable
+internal fun BindSignedInUsageRead(usage: ComputerRuntimeUsageController?, auth: ComputerRuntimeAuthController?) {
+    DisposableEffect(usage, auth) {
+        if (usage == null || auth == null) return@DisposableEffect onDispose {}
+        val hook: () -> Unit = { usage.readAfterSignIn() }
+        auth.onSignedIn = hook
+        onDispose { if (auth.onSignedIn === hook) auth.onSignedIn = null }
+    }
+}
 
 private fun RuntimeLimitResetsReadLoad.diagnosticsLabel(): String =
     when (this) {
@@ -955,6 +1021,8 @@ internal fun ComputerRuntimeUsageSheetHost(
             controller.updateCooldown()
         }
     }
+    // A sign-in from this sheet reads its usage again at once (slock #15786).
+    BindSignedInUsageRead(controller, auth)
     val timeContext = currentRaftTimeContextProvider?.current
     val authState = auth?.cardState
     ComputerRuntimeUsageSheet(
@@ -969,6 +1037,7 @@ internal fun ComputerRuntimeUsageSheetHost(
         authRuntimeName = runtimeName,
         onSignIn = { auth?.openSignIn() },
         onSignOut = { auth?.openSignOut() },
+        onSignOutProvider = { provider -> auth?.openSignOut(provider) },
     )
     ComputerRuntimeLimitResetDialogHost(runtimeLabel, controller)
     if (auth != null) ComputerRuntimeAuthDialogHost(auth, runtimeName, computerName, agents, access.auth?.openUrl ?: {})
@@ -1039,9 +1108,16 @@ private fun ComputerRuntimeLimitResetDialogHost(runtimeLabel: String, controller
     }
 }
 
-/** The usage block already names the account (web `usageShowsAccount`): the sign-in line then does not. */
+/** The read snapshot, when there is one. */
+internal val ComputerRuntimeUsageSheetState.available: RuntimeAccountUsageRead.Available?
+    get() = (load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
+
+/**
+ * The usage block draws the Computer's own account (web `usageShowsAccount`): the sign-in line then
+ * does not name it, and Sign out goes in that account's menu.
+ */
 internal val ComputerRuntimeUsageSheetState.showsAccount: Boolean
-    get() = ((load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available)?.snapshot?.accounts?.isNotEmpty() == true
+    get() = available?.snapshot?.accounts?.any { it.isDefaultAccount } == true
 
 /** What the usage sheet shows (web `Surface` props). */
 internal data class ComputerRuntimeUsageSheetState(
@@ -1049,19 +1125,22 @@ internal data class ComputerRuntimeUsageSheetState(
     val loading: Boolean,
     val refresh: ComputerRuntimeUsageRefreshStatus,
     val cooldownLeftMillis: Long,
-    /** The runtime CLI version the Computer reported (web `runtimeVersion`); null = "Version unavailable". */
+    /** The runtime CLI version the Computer reported (web `runtimeVersion`); null: no version line. */
     val runtimeVersion: String? = null,
-    /** "Use a reset" (slock #13504); null when there is no reset to use or the viewer may not act. */
+    /** "Use a reset" (slock #13504); null when there is no reset to offer or the viewer may not act. */
     val limitReset: ComputerRuntimeLimitResetOffer? = null,
-    /** What the last limit reset did, in place of the refresh line. */
+    /** What the last limit reset did, in the status line. */
     val limitResetNote: ComputerRuntimeLimitResetNote? = null,
     /** Claude limit resets on the card (slock #14336); null when nothing is offered. */
     val claudeLimitReset: ComputerRuntimeClaudeLimitResetOffer? = null,
-    /** What the last Claude limit reset did, in place of the refresh line. */
+    /** What the last Claude limit reset did, in the status line. */
     val claudeLimitResetNote: ComputerRuntimeClaudeLimitResetText? = null,
 )
 
-/** Web phone layout: the usage surface in a bottom sheet (`BottomSheet`, below md). */
+/**
+ * Web phone layout: the usage surface in a bottom sheet (`BottomSheet`, below md): the same parts as
+ * the card ([ComputerRuntimeUsageCard]) under the sheet's title, and Close.
+ */
 @Composable
 private fun ComputerRuntimeUsageSheet(
     runtimeLabel: String,
@@ -1074,30 +1153,40 @@ private fun ComputerRuntimeUsageSheet(
     authRuntimeName: String = runtimeLabel,
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit = {},
     onClaudeLimitReset: () -> Unit = {},
 ) {
-    // Signed out: there is no usage to show, only the way to sign in (web).
+    // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
     val signedOut = auth?.signedOut == true
     RaftSheet(
         onDismissRequest = onDismiss,
         title = if (signedOut) authRuntimeName else stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         actions = {
-            if (auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut, fullWidth = true)
-            if (signedOut) {
-                RaftButton(
-                    text = stringResource(Res.string.common_close),
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Lg,
-                )
-            } else {
-                ComputerRuntimeUsageActions(state, timeContext, onRefresh, onUseLimitReset, onDismiss, onClaudeLimitReset)
-            }
+            RaftButton(
+                text = stringResource(Res.string.common_close),
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+            )
         },
         content = {
-            if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
-            if (!signedOut) ComputerRuntimeUsageContents(state, timeContext, showsVersion = true, updateCheck = auth.updateCheckCopy(state.runtimeVersion))
+            ComputerRuntimeUsageSurfaceContent(
+                state = state,
+                timeContext = timeContext,
+                inset = 0.dp,
+                showsUsage = !signedOut,
+                auth = auth,
+                onRefresh = onRefresh,
+                onUseLimitReset = onUseLimitReset,
+                onClaudeLimitReset = onClaudeLimitReset,
+                onSignIn = onSignIn,
+                onSignOut = onSignOut,
+                onSignOutProvider = onSignOutProvider,
+                head = {
+                    ComputerRuntimeCardHeadLines(state.runtimeVersion, auth, usageShowsAccount = !signedOut && state.showsAccount, authOnly = false)
+                },
+            )
         },
     )
 }
@@ -1109,252 +1198,320 @@ internal fun ComputerRuntimeUsageSheetSurface(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
     modifier: Modifier = Modifier,
+    auth: ComputerRuntimeAuthCardState? = null,
 ) {
     RaftSheetSurface(
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         modifier = modifier,
-        actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh = {}, onUseLimitReset = {}, onDismiss = {}) },
-        content = { ComputerRuntimeUsageContents(state, timeContext, showsVersion = true) },
+        actions = {
+            RaftButton(
+                text = stringResource(Res.string.common_close),
+                onClick = {},
+                modifier = Modifier.fillMaxWidth(),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+            )
+        },
+        content = {
+            ComputerRuntimeUsageSurfaceContent(
+                state = state,
+                timeContext = timeContext,
+                inset = 0.dp,
+                showsUsage = true,
+                auth = auth,
+                onRefresh = {},
+                onUseLimitReset = {},
+                onClaudeLimitReset = {},
+                onSignIn = {},
+                onSignOut = {},
+                onSignOutProvider = {},
+                head = { ComputerRuntimeCardHeadLines(state.runtimeVersion, auth, usageShowsAccount = state.showsAccount, authOnly = false) },
+            )
+        },
     )
 }
 
+/**
+ * Web `statusText`: only a state worth saying, under the usage: what the last limit reset did, a
+ * refresh refused or unanswered, or the Computer offline. One in flight says nothing (Refresh's
+ * spinner shows it), and neither does a quiet card.
+ */
 @Composable
-private fun ColumnScope.ComputerRuntimeUsageActions(
-    state: ComputerRuntimeUsageSheetState,
-    timeContext: RaftTimeContext?,
-    onRefresh: () -> Unit,
-    onUseLimitReset: () -> Unit,
-    onDismiss: () -> Unit,
-    onClaudeLimitReset: () -> Unit = {},
-) {
-    val colors = RaftTheme.colors
-    // The snapshot's footnote stays with the footer, so it never scrolls out of a short sheet.
-    val available = (state.load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
-    if (available != null) {
-        val updated =
-            available.snapshot.collectedAt
-                ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
-                ?.takeIf { it.isNotEmpty() }
-                ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
-        RaftText(
-            stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
-            style = RaftTheme.typography.caption,
-            color = colors.foregroundHint,
-        )
-    }
-    RaftText(computerRuntimeUsageRefreshStatusText(state), style = RaftTheme.typography.caption, color = colors.foregroundHint)
-    RaftButton(
-        text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
-        onClick = onRefresh,
-        modifier = Modifier.fillMaxWidth(),
-        variant = RaftButtonVariant.Default,
-        size = RaftButtonSize.Lg,
-        enabled = state.cooldownLeftMillis <= 0L,
-        loading = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting,
-        leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
-    )
-    // Web: Use a reset beside Refresh; primary only while the account is rate-limited.
-    state.limitReset?.let { offer ->
-        ComputerRuntimeLimitResetButton(offer, onUseLimitReset, Modifier.fillMaxWidth(), size = RaftButtonSize.Lg)
-    }
-    state.claudeLimitReset?.let { offer ->
-        ComputerRuntimeClaudeLimitResetButton(offer, onClaudeLimitReset, Modifier.fillMaxWidth(), size = RaftButtonSize.Lg)
-    }
-    RaftButton(
-        text = stringResource(Res.string.common_close),
-        onClick = onDismiss,
-        modifier = Modifier.fillMaxWidth(),
-        variant = RaftButtonVariant.Ghost,
-        size = RaftButtonSize.Lg,
-    )
-}
-
-/** The refresh line under the usage (web `Surface` footer). */
-@Composable
-private fun computerRuntimeUsageRefreshStatusText(state: ComputerRuntimeUsageSheetState): String =
+private fun computerRuntimeUsageStatusText(state: ComputerRuntimeUsageSheetState): String? =
     when {
-        // Web `statusText`: what the last limit reset did comes first.
         state.claudeLimitResetNote != null -> state.claudeLimitResetNote.text()
         state.limitResetNote != null -> state.limitResetNote.text()
-        state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
         state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
         state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
         state.cooldownLeftMillis > 0L ->
             stringResource(Res.string.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
         state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
-        else -> stringResource(Res.string.settings_computers_runtime_usage_cache_only)
+        else -> null
     }
 
+/**
+ * Web `RuntimeUsageContents`: the usage block (also the agent move dialog's). Nothing read yet says so;
+ * otherwise an out-of-date notice over the sunken accounts, each account, and "Updated …" ([metadata]
+ * in its place) with [footerAction] (Refresh) beside it. [accountMenu] and [accountActions] go with
+ * the Computer's own account. [inset] is the side padding (16 in a card, 0 in a sheet or a dialog).
+ */
 @Composable
 internal fun ComputerRuntimeUsageContents(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
-    /** The sheet's header line (web `Surface`); the migration target list embeds the contents without it. */
-    showsVersion: Boolean = false,
-    /** With [showsVersion]: the Computer's update check in place of the version (slock #15429); null shows the version. */
-    updateCheck: ComputerRuntimeUpdateCheckCopy? = null,
+    inset: Dp = 0.dp,
+    metadata: String? = null,
+    accountMenu: (@Composable () -> Unit)? = null,
+    accountActions: (@Composable () -> Unit)? = null,
+    footerAction: (@Composable () -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        // Web `Surface` header: the runtime's version (mono meta), then who may see this.
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (showsVersion) ComputerRuntimeVersionLine(state.runtimeVersion, updateCheck)
-            RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_private),
-                style = typography.caption,
-                color = colors.foregroundHint,
-            )
+    val bare: @Composable (@Composable () -> Unit) -> Unit = { body ->
+        body()
+        if (footerAction != null) {
+            RaftSeparator()
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) { footerAction() }
         }
-        val load = state.load
-        when {
-            load == null && state.loading ->
-                RaftText(stringResource(Res.string.settings_computers_runtime_usage_reading), style = typography.callout, color = colors.foregroundMuted)
-            load is RuntimeAccountUsageLoad.Failed ->
-                RaftBanner(
-                    description = stringResource(Res.string.settings_computers_runtime_usage_read_failed),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
+    }
+    val load = state.load
+    val available = state.available
+    when {
+        load == null && state.loading ->
+            bare {
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_usage_reading),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 20.dp),
+                    style = typography.callout,
+                    color = colors.foregroundMuted,
                 )
-            load is RuntimeAccountUsageLoad.Loaded && load.read is RuntimeAccountUsageRead.Available ->
-                ComputerRuntimeUsageSnapshot(load.read as RuntimeAccountUsageRead.Available, timeContext)
-            else -> {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    RaftText(
-                        stringResource(Res.string.settings_computers_runtime_usage_no_snapshot),
-                        style = typography.callout.copy(fontWeight = FontWeight.Bold),
-                        color = colors.foreground,
-                    )
-                    RaftText(
-                        stringResource(Res.string.settings_computers_runtime_usage_no_snapshot_description),
-                        style = typography.footnote,
-                        color = colors.foregroundMuted,
-                    )
+            }
+        load is RuntimeAccountUsageLoad.Failed ->
+            bare {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(Modifier.padding(top = 2.dp)) {
+                        CompositionLocalProvider(LocalRaftContentColor provides colors.warningStrong) {
+                            RaftComputersIcon(RaftLucideIconName.TriangleAlert)
+                        }
+                    }
+                    RaftText(stringResource(Res.string.settings_computers_runtime_usage_read_failed), style = typography.callout, color = colors.warningStrong)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun ComputerRuntimeUsageSnapshot(read: RuntimeAccountUsageRead.Available, timeContext: RaftTimeContext?) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    // A stale snapshot is recoverable: warning, never red.
-    if (read.stale) {
-        RaftBanner(
-            description = stringResource(Res.string.settings_computers_runtime_usage_stale),
-            status = RaftBannerStatus.Warning,
-            size = RaftBannerSize.Sm,
-        )
-    }
-    read.snapshot.accounts.forEachIndexed { index, account ->
-        if (index > 0) RaftSeparator()
-        ComputerRuntimeUsageAccountBlock(account, timeContext)
-    }
-    RaftSeparator()
-}
-
-@Composable
-internal fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount, timeContext: RaftTimeContext?) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        available == null ->
+            bare {
                 RaftText(
-                    account.planLabel ?: stringResource(Res.string.settings_computers_runtime_usage_account_fallback),
+                    stringResource(Res.string.settings_computers_runtime_usage_no_snapshot),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 20.dp),
                     style = typography.callout.copy(fontWeight = FontWeight.Bold),
                     color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
                 )
-                val resets = account.limitResetsAvailable
-                if (resets == null) {
-                    account.identityLabel?.let { identity ->
-                        RaftText(identity, style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                } else {
-                    // Web: the account's limit resets (Codex) beside the account they belong to.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        account.identityLabel?.let { identity ->
-                            RaftText(
-                                identity,
-                                modifier = Modifier.weight(1f, fill = false),
-                                style = typography.monoMeta,
-                                color = colors.foregroundHint,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            RaftSeparator(Modifier.height(12.dp), orientation = RaftSeparatorOrientation.Vertical)
-                        }
-                        RaftText(
-                            computerRuntimeLimitResetsLeftText(resets),
-                            modifier = Modifier.testTag(COMPUTER_RUNTIME_LIMIT_RESETS_LEFT_TAG),
-                            style = typography.caption,
-                            color = colors.foregroundMuted,
-                            maxLines = 1,
+            }
+        else -> {
+            val stale = available.stale
+            // The Computer's own account (not an agent's own folder's): where its menu and limit actions go.
+            val own = available.snapshot.accounts.firstOrNull { it.isDefaultAccount }?.accountKey
+            // An out-of-date snapshot sits on the sunken surface under an orange-soft notice: recoverable, so warning, never red.
+            Column(Modifier.fillMaxWidth().then(if (stale) Modifier.background(colors.fillMuted) else Modifier)) {
+                if (stale) {
+                    RaftText(
+                        stringResource(Res.string.settings_computers_runtime_usage_stale),
+                        modifier = Modifier.fillMaxWidth().background(colors.warningSoft).padding(horizontal = maxOf(inset, 12.dp), vertical = 8.dp),
+                        style = typography.caption.copy(fontWeight = FontWeight.Bold),
+                        color = colors.foreground,
+                    )
+                    RaftSeparator()
+                }
+                available.snapshot.accounts.forEachIndexed { index, account ->
+                    if (index > 0) RaftSeparator()
+                    val isOwn = account.accountKey == own
+                    Column(Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 12.dp)) {
+                        ComputerRuntimeUsageAccountBlock(
+                            account = account,
+                            timeContext = timeContext,
+                            menu = if (isOwn) accountMenu else null,
+                            actions = if (isOwn) accountActions else null,
                         )
                     }
                 }
-                // The account's credits (Codex, slock #15374), when the runtime says them.
-                account.creditsLine?.let { line ->
+                RaftSeparator()
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val updated =
+                        available.snapshot.collectedAt
+                            ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
                     RaftText(
-                        computerRuntimeUsageCreditsText(line),
-                        modifier = Modifier.testTag(COMPUTER_RUNTIME_USAGE_CREDITS_TAG),
+                        metadata ?: stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
+                        modifier = Modifier.weight(1f).padding(vertical = 2.dp),
                         style = typography.caption,
-                        color = colors.foregroundMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = colors.foregroundHint,
                     )
+                    footerAction?.invoke()
                 }
             }
-            // Raft DS StatusChip: soft wash, a square pixel, one word. Used up on the all-models
-            // basis only (web #14717): a model's own window at its limit says so on its own row.
-            val health = account.allModels().account.health
-            val ok = health == RuntimeAccountUsageHealth.Ok
-            RaftBadge(
-                text = health.label(),
-                appearance = RaftBadgeAppearance.Soft,
-                variant = if (ok) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
-                icon = { RaftStatusDot(variant = if (ok) RaftStatusVariant.Success else RaftStatusVariant.Warning, size = RaftStatusSize.Md) },
-            )
-        }
-        when (account.health) {
-            // Unsupported: the badge alone, as on the web (#14543); no line on why.
-            RuntimeAccountUsageHealth.Unsupported -> Unit
-            RuntimeAccountUsageHealth.Error ->
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_read_failed),
-                    style = typography.footnote,
-                    color = colors.foregroundMuted,
-                )
-            RuntimeAccountUsageHealth.ReauthRequired ->
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_reauth_description),
-                    style = typography.footnote,
-                    color = colors.foregroundMuted,
-                )
-            // Claude's OAuth apps' window (third-party apps' use) is never listed (web #14605).
-            else ->
-                account.windows.filter { !it.claudeOAuthApps }.forEach { window ->
-                    ComputerRuntimeUsageWindowRow(window, timeContext, fill = account.windowFill(window))
-                }
         }
     }
 }
 
 /**
- * One usage window: "X% used · resets …" or "Used up", as the web `RuntimeAccountUsageChip`
- * (raft-ui 0.50); a full window the account's credits carry reads "Limit reached · using credits"
- * (slock #15374). [fill] is the account's reading of it ([windowFill]).
+ * One account on the usage card (web `RuntimeUsageContents`, slock #15482, #15483, #15557, #15395): the
+ * plan as a heading ("Team plan") with the masked email under it, a warning chip only when something is
+ * wrong (no "ok"), then its windows, why an unsupported account has no reading, and one facts line
+ * (resets left · credits). Error and "sign in again" draw no last-known meters: the chip says it.
+ * [menu] (Sign out) ends the heading row and [actions] go under it, for the Computer's own account.
+ */
+@Composable
+internal fun ComputerRuntimeUsageAccountBlock(
+    account: RuntimeAccountUsageAccount,
+    timeContext: RaftTimeContext?,
+    menu: (@Composable () -> Unit)? = null,
+    actions: (@Composable () -> Unit)? = null,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Column(Modifier.weight(1f)) {
+                RaftText(
+                    computerRuntimePlanHeading(account.planLabel),
+                    modifier = Modifier.testTag(COMPUTER_RUNTIME_ACCOUNT_PLAN_TAG),
+                    style = typography.callout.copy(fontWeight = FontWeight.Bold),
+                    color = colors.foreground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                account.identityLabel?.let { identity ->
+                    RaftText(
+                        identity,
+                        modifier = Modifier.padding(top = 2.dp),
+                        style = typography.monoMeta,
+                        color = colors.foregroundHint,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            val badge = account.usageBadge()
+            if (badge != null || menu != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Raft DS StatusChip: soft wash, a square pixel, one word. Only for a problem.
+                    if (badge != null) {
+                        RaftBadge(
+                            text = badge.label(),
+                            modifier = Modifier.testTag(COMPUTER_RUNTIME_ACCOUNT_HEALTH_TAG),
+                            appearance = RaftBadgeAppearance.Soft,
+                            variant = RaftBadgeVariant.Warning,
+                            icon = { RaftStatusDot(variant = RaftStatusVariant.Warning, size = RaftStatusSize.Md) },
+                        )
+                    }
+                    menu?.invoke()
+                }
+            }
+        }
+        when (account.health) {
+            RuntimeAccountUsageHealth.Unsupported ->
+                account.unsupportedReasonLine?.let { reason ->
+                    RaftText(
+                        stringResource(reason.lineText()),
+                        modifier = Modifier.padding(top = 12.dp).testTag(COMPUTER_RUNTIME_ACCOUNT_UNSUPPORTED_REASON_TAG),
+                        style = typography.footnote,
+                        color = colors.foregroundMuted,
+                    )
+                }
+            // Its chip says it ("error", "sign in again"; Sign in under the Computer's own account): no
+            // sentence repeating it, and no last-known meters until the provider reads it again.
+            RuntimeAccountUsageHealth.Error, RuntimeAccountUsageHealth.ReauthRequired -> Unit
+            else ->
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Claude's OAuth apps' window (third-party apps' use) is never listed (web #14605).
+                    account.windows.filter { !it.claudeOAuthApps }.forEach { window ->
+                        ComputerRuntimeUsageWindowRow(window, timeContext, fill = account.windowFill(window))
+                    }
+                }
+        }
+        ComputerRuntimeUsageFactsLine(account)
+        if (actions != null) {
+            Box(Modifier.fillMaxWidth().padding(top = 12.dp)) { actions() }
+        }
+    }
+}
+
+/**
+ * Web `runtime-account-facts` (slock #15482): always in sight, the resets the account has left and its
+ * credits, one line of secondary text under the meters (two numbers, not chips that look pressable).
+ * No credits left reads orange.
+ */
+@Composable
+private fun ComputerRuntimeUsageFactsLine(account: RuntimeAccountUsageAccount) {
+    val resets = account.limitResetsAvailable
+    val credits = account.creditsLine
+    if (resets == null && credits == null) return
+    val warning = RaftTheme.colors.warningStrong
+    val resetsText = resets?.let { computerRuntimeLimitResetsLeftText(it) }
+    val creditsText = credits?.let { computerRuntimeUsageCreditsText(it) }
+    val line =
+        buildAnnotatedString {
+            if (resetsText != null) append(resetsText)
+            if (resetsText != null && creditsText != null) append(" · ")
+            if (creditsText != null) {
+                val at = length
+                append(creditsText)
+                if (credits == RuntimeAccountUsageCreditsLine.None) addStyle(SpanStyle(color = warning), at, length)
+            }
+        }
+    RaftText(
+        line,
+        modifier = Modifier.padding(top = 12.dp).testTag(COMPUTER_RUNTIME_ACCOUNT_FACTS_TAG),
+        style = RaftTheme.typography.footnote,
+        color = RaftTheme.colors.foregroundMuted,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** Web `formatRuntimePlanHeading` (slock #15557): "Team plan" / "Team 套餐", or "Runtime account" with none. */
+@Composable
+internal fun computerRuntimePlanHeading(planLabel: String?): String =
+    when (val heading = runtimePlanHeading(planLabel)) {
+        RuntimePlanHeading.Fallback -> stringResource(Res.string.settings_computers_runtime_usage_account_fallback)
+        is RuntimePlanHeading.Named -> heading.name
+        is RuntimePlanHeading.Plan -> stringResource(Res.string.settings_computers_runtime_usage_plan_heading, heading.plan)
+    }
+
+/** Web `unsupportedReasonTextId`: the line under an unsupported account saying why. */
+private fun RuntimeAccountUsageUnsupportedReason.lineText(): StringResource =
+    when (this) {
+        RuntimeAccountUsageUnsupportedReason.UnsupportedAuthMode -> Res.string.settings_computers_runtime_usage_unsupported_reason_auth_mode
+        RuntimeAccountUsageUnsupportedReason.UnsupportedAuthStorage -> Res.string.settings_computers_runtime_usage_unsupported_reason_auth_storage
+        RuntimeAccountUsageUnsupportedReason.AuthConfigurationUnavailable -> Res.string.settings_computers_runtime_usage_unsupported_reason_auth_configuration
+        RuntimeAccountUsageUnsupportedReason.EndpointUnavailable -> Res.string.settings_computers_runtime_usage_unsupported_reason_endpoint
+        RuntimeAccountUsageUnsupportedReason.UnsupportedInstallation -> Res.string.settings_computers_runtime_usage_unsupported_reason_installation
+        // Never asked for ([unsupportedReasonLine] leaves these to the chip); the closest words.
+        RuntimeAccountUsageUnsupportedReason.VersionUnsupported,
+        RuntimeAccountUsageUnsupportedReason.CapabilityUnavailable,
+        RuntimeAccountUsageUnsupportedReason.QuotaUnavailable -> Res.string.settings_computers_runtime_usage_unsupported_reason_installation
+    }
+
+/**
+ * One usage window: "X% used · resets …" or "Used up", as the web `UsageWindowMeter` (raft-ui 0.50);
+ * a full window the account's credits carry reads "Used up · using credits" (slock #15374). The 5-hour
+ * and weekly windows are named in the reader's language (slock #15482). [fill] is the account's reading
+ * of it ([windowFill]).
  */
 @Composable
 internal fun ComputerRuntimeUsageWindowRow(
@@ -1362,12 +1519,18 @@ internal fun ComputerRuntimeUsageWindowRow(
     timeContext: RaftTimeContext?,
     fill: RuntimeAccountUsageWindowFill?,
 ) {
+    val label =
+        when (window.cardWindowKind()) {
+            RuntimeQuotaWindowKind.FiveHour -> stringResource(Res.string.runtime_quota_window_five_hour)
+            RuntimeQuotaWindowKind.Week -> stringResource(Res.string.runtime_quota_window_week)
+            null -> window.label
+        }
     val ratio = window.usedRatio
     if (fill == null || ratio == null) {
         // Never a bar: a window we cannot read is not "0% used".
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftText(
-                window.label,
+                label,
                 modifier = Modifier.weight(1f),
                 style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = RaftTheme.colors.foreground,
@@ -1397,7 +1560,7 @@ internal fun ComputerRuntimeUsageWindowRow(
             fill == RuntimeAccountUsageWindowFill.OnCredits -> stringResource(Res.string.settings_computers_runtime_usage_window_on_credits, reset.orEmpty())
             usedUp && reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up_reset_unavailable)
             usedUp -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up, reset.orEmpty())
-            reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_reset_unavailable, percentUsed)
+            reset == null -> stringResource(Res.string.settings_computers_rack_percent_used, percentUsed)
             else -> stringResource(Res.string.settings_computers_runtime_usage_window_used, percentUsed, reset)
         }
     // raft-ui 0.50 Meter: fills with what is used, warning from 80% used, a full warning bar
@@ -1405,7 +1568,7 @@ internal fun ComputerRuntimeUsageWindowRow(
     RaftMeter(
         used = if (usedUp) 100f else (ratio * 100.0).toFloat(),
         valueText = valueText,
-        label = window.label,
+        label = label,
         size = RaftMeterSize.Sm,
     )
 }
@@ -1424,7 +1587,7 @@ internal fun computerRuntimeUsageResetText(resetsAt: String, timeContext: RaftTi
     return raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
 }
 
-/** The account's credits line: "30784 credits", "Unlimited credits" or "Credits available". */
+/** The account's credits: "30,784 credits", "Unlimited credits", "Credits available" or "No credits left". */
 @Composable
 internal fun computerRuntimeUsageCreditsText(line: RuntimeAccountUsageCreditsLine): String =
     when (line) {
@@ -1435,6 +1598,7 @@ internal fun computerRuntimeUsageCreditsText(line: RuntimeAccountUsageCreditsLin
             )
         RuntimeAccountUsageCreditsLine.Unlimited -> stringResource(Res.string.settings_computers_runtime_usage_credits_unlimited)
         RuntimeAccountUsageCreditsLine.Available -> stringResource(Res.string.settings_computers_runtime_usage_credits_available)
+        RuntimeAccountUsageCreditsLine.None -> stringResource(Res.string.settings_computers_runtime_usage_credits_none)
     }
 
 /**
@@ -1449,7 +1613,7 @@ internal fun computerRuntimeUsageCreditsBalanceDisplay(balance: String, language
     val separator =
         when (language.lowercase()) {
             "es", "pt" -> "."
-            "ru" -> "\u00A0"
+            "ru" -> " "
             else -> ","
         }
     // ICU's Spanish leaves a four-digit number ungrouped ("1234", "12.345").
@@ -1459,20 +1623,31 @@ internal fun computerRuntimeUsageCreditsBalanceDisplay(balance: String, language
 }
 
 internal const val COMPUTER_RUNTIME_USAGE_CREDITS_TAG = "runtime-usage-credits"
+internal const val COMPUTER_RUNTIME_ACCOUNT_PLAN_TAG = "runtime-account-plan"
+internal const val COMPUTER_RUNTIME_ACCOUNT_HEALTH_TAG = "runtime-account-health"
+internal const val COMPUTER_RUNTIME_ACCOUNT_UNSUPPORTED_REASON_TAG = "runtime-account-unsupported-reason"
+internal const val COMPUTER_RUNTIME_ACCOUNT_FACTS_TAG = "runtime-account-facts"
+internal const val COMPUTER_RUNTIME_ACCOUNT_MENU_TAG = "runtime-account-menu"
+internal const val COMPUTER_RUNTIME_USAGE_REFRESH_TAG = "runtime-usage-refresh"
+internal const val COMPUTER_RUNTIME_USAGE_ACTIONS_TAG = "runtime-usage-actions"
+internal const val COMPUTER_RUNTIME_LIMIT_CALLOUT_TAG = "runtime-limit-callout"
 
 /** Web `runtimeUsagePercentUsed`: `round(usedRatio * 100)`. */
 internal fun runtimeUsagePercentUsed(usedRatio: Double): Int = kotlin.math.round(usedRatio * 100.0).toInt()
 
 @Composable
-private fun RuntimeAccountUsageHealth.label(): String =
+private fun RuntimeAccountUsageBadge.label(): String =
     stringResource(
         when (this) {
-            RuntimeAccountUsageHealth.Ok -> Res.string.settings_computers_runtime_usage_health_ok
-            RuntimeAccountUsageHealth.RateLimited -> Res.string.settings_computers_runtime_usage_health_rate_limited
-            RuntimeAccountUsageHealth.ReauthRequired -> Res.string.settings_computers_runtime_usage_health_reauth_required
-            RuntimeAccountUsageHealth.Unsupported -> Res.string.settings_computers_runtime_usage_health_unsupported
-            RuntimeAccountUsageHealth.Error -> Res.string.settings_computers_runtime_usage_health_error
-            RuntimeAccountUsageHealth.Unknown -> Res.string.settings_computers_runtime_usage_health_unknown
+            RuntimeAccountUsageBadge.RateLimited -> Res.string.settings_computers_runtime_usage_health_rate_limited
+            RuntimeAccountUsageBadge.ReauthRequired -> Res.string.settings_computers_runtime_usage_health_reauth_required
+            RuntimeAccountUsageBadge.Unsupported -> Res.string.settings_computers_runtime_usage_health_unsupported
+            RuntimeAccountUsageBadge.Error -> Res.string.settings_computers_runtime_usage_health_error
+            RuntimeAccountUsageBadge.Unknown -> Res.string.settings_computers_runtime_usage_health_unknown
+            RuntimeAccountUsageBadge.SomeModelsUsedUp -> Res.string.settings_computers_runtime_usage_health_some_models_used_up
+            RuntimeAccountUsageBadge.MaybeOnCredits -> Res.string.settings_computers_runtime_usage_health_maybe_on_credits
+            RuntimeAccountUsageBadge.NoUsageData -> Res.string.settings_computers_runtime_usage_health_no_usage_data
+            RuntimeAccountUsageBadge.UpdateRequired -> Res.string.settings_computers_runtime_usage_health_update_required
         }
     )
 
@@ -1520,6 +1695,8 @@ internal fun ComputerRuntimeUsagePreviewCard(
             }
         }
     }
+    // A sign-in from this card reads its usage again at once (slock #15786).
+    BindSignedInUsageRead(controller, auth?.controller)
     val mouseFirst = RaftTheme.pointerInput == RaftPointerInput.Fine
     val onClick: (() -> Unit)? =
         if (!enabled) {
@@ -1574,6 +1751,8 @@ internal fun ComputerRuntimeUsagePreviewCard(
                     onSignIn = onSignIn,
                     onSignOut = onSignOut,
                     onSignOutProvider = onSignOutProvider,
+                    // The account menu opens in a popup outside the card: a hover card pins first (web #15786).
+                    onAccountMenuOpen = state::pin,
                 )
             } else if (auth != null) {
                 ComputerRuntimeAuthOnlyCard(
@@ -1608,6 +1787,7 @@ internal fun ComputerRuntimeUsagePreviewCard(
                 authRuntimeName = auth?.runtimeName ?: runtimeLabel,
                 onSignIn = { authController?.openSignIn() },
                 onSignOut = { authController?.openSignOut() },
+                onSignOutProvider = { provider -> authController?.openSignOut(provider) },
                 onClaudeLimitReset = controller::openClaudeLimitReset,
             )
         } else if (auth != null) {
@@ -1627,9 +1807,9 @@ internal fun ComputerRuntimeUsagePreviewCard(
 }
 
 /**
- * Web `RuntimeUsageSurface` for a runtime with no usage to read (Qoder, Pi, Antigravity): its
- * sign-in alone — the title, "Signed in" or "Not signed in" (Pi: its stored providers), the version,
- * who may see it, and the sign-in action.
+ * Web `RuntimeUsageSurface` for a runtime with no usage to read (Qoder, Pi, Antigravity) or one signed
+ * out: its sign-in alone — the title with "Signed in" or "Signed out" (Pi: its stored providers), who
+ * was signed in last, the version, the sign-in action, and who may see it.
  */
 @Composable
 internal fun ComputerRuntimeAuthOnlyCard(
@@ -1641,22 +1821,33 @@ internal fun ComputerRuntimeAuthOnlyCard(
     onSignOut: () -> Unit,
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
 ) {
-    ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose, updateCheck = auth.updateCheckCopy(runtimeVersion)) {
-        if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = false, authOnly = true)
-    }
+    ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose, auth = auth, usageShowsAccount = false, authOnly = true)
+    ComputerRuntimeAuthOnlyBody(auth, inset = 16.dp, onSignIn, onSignOut, onSignOutProvider)
+}
+
+/** Web `Surface` without usage: the stored providers, the sign-in action (full width), and who may see it. */
+@Composable
+private fun ComputerRuntimeAuthOnlyBody(
+    auth: ComputerRuntimeAuthCardState?,
+    inset: Dp,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
+) {
     if (auth != null) {
         ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
         if (auth.hasActions) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
             }
         }
     }
+    ComputerRuntimeUsagePrivateLine(inset, top = if (auth?.hasActions == true) 0.dp else 10.dp)
 }
 
 /**
  * [ComputerRuntimeAuthOnlyCard] as a finger's bottom sheet (web: the card in a Drawer on a phone):
- * the runtime's name, its sign-in line and stored providers, then the sign-in action and Close.
+ * the runtime's name, its sign-in line and version, its stored providers, the sign-in action, and Close.
  */
 @Composable
 private fun ComputerRuntimeAuthOnlySheet(
@@ -1668,17 +1859,10 @@ private fun ComputerRuntimeAuthOnlySheet(
     onSignOut: () -> Unit,
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
 ) {
-    val updateCheck = auth.updateCheckCopy(runtimeVersion)
     RaftSheet(
         onDismissRequest = onDismiss,
         title = runtimeName,
-        description =
-            // Where Upgrade is offered and the Computer checked: the check in place of the version (slock #15429).
-            updateCheck?.let { computerRuntimeUpdateCheckPlainText(it) }
-                ?: runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.settings_computers_runtime_usage_version, it) }
-                ?: stringResource(Res.string.settings_computers_runtime_usage_version_unavailable),
         actions = {
-            if (auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut, fullWidth = true)
             RaftButton(
                 text = stringResource(Res.string.common_close),
                 onClick = onDismiss,
@@ -1688,28 +1872,36 @@ private fun ComputerRuntimeAuthOnlySheet(
             )
         },
         content = {
-            if (auth != null) {
-                ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = false, authOnly = true)
-                ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
-            }
+            ComputerRuntimeCardHeadLines(runtimeVersion, auth, usageShowsAccount = false, authOnly = true)
+            ComputerRuntimeAuthOnlyBody(auth, inset = 0.dp, onSignIn, onSignOut, onSignOutProvider)
         },
     )
 }
 
+/** Web `privateLine`: who may see this card, at its foot. */
+@Composable
+private fun ComputerRuntimeUsagePrivateLine(inset: Dp, top: Dp = 0.dp) {
+    RaftText(
+        stringResource(Res.string.settings_computers_runtime_usage_private),
+        modifier = Modifier.fillMaxWidth().padding(start = inset, end = inset, top = top, bottom = 10.dp),
+        style = RaftTheme.typography.caption,
+        color = RaftTheme.colors.foregroundHint,
+    )
+}
+
 /**
- * The card's head (web `Surface`): title, the sign-in line, the version (or, where Upgrade is offered,
- * the Computer's update check: [updateCheck]), who may see it, and close.
+ * The card's head (web `Surface`, slock #15482): the title with the sign-in chip at its end, the
+ * sign-in line, the version line (Upgrade in it), and close.
  */
 @Composable
 private fun ComputerRuntimeCardHeader(
     title: String,
     runtimeVersion: String?,
     onClose: (() -> Unit)?,
-    updateCheck: ComputerRuntimeUpdateCheckCopy? = null,
-    authLine: @Composable () -> Unit = {},
+    auth: ComputerRuntimeAuthCardState?,
+    usageShowsAccount: Boolean,
+    authOnly: Boolean,
 ) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
     // `flex items-center justify-between gap-3 border-b border-line-hairline px-4 py-3`
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1717,14 +1909,21 @@ private fun ComputerRuntimeCardHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            RaftText(title, style = typography.headline, color = colors.foreground)
-            authLine()
-            ComputerRuntimeVersionLine(runtimeVersion, updateCheck)
-            RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_private),
-                style = typography.caption,
-                color = colors.foregroundHint,
-            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RaftText(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = RaftTheme.typography.headline,
+                    color = RaftTheme.colors.foreground,
+                )
+                if (auth != null) ComputerRuntimeAuthHeaderBadge(auth, usageShowsAccount, authOnly)
+            }
+            if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount)
+            ComputerRuntimeVersionLine(runtimeVersion, auth)
         }
         if (onClose != null) {
             RaftIconButton(onClick = onClose, tooltip = stringResource(Res.string.common_close), variant = RaftButtonVariant.Ghost) {
@@ -1735,13 +1934,84 @@ private fun ComputerRuntimeCardHeader(
     RaftSeparator()
 }
 
+/** The head's lines under a sheet's own title: the sign-in chip, the sign-in line and the version line. */
+@Composable
+private fun ComputerRuntimeCardHeadLines(runtimeVersion: String?, auth: ComputerRuntimeAuthCardState?, usageShowsAccount: Boolean, authOnly: Boolean) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        if (auth != null) ComputerRuntimeAuthHeaderBadge(auth, usageShowsAccount, authOnly)
+        if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount)
+        ComputerRuntimeVersionLine(runtimeVersion, auth)
+    }
+}
+
+/**
+ * Web `RuntimeVersionLine` (slock #15482): the runtime's version in mono, then Upgrade as the strong text
+ * link of that line where the server offers it. Once a press has an outcome, the outcome takes the line;
+ * the link comes back only after a failure another press may fix ([computerRuntimeUpgradeAgainAfter]).
+ * While it runs, the link says "Upgrading…" beside a spinner. Nothing to say: no line.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ComputerRuntimeVersionLine(runtimeVersion: String?, auth: ComputerRuntimeAuthCardState?) {
+    val version = runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
+    val upgrade = auth?.upgrade?.takeIf { auth?.view?.canAct == true }
+    // The Computer's update check (slock #15429) in place of the bare version, where Upgrade is offered.
+    val updateCheck = if (upgrade != null) auth.updateCheckCopy(runtimeVersion) else null
+    val outcome = upgrade?.let { computerRuntimeUpgradeCopy(it.state) }
+    val running = upgrade?.state == ComputerRuntimeUpgradeState.Running
+    val offerUpgrade =
+        upgrade != null &&
+            if (outcome != null) computerRuntimeUpgradeAgainAfter(upgrade.state) else auth?.upgradeButtonShown == true
+    if (outcome == null && updateCheck == null && version == null && !offerUpgrade) return
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        if (outcome != null) {
+            RaftText(
+                stringResource(outcome.message, auth?.let { runtimeCatalogDisplayName(it.raftRuntimeId) }.orEmpty(), *outcome.args.toTypedArray()),
+                modifier = Modifier.testTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG),
+                style = typography.caption,
+                color = if (outcome.success) colors.foreground else colors.warningStrong,
+            )
+        } else if (updateCheck != null) {
+            RaftText(
+                computerRuntimeUpdateCheckText(updateCheck),
+                modifier = Modifier.testTag(COMPUTER_RUNTIME_UPDATE_CHECK_TAG),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        } else if (version != null) {
+            RaftText(version, style = typography.monoMeta, color = colors.foregroundHint)
+        }
+        if (offerUpgrade && upgrade != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (running) RaftSpinner(size = RaftSpinnerSize.Xs)
+                RaftTextLink(
+                    text = stringResource(if (running) Res.string.settings_computers_runtime_upgrade_running else Res.string.settings_computers_runtime_upgrade_action),
+                    // Busy, not unavailable: it keeps its ink while it runs.
+                    onClick = { if (!running) upgrade.onUpgrade() },
+                    modifier = Modifier.testTag(COMPUTER_RUNTIME_UPGRADE_TAG),
+                    variant = RaftTextLinkVariant.Strong,
+                    style = typography.caption,
+                )
+            }
+        }
+    }
+    outcome?.traceId?.let { RaftTraceIdNote(it) }
+}
+
 /** Web `HOVER_CLOSE_DELAY_MS`: the usage card waits a little longer than a profile card. */
 internal const val ComputerRuntimeUsagePreviewCardCloseDelayMillis = 160L
 
 /**
- * Web `Surface` in its desktop card: a header (title, version, who may see it, close) over a
- * hairline, the accounts, then a footer row with the refresh state and an outline Refresh. The
- * phone keeps the sheet ([ComputerRuntimeUsageSheet]) with the same content.
+ * Web `Surface` in its desktop card (slock #15482): a header (title and sign-in chip, the sign-in line,
+ * the version line, close) over a hairline, the accounts, "Updated …" with Refresh beside it, the
+ * actions only while they mean something, and who may see it. The phone keeps the sheet
+ * ([ComputerRuntimeUsageSheet]) with the same content. Signed out, the card is its sign-in alone.
  */
 @Composable
 internal fun ComputerRuntimeUsageCard(
@@ -1758,6 +2028,8 @@ internal fun ComputerRuntimeUsageCard(
     onSignOut: () -> Unit = {},
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit = {},
     onClaudeLimitReset: () -> Unit = {},
+    /** The account's "…" menu opened (a hover card pins). */
+    onAccountMenuOpen: () -> Unit = {},
 ) {
     // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
     if (auth?.signedOut == true) {
@@ -1768,139 +2040,184 @@ internal fun ComputerRuntimeUsageCard(
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         runtimeVersion = state.runtimeVersion,
         onClose = onClose,
-        updateCheck = auth.updateCheckCopy(state.runtimeVersion),
-    ) {
-        if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
-    }
-    ComputerRuntimeUsageCardBody(state, timeContext, onRefresh, onUseLimitReset, auth, onSignIn, onSignOut, onClaudeLimitReset)
+        auth = auth,
+        usageShowsAccount = state.showsAccount,
+        authOnly = false,
+    )
+    ComputerRuntimeUsageSurfaceContent(
+        state = state,
+        timeContext = timeContext,
+        inset = 16.dp,
+        showsUsage = true,
+        auth = auth,
+        onRefresh = onRefresh,
+        onUseLimitReset = onUseLimitReset,
+        onClaudeLimitReset = onClaudeLimitReset,
+        onSignIn = onSignIn,
+        onSignOut = onSignOut,
+        onSignOutProvider = onSignOutProvider,
+        onAccountMenuOpen = onAccountMenuOpen,
+    )
 }
 
+/**
+ * Web `Surface` under its head: with usage, the usage block (its own account's menu and actions in
+ * it), the actions that have no account to sit under, what the last refresh or reset did, and who
+ * may see it; without (signed out), the sign-in alone. [head] goes first (a sheet's lines under its title).
+ */
 @Composable
-private fun ComputerRuntimeUsageCardBody(
+private fun ComputerRuntimeUsageSurfaceContent(
     state: ComputerRuntimeUsageSheetState,
     timeContext: RaftTimeContext?,
+    inset: Dp,
+    showsUsage: Boolean,
+    auth: ComputerRuntimeAuthCardState?,
     onRefresh: () -> Unit,
     onUseLimitReset: () -> Unit,
-    auth: ComputerRuntimeAuthCardState?,
+    onClaudeLimitReset: () -> Unit,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
-    onClaudeLimitReset: () -> Unit = {},
+    onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
+    onAccountMenuOpen: () -> Unit = {},
+    head: @Composable () -> Unit = {},
 ) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    val load = state.load
-    when {
-        load == null && state.loading ->
-            RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_reading),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
-                style = typography.callout,
-                color = colors.foregroundMuted,
-            )
-        load is RuntimeAccountUsageLoad.Failed ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Box(Modifier.padding(top = 2.dp)) {
-                    CompositionLocalProvider(LocalRaftContentColor provides colors.warningStrong) {
-                        RaftComputersIcon(RaftLucideIconName.TriangleAlert)
-                    }
-                }
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_read_failed),
-                    style = typography.callout,
-                    color = colors.warningStrong,
-                )
-            }
-        load is RuntimeAccountUsageLoad.Loaded && load.read is RuntimeAccountUsageRead.Available -> {
-            val read = load.read as RuntimeAccountUsageRead.Available
-            // A stale snapshot sits on the sunken surface under an orange-soft notice.
-            Column(Modifier.fillMaxWidth().then(if (read.stale) Modifier.background(colors.fillMuted) else Modifier)) {
-                if (read.stale) {
-                    RaftText(
-                        stringResource(Res.string.settings_computers_runtime_usage_stale),
-                        modifier = Modifier.fillMaxWidth().background(colors.warningSoft).padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = typography.caption.copy(fontWeight = FontWeight.Bold),
-                        color = colors.foreground,
-                    )
-                    RaftSeparator()
-                }
-                read.snapshot.accounts.forEachIndexed { index, account ->
-                    if (index > 0) RaftSeparator()
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        ComputerRuntimeUsageAccountBlock(account, timeContext)
-                    }
-                }
-                // `px-4 py-2 text-caption text-foreground-hint`: when the snapshot was taken.
-                RaftSeparator()
-                val updated =
-                    read.snapshot.collectedAt
-                        ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    style = typography.caption,
-                    color = colors.foregroundHint,
-                )
-            }
-        }
-        else ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_no_snapshot),
-                    style = typography.callout.copy(fontWeight = FontWeight.Bold),
-                    color = colors.foreground,
-                )
-                RaftText(
-                    stringResource(Res.string.settings_computers_runtime_usage_no_snapshot_description),
-                    style = typography.footnote,
-                    color = colors.foregroundMuted,
-                )
-            }
+    head()
+    if (!showsUsage) {
+        ComputerRuntimeAuthOnlyBody(auth, inset, onSignIn, onSignOut, onSignOutProvider)
+        return
     }
-    RaftSeparator()
-    // `flex items-center justify-between gap-3 border-t border-line-hairline px-4 py-2.5`
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RaftText(
-            computerRuntimeUsageRefreshStatusText(state),
-            modifier = Modifier.weight(1f),
-            style = typography.caption,
-            color = colors.foregroundHint,
+    val usageShowsAccount = state.showsAccount
+    // Signed in with usage drawn: Sign out lives in the account's menu, not as a button on the card.
+    val signOutInMenu = auth?.signOutInMenu(usageShowsAccount) == true
+    val authAction = if (auth != null && !signOutInMenu) auth.action() else null
+    // The provider wants the Computer's own account signed in again: its chip says so, Sign in under it does it.
+    val ownReauth = state.available?.snapshot?.accounts?.any { it.isDefaultAccount && it.health == RuntimeAccountUsageHealth.ReauthRequired } == true
+    val reauthSignIn = ownReauth && auth?.canSignInHere == true
+    val hasAccountActions = reauthSignIn || state.limitReset != null || state.claudeLimitReset != null
+    val accountActions: @Composable () -> Unit = {
+        ComputerRuntimeUsageAccountActions(
+            signIn = if (reauthSignIn && auth != null) ({ ComputerRuntimeSignInButton(auth, onSignIn) }) else null,
+            limitReset = state.limitReset,
+            onUseLimitReset = onUseLimitReset,
+            claudeLimitReset = state.claudeLimitReset,
+            onClaudeLimitReset = onClaudeLimitReset,
         )
-        RaftButton(
-            text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
-            onClick = onRefresh,
-            variant = RaftButtonVariant.Default,
-            size = RaftButtonSize.Md,
-            enabled = state.cooldownLeftMillis <= 0L,
-            loading = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting,
-            leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
-        )
-        state.limitReset?.let { offer -> ComputerRuntimeLimitResetButton(offer, onUseLimitReset) }
     }
-    // Claude limit resets: on their own row under Refresh (a phone-wide card has no room beside it).
-    state.claudeLimitReset?.let { offer ->
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
+    ComputerRuntimeUsageContents(
+        state = state,
+        timeContext = timeContext,
+        inset = inset,
+        accountMenu = if (signOutInMenu) ({ ComputerRuntimeAccountMenu(onSignOut, onAccountMenuOpen) }) else null,
+        accountActions = if (usageShowsAccount && hasAccountActions) accountActions else null,
+        footerAction = { ComputerRuntimeUsageRefreshButton(state, onRefresh) },
+    )
+    // No own account drawn (nothing read yet): the limit and sign-in actions under the usage.
+    val loose = !usageShowsAccount && hasAccountActions
+    if (loose || (authAction != null && auth != null)) {
+        RaftSeparator()
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 10.dp).testTag(COMPUTER_RUNTIME_USAGE_ACTIONS_TAG),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ComputerRuntimeClaudeLimitResetButton(offer, onClaudeLimitReset)
+            if (loose) accountActions()
+            if (authAction != null && auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
         }
     }
-    // Web: the quiet sign-in action in the card's action row (here under it: a phone-wide card).
-    if (auth?.hasActions == true) {
-        Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) {
-            ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
+    computerRuntimeUsageStatusText(state)?.let { text ->
+        RaftText(
+            text,
+            modifier = Modifier.fillMaxWidth().padding(start = inset, end = inset, bottom = 4.dp),
+            style = RaftTheme.typography.caption,
+            color = RaftTheme.colors.foregroundHint,
+        )
+    }
+    ComputerRuntimeUsagePrivateLine(inset)
+}
+
+/**
+ * Under the Computer's own account (web `accountActions`, slock #15482, #15787): Sign in when the
+ * provider wants it signed in again, and the limit resets. A used-up account gets the reset as the
+ * card's main action; on credits past a full window a callout says the reset stops it spending them.
+ */
+@Composable
+private fun ComputerRuntimeUsageAccountActions(
+    signIn: (@Composable () -> Unit)?,
+    limitReset: ComputerRuntimeLimitResetOffer?,
+    onUseLimitReset: () -> Unit,
+    claudeLimitReset: ComputerRuntimeClaudeLimitResetOffer?,
+    onClaudeLimitReset: () -> Unit,
+) {
+    val limitPrimary = limitReset?.primary == true || claudeLimitReset?.primary == true
+    val limitButtons: @Composable () -> Unit = {
+        limitReset?.let { ComputerRuntimeLimitResetButton(it, onUseLimitReset) }
+        claudeLimitReset?.let { ComputerRuntimeClaudeLimitResetButton(it, onClaudeLimitReset) }
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        signIn?.invoke()
+        if (limitReset != null || claudeLimitReset != null) {
+            if (limitPrimary && limitReset?.onCredits == true) {
+                // Raft DS Banner: only for what the "used up" chip can't say (it is spending credits).
+                RaftBanner(
+                    description = stringResource(Res.string.settings_computers_runtime_usage_limit_reset_callout_on_credits),
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.testTag(COMPUTER_RUNTIME_LIMIT_CALLOUT_TAG),
+                    action = { limitButtons() },
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { limitButtons() }
+            }
         }
     }
+}
+
+/** Web `accountMenu`: the Computer's own account's "…" with Sign out. */
+@Composable
+private fun ComputerRuntimeAccountMenu(onSignOut: () -> Unit, onOpen: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val label = stringResource(Res.string.settings_computers_runtime_usage_account_menu)
+    Box {
+        RaftIconButton(
+            onClick = {
+                onOpen()
+                open = true
+            },
+            tooltip = label,
+            modifier = Modifier.testTag(COMPUTER_RUNTIME_ACCOUNT_MENU_TAG),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Md,
+        ) {
+            RaftComputersIcon(RaftLucideIconName.Ellipsis)
+        }
+        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, alignEnd = true) {
+            RaftMenuItem(
+                text = stringResource(Res.string.settings_computers_runtime_auth_sign_out_action),
+                modifier = Modifier.testTag(COMPUTER_RUNTIME_AUTH_SIGN_OUT_TAG),
+                leadingIcon = { RaftComputersIcon(RaftLucideIconName.LogOut) },
+                onClick = {
+                    open = false
+                    onSignOut()
+                },
+            )
+        }
+    }
+}
+
+/** Web `refreshButton`: a ghost Refresh beside "Updated …", the pixel spinner while a read is awaited. */
+@Composable
+private fun ComputerRuntimeUsageRefreshButton(state: ComputerRuntimeUsageSheetState, onRefresh: () -> Unit) {
+    val waiting = state.refresh == ComputerRuntimeUsageRefreshStatus.Requesting || state.refresh == ComputerRuntimeUsageRefreshStatus.Requested
+    RaftButton(
+        text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
+        onClick = onRefresh,
+        modifier = Modifier.testTag(COMPUTER_RUNTIME_USAGE_REFRESH_TAG),
+        variant = RaftButtonVariant.Ghost,
+        size = RaftButtonSize.Md,
+        enabled = state.refresh != ComputerRuntimeUsageRefreshStatus.Requesting && state.cooldownLeftMillis <= 0L,
+        leadingIcon = {
+            if (waiting) RaftSpinner(size = RaftSpinnerSize.Xs) else RaftComputersIcon(RaftLucideIconName.RefreshCw)
+        },
+    )
 }
 
 internal const val COMPUTER_RUNTIME_LIMIT_RESETS_LEFT_TAG = "runtime-account-limit-resets"

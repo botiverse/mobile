@@ -45,10 +45,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * xxchan (iOS, Computers page -> "Claude Code usage"): every window read "Used up · resets unknown
- * time" and the footer "Account-wide · updated unknown time", because the standalone Computers page
+ * time" and the footer "Account-wide · updated unknown time" (now "Updated …", slock #15787), because the standalone Computers page
  * provided no [LocalRaftTimeContextProvider] and the relative-time helper answers Unknown without
  * one. This renders the sheet host in a page scope (fixed clock and zone) and checks the web's
- * labels (`machine.runtimeUsage.windowUsedUp` / `.metadata` / `.version` with `formatRelativeTime`).
+ * labels (`machine.runtimeUsage.windowUsedUp` / `.updated` with `formatRelativeTime`).
  *
  * artin 11-05 (the same "未知时间" on an agent profile opened from a DM): fixed once for every page
  * by BasePager's [LocalRaftPageBaseTimeContextProvider]; [pageBaseScopeAloneResolvesTimes] renders
@@ -93,8 +93,9 @@ class ComputerRuntimeUsageTimeContextUiTest {
         // 2026-10-22T05:10Z: three hours from now.
         assertShown("62% used · resets in 3 hours")
         // collectedAt 02:04Z, six minutes before now.
-        assertShown("Account-wide · updated 6 minutes ago")
-        assertShown("Version 2.1.304 (Claude Code)")
+        assertShown("Updated 6 minutes ago")
+        // The version line is the CLI's own version in mono, no "Version" word (web `RuntimeVersionLine`, slock #15482).
+        assertShown("2.1.304 (Claude Code)")
         onAllNodesWithText("unknown time", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
@@ -103,8 +104,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null)
         assertShown("已用完 · 26 小时后重置")
-        assertShown("整个账户 · 6 分钟前更新")
-        assertShown("版本暂不可用")
+        assertShown("6 分钟前更新")
         assertShown("拥有 Computer 编辑权限或挂载这台 Computer 的人可见")
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
@@ -114,7 +114,7 @@ class ComputerRuntimeUsageTimeContextUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null, pageBaseOnly = true)
         assertShown("已用完 · 26 小时后重置")
-        assertShown("整个账户 · 6 分钟前更新")
+        assertShown("6 分钟前更新")
         onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
     }
 
