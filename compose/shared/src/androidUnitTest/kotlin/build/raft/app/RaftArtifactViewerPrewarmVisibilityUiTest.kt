@@ -5,6 +5,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -77,6 +79,20 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
         RaftArtifactViewerMemory.clear()
     }
 
+    /**
+     * With `mainClock.autoAdvance = false`, state writes from outside composition (test thread /
+     * coroutines) only reach the recomposer once global snapshot apply notifications are flushed.
+     */
+    private fun ComposeUiTest.advance(millis: Long) {
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeByFrame()
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeBy(millis)
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeByFrame()
+        waitForIdle()
+    }
+
     @Test
     fun hiddenActivityTokenRefreshDoesNotBuildPrewarmWebView() =
         runRobolectricComposeUiTest {
@@ -131,18 +147,15 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
             }
 
             // 1. Activity starts hidden behind a Thread: even past settle + token refresh, no WebView is created.
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-2") }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(0, prewarmedConfigs.size, "inactive Activity must not prewarm WebView on token refresh")
             assertFalse(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-2", null))
 
             // 2. Returning to Activity (active = true) prewarms once after the settle delay.
             runOnIdle { active = true }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(1, prewarmedConfigs.size, "active Activity prewarms once after settling")
             assertTrue(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-2", null))
 
@@ -153,10 +166,9 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                 keptWebView = false
                 RaftArtifactViewerMemory.clear()
             }
-            waitForIdle()
+            advance(16L)
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-3") }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(
                 1,
                 prewarmedConfigs.size,
@@ -166,8 +178,7 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
 
             // 4. Returning to Activity prewarms cleanly with the refreshed token.
             runOnIdle { active = true }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(2, prewarmedConfigs.size, "active Activity prewarms again once visible")
             assertTrue(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-3", null))
         }
@@ -216,14 +227,12 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
 
             // 1. Pager appeared, but lifecycle is CREATED (background) -> token refresh does nothing.
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-b") }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(0, prewarmedConfigs.size, "background lifecycle must block prewarm even when pager is appeared")
 
             // 2. App returns to foreground (RESUMED) while pager is appeared -> prewarms #1.
             runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(1, prewarmedConfigs.size)
 
             // 3. Another page covers this pager (DID_DISAPPEAR), app backgrounds (CREATED) and kept WebView expires,
@@ -234,17 +243,16 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                 keptWebView = false
                 RaftArtifactViewerMemory.clear()
             }
-            waitForIdle()
+            advance(16L)
             runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            advance(16L)
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-c") }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(1, prewarmedConfigs.size, "covered pager must block prewarm on foreground token refresh")
 
             // 4. Pager re-appears while foregrounded -> prewarms #2 with tok-c.
             runOnIdle { pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject()) }
-            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
-            waitForIdle()
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             assertEquals(2, prewarmedConfigs.size)
         }
 
