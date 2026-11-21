@@ -236,7 +236,10 @@ fun TabPager(
     // Full-page back swipe (iOS): on the first page a back-direction drag is left to the host's
     // interactive pop instead of rubber-banding the pager (which made the Compose touch recogniser
     // win against the pop); forward drags still turn the page with the pager's own snap fling. Past
-    // the first page the pager keeps every drag and tells the host so. Inert on Android.
+    // the first page the pager keeps back drags and tells the host so, except those that start in
+    // the leading edge strip: from there a back swipe pops the page on every tab, as a native
+    // UINavigationController's edge pop does (#proj-mobile:#160: from an agent's Raw Log it turned
+    // the outer tab instead of going back). Inert on Android.
     // Rows with their own horizontal swipe (Activity) register with this host: over them the pager's
     // drag (and the iOS first-page forward drag below) waits until the row claimed or released, since
     // the row decides later than the pager's 1x slop (iOS 1.15.5: the list slid, the row never opened).
@@ -246,6 +249,7 @@ fun TabPager(
         flingBehavior = PagerDefaults.flingBehavior(pagerState),
         enabled = gesturePolicy.swipeEnabled,
         nestedDrags = nestedDrags,
+        leadingEdgePops = true,
     )
     Column(modifier = modifier.keepLastSizeWhileCollapsed(lastSize)) {
         tabBar()
