@@ -142,6 +142,7 @@ internal enum class MembersAgentDetailTab(
 ) {
     Profile("Profile", RaftLucideIconName.Bot, privateSurface = false),
     Activity("Activity", RaftLucideIconName.Activity),
+    Usage("Usage", RaftLucideIconName.ChartColumn),
     // raft-ui `MessageIcon` (web AGENT_TABS chat).
     Chat("Chat", RaftLucideIconName.Message),
     Reminders("Reminders", RaftLucideIconName.AlarmClock),
@@ -154,6 +155,7 @@ internal fun MembersAgentDetailTab.localizedLabel(): String =
     when (this) {
         MembersAgentDetailTab.Profile -> stringResource(Res.string.member_label_profile)
         MembersAgentDetailTab.Activity -> stringResource(Res.string.member_tab_activity)
+        MembersAgentDetailTab.Usage -> stringResource(Res.string.member_tab_usage)
         MembersAgentDetailTab.Chat -> stringResource(Res.string.member_tab_chat)
         MembersAgentDetailTab.Reminders -> stringResource(Res.string.member_tab_reminders)
         MembersAgentDetailTab.Workspace -> stringResource(Res.string.member_tab_workspace)
@@ -684,10 +686,19 @@ internal fun membersDirectMessageEligibility(
     return MembersDirectMessageEligibility.Peer
 }
 
-internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
+internal fun membersVisibleAgentTabs(
+    canViewPrivateSurfaces: Boolean,
+    deleted: Boolean,
+    agentUsageEnabled: Boolean = false,
+    managedByApp: Boolean = false,
+): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
             tab == MembersAgentDetailTab.Profile -> true
+            // Web AgentDetailPanel: Usage is behind agent_usage_v0, private (same rule as Activity),
+            // and never shown for App Bots or archived/deleted agents.
+            tab == MembersAgentDetailTab.Usage ->
+                agentUsageEnabled && canViewPrivateSurfaces && !deleted && !managedByApp
             else -> canViewPrivateSurfaces
         }
     }
@@ -695,12 +706,19 @@ internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: B
 internal fun membersAgentDetailTabsForAccess(
     accessMode: MemberDetailAccessMode,
     canViewPrivateSurfaces: Boolean,
-    deleted: Boolean
+    deleted: Boolean,
+    agentUsageEnabled: Boolean = false,
+    managedByApp: Boolean = false,
 ): List<MembersAgentDetailTab> =
     if (!accessMode.allowsPrivateAgentSurfaces) {
         listOf(MembersAgentDetailTab.Profile)
     } else {
-        membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)
+        membersVisibleAgentTabs(
+            canViewPrivateSurfaces = canViewPrivateSurfaces,
+            deleted = deleted,
+            agentUsageEnabled = agentUsageEnabled,
+            managedByApp = managedByApp,
+        )
     }
 
 /**
