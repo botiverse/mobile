@@ -137,7 +137,7 @@ interface SettingsServerActionRepository {
             ServerPushMode.All -> setServerMute(false)
             ServerPushMode.None -> setServerMute(true)
             ServerPushMode.Mentions ->
-                DataResult.Error(ScreenError("settings_server_mentions_only_unavailable", retryable = false))
+                DataResult.Error(ScreenError("settings_server_mentions_only_unavailable", retryable = false, traceId = null))
         }
 }
 
@@ -184,7 +184,7 @@ interface SettingsServerManagementRepository {
      * description link-visibility warnings.
      */
     suspend fun updateAccountDescription(description: String?): DataResult<AccountDescriptionUpdateResult> =
-        DataResult.Error(ScreenError("account_description_update_unsupported", retryable = false))
+        DataResult.Error(ScreenError("account_description_update_unsupported", retryable = false, traceId = null))
 }
 
 interface ConversationRepository {
@@ -192,7 +192,7 @@ interface ConversationRepository {
         channelId: ChannelId,
         priority: DataRequestPriority = DataRequestPriority.Foreground,
     ): DataResult<ConversationSummary> =
-        DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true))
+        DataResult.Error(ScreenError(code = "conversation_detail_unavailable", retryable = true, traceId = null))
 
     suspend fun getLatestChannelMessage(
         channelId: ChannelId,
@@ -322,14 +322,14 @@ interface ConversationRepository {
      * Unfollow is [unfollowThread], keyed by the conversation id like a thread's.
      */
     suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> =
-        DataResult.Error(ScreenError(code = "task_conversation_follow_unsupported", retryable = false))
+        DataResult.Error(ScreenError(code = "task_conversation_follow_unsupported", retryable = false, traceId = null))
 
     /**
      * Task v2: the task and parent channel of a task conversation (`GET /channels/:id`, a
      * `type: "task"` row). [DataResult.Empty] when the channel is not a task conversation.
      */
     suspend fun loadTaskConversationRef(conversationChannelId: ChannelId): DataResult<TaskConversationChannelRef> =
-        DataResult.Error(ScreenError(code = "task_conversation_ref_unsupported", retryable = false))
+        DataResult.Error(ScreenError(code = "task_conversation_ref_unsupported", retryable = false, traceId = null))
 
     /**
      * Task v2: a task conversation's header title (`#channel:#7 title`), read after its write
@@ -342,7 +342,7 @@ interface ConversationRepository {
     ): DataResult<ThreadActionResult>
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun getAttachmentUploadCapabilities(): DataResult<AttachmentUploadCapabilities> =
-        DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true))
+        DataResult.Error(ScreenError(code = "attachment_upload_capabilities_unavailable", retryable = true, traceId = null))
 
     /**
      * Typed direct-session attachment operations.  These defaults deliberately fail closed so
@@ -353,21 +353,21 @@ interface ConversationRepository {
     suspend fun createAttachmentUploadSession(
         request: AttachmentUploadSessionCreateRequest
     ): DataResult<AttachmentUploadSessionCreateResult> =
-        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
 
     suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): DataResult<Unit> =
-        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false, traceId = null))
 
     suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): DataResult<Unit> =
-        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_put_unavailable", retryable = false, traceId = null))
 
     /**
      * Resolve a platform file's authoritative length before a direct-session create request.
@@ -377,22 +377,22 @@ interface ConversationRepository {
     suspend fun prepareAttachmentUploadFile(
         file: PlatformFile,
     ): DataResult<PlatformFile> =
-        DataResult.Error(ScreenError("attachment_upload_file_prepare_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_file_prepare_unavailable", retryable = false, traceId = null))
 
     suspend fun completeAttachmentUploadSession(
         uploadId: String
     ): DataResult<AttachmentUploadSessionCompleteResult> =
-        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
 
     suspend fun cancelAttachmentUploadSession(
         uploadId: String
     ): DataResult<AttachmentUploadSessionView> =
-        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
 
     suspend fun statusAttachmentUploadSession(
         uploadId: String
     ): DataResult<AttachmentUploadSessionView> =
-        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false))
+        DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
 
     suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
     suspend fun getAttachmentOpenTarget(
@@ -415,7 +415,7 @@ interface ConversationRepository {
         action: String,
         resolutionIds: List<String>
     ): DataResult<List<PendingMentionActionExecuteResult>> =
-        DataResult.Error(ScreenError(code = "mention_actions_unavailable", retryable = false))
+        DataResult.Error(ScreenError(code = "mention_actions_unavailable", retryable = false, traceId = null))
 }
 
 interface MemberRepository {
@@ -566,7 +566,7 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: AddChannelMembersBatchRequest
     ): DataResult<AddChannelMembersBatchResult> =
-        DataResult.Error(ScreenError(code = "channel_member_batch_unsupported"))
+        DataResult.Error(ScreenError(code = "channel_member_batch_unsupported", traceId = null))
     suspend fun removeChannelMember(
         priority: DataRequestPriority,
         request: RemoveChannelMemberRequest
@@ -581,7 +581,7 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: ChangeChannelMemberRoleRequest
     ): DataResult<ChannelMemberRoleChangeResult> =
-        DataResult.Error(ScreenError(code = "channel_member_role_unsupported"))
+        DataResult.Error(ScreenError(code = "channel_member_role_unsupported", traceId = null))
 }
 
 interface ChannelRepository {
@@ -699,7 +699,7 @@ interface InboxRepository {
      * repository without it answers an error and the store re-reads the list instead.
      */
     suspend fun loadRows(serverId: ServerId, rowIds: List<String>): DataResult<InboxSnapshot> =
-        DataResult.Error(ScreenError(code = "inbox_rows_unsupported"))
+        DataResult.Error(ScreenError(code = "inbox_rows_unsupported", traceId = null))
 }
 
 interface SavedRepository {

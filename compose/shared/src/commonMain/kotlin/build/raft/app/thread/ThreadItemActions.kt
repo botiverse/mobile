@@ -37,7 +37,7 @@ internal class ThreadItemActions(
 
     suspend fun saveMessage(messageId: String): DataResult<Unit> {
         if (messageId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false, traceId = null))
         }
         val response =
             try {
@@ -45,14 +45,14 @@ internal class ThreadItemActions(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_save_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_save_network", retryable = true, traceId = null))
         }
         return response.toUnitDataResult("thread_save_network")
     }
 
     suspend fun unsaveMessage(messageId: String): DataResult<Unit> {
         if (messageId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false, traceId = null))
         }
         val response =
             try {
@@ -60,7 +60,7 @@ internal class ThreadItemActions(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_unsave_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_unsave_network", retryable = true, traceId = null))
             }
         return response.toUnitDataResult("thread_unsave_network")
     }
@@ -69,10 +69,10 @@ internal class ThreadItemActions(
         val cleanMessageId = messageId.trim()
         val cleanEmoji = emoji.trim()
         if (cleanMessageId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false, traceId = null))
         }
         if (cleanEmoji.isBlank()) {
-            return DataResult.Error(ScreenError(code = "message_reaction_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "message_reaction_missing", retryable = false, traceId = null))
         }
         val response =
             try {
@@ -84,7 +84,7 @@ internal class ThreadItemActions(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_reaction_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_reaction_network", retryable = true, traceId = null))
             }
         return when (response) {
             is ThreadApiResult.Success -> DataResult.Content(response.data)
@@ -95,7 +95,7 @@ internal class ThreadItemActions(
     suspend fun loadAttachmentComments(attachmentId: String): DataResult<ThreadAttachmentCommentsPage> {
         val cleanAttachmentId = attachmentId.trim()
         if (cleanAttachmentId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "attachment_id_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "attachment_id_missing", retryable = false, traceId = null))
         }
         val response =
             try {
@@ -103,7 +103,7 @@ internal class ThreadItemActions(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_attachment_comments_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_attachment_comments_network", retryable = true, traceId = null))
             }
         return when (response) {
             is ThreadApiResult.Success -> DataResult.Content(response.data)
@@ -119,7 +119,7 @@ internal class ThreadItemActions(
         val cleanAttachmentId = attachmentId.trim()
         val cleanBody = body.trim()
         if (cleanAttachmentId.isBlank() || cleanBody.isBlank()) {
-            return DataResult.Error(ScreenError(code = "attachment_comment_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "attachment_comment_missing", retryable = false, traceId = null))
         }
         val response =
             try {
@@ -127,7 +127,7 @@ internal class ThreadItemActions(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_attachment_comment_send_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_attachment_comment_send_network", retryable = true, traceId = null))
             }
         return when (response) {
             is ThreadApiResult.Success -> DataResult.Content(Unit)
@@ -138,26 +138,26 @@ internal class ThreadItemActions(
     suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> {
         val repository =
             conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true))
+                ?: return DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true, traceId = null))
         return try {
             repository.followThread(parentMessageId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true))
+            DataResult.Error(ScreenError(code = "thread_follow_network", retryable = true, traceId = null))
         }
     }
 
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
         val repository =
             conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true))
+                ?: return DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true, traceId = null))
         return try {
             repository.unfollowThread(threadChannelId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true))
+            DataResult.Error(ScreenError(code = "thread_unfollow_network", retryable = true, traceId = null))
         }
     }
 
@@ -165,13 +165,13 @@ internal class ThreadItemActions(
     suspend fun followTaskConversation(conversationChannelId: ChannelId): DataResult<ThreadActionResult> {
         val repository =
             conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true))
+                ?: return DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true, traceId = null))
         return try {
             repository.followTaskConversation(conversationChannelId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true))
+            DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true, traceId = null))
         }
     }
 
@@ -194,18 +194,18 @@ internal class ThreadItemActions(
      */
     suspend fun markThreadChannelUnread(threadChannelId: String): DataResult<ReadReceiptResult> {
         if (threadChannelId.isBlank()) {
-            return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+            return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
         }
         val coordinator = readReceiptCoordinator
         val ownerFactory = readReceiptOwnerFactory
         if (coordinator == null || ownerFactory == null) {
-            return DataResult.Error(ScreenError(code = "thread_mark_unread_unavailable", retryable = false))
+            return DataResult.Error(ScreenError(code = "thread_mark_unread_unavailable", retryable = false, traceId = null))
         }
         val session = readSession() ?: return authSessionRequiredResult()
         val serverId =
             selectedServerStore?.selectedServerId?.value
                 ?: session.currentServerId
-                ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
+                ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false, traceId = null))
         return coordinator.markUnread(ownerFactory(serverId, session.user.id), ChannelId(threadChannelId))
     }
 }

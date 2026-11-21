@@ -122,22 +122,38 @@ class RaftErrorTraceIdTest {
         assertEquals(traceId, failed.errorTraceId)
         assertEquals(traceId, failed.toThreadTimelineRenderConfig().errorTraceId)
 
+        val noResponseFailure = failed.asRefreshFailed("network_error", traceId = null)
+        assertNull(noResponseFailure.errorTraceId, "a subsequent no-response failure must clear any earlier trace id")
+        assertNull(noResponseFailure.toThreadTimelineRenderConfig().errorTraceId)
+
         val blocked = base.asRefreshNoPermission(base, code = "forbidden", serverMessage = "denied", traceId = traceId)
         assertEquals(traceId, blocked.errorTraceId)
         assertEquals(traceId, blocked.toThreadTimelineRenderConfig().errorTraceId)
+
+        val noTraceBlocked = blocked.asRefreshNoPermission(base, code = "forbidden", serverMessage = "denied", traceId = null)
+        assertNull(noTraceBlocked.errorTraceId, "a subsequent permission failure without a trace id must clear the old one")
+
+        val recovered = failed.withThreadContentProjectionFrom(RaftThreadScreenPayload(instanceId = "t-1", status = "content"))
+        assertNull(recovered.errorTraceId, "successful content projection must clear any earlier trace id")
 
         val cleared = blocked.asRefreshEmpty(base)
         assertNull(cleared.errorTraceId)
 
         assertEquals(traceId, SharedTasksEvent.OperationFailed(code = "tasks_status_failed", traceId = traceId).traceId)
         assertEquals(traceId, RaftHomeInlineError(title = "t", detail = "d", code = "http_500", traceId = traceId).traceId)
-        assertEquals(true, "http_500".isHttpStatusDownloadErrorKind())
-        assertEquals(true, "http_404".isHttpStatusDownloadErrorKind())
-        assertEquals(true, "http_status".isHttpStatusDownloadErrorKind())
-        assertEquals(false, "http_0".isHttpStatusDownloadErrorKind())
-        assertEquals(false, "http_401".isHttpStatusDownloadErrorKind())
-        assertEquals(false, "http_200".isHttpStatusDownloadErrorKind())
-        assertEquals(false, "storage_failed".isHttpStatusDownloadErrorKind())
-        assertEquals(false, "".isHttpStatusDownloadErrorKind())
+
+        try {
+            RaftFailedRequestTraceIds.recordResponse(503, headers(traceId))
+            assertNull(
+                ScreenError(code = "message_id_missing", retryable = false, traceId = null).traceId,
+                "explicit null traceId on local/unanswered errors must never borrow a recent 503 trace id"
+            )
+            assertNull(
+                HomeNetworkResponse(code = 0, bodyText = null, responseHeaders = headers(traceId)).traceId,
+                "unanswered status=0 response must never carry a trace id"
+            )
+        } finally {
+            RaftFailedRequestTraceIds.clear()
+        }
     }
 }

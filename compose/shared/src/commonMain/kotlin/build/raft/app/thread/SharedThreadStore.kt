@@ -4007,9 +4007,9 @@ internal class SharedThreadStore(
                 is DataResult.Empty ->
                     latest.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle")
                 is DataResult.Error ->
-                    latest.copy(olderMessagesStatus = "error", errorCode = result.error.code)
+                    latest.copy(olderMessagesStatus = "error", errorCode = result.error.code, errorTraceId = result.error.traceId)
                 is DataResult.NoPermission ->
-                    latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
+                    latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
             }
         reducePayloadPatch { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
@@ -4287,9 +4287,9 @@ internal class SharedThreadStore(
                         is DataResult.Empty ->
                             currentPayload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
                         is DataResult.Error ->
-                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code)
+                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code, errorTraceId = result.error.traceId)
                         is DataResult.NoPermission ->
-                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
+                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
                     }
                 var appliedToCurrentRoute = false
                 reducePayloadPatch(cachePayload = true) { latestPayload ->
@@ -4917,6 +4917,7 @@ internal class SharedThreadStore(
                                 latestPayload.copy(
                                     newerMessagesStatus = "error",
                                     errorCode = catchUpResult.error.code,
+                                    errorTraceId = catchUpResult.error.traceId,
                                 )
                             }
                         }
@@ -4930,6 +4931,7 @@ internal class SharedThreadStore(
                                 latestPayload.copy(
                                     newerMessagesStatus = "error",
                                     errorCode = catchUpResult.blocker.code,
+                                    errorTraceId = catchUpResult.blocker.traceId,
                                 )
                             }
                         }

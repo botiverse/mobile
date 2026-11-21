@@ -36,7 +36,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.Channel
@@ -161,7 +160,7 @@ internal suspend fun openSharedThreadAttachment(
             ThreadAttachmentOpenResult(
                 status = status,
                 errorKind = nativeErrorKind,
-                traceId = if (nativeErrorKind.isHttpStatusDownloadErrorKind()) RaftFailedRequestTraceIds.recent() else null
+                traceId = null
             )
         }
         is ThreadApiResult.Failure ->
@@ -193,7 +192,6 @@ internal suspend fun saveSharedThreadAttachment(
                 )
             val nativeMessage = nativeResult?.optString("message").orEmpty()
             val nativeErrorKind = nativeResult?.optString("errorKind").orEmpty()
-            val httpTraceId = if (nativeErrorKind.isHttpStatusDownloadErrorKind()) RaftFailedRequestTraceIds.recent() else null
             when (val status = nativeResult?.optString("status").orEmpty()) {
                 "saved" ->
                     ThreadAttachmentOpenResult(status = "saved")
@@ -201,20 +199,14 @@ internal suspend fun saveSharedThreadAttachment(
                 "storage_failed" ->
                     ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind)
                 "download_failed" ->
-                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind, traceId = httpTraceId)
+                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
                 else ->
-                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind, traceId = httpTraceId)
+                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
             }
         }
         is ThreadApiResult.Failure ->
             ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_failed code=${response.code}", traceId = response.traceId)
     }
-}
-
-internal fun String.isHttpStatusDownloadErrorKind(): Boolean {
-    if (this == "http_status") return true
-    val code = removePrefix("http_").takeIf { it != this }?.toIntOrNull() ?: return false
-    return code > 0 && code !in 200..299 && code != 401
 }
 
 internal fun raftThreadAttachmentSavedMessage(
