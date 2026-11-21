@@ -1,5 +1,5 @@
 ---
-type: new
+type: added
 area: members
 platforms:
   - android
