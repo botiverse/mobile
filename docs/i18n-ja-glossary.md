@@ -86,6 +86,7 @@ new product concept gets a Japanese rendering.
 | Licenses | ライセンス | |
 | Onboarding | オンボーディング | |
 | Runtime | ランタイム | Agent runtime config |
+| Reasoning (an agent's reasoning effort) | 推論の強度 | The profile's row and the Members agent rows (「推論の強度：High」); copied from the web ja catalog (`agent.runtimeConfig.reasoning`, `members.page.reasoningEffortDescription`, botiverse/slock #15691) |
 | Skill | スキル | |
 | Knowledge | ナレッジ | Agent manual/knowledge base |
 | Reminder | リマインダー | |

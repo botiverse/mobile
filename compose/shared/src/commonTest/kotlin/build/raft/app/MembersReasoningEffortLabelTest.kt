@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.model.AgentReasoningSetting
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,8 +25,70 @@ class MembersReasoningEffortLabelTest {
 
     @Test
     fun unknownEffortIdHasNoCatalogLabel() {
-        // The profile row then falls back to the prettified raw id.
+        // The display label then shows the raw id as-is.
         assertNull(membersReasoningEffortLabel("turbo"))
         assertNull(membersReasoningEffortLabel(""))
+    }
+
+    /**
+     * Web `reasoningEffortDisplayLabel` (botiverse/slock #15691, the cases of
+     * `membersAgentReasoningColumn.behavior.test.tsx`): the one value the profile's Reasoning row
+     * and the Members list show.
+     */
+    @Test
+    fun displayLabelReadsAsTheWebHelper() {
+        val cases: List<Triple<String, String?, StringDesc?>> =
+            listOf(
+                // A runtime's own level (Kimi Code's) reads as-is, not as Default for a set level.
+                Triple("kimi-sdk", "thinking-max", "thinking-max".desc()),
+                Triple("claude", "toString", "toString".desc()),
+                Triple("codex", "xhigh", Res.string.agent_create_reasoning_extra_high.desc()),
+                Triple("pi", "off", Res.string.agent_create_reasoning_off.desc()),
+                // No level set: Default, Kimi Code included.
+                Triple("codex", null, Res.string.member_label_default.desc()),
+                Triple("kimi-sdk", null, Res.string.member_label_default.desc()),
+                Triple("claude", " ", Res.string.member_label_default.desc()),
+                // A runtime that takes no reasoning effort: no value (no profile row, nothing in the list).
+                Triple("gemini", "high", null),
+                Triple("external", null, null),
+            )
+        for ((runtime, effort, expected) in cases) {
+            assertEquals(expected, membersReasoningEffortDisplayLabel(runtime, effort), "runtime=$runtime effort=$effort")
+        }
+    }
+
+    /** Web `agentReasoningEffortFact` and the row's description, "Reasoning: High". */
+    @Test
+    fun membersAgentRowShowsTheProfilesLevel() {
+        fun member(reasoning: AgentReasoningSetting?, kind: MemberKind = MemberKind.Agent, appInstallId: String? = null) =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Ada",
+                handle = "ada",
+                kind = kind,
+                agentReasoning = reasoning,
+                managedByAppInstallId = appInstallId,
+            )
+
+        assertEquals(
+            Res.string.agent_create_reasoning_high.desc(),
+            member(AgentReasoningSetting("codex", "high")).membersAgentReasoningEffortLabel(),
+        )
+        assertEquals(
+            Res.string.members_agent_reasoning_effort.format(Res.string.member_label_default.desc()),
+            member(AgentReasoningSetting("claude", null)).membersAgentReasoningEffortLine(),
+        )
+        // None for an App's identity, a runtime that takes no effort, a row without the facts, a person.
+        val none =
+            listOf(
+                member(AgentReasoningSetting("claude", "high"), appInstallId = "install-1"),
+                member(AgentReasoningSetting("gemini", "high")),
+                member(null),
+                member(AgentReasoningSetting("claude", "high"), kind = MemberKind.Human),
+            )
+        for (profile in none) {
+            assertNull(profile.membersAgentReasoningEffortLabel(), profile.toString())
+            assertNull(profile.membersAgentReasoningEffortLine(), profile.toString())
+        }
     }
 }
