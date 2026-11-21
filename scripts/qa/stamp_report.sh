@@ -99,10 +99,12 @@ NODE
       VERSION_CODE="$VERSION_CODE" PACKAGE_ID="$PACKAGE_ID" JOB_REF="$JOB_REF" \
       node -e 'const fs=require("fs"); const e=process.env; const code=e.VERSION_CODE===""?null:Number(e.VERSION_CODE); if(code!==null&&!Number.isInteger(code))process.exit(2); fs.writeFileSync(process.argv[1],JSON.stringify({ci_job_ref:e.JOB_REF,source_commit:e.SOURCE_COMMIT,apk_sha256:e.ARTIFACT_SHA,app_version:e.APP_VERSION,version_code:code,package_id:e.PACKAGE_ID}));' "$CLAIM_PAYLOAD" || exit 1
   fi
+  # The spec keeps the claim's auth bootstrap subset, its run case and its case_id (a well-formed
+  # case id, else null): qa-acceptance.yml makes the login acceptance mandatory for login-email-password.
   if curl -sf -X POST "$BASE/claim" -H "$AUTH" -H 'content-type: application/json' \
     --data-binary @"$CLAIM_PAYLOAD" \
     -o "$CLAIM_RESPONSE"; then
-    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
+    node -e 'const fs=require("fs");const v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!v.claim_token)process.exit(2);fs.writeFileSync(process.argv[2],v.claim_token,{mode:0o600});const b=v.auth_bootstrap&&typeof v.auth_bootstrap==="object"?v.auth_bootstrap:{required:false};fs.writeFileSync(process.argv[3],JSON.stringify({...b,required:b.required===true,run_case_id:v.run_case_id,case_id:typeof v.case_id==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.case_id)?v.case_id:null},null,2),{mode:0o600})' "$CLAIM_RESPONSE" "$CLAIM_TOKEN_FILE" "$BOOTSTRAP_SPEC_FILE"
     rm -f "$CLAIM_RESPONSE" "$CLAIM_PAYLOAD"
     echo "stamp: claimed (commit=${SOURCE_COMMIT:-?} artifact=${ARTIFACT_SHA:0:12})"
     exit 0
@@ -146,10 +148,21 @@ validate_login_response() {
   ' "$1" "$2" >/dev/null 2>&1
 }
 
+# The claimed case login-email-password (#216 login acceptance, the claim spec's case_id) reports only its
+# verdict and reason code: neither legacy account report (the credential receipt after the claim, and its
+# refresh in report-evidence) carries the QA email or an account id for it. Every other case sends both.
+login_acceptance_case() {
+  node -e 'const v=require(process.argv[1]);process.exit(v.case_id==="login-email-password"?0:1)' "$BOOTSTRAP_SPEC_FILE" 2>/dev/null
+}
+
 if [ "$PHASE" = "credential-receipt" ]; then
   [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing" >&2; exit 1; }
   if node -e 'const v=require(process.argv[1]);process.exit(v.required===true?0:1)' "$BOOTSTRAP_SPEC_FILE"; then
     echo "stamp: bootstrap coordinate forbids executor credential receipt"
+    exit 0
+  fi
+  if login_acceptance_case; then
+    echo "stamp: the login acceptance case sends no executor credential receipt"
     exit 0
   fi
   [ -n "${QA_TEST_EMAIL:-}" ] || { echo "stamp: legacy credential email missing" >&2; exit 1; }
@@ -511,7 +524,9 @@ fi
 # identity authorities. If no scoped log exists, repeat the email-only receipt.
 if [ "$REPORT_EVIDENCE" = "true" ] && [ -n "${QA_TEST_EMAIL:-}" ]; then
   [ -s "$BOOTSTRAP_SPEC_FILE" ] || { echo "stamp: bootstrap spec missing for credential receipt" >&2; exit 1; }
-  if ! node -e 'const v=require(process.argv[1]);process.exit(v.required===true?0:1)' "$BOOTSTRAP_SPEC_FILE"; then
+  if login_acceptance_case; then
+    echo "stamp: the login acceptance case skips the executor credential receipt refresh"
+  elif ! node -e 'const v=require(process.argv[1]);process.exit(v.required===true?0:1)' "$BOOTSTRAP_SPEC_FILE"; then
     RECEIPT_LOG_ARGS=()
     [ -f "$EV/logcat.txt" ] && RECEIPT_LOG_ARGS=(--log "$EV/logcat.txt")
     if ! node "$SCRIPT_DIR/credential_receipt.mjs" --out "$CREDENTIAL_RECEIPT_FILE" "${RECEIPT_LOG_ARGS[@]}"; then
