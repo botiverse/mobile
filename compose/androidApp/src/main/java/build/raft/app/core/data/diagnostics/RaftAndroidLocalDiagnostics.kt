@@ -61,9 +61,11 @@ object RaftAndroidLocalDiagnostics {
         if (application != null) {
             RaftMemoryTelemetry.install(application) { previous ->
                 AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext, previous)
+                RaftAndroidBackgroundKillNoticeHost.evaluate(appContext, previous)
             }
         } else {
             AndroidHistoricalProcessExitDiagnostics.recordLatest(appContext)
+            RaftAndroidBackgroundKillNoticeHost.evaluate(appContext, emptyList())
         }
         RaftAppLog.d(
             Tag,

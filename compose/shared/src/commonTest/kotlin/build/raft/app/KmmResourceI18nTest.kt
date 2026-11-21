@@ -1191,6 +1191,23 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun backgroundKillNoticeStringResourcesAreGenerated() {
+        listOf(
+            Res.string.background_kill_notice_title,
+            Res.string.background_kill_notice_body_huawei,
+            Res.string.background_kill_notice_body_lenovo,
+            Res.string.background_kill_notice_body_vendor,
+            Res.string.background_kill_notice_body_app_details,
+            Res.string.background_kill_notice_action_open_settings,
+        ).forEach { resource ->
+            assertTrue(
+                resource.desc() is ResourceStringDesc,
+                "background kill notice strings must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun rawStringDescIsUsableForLiterals() {
         // Bonus: verify the common `String.desc()` extension (the literal helper)
         // also resolves, so the test file is itself a sanity check on the API

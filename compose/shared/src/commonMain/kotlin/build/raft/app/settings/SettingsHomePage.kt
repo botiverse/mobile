@@ -5137,6 +5137,7 @@ private fun RaftAppShellReadyContent(
                 onAppShellTabSelected(key)
             },
             networkStatus = hostNetworkStatus,
+            topNoticeBanner = rememberRaftBackgroundKillNoticeBannerSlot(hostNetworkStatus),
             showBottomTabs = showAppShellBottomTabs,
             // artin 2026-10-10 (Hands 79db9fe6): the cached Home is usable at once while the
             // session and server list refresh in the background; a failed restore or an expired

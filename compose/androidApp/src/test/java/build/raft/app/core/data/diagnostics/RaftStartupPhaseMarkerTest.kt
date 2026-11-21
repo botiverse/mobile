@@ -113,4 +113,91 @@ class RaftStartupPhaseMarkerTest {
             filesDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun v2EncodingRoundTripsActivityTimeAndStickyFlagAndDecodesV1() {
+        val v2 =
+            StartupPhaseRecord(
+                pid = 33637,
+                processStartMillis = 1_000L,
+                processName = "build.raft.app:a|b",
+                phase = Phase.FirstFrame,
+                phaseAtMillis = 2_500L,
+                firstActivityAtMillis = 1_800L,
+                stickyServiceRestart = true,
+            )
+        val encoded = v2.encode()
+        assertTrue(encoded.startsWith("2|"))
+        assertEquals(v2, StartupPhaseRecord.decode(encoded))
+
+        val v1Decoded = StartupPhaseRecord.decode("1|33637|1000|first_frame|2500|build.raft.app:a|b")
+        assertEquals(
+            StartupPhaseRecord(
+                pid = 33637,
+                processStartMillis = 1_000L,
+                processName = "build.raft.app:a|b",
+                phase = Phase.FirstFrame,
+                phaseAtMillis = 2_500L,
+                firstActivityAtMillis = -1L,
+                stickyServiceRestart = false,
+            ),
+            v1Decoded,
+        )
+
+        // Reject malformed v2 fields (invalid sticky flag, invalid activity time, truncated v2).
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-1|2|x"))
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-2|0|x"))
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-1|0"))
+    }
+
+    @Test
+    fun firstActivityAtMillisIsCapturedOnceAndPreservedThroughFirstFrame() {
+        val initial = record(pid = 42, start = 1_000L, phase = Phase.AttachBaseContext, at = 1_010L)
+        val appCreated = initial.advanceTo(Phase.ApplicationCreated, nowMillis = 1_200L)!!
+        assertEquals(-1L, appCreated.firstActivityAtMillis)
+
+        val activityCreated = appCreated.advanceTo(Phase.ActivityCreated, nowMillis = 1_500L)!!
+        assertEquals(1_500L, activityCreated.firstActivityAtMillis)
+        assertEquals(Phase.ActivityCreated, activityCreated.phase)
+        assertEquals(1_500L, activityCreated.phaseAtMillis)
+
+        // Repeated ActivityCreated is a no-op and keeps the first timestamp.
+        assertNull(activityCreated.advanceTo(Phase.ActivityCreated, nowMillis = 1_900L))
+
+        // FirstFrame advances phase and phaseAtMillis without overwriting firstActivityAtMillis.
+        val firstFrame = activityCreated.advanceTo(Phase.FirstFrame, nowMillis = 2_400L)!!
+        assertEquals(Phase.FirstFrame, firstFrame.phase)
+        assertEquals(2_400L, firstFrame.phaseAtMillis)
+        assertEquals(1_500L, firstFrame.firstActivityAtMillis)
+    }
+
+    @Test
+    fun markStickyServiceRestartPersistsV2RecordWithoutLosingPhases() {
+        val filesDir = Files.createTempDirectory("startup-phases-sticky").toFile()
+        try {
+            RaftStartupPhaseMarker.startForTest(
+                filesDir = filesDir,
+                pid = 777,
+                processStartMillis = 10_000L,
+                processName = "build.raft.app",
+                nowMillis = 10_050L,
+            )
+            RaftStartupPhaseMarker.reached(Phase.ApplicationCreated, nowMillis = 10_200L)
+            RaftStartupPhaseMarker.markStickyServiceRestart()
+            RaftStartupPhaseMarker.reached(Phase.ActivityCreated, nowMillis = 50_000L)
+            RaftStartupPhaseMarker.reached(Phase.FirstFrame, nowMillis = 50_800L)
+
+            val current = RaftStartupPhaseMarker.current()!!
+            assertTrue(current.stickyServiceRestart)
+            assertEquals(50_000L, current.firstActivityAtMillis)
+            assertEquals(Phase.FirstFrame, current.phase)
+            assertEquals(50_800L, current.phaseAtMillis)
+
+            val persisted = RaftStartupPhaseMarker.readAll(filesDir).single()
+            assertEquals(current, persisted)
+        } finally {
+            RaftStartupPhaseMarker.resetForTest()
+            filesDir.deleteRecursively()
+        }
+    }
 }

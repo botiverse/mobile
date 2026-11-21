@@ -9,7 +9,9 @@ import java.io.FileOutputStream
 /**
  * How far a process got through startup, kept on disk so the next launch can say it for an exit
  * the system recorded for that process (#wg-mobile-feedback:#250: foreground SIGKILLs with no trace,
- * where "killed while starting" and "killed while in use" could not be told apart).
+ * where "killed while starting" and "killed while in use" could not be told apart), and so subsequent
+ * launches can distinguish system restarts (sticky service / background wake) from user launches and
+ * compute outage duration until UI recovery (#proj-mobile:#220).
  *
  * Phases, in order: [Phase.AttachBaseContext] → [Phase.ApplicationCreated] (end of
  * `Application.onCreate`) → [Phase.ActivityCreated] (first Activity `onCreate`) → [Phase.FirstFrame]
@@ -41,40 +43,99 @@ internal object RaftStartupPhaseMarker {
     @Volatile private var dir: File? = null
     @Volatile private var record: StartupPhaseRecord? = null
 
+    /** The current process's in-memory record, or null before [start] (or below API 30). */
+    fun current(): StartupPhaseRecord? = record
+
     /** From `Application.attachBaseContext`; [filesDir] is the base context's. Never throws. */
     fun start(filesDir: File?, processName: String) {
         // Exit records (ApplicationExitInfo) and their reporter exist from API 30 only.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         runCatching {
             val target = File(filesDir ?: return, DirName)
-            dir = target
             val nowWall = System.currentTimeMillis()
             val startWall =
                 nowWall - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
-            record =
-                StartupPhaseRecord(
-                    pid = Process.myPid(),
-                    processStartMillis = startWall,
-                    processName = processName,
-                    phase = Phase.AttachBaseContext,
-                    phaseAtMillis = nowWall,
-                )
-            write()
-        }
-    }
-
-    /** Records [phase] when it is further than the one already written. Never throws. */
-    fun reached(phase: Phase) {
-        runCatching {
-            val current = record ?: return
-            if (phase.ordinal <= current.phase.ordinal) return
-            record = current.copy(phase = phase, phaseAtMillis = System.currentTimeMillis())
-            write()
+            startInternal(
+                targetDir = target,
+                pid = Process.myPid(),
+                processStartMillis = startWall,
+                processName = processName,
+                nowMillis = nowWall,
+            )
         }
     }
 
     @Synchronized
-    private fun write() {
+    internal fun startForTest(
+        filesDir: File,
+        pid: Int,
+        processStartMillis: Long,
+        processName: String,
+        nowMillis: Long,
+    ) {
+        startInternal(
+            targetDir = File(filesDir, DirName),
+            pid = pid,
+            processStartMillis = processStartMillis,
+            processName = processName,
+            nowMillis = nowMillis,
+        )
+    }
+
+    @Synchronized
+    internal fun resetForTest() {
+        dir = null
+        record = null
+    }
+
+    @Synchronized
+    private fun startInternal(
+        targetDir: File,
+        pid: Int,
+        processStartMillis: Long,
+        processName: String,
+        nowMillis: Long,
+    ) {
+        dir = targetDir
+        record =
+            StartupPhaseRecord(
+                pid = pid,
+                processStartMillis = processStartMillis,
+                processName = processName,
+                phase = Phase.AttachBaseContext,
+                phaseAtMillis = nowMillis,
+            )
+        writeLocked()
+    }
+
+    /** Records [phase] when it is further than the one already written. Never throws. */
+    fun reached(phase: Phase, nowMillis: Long = System.currentTimeMillis()) {
+        runCatching {
+            updateLocked { current -> current.advanceTo(phase, nowMillis) }
+        }
+    }
+
+    /**
+     * Marks this process as having entered `RaftBackgroundConnectionService`'s sticky-restart
+     * stop path (`intent == null`). Never throws.
+     */
+    fun markStickyServiceRestart() {
+        runCatching {
+            updateLocked { current ->
+                if (current.stickyServiceRestart) null else current.copy(stickyServiceRestart = true)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun updateLocked(transform: (StartupPhaseRecord) -> StartupPhaseRecord?) {
+        val current = record ?: return
+        val next = transform(current) ?: return
+        record = next
+        writeLocked()
+    }
+
+    private fun writeLocked() {
         val target = dir ?: return
         val current = record ?: return
         if (!target.isDirectory && !target.mkdirs()) return
@@ -113,21 +174,77 @@ internal data class StartupPhaseRecord(
     val processName: String,
     val phase: RaftStartupPhaseMarker.Phase,
     val phaseAtMillis: Long,
+    /** Wall-clock time of the first [RaftStartupPhaseMarker.Phase.ActivityCreated] in this process; -1 when none. */
+    val firstActivityAtMillis: Long = -1L,
+    /** True when this process hit the sticky-service restart stop path (`intent == null`). */
+    val stickyServiceRestart: Boolean = false,
 ) {
-    /** `1|pid|start|phase|phaseAt|processName` (process name last: it may contain anything but a newline). */
-    fun encode(): String = "1|$pid|$processStartMillis|${phase.label}|$phaseAtMillis|${processName.replace('\n', ' ')}"
+    /**
+     * Advances to [nextPhase] when it is strictly further than [phase]; returns null otherwise.
+     * [firstActivityAtMillis] is captured once on the first [RaftStartupPhaseMarker.Phase.ActivityCreated]
+     * and never overwritten by later phases (including [RaftStartupPhaseMarker.Phase.FirstFrame]).
+     */
+    fun advanceTo(nextPhase: RaftStartupPhaseMarker.Phase, nowMillis: Long): StartupPhaseRecord? {
+        if (nextPhase.ordinal <= phase.ordinal) return null
+        val activityAt =
+            if (nextPhase == RaftStartupPhaseMarker.Phase.ActivityCreated && firstActivityAtMillis < 0L) {
+                nowMillis
+            } else {
+                firstActivityAtMillis
+            }
+        return copy(
+            phase = nextPhase,
+            phaseAtMillis = nowMillis,
+            firstActivityAtMillis = activityAt,
+        )
+    }
+
+    /**
+     * `2|pid|start|phase|phaseAt|firstActivityAt|sticky|processName`
+     * (process name last: it may contain anything but a newline, including `|`).
+     */
+    fun encode(): String =
+        "2|$pid|$processStartMillis|${phase.label}|$phaseAtMillis|$firstActivityAtMillis|" +
+            "${if (stickyServiceRestart) 1 else 0}|${processName.replace('\n', ' ')}"
 
     companion object {
         fun decode(text: String): StartupPhaseRecord? {
-            val parts = text.trim().split('|', limit = 6)
-            if (parts.size != 6 || parts[0] != "1") return null
-            return StartupPhaseRecord(
-                pid = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return null,
-                processStartMillis = parts[2].toLongOrNull() ?: return null,
-                phase = RaftStartupPhaseMarker.Phase.fromLabel(parts[3]) ?: return null,
-                phaseAtMillis = parts[4].toLongOrNull() ?: return null,
-                processName = parts[5],
-            )
+            val trimmed = text.trim()
+            if (trimmed.isEmpty()) return null
+            val version = trimmed.substringBefore('|', "")
+            return when (version) {
+                "1" -> {
+                    val parts = trimmed.split('|', limit = 6)
+                    if (parts.size != 6) return null
+                    StartupPhaseRecord(
+                        pid = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return null,
+                        processStartMillis = parts[2].toLongOrNull() ?: return null,
+                        phase = RaftStartupPhaseMarker.Phase.fromLabel(parts[3]) ?: return null,
+                        phaseAtMillis = parts[4].toLongOrNull() ?: return null,
+                        processName = parts[5],
+                    )
+                }
+                "2" -> {
+                    val parts = trimmed.split('|', limit = 8)
+                    if (parts.size != 8) return null
+                    val sticky =
+                        when (parts[6]) {
+                            "0" -> false
+                            "1" -> true
+                            else -> return null
+                        }
+                    StartupPhaseRecord(
+                        pid = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return null,
+                        processStartMillis = parts[2].toLongOrNull() ?: return null,
+                        phase = RaftStartupPhaseMarker.Phase.fromLabel(parts[3]) ?: return null,
+                        phaseAtMillis = parts[4].toLongOrNull() ?: return null,
+                        firstActivityAtMillis = parts[5].toLongOrNull()?.takeIf { it >= -1L } ?: return null,
+                        stickyServiceRestart = sticky,
+                        processName = parts[7],
+                    )
+                }
+                else -> null
+            }
         }
     }
 }

@@ -2728,6 +2728,12 @@
     <string name="settings_notifications_battery_optimization_detail">Raft の電池の最適化をオフにして、システムがバックグラウンド接続を停止しないようにします。機種によっては、アプリ起動やバックグラウンド動作の設定で Raft を許可する必要もあります。</string>
     <string name="settings_notifications_battery_optimization_allowed">許可済み</string>
     <string name="settings_notifications_battery_optimization_request">許可</string>
+    <string name="background_kill_notice_title">Raft がバックグラウンドで停止されました</string>
+    <string name="background_kill_notice_body_huawei">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。「アプリ起動」で Raft の自動管理をオフにし、自動起動・他のアプリによる起動・バックグラウンド実行を許可してください。</string>
+    <string name="background_kill_notice_body_lenovo">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。端末の自動起動・バックグラウンド管理設定で、Raft の自動起動とバックグラウンド実行を許可してください。</string>
+    <string name="background_kill_notice_body_vendor">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。システム設定で Raft の自動起動とバックグラウンド実行を許可してください。</string>
+    <string name="background_kill_notice_body_app_details">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。アプリ情報から「バッテリー」を開き、Raft を「制限なし」に設定してください。</string>
+    <string name="background_kill_notice_action_open_settings">設定を開く</string>
     <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
     <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>

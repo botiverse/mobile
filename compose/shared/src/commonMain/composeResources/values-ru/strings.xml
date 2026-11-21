@@ -2725,6 +2725,12 @@
     <string name="settings_notifications_battery_optimization_detail">Отключите для Raft оптимизацию батареи, чтобы система не прерывала фоновое подключение. На некоторых телефонах также нужно разрешить Raft в настройках автозапуска или фоновой активности.</string>
     <string name="settings_notifications_battery_optimization_allowed">Разрешено</string>
     <string name="settings_notifications_battery_optimization_request">Разрешить</string>
+    <string name="background_kill_notice_title">Raft был остановлен в фоновом режиме</string>
+    <string name="background_kill_notice_body_huawei">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. В разделе «Запуск приложений» переключите Raft на ручное управление и разрешите автозапуск, косвенный запуск и работу в фоновом режиме.</string>
+    <string name="background_kill_notice_body_lenovo">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Разрешите автозапуск и фоновую работу Raft в системных настройках управления фоновой активностью.</string>
+    <string name="background_kill_notice_body_vendor">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Разрешите Raft автозапуск и работу в фоне без ограничений в системных настройках.</string>
+    <string name="background_kill_notice_body_app_details">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Откройте «О приложении», перейдите в раздел «Батарея» и выберите для Raft режим «Без ограничений».</string>
+    <string name="background_kill_notice_action_open_settings">Открыть настройки</string>
     <string name="settings_notifications_offline_computers_title">Оповещения о компьютерах не в сети</string>
     <string name="settings_notifications_offline_computers_detail">Показывать оповещение на «Главной», когда зарегистрированный компьютер не в сети. По умолчанию выключено.</string>
     <string name="settings_notifications_test_title">Отправить тестовое уведомление</string>
