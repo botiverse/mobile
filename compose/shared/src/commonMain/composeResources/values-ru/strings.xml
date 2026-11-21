@@ -5421,6 +5421,12 @@
     <string name="assistant_delete_failed">Не удалось удалить ассистента. Попробуйте ещё раз.</string>
     <string name="settings_computers_runtime_upgrade_action">Обновить</string>
     <string name="settings_computers_runtime_upgrade_running">Обновление…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s: доступно обновление</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · Последняя версия</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">Не удалось проверить обновления</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · Не удалось проверить обновления</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">Обновления управляются вне Raft</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · Обновления управляются вне Raft</string>
     <string name="settings_computers_runtime_upgrade_too_old">Инструмент командной строки этой среды выполнения слишком старый, чтобы войти отсюда.</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">%1$s обновлён с %2$s до %3$s.</string>
     <string name="settings_computers_runtime_upgrade_upgraded">%1$s обновлён.</string>

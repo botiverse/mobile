@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -50,6 +51,100 @@ class RuntimeUpgradeInstallContractTest {
         // A viewer who may not act is never offered either (web `runtimeUpgradeOffered`).
         assertFalse(offered.copy(canAct = false).upgradeOffered(RuntimeAuthRuntime.Claude))
         assertFalse(offered.copy(canAct = false).installOffered(RuntimeAuthRuntime.Grok))
+    }
+
+    /**
+     * `runtimeUpdates` as the server sends it, botiverse/slock #15429 read at staging
+     * 5881c7b53ca7b447e4d4ac391390c68453cba952: the payload of packages/server/src/routes/
+     * runtimeUpgrade.api.test.ts "the read carries the Computer's update checks for the runtimes
+     * Upgrade is offered for, and only theirs" (shape: packages/shared/src/runtimeUpgrade.ts
+     * `runtimeUpdateCheckSchema`, packages/shared/src/runtimeAuth.ts `runtimeUpdatesSchema`).
+     */
+    @Test
+    fun theRuntimeAuthReadCarriesTheComputersUpdateChecks() {
+        val base = """"canAct":true,"availability":"ok","status":{"runtimes":{"claude":{"kind":"logged_in"}}}"""
+        val checkedAt = "2026-11-18T10:00:00.000Z"
+        val checkedAtMillis = Instant.parse(checkedAt).toEpochMilliseconds()
+        val view =
+            assertNotNull(
+                parse(
+                    """{$base,"runtimeUpgrade":true,"upgradableRuntimes":["claude","grok"],"runtimeUpdates":{""" +
+                        """"claude":{"kind":"ok","installed":"2.0.5","latest":"2.0.5","updateAvailable":false,"checkedAt":"$checkedAt"},""" +
+                        """"grok":{"kind":"unavailable","reason":"lookup_failed","checkedAt":"$checkedAt"}}}"""
+                ).toRuntimeAuthView()
+            )
+        assertEquals(
+            mapOf(
+                RuntimeAuthRuntime.Claude to RuntimeUpdateCheck.Ok(installed = "2.0.5", latest = "2.0.5", updateAvailable = false, checkedAtMillis = checkedAtMillis),
+                RuntimeAuthRuntime.Grok to RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.LookupFailed, checkedAtMillis),
+            ),
+            view.runtimeUpdates,
+        )
+        // "no update checks until the Computer reports them"; an older server or Computer sends no field.
+        assertEquals(
+            emptyMap(),
+            assertNotNull(parse("""{$base,"runtimeUpgrade":true,"upgradableRuntimes":["claude"],"runtimeUpdates":{}}""").toRuntimeAuthView()).runtimeUpdates,
+        )
+        assertNull(assertNotNull(parse("""{$base,"runtimeUpgrade":true,"upgradableRuntimes":["claude"]}""").toRuntimeAuthView()).runtimeUpdates)
+
+        // Read only for a runtime Upgrade is offered for, to a viewer who may act, while under a day old (web `runtimeUpdateOf`).
+        val minuteLater = checkedAtMillis + 60_000L
+        assertEquals(view.runtimeUpdates?.get(RuntimeAuthRuntime.Claude), view.updateCheckOf(RuntimeAuthRuntime.Claude, minuteLater))
+        assertNull(view.updateCheckOf(RuntimeAuthRuntime.Codex, minuteLater), "codex is not offered")
+        assertNull(view.copy(canAct = false).updateCheckOf(RuntimeAuthRuntime.Claude, minuteLater))
+        assertNull(view.copy(upgradableRuntimes = null).updateCheckOf(RuntimeAuthRuntime.Claude, minuteLater), "Upgrade not offered here")
+        assertNotNull(view.updateCheckOf(RuntimeAuthRuntime.Claude, checkedAtMillis + RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS))
+        assertNull(view.updateCheckOf(RuntimeAuthRuntime.Claude, checkedAtMillis + RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS + 1), "a stale \"Latest\" counts as no answer")
+    }
+
+    /**
+     * What slock's own schema keeps and drops (packages/shared/src/runtimeAuth.test.ts at 5881c7b53c,
+     * "reads each runtime's update check, without a source, a path or a runtime it does not know"),
+     * each drop logged rather than silent.
+     */
+    @Test
+    fun anUpdateCheckThisAppCannotReadIsDroppedOnItsOwnAndLogged() {
+        val checkedAt = "2026-10-29T10:00:00.000Z"
+        val checkedAtMillis = Instant.parse(checkedAt).toEpochMilliseconds()
+        val logged = mutableListOf<String>()
+        val updates =
+            parse(
+                """{"antigravity":{"kind":"ok","installed":"1.5.10","latest":"1.5.11","updateAvailable":true,"checkedAt":"$checkedAt","source":"https://example.com/latest"},""" +
+                    """"codex":{"kind":"unavailable","reason":"lookup_failed","checkedAt":"$checkedAt","detail":"ENOTFOUND /home/someone"},""" +
+                    """"grok":{"kind":"unavailable","reason":"package_manager","checkedAt":"$checkedAt"},""" +
+                    """"claude":{"kind":"ok","installed":"/home/someone/.local/bin/agy","latest":"1.5.11","updateAvailable":true,"checkedAt":"$checkedAt"},""" +
+                    """"qoder":"not an object","kimi":{"kind":"some_future_kind","checkedAt":"$checkedAt"},"someFutureRuntime":{"kind":"ok"}}"""
+            ).toRuntimeUpdates { logged += it }
+        assertEquals(
+            mapOf(
+                RuntimeAuthRuntime.Antigravity to RuntimeUpdateCheck.Ok("1.5.10", "1.5.11", updateAvailable = true, checkedAtMillis = checkedAtMillis),
+                RuntimeAuthRuntime.Codex to RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.LookupFailed, checkedAtMillis),
+                RuntimeAuthRuntime.Grok to RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.PackageManager, checkedAtMillis),
+            ),
+            updates,
+            "a source or a detail is ignored; a path for a version, a non-object, a kind from later and an unknown runtime drop only their entry",
+        )
+        // The path and the non-object are rows that did not read; the later kind (no check: Upgrade as before) and runtime are unknown values.
+        assertEquals(2, logged.count { it.startsWith("projection_value_rejected source=runtime_updates") }, logged.toString())
+        assertEquals(2, logged.count { it.startsWith("projection_value_unknown source=runtime_updates") }, logged.toString())
+        assertTrue(logged.any { "field=kind" in it && "action=fallback_no_update_check" in it }, logged.toString())
+
+        // A reason this app does not know reads as a failed lookup, as slock reads a newer Computer's; logged too.
+        val reasons = mutableListOf<String>()
+        assertEquals(
+            mapOf(RuntimeAuthRuntime.Codex to RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.LookupFailed, checkedAtMillis)),
+            parse("""{"codex":{"kind":"unavailable","reason":"some_future_reason","checkedAt":"$checkedAt"}}""").toRuntimeUpdates { reasons += it },
+        )
+        assertTrue(reasons.single().startsWith("projection_value_unknown source=runtime_updates field=reason"), reasons.toString())
+        assertTrue("action=fallback_lookup_failed" in reasons.single(), reasons.toString())
+
+        // Every reason slock sends maps to its own value; a check with no usable time is no check.
+        RuntimeUpdateCheckUnavailableReason.entries.forEach { reason ->
+            val read = parse("""{"codex":{"kind":"unavailable","reason":"${reason.wire}","checkedAt":"$checkedAt"}}""").toRuntimeUpdates {}
+            assertEquals(reason, (read?.get(RuntimeAuthRuntime.Codex) as? RuntimeUpdateCheck.Unavailable)?.reason, reason.wire)
+        }
+        assertEquals(emptyMap(), parse("""{"codex":{"kind":"unavailable","reason":"lookup_failed","checkedAt":"yesterday"}}""").toRuntimeUpdates {})
+        assertNull(parse("""["claude"]""").toRuntimeUpdates {})
     }
 
     @Test

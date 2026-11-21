@@ -219,6 +219,12 @@ internal data class RuntimeAuthView(
      */
     val upgradableRuntimes: List<RuntimeAuthRuntime>? = null,
     /**
+     * Upgrade's update checks (slock #15429, `runtimeUpdates`, RuntimeUpgradeInstall.kt): the
+     * Computer's read-only check for those of [upgradableRuntimes] it checked; null from an older
+     * server or Computer, and no entry for a runtime not checked yet. Read through [updateCheckOf].
+     */
+    val runtimeUpdates: Map<RuntimeAuthRuntime, RuntimeUpdateCheck>? = null,
+    /**
      * Install (slock #15214, `runtimeInstall: true` + `installableRuntimes`): the runtimes this
      * Computer does not have and can install, under the same conditions behind
      * `runtime_install_button`; null: no Install here.
@@ -244,6 +250,17 @@ internal data class RuntimeAuthView(
     /** Web `runtimeUpgradeOffered`: the server's say-so, a viewer who may act, and a runtime the Computer can upgrade. */
     fun upgradeOffered(runtime: RuntimeAuthRuntime?): Boolean =
         canAct && runtime != null && upgradableRuntimes?.contains(runtime) == true
+
+    /**
+     * Web `runtimeUpdateOf`: the Computer's update check for a runtime Upgrade is offered for, or null
+     * when it reported none (an older Computer or server, a runtime OAR has no check for) or the check
+     * is over a day old ([RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS]); the card then offers Upgrade as before.
+     */
+    fun updateCheckOf(runtime: RuntimeAuthRuntime?, nowEpochMillis: Long): RuntimeUpdateCheck? {
+        if (runtime == null || !upgradeOffered(runtime)) return null
+        val update = runtimeUpdates?.get(runtime) ?: return null
+        return update.takeIf { nowEpochMillis - it.checkedAtMillis <= RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS }
+    }
 
     /** Web `runtimeInstallOffered`: the server's say-so, a viewer who may act, and a runtime the Computer can install. */
     fun installOffered(runtime: RuntimeAuthRuntime?): Boolean =
@@ -282,6 +299,7 @@ internal fun JsonElement.toRuntimeAuthView(): RuntimeAuthView? {
         claudeLimitResets = ClaudeLimitResetsAvailability.fromWire(envelope.plainString("claudeLimitResets")),
         claudeLimitResetAccess = envelope["claudeLimitResetAccess"]?.toClaudeLimitResetAccess(),
         upgradableRuntimes = envelope.offeredRuntimeList("runtimeUpgrade", "upgradableRuntimes"),
+        runtimeUpdates = envelope["runtimeUpdates"]?.toRuntimeUpdates(),
         installableRuntimes = envelope.offeredRuntimeList("runtimeInstall", "installableRuntimes"),
     )
 }

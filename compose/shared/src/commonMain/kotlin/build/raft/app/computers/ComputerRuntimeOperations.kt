@@ -10,6 +10,7 @@ import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.RuntimeInstallUnsupportedReason
 import build.raft.app.data.RuntimeOperationErrorCode
+import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.RuntimeUpgradeUnsupportedReason
 import build.raft.app.resources.*
@@ -23,6 +24,9 @@ import org.jetbrains.compose.resources.StringResource
  * useRuntimeUpgrade.ts, runtimeInstallCopy.ts, useRuntimeInstall.ts; RuntimeUpgradeInstall.kt for the
  * wire). Raft never upgrades or installs a runtime on its own: only on the person's press, and an
  * install only once they read the commands it would run and confirmed.
+ *
+ * Upgrade follows the Computer's read-only update check (slock #15429 9523be7fc7, read at staging
+ * 5881c7b53c: runtimeUpgradeOutcomeCopy.ts `runtimeUpdateCheckCopy` / `runtimeUpgradeButtonShown`).
  */
 
 /** Why an upgrade or install request got no outcome from the Computer (web `runtimeUpgradeRefusal` / `runtimeInstallRefusal`). */
@@ -131,6 +135,52 @@ internal data class ComputerRuntimeUpgradeOffer(
     val state: ComputerRuntimeUpgradeState,
     val onUpgrade: () -> Unit,
 )
+
+/** The card's update-check line: [message] formatted with [args], each a version drawn in the version line's mono. */
+internal data class ComputerRuntimeUpdateCheckCopy(
+    val message: StringResource,
+    val args: List<String> = emptyList(),
+)
+
+/**
+ * Web `runtimeUpdateCheckCopy`: the card's line for the Computer's update check, in place of the
+ * version: "1.5.10 → 1.5.11 available", "1.5.11 · Latest", that its updates are managed outside Raft
+ * (a package manager, updates turned off), or that it could not check, the last two after the
+ * reported [version] when there is one. Null with no check (an older Computer or server): the
+ * version line as before.
+ */
+internal fun computerRuntimeUpdateCheckCopy(update: RuntimeUpdateCheck?, version: String?): ComputerRuntimeUpdateCheckCopy? {
+    val reported = version?.trim()?.takeIf { it.isNotEmpty() }
+    return when (update) {
+        null -> null
+        is RuntimeUpdateCheck.Ok ->
+            if (update.updateAvailable) {
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_update_available, listOf(update.installed, update.latest))
+            } else {
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_latest, listOf(update.installed))
+            }
+        // A deliberate choice (a package manager, updates turned off): not a failure to check.
+        is RuntimeUpdateCheck.Unavailable ->
+            when {
+                update.reason.managedElsewhere && reported != null ->
+                    ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_managed_elsewhere_version, listOf(reported))
+                update.reason.managedElsewhere -> ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_managed_elsewhere)
+                reported != null -> ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_check_unavailable_version, listOf(reported))
+                else -> ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_check_unavailable)
+            }
+    }
+}
+
+/**
+ * Web `runtimeUpgradeButtonShown`: whether the card shows Upgrade where it is offered: when the
+ * Computer's check found a newer version, or there is none (an older Computer or server: as
+ * before); not when it is the latest or the check could not name one. Always while one runs, and
+ * for a CLI too old to sign in ([tooOld], `version_unsupported`: known outdated).
+ */
+internal fun computerRuntimeUpgradeButtonShown(update: RuntimeUpdateCheck?, state: ComputerRuntimeUpgradeState, tooOld: Boolean): Boolean {
+    if (state == ComputerRuntimeUpgradeState.Running || tooOld || update == null) return true
+    return update is RuntimeUpdateCheck.Ok && update.updateAvailable
+}
 
 /** A plan OAR will not run, with the steps for the person to run by hand (web `RuntimeInstallManualPlan`). */
 internal data class ComputerRuntimeInstallManualPlan(
