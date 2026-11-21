@@ -9,6 +9,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SettingsMarketplaceWebViewTest {
     @Test
@@ -90,6 +91,13 @@ class SettingsMarketplaceWebViewTest {
         assertFalse(script.contains("MutationObserver"))
         assertFalse(script.contains("createElement(\"style\")"))
         assertFalse(script.contains("hidden-header"))
+    }
+
+    @Test
+    fun marketplaceSpecLocksMainFrameToRaftWebOriginWhileBillingStaysUnlocked() {
+        assertTrue(settingsMarketplaceWebViewSpec.lockToWebOrigin)
+        assertTrue(settingsMarketplaceWebViewSpec("stamp-app").lockToWebOrigin)
+        assertFalse(settingsBillingWebViewSpec.lockToWebOrigin)
     }
 
     private fun marketplaceSession() =

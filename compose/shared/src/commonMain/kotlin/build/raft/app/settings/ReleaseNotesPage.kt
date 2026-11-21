@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
@@ -280,6 +281,8 @@ internal fun ReleaseNotesWebViewBody(
     }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
     // Match the pre-native WebView contract: an explicit app language is sent
     // as `lang`; system language is left to the browser's Accept-Language.
     val url = remember(versionCode) { sharedSettingsReleaseNotesUrl(versionCode) }
@@ -317,6 +320,7 @@ internal fun ReleaseNotesWebViewBody(
         modifier = Modifier.fillMaxSize(),
         diagnosticsName = "release_notes",
         allowedNavigationSchemes = setOf("http", "https"),
+        mainFrameOrigin = raftWebOriginOf(url),
         controller = controller,
         onLoadCommit = {
             bridge.log("release_notes_load_commit renderer=webview versionCode=$versionCode")
@@ -325,6 +329,17 @@ internal fun ReleaseNotesWebViewBody(
             bridge.logWarn(
                 "release_notes_load_failure renderer=webview versionCode=$versionCode reason=${reason.take(120)}"
             )
+        },
+        onNavigationBlocked = { blockedUrl ->
+            val target = settingsWebViewBlockedNavigationUrlOrNull(blockedUrl)
+            if (target != null) {
+                bridge.log("release_notes_navigation_blocked action=open url=${raftWebViewUrlForLog(target)}")
+                if (linkNavigator != null) linkNavigator.open(target) else uriHandler.openUri(target)
+            } else {
+                bridge.log(
+                    "release_notes_navigation_blocked action=ignored scheme=${settingsWebViewSchemeForLog(blockedUrl)}"
+                )
+            }
         },
         onNavigationStateChange = { update ->
             navigationState = update.state

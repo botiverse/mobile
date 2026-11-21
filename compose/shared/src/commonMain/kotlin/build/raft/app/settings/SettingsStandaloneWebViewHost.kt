@@ -14,8 +14,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalUriHandler
 import build.raft.app.base.Utils
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -274,6 +276,12 @@ internal data class StandaloneSettingsWebViewSpec(
      */
     val allowNavigation: Boolean = true,
     val allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    /**
+     * When true, locks main-frame navigation to the origin of [buildWebUrl] (`mainFrameOrigin`),
+     * routing off-origin navigations through `onNavigationBlocked` instead of loading third-party
+     * sites inside the authenticated Settings WebView.
+     */
+    val lockToWebOrigin: Boolean = false,
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
@@ -530,19 +538,93 @@ internal fun StandaloneSettingsWebViewContent(
     accessTokenSyncLogger: (String) -> Unit = {},
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher? = null,
     accessTokenRefreshVisible: Boolean = true,
+    onOpenExternalLink: ((String) -> Unit)? = null,
 ) {
+    val linkNavigator = LocalRaftLinkNavigator.current
+    val uriHandler = LocalUriHandler.current
+    val defaultOpenExternalLink: (String) -> Unit =
+        remember(linkNavigator, uriHandler) {
+            { targetUrl ->
+                if (linkNavigator != null) linkNavigator.open(targetUrl) else uriHandler.openUri(targetUrl)
+            }
+        }
+    val openExternalLink = onOpenExternalLink ?: defaultOpenExternalLink
+    val currentOpenExternalLink by rememberUpdatedState(openExternalLink)
+    val currentLogger by rememberUpdatedState(accessTokenSyncLogger)
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
     val webUrl =
         remember(spec, session, webBaseUrl, localeTag) {
             spec.buildWebUrl(webBaseUrl, session, localeTag)
         }
+    val mainFrameOrigin =
+        remember(spec.lockToWebOrigin, webUrl) {
+            if (spec.lockToWebOrigin) raftWebOriginOf(webUrl) else null
+        }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
+    val hostOpenExternalDeduper =
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            SettingsWebViewHostOpenExternalDeduper()
+        }
+    val hostOpenExternalClock =
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            kotlin.time.TimeSource.Monotonic.markNow()
+        }
+    // Deferred out of synchronous onUrlChange (iOS decidePolicyForNavigationAction runs before
+    // decisionHandler(Allow), so running replaceState synchronously would test the old hash).
+    var pendingHostOpenExternal by
+        remember(webUrl, hostAuthBinding?.webViewGeneration) {
+            mutableStateOf<SettingsWebViewHostOpenExternalDecision?>(null)
+        }
     val injectedJavaScript =
         remember(spec.surface, session, hostAuthBinding, webUrl) {
             standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, webOrigin = webUrl)
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
+
+    LaunchedEffect(pendingHostOpenExternal) {
+        val decision = pendingHostOpenExternal ?: return@LaunchedEffect
+        val clearScript = settingsWebViewHostOpenExternalTakenScript(webUrl, decision.previousHash)
+        if (clearScript.isNotEmpty()) {
+            controller.evaluateJavaScript(clearScript)
+        }
+        val target = decision.targetUrl
+        if (target != null) {
+            currentLogger(
+                "settings_${spec.surface.diagnosticsName}_host_open_external " +
+                    "result=open url=${raftWebViewUrlForLog(target)}"
+            )
+            currentOpenExternalLink(target)
+        } else {
+            currentLogger(
+                "settings_${spec.surface.diagnosticsName}_host_open_external " +
+                    "result=dropped reason=not_http_url"
+            )
+        }
+        pendingHostOpenExternal = null
+    }
+
+    fun handleHostOpenExternal(candidateUrl: String, retryClearWhenSettled: Boolean = false) {
+        val decision =
+            hostOpenExternalDeduper.observe(
+                pageUrl = candidateUrl,
+                webOrigin = webUrl,
+                nowMs = hostOpenExternalClock.elapsedNow().inWholeMilliseconds,
+            )
+        if (decision != null) {
+            pendingHostOpenExternal = decision
+        } else if (
+            retryClearWhenSettled &&
+            pendingHostOpenExternal == null &&
+            hostOpenExternalDeduper.awaitingHashClear &&
+            settingsWebViewAsksHostOpenExternal(candidateUrl, webUrl)
+        ) {
+            // If an earlier replaceState was queued or overwritten while the document was still loading,
+            // retry clearing the stuck hash once loading settles without re-opening the external link.
+            val clearScript = settingsWebViewHostOpenExternalTakenScript(webUrl, hostOpenExternalDeduper.activePreviousHash)
+            if (clearScript.isNotEmpty()) controller.evaluateJavaScript(clearScript)
+        }
+    }
 
     // The page's session goes in at document start (injectedJavaScript), so it cannot load before
     // the session is known (it would open signed out). The load starts as soon as it is. One load
@@ -556,6 +638,7 @@ internal fun StandaloneSettingsWebViewContent(
                 modifier = modifier,
                 diagnosticsName = "settings_${spec.surface.diagnosticsName}",
                 allowedNavigationSchemes = spec.allowedNavigationSchemes,
+                mainFrameOrigin = mainFrameOrigin,
                 allowNavigation = spec.allowNavigation,
                 hostEventsEnabled = spec.hostEventsEnabled,
                 bottomContentPadding = spec.bottomContentPadding,
@@ -564,9 +647,36 @@ internal fun StandaloneSettingsWebViewContent(
                 generationKey = hostAuthBinding?.webViewGeneration,
                 onLoadCommit = onLoadCommit,
                 onLoadSuccess = onLoadSuccess,
-                onUrlChange = onUrlChange,
+                onUrlChange = { changedUrl ->
+                    handleHostOpenExternal(changedUrl)
+                    onUrlChange(changedUrl)
+                },
+                filterStaleUrlCallbacks = true,
                 onLoadFailure = onLoadFailure,
-                onNavigationStateChange = onNavigationStateChange,
+                onNavigationBlocked = { blockedUrl ->
+                    val target = settingsWebViewBlockedNavigationUrlOrNull(blockedUrl)
+                    if (target != null) {
+                        currentLogger(
+                            "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
+                                "action=open url=${raftWebViewUrlForLog(target)}"
+                        )
+                        currentOpenExternalLink(target)
+                    } else {
+                        currentLogger(
+                            "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
+                                "action=ignored scheme=${settingsWebViewSchemeForLog(blockedUrl)}"
+                        )
+                    }
+                },
+                onNavigationStateChange = { update ->
+                    if (update.state.url.isNotBlank()) {
+                        handleHostOpenExternal(
+                            candidateUrl = update.state.url,
+                            retryClearWhenSettled = !update.state.isLoading,
+                        )
+                    }
+                    onNavigationStateChange(update)
+                },
                 onHostMessage = onHostMessage,
                 onDocumentReadyChange = { documentReady = it },
             )
@@ -610,6 +720,7 @@ internal fun SettingsWebViewContent(
     stallTimeoutMs: Long = RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS,
     hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
+    mainFrameOrigin: String? = null,
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     injectedJavaScript: String = "",
@@ -688,6 +799,7 @@ internal fun SettingsWebViewContent(
                             .padding(bottom = bottomContentPadding),
                     allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
+                    mainFrameOrigin = mainFrameOrigin,
                     domStorageEnabled = true,
                     cacheEnabled = true,
                     ephemeral = false,
@@ -717,7 +829,9 @@ internal fun SettingsWebViewContent(
                             onLoadFailure(reason)
                         }
                     },
-                    onNavigationBlocked = onNavigationBlocked,
+                    onNavigationBlocked = { blockedUrl ->
+                        if (navigationAuthority.accepts(navigationOwner)) onNavigationBlocked(blockedUrl)
+                    },
                     onHostMessage = { kind, payload ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             // The page's own bridge `ready` is a ready signal too.
