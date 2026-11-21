@@ -25,6 +25,20 @@ const val RAFT_ROUTE_SERVER_ID = "slockRouteServerId"
 const val RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS = "slockServerSwitchTapEpochMillis"
 
 /**
+ * Page data of a server switch (Multiple app windows): the shell instance id of the window that
+ * shows the picked server now (the launcher window included). The host targets that window
+ * instead of opening the server a second window. Identity only.
+ */
+const val RAFT_SERVER_SWITCH_WINDOW_ID = "slockServerSwitchWindowId"
+
+/**
+ * Page data flag, with [RAFT_SERVER_SWITCH_WINDOW_ID]: the switch names no destination, so the
+ * host brings that window forward as it is (as Recents does) instead of rebuilding it on a new
+ * launch.
+ */
+const val RAFT_SERVER_SWITCH_KEEP_WINDOW = "slockServerSwitchKeepWindow"
+
+/**
  * Page data flag: the host shows the page without its push transition (Android
  * `FLAG_ACTIVITY_NO_ANIMATION`, iOS `animated:NO`), for a page that takes the place of what the
  * source page shows over itself (a task's first send opens its conversation where the pending task

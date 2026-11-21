@@ -3,6 +3,8 @@ package build.raft.app.shared
 import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
 import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
 import build.raft.app.RAFT_ROUTE_SERVER_ID
+import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -37,6 +39,73 @@ class AndroidShellWindowContractTest {
         // Without a server on the notification, the selected owner as before; signed out, none.
         assertEquals(selected, notificationAndroidShellRouteOwner(selected, " "))
         assertNull(notificationAndroidShellRouteOwner(null, "server-a"))
+    }
+
+    /** The windows of the device report: the launcher (task 15) and server A's document window (task 18). */
+    private val serverAOwner = AndroidShellRouteOwner("https://api.test", "user-1", "server-a")
+    private val launcherWindow = AndroidShellLaunchTarget("android-default-app-shell", "server-x", documentShell = false)
+    private val serverADocumentWindow =
+        AndroidShellLaunchTarget(serverAOwner.shellCanonicalUri(), "server-a", documentShell = true, routeOwner = serverAOwner)
+
+    /** What the shell sends for "switch to server A" (appShellServerSwitchNewWindowPageDataOrNull). */
+    private fun switchToServerA(windowId: String? = null, keepWindow: Boolean = false): JSONObject =
+        JSONObject()
+            .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+            .withAndroidShellRouteOwner(serverAOwner)
+            .apply {
+                windowId?.let { put(RAFT_SERVER_SWITCH_WINDOW_ID, it) }
+                if (keepWindow) put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
+            }
+
+    @Test
+    fun serverSwitchToTheServerTheLauncherWindowShowsUsesThatWindowNotASecondOne() {
+        // 1.27.0 on a device: the launcher window (task 15) shows A; picking A in B's window
+        // opened A a document window (task 18) next to it.
+        AndroidShellWindowRegistry.register(launcherWindow, taskId = 15)
+        val switch = switchToServerA(windowId = launcherWindow.shellInstanceId, keepWindow = true)
+
+        val existing = androidServerSwitchExistingWindowOrNull(switch, multiShellHostEnabled = true)!!
+
+        assertEquals(15, existing.bringForwardTaskId)
+        assertEquals("android-default-app-shell", existing.target.shellInstanceId)
+        assertFalse(existing.target.documentShell)
+        assertNull("no document task for the launch", existing.target.taskLaunchPlan(requestedTaskClear = false).documentShellId)
+        assertNull("not the server the launcher was launched with", existing.target.serverId)
+        // The route owner alone (what 1.27.0 resolved by) is a new document window for A.
+        assertEquals(
+            serverAOwner.shellCanonicalUri(),
+            resolveAndroidShellLaunchTarget(switch, multiShellHostEnabled = true).shellInstanceId,
+        )
+    }
+
+    @Test
+    fun serverSwitchBringsTheServersWindowForwardAsItIsOnlyWithoutADestination() {
+        AndroidShellWindowRegistry.register(launcherWindow, taskId = 15)
+        AndroidShellWindowRegistry.register(serverADocumentWindow, taskId = 18)
+        val windowId = serverADocumentWindow.shellInstanceId
+
+        // No destination: the task comes forward, no Intent rebuilds the window on Home.
+        val asItIs = androidServerSwitchExistingWindowOrNull(switchToServerA(windowId, keepWindow = true), true)!!
+        assertEquals(18, asItIs.bringForwardTaskId)
+        assertEquals(serverADocumentWindow, asItIs.target)
+        // A kept tab: the same window, launched on the switch's page data as before.
+        val onATab = androidServerSwitchExistingWindowOrNull(switchToServerA(windowId), true)!!
+        assertNull(onATab.bringForwardTaskId)
+        assertEquals(serverADocumentWindow, onATab.target)
+        // A launch that names no window (a notification tap, a first switch to a server) resolves
+        // as before and is delivered with its destination.
+        assertNull(androidServerSwitchExistingWindowOrNull(switchToServerA(), true))
+        val notification =
+            JSONObject()
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-a")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "thread-1")
+                .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                .withAndroidShellRouteOwner(serverAOwner)
+        assertNull(androidServerSwitchExistingWindowOrNull(notification, true))
+        assertEquals(serverADocumentWindow, resolveAndroidShellLaunchTarget(notification, multiShellHostEnabled = true))
+        // The named window closed meanwhile, or the setting is off: as before.
+        assertNull(androidServerSwitchExistingWindowOrNull(switchToServerA("slock://shell/gone", keepWindow = true), true))
+        assertNull(androidServerSwitchExistingWindowOrNull(switchToServerA(windowId, keepWindow = true), false))
     }
 
     @Test

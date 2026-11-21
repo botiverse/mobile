@@ -264,6 +264,13 @@ internal fun raftMultiServerRealtimeEnabled(): Boolean =
  *
  * [sourceWindowServerId] is the server a document window is bound to (its route owner): picking
  * that server there switches in place, since this window already is that server's window.
+ *
+ * [windowShowingPickedServer] is the shell instance id of another window that shows the picked
+ * server now (`RaftRealtimeSessionDemand.shellShowing`; the launcher window counts for the server
+ * it shows): the page data names it ([RAFT_SERVER_SWITCH_WINDOW_ID]) so the host uses that window
+ * and the server keeps one window. A switch that keeps no tab names no destination, so that
+ * window comes forward as it is ([RAFT_SERVER_SWITCH_KEEP_WINDOW]); with a kept tab it is opened
+ * on that tab as before.
  */
 internal fun appShellServerSwitchNewWindowPageDataOrNull(
     sourceStoreScope: RaftShellStoreScope,
@@ -273,7 +280,8 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
     multiShellHostEnabled: Boolean,
     routeOwner: AuthenticatedRouteOwner?,
     keepTab: String? = null,
-    sourceWindowServerId: String? = null
+    sourceWindowServerId: String? = null,
+    windowShowingPickedServer: String? = null
 ): JSONObject? {
     if (routeOwner == null) return null
     val current = currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
@@ -296,7 +304,14 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
         replaceCurrent = false
     ).apply {
         val tab = keepTab?.let(::retainedAppShellSelectedTab)
-        if (tab != null && tab != "home") put(AppShellInitialTabKey, tab)
+        val keepsTab = tab != null && tab != "home"
+        if (keepsTab) put(AppShellInitialTabKey, tab)
+        val window =
+            windowShowingPickedServer?.trim()?.takeIf { it.isNotEmpty() && it != sourceStoreScope.shellInstanceId }
+        if (window != null) {
+            put(RAFT_SERVER_SWITCH_WINDOW_ID, window)
+            if (!keepsTab) put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
+        }
     }
 }
 
