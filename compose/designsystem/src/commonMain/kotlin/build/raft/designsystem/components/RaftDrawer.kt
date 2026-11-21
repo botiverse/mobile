@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -90,12 +91,18 @@ fun RaftDrawer(
     fill: RaftDrawerFill = RaftDrawerFill.Popover,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    LaunchedEffect(visible, state) {
+        if (visible && state?.dismissedByDrag == true) {
+            state.clearDismissedByDrag()
+        }
+    }
     RaftSheetWindow(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         slideMotion = true,
         visible = visible,
         onHidden = onHidden,
+        alreadyHidden = { state?.dismissedByDrag == true },
         overlay = overlay,
         capHeight = state == null,
         scrimAlpha = { state?.dismissProgress ?: 1f },
@@ -151,14 +158,25 @@ class RaftDrawerState(initialSnapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoin
     internal val dismissProgress: Float
         get() = if (defaultPx <= 0f) 1f else (extent / defaultPx).coerceIn(0f, 1f)
 
+    /** True once [settle] finished animating the sheet completely off-screen to 0px. */
+    internal var dismissedByDrag: Boolean = false
+        private set
+
+    internal fun clearDismissedByDrag() {
+        dismissedByDrag = false
+        heldExtent = null
+    }
+
     internal val draggable = DraggableState { deltaDown -> moveBy(deltaDown) }
 
     private fun moveBy(deltaDown: Float) {
+        dismissedByDrag = false
         heldExtent = (extent - deltaDown).coerceIn(0f, max(fullPx, defaultPx))
     }
 
     /** Moves to [target] with the drawer's slide (240ms, `ease-slide`), cancelling a settle. */
     suspend fun animateTo(target: RaftDrawerSnapPoint) {
+        dismissedByDrag = false
         if (fullPx > 0f) animateExtentTo(anchorPx(target))
         snapPoint = target
         heldExtent = null
@@ -180,6 +198,7 @@ class RaftDrawerState(initialSnapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoin
         when (raftDrawerSettle(extent, velocityDown, defaultPx, fullPx, flingPx)) {
             RaftDrawerSettle.Dismiss -> {
                 animateExtentTo(0f)
+                dismissedByDrag = true
                 true
             }
             RaftDrawerSettle.Default -> {

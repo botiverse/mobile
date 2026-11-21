@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftMisuse
@@ -474,21 +475,26 @@ fun RaftSheet(
     }
 }
 
+/** Self-sliding bottom sheets/drawers draw their own synced scrim and omit iOS's stacked dialog zoom. */
+internal val RaftSheetWindowDialogProperties =
+    RaftWindowDialogProperties(drawScrim = false, platformTransition = false)
+
 /**
- * The window of a [RaftSheet]: a [RaftWindowDialog] with its scrim, the slide up, a tap on
- * the scrim and Back calling [onDismissRequest], and the 82% height cap. [surface] draws
- * the sheet with the modifier it is given (the caller's [modifier] plus the slide, the
- * tap guard and the cap); pass it a [RaftSheetSurfaceImpl] with `clearNavigationBar`.
+ * The window of a [RaftSheet] or [RaftDrawer]: a [RaftWindowDialog] with a synced fading scrim,
+ * a slide up started after the window's first frame (so heavy content cannot eat the opening
+ * frames), a tap on the scrim and Back calling [onDismissRequest], reduced-motion support, and
+ * the 82% height cap. [surface] draws the sheet with the modifier it is given (the caller's
+ * [modifier] plus the slide, the tap guard and the cap); pass it a [RaftSheetSurfaceImpl] with
+ * `clearNavigationBar`.
  *
- * [RaftDrawer] asks for the full drawer motion (raft-ui drawer.recipe.ts, Motion "A scrim moves
- * with its surface") with [slideMotion]: the scrim fades in with the slide (same 240ms,
- * `ease-slide`); the slide starts only after the window's first frame, so content that is heavy to
- * compose (a whole conversation) does not eat the slide's first frames; and [visible] false
- * slides the surface down again with the scrim fading out (180ms), then calls [onHidden], so the
- * caller keeps the window composed until then. [overlay] is drawn over the scrim and the surface,
- * across the whole window (not padded for the status bar). [capHeight] false hands the surface the
- * window's whole height under the status bar (a drawer with snap points sizes itself); [scrimAlpha]
- * fades the scrim with a drag toward dismiss (raft-ui `--drawer-swipe-progress`).
+ * [RaftDrawer] additionally passes [slideMotion] = true for exit slide-out: [visible] false slides
+ * the surface down with the scrim fading out (180ms, skipped when [alreadyHidden] is already true
+ * after a drag-to-dismiss), then calls [onHidden] so the caller keeps the window composed until
+ * then, and [RaftDismissOnPageCover] hides it immediately if another page is pushed on top.
+ * [overlay] is drawn over the scrim and the surface, across the whole window (not padded for the
+ * status bar). [capHeight] false hands the surface the window's whole height under the status bar
+ * (a drawer with snap points sizes itself); [scrimAlpha] fades the scrim with a drag toward
+ * dismiss (raft-ui `--drawer-swipe-progress`).
  */
 @Composable
 internal fun RaftSheetWindow(
@@ -497,6 +503,7 @@ internal fun RaftSheetWindow(
     slideMotion: Boolean = false,
     visible: Boolean = true,
     onHidden: () -> Unit = {},
+    alreadyHidden: () -> Boolean = { false },
     overlay: @Composable BoxScope.() -> Unit = {},
     capHeight: Boolean = true,
     scrimAlpha: () -> Float = { 1f },
@@ -504,40 +511,57 @@ internal fun RaftSheetWindow(
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
     val hidden by rememberUpdatedState(onHidden)
+    val isAlreadyHidden by rememberUpdatedState(alreadyHidden)
+    val reducedMotion = rememberRaftReducedMotion()
     // A page pushed over this one takes a sliding window down at once, without the slide down
     // (RaftWindowDialog asks the caller to close it): the covered page stops composing.
     if (slideMotion) RaftDismissOnPageCover { hidden() }
     RaftWindowDialog(
         onDismissRequest = onDismissRequest,
-        // The drawer slides itself: no platform window transition stacked on the slide (iOS).
-        properties = RaftWindowDialogProperties(drawScrim = !slideMotion, platformTransition = !slideMotion),
+        // Every sheet/drawer slides itself: no platform window transition stacked on the slide (iOS).
+        properties = RaftSheetWindowDialogProperties,
     ) {
-        val slide = remember { Animatable(1f) }
+        val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
         if (slideMotion) {
-            LaunchedEffect(visible) {
+            LaunchedEffect(visible, reducedMotion) {
                 if (visible) {
-                    // The first frame composes and measures the content: start after it.
-                    withFrameNanos { }
-                    slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide))
+                    if (reducedMotion) {
+                        slide.snapTo(0f)
+                    } else {
+                        // The first frame composes and measures the content: start after it.
+                        withFrameNanos { }
+                        slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide))
+                    }
                 } else {
-                    slide.animateTo(1f, tween(RaftSheetSlideOutMillis, easing = RaftMotion.EaseSlide))
+                    if (!reducedMotion && !isAlreadyHidden()) {
+                        slide.animateTo(1f, tween(RaftSheetSlideOutMillis, easing = RaftMotion.EaseSlide))
+                    } else if (!reducedMotion) {
+                        // Already dragged completely off-screen: snap slide to hidden so any
+                        // immediate reopen before unmount starts from a clean off-screen state.
+                        slide.snapTo(1f)
+                    }
                     hidden()
                 }
             }
         } else {
-            LaunchedEffect(Unit) { slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide)) }
+            LaunchedEffect(reducedMotion) {
+                if (reducedMotion) {
+                    slide.snapTo(0f)
+                } else {
+                    withFrameNanos { }
+                    slide.animateTo(0f, tween(RaftSheetSlideInMillis, easing = RaftMotion.EaseSlide))
+                }
+            }
         }
         Box(Modifier.fillMaxSize()) {
-            if (slideMotion) {
-                val scrim = RaftTheme.scrim
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .testTag(RaftSheetScrimTestTag)
-                        .graphicsLayer { alpha = (1f - slide.value) * scrimAlpha().coerceIn(0f, 1f) }
-                        .background(scrim),
-                )
-            }
+            val scrim = RaftTheme.scrim
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .testTag(RaftSheetScrimTestTag)
+                    .graphicsLayer { alpha = (1f - slide.value) * scrimAlpha().coerceIn(0f, 1f) }
+                    .background(scrim),
+            )
             Box(
                 Modifier
                     .fillMaxSize()
@@ -565,7 +589,7 @@ internal fun RaftSheetWindow(
 internal const val RaftSheetSlideInMillis = 240
 internal const val RaftSheetSlideOutMillis = 180
 
-/** The scrim [RaftSheetWindow] draws itself with `slideMotion` (tests read its alpha). */
+/** The synced scrim [RaftSheetWindow] draws itself (tests read its alpha). */
 internal const val RaftSheetScrimTestTag = "raft-sheet-scrim"
 
 /**

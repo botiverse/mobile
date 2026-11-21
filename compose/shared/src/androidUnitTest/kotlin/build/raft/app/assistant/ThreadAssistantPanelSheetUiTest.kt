@@ -323,6 +323,32 @@ class ThreadAssistantPanelSheetUiTest {
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
         }
 
+    @Test
+    fun dragToDismissUnmountsImmediatelyWithoutExtraExitSlideDelay() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(true)
+            show { Page(open, { open = it }, banner = null) }
+            mainClock.advanceTimeBy(600)
+            val head = onNode(hasTestTag(ThreadAssistantPanelHeaderTestTag))
+
+            mainClock.autoAdvance = false
+            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 560.dp.toPx(), durationMillis = 400) }
+            // Advance frame-by-frame until settle() closes the panel (`open` turns false).
+            var settleFrames = 0
+            while (open) {
+                assertTrue(++settleFrames < 60, "drag-to-dismiss never settled")
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            // Once drag-to-dismiss settled off-screen and closed `open`, the dialog must unmount
+            // within 2 frames instead of lingering for another 180ms exit slide (~12 frames).
+            repeat(2) {
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+        }
+
     private fun assertClose(expected: Float, actual: Float, message: String) =
         assertTrue(kotlin.math.abs(expected - actual) <= 2f, "$message: expected $expected, was $actual")
 
