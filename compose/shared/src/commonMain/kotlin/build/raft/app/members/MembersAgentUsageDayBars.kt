@@ -3,9 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -57,6 +56,8 @@ import build.raft.app.data.agentUsageWeekdayIndex
 import build.raft.app.data.formatAgentUsageTokens
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -227,9 +228,9 @@ internal fun MembersAgentUsageDayBars(
             val scrollState = rememberScrollState()
             val density = LocalDensity.current
 
-            // Open at the newest day whenever range/width changes and nothing is picked.
-            LaunchedEffect(n, viewportWidth, scrolls) {
-                if (scrolls && pickedIndex == null) {
+            // Open at the newest day whenever range/width/maxValue settles and nothing is picked.
+            LaunchedEffect(n, viewportWidth, scrolls, scrollState.maxValue) {
+                if (scrolls && pickedIndex == null && scrollState.maxValue != Int.MAX_VALUE) {
                     scrollState.scrollTo(scrollState.maxValue)
                 }
             }
@@ -327,6 +328,8 @@ internal fun MembersAgentUsageDayBars(
 
                             AgentUsageDayColumn(
                                 day = day,
+                                index = index,
+                                lastIndex = lastIndex,
                                 kinds = kinds,
                                 maxSum = maxSum,
                                 slotWidth = slotWidth,
@@ -383,6 +386,8 @@ internal fun MembersAgentUsageDayBars(
 @Composable
 private fun AgentUsageDayColumn(
     day: AgentUsageDay,
+    index: Int,
+    lastIndex: Int,
     kinds: List<AgentUsageSeriesKey>,
     maxSum: Long,
     slotWidth: Dp,
@@ -399,7 +404,34 @@ private fun AgentUsageDayColumn(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val interactionSource = remember { MutableInteractionSource() }
+    val edgeAlign =
+        when {
+            index == 0 -> Alignment.Start
+            index == lastIndex -> Alignment.End
+            else -> Alignment.CenterHorizontally
+        }
+    val edgeBottomAlign =
+        when {
+            index == 0 -> Alignment.BottomStart
+            index == lastIndex -> Alignment.BottomEnd
+            else -> Alignment.BottomCenter
+        }
+    val totalBarHeightDp =
+        if (!day.noData && kinds.isNotEmpty() && maxSum > 0L) {
+            var yDp = 0f
+            val plotDp = ChartPlot.value
+            val minSegDp = ChartMinSegment.value
+            val maxPlotBoxDp = (ChartTop + ChartPlot).value
+            for (kind in kinds) {
+                val amount = day.sums.seriesValue(kind)
+                if (amount <= 0L) continue
+                val rawHeight = (plotDp * amount.toFloat() / maxSum.toFloat()).coerceAtLeast(minSegDp)
+                yDp = (yDp + rawHeight).coerceAtMost(maxPlotBoxDp)
+            }
+            yDp.dp
+        } else {
+            0.dp
+        }
 
     Column(
         modifier =
@@ -410,11 +442,12 @@ private fun AgentUsageDayColumn(
                     contentDescription = accessibleName
                     selected = isSelected
                 }
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    role = Role.RadioButton,
+                .raftClickable(
                     onClick = onClick,
+                    role = Role.RadioButton,
+                    shape = RoundedCornerShape(6.dp),
+                    tier = RaftHoverTier.Subtle,
+                    selected = isSelected,
                 )
                 .testTag("${AgentUsageTestTags.BarPrefix}${day.day}"),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -435,38 +468,21 @@ private fun AgentUsageDayColumn(
                             .background(colors.fillMuted, RoundedCornerShape(6.dp))
                 )
             }
-            if (showSum) {
-                RaftText(
-                    text = sumLabel,
-                    style =
-                        typography.monoMeta.copy(
-                            fontSize = 10.sp,
-                            lineHeight = 14.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        ),
-                    color = if (dim) colors.foregroundHint else colors.foreground,
-                    maxLines = 1,
-                    softWrap = false,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 2.dp).clearAndSetSemantics {},
-                )
-            }
             if (!day.noData && kinds.isNotEmpty()) {
                 val inkColor = RaftUiPalette.stickerInk
                 Canvas(
                     modifier =
                         Modifier
-                            .padding(top = ChartTop)
                             .width(barWidth)
-                            .height(ChartPlot)
+                            .height(ChartTop + ChartPlot)
                             .alpha(if (dim) 0.32f else 1f)
                 ) {
-                    val plotPx = size.height
+                    val plotPx = ChartPlot.toPx()
                     val gapPx = ChartSegmentGap.toPx()
                     val minSegPx = ChartMinSegment.toPx()
                     val strokePx = 1.5.dp.toPx()
                     val radiusPx = 3.dp.toPx()
-                    var y = plotPx
+                    var y = size.height
                     for (kind in kinds) {
                         val amount = day.sums.seriesValue(kind)
                         if (amount <= 0L) continue
@@ -493,10 +509,33 @@ private fun AgentUsageDayColumn(
                     }
                 }
             }
+            if (showSum) {
+                val labelBottom = (totalBarHeightDp + 4.dp).coerceAtMost(ChartTop + ChartPlot - 14.dp)
+                RaftText(
+                    text = sumLabel,
+                    style =
+                        typography.monoMeta.copy(
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        ),
+                    color = if (dim) colors.foregroundHint else colors.foreground,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                    textAlign = TextAlign.Center,
+                    modifier =
+                        Modifier
+                            .align(edgeBottomAlign)
+                            .padding(bottom = labelBottom)
+                            .wrapContentWidth(align = edgeAlign, unbounded = true)
+                            .clearAndSetSemantics {},
+                )
+            }
         }
         Column(
             modifier = Modifier.fillMaxWidth().height(ChartBottom).padding(top = 2.dp).clearAndSetSemantics {},
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalAlignment = edgeAlign,
             verticalArrangement = Arrangement.Top,
         ) {
             if (primaryXLabel != null) {
@@ -524,7 +563,9 @@ private fun AgentUsageDayColumn(
                         },
                     maxLines = 1,
                     softWrap = false,
+                    overflow = TextOverflow.Visible,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.wrapContentWidth(align = edgeAlign, unbounded = true),
                 )
             }
             if (secondaryXLabel != null) {
@@ -534,7 +575,9 @@ private fun AgentUsageDayColumn(
                     color = colors.foregroundHint,
                     maxLines = 1,
                     softWrap = false,
+                    overflow = TextOverflow.Visible,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.wrapContentWidth(align = edgeAlign, unbounded = true),
                 )
             }
         }

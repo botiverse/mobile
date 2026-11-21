@@ -441,8 +441,8 @@ internal fun formatAgentUsageTokens(tokens: Double): String {
     val magnitude = abs(tokens)
     val sign = if (tokens < 0) "-" else ""
     return when {
-        magnitude >= 1_000_000_000.0 -> "${sign}${formatDecimalCompact(magnitude / 1_000_000_000.0, 2)}B"
-        magnitude >= 1_000_000.0 -> "${sign}${formatDecimalCompact(magnitude / 1_000_000.0, 1)}M"
+        magnitude >= 999_950_000.0 -> "${sign}${formatDecimalCompact(magnitude / 1_000_000_000.0, 2)}B"
+        magnitude >= 999_950.0 -> "${sign}${formatDecimalCompact(magnitude / 1_000_000.0, 1)}M"
         magnitude >= 1_000.0 -> "${sign}${formatDecimalCompact(magnitude / 1_000.0, 1)}K"
         else -> "${sign}${magnitude.roundToLong()}"
     }

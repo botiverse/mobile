@@ -154,7 +154,7 @@ class MembersAgentUsageTabUiTest {
             }
             // Default: Cache reads OFF -> 7-day chart tokens = (1000+200+300) + (500+100) = 2100 -> "2.1K"
             onNodeWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).assertTextContains("2.1K")
-            onNodeWithTag(AgentUsageTestTags.Change, useUnmergedTree = true).assertTextContains("+50% vs prior period")
+            onNodeWithTag(AgentUsageTestTags.Change).assertTextContains("+50% vs prior period")
             onNodeWithTag(AgentUsageTestTags.Reasoning, useUnmergedTree = true).assertTextContains("Includes 100 reasoning")
             onNodeWithTag(AgentUsageTestTags.ContextMeter, useUnmergedTree = true).assertExists()
             onNodeWithTag(AgentUsageTestTags.Models, useUnmergedTree = true).assertExists()
@@ -246,7 +246,7 @@ class MembersAgentUsageTabUiTest {
         }
 
     @Test
-    fun errorBannerRetriesAndLoadsReadyStateAndSkeletonRendersWhenLoading(): Unit =
+    fun errorBannerRetriesAndLoadsReadyState(): Unit =
         runRobolectricComposeUiTest {
             var failFirst = true
             val api =
@@ -282,6 +282,7 @@ class MembersAgentUsageTabUiTest {
     @Test
     fun loadingStateShowsSkeletonWhenDelayZero(): Unit =
         runRobolectricComposeUiTest {
+            mainClock.autoAdvance = false
             setContent {
                 CompositionLocalProvider(LocalRaftListSkeletonDelayMillis provides 0L) {
                     RaftDesignSystemTheme {
@@ -300,7 +301,35 @@ class MembersAgentUsageTabUiTest {
                     }
                 }
             }
-            waitForIdle()
+            mainClock.advanceTimeByFrame()
+            onNodeWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertExists()
+        }
+
+    @Test
+    fun loadingStateRespectsDefaultOneSecondSkeletonDelay(): Unit =
+        runRobolectricComposeUiTest {
+            mainClock.autoAdvance = false
+            setContent {
+                RaftDesignSystemTheme {
+                    MembersAgentUsageTabBody(
+                        agentId = "agent-1",
+                        loadState = AgentUsageLoadState.Loading,
+                        view = AgentUsageView(),
+                        withCacheReads = false,
+                        fallbackToday = "2026-03-14",
+                        timeContext = timeContext,
+                        onViewChange = {},
+                        onWithCacheReadsChange = {},
+                        onRetry = {},
+                        onOpenComputer = null,
+                    )
+                }
+            }
+            mainClock.advanceTimeBy(900L)
+            mainClock.advanceTimeByFrame()
+            onAllNodesWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertCountEquals(0)
+            mainClock.advanceTimeBy(200L)
+            mainClock.advanceTimeByFrame()
             onNodeWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertExists()
         }
 

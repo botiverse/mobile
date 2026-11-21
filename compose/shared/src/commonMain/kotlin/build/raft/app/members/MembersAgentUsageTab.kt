@@ -1,8 +1,8 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,10 +33,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +53,7 @@ import build.raft.app.data.AgentUsageSummary
 import build.raft.app.data.AgentUsageView
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.ScreenError
 import build.raft.app.data.UsageUnreportedReason
 import build.raft.app.data.agentUsageRequestWindow
 import build.raft.app.data.agentUsageUtcDay
@@ -85,10 +90,12 @@ import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.rememberRaftSkeletonDelayPassed
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 
 internal object AgentUsageTestTags {
     const val Tab = "agent-usage-tab"
@@ -148,7 +155,7 @@ internal fun MembersAgentUsageTab(
     var withCacheReads by remember(agentId.value, serverId?.value) { mutableStateOf(false) }
     var attempt by remember(agentId.value, serverId?.value) { mutableIntStateOf(0) }
 
-    val fallbackToday = remember(timeContext.nowEpochMillis) {
+    val fallbackToday = remember(timeContext.nowEpochMillis, attempt) {
         agentUsageUtcDay(timeContext.nowEpochMillis ?: nowMillisProvider())
     }
     val requestWindow = remember(view.range, fallbackToday) {
@@ -163,13 +170,20 @@ internal fun MembersAgentUsageTab(
             settled = requestKey to AgentUsageLoadState.Error
             return@LaunchedEffect
         }
+        settled = null
         val result =
-            agentsApiClient.agentUsage(
-                serverId = currentServerId,
-                from = requestWindow.from,
-                to = requestWindow.to,
-                agentId = agentId,
-            )
+            try {
+                agentsApiClient.agentUsage(
+                    serverId = currentServerId,
+                    from = requestWindow.from,
+                    to = requestWindow.to,
+                    agentId = agentId,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError("agent_usage_load_failed"))
+            }
         settled =
             requestKey to
                 when (result) {
@@ -238,7 +252,7 @@ internal fun MembersAgentUsageTabBody(
         // Controls bar: Period Select + Cache reads switch (`px-5 pt-4 pb-1`).
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AgentUsagePeriodSelect(
@@ -246,29 +260,33 @@ internal fun MembersAgentUsageTabBody(
                 today = today,
                 onChange = onViewChange,
             )
+            Spacer(Modifier.weight(1f))
             val cacheReadsLabel = stringResource(Res.string.agent_usage_cache_reads)
             Row(
                 modifier =
                     Modifier
-                        .clickable(
+                        .toggleable(
+                            value = withCacheReads,
+                            role = Role.Switch,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = { onWithCacheReadsChange(!withCacheReads) },
-                        ),
+                            onValueChange = onWithCacheReadsChange,
+                        )
+                        .testTag(AgentUsageTestTags.CacheReadsSwitch),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RaftSwitch(
                     checked = withCacheReads,
-                    onCheckedChange = onWithCacheReadsChange,
+                    onCheckedChange = null,
                     label = cacheReadsLabel,
-                    modifier = Modifier.testTag(AgentUsageTestTags.CacheReadsSwitch),
                 )
                 RaftText(
                     text = cacheReadsLabel,
                     style = typography.caption,
                     color = colors.foregroundMuted,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -297,6 +315,7 @@ internal fun MembersAgentUsageTabBody(
 
             summary == null -> {
                 if (skeletonVisible) {
+                    val animateSkeleton = !rememberRaftReducedMotion()
                     Column(
                         modifier =
                             Modifier
@@ -305,8 +324,8 @@ internal fun MembersAgentUsageTabBody(
                                 .testTag(AgentUsageTestTags.Skeleton),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RaftSkeleton(modifier = Modifier.width(96.dp), variant = RaftSkeletonVariant.Line)
-                        RaftSkeleton(modifier = Modifier.fillMaxWidth().height(132.dp))
+                        RaftSkeleton(modifier = Modifier.width(96.dp), variant = RaftSkeletonVariant.Line, animated = animateSkeleton)
+                        RaftSkeleton(modifier = Modifier.fillMaxWidth().height(132.dp), animated = animateSkeleton)
                     }
                 }
             }
@@ -315,7 +334,7 @@ internal fun MembersAgentUsageTabBody(
                 AgentUsageUnsupportedEmptyState(
                     reason = summary.reason,
                     onOpenComputer = onOpenComputer,
-                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
 
@@ -556,7 +575,7 @@ private fun AgentUsageHeadline(
             modifier = Modifier.alignByBaseline().testTag(AgentUsageTestTags.Headline),
         )
         Row(
-            modifier = Modifier.alignByBaseline().testTag(AgentUsageTestTags.Change),
+            modifier = Modifier.alignByBaseline().semantics(mergeDescendants = true) {}.testTag(AgentUsageTestTags.Change),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -569,7 +588,11 @@ private fun AgentUsageHeadline(
                 )
             } else {
                 val icon = if (change >= 0.0) RaftLucideIconName.ArrowUpRight else RaftLucideIconName.ArrowDownRight
-                RaftLucideIcon(icon, modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundMuted))
+                RaftLucideIcon(
+                    icon,
+                    modifier = Modifier.size(14.dp).clearAndSetSemantics {},
+                    color = raftArgbHex(colors.foregroundMuted),
+                )
                 val changeText = formatAgentUsageChange(change)
                 val label =
                     if (picked && figures.baseDay != null) {
@@ -640,13 +663,31 @@ private fun AgentUsageTokenTypesSection(figures: AgentUsageFigures) {
             )
         } else {
             val share = if (total != null && total > 0L) value.toDouble() / total.toDouble() else 0.0
+            val amountText = formatAgentUsageTokens(value)
+            val fullText =
+                stringResource(
+                    Res.string.agent_usage_amount_with_share,
+                    amountText,
+                    formatAgentUsagePercent(share),
+                )
+            val styled =
+                buildAnnotatedString {
+                    val amountStart = fullText.indexOf(amountText)
+                    if (amountStart >= 0) {
+                        val amountEnd = amountStart + amountText.length
+                        if (amountStart > 0) {
+                            withStyle(SpanStyle(color = colors.foregroundHint)) { append(fullText.substring(0, amountStart)) }
+                        }
+                        append(amountText)
+                        if (amountEnd < fullText.length) {
+                            withStyle(SpanStyle(color = colors.foregroundHint)) { append(fullText.substring(amountEnd)) }
+                        }
+                    } else {
+                        append(fullText)
+                    }
+                }
             RaftText(
-                text =
-                    stringResource(
-                        Res.string.agent_usage_amount_with_share,
-                        formatAgentUsageTokens(value),
-                        formatAgentUsagePercent(share),
-                    ),
+                text = styled,
                 style = typography.callout.copy(fontFamily = typography.monoMeta.fontFamily, fontFeatureSettings = "tnum"),
                 color = colors.foreground,
                 maxLines = 1,

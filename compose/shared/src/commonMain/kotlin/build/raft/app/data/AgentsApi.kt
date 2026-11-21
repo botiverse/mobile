@@ -439,7 +439,8 @@ internal class RaftAgentsNetworkApi(
                 add("from" to from)
                 add("to" to to)
                 agentId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { add("agents" to it) }
-            }
+            },
+            serverIdOverride = serverId,
         )
 }
 
