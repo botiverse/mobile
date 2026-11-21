@@ -422,7 +422,8 @@ class RaftMessageLinkResolverTest {
             )
         assertEquals(ConversationKind.Joint, jointParentOpen.sourceIdentity.parentConversationKind)
         val jointParentRequest = openThroughCoordinator(jointParentOpen)
-        assertEquals(RaftThreadSurfaceKind.Joint, jointParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals(RaftThreadSurfaceKind.Channel, jointParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+        assertEquals("joint", jointParentRequest.conversationIdentity.thread?.parentChannelKind)
 
         // Transient parent-probe failure keeps `parentConversationKind = null` (never NotFound)
         // and falls back to the Home conversation directory.
