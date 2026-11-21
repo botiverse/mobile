@@ -24,9 +24,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.unit.LayoutDirection
+import build.raft.designsystem.text.forCjkLineBox
+import build.raft.designsystem.theme.LocalRaftContentColor
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -1516,9 +1527,16 @@ internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
 
 /**
  * The excerpt with [marks] beside its first line only (web `InboxItemMarks` rides the first line):
- * line 1 wraps at the width left of the marks, line 2 takes the rest of the text at the full width,
- * then ellipsizes. Without marks it is one two-line text at the full width. Either way it is always
- * [ActivityConversationPreviewMaxLines] lines tall, top-aligned, so every row has the same height.
+ * a single-topology line-box exclusion layout primitive.
+ *
+ * Every line occupies an exact fixed vertical slot of height `slotHeight` (derived from
+ * [lineHeight] and [style.lineHeight]), so the total height is strictly `slotHeight * maxLines`
+ * whether [marks] are present (unread) or absent (read), whether the excerpt has one or two lines,
+ * whether it contains CJK fallback glyphs, or whether it embeds inline placeholders (sender face /
+ * draft icon). Both line 1 and the remaining lines are measured once per pass with the same
+ * CJK-trimmed [TextStyle] and drawn directly on one canvas with inline content placed at the
+ * measured placeholder rects, so toggling read/unread smoothly changes line 1's exclusion width
+ * without switching layout branches or shifting any row height or baseline.
  */
 @Composable
 internal fun ActivityExcerptBesideMarks(
@@ -1531,135 +1549,331 @@ internal fun ActivityExcerptBesideMarks(
     lineHeight: Dp,
     /** The excerpt's lines, each reserved; one: the excerpt ellipsizes on the marks' line. */
     maxLines: Int = ActivityConversationPreviewMaxLines,
+    /** Optional test hook reporting the laid-out line split `(line1Text, restText)` after each measure. */
+    onLineSplit: ((firstLine: String, rest: String?) -> Unit)? = null,
     marks: @Composable () -> Unit,
 ) {
-    // Where line 1 ends is measured here, in the measure pass that uses it, with the same style and
-    // placeholders as line 1's text. It used to come from line 1's onTextLayout, which a text calls
-    // only when its layout changes: measured again with the same text and width (the row
-    // recomposing), it was not called, line 1 read as all of the excerpt and line 2 was dropped
-    // (artin, dm 37e8b6e9).
+    // Resolve ink and CJK line-box metrics ONCE on the full excerpt so line 1 and line 2+ never
+    // disagree (e.g. CJK on line 1 with pure ASCII on line 2, or unread -> read transitions).
+    val ink =
+        when {
+            color.isSpecified -> color
+            style.color.isSpecified -> style.color
+            else -> LocalRaftContentColor.current
+        }
+    val resolvedStyle = style.copy(color = ink).forCjkLineBox(text)
     val measurer = rememberTextMeasurer()
+    val semanticText = remember(text, accessibilityText) { accessibilityText?.let(::AnnotatedString) ?: text }
     SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
-        val width = constraints.maxWidth
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.minWidth
+        val clampedMaxLines = maxLines.coerceAtLeast(1)
         val gap = 8.dp.roundToPx()
-        val minLine = lineHeight.roundToPx()
+        val slotHeight =
+            maxOf(
+                lineHeight.roundToPx(),
+                if (resolvedStyle.lineHeight.isSp) resolvedStyle.lineHeight.roundToPx() else 0,
+            )
+        val totalHeight = slotHeight * clampedMaxLines
         val marksPlaceables = subcompose("marks", marks).map { it.measure(Constraints()) }
-        val marksWidth = marksPlaceables.maxOfOrNull { it.width } ?: 0
-        val loose = Constraints(maxWidth = width)
-        val readAs =
-            if (accessibilityText != null) {
-                Modifier.clearAndSetSemantics { this.text = AnnotatedString(accessibilityText) }
-            } else {
-                Modifier
+        val marksWidth = marksPlaceables.sumOf { it.width }
+        val plan =
+            planActivityExcerptLayout(
+                measurer = measurer,
+                text = text,
+                style = resolvedStyle,
+                inlineContent = inlineContent,
+                width = width,
+                marksWidth = marksWidth,
+                gap = gap,
+                slotHeight = slotHeight,
+                maxLines = clampedMaxLines,
+                isRtl = layoutDirection == LayoutDirection.Rtl,
+            )
+        onLineSplit?.invoke(plan.firstLineText, plan.restText)
+        val textCanvas =
+            subcompose("text") {
+                Box(
+                    Modifier
+                        .clearAndSetSemantics { this.text = semanticText }
+                        .drawBehind { drawActivityExcerptPlan(plan, totalHeight, slotHeight) }
+                )
+            }.first().measure(Constraints.fixed(width, totalHeight))
+        val inlinePlacements =
+            plan.inlinePlacements.mapIndexed { index, placement ->
+                val clipLeftInBox = (placement.clipLeft - placement.x).coerceAtLeast(0)
+                val clipRightInBox = (placement.clipRight - placement.x).coerceAtMost(placement.width)
+                val needsClip = clipLeftInBox > 0 || clipRightInBox < placement.width
+                val placeable =
+                    subcompose("inline-$index") {
+                        Box(
+                            Modifier
+                                .clearAndSetSemantics {}
+                                .then(
+                                    if (needsClip) {
+                                        Modifier.drawWithContent {
+                                            clipRect(
+                                                left = clipLeftInBox.toFloat(),
+                                                top = -slotHeight.toFloat(),
+                                                right = clipRightInBox.toFloat(),
+                                                bottom = (placement.height + slotHeight).toFloat(),
+                                            ) {
+                                                this@drawWithContent.drawContent()
+                                            }
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            placement.span.content.children(placement.span.alternateText)
+                        }
+                    }.first().measure(Constraints(maxWidth = placement.width, maxHeight = placement.height))
+                Triple(placeable, placement.x, placement.y)
             }
-        val silent = if (accessibilityText != null) Modifier.clearAndSetSemantics { } else Modifier
-        if (marksWidth == 0) {
-            val body =
-                subcompose("body") {
-                    Box(readAs) {
-                        RaftText(
-                            text = text,
-                            style = style,
-                            color = color,
-                            maxLines = maxLines,
-                            overflow = TextOverflow.Ellipsis,
-                            inlineContent = inlineContent,
-                        )
-                    }
-                }.first().measure(loose)
-            val height = maxOf(body.height, minLine * maxLines)
-            return@SubcomposeLayout layout(width, height) {
-                body.place(0, 0)
+        layout(width, totalHeight) {
+            textCanvas.place(0, 0)
+            inlinePlacements.forEach { (placeable, x, y) ->
+                placeable.place(x, y)
             }
-        }
-        val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
-        if (maxLines <= 1) {
-            // One line (the web's compact row, `InboxItemLine`): the excerpt ellipsizes before the marks.
-            val only =
-                subcompose("first") {
-                    Box(readAs) {
-                        RaftText(
-                            text = text,
-                            style = style,
-                            color = color,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            inlineContent = inlineContent,
-                        )
-                    }
-                }.first().measure(Constraints(maxWidth = firstWidth))
-            val row = maxOf(only.height, minLine)
-            return@SubcomposeLayout layout(width, row) {
-                only.place(0, (row - only.height) / 2)
-                var x = width
-                marksPlaceables.forEach { marksPlaceable ->
-                    x -= marksPlaceable.width
-                    marksPlaceable.place(x, (row - marksPlaceable.height) / 2)
-                }
-            }
-        }
-        val firstLineEnd =
-            measurer
-                .measure(
-                    text = text,
-                    style = style,
-                    overflow = TextOverflow.Clip,
-                    maxLines = 1,
-                    placeholders = text.inlinePlaceholders(inlineContent),
-                    constraints = Constraints(maxWidth = firstWidth),
-                ).getLineEnd(0, visibleEnd = false)
-        val first =
-            subcompose("first") {
-                Box(readAs) {
-                    RaftText(
-                        text = text,
-                        style = style,
-                        color = color,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
-                        inlineContent = inlineContent,
-                    )
-                }
-            }.first().measure(Constraints(maxWidth = firstWidth))
-        val firstRow = maxOf(first.height, minLine)
-        val rest = text.subSequence(firstLineEnd.coerceIn(0, text.length), text.length)
-        val second =
-            if (rest.text.isBlank()) {
-                null
-            } else {
-                subcompose("second") {
-                    Box(silent) {
-                        RaftText(
-                            text = rest,
-                            style = style,
-                            color = color,
-                            maxLines = maxLines - 1,
-                            overflow = TextOverflow.Ellipsis,
-                            inlineContent = inlineContent,
-                        )
-                    }
-                }.first().measure(loose)
-            }
-        // An excerpt that fits on line 1 still reserves line 2.
-        layout(width, firstRow + maxOf(second?.height ?: 0, minLine * (maxLines - 1))) {
-            first.place(0, (firstRow - first.height) / 2)
-            var x = width
+            var xFromEnd = width
             marksPlaceables.forEach { marksPlaceable ->
-                x -= marksPlaceable.width
-                marksPlaceable.place(x, (firstRow - marksPlaceable.height) / 2)
+                xFromEnd -= marksPlaceable.width
+                marksPlaceable.placeRelative(xFromEnd, (slotHeight - marksPlaceable.height) / 2)
             }
-            second?.place(0, firstRow)
         }
     }
 }
 
+private data class ActivityExcerptInlineSpan(
+    val alternateText: String,
+    val range: AnnotatedString.Range<Placeholder>,
+    val content: InlineTextContent,
+)
+
+private data class ActivityExcerptInlinePlacement(
+    val span: ActivityExcerptInlineSpan,
+    val x: Int,
+    val y: Int,
+    val width: Int,
+    val height: Int,
+    val clipLeft: Int,
+    val clipRight: Int,
+)
+
+private data class ActivityExcerptLayoutPlan(
+    val line0: TextLayoutResult?,
+    val line0Left: Int,
+    val line0Width: Int,
+    val line0Top: Int,
+    val clipLine0: Boolean,
+    val rest: TextLayoutResult?,
+    val restTop: Int,
+    val inlinePlacements: List<ActivityExcerptInlinePlacement>,
+    val firstLineText: String,
+    val restText: String?,
+)
+
+/**
+ * Normalizes line-0 end offset across Android (`StaticLayout.getLineEnd`, which includes the
+ * terminating line break) and Skia on iOS/Desktop (`SkiaParagraph.getLineEnd`, which excludes it):
+ * when [rawLineEnd] stops right before a line break that line 0 has not consumed yet, advances past
+ * at most one line terminator (`\r\n`, `\n`, or `\r`) without eating a following blank line.
+ */
+internal fun advancePastSingleLineBreak(text: CharSequence, rawLineEnd: Int): Int {
+    var split = rawLineEnd.coerceIn(0, text.length)
+    if (split < text.length && (split == 0 || (text[split - 1] != '\n' && text[split - 1] != '\r'))) {
+        if (text[split] == '\r') split++
+        if (split < text.length && text[split] == '\n') split++
+    }
+    return split
+}
+
+private fun planActivityExcerptLayout(
+    measurer: TextMeasurer,
+    text: AnnotatedString,
+    style: TextStyle,
+    inlineContent: Map<String, InlineTextContent>,
+    width: Int,
+    marksWidth: Int,
+    gap: Int,
+    slotHeight: Int,
+    maxLines: Int,
+    isRtl: Boolean,
+): ActivityExcerptLayoutPlan {
+    val exclusion = if (marksWidth > 0) marksWidth + gap else 0
+    val line0Width = (width - exclusion).coerceAtLeast(0)
+    val line0Left = if (isRtl) (width - line0Width).coerceAtLeast(0) else 0
+    val line0Constraints = Constraints(minWidth = if (isRtl) line0Width else 0, maxWidth = line0Width)
+    val allSpans = text.inlinePlaceholderSpans(inlineContent)
+    val placements = mutableListOf<ActivityExcerptInlinePlacement>()
+
+    if (maxLines <= 1) {
+        val line0 =
+            if (line0Width > 0) {
+                measurer.measure(
+                    text = text,
+                    style = style,
+                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 1,
+                    placeholders = allSpans.map { it.range },
+                    constraints = line0Constraints,
+                )
+            } else {
+                null
+            }
+        val line0Top = if (line0 != null) (slotHeight - line0.size.height) / 2 else 0
+        if (line0 != null) {
+            collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, Int.MAX_VALUE, placements)
+        }
+        return ActivityExcerptLayoutPlan(
+            line0 = line0,
+            line0Left = line0Left,
+            line0Width = line0Width,
+            line0Top = line0Top,
+            clipLine0 = marksWidth > 0,
+            rest = null,
+            restTop = slotHeight,
+            inlinePlacements = placements,
+            firstLineText = if (line0 != null) text.text else "",
+            restText = null,
+        )
+    }
+
+    val line0 =
+        if (line0Width > 0) {
+            measurer.measure(
+                text = text,
+                style = style,
+                overflow = TextOverflow.Clip,
+                maxLines = 1,
+                placeholders = allSpans.map { it.range },
+                constraints = line0Constraints,
+            )
+        } else {
+            null
+        }
+    val line0Top = if (line0 != null) (slotHeight - line0.size.height) / 2 else 0
+    val rawLine0End =
+        if (line0 != null && line0.lineCount > 0) {
+            line0.getLineEnd(0, visibleEnd = false).coerceIn(0, text.length)
+        } else {
+            0
+        }
+    val splitOffset = if (line0 != null) advancePastSingleLineBreak(text, rawLine0End) else 0
+    if (line0 != null) {
+        collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, splitOffset, placements)
+    }
+    val restAnnotated = if (splitOffset < text.length) text.subSequence(splitOffset, text.length) else null
+    val restSpans = restAnnotated?.inlinePlaceholderSpans(inlineContent).orEmpty()
+    val hasRestContent = restAnnotated != null && (restAnnotated.text.isNotBlank() || restSpans.isNotEmpty())
+    val rest =
+        if (hasRestContent && width > 0) {
+            measurer.measure(
+                text = restAnnotated,
+                style = style,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = maxLines - 1,
+                placeholders = restSpans.map { it.range },
+                constraints = Constraints(minWidth = if (isRtl) width else 0, maxWidth = width),
+            )
+        } else {
+            null
+        }
+    val restFirstLineHeight =
+        when {
+            rest == null -> 0
+            rest.lineCount <= 1 -> rest.size.height
+            else -> (rest.getLineBottom(0) - rest.getLineTop(0)).roundToInt()
+        }
+    val restTop = slotHeight + (slotHeight - restFirstLineHeight) / 2
+    if (rest != null) {
+        collectInlinePlacements(rest, restSpans, 0, restTop, 0, width, Int.MAX_VALUE, placements)
+    }
+    return ActivityExcerptLayoutPlan(
+        line0 = line0,
+        line0Left = line0Left,
+        line0Width = line0Width,
+        line0Top = line0Top,
+        clipLine0 = marksWidth > 0,
+        rest = rest,
+        restTop = restTop,
+        inlinePlacements = placements,
+        firstLineText = if (line0 != null) text.text.substring(0, splitOffset) else "",
+        restText = if (rest != null) restAnnotated?.text else null,
+    )
+}
+
+private fun collectInlinePlacements(
+    result: TextLayoutResult,
+    spans: List<ActivityExcerptInlineSpan>,
+    originX: Int,
+    originY: Int,
+    clipLeft: Int,
+    clipRight: Int,
+    maxRangeStartExclusive: Int,
+    out: MutableList<ActivityExcerptInlinePlacement>,
+) {
+    result.placeholderRects.forEachIndexed { index, rect ->
+        if (rect == null || index >= spans.size) return@forEachIndexed
+        val span = spans[index]
+        if (span.range.start >= maxRangeStartExclusive) return@forEachIndexed
+        val x = originX + rect.left.roundToInt()
+        val width = rect.width.roundToInt().coerceAtLeast(0)
+        val height = rect.height.roundToInt().coerceAtLeast(0)
+        if (width <= 0 || height <= 0) return@forEachIndexed
+        if (x + width <= clipLeft || x >= clipRight) return@forEachIndexed
+        out +=
+            ActivityExcerptInlinePlacement(
+                span = span,
+                x = x,
+                y = originY + rect.top.roundToInt(),
+                width = width,
+                height = height,
+                clipLeft = clipLeft,
+                clipRight = clipRight,
+            )
+    }
+}
+
+private fun DrawScope.drawActivityExcerptPlan(plan: ActivityExcerptLayoutPlan, totalHeight: Int, slotHeight: Int) {
+    val line0 = plan.line0
+    if (line0 != null && plan.line0Width > 0) {
+        val topLeft = Offset(plan.line0Left.toFloat(), plan.line0Top.toFloat())
+        if (plan.clipLine0) {
+            clipRect(
+                left = plan.line0Left.toFloat(),
+                top = -slotHeight.toFloat(),
+                right = (plan.line0Left + plan.line0Width).toFloat(),
+                bottom = (totalHeight + slotHeight).toFloat(),
+            ) {
+                drawText(textLayoutResult = line0, topLeft = topLeft)
+            }
+        } else {
+            drawText(textLayoutResult = line0, topLeft = topLeft)
+        }
+    }
+    val rest = plan.rest
+    if (rest != null) {
+        drawText(textLayoutResult = rest, topLeft = Offset(0f, plan.restTop.toFloat()))
+    }
+}
+
 /** The [inlineContent] placeholders [BasicText] lays [this] out with (its `appendInlineContent` ranges). */
-private fun AnnotatedString.inlinePlaceholders(inlineContent: Map<String, InlineTextContent>): List<AnnotatedString.Range<Placeholder>> =
+private fun AnnotatedString.inlinePlaceholderSpans(
+    inlineContent: Map<String, InlineTextContent>,
+): List<ActivityExcerptInlineSpan> =
     if (inlineContent.isEmpty()) {
         emptyList()
     } else {
         getStringAnnotations(InlineContentTag, 0, length).mapNotNull { annotation ->
-            inlineContent[annotation.item]?.let { AnnotatedString.Range(it.placeholder, annotation.start, annotation.end) }
+            val start = annotation.start.coerceIn(0, length)
+            val end = annotation.end.coerceIn(start, length)
+            val content = inlineContent[annotation.item] ?: return@mapNotNull null
+            ActivityExcerptInlineSpan(
+                alternateText = text.substring(start, end),
+                range = AnnotatedString.Range(content.placeholder, start, end),
+                content = content,
+            )
         }
     }
 
