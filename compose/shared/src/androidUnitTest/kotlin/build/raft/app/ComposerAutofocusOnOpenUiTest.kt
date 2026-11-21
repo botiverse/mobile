@@ -604,13 +604,22 @@ class ComposerAutofocusOnOpenUiTest {
             }
             mainClock.autoAdvance = false
             runOnIdle { opened = true }
-            repeat(2) { mainClock.advanceTimeByFrame() }
-            runOnIdle {}
+            val activeCoordinator = checkNotNull(coordinator)
+            var warmup = 0
+            while (activeCoordinator.pendingTicketCount == 0 && warmup < 6) {
+                mainClock.advanceTimeByFrame()
+                runOnIdle {}
+                warmup += 1
+            }
+            assertTrue(
+                activeCoordinator.pendingTicketCount > 0,
+                "open request ticket must be queued before user interaction interrupts settle",
+            )
             assertTrue(outcomes.isEmpty(), "open request should still be settling while menu is open")
-            val epochBeforeClick = checkNotNull(coordinator).interactionEpoch
+            val epochBeforeClick = activeCoordinator.interactionEpoch
             onNodeWithTag(TOUCH_TARGET).performTouchInput { click() }
             assertTrue(
-                checkNotNull(coordinator).interactionEpoch > epochBeforeClick,
+                activeCoordinator.interactionEpoch > epochBeforeClick,
                 "real pointer down inside RaftWindowFocusScope should advance interactionEpoch",
             )
             runOnIdle { menuOpen = false }
@@ -655,16 +664,25 @@ class ComposerAutofocusOnOpenUiTest {
             onNodeWithTag(CONTROL).assertIsNotFocused()
             mainClock.autoAdvance = false
             runOnIdle { opened = true }
-            repeat(2) { mainClock.advanceTimeByFrame() }
-            runOnIdle {}
+            val activeCoordinator = checkNotNull(coordinator)
+            var warmup = 0
+            while (activeCoordinator.pendingTicketCount == 0 && warmup < 6) {
+                mainClock.advanceTimeByFrame()
+                runOnIdle {}
+                warmup += 1
+            }
+            assertTrue(
+                activeCoordinator.pendingTicketCount > 0,
+                "open request ticket must be queued before focus move interrupts settle",
+            )
             assertTrue(outcomes.isEmpty(), "open request should still be settling while menu is open")
-            val focusEpochBeforeMove = checkNotNull(coordinator).focusEpoch
+            val focusEpochBeforeMove = activeCoordinator.focusEpoch
             runOnIdle {
                 paneControl.requestFocus()
                 menuOpen = false
             }
             assertTrue(
-                checkNotNull(coordinator).focusEpoch > focusEpochBeforeMove,
+                activeCoordinator.focusEpoch > focusEpochBeforeMove,
                 "moving focus into SupportingPane should advance focusEpoch",
             )
             mainClock.autoAdvance = true

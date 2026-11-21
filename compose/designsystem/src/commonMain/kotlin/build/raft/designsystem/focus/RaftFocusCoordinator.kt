@@ -328,6 +328,10 @@ class RaftFocusCoordinator {
     /** True while [ticket] is still the newest ticket for its target. */
     fun isLatest(ticket: RaftFocusTicket): Boolean = latestTicketByTarget[ticket.targetKey] == ticket.id
 
+    /** Number of targets that currently hold an unconsumed pending focus ticket. */
+    val pendingTicketCount: Int
+        get() = latestTicketByTarget.size
+
     /** True once [ticket] has been superseded or invalidated by user input or a focus change. */
     fun isStale(ticket: RaftFocusTicket): Boolean =
         !isLatest(ticket) ||

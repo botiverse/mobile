@@ -381,7 +381,7 @@ internal fun ComposerAutofocusOnOpenEffect(
     LaunchedEffect(focus, conversation, coordinator) {
         if (focus.openedConversation == conversation) return@LaunchedEffect
         // Opened behind another page or before the page appeared: the open is its first showing.
-        snapshotFlow { focus.shown }.first { it }
+        if (!focus.shown) snapshotFlow { focus.shown }.first { it }
         val allowCrossRegionFromNonText = focus.userInitiated
         val ticket =
             coordinator.request(
