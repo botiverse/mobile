@@ -3068,6 +3068,12 @@
     <string name="settings_computers_runtime_auth_error_not_installed">このコンピューターには %1$s がインストールされていません。</string>
     <string name="settings_computers_runtime_upgrade_action">アップグレード</string>
     <string name="settings_computers_runtime_upgrade_running">アップグレード中…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s が利用可能</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · 最新</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">アップデートを確認できませんでした</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · アップデートを確認できませんでした</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">アップデートは Raft の外で管理されています</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · アップデートは Raft の外で管理されています</string>
     <string name="settings_computers_runtime_upgrade_too_old">このランタイムのコマンドラインツールは古いため、ここからログインできません。</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">%1$s を %2$s から %3$s にアップグレードしました。</string>
     <string name="settings_computers_runtime_upgrade_upgraded">%1$s をアップグレードしました。</string>

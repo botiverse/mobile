@@ -31,6 +31,7 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.runtimeCatalogDisplayName
@@ -78,12 +79,41 @@ internal data class ComputerRuntimeAuthCardState(
     val view: RuntimeAuthView,
     /** Upgrade where the server offers it for this runtime (slock #15117); null: no Upgrade on the card. */
     val upgrade: ComputerRuntimeUpgradeOffer? = null,
+    /**
+     * With [upgrade]: the Computer's update check for this runtime (web `SurfaceAuth.update`, slock
+     * #15429, `RuntimeAuthView.updateCheckOf`); null (an older Computer or server): Upgrade as before.
+     */
+    val update: RuntimeUpdateCheck? = null,
 ) {
     val status: RuntimeAuthStatus?
         get() = view.statusOf(runtime)
 
     val signedOut: Boolean
         get() = status == RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
+
+    /** The CLI is too old to sign in from here (`version_unsupported`): Upgrade stays whatever the check says. */
+    val tooOld: Boolean
+        get() = (status as? RuntimeAuthStatus.Unavailable)?.reason == RuntimeAuthUnavailableReason.VersionUnsupported
+}
+
+/**
+ * Whether the card shows its Upgrade button (web `runtimeUpgradeButtonShown`): offered to this viewer,
+ * and the Computer's check found a newer version, reported none, the CLI is too old, or one runs.
+ */
+internal val ComputerRuntimeAuthCardState.upgradeButtonShown: Boolean
+    get() {
+        val offer = upgrade?.takeIf { view.canAct } ?: return false
+        return computerRuntimeUpgradeButtonShown(update, offer.state, tooOld)
+    }
+
+/**
+ * The line that stands in for the bare [runtimeVersion] where Upgrade is offered and the Computer
+ * checked (web `RuntimeUsageSurface` `updateCopy`); null: the version line as before.
+ */
+internal fun ComputerRuntimeAuthCardState?.updateCheckCopy(runtimeVersion: String?): ComputerRuntimeUpdateCheckCopy? {
+    val card = this ?: return null
+    if (card.upgrade == null) return null
+    return computerRuntimeUpdateCheckCopy(card.update, runtimeVersion)
 }
 
 /** The card's sign-in action for a person who may act (web `runtimeAuthAction`), or why there is none. */
@@ -149,9 +179,15 @@ internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
     return ComputerRuntimeAuthAction.SignIn
 }
 
-/** Whether the card has anything in its action row: the sign-in action, or Upgrade (web `runtimeAuthAction`). */
+/**
+ * Whether the card has anything in its action row (web `runtimeAuthAction`): the sign-in action,
+ * the Upgrade button, or what the last Upgrade learned.
+ */
 internal val ComputerRuntimeAuthCardState.hasActions: Boolean
-    get() = action() != null || (upgrade != null && view.canAct)
+    get() =
+        action() != null ||
+            upgradeButtonShown ||
+            upgrade?.takeIf { view.canAct }?.let { computerRuntimeUpgradeCopy(it.state) } != null
 
 /**
  * The sign-in state under the card's title (web `RuntimeAuthHeaderLine`): "Not signed in", the
@@ -205,8 +241,9 @@ private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier 
 /**
  * The card's actions (web `runtimeAuthAction`): the sign-in action (a button, or the caption that
  * says why there is none here), then Upgrade for a runtime the Computer can upgrade (slock #15117)
- * and what the last Upgrade learned. Nothing for a person who may not act. [fullWidth]: the phone
- * sheet's stacked buttons.
+ * where its update check found a newer version or it reported none (slock #15429,
+ * [upgradeButtonShown]), and what the last Upgrade learned. Nothing for a person who may not act.
+ * [fullWidth]: the phone sheet's stacked buttons.
  */
 @Composable
 internal fun ComputerRuntimeAuthActionView(
@@ -223,7 +260,7 @@ internal fun ComputerRuntimeAuthActionView(
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ComputerRuntimeAuthSignInActionView(auth, onSignIn, onSignOut, Modifier, fullWidth)
-        ComputerRuntimeUpgradeButton(upgrade, fullWidth)
+        if (auth.upgradeButtonShown) ComputerRuntimeUpgradeButton(upgrade, fullWidth)
         ComputerRuntimeOperationOutcome(computerRuntimeUpgradeCopy(upgrade.state), runtimeName = runtimeCatalogDisplayName(auth.raftRuntimeId))
     }
 }

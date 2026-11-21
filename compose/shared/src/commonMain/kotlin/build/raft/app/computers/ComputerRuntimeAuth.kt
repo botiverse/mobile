@@ -17,10 +17,12 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.isRuntimeAuthPastedCode
 import build.raft.app.model.RealtimeEvent
@@ -782,6 +784,8 @@ internal class ComputerRuntimeAuthController(
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
     private val onIdentityChanged: () -> Unit = {},
+    /** Wall clock for the update check's age (web `currentTimeMs`). */
+    private val nowEpochMillis: () -> Long = ::defaultNowMillis,
 ) {
     var view by mutableStateOf<RuntimeAuthView?>(null)
         private set
@@ -796,6 +800,17 @@ internal class ComputerRuntimeAuthController(
     /** Upgrade where the server offers it for this runtime (web `useOfferedRuntimeUpgrade`); null otherwise. */
     val upgradeOffer: ComputerRuntimeUpgradeOffer?
         get() = if (view?.upgradeOffered(runtime) == true) ComputerRuntimeUpgradeOffer(upgrade, ::startUpgrade) else null
+
+    /**
+     * The Computer's update check for this runtime where Upgrade is offered and the check is under a
+     * day old (web `runtimeUpdateOf`, slock #15429); null: Upgrade as before.
+     */
+    val updateCheck: RuntimeUpdateCheck?
+        get() = view?.updateCheckOf(runtime, nowEpochMillis())
+
+    /** What the card draws from [view] (web `SurfaceAuth`); null until the Computer's sign-in state is read. */
+    val cardState: ComputerRuntimeAuthCardState?
+        get() = view?.let { ComputerRuntimeAuthCardState(raftRuntimeId, runtime, it, upgrade = upgradeOffer, update = updateCheck) }
 
     /**
      * Upgrade, only on the person's press: the Computer runs the runtime's own updater, then

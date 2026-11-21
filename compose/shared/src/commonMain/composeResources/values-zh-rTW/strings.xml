@@ -5422,6 +5422,12 @@
     <string name="assistant_delete_failed">刪除助理失敗，請再試一次。</string>
     <string name="settings_computers_runtime_upgrade_action">升級</string>
     <string name="settings_computers_runtime_upgrade_running">正在升級…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s 可更新</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · 已是最新</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">無法檢查更新</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · 無法檢查更新</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">更新在 Raft 之外管理</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · 更新在 Raft 之外管理</string>
     <string name="settings_computers_runtime_upgrade_too_old">這個執行環境的命令列工具版本太舊，無法在這裡登入。</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">已將 %1$s 從 %2$s 升級到 %3$s。</string>
     <string name="settings_computers_runtime_upgrade_upgraded">已升級 %1$s。</string>

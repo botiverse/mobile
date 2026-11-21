@@ -11,6 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.resources.*
@@ -33,7 +36,8 @@ import build.raft.designsystem.theme.RaftTheme
 /*
  * Upgrade on a runtime's card and Install on a not-installed runtime chip (web RuntimeUpgradeButton,
  * RuntimeUpgradeOutcome, MachineRuntimeChips' InstallCard, RuntimeInstallDialog, RuntimeInstallOutcome
- * at botiverse/slock #15117 / #15214). State and copy: ComputerRuntimeOperations.kt.
+ * at botiverse/slock #15117 / #15214), and the card's update-check line (#15429 RuntimeUsageSurface).
+ * State and copy: ComputerRuntimeOperations.kt.
  */
 
 /**
@@ -55,6 +59,63 @@ internal fun ComputerRuntimeUpgradeButton(offer: ComputerRuntimeUpgradeOffer, fu
         leadingIcon = if (running) null else ({ RaftComputersIcon(RaftLucideIconName.CircleArrowUp) }),
     )
 }
+
+/**
+ * The version line of a runtime's card or sheet (web `RuntimeUsageSurface` header): where Upgrade is
+ * offered and the Computer checked for updates, that check in its place ([updateCheck], slock #15429:
+ * "1.5.10 → 1.5.11 available", "1.5.11 · Latest", …) in caption with the versions in the version
+ * line's mono (web `monoValues`); otherwise "Version …" as before.
+ */
+@Composable
+internal fun ComputerRuntimeVersionLine(runtimeVersion: String?, updateCheck: ComputerRuntimeUpdateCheckCopy?) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    if (updateCheck != null) {
+        RaftText(
+            computerRuntimeUpdateCheckText(updateCheck),
+            modifier = Modifier.testTag(COMPUTER_RUNTIME_UPDATE_CHECK_TAG),
+            style = typography.caption,
+            color = colors.foregroundHint,
+        )
+        return
+    }
+    val version = runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
+    RaftText(
+        if (version != null) {
+            stringResource(Res.string.settings_computers_runtime_usage_version, version)
+        } else {
+            stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
+        },
+        style = typography.monoMeta,
+        color = colors.foregroundHint,
+    )
+}
+
+/** [copy] as one string, for a place that takes plain text (a sheet's description). */
+@Composable
+internal fun computerRuntimeUpdateCheckPlainText(copy: ComputerRuntimeUpdateCheckCopy): String = stringResource(copy.message, *copy.args.toTypedArray())
+
+/**
+ * [copy] with each version in mono. Each version stands in as its own private-use character while the
+ * sentence is formatted, so a translation may place them in any order.
+ */
+@Composable
+private fun computerRuntimeUpdateCheckText(copy: ComputerRuntimeUpdateCheckCopy): AnnotatedString {
+    val slots = copy.args.indices.map { (ComputerRuntimeVersionSlot + it).toString() }
+    val sentence = stringResource(copy.message, *slots.toTypedArray())
+    val mono = RaftTheme.typography.monoMeta.toSpanStyle()
+    return remember(sentence, copy.args, mono) {
+        buildAnnotatedString {
+            sentence.forEach { char ->
+                val index = char - ComputerRuntimeVersionSlot
+                if (index in copy.args.indices) withStyle(mono) { append(copy.args[index]) } else append(char)
+            }
+        }
+    }
+}
+
+/** U+E000, the first private-use character: the first version's stand-in while the sentence is formatted. */
+private const val ComputerRuntimeVersionSlot = '\uE000'
 
 /**
  * What the last Upgrade or Install learned, one plain sentence (web `RuntimeUpgradeOutcome` /
@@ -281,6 +342,7 @@ internal fun ComputerRuntimeInstallDialog(
 }
 
 internal const val COMPUTER_RUNTIME_UPGRADE_TAG = "runtime-upgrade-action"
+internal const val COMPUTER_RUNTIME_UPDATE_CHECK_TAG = "runtime-update-check"
 internal const val COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG = "runtime-operation-outcome"
 internal const val COMPUTER_RUNTIME_INSTALL_TAG = "machine-runtime-install"
 internal const val COMPUTER_RUNTIME_INSTALL_CHIP_TAG = "machine-runtime-install-chip"

@@ -5422,6 +5422,12 @@
     <string name="assistant_delete_failed">No se pudo eliminar el asistente. Inténtalo de nuevo.</string>
     <string name="settings_computers_runtime_upgrade_action">Actualizar</string>
     <string name="settings_computers_runtime_upgrade_running">Actualizando…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s disponible</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · Última versión</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">No se pudo buscar actualizaciones</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · No se pudo buscar actualizaciones</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">Las actualizaciones se gestionan fuera de Raft</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · Las actualizaciones se gestionan fuera de Raft</string>
     <string name="settings_computers_runtime_upgrade_too_old">La herramienta de línea de comandos de este runtime es demasiado antigua para iniciar sesión desde aquí.</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">Se actualizó %1$s de %2$s a %3$s.</string>
     <string name="settings_computers_runtime_upgrade_upgraded">Se actualizó %1$s.</string>

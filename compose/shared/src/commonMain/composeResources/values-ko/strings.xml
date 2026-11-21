@@ -5422,6 +5422,12 @@
     <string name="assistant_delete_failed">어시스턴트를 삭제하지 못했어요. 다시 시도하세요.</string>
     <string name="settings_computers_runtime_upgrade_action">업그레이드</string>
     <string name="settings_computers_runtime_upgrade_running">업그레이드 중…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s 사용 가능</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · 최신</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">업데이트를 확인할 수 없어요</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · 업데이트를 확인할 수 없어요</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">업데이트는 Raft 밖에서 관리돼요</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · 업데이트는 Raft 밖에서 관리돼요</string>
     <string name="settings_computers_runtime_upgrade_too_old">이 런타임의 명령줄 도구가 오래되어 여기서 로그인할 수 없어요.</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">%1$s을(를) %2$s에서 %3$s(으)로 업그레이드했어요.</string>
     <string name="settings_computers_runtime_upgrade_upgraded">%1$s을(를) 업그레이드했어요.</string>

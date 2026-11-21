@@ -3068,6 +3068,12 @@
     <string name="settings_computers_runtime_auth_error_not_installed">这台 Computer 上没有安装 %1$s。</string>
     <string name="settings_computers_runtime_upgrade_action">升级</string>
     <string name="settings_computers_runtime_upgrade_running">正在升级…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s 可更新</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · 已是最新</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">无法检查更新</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · 无法检查更新</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">更新在 Raft 之外管理</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · 更新在 Raft 之外管理</string>
     <string name="settings_computers_runtime_upgrade_too_old">这个运行时的命令行工具版本太旧，无法在这里登录。</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">已将 %1$s 从 %2$s 升级到 %3$s。</string>
     <string name="settings_computers_runtime_upgrade_upgraded">已升级 %1$s。</string>

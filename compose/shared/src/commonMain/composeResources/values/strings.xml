@@ -3069,6 +3069,12 @@
     <string name="settings_computers_runtime_auth_error_not_installed">%1$s is not installed on this Computer.</string>
     <string name="settings_computers_runtime_upgrade_action">Upgrade</string>
     <string name="settings_computers_runtime_upgrade_running">Upgrading…</string>
+    <string name="settings_computers_runtime_upgrade_update_available">%1$s → %2$s available</string>
+    <string name="settings_computers_runtime_upgrade_latest">%1$s · Latest</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable">Couldn't check for updates</string>
+    <string name="settings_computers_runtime_upgrade_check_unavailable_version">%1$s · Couldn't check for updates</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere">Updates are managed outside Raft</string>
+    <string name="settings_computers_runtime_upgrade_managed_elsewhere_version">%1$s · Updates are managed outside Raft</string>
     <string name="settings_computers_runtime_upgrade_too_old">This runtime's command-line tool is too old to sign in from here.</string>
     <string name="settings_computers_runtime_upgrade_upgraded_from_to">Upgraded %1$s from %2$s to %3$s.</string>
     <string name="settings_computers_runtime_upgrade_upgraded">Upgraded %1$s.</string>

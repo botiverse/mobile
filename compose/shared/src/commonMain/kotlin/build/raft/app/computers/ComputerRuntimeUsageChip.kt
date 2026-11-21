@@ -911,7 +911,7 @@ internal class ComputerRuntimeAuthBinding(
 ) {
     /** What the card draws; null until the Computer's sign-in state is read. */
     val cardState: ComputerRuntimeAuthCardState?
-        get() = controller.view?.let { ComputerRuntimeAuthCardState(controller.raftRuntimeId, controller.runtime, it, upgrade = controller.upgradeOffer) }
+        get() = controller.cardState
 }
 
 /**
@@ -956,7 +956,7 @@ internal fun ComputerRuntimeUsageSheetHost(
         }
     }
     val timeContext = currentRaftTimeContextProvider?.current
-    val authState = auth?.view?.let { ComputerRuntimeAuthCardState(auth.raftRuntimeId, auth.runtime, it, upgrade = auth.upgradeOffer) }
+    val authState = auth?.cardState
     ComputerRuntimeUsageSheet(
         runtimeLabel = runtimeLabel,
         state = controller.sheetState(runtimeVersion),
@@ -1097,7 +1097,7 @@ private fun ComputerRuntimeUsageSheet(
         },
         content = {
             if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
-            if (!signedOut) ComputerRuntimeUsageContents(state, timeContext, showsVersion = true)
+            if (!signedOut) ComputerRuntimeUsageContents(state, timeContext, showsVersion = true, updateCheck = auth.updateCheckCopy(state.runtimeVersion))
         },
     )
 }
@@ -1191,24 +1191,15 @@ internal fun ComputerRuntimeUsageContents(
     timeContext: RaftTimeContext?,
     /** The sheet's header line (web `Surface`); the migration target list embeds the contents without it. */
     showsVersion: Boolean = false,
+    /** With [showsVersion]: the Computer's update check in place of the version (slock #15429); null shows the version. */
+    updateCheck: ComputerRuntimeUpdateCheckCopy? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // Web `Surface` header: the runtime's version (mono meta), then who may see this.
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (showsVersion) {
-                val version = state.runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
-                RaftText(
-                    if (version != null) {
-                        stringResource(Res.string.settings_computers_runtime_usage_version, version)
-                    } else {
-                        stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
-                    },
-                    style = typography.monoMeta,
-                    color = colors.foregroundHint,
-                )
-            }
+            if (showsVersion) ComputerRuntimeVersionLine(state.runtimeVersion, updateCheck)
             RaftText(
                 stringResource(Res.string.settings_computers_runtime_usage_private),
                 style = typography.caption,
@@ -1650,7 +1641,7 @@ internal fun ComputerRuntimeAuthOnlyCard(
     onSignOut: () -> Unit,
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
 ) {
-    ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose) {
+    ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose, updateCheck = auth.updateCheckCopy(runtimeVersion)) {
         if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = false, authOnly = true)
     }
     if (auth != null) {
@@ -1677,11 +1668,14 @@ private fun ComputerRuntimeAuthOnlySheet(
     onSignOut: () -> Unit,
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
 ) {
+    val updateCheck = auth.updateCheckCopy(runtimeVersion)
     RaftSheet(
         onDismissRequest = onDismiss,
         title = runtimeName,
         description =
-            runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.settings_computers_runtime_usage_version, it) }
+            // Where Upgrade is offered and the Computer checked: the check in place of the version (slock #15429).
+            updateCheck?.let { computerRuntimeUpdateCheckPlainText(it) }
+                ?: runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }?.let { stringResource(Res.string.settings_computers_runtime_usage_version, it) }
                 ?: stringResource(Res.string.settings_computers_runtime_usage_version_unavailable),
         actions = {
             if (auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut, fullWidth = true)
@@ -1702,12 +1696,16 @@ private fun ComputerRuntimeAuthOnlySheet(
     )
 }
 
-/** The card's head (web `Surface`): title, the sign-in line, the version, who may see it, and close. */
+/**
+ * The card's head (web `Surface`): title, the sign-in line, the version (or, where Upgrade is offered,
+ * the Computer's update check: [updateCheck]), who may see it, and close.
+ */
 @Composable
 private fun ComputerRuntimeCardHeader(
     title: String,
     runtimeVersion: String?,
     onClose: (() -> Unit)?,
+    updateCheck: ComputerRuntimeUpdateCheckCopy? = null,
     authLine: @Composable () -> Unit = {},
 ) {
     val colors = RaftTheme.colors
@@ -1721,16 +1719,7 @@ private fun ComputerRuntimeCardHeader(
         Column(Modifier.weight(1f)) {
             RaftText(title, style = typography.headline, color = colors.foreground)
             authLine()
-            val version = runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
-            RaftText(
-                if (version != null) {
-                    stringResource(Res.string.settings_computers_runtime_usage_version, version)
-                } else {
-                    stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
-                },
-                style = typography.monoMeta,
-                color = colors.foregroundHint,
-            )
+            ComputerRuntimeVersionLine(runtimeVersion, updateCheck)
             RaftText(
                 stringResource(Res.string.settings_computers_runtime_usage_private),
                 style = typography.caption,
@@ -1779,6 +1768,7 @@ internal fun ComputerRuntimeUsageCard(
         title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         runtimeVersion = state.runtimeVersion,
         onClose = onClose,
+        updateCheck = auth.updateCheckCopy(state.runtimeVersion),
     ) {
         if (auth != null) ComputerRuntimeAuthHeaderLine(auth, usageShowsAccount = state.showsAccount, authOnly = false)
     }
