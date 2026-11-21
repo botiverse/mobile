@@ -240,6 +240,7 @@ enum class RaftLucideIconName(val wireName: String) {
     SquareTerminal("square-terminal"),
     Store("store"),
     Terminal("terminal"),
+    TextAlignStart("text-align-start"),
     TextQuote("text-quote"),
     TimerReset("timer-reset"),
     Thread("thread"),

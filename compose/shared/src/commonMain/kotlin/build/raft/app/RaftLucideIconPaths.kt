@@ -2214,6 +2214,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m4 17 6-6-6-6"),
                     ),
                 )
+            RaftLucideIconName.TextAlignStart ->
+                RaftLucideIconSpec(
+                    "text-align-start",
+                    listOf(
+                        RaftLucidePathSpec("M21 5H3"),
+                        RaftLucidePathSpec("M15 12H3"),
+                        RaftLucidePathSpec("M17 19H3"),
+                    ),
+                )
             RaftLucideIconName.TextQuote ->
                 RaftLucideIconSpec(
                     "text-quote",

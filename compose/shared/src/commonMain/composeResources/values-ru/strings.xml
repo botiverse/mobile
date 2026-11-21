@@ -2083,7 +2083,7 @@
     <string name="task_head_source_open">Открыть исходное сообщение</string>
     <string name="task_head_source_unloaded">Сообщение не загружено</string>
     <string name="task_head_created_by">Автор</string>
-    <string name="task_head_created_at">Создана</string>
+    <string name="task_head_created_at_value">Создана %1$s</string>
     <string name="task_head_month_1">янв.</string>
     <string name="task_head_month_2">февр.</string>
     <string name="task_head_month_3">мар.</string>

@@ -2086,7 +2086,7 @@
     <string name="task_head_source_open">元のメッセージを開く</string>
     <string name="task_head_source_unloaded">メッセージは読み込まれていません</string>
     <string name="task_head_created_by">作成者</string>
-    <string name="task_head_created_at">作成日時</string>
+    <string name="task_head_created_at_value">作成日時 %1$s</string>
     <string name="task_head_month_1">1</string>
     <string name="task_head_month_2">2</string>
     <string name="task_head_month_3">3</string>

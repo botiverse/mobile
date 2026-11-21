@@ -2087,7 +2087,7 @@
     <string name="task_head_source_open">Open the source message</string>
     <string name="task_head_source_unloaded">Message not loaded</string>
     <string name="task_head_created_by">Created by</string>
-    <string name="task_head_created_at">Created at</string>
+    <string name="task_head_created_at_value">Created at %1$s</string>
     <string name="task_head_month_1">Jan</string>
     <string name="task_head_month_2">Feb</string>
     <string name="task_head_month_3">Mar</string>
