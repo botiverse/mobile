@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -198,7 +198,7 @@ internal fun RaftFloatingOverlayHost(
     RaftBackHandler(enabled = true, label = "floating_overlay", onBack = currentOnDismiss)
     // A menu or popover the user opened keeps focus from a conversation opened underneath; a
     // pass-through surface (the composer's @ suggestions) is part of the editor, not a popover.
-    RaftAutofocusGuard.HoldOpenSurface(enabled = outsidePointerMode.installsOutsideDismissBarrier)
+    LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = outsidePointerMode.installsOutsideDismissBarrier)
     // #223: defer the dismiss clickable so the long-press release does not
     // immediately propagate to onDismiss. 150ms covers the standard Android
     // long-press threshold (~500ms) minus the time to compose + render the menu.

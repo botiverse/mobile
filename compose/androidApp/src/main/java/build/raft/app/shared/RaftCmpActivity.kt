@@ -26,6 +26,7 @@ import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
+import build.raft.app.RaftWindowFocusScope
 import build.raft.app.RaftDatabaseLaunchReadiness
 import android.graphics.Matrix
 import android.graphics.Rect
@@ -1162,32 +1163,36 @@ internal open class RaftCmpActivity :
                     // background window gets a switch only when shown again (RaftCmpRoot systemDark).
                     // One toast host for the window, over the shell and every stack page (each
                     // page's RaftCmpRoot uses it instead of adding its own).
-                    RaftCmpToastLayer {
-                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
-                            if (stack == null) {
-                                RaftCmpRoot(
-                                    args,
-                                    host,
-                                    onSystemBarsResolved = ::applySystemBarAppearance,
-                                    onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                                    systemDark = RaftThemeState.App.systemDark,
-                                )
-                            } else {
-                                RaftAndroidNav3StackContent(
-                                    stack = stack,
-                                    onSystemBars = ::applySystemBarAppearance,
-                                    onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
-                                    shell = { onBars, onCanvas ->
-                                        CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
-                                            RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
-                                        }
-                                    },
-                                    page = { page, onBars, onCanvas ->
-                                        val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
-                                        RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
-                                    },
-                                    transitions = nav3TransitionProbe,
-                                )
+                    // This window's own focus bookkeeping: another app window's dialog or focused
+                    // field never decides this window's composer focus (RaftWindowFocusScope).
+                    RaftWindowFocusScope {
+                        RaftCmpToastLayer {
+                            CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                                if (stack == null) {
+                                    RaftCmpRoot(
+                                        args,
+                                        host,
+                                        onSystemBarsResolved = ::applySystemBarAppearance,
+                                        onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                                        systemDark = RaftThemeState.App.systemDark,
+                                    )
+                                } else {
+                                    RaftAndroidNav3StackContent(
+                                        stack = stack,
+                                        onSystemBars = ::applySystemBarAppearance,
+                                        onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
+                                        shell = { onBars, onCanvas ->
+                                            CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
+                                                RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
+                                            }
+                                        },
+                                        page = { page, onBars, onCanvas ->
+                                            val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
+                                            RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
+                                        },
+                                        transitions = nav3TransitionProbe,
+                                    )
+                                }
                             }
                         }
                     }

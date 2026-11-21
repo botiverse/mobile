@@ -3,7 +3,7 @@
 package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
-import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1797,8 +1797,10 @@ internal fun Modifier.raftAppEditorBehavior(
     // A conversation composer is what an automatic focus request is for; every other field
     // (search, a rename dialog) keeps its focus from one (RaftAutofocusGuard).
     val blocksComposerAutofocus = !LocalRaftEditorIsConversationComposer.current
-    DisposableEffect(focusOwner) {
-        onDispose { RaftAutofocusGuard.setFieldFocused(focusOwner, false) }
+    // This window's guard: a field focused in another app window never blocks this one's composer.
+    val autofocusGuard = LocalRaftAutofocusGuard.current
+    DisposableEffect(focusOwner, autofocusGuard) {
+        onDispose { autofocusGuard.setFieldFocused(focusOwner, false) }
     }
     return this
         .raftImeEnterAction(
@@ -1813,7 +1815,7 @@ internal fun Modifier.raftAppEditorBehavior(
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
-            if (blocksComposerAutofocus) RaftAutofocusGuard.setFieldFocused(focusOwner, it.isFocused)
+            if (blocksComposerAutofocus) autofocusGuard.setFieldFocused(focusOwner, it.isFocused)
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {

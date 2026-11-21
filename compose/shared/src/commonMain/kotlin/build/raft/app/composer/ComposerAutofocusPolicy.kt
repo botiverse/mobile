@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -11,13 +12,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.visibleSideThread
-import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 
@@ -169,11 +171,14 @@ internal class ComposerFocusOnOpen(
 }
 
 /**
- * The conversation composers that hold the focus now, by their page's [ComposerFocusOnOpen]
- * ([composerReportsFocus]). Kept apart from [RaftAutofocusGuard], where a composer never reports.
- * Main thread only.
+ * The conversation composers that hold the focus now in one window, by their page's
+ * [ComposerFocusOnOpen] ([composerReportsFocus]). Kept apart from the window's
+ * [build.raft.designsystem.focus.RaftAutofocusGuard], where a composer never reports. One per
+ * window ([LocalComposerFocusHolders], [RaftWindowFocusScope]): a composer focused in another app
+ * window is not this window's side thread holding the focus. Main thread only.
  */
-internal object ComposerFocusHolders {
+@Stable
+internal class ComposerFocusHolders {
     var holders: Set<ComposerFocusOnOpen> by mutableStateOf(emptySet())
         private set
 
@@ -181,16 +186,42 @@ internal object ComposerFocusHolders {
         val next = if (focused) holders + page else holders - page
         if (next != holders) holders = next
     }
+
+    companion object {
+        /** The holders of a composition no window provides them for (tests, a single-window host). */
+        val Default: ComposerFocusHolders = ComposerFocusHolders()
+    }
 }
 
-/** Reports the composer editor's focus to [ComposerFocusHolders] for its page [focus]. */
+/** This window's [ComposerFocusHolders]; [ComposerFocusHolders.Default] where no window provides them. */
+internal val LocalComposerFocusHolders = staticCompositionLocalOf { ComposerFocusHolders.Default }
+
+/**
+ * One app window's focus bookkeeping: its own autofocus guard and composer focus holders, so a
+ * dialog, a focused field or a focused composer in one window never decides automatic focus in
+ * another (Android's app windows, one per server). Put it at the window's root, around every page
+ * the window shows; popups and dialogs inside inherit it.
+ */
+@Composable
+fun RaftWindowFocusScope(content: @Composable () -> Unit) {
+    val guard = remember { build.raft.designsystem.focus.RaftAutofocusGuard() }
+    val holders = remember { ComposerFocusHolders() }
+    CompositionLocalProvider(
+        LocalRaftAutofocusGuard provides guard,
+        LocalComposerFocusHolders provides holders,
+        content = content,
+    )
+}
+
+/** Reports the composer editor's focus to its window's [ComposerFocusHolders] for its page [focus]. */
 @Composable
 internal fun Modifier.composerReportsFocus(focus: ComposerFocusOnOpen?): Modifier {
     if (focus == null) return this
-    DisposableEffect(focus) {
-        onDispose { ComposerFocusHolders.set(focus, false) }
+    val holders = LocalComposerFocusHolders.current
+    DisposableEffect(focus, holders) {
+        onDispose { holders.set(focus, false) }
     }
-    return onFocusChanged { ComposerFocusHolders.set(focus, it.isFocused) }
+    return onFocusChanged { holders.set(focus, it.isFocused) }
 }
 
 /**
@@ -240,10 +271,11 @@ internal fun ComposerAutofocusOnOpenEffect(
     conversation: Any?,
     focus: ComposerFocusOnOpen?,
     focusRequester: FocusRequester,
-    blocked: () -> Boolean = { RaftAutofocusGuard.blocksAutofocus },
+    blocked: () -> Boolean = LocalRaftAutofocusGuard.current.let { guard -> { guard.blocksAutofocus } },
     onOutcome: (ComposerAutofocusOutcome) -> Unit = {},
 ) {
     if (focus == null || conversation == null) return
+    val holders = LocalComposerFocusHolders.current
     val currentRequester by rememberUpdatedState(focusRequester)
     val currentOnOutcome by rememberUpdatedState(onOutcome)
     LaunchedEffect(focus, conversation) {
@@ -267,12 +299,12 @@ internal fun ComposerAutofocusOnOpenEffect(
         focus.openedConversation = conversation
         currentOnOutcome(outcome)
     }
-    LaunchedEffect(focus) {
+    LaunchedEffect(focus, holders) {
         // Where the focus is while a side thread is open: in another composer (the thread's), or
         // moved elsewhere by the user. The thread's composer leaving with the closing thread blurs
         // it as well; the close (yieldsToSideThread false) arrives within the settle frames and
         // cancels that wait, so the record keeps "the thread had it".
-        snapshotFlow { focus.yieldsToSideThread to ComposerFocusHolders.holders.any { it !== focus } }
+        snapshotFlow { focus.yieldsToSideThread to holders.holders.any { it !== focus } }
             .collectLatest { (yielding, threadHasFocus) ->
                 if (!yielding) return@collectLatest
                 if (threadHasFocus) {
@@ -283,7 +315,7 @@ internal fun ComposerAutofocusOnOpenEffect(
                 }
             }
     }
-    LaunchedEffect(focus) {
+    LaunchedEffect(focus, holders) {
         // Only side threads that close from now on: one that closed while this composer was not
         // mounted is history, not a request.
         var handled = focus.restoreGeneration
@@ -295,7 +327,7 @@ internal fun ComposerAutofocusOnOpenEffect(
             val threadHadFocus = focus.sideThreadHeldFocus
             focus.sideThreadHeldFocus = false
             // Rule 4: back only if the focus went with the thread (no composer has it now).
-            if (threadHadFocus && focus.enabled && focus.shown && ComposerFocusHolders.holders.isEmpty() && !blocked()) {
+            if (threadHadFocus && focus.enabled && focus.shown && holders.holders.isEmpty() && !blocked()) {
                 currentRequester.tryRequestFocus()
             }
         }

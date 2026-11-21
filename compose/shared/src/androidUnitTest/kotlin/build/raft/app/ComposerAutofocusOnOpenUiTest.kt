@@ -24,6 +24,7 @@ import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -212,7 +213,7 @@ class ComposerAutofocusOnOpenUiTest {
             }
             runOnIdle { searchRequester.requestFocus() }
             onNodeWithTag(SEARCH).assertIsFocused()
-            assertTrue(RaftAutofocusGuard.otherFieldFocused, "search focus is reported to the guard")
+            assertTrue(RaftAutofocusGuard.Default.otherFieldFocused, "search focus is reported to the guard")
 
             runOnIdle { opened = true }
             waitForIdle()
@@ -228,7 +229,7 @@ class ComposerAutofocusOnOpenUiTest {
             var opened by mutableStateOf(false)
             val outcomes = mutableListOf<ComposerAutofocusOutcome>()
             setContent {
-                RaftAutofocusGuard.HoldOpenSurface(enabled = surfaceOpen)
+                LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = surfaceOpen)
                 if (opened) Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
             }
             runOnIdle { opened = true }
@@ -239,7 +240,51 @@ class ComposerAutofocusOnOpenUiTest {
             runOnIdle { surfaceOpen = false }
             waitForIdle()
             onNodeWithTag(COMPOSER).assertIsNotFocused()
-            assertFalse(RaftAutofocusGuard.blocksAutofocus)
+            assertFalse(RaftAutofocusGuard.Default.blocksAutofocus)
+        }
+
+    /** Android's app windows (one per server) each keep their own guard ([RaftWindowFocusScope]). */
+    @Test
+    fun eachWindowKeepsItsOwnAutofocusGuard() =
+        runRobolectricComposeUiTest {
+            var dialogInFirstWindow by mutableStateOf(true)
+            var first: RaftAutofocusGuard? = null
+            var second: RaftAutofocusGuard? = null
+            setContent {
+                Column {
+                    RaftWindowFocusScope {
+                        first = LocalRaftAutofocusGuard.current
+                        LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = dialogInFirstWindow)
+                    }
+                    RaftWindowFocusScope { second = LocalRaftAutofocusGuard.current }
+                }
+            }
+            waitForIdle()
+            assertTrue(checkNotNull(first).blocksAutofocus, "the window with the dialog keeps its own composer from the focus")
+            assertFalse(checkNotNull(second).blocksAutofocus, "another window's dialog does not")
+            assertFalse(RaftAutofocusGuard.Default.blocksAutofocus, "nor does it reach the app-wide default")
+            runOnIdle { dialogInFirstWindow = false }
+            waitForIdle()
+            assertFalse(checkNotNull(first).blocksAutofocus)
+        }
+
+    @Test
+    fun aDialogInAnotherWindowDoesNotKeepTheComposerFromTheFocus() =
+        runRobolectricComposeUiTest {
+            var opened by mutableStateOf(false)
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            setContent {
+                Column {
+                    RaftWindowFocusScope { LocalRaftAutofocusGuard.current.HoldOpenSurface() }
+                    RaftWindowFocusScope {
+                        if (opened) Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
+                    }
+                }
+            }
+            runOnIdle { opened = true }
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Focused), outcomes)
         }
 
     @Test
@@ -249,7 +294,7 @@ class ComposerAutofocusOnOpenUiTest {
             var menuOpen by mutableStateOf(true)
             var opened by mutableStateOf(false)
             setContent {
-                RaftAutofocusGuard.HoldOpenSurface(enabled = menuOpen)
+                LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = menuOpen)
                 if (opened) Composer(COMPOSER, conversation = "ch-1", focus = pageFocus())
             }
             mainClock.autoAdvance = false
@@ -339,11 +384,11 @@ class ComposerAutofocusOnOpenUiTest {
             }
             runOnIdle { composerOwnField.requestFocus() }
             waitForIdle()
-            assertFalse(RaftAutofocusGuard.otherFieldFocused, "a field inside the composer never blocks the composer")
+            assertFalse(RaftAutofocusGuard.Default.otherFieldFocused, "a field inside the composer never blocks the composer")
 
             runOnIdle { search.requestFocus() }
             onNodeWithTag(SEARCH).assertIsFocused()
-            assertTrue(RaftAutofocusGuard.otherFieldFocused, "the design-system field reports its focus")
+            assertTrue(RaftAutofocusGuard.Default.otherFieldFocused, "the design-system field reports its focus")
 
             runOnIdle { opened = true }
             waitForIdle()
@@ -401,7 +446,7 @@ class ComposerAutofocusOnOpenUiTest {
             setContent {
                 val focus = pageFocus()
                 Column {
-                    RaftAutofocusGuard.HoldOpenSurface()
+                    LocalRaftAutofocusGuard.current.HoldOpenSurface()
                     TextField(
                         modifier = Modifier.testTag(SEARCH),
                         value = "",
