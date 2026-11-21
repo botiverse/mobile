@@ -69,9 +69,37 @@ class TasksServerQueryApiTest {
         assertEquals(TaskStatus.InProgress, task.status)
         assertEquals(MemberKind.Agent, task.assignee?.kind)
         assertEquals(false, task.descriptionLoaded)
+        assertEquals(false, task.conversationDetailsLoaded)
         // The summary says who sent the source message (here: none), so from_my_message is decided.
         assertEquals(true, task.sourceSenderReported)
         assertNull(task.sourceSenderType)
+    }
+
+    @Test
+    fun fullRowsMarkConversationDetailsLoadedForNullAndPresentConversationIds() {
+        val fullPendingRow =
+            canonicalSummaryPage.replace(
+                "\"conversationReplyCount\":3",
+                "\"conversationReplyCount\":0,\"conversationChannelId\":null,\"conversationAnchored\":true",
+            )
+        val pendingTask = parseSharedServerTasksPagePayload(fullPendingRow)!!.tasks.single()
+        assertEquals(true, pendingTask.conversationDetailsLoaded)
+        assertNull(pendingTask.conversationChannelId)
+        assertEquals(true, pendingTask.conversationAnchored)
+
+        val fullConversationRow =
+            canonicalSummaryPage.replace(
+                "\"conversationReplyCount\":3",
+                "\"conversationReplyCount\":3,\"conversationChannelId\":\"conv-1\",\"conversationAnchored\":true",
+            )
+        val conversationTask = parseSharedServerTasksPagePayload(fullConversationRow)!!.tasks.single()
+        assertEquals(true, conversationTask.conversationDetailsLoaded)
+        assertEquals("conv-1", conversationTask.conversationChannelId?.value)
+        assertEquals(true, conversationTask.conversationAnchored)
+
+        val legacySummaryRow = canonicalSummaryPage.replace("\"isLegacy\":false", "\"isLegacy\":true")
+        val legacyTask = parseSharedServerTasksPagePayload(legacySummaryRow)!!.tasks.single()
+        assertEquals(true, legacyTask.conversationDetailsLoaded)
     }
 
     @Test

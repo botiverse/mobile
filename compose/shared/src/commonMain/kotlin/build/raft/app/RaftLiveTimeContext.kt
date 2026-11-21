@@ -64,9 +64,20 @@ internal class RaftTimeContextProvider(initial: RaftTimeContext?) {
     var todayEpochDay by mutableStateOf(initial?.todayEpochDay)
         private set
 
+    /**
+     * Low-frequency date/clock context (`nowEpochMillis = null`): changes only on local midnight,
+     * timezone/DST offset shift, or 12h/24h format change — never on 1-minute relative-time ticks.
+     */
+    var dateContext by mutableStateOf(initial?.copy(nowEpochMillis = null))
+        private set
+
     fun update(value: RaftTimeContext?) {
         current = value
         todayEpochDay = value?.todayEpochDay
+        val nextDate = value?.copy(nowEpochMillis = null)
+        if (dateContext != nextDate) {
+            dateContext = nextDate
+        }
     }
 }
 

@@ -130,6 +130,19 @@ class TaskPendingConversationRouteTest {
             conversationArrived,
             resolvePendingTaskSummary("t-1", higherRevision, conversationArrived),
         )
+        // At equal revision with no conversation yet, a hydrated row beats a summary-only row.
+        val summaryOnly = seed.copy(conversationDetailsLoaded = false, revision = 2L)
+        val hydrated = seed.copy(conversationDetailsLoaded = true, revision = 2L)
+        assertEquals(
+            hydrated,
+            resolvePendingTaskSummary("t-1", summaryOnly, hydrated),
+        )
+        // A revisioned summary-only row still beats a revisionless hydrated copy.
+        val revisionlessHydrated = seed.copy(conversationDetailsLoaded = true, revision = null)
+        assertEquals(
+            summaryOnly,
+            resolvePendingTaskSummary("t-1", summaryOnly, revisionlessHydrated),
+        )
         assertNull(resolvePendingTaskSummary("missing", seed, higherRevision))
     }
 
