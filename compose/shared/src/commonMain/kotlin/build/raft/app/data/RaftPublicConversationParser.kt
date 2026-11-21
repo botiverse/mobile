@@ -6,9 +6,13 @@ import kotlinx.serialization.json.Json
 /**
  * The anonymous public-server read routes, read for a message-link preview of a public server the
  * account has not joined (botiverse/slock@175cf23e9 packages/server/src/routes/publicServer.ts,
- * mounted at `/api/public`):
+ * mounted at `/api/public`; the server card as of botiverse/slock@0ea95d1cd):
  *
- * - `GET /api/public/servers/:slug` → `{ server: { name, … }, channels: [{ id, name, description }], … }`;
+ * - `GET /api/public/servers/:slug` → `{ server: { id, name, slug, avatarUrl, translationEnabled },
+ *   channels: [{ id, name, description }], translationAvailable, visitorIdMode? }`, where `channels`
+ *   is every channel a stranger may read (`anonymousReadableChannel`: an ordinary, guest-visible,
+ *   not archived or deleted channel), and 404 for a server that is missing, deleted or not public
+ *   (never 403, so a private server cannot be told from one that does not exist);
  * - `GET /api/public/servers/:slug/channels/:channelId/messages?limit=&beforeMessageId=` and
  *   `GET /api/public/servers/:slug/threads/:threadChannelId/messages` → `{ messages: [{ id,
  *   senderType, sender: { displayName, handle, avatarUrl, description }, messageType, content,
@@ -68,8 +72,13 @@ internal data class RaftPublicMessage(
 
 internal data class RaftPublicServerCard(
     val serverName: String?,
+    /** Every listed channel, named or not: the conversations a stranger may read on this server. */
+    val channelIds: Set<String>,
     val channelNames: Map<String, String>,
 )
+
+/** `GET /api/public/servers/:slug`, the slug as one path segment (the web's `encodeURIComponent(slug)`). */
+internal fun raftPublicServerPath(serverSlug: String): String = "public/servers/${serverSlug.appLinkPathSegment()}"
 
 private val publicConversationJson = Json { ignoreUnknownKeys = true }
 
@@ -99,6 +108,7 @@ internal fun parseRaftPublicServerCard(bodyText: String?): RaftPublicServerCard?
             .getOrNull() ?: return null
     return RaftPublicServerCard(
         serverName = wire.server?.name?.takeIf(String::isNotBlank),
+        channelIds = wire.channels.mapNotNull { it.id.takeIf(String::isNotBlank) }.toSet(),
         channelNames =
             wire.channels
                 .filter { it.id.isNotBlank() && !it.name.isNullOrBlank() }

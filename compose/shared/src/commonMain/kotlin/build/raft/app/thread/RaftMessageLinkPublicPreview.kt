@@ -42,6 +42,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.parseRaftPublicMessages
 import build.raft.app.data.parseRaftPublicServerCard
+import build.raft.app.data.raftPublicServerPath
 import build.raft.app.model.ConversationKind
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -61,9 +62,11 @@ import kotlinx.coroutines.launch
 /**
  * A message link into a public server the account has not joined (slock #11126 review rule 2):
  * the conversation is read through the anonymous public routes and shown read-only when a
- * stranger may read it; the one "Message not found" state only when the public route says 404
- * (or 400/403). A transient failure (5xx, timeout, offline) keeps the page with a Retry, never the
- * not-found state. The app has no join-public-server path, so there is no "Join to view".
+ * stranger may read it; the one "Message not found" state only when a public route (the server's
+ * card or the conversation's page) says 404 (or 400/403). A transient failure (5xx, timeout,
+ * offline) keeps the page with a Retry, never the not-found state. Only the shown conversation
+ * carries the "Public preview" head and notice. The app has no join-public-server path, so there
+ * is no "Join to view".
  */
 internal sealed interface RaftPublicPreviewState {
     data object Loading : RaftPublicPreviewState
@@ -99,11 +102,17 @@ internal class RaftPublicConversationPreviewStore(
     }
 
     internal suspend fun loadOnce(): RaftPublicPreviewState = coroutineScope {
-        val base = "public/servers/${link.serverSlug}"
+        val base = raftPublicServerPath(link.serverSlug)
         val cardRequest = async { request(base) }
         val pageRequest = async { request("$base/channels/${link.channelId}/messages", listOf("limit" to PageSize.toString())) }
-        val card = cardRequest.await()?.takeIf { it.code in 200..299 }?.let { parseRaftPublicServerCard(it.bodyText) }
+        val cardResponse = cardRequest.await()
         val page = pageRequest.await()
+        // Backstop to the resolver's check: a server that is missing or not public (its card answers
+        // 404, slock publicServer.ts) shows nothing, whatever the page answered.
+        if (cardResponse.linkOutcome() == RaftLinkProbeOutcome.NotFound) {
+            return@coroutineScope notFound("public_server_${cardResponse?.code}")
+        }
+        val card = cardResponse?.takeIf { it.code in 200..299 }?.let { parseRaftPublicServerCard(it.bodyText) }
         when (page.linkOutcome()) {
             RaftLinkProbeOutcome.NotFound -> return@coroutineScope notFound("public_channel_${page?.code}")
             RaftLinkProbeOutcome.Unavailable -> return@coroutineScope unavailable("public_channel_${page?.code ?: "transport"}")
@@ -271,18 +280,27 @@ internal fun RaftMessageLinkPublicPreviewScreen(
         val colors = RaftTheme.colors
         Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
             val content = state as? RaftPublicPreviewState.Content
+            // "Public preview" and its notice only once the public routes showed the conversation:
+            // while loading, or when they could not be reached, nothing says the server is public.
             RaftPanelBackHeader(
-                title = content?.channelName?.let { "#$it" } ?: stringResource(Res.string.message_link_public_preview_title),
+                title =
+                    if (content != null) {
+                        content.channelName?.let { "#$it" } ?: stringResource(Res.string.message_link_public_preview_title)
+                    } else {
+                        stringResource(Res.string.message_link_title)
+                    },
                 subtitle = content?.serverName,
                 onBack = onBack,
                 topSafeArea = topSafeArea,
             )
-            Box(Modifier.fillMaxWidth().background(colors.fillMuted).padding(horizontal = 16.dp, vertical = 10.dp)) {
-                RaftText(
-                    text = stringResource(Res.string.message_link_public_preview_notice),
-                    style = RaftTheme.typography.footnote,
-                    color = colors.foregroundMuted,
-                )
+            if (content != null) {
+                Box(Modifier.fillMaxWidth().background(colors.fillMuted).padding(horizontal = 16.dp, vertical = 10.dp)) {
+                    RaftText(
+                        text = stringResource(Res.string.message_link_public_preview_notice),
+                        style = RaftTheme.typography.footnote,
+                        color = colors.foregroundMuted,
+                    )
+                }
             }
             when (state) {
                 RaftPublicPreviewState.Loading ->
