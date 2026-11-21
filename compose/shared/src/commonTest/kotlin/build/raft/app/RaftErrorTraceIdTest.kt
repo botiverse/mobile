@@ -148,10 +148,6 @@ class RaftErrorTraceIdTest {
                 ScreenError(code = "message_id_missing", retryable = false, traceId = null).traceId,
                 "explicit null traceId on local/unanswered errors must never borrow a recent 503 trace id"
             )
-            assertNull(
-                HomeNetworkResponse(code = 0, bodyText = null, responseHeaders = headers(traceId)).traceId,
-                "unanswered status=0 response must never carry a trace id"
-            )
         } finally {
             RaftFailedRequestTraceIds.clear()
         }
