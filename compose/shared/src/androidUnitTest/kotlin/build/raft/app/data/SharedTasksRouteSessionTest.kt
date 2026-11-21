@@ -129,6 +129,49 @@ class SharedTasksRouteSessionTest {
     }
 
     @Test
+    fun aServersTasksPageFoldsComeBackAfterASwitchAndARestartWhileAnotherServerKeepsItsOwn() = runTest {
+        // Web tasksPageFolds.behavior.test.ts (botiverse/slock eb63aec86e, #15507): a fold is kept for its
+        // server and comes back after switching away and back; another server starts from its own.
+        val auth = InMemoryRaftAuthSessionStore(session("A"))
+        val shared = SharedTasksDataStore(scope = backgroundScope)
+        // The device's key-value store: all that a restart leaves.
+        val device = InMemoryRaftKeyValueStore()
+        fun route(server: String, folds: TasksPageFoldPreferenceRepository = KeyValueTasksPageFoldPreferenceRepository(device)) =
+            SharedTasksRouteSession(
+                SharedTasksRouteOwner("test-api", "user", server), backgroundScope,
+                auth, SharedTasksDataSource(Api()), shared, foldPreferences = folds
+            )
+        val defaults = TasksPresentationState.Default.collapsedStatuses
+        val a = route("A")
+        assertEquals(defaults, a.folds.collapsedStatuses(), "nothing folded by hand yet: the defaults")
+        a.folds.setCollapsed(TaskStatus.Done, false)
+        a.folds.setCollapsed(TaskStatus.Todo, true)
+        val foldedOnA = defaults - TaskStatus.Done + TaskStatus.Todo
+        assertEquals(foldedOnA, a.folds.collapsedStatuses())
+        a.close()
+
+        auth.updateSelectedServer("B", null)
+        val b = route("B")
+        assertEquals(defaults, b.folds.collapsedStatuses(), "another server starts from its own folds")
+        b.folds.setCollapsed(TaskStatus.Closed, false)
+        b.close()
+
+        auth.updateSelectedServer("A", null)
+        val backOnA = route("A")
+        assertEquals(foldedOnA, backOnA.folds.collapsedStatuses(), "back on A, its folds come back")
+        backOnA.close()
+
+        // A restart: new routes over a new store, reading only what the device kept.
+        val restarted = KeyValueTasksPageFoldPreferenceRepository(device)
+        val aAfterRestart = route("A", restarted)
+        val bAfterRestart = route("B", restarted)
+        assertEquals(foldedOnA, aAfterRestart.folds.collapsedStatuses())
+        assertEquals(defaults - TaskStatus.Closed, bAfterRestart.folds.collapsedStatuses(), "B keeps its own folds")
+        aAfterRestart.close()
+        bAfterRestart.close()
+    }
+
+    @Test
     fun queuedOldRouteCannotLoadForNewAccountOrServer() = runTest {
         val auth = InMemoryRaftAuthSessionStore(session("A"))
         val api = Api()

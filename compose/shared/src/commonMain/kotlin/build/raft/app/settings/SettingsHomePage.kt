@@ -5886,6 +5886,8 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     null
                                 },
+                            // The page's folds, kept for this route's server (web tasksPageStore, slock eb63aec86e).
+                            folds = tasksRoute.folds,
                             state = tasksState,
                             onIntent = { intent ->
                                 prewarmAdmissionGate.invalidate("tasks_intent:${intent::class.simpleName}")
