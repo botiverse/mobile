@@ -55,6 +55,9 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
             providerDisconnectingId = providerDisconnectId.takeIf { actionState?.inProgress == true },
             providerDisconnectErrorId = providerDisconnectId.takeIf { actionErrorMessage != null },
             providerDisconnectError = actionErrorMessage.takeIf { providerDisconnectId != null },
+            providerDisconnectErrorTraceId =
+                (actionState?.screenError?.traceId ?: actionState?.permissionBlocker?.traceId)
+                    .takeIf { providerDisconnectId != null && actionErrorMessage != null },
             usageDataSaving = actionState?.action == ACCOUNT_ACTION_SHARE_USAGE_DATA && actionState.inProgress
         )
 }

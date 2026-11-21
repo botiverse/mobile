@@ -11,7 +11,9 @@ import kotlin.test.assertNull
  * Bodies follow botiverse/slock 40ff1fec82cb8f7b97d2691a2cdd4b01ff45501f
  * (`packages/server/src/routes/auth.ts`, `userService.unlinkSocialIdentity`): 200
  * `{ unlinked, identities: [{ provider, providerEmail }], passwordConfigured }`, 409
- * `{ code: "PASSWORD_CREDENTIAL_REQUIRED", error }` for the last sign-in without a password.
+ * `{ code: "PASSWORD_CREDENTIAL_REQUIRED", error }` for the last sign-in without a password (the
+ * whole 409 body as `routes/authIdentityUnlink.api.test.ts` pins it at staging
+ * 4be606f7fd789488e69df1095d4af028cc21ee49, with `refuse`'s `errorCode`).
  */
 class SettingsAccountProviderDisconnectTest {
     private val account = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User","emailVerified":true}"""
@@ -59,7 +61,7 @@ class SettingsAccountProviderDisconnectTest {
                     "DELETE",
                     "auth/identities/github",
                     409,
-                    """{"code":"PASSWORD_CREDENTIAL_REQUIRED","error":"Set a password before disconnecting your final sign-in account."}"""
+                    """{"code":"PASSWORD_CREDENTIAL_REQUIRED","errorCode":"PASSWORD_CREDENTIAL_REQUIRED","error":"Set a password before disconnecting your final sign-in account."}"""
                 )
             }
         val repository = RealSettingsRepository(InMemoryRaftAuthSessionStore(settingsStoreSampleSession()), network)
@@ -68,6 +70,8 @@ class SettingsAccountProviderDisconnectTest {
 
         assertIs<DataResult.Error>(result)
         assertEquals("Set a password before disconnecting your final sign-in account.", result.error.serverMessage)
+        // The page tells this refusal apart by its code: it reads the sign-in methods again ("Set a password first").
+        assertEquals("PASSWORD_CREDENTIAL_REQUIRED", result.error.serverCode)
         assertEquals(listOf("auth/identities/github"), network.requests.map { it.path })
     }
 

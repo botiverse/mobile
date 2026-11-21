@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">中斷與 %1$s 的連結</string>
     <string name="settings_account_disconnect_message">要中斷 %1$s 與此 Raft 帳號的連結嗎？之後仍可重新連結。</string>
     <string name="settings_account_disconnecting">正在中斷連結…</string>
+    <string name="settings_account_password_required_title">請先設定密碼</string>
+    <string name="settings_account_password_required_message">%1$s 是你唯一的登入帳號。請先設定密碼再中斷連結，以免無法登入。</string>
+    <string name="settings_account_send_setup_email">傳送設定郵件</string>
+    <string name="settings_account_password_setup_sent_for_provider">已寄出密碼設定郵件。請使用郵件中的連結完成設定，再回到這裡中斷 %1$s 的連結。</string>
     <string name="settings_account_unverified">未驗證</string>
     <string name="settings_account_no_connected_accounts">尚未連結帳號</string>
     <string name="settings_account_no_connected_accounts_detail">外部登入服務會顯示在這裡。</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">正在更新</string>
     <string name="settings_account_password_updated">密碼已更新！</string>
     <string name="settings_account_password_update_failed">密碼更新失敗：%1$s</string>
+    <string name="settings_account_set_password">設定密碼</string>
+    <string name="settings_account_set_password_description">移除最後一個已連結的帳號前，請先新增電子郵件與密碼的登入方式。</string>
+    <string name="settings_account_set_password_by_email">透過電子郵件設定密碼</string>
+    <string name="settings_account_sending_setup_email">正在傳送設定郵件…</string>
+    <string name="settings_account_password_setup_email_sent">已寄出密碼設定郵件。請使用郵件中的連結設定密碼。</string>
+    <string name="settings_account_password_setup_failed">無法傳送密碼設定郵件</string>
     <string name="settings_account_session">工作階段</string>
     <string name="settings_account_logout">登出</string>
     <string name="settings_account_logout_action">登出</string>

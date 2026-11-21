@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">Disconnect %1$s</string>
     <string name="settings_account_disconnect_message">Disconnect %1$s from this Raft account? You can reconnect it later.</string>
     <string name="settings_account_disconnecting">Disconnecting…</string>
+    <string name="settings_account_password_required_title">Set a password first</string>
+    <string name="settings_account_password_required_message">%1$s is your only sign-in account. Set a password before disconnecting it so you do not lose access.</string>
+    <string name="settings_account_send_setup_email">Send setup email</string>
+    <string name="settings_account_password_setup_sent_for_provider">Password setup email sent. Use the link, then return here to disconnect %1$s.</string>
     <string name="settings_account_unverified">Unverified</string>
     <string name="settings_account_no_connected_accounts">No connected accounts</string>
     <string name="settings_account_no_connected_accounts_detail">External login providers will show up here.</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">Updating</string>
     <string name="settings_account_password_updated">Password updated!</string>
     <string name="settings_account_password_update_failed">Password update failed: %1$s</string>
+    <string name="settings_account_set_password">Set a password</string>
+    <string name="settings_account_set_password_description">Add an email and password sign-in method before removing your final connected account.</string>
+    <string name="settings_account_set_password_by_email">Set password by email</string>
+    <string name="settings_account_sending_setup_email">Sending setup email…</string>
+    <string name="settings_account_password_setup_email_sent">Password setup email sent. Use the link to set your password.</string>
+    <string name="settings_account_password_setup_failed">Failed to send password setup email</string>
     <string name="settings_account_session">Session</string>
     <string name="settings_account_logout">Sign out</string>
     <string name="settings_account_logout_action">Sign out</string>
