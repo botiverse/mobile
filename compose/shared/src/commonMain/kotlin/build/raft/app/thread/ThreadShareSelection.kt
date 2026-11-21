@@ -10,6 +10,8 @@ import build.raft.app.components.raftCardSurface
 import build.raft.app.data.map
 import build.raft.app.data.messageMetadataHasActionCard
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -362,9 +364,26 @@ internal fun ThreadShareSelectionToolbar(
     onExportImage: () -> Unit,
     onCopyLinks: () -> Unit,
     onCopyMarkdown: (() -> Unit)? = null,
-    bottomSafeArea: Dp = raftBottomSafeAreaPadding()
+    bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
+    /** Share loop: Share (the system share sheet), after Forward; null (the loop off): no such action. */
+    onShare: (() -> Unit)? = null,
+    /** Share loop: false in a DM, whose messages give no link (the DM rule). */
+    showCopyLinks: Boolean = true,
+    /** Share loop: a message's "Send image" asked for the long image of the selection it just made. */
+    pendingExport: Boolean = false,
+    onPendingExportConsumed: () -> Unit = {},
 ) {
     val hasSelection = selectedCount > 0
+    val exportImage by rememberUpdatedState(onExportImage)
+    val consumePendingExport by rememberUpdatedState(onPendingExportConsumed)
+    LaunchedEffect(pendingExport, hasSelection) {
+        if (pendingExport && hasSelection) {
+            // The selection was made in this same frame: let its rows lay out before the image is made.
+            kotlinx.coroutines.delay(ThreadShareOutImageSettleMillis)
+            consumePendingExport()
+            exportImage()
+        }
+    }
     var moreMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // The actions in More while it shows (the ones that don't fit the row), for its menu.
     var moreFoldedIds by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -373,6 +392,7 @@ internal fun ThreadShareSelectionToolbar(
     val icons =
         mapOf(
             "forward" to RaftLucideIconName.Forward,
+            "share" to RaftLucideIconName.Share,
             "generate-image" to RaftLucideIconName.Image,
             "copy-link" to RaftLucideIconName.Link,
             "copy-md" to RaftLucideIconName.Copy
@@ -389,8 +409,13 @@ internal fun ThreadShareSelectionToolbar(
     val actions =
         listOfNotNull(
             spec("forward", stringResource(Res.string.thread_action_forward), onForward, hasSelection && forwardEnabled, secondary = false),
+            onShare?.let { spec("share", stringResource(Res.string.common_share), it, hasSelection, secondary = false) },
             spec("generate-image", stringResource(Res.string.thread_share_generate_image), onExportImage, hasSelection, secondary = true),
-            spec("copy-link", stringResource(Res.string.thread_action_copy_link), onCopyLinks, hasSelection, secondary = true),
+            if (showCopyLinks) {
+                spec("copy-link", stringResource(Res.string.thread_action_copy_link), onCopyLinks, hasSelection, secondary = true)
+            } else {
+                null
+            },
             onCopyMarkdown?.let {
                 spec("copy-md", stringResource(Res.string.thread_share_copy_markdown), it, hasSelection, secondary = true)
             }
@@ -490,6 +515,11 @@ internal fun ThreadSharePreviewModal(
     onDownloadImage: () -> Unit,
     /** Non-null: the image is laid out off screen at a width the user picks (iOS: null, the native export). */
     offscreen: ThreadSharePreviewOffscreen? = null,
+    /**
+     * Share loop: non-null replaces Download with the primary Share (the system share sheet, where
+     * saving the image is too); null (the loop off): Download, as before.
+     */
+    onShareImage: (() -> Unit)? = null,
 ) {
     RaftUnifiedDialog(
         title = stringResource(Res.string.thread_share_preview_title),
@@ -518,10 +548,9 @@ internal fun ThreadSharePreviewModal(
                         onClick = onCopyMarkdown,
                         enabled = messages.isNotEmpty()
                     )
-                    RaftModalActionButton(
-                        label = stringResource(Res.string.thread_share_download),
-                        icon = RaftLucideIconName.Download,
-                        onClick = onDownloadImage,
+                    ThreadSharePreviewImageAction(
+                        onDownloadImage = onDownloadImage,
+                        onShareImage = onShareImage,
                         enabled = offscreen.image != null && !offscreen.rendering
                     )
                 }
@@ -556,16 +585,39 @@ internal fun ThreadSharePreviewModal(
                     onClick = onCopyMarkdown,
                     enabled = messages.isNotEmpty()
                 )
-                RaftModalActionButton(
-                    label = stringResource(Res.string.thread_share_download),
-                    icon = RaftLucideIconName.Download,
-                    onClick = onDownloadImage,
+                ThreadSharePreviewImageAction(
+                    onDownloadImage = onDownloadImage,
+                    onShareImage = onShareImage,
                     enabled = !image?.path.isNullOrBlank()
                 )
             }
         }
     }
 }
+
+/** Share preview's image action: Download, or with the share loop on the primary Share. */
+@Composable
+private fun ThreadSharePreviewImageAction(onDownloadImage: () -> Unit, onShareImage: (() -> Unit)?, enabled: Boolean) {
+    if (onShareImage == null) {
+        RaftModalActionButton(
+            label = stringResource(Res.string.thread_share_download),
+            icon = RaftLucideIconName.Download,
+            onClick = onDownloadImage,
+            enabled = enabled
+        )
+    } else {
+        RaftModalActionButton(
+            label = stringResource(Res.string.common_share),
+            icon = RaftLucideIconName.Share,
+            onClick = onShareImage,
+            color = RaftColor.Attention,
+            enabled = enabled
+        )
+    }
+}
+
+/** Share loop: the wait between a message's "Send image" selecting it and the image being made of it. */
+internal const val ThreadShareOutImageSettleMillis: Long = 120
 
 private fun threadSharePreviewImageHeight(image: ThreadSharePreviewImage?): Int {
     val width = image?.width?.takeIf { it > 0 } ?: return 280

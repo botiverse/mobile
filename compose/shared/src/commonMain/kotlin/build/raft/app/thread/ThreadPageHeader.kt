@@ -220,6 +220,8 @@ internal fun ThreadPageHeader(
     onOpenTimeline: (() -> Unit)? = null,
     /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
     lounge: ThreadPageLounge? = null,
+    /** Share loop: the ⋯ menu's Share row and Copy link (ThreadShareOut.kt); null: none (the loop off, a DM). */
+    shareEntry: ThreadHeaderShareEntry? = null,
 ) {
     // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
     // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
@@ -324,6 +326,7 @@ internal fun ThreadPageHeader(
                         sideCardToggles = sideCardToggles,
                         onOpenTimeline = onOpenTimeline,
                         onDeleteTask = taskConversationChrome?.onDeleteTask,
+                        shareEntry = shareEntry,
                     )
                 } else {
                     emptyList()
@@ -351,6 +354,7 @@ internal fun ThreadPageHeader(
                 onViewTaskInChannel = taskConversationChrome?.onViewInChannel,
                 onOpenTimeline = onOpenTimeline,
                 onDeleteTask = taskConversationChrome?.onDeleteTask,
+                shareEntry = shareEntry,
             )
         } else {
             emptyList()
@@ -625,7 +629,8 @@ internal fun ThreadPageHeader(
                     val toggleFocus = onToggleFocusMode
                     val hasPanelMenu =
                         onToggleThreadFollow != null || onMarkThreadUnread != null || taskConversation ||
-                            replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
+                            replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null ||
+                            shareEntry != null
                     if (hasPanelMenu) {
                         ThreadHeaderFocusModeMenu(
                             followed = threadFollowed,
@@ -638,6 +643,7 @@ internal fun ThreadPageHeader(
                             onDeleteTask = taskConversationChrome?.onDeleteTask.takeIf { taskConversation },
                             drawLocally = toggleFocus == null,
                             notificationLevelTargetInput = notificationLevelTarget,
+                            shareEntry = shareEntry,
                         )
                     }
                     // web ThreadPanelHeader (slock #12211): Focus mode is the head's Expand, a window
@@ -716,7 +722,11 @@ private fun threadHeaderSideColumnActions(
     onOpenTimeline: (() -> Unit)? = null,
     /** Task v2: Delete task, the ⋯ menu's last row (web #14115); null for a reader who may not. */
     onDeleteTask: (() -> Unit)? = null,
+    /** Share loop: Share and Copy link, in the ⋯; null: none. */
+    shareEntry: ThreadHeaderShareEntry? = null,
 ): List<RaftSideAction> {
+    val shareLabel = shareEntry?.let { stringResource(it.shareLabel) }
+    val shareCopyLinkLabel = stringResource(Res.string.thread_link_menu_copy_link)
     val timelineLabel = stringResource(Res.string.thread_outline_list_title)
     val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
     val searchLabel = stringResource(Res.string.thread_action_search)
@@ -810,6 +820,18 @@ private fun threadHeaderSideColumnActions(
                     followLabel,
                     threadFollowMenuIcon(threadFollowed),
                     onToggleThreadFollow,
+                    priority = -1,
+                )
+            )
+        }
+        if (shareEntry != null && shareLabel != null) {
+            add(raftSideColumnLucideAction(SHARE_OUT_MENU_ITEM_ID, shareLabel, RaftLucideIconName.Share, shareEntry.onShare, priority = -1))
+            add(
+                raftSideColumnLucideAction(
+                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID,
+                    shareCopyLinkLabel,
+                    RaftLucideIconName.Link,
+                    shareEntry.onCopyLink,
                     priority = -1,
                 )
             )
@@ -1202,6 +1224,8 @@ private fun ThreadHeaderFocusModeMenu(
     drawLocally: Boolean = false,
     /** The thread's notification level row ("Notifications: <level>"); null leaves it out. */
     notificationLevelTargetInput: RaftNotificationLevelTarget? = null,
+    /** Share loop: Share and Copy link lead the menu (design v10); null: none. */
+    shareEntry: ThreadHeaderShareEntry? = null,
 ) {
     // An older server without the unified API shows no level row.
     val notificationLevelTarget = notificationLevelTargetInput.whenLevelsSupported()
@@ -1209,8 +1233,11 @@ private fun ThreadHeaderFocusModeMenu(
     var localMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     var notificationLevelDialogOpen by remember { mutableStateOf(false) }
     val notificationLevelLabel = rememberRaftNotificationLevelMenuLabel(notificationLevelTarget)
+    val shareItems = threadHeaderShareMenuItems(shareEntry)
+    val currentShareEntry by androidx.compose.runtime.rememberUpdatedState(shareEntry)
     val items =
         buildList {
+            addAll(shareItems)
             // Task v2: the web menu's next rows for a task, in its order (ThreadOverflowMenu.tsx).
             if (onSearchInTask != null) {
                 add(
@@ -1296,7 +1323,7 @@ private fun ThreadHeaderFocusModeMenu(
                     )
                 )
             }
-        }
+        }.let { rows -> threadHeaderMenuItemsAfterShare(rows, shareItems.size) }
     // task #180: the menu is drawn by the SHELL, not here. This page is a Kuikly @Page whose visible
     // surface is only its own pane, so a Modal opened inside it is clipped to that pane (device
     // evidence: nothing outside the window's left 400px strip could ever appear). We resolve the
@@ -1340,6 +1367,8 @@ private fun ThreadHeaderFocusModeMenu(
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
+                    SHARE_OUT_MENU_ITEM_ID -> currentShareEntry?.onShare?.invoke()
+                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID -> currentShareEntry?.onCopyLink?.invoke()
                     else -> Unit // dismissed
                 }
             }
@@ -1421,6 +1450,8 @@ private fun ThreadHeaderFocusModeMenu(
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
+                    SHARE_OUT_MENU_ITEM_ID -> currentShareEntry?.onShare?.invoke()
+                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID -> currentShareEntry?.onCopyLink?.invoke()
                 }
             },
             onDismiss = { localMenuAnchor = null },
@@ -1432,6 +1463,28 @@ private fun ThreadHeaderFocusModeMenu(
         RaftNotificationLevelDialog(target = notificationLevelTarget, onDismiss = { notificationLevelDialogOpen = false })
     }
 }
+
+/** Share loop: the ⋯ menu's first rows, Share and Copy link; none without [entry]. */
+@Composable
+private fun threadHeaderShareMenuItems(entry: ThreadHeaderShareEntry?): List<RaftUiMenuItem> {
+    entry ?: return emptyList()
+    return listOf(
+        RaftUiMenuItem(id = SHARE_OUT_MENU_ITEM_ID, label = stringResource(entry.shareLabel), icon = RaftLucideIconName.Share),
+        RaftUiMenuItem(
+            id = SHARE_OUT_COPY_LINK_MENU_ITEM_ID,
+            label = stringResource(Res.string.thread_link_menu_copy_link),
+            icon = RaftLucideIconName.Link,
+        ),
+    )
+}
+
+/** A separator between the [shareCount] share rows and the menu's own rows after them. */
+internal fun threadHeaderMenuItemsAfterShare(rows: List<RaftUiMenuItem>, shareCount: Int): List<RaftUiMenuItem> =
+    if (shareCount <= 0 || rows.size <= shareCount) {
+        rows
+    } else {
+        rows.mapIndexed { index, row -> if (index == shareCount) row.copy(dividerBefore = true) else row }
+    }
 
 /**
  * Screenshot fixtures only: the bus the header's More menu posts on, instead of the live page's

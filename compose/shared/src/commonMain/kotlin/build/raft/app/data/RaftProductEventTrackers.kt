@@ -328,6 +328,11 @@ class RaftProductEventsRecorder(
     }
 
     /** A Drafts row took the person to its conversation. */
+    /** A share-out outcome (share loop): see [RaftShareActionSelectedProperties]. */
+    fun shareActionSelected(properties: RaftShareActionSelectedProperties) {
+        client.track(RaftProductEvent.ShareActionSelected(properties))
+    }
+
     fun draftsItemOpened(place: RaftDraftPlaceKind) {
         client.track(RaftProductEvent.DraftsItemOpened(RaftDraftsItemOpenedProperties(place)))
     }
