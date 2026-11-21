@@ -43,6 +43,15 @@ internal const val RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS = 180_000L
 internal const val RAFT_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS = 1_800_000L
 
 /**
+ * The upload session's complete call (`POST attachments/upload-sessions/:id/complete`) gets 45 s, as
+ * on the web (`ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MS`, botiverse/slock #15743). The server checks the
+ * stored object under its own 30 s storage request timeout, so the 30 s of the other control calls
+ * (capabilities, create, status) would cut its answer off; this waits past it. The scheduler and the
+ * transport both use it, so neither ends the call first.
+ */
+internal const val RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS = 45_000L
+
+/**
  * Only multipart requests that stream a fileRef body get the upload budget;
  * a part without both an opener and a fileRef maps to NetworkBody.Bytes and
  * keeps the ordinary bound.

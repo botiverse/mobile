@@ -60,6 +60,22 @@ internal interface RaftHttpExecutor {
         jsonBody: Boolean
     ): RaftHttpExecutorResponse
 
+    /**
+     * [execute] under its own whole-call budget ([totalTimeoutMillis]) instead of the ordinary one, with
+     * no shorter idle timeout: the upload session's complete call
+     * ([RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS]). The default keeps test doubles
+     * source-compatible; they have no budget of their own.
+     */
+    suspend fun executeWithTotalTimeout(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?,
+        jsonBody: Boolean,
+        totalTimeoutMillis: Long,
+    ): RaftHttpExecutorResponse = execute(priority, url, method, headers, bodyText, jsonBody)
+
     suspend fun executeMultipart(
         priority: RaftRequestPriority,
         url: String,

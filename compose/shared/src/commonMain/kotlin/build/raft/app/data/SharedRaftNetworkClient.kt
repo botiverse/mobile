@@ -9,6 +9,7 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS
 import build.raft.app.network.RAFT_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.RaftHttpExecutor
@@ -166,10 +167,14 @@ internal class SharedRaftNetworkClient(
         serverIdOverride: ServerId?,
         bodyText: String?,
         expectedAuthority: RaftExpectedAuthBinding?,
-        extraHeaders: Map<String, String> = emptyMap()
+        extraHeaders: Map<String, String> = emptyMap(),
+        /** The call's own whole budget (scheduler and transport); null: the ordinary 30 s. */
+        totalTimeoutMillis: Long? = null,
     ): HomeNetworkResponse {
         val send: suspend () -> HomeNetworkResponse = {
-            sendRequest(priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders)
+            sendRequest(
+                priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders, totalTimeoutMillis
+            )
         }
         val session = sessionStore.readSession()
         val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
@@ -204,7 +209,8 @@ internal class SharedRaftNetworkClient(
         serverIdOverride: ServerId?,
         bodyText: String?,
         expectedAuthority: RaftExpectedAuthBinding?,
-        extraHeaders: Map<String, String>
+        extraHeaders: Map<String, String>,
+        totalTimeoutMillis: Long?,
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val category = path.networkDiagnosticsCategory()
@@ -231,7 +237,8 @@ internal class SharedRaftNetworkClient(
             requestScheduler.run(
                 priority = priority.toNetworkPriority(),
                 key = path,
-                reason = method.uppercase()
+                reason = method.uppercase(),
+                timeoutMillis = totalTimeoutMillis,
             ) scheduled@{
                 if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                     return@scheduled routeEnvironmentChangedResponse()
@@ -248,20 +255,36 @@ internal class SharedRaftNetworkClient(
                         if (RealtimeBaselineHistoryRequests.isBaselineHistoryRequest(method, path)) {
                             onBaselineHistoryRequestSent(auth.serverId)
                         }
-                        val response =
-                            executor.execute(
-                                priority = priority.toNetworkPriority(),
-                                url = absoluteUrl(requestBaseUrl, path, query.withThreadPreviewChars(method, path)),
-                                method = method.uppercase(),
-                                headers =
-                                    buildMap {
-                                        putAll(extraHeaders)
-                                        put(HEADER_AUTHORIZATION, auth.authorization)
-                                        put(HEADER_SERVER_ID, auth.serverId)
-                                    },
-                                bodyText = bodyText,
-                                jsonBody = bodyText != null
-                            ).toHomeNetworkResponse()
+                        val requestUrl = absoluteUrl(requestBaseUrl, path, query.withThreadPreviewChars(method, path))
+                        val requestHeaders =
+                            buildMap<String, String> {
+                                putAll(extraHeaders)
+                                put(HEADER_AUTHORIZATION, auth.authorization)
+                                put(HEADER_SERVER_ID, auth.serverId)
+                            }
+                        val sent =
+                            if (totalTimeoutMillis == null) {
+                                executor.execute(
+                                    priority = priority.toNetworkPriority(),
+                                    url = requestUrl,
+                                    method = method.uppercase(),
+                                    headers = requestHeaders,
+                                    bodyText = bodyText,
+                                    jsonBody = bodyText != null
+                                )
+                            } else {
+                                // The transport waits as long as the scheduler does.
+                                executor.executeWithTotalTimeout(
+                                    priority = priority.toNetworkPriority(),
+                                    url = requestUrl,
+                                    method = method.uppercase(),
+                                    headers = requestHeaders,
+                                    bodyText = bodyText,
+                                    jsonBody = bodyText != null,
+                                    totalTimeoutMillis = totalTimeoutMillis,
+                                )
+                            }
+                        val response = sent.toHomeNetworkResponse()
                         if (expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             response
                         } else {
@@ -583,6 +606,8 @@ internal class SharedRaftNetworkClient(
             bodyText = null,
             expectedAuthority = expectedAuthority,
             extraHeaders = uploadTiming?.traceHeaders().orEmpty(),
+            // Past the server's own 30 s storage check, so its answer is heard (web slock #15743).
+            totalTimeoutMillis = RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS,
         ).also { answer ->
             uploadTiming?.controlCallFinished(RaftAttachmentUploadPhaseComplete, answer.raftRequestTimedOut())
         }
