@@ -230,6 +230,8 @@ enum class RaftLucideIconName(val wireName: String) {
     Shield("shield"),
     ShieldAlert("shield-alert"),
     ShieldCheck("shield-check"),
+    SlackChannel("slack-channel"),
+    SlackChannelLocked("slack-channel-locked"),
     SlidersHorizontal("sliders-horizontal"),
     Smartphone("smartphone"),
     SmilePlus("smile-plus"),

@@ -276,6 +276,8 @@ LUCIDE_ICONS = [
     "shield",
     "shield-alert",
     "shield-check",
+    "slack-channel",
+    "slack-channel-locked",
     "sliders-horizontal",
     "smartphone",
     "smile-plus",
@@ -341,6 +343,12 @@ CUSTOM_ICONS = {
     # channelKindIcon.tsx EXTERNAL_CHANNEL_PATH): lucide's lock shrunk into the top-left cells
     # with an arrow out of the bottom-right corner, one path.
     "external-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "external-channel.svg"),
+    # The web's Slack channel glyphs (botiverse/slock e60211734, #16042, channelKindIcon.tsx
+    # SLACK_PATH / SLACK_LOCK_PATH): the Slack mark at the size of Lucide's glyphs (3 to 21), and
+    # the mark cut 1.6 short of a lock in the bottom-right corner (14 to 22); each one filled
+    # outline path (fill-rule evenodd).
+    "slack-channel": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "slack-channel.svg"),
+    "slack-channel-locked": os.path.join(RAFT_UI_ICON_SOURCE_DIR, "slack-channel-locked.svg"),
 }
 
 BRAND_SVGS = {

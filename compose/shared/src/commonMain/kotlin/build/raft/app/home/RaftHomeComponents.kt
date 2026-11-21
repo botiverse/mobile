@@ -66,8 +66,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftExternalBridgeBadge
-import build.raft.app.components.externalBridgeBadgeVisible
 import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
@@ -116,6 +114,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.agentAvatarFallbackWireValue
@@ -441,8 +440,11 @@ data class RaftHomeConversationItem(
     val archived: Boolean = false,
     val activityMuted: Boolean = false,
     val activityMuteSupported: Boolean = false,
-    // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
+    // task #396: external bridge provider ("slack") from `channel.bridge.provider`: the Slack glyph and
+    // the External section ([isHomeExternalSectionChannel]).
     val bridgeProvider: String? = null,
+    /** A Slack channel's stopped sync: the warning Badge after the row's name (botiverse/slock #16042). */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /** Channel `guestVisible`; combine with the server's publicPageLive via [channelOnPublicPage]. */
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` (a Guest or an open external invite); see [raftChannelKindGlyph]. */
@@ -2320,7 +2322,7 @@ private fun RaftStructuralHomeShellContent(
     // a stale pin can never hide a conversation from every section.
     val pinnedShownConversationIds = remember(displayedPinned) { displayedPinned.sidebarPinnedConversationIds() }
     val baseDisplayedChannels = remember(channels, channelOrder, channelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
-        val regularChannels = channels.filter { it.kind != JointChannelKindWireValue }
+        val regularChannels = channels.filter { !it.isHomeExternalSectionChannel() }
         regularChannels
             .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
             .orderedBySidebarIds(channelOrder, pinnedFirstId = allChannelId)
@@ -2330,9 +2332,13 @@ private fun RaftStructuralHomeShellContent(
     val sortableDisplayedChannels = remember(baseDisplayedChannels, allChannelId) {
         baseDisplayedChannels.withoutSidebarPinnedItem(allChannelId)
     }
+    // External (web useSidebarItems `orderedJointChannels`, botiverse/slock #16042): joint and
+    // external channels and the channels connected to Slack ([isHomeExternalSectionChannel]). The web's
+    // "Show joined channels only" also hides an unjoined Slack channel here; Home has no such
+    // setting and lists every channel, like the web with it off.
     val displayedJointChannels = remember(channels, channelOrder, jointChannelSortModeState, customPlacedConversationIds, pinnedShownConversationIds) {
         channels
-            .filter { it.kind == JointChannelKindWireValue }
+            .filter { it.isHomeExternalSectionChannel() }
             .filter { it.id !in customPlacedConversationIds && it.id !in pinnedShownConversationIds }
             .orderedBySidebarIds(channelOrder)
             .sortedForSidebar(jointChannelSortModeState) { it.name }
@@ -3068,7 +3074,7 @@ private fun RaftStructuralHomeShellContent(
                                                         joined = pinned.joined,
                                                         hasDraft = pinned.hasDraft,
                                                         muted = pinned.activityMuted,
-                                                        bridgeProvider = pinned.bridgeProvider,
+                                                        slackSyncProblem = pinned.slackSyncProblem,
                                                         unreadCount = pinned.unreadCount,
                                                         markedUnread = pinned.markedUnread,
                                                         mentioned = pinned.mentioned,
@@ -3132,7 +3138,7 @@ private fun RaftStructuralHomeShellContent(
                                                     joined = channel.joined,
                                                     hasDraft = channel.hasDraft,
                                                     muted = channel.activityMuted,
-                                                    bridgeProvider = channel.bridgeProvider,
+                                                    slackSyncProblem = channel.slackSyncProblem,
                                                     unreadCount = channel.unreadCount,
                                                     markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
@@ -3198,7 +3204,7 @@ private fun RaftStructuralHomeShellContent(
                                                     joined = channel.joined,
                                                     hasDraft = channel.hasDraft,
                                                     muted = channel.activityMuted,
-                                                    bridgeProvider = channel.bridgeProvider,
+                                                    slackSyncProblem = channel.slackSyncProblem,
                                                     unreadCount = channel.unreadCount,
                                                     markedUnread = channel.markedUnread,
                                                     mentioned = channel.mentioned,
@@ -3407,7 +3413,7 @@ private fun RaftStructuralHomeShellContent(
                                                         joined = item.joined,
                                                         hasDraft = item.hasDraft,
                                                         muted = item.activityMuted,
-                                                        bridgeProvider = item.bridgeProvider,
+                                                        slackSyncProblem = item.slackSyncProblem,
                                                         unreadCount = item.unreadCount,
                                                         markedUnread = item.markedUnread,
                                                         mentioned = item.mentioned,
@@ -3768,7 +3774,7 @@ private fun RaftStructuralHomeShellContent(
                             customSections = customSections,
                             pinned = moveTargetIsPinned,
                             placementSectionId = moveTargetCurrentSectionId,
-                            joint = moveTargetDm == null && moveTargetChannel?.homeChannelKind() == JointChannelKindWireValue,
+                            joint = moveTargetDm == null && moveTargetChannel?.isHomeExternalSectionChannel() == true,
                             directMessage = moveTargetDm != null
                         )
                     RaftBaseMenuOverlay(
@@ -4851,7 +4857,7 @@ internal fun homeConversationSectionForSelection(
     }
     val channel = channels.firstOrNull { it.id == selectedChannelId }
     if (channel != null) {
-        return if (channel.homeChannelKind() == JointChannelKindWireValue) {
+        return if (channel.isHomeExternalSectionChannel()) {
             RaftHomeConversationSection.JointChannel
         } else {
             RaftHomeConversationSection.Channel
@@ -4881,10 +4887,11 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(): String =
     homeChannelKind().toRaftChannelSymbol()
 
 /**
- * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph]): the External glyph for an
- * external channel, the public-page hash-globe for a regular
- * channel readable on the server's live public page (web channelKindIcon.tsx), else the kind's own.
- * Interaction identities keep using the plain [homeChannelSymbol] so they never change with it.
+ * Row glyph symbol from the one chooser ([raftChannelRecordKindGlyph]): the Slack mark for a channel
+ * connected to Slack, the External glyph for an external channel, the public-page hash-globe for a
+ * regular channel readable on the server's live public page (web channelKindIcon.tsx), else the
+ * kind's own. Interaction identities keep using the plain [homeChannelSymbol] so they never change
+ * with it.
  */
 internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Boolean): String {
     val type = homeChannelKind()
@@ -4898,8 +4905,18 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
                 archived = archived,
             ),
         hasExternalRelation = hasExternalRelation,
+        bridgeProvider = bridgeProvider,
     ).symbol
 }
+
+/**
+ * The row sits in the External section, not in Channels (web sidebarChannelVisibility.ts
+ * `isSidebarExternalSectionChannel`, botiverse/slock #16042): a joint or external channel, or one
+ * connected to Slack ([isRaftExternalSectionChannel]). The sidebar, the server drawer, the selected
+ * row's section and Move to section all place a channel by it.
+ */
+internal fun RaftHomeConversationItem.isHomeExternalSectionChannel(): Boolean =
+    !isDirectMessageConversation() && isRaftExternalSectionChannel(homeChannelKind(), hasExternalRelation, bridgeProvider)
 
 /**
  * The same row glyph symbol for a Home snapshot channel row ([raftChannelKindGlyph]), so other
@@ -5006,12 +5023,12 @@ internal fun homeServerDrawerRows(
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.dmSortMode)) { it.name }
             val regularChannels =
                 drawerSection.channels
-                    .filter { it.kind != JointChannelKindWireValue }
+                    .filter { !it.isHomeExternalSectionChannel() }
                     .orderedBySidebarIds(drawerSection.channelOrder)
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.channelSortMode)) { it.name }
             val jointChannels =
                 drawerSection.channels
-                    .filter { it.kind == JointChannelKindWireValue }
+                    .filter { it.isHomeExternalSectionChannel() }
                     .orderedBySidebarIds(drawerSection.channelOrder)
                     .sortedForSidebar(RaftSidebarSortMode.fromWireValue(drawerSection.channelSortMode)) { it.name }
             val pinned =
@@ -6704,7 +6721,7 @@ private fun HomeServerDrawerConversationRow(
                 joined = item.joined,
                 hasDraft = item.hasDraft,
                 muted = item.activityMuted,
-                bridgeProvider = item.bridgeProvider,
+                slackSyncProblem = item.slackSyncProblem,
                 unreadCount = item.unreadCount,
                 markedUnread = item.markedUnread,
                 mentioned = item.mentioned,
@@ -7523,11 +7540,12 @@ internal fun homeConversationRowTone(
 
 /**
  * A channel in the Home list: raft-ui SidebarChannelItem ([RaftSidebarChannelItem]) for `#`
- * and private channels; a joint channel's `git-branch` and a public-page channel's
- * hash-globe go through the same [RaftSidebarItem] with their own glyph. Right after the
- * name (it truncates, they do not): the bridge badge and the muted bell. Web ChannelRow
- * aside: the pink unread count, else the grey number of a quiet (muted / not joined)
- * unread, else the draft pencil. [menuOpen]: this row's long-press menu is open.
+ * and private channels; a joint channel's `git-branch`, a public-page channel's
+ * hash-globe, the External glyph and the Slack mark go through the same [RaftSidebarItem] with
+ * their own glyph. Right after the name (it truncates, they do not): a Slack channel's stopped
+ * sync ([RaftSlackSyncBadge]; no "Slack" label, the glyph says it, botiverse/slock #16042) and the
+ * muted bell. Web ChannelRow aside: the pink unread count, else the grey number of a quiet
+ * (muted / not joined) unread, else the draft pencil. [menuOpen]: this row's long-press menu is open.
  */
 @Composable
 private fun HomeSidebarChannelRow(
@@ -7542,7 +7560,7 @@ private fun HomeSidebarChannelRow(
     mentioned: Boolean = false,
     followedThreadUnreadCount: Int = 0,
     hasDraft: Boolean = false,
-    bridgeProvider: String? = null,
+    slackSyncProblem: RaftSlackSyncProblem? = null,
     interactionIdentity: String = "channel:$symbol:$name",
     menuOpen: Boolean = false,
     onClick: (() -> Unit)? = null,
@@ -7561,17 +7579,17 @@ private fun HomeSidebarChannelRow(
     val loudCount = marks.loudCount
     val loudThreadCount = marks.loudThreadCount
     val quietLabel = marks.quietLabel
-    val showBridge = externalBridgeBadgeVisible(bridgeProvider)
     val showDraft = marks.showDraft
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
     val titleTrailing: (@Composable () -> Unit)? =
-        if (showBridge || mutedIcon != null) {
+        if (slackSyncProblem != null || mutedIcon != null) {
             {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (showBridge) RaftExternalBridgeBadge(bridgeProvider)
+                    // Web ChannelRow `ChannelSlackSyncBadge`: the header's warning Badge.
+                    RaftSlackSyncBadge(slackSyncProblem)
                     mutedIcon?.let { HomeSidebarLucideIcon(it, HomeSidebarMetaIconSize) }
                 }
             }
@@ -7655,7 +7673,7 @@ private fun HomeSidebarChannelRow(
 
 /**
  * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch, the
- * External glyph or the public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
+ * External glyph, the Slack mark or the public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
  * draw it at the row's icon size; Activity draws it in a list row's channel tile and as a card's
  * title icon.
  */

@@ -10,6 +10,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.Message
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.MessageId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -2698,8 +2699,9 @@ class ThreadPayloadTest {
         assertEquals("Message #首页专修", payload.resolveThreadComposer(displayName = headerDisplay.title).placeholder)
     }
 
-    // task #396: a Slack-bridged channel's header carries the bridge provider for the `[Slack]` tag;
-    // an unbridged channel and a DM never do.
+    // task #396 / botiverse/slock #16042: a Slack-bridged channel's header draws the Slack mark in its
+    // tile and, while its sync is stopped, the warning Badge after its name (web ChatPanel
+    // `ChannelIcon`, `ChannelSlackSyncBadge`); an unbridged channel and a DM never do.
     @Test
     fun appShellChannelHeaderProjectionCarriesSlackBridgeProvider() {
         val bridged =
@@ -2709,9 +2711,16 @@ class ThreadPayloadTest {
                 kind = ConversationKind.Channel,
                 name = "slack-sync",
                 bridgeProvider = "slack",
+                slackSyncProblem = RaftSlackSyncProblem.Paused,
                 permissions = ConversationPermissions(canSend = true)
             )
-        val plain = bridged.copy(threadId = ThreadId("channel-plain"), channelId = ChannelId("channel-plain"), bridgeProvider = null)
+        val plain =
+            bridged.copy(
+                threadId = ThreadId("channel-plain"),
+                channelId = ChannelId("channel-plain"),
+                bridgeProvider = null,
+                slackSyncProblem = null,
+            )
 
         val bridgedHeader =
             buildAppShellThreadPayloadFromSummary(bridged)
@@ -2722,7 +2731,11 @@ class ThreadPayloadTest {
 
         assertEquals(RaftThreadSurfaceKind.Channel, bridgedHeader.surfaceKind)
         assertEquals("slack", bridgedHeader.bridgeProvider)
+        assertEquals(RaftChannelKindGlyph.Slack, bridgedHeader.channelKindGlyph)
+        assertEquals(RaftSlackSyncProblem.Paused, bridgedHeader.slackSyncProblem)
         assertEquals(null, plainHeader.bridgeProvider)
+        assertEquals(RaftChannelKindGlyph.Hash, plainHeader.channelKindGlyph)
+        assertEquals(null, plainHeader.slackSyncProblem)
     }
 
     @Test

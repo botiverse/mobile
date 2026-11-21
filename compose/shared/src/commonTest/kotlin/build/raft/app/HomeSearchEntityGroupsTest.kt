@@ -167,6 +167,26 @@ class HomeSearchEntityGroupsTest {
     }
 
     @Test
+    fun aChannelResultTakesTheSlackMarkFromHomeAndExternalFromItsStatus() {
+        // web EntityResultRow `SearchChannelIcon` (botiverse/slock e60211734): External from core's
+        // status (`external || guest`), Slack from the stored channel (`bridge`), which wins.
+        val kinds =
+            RaftChannelKinds(
+                glyphsByChannelId = mapOf("s" to RaftChannelKindGlyph.Slack, "p" to RaftChannelKindGlyph.SlackPrivate),
+            )
+        fun glyph(hit: SearchChannelHit) = hit.toHomeSearchEntityResult(emptyMap(), "Channel").homeSearchChannelIconGlyph(kinds)
+
+        assertEquals(RaftChannelKindGlyph.Slack, glyph(channelHit("s")))
+        // A Guest in a public Slack channel: the Slack mark with its corner lock, not the arrow.
+        assertEquals(RaftChannelKindGlyph.SlackLocked, glyph(channelHit("s", guest = true)))
+        assertEquals(RaftChannelKindGlyph.SlackPrivate, glyph(channelHit("p", type = "private", external = true)))
+        // Not a Slack channel, or not loaded: External from the status alone, else the Home row's.
+        assertEquals(RaftChannelKindGlyph.External, glyph(channelHit("x", external = true)))
+        assertEquals(RaftChannelKindGlyph.Hash, glyph(channelHit("x")))
+        assertEquals(RaftChannelKindGlyph.Slack, channelRow("s", "partners-sync").homeSearchChannelIconGlyph(kinds))
+    }
+
+    @Test
     fun aServerRowReusesTheLoadedIdentityAndKey() {
         val loadedDm = ThreadLaunchConversationIdentity(threadId = ThreadId("dm-1"), channelId = ChannelId("dm-1"), kind = ConversationKind.DirectMessage)
         val localPerson = personRow("u-1", "Remy").copy(conversationIdentity = loadedDm, threadId = "dm-1")

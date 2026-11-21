@@ -183,6 +183,19 @@ internal fun SearchEntityResult.homeSearchChannelGlyph(kinds: RaftChannelKinds =
     return kinds.glyph(identity.channelId?.value, homeSearchChannelWireType())
 }
 
+/**
+ * The glyph a channel result draws (botiverse/slock e60211734 packages/web/src/features/search/
+ * EntityResultRow.tsx `SearchChannelIcon`): a row of core's search carries its status, so External
+ * (`external || guest`) comes from it even for a channel the app hasn't loaded; the rest, Slack
+ * included (`bridge: stored?.bridge`), from the Home row ([homeSearchChannelGlyph]). A Slack
+ * channel's mark wins over External, and takes its corner lock from it.
+ */
+internal fun SearchEntityResult.homeSearchChannelIconGlyph(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftChannelKindGlyph {
+    val homeGlyph = homeSearchChannelGlyph(kinds)
+    if (!homeSearchExternalChannel) return homeGlyph
+    return raftChannelKindGlyph(homeSearchChannelWireType(), external = true, slack = homeGlyph.isSlack)
+}
+
 /** A channel result's wire type (`channel` / `private` / `joint`), from its launch identity. */
 internal fun SearchEntityResult.homeSearchChannelWireType(): String? {
     val identity = conversationIdentity ?: return null

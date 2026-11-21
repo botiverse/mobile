@@ -81,13 +81,9 @@ private fun SharedHomeSearchEntityLeadingAvatar(
             RaftIconTile(size = RaftIconTileSize.Sm) {
                 RaftChannelKindIcon(
                     // A row of core's search carries its status: External (`external || guest`)
-                    // draws the external icon even for a channel the app hasn't loaded (web
-                    // `SearchChannelIcon`).
-                    if (result.homeSearchExternalChannel) {
-                        raftChannelKindGlyph(result.homeSearchChannelWireType(), external = true)
-                    } else {
-                        result.homeSearchChannelGlyph(currentRaftChannelKinds())
-                    },
+                    // draws the external icon even for a channel the app hasn't loaded, and a Slack
+                    // channel the Slack mark (web `SearchChannelIcon`).
+                    result.homeSearchChannelIconGlyph(currentRaftChannelKinds()),
                     size = RaftIconTileSize.Sm.icon,
                     color = raftArgbHex(RaftColor.TextMuted),
                 )

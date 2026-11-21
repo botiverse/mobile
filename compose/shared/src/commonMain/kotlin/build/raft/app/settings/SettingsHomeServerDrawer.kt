@@ -19,6 +19,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Presence
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import androidx.compose.runtime.Composable
@@ -457,6 +458,7 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackActivityMuted: Boolean = false,
     val fallbackActivityMuteSupported: Boolean = false,
     val fallbackBridgeProvider: String? = null,
+    val fallbackSlackSyncProblem: RaftSlackSyncProblem? = null,
     val fallbackGuestVisible: Boolean = false,
     val fallbackHasExternalRelation: Boolean = false,
     /** Unread summary `hasMention` (or a followed thread's), carried by the store. */
@@ -600,6 +602,7 @@ private fun HomeConversationRow.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackActivityMuted = activityMuted,
         fallbackActivityMuteSupported = activityMuteSupported,
         fallbackBridgeProvider = bridgeProvider,
+        fallbackSlackSyncProblem = slackSyncProblem,
         fallbackGuestVisible = guestVisible,
         fallbackHasExternalRelation = hasExternalRelation
     )
@@ -641,6 +644,9 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         activityMuted = directoryProjection?.activityMuted ?: fallbackActivityMuted,
         activityMuteSupported = directoryProjection?.activityMuteSupported ?: fallbackActivityMuteSupported,
         bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider,
+        // The sync state comes with the bridge it was read with.
+        slackSyncProblem =
+            if (directoryProjection?.bridgeProvider != null) directoryProjection.slackSyncProblem else fallbackSlackSyncProblem,
         // The Home row seed is the canonical channel row; a directory projection from a
         // sparse source (inbox) never carries guestVisible, so it may only add, not clear.
         guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true,

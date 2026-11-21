@@ -61,7 +61,8 @@ internal fun ConversationSummary.toSharedConversationDirectoryProjection(
         joined = joined && permissions.canRead,
         archived = archived,
         permissions = permissions,
-        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider
+        bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider,
+        slackSyncProblem = if (kind == ConversationKind.Thread) null else slackSyncProblem
     )
 }
 
