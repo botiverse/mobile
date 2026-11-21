@@ -1193,12 +1193,7 @@ internal fun MemberDetailPageContent(
                                 }
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
-                        canViewPrivateAgentSurfaces = { _, detail ->
-                            current.accessMode.allowsPrivateAgentSurfaces &&
-                                (current.server.permissions.canManageSettings ||
-                                detail?.summary?.creatorId == current.currentUserId
-                                )
-                        },
+                        canViewPrivateAgentSurfaces = { _, detail -> current.viewerSeesPrivateAgentSurfaces(detail) },
                         canManageAgent = { _, detail ->
                             membersRouteCanManageAgent(
                                 allowsPrivateAgentSurfaces = current.accessMode.allowsPrivateAgentSurfaces,

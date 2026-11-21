@@ -96,6 +96,15 @@ internal fun memberDetailStatusResolverServerId(
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
+/**
+ * Web `canViewPrivateAgentSurfaces`: an agent's tabs beyond Profile (and the details they carry) are
+ * for the server's owners and admins and for the agent's creator. A cache replay answers the same
+ * as the live page because the stored record keeps the viewer's role (#proj-mobile:#236).
+ */
+internal fun MemberDetailRouteState.Agent.viewerSeesPrivateAgentSurfaces(detail: AgentDetailSnapshot?): Boolean =
+    accessMode.allowsPrivateAgentSurfaces &&
+        (server.permissions.canManageSettings || detail?.summary?.creatorId == currentUserId)
+
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
     val showInitialLoading: Boolean,
