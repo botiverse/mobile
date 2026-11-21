@@ -8,13 +8,16 @@ import java.lang.ref.WeakReference
 
 /**
  * One warn line per scroll session (a list's `isScrollInProgress` true -> false, fling included)
- * summarising vsync cadence while it scrolled: frames, late frames (missed at least one vsync),
- * longest and p95 frame gap, and the display refresh rate at start and end (90 <-> 60 Hz switches
- * show up as `vsyncMs` != `vsyncEndMs`). [RaftResumeFrameProbe] only covers the seconds after a
- * resume, so a "scrolling drops frames" report carried no scroll frame evidence.
+ * summarising vsync cadence while it scrolled: scroll-start first-frame latency, frames, late
+ * frames (missed at least one vsync), longest and p95 frame gap, and the display refresh rate at
+ * start and end (90 <-> 60 Hz switches show up as `vsyncMs` != `vsyncEndMs`). [RaftResumeFrameProbe]
+ * only covers the seconds after a resume, so a "scrolling drops frames" report carried no scroll
+ * frame evidence.
  *
  * Cost: one Choreographer callback per vsync only while a list is scrolling; no allocation per
- * frame; at most one line per [MinLineIntervalMillis] (skipped sessions are counted on the next line).
+ * frame; at most one line per [MinLineIntervalMillis]. Skipped sessions carry their count, total
+ * jank frames, and worst frame gap onto the next emitted line (and flush on pause when they saw
+ * jank) so rapid flicks never hide a stall.
  */
 object RaftScrollFrameProbe {
     private const val Tag = "SlockScrollFrames"
@@ -26,8 +29,7 @@ object RaftScrollFrameProbe {
     private var activityRef: WeakReference<Activity>? = null
     private var pageName: String = ""
     private var active: ActiveProbe? = null
-    private var lastLineAtMillis = -MinLineIntervalMillis
-    private var skippedSessions = 0
+    private val throttle = RaftScrollFrameThrottle(MinLineIntervalMillis)
 
     fun onActivityResumed(activity: Activity, pageName: String) {
         activityRef = WeakReference(activity)
@@ -38,6 +40,15 @@ object RaftScrollFrameProbe {
     fun onActivityPaused(activity: Activity) {
         if (activityRef?.get() !== activity) return
         active?.finish(reason = "paused")
+        throttle.flushAndResetOnPause()?.let { pending ->
+            RaftAppLog.w(
+                Tag,
+                raftScrollFramesSkippedFlushLine(
+                    pageName = pageName,
+                    skipped = pending,
+                )
+            )
+        }
         activityRef = null
     }
 
@@ -80,7 +91,7 @@ object RaftScrollFrameProbe {
 
         override fun doFrame(frameTimeNanos: Long) {
             if (finished) return
-            stats.onVsync(frameTimeNanos)
+            stats.onScrollVsync(frameTimeNanos = frameTimeNanos, nowNanos = System.nanoTime())
             Choreographer.getInstance().postFrameCallback(this)
         }
 
@@ -90,24 +101,130 @@ object RaftScrollFrameProbe {
             Choreographer.getInstance().removeFrameCallback(this)
             if (active === this) active = null
             val summary = stats.summary(System.nanoTime())
-            if (summary.frames < MinFrames) return
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastLineAtMillis < MinLineIntervalMillis) {
-                skippedSessions += 1
-                return
-            }
-            lastLineAtMillis = now
-            val skipped = skippedSessions
-            skippedSessions = 0
+            // Drop tiny smooth micro-touches (< MinFrames), never a short scroll that hit jank.
+            if (summary.frames < MinFrames && summary.jankFrames == 0) return
+            val carried = throttle.record(nowMillis = SystemClock.elapsedRealtime(), list = list, summary = summary) ?: return
             RaftAppLog.w(
                 Tag,
-                "scroll_frames page=$pageName list=$list reason=$reason " +
-                    summary.wireFields(endFrameIntervalNanos = frameIntervalNanos(activity.get())) +
-                    " skippedSessions=$skipped"
+                raftScrollFramesLine(
+                    pageName = pageName,
+                    list = list,
+                    reason = reason,
+                    summary = summary,
+                    endFrameIntervalNanos = frameIntervalNanos(activity.get()),
+                    skipped = carried,
+                )
             )
         }
     }
 }
+
+internal data class RaftScrollSkippedCarryover(
+    val sessions: Int = 0,
+    val jankFrames: Int = 0,
+    val longestFrameMs: Long = 0L,
+    val lastList: String = "",
+)
+
+/**
+ * Pure throttle for [RaftScrollFrameProbe]: enforces [minIntervalMillis] between emitted lines,
+ * while preserving the skipped session count, total jank frames, and worst frame gap so rapid
+ * consecutive scrolls never discard a hitch.
+ */
+internal class RaftScrollFrameThrottle(
+    private val minIntervalMillis: Long = 1_000L,
+) {
+    private var lastLineAtMillis: Long = -minIntervalMillis
+    private var skippedSessions: Int = 0
+    private var skippedJankFrames: Int = 0
+    private var skippedLongestFrameMs: Long = 0L
+    private var skippedLastList: String = ""
+
+    /**
+     * Records a finished scroll [summary] at [nowMillis]. Returns null when throttled (folding
+     * [summary] into the skipped carryover), or the carryover to emit with this line when allowed.
+     */
+    fun record(
+        nowMillis: Long,
+        list: String,
+        summary: RaftScrollFrameStats.Summary,
+    ): RaftScrollSkippedCarryover? {
+        if (nowMillis - lastLineAtMillis < minIntervalMillis) {
+            skippedSessions += 1
+            skippedJankFrames += summary.jankFrames
+            if (summary.longestFrameMs > skippedLongestFrameMs) {
+                skippedLongestFrameMs = summary.longestFrameMs
+            }
+            skippedLastList = list
+            return null
+        }
+        lastLineAtMillis = nowMillis
+        val carried =
+            RaftScrollSkippedCarryover(
+                sessions = skippedSessions,
+                jankFrames = skippedJankFrames,
+                longestFrameMs = skippedLongestFrameMs,
+                lastList = skippedLastList,
+            )
+        clearSkipped()
+        return carried
+    }
+
+    /**
+     * Flushes pending skipped sessions when pausing if any of them dropped a frame, and clears
+     * stale smooth skipped counts so a later foreground visit starts clean.
+     */
+    fun flushAndResetOnPause(): RaftScrollSkippedCarryover? {
+        val pending =
+            if (skippedSessions > 0 && skippedJankFrames > 0) {
+                RaftScrollSkippedCarryover(
+                    sessions = skippedSessions,
+                    jankFrames = skippedJankFrames,
+                    longestFrameMs = skippedLongestFrameMs,
+                    lastList = skippedLastList,
+                )
+            } else {
+                null
+            }
+        clearSkipped()
+        return pending
+    }
+
+    private fun clearSkipped() {
+        skippedSessions = 0
+        skippedJankFrames = 0
+        skippedLongestFrameMs = 0L
+        skippedLastList = ""
+    }
+}
+
+internal fun raftScrollFramesLine(
+    pageName: String,
+    list: String,
+    reason: String,
+    summary: RaftScrollFrameStats.Summary,
+    endFrameIntervalNanos: Long = summary.frameIntervalNanos,
+    skipped: RaftScrollSkippedCarryover = RaftScrollSkippedCarryover(),
+): String {
+    val firstFramePart = if (summary.firstFrameMs >= 0L) " firstFrameMs=${summary.firstFrameMs}" else ""
+    val skippedStatsPart =
+        if (skipped.sessions > 0) {
+            " skippedJankFrames=${skipped.jankFrames} skippedLongestFrameMs=${skipped.longestFrameMs}"
+        } else {
+            ""
+        }
+    return "scroll_frames page=$pageName list=$list reason=$reason$firstFramePart " +
+        summary.wireFields(endFrameIntervalNanos = endFrameIntervalNanos) +
+        " skippedSessions=${skipped.sessions}$skippedStatsPart"
+}
+
+internal fun raftScrollFramesSkippedFlushLine(
+    pageName: String,
+    skipped: RaftScrollSkippedCarryover,
+): String =
+    "scroll_frames page=$pageName list=${skipped.lastList.ifEmpty { "unknown" }} reason=paused_skipped " +
+        "skippedSessions=${skipped.sessions} skippedJankFrames=${skipped.jankFrames} " +
+        "skippedLongestFrameMs=${skipped.longestFrameMs}"
 
 /**
  * Pure accumulator for [RaftScrollFrameProbe]; all times are monotonic nanos. Frame gaps are
@@ -120,10 +237,43 @@ internal class RaftScrollFrameStats(
 ) {
     private val histogram = IntArray(HistogramBuckets)
     private var lastVsyncNanos = -1L
+    private var firstFrameGapNanos = -1L
     private var frames = 0
     private var jankFrames = 0
     private var longestGapNanos = 0L
     private var shortestGapNanos = Long.MAX_VALUE
+
+    /**
+     * Scroll-session callback: anchors on the first callback and measures the scroll-start ->
+     * first-frame latency (`nowNanos - startNanos`). If that opening frame already missed a vsync
+     * (>= 1.75x interval), it counts as a jank frame and updates [longestGapNanos] / p95 instead
+     * of being silently dropped. Normal sub-vsync partial first intervals are not fed into
+     * [shortestGapNanos] so `minFrameMs` keeps reflecting steady vsync cadence.
+     */
+    fun onScrollVsync(frameTimeNanos: Long, nowNanos: Long) {
+        if (lastVsyncNanos >= 0L) {
+            onVsync(frameTimeNanos)
+            return
+        }
+        val firstGap = (nowNanos - startNanos).coerceAtLeast(0L)
+        firstFrameGapNanos = firstGap
+        // If Choreographer handed us an un-clamped pre-stall vsync timestamp, advance the anchor
+        // in whole frameIntervalNanos steps up to nowNanos so the next vsync does not double-count
+        // the same stall or produce a sub-vsync minFrameMs.
+        val lag = (nowNanos - frameTimeNanos).coerceAtLeast(0L)
+        lastVsyncNanos =
+            if (frameIntervalNanos > 0L && lag >= frameIntervalNanos) {
+                frameTimeNanos + (lag / frameIntervalNanos) * frameIntervalNanos
+            } else {
+                frameTimeNanos
+            }
+        if (firstGap * 4 >= 7 * frameIntervalNanos) {
+            frames += 1
+            jankFrames += 1
+            if (firstGap > longestGapNanos) longestGapNanos = firstGap
+            histogram[(firstGap / 1_000_000L).toInt().coerceIn(0, HistogramBuckets - 1)] += 1
+        }
+    }
 
     fun onVsync(frameTimeNanos: Long) {
         val previous = lastVsyncNanos
@@ -139,16 +289,24 @@ internal class RaftScrollFrameStats(
         histogram[(gap / 1_000_000L).toInt().coerceIn(0, HistogramBuckets - 1)] += 1
     }
 
-    fun summary(nowNanos: Long): Summary =
-        Summary(
+    fun summary(nowNanos: Long): Summary {
+        val shortestMs =
+            when {
+                shortestGapNanos != Long.MAX_VALUE -> shortestGapNanos / 1_000_000.0
+                frames > 0 && firstFrameGapNanos >= 0L -> firstFrameGapNanos / 1_000_000.0
+                else -> 0.0
+            }
+        return Summary(
             durationMs = (nowNanos - startNanos).coerceAtLeast(0L) / 1_000_000L,
             frames = frames,
             jankFrames = jankFrames,
             longestFrameMs = longestGapNanos / 1_000_000L,
-            shortestFrameMs = if (frames > 0) shortestGapNanos / 1_000_000.0 else 0.0,
+            shortestFrameMs = shortestMs,
             p95FrameMs = percentileMs(95),
             frameIntervalNanos = frameIntervalNanos,
+            firstFrameMs = if (firstFrameGapNanos >= 0L) firstFrameGapNanos / 1_000_000L else -1L,
         )
+    }
 
     /** Upper edge (ms) of the histogram bucket holding the [percent]th frame; 0 with no frames. */
     private fun percentileMs(percent: Int): Long {
@@ -170,6 +328,7 @@ internal class RaftScrollFrameStats(
         val shortestFrameMs: Double,
         val p95FrameMs: Long,
         val frameIntervalNanos: Long,
+        val firstFrameMs: Long = -1L,
     ) {
         fun wireFields(endFrameIntervalNanos: Long = frameIntervalNanos): String =
             "durationMs=$durationMs frames=$frames jankFrames=$jankFrames " +
