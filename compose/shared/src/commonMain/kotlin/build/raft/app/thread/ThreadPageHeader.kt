@@ -19,7 +19,6 @@ import build.raft.app.data.raftShouldApplyShellOverlayResult
 import build.raft.app.data.RaftShellOverlayRequest
 import build.raft.app.data.RaftShellOverlayItem
 import build.raft.app.data.cancelRaftShellOverlayJson
-import build.raft.app.components.RaftExternalBridgeBadge
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftMetrics
@@ -524,7 +523,9 @@ internal fun ThreadPageHeader(
                         ThreadArchivedChannelBadge()
                     }
                     if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel && loungeHeader == null) {
-                        RaftExternalBridgeBadge(headerDisplay.bridgeProvider)
+                        // Web ChatPanel `ChannelSlackSyncBadge`: a Slack channel says so by its glyph;
+                        // after its name only a stopped sync, the warning Badge.
+                        RaftSlackSyncBadge(headerDisplay.slackSyncProblem)
                     }
                     if (activityMutedIndicatorVisible) {
                         ThreadActivityMutedBadge()

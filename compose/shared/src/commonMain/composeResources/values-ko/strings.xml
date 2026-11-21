@@ -3668,6 +3668,12 @@
     <string name="settings_public_visibility_failed_search_update">검색 엔진 노출 설정을 업데이트하지 못했어요</string>
     <string name="channel_public_page_readable">누구나 공개 페이지에서 이 채널을 읽을 수 있어요</string>
     <string name="channel_external_members">외부 채널</string>
+    <string name="channel_external_members_private">비공개 외부 채널</string>
+    <string name="channel_slack_connected">Slack과 연결됨</string>
+    <string name="channel_slack_connected_private">Slack과 연결된 비공개 채널</string>
+    <string name="channel_slack_sync_paused">동기화 일시 중지됨</string>
+    <string name="channel_slack_sync_waiting">동기화 대기 중</string>
+    <string name="channel_slack_sync_stalled">동기화 막힘</string>
     <string name="layout_server_public_page_live">공개: 누구나 로그인하지 않고 공개 채널을 읽을 수 있어요</string>
     <string name="member_activity_overview_view_label">활동 보기</string>
     <string name="member_activity_overview_view_overview">개요</string>

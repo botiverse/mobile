@@ -183,6 +183,24 @@ internal fun SearchEntityResult.homeSearchChannelGlyph(kinds: RaftChannelKinds =
     return kinds.glyph(identity.channelId?.value, homeSearchChannelWireType())
 }
 
+/**
+ * The glyph a channel result draws (botiverse/slock 6b0965841 packages/web/src/features/search/
+ * EntityResultRow.tsx `SearchChannelIcon`): a row of core's search carries its status, so people
+ * from outside (`external || guest`) come from it even for a channel the app hasn't loaded; the
+ * public page (`guestVisible`) and Slack (`bridge`) from the Home row ([homeSearchChannelGlyph]).
+ * The one chooser then picks the widest group: the globe, then the Slack mark, then two people.
+ */
+internal fun SearchEntityResult.homeSearchChannelIconGlyph(kinds: RaftChannelKinds = RaftChannelKinds.Empty): RaftChannelKindGlyph {
+    val homeGlyph = homeSearchChannelGlyph(kinds)
+    if (!homeSearchExternalChannel) return homeGlyph
+    return raftChannelKindGlyph(
+        homeSearchChannelWireType(),
+        onPublicPage = homeGlyph == RaftChannelKindGlyph.PublicPage,
+        external = true,
+        slack = homeGlyph.isSlack,
+    )
+}
+
 /** A channel result's wire type (`channel` / `private` / `joint`), from its launch identity. */
 internal fun SearchEntityResult.homeSearchChannelWireType(): String? {
     val identity = conversationIdentity ?: return null

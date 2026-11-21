@@ -332,6 +332,9 @@ sealed interface HomeConversationRow {
     /** task #396: external bridge provider (e.g. "slack"); only channels carry one. */
     val bridgeProvider: String?
         get() = null
+    /** A Slack channel's stopped sync ([RaftSlackSyncProblem], from `channel.bridge`); only channels carry one. */
+    val slackSyncProblem: RaftSlackSyncProblem?
+        get() = null
     /** Channel `guestVisible` (see [HomeChannelWireDto.guestVisible]); only channels carry one. */
     val guestVisible: Boolean
         get() = false
@@ -397,6 +400,7 @@ data class HomeChannelRow(
     override val jointOverLimitGraceEndsAt: String? = null,
     override val externalFreezeAt: String? = null,
     override val bridgeProvider: String? = null,
+    override val slackSyncProblem: RaftSlackSyncProblem? = null,
     override val guestVisible: Boolean = false,
     override val hasExternalRelation: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
@@ -495,6 +499,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
         bridgeProvider = bridgeProvider,
+        slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,
@@ -542,6 +547,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
         bridgeProvider = bridgeProvider,
+        slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference = activityNotificationPreference,

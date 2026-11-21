@@ -22,6 +22,9 @@ new product concept gets a Japanese rendering.
 | Human(s) | 人間 | Explicit contrast with エージェント (Members page sections) |
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
 | External (someone from another server) | 外部 | Profile card ribbon "外部：{servers}", author row "{servers} から"; copied from the web ja catalog `message.profilePreview.external*` / `fromServers` (botiverse/slock #14535) |
+| Connected to Slack / Private channel connected to Slack (a Slack channel's icon, read by screen readers) | Slack と連携中 / Slack と連携中の非公開チャンネル | Copied from the web ja catalog `channel.slackConnected` / `channel.slackConnectedPrivate` (botiverse/slock #16042) |
+| External channel / Private external channel (an external channel's icon, read by screen readers) | 外部チャンネル / 非公開の外部チャンネル | Copied from the web ja catalog `channel.externalMembers` / `channel.externalMembersPrivate` (botiverse/slock #16060) |
+| Sync paused / Sync waiting / Sync blocked (a Slack channel's stopped sync, on its header and sidebar row) | 同期を一時停止中 / 同期待機中 / 同期が停止 | Copied from the web ja catalog `message.chatPanel.slackSyncPaused` / `slackSyncWaiting` / `slackSyncStalled` |
 | External (Home's section of external channels) / Create external channel | 外部 / 外部チャンネルを作成 | The section title and its "+"; replaces 共同チャンネル / 共同チャンネルを作成; copied from the web ja catalog `layout.sidebar.external` / `layout.sidebar.createExternalChannel` (botiverse/slock #15939) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |

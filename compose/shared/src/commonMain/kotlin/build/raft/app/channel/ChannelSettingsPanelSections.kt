@@ -43,6 +43,10 @@ internal data class ChannelSectionPlacement(
     val pinned: Boolean,
     val placementSectionId: String?,
     val canPin: Boolean = true,
+    /**
+     * At home in External (web `sidebarChannelHomeSectionKey` = `system:joint`): a joint or external
+     * channel, or one connected to Slack ([isHomeExternalSectionChannel]).
+     */
     val joint: Boolean = false,
     /** A DM (slock #12622): at home in Direct Messages, pinned by its peer. */
     val directMessage: Boolean = false,
@@ -312,7 +316,8 @@ internal fun rememberThreadChannelSettingsPanel(
                 sidebarOrder = sidebarOrder,
                 channelId = pin.conversationId,
                 pinned = pin.pinned,
-                joint = channel?.let(::channelSettingsIsJoint) == true,
+                // Web useConversationSidebarSection `sidebarChannelHomeSectionKey`: where Home lists it.
+                joint = channel?.isHomeExternalSectionChannel() == true,
                 canPin = pin.available,
                 directMessagePeerKind = pin.pinnedKind,
                 directMessagePeerId = pin.pinnedId,

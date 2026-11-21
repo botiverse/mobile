@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.shownAuthorName
 import build.raft.app.RaftSidebarSortMode
+import build.raft.app.isHomeExternalSectionChannel
 import build.raft.app.base.putIfAbsent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -3649,9 +3650,11 @@ internal class SharedHomeStore(
             pinUpdateFailureCallback("Unable to reorder sidebar: sidebar order not loaded")
             return
         }
+        // The External section's channels (web useSidebarDnd `isSidebarExternalSectionChannel`,
+        // botiverse/slock #16042): joint and external channels and those connected to Slack.
         val jointChannelIds =
             current.snapshot.channels
-                .filter { it.kind == ConversationKind.Joint }
+                .filter { it.isHomeExternalSectionChannel() }
                 .map { it.threadId.value }
                 .toSet()
         val knownChannelIds = current.snapshot.channels.map { it.threadId.value }
@@ -6007,14 +6010,16 @@ internal fun HomeSnapshot.toHomeServerDrawerNormalizedContent(): HomeServerDrawe
             .orderedForHomeServerDrawer(order.dmOrder)
             .filter { row -> row.threadId.value !in order.hiddenDmIds || row.unreadCount > 0 }
             .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.dmSortMode))
+    // External holds the joint and external channels and those connected to Slack, as Home's
+    // sidebar does (web isSidebarExternalSectionChannel, botiverse/slock #16042).
     val regularChannels =
         channels
-            .filter { row -> row.kind != ConversationKind.Joint }
+            .filter { row -> !row.isHomeExternalSectionChannel() }
             .orderedForHomeServerDrawer(order.channelOrder)
             .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.channelSortMode))
     val jointChannels =
         channels
-            .filter { row -> row.kind == ConversationKind.Joint }
+            .filter { row -> row.isHomeExternalSectionChannel() }
             .orderedForHomeServerDrawer(order.channelOrder)
             .sortedForHomeServerDrawer(RaftSidebarSortMode.fromWireValue(order.channelSortMode))
     val pinned = homeServerDrawerPinnedConversations(channels, directMessages, order)

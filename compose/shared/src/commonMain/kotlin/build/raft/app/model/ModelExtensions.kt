@@ -118,6 +118,9 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         externalFreezeAt =
             externalFreezeAt ?: fallback.externalFreezeAt.takeIf { sameConversation },
         bridgeProvider = bridgeProvider ?: fallback.bridgeProvider.takeIf { sameConversation },
+        // The sync state belongs to the bridge it was read with: a row that names no bridge takes both.
+        slackSyncProblem =
+            if (bridgeProvider != null) slackSyncProblem else fallback.slackSyncProblem.takeIf { sameConversation },
         channelCapabilities = channelCapabilities ?: fallback.channelCapabilities.takeIf { sameConversation }
     )
 }

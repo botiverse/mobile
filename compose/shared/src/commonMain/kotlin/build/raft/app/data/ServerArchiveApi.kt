@@ -40,6 +40,8 @@ internal data class ArchivedChannelWireDto(
     val archivedAt: String? = null,
     val hasExternalRelation: Boolean = false,
     val loungeAgentId: String? = null,
+    /** `channelService.attachExternalBridgeMetadata` on the same list: [HomeChannelBridgeWireDto]. */
+    val bridge: HomeChannelBridgeWireDto? = null,
 )
 
 @Serializable
@@ -65,6 +67,8 @@ data class ArchivedChannel(
     val type: String,
     val archivedAt: String,
     val hasExternalRelation: Boolean,
+    /** `bridge.provider` (`slack`): its row draws the Slack glyph, like the web's `ChannelIcon`. */
+    val bridgeProvider: String? = null,
 )
 
 /** Where an archived agent's workspace is (web `ArchivedAgentEntry.workspaceState` / `pendingOp`). */
@@ -95,7 +99,7 @@ fun parseSharedArchivedChannels(bodyText: String?): List<ArchivedChannel>? {
             val archivedAt = row.archivedAt?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             val type = row.type.trim().lowercase()
             if (type !in ARCHIVED_CHANNEL_TYPES || !row.loungeAgentId.isNullOrBlank()) return@mapNotNull null
-            ArchivedChannel(row.id, row.name, type, archivedAt, row.hasExternalRelation)
+            ArchivedChannel(row.id, row.name, type, archivedAt, row.hasExternalRelation, row.bridge.normalizedBridgeProviderOrNull())
         }
         .sortedWith(compareByDescending<ArchivedChannel> { it.archivedAt }.thenBy { it.name })
 }

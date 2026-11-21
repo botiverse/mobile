@@ -216,7 +216,7 @@ class RaftNativeNavBarBridgeTest {
         publish("joint", false)
         publish("channel", true)
         val assets = recorder.extras.map { Regex(""""imageAsset":"([^"]+)"""").find(it)?.groupValues?.get(1) }
-        assertEquals(listOf("lucide-hash", "lucide-lock", "lucide-git-branch", "lucide-globe"), assets)
+        assertEquals(listOf("lucide-hash", "lucide-lock", "lucide-git-branch", "lucide-public-page-channel"), assets)
     }
 
     @Test

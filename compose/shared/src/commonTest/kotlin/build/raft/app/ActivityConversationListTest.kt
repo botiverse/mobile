@@ -651,6 +651,13 @@ class ActivityConversationListTest {
                                 channelType = "private",
                                 hasExternalRelation = true,
                             ),
+                            HomeChannelRow(
+                                threadId = ThreadId("partners-sync"),
+                                channelId = ChannelId("partners-sync"),
+                                name = "partners-sync",
+                                channelType = "private",
+                                bridgeProvider = "slack",
+                            ),
                         ),
                 )
             }
@@ -658,8 +665,20 @@ class ActivityConversationListTest {
         // The projection is the Home sidebar's own helper, row for row: the External glyph for a
         // joint channel and one with outside people.
         val external = RaftChannelKindGlyph.External.symbol
+        // A private channel with people from outside: two people with the corner lock; a private
+        // Slack channel: the Slack mark with it; the public page: the globe (botiverse/slock #16060).
+        val externalPrivate = RaftChannelKindGlyph.ExternalPrivate.symbol
+        val slackPrivate = RaftChannelKindGlyph.SlackPrivate.symbol
+        val globe = RaftChannelKindGlyph.PublicPage.symbol
         assertEquals(
-            mapOf("general" to "#", "secret" to "lock", "joint-hands" to external, "lobby" to HomeChannelSymbolHashGlobe, "vendor" to external),
+            mapOf(
+                "general" to "#",
+                "secret" to "lock",
+                "joint-hands" to external,
+                "lobby" to globe,
+                "vendor" to externalPrivate,
+                "partners-sync" to slackPrivate,
+            ),
             homeContext.channelSymbolsByChannelId,
         )
         // The public-page mark needs the server's page live, as on Home.
@@ -679,7 +698,7 @@ class ActivityConversationListTest {
                 Case("normal channel", channel("c:general", "general"), homeContext, "#"),
                 Case("private channel", channel("c:secret", "secret"), homeContext, "lock"),
                 Case("joint channel", channel("c:joint", "joint-hands"), homeContext, external),
-                Case("public-page channel", channel("c:lobby", "lobby"), homeContext, HomeChannelSymbolHashGlobe),
+                Case("public-page channel", channel("c:lobby", "lobby"), homeContext, globe),
                 // A thread row leads with its parent channel's glyph (and keeps the thread badge).
                 Case("thread in a private channel", threadIn("secret"), homeContext, "lock"),
                 Case("thread in a joint channel", threadIn("joint-hands", ConversationKind.Joint), homeContext, external),
@@ -705,12 +724,15 @@ class ActivityConversationListTest {
                 ),
                 // The wire type wins over Home; the globe still comes from the Home row (guestVisible).
                 Case("wire private over Home #", channel("c:g", "general").copy(channelType = "private"), homeContext, "lock"),
-                Case("wire channel on the public page", channel("c:l", "lobby").copy(channelType = "channel"), homeContext, HomeChannelSymbolHashGlobe),
+                Case("wire channel on the public page", channel("c:l", "lobby").copy(channelType = "channel"), homeContext, globe),
                 // The Home row's External glyph wins over the wire type; a joint channel Home doesn't
                 // list draws its type alone (web ChannelIcon fallback: git-branch, above).
-                Case("external channel", channel("c:v", "vendor").copy(channelType = "private"), homeContext, external),
-                Case("thread in an external channel", threadIn("vendor"), homeContext, external),
+                Case("external channel", channel("c:v", "vendor").copy(channelType = "private"), homeContext, externalPrivate),
+                Case("thread in an external channel", threadIn("vendor"), homeContext, externalPrivate),
                 Case("wire joint over Home External", channel("c:joint", "joint-hands").copy(channelType = "joint"), homeContext, external),
+                // The Home row's Slack mark wins over the wire type too (web ConversationAvatar `ChannelIcon`).
+                Case("Slack channel", channel("c:s", "partners-sync").copy(channelType = "private"), homeContext, slackPrivate),
+                Case("thread in a Slack channel", threadIn("partners-sync"), homeContext, slackPrivate),
             )
         for (case in cases) {
             val model = case.item.activityConversationRowModel(case.context, InboxFilter.All)

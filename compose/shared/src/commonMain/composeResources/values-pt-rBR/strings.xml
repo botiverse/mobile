@@ -3668,6 +3668,12 @@
     <string name="settings_public_visibility_failed_search_update">Não foi possível atualizar o acesso de mecanismos de busca</string>
     <string name="channel_public_page_readable">Qualquer pessoa pode ler este canal na página pública</string>
     <string name="channel_external_members">Canal externo</string>
+    <string name="channel_external_members_private">Canal externo privado</string>
+    <string name="channel_slack_connected">Conectado ao Slack</string>
+    <string name="channel_slack_connected_private">Canal privado conectado ao Slack</string>
+    <string name="channel_slack_sync_paused">Sincronização pausada</string>
+    <string name="channel_slack_sync_waiting">Sincronização em espera</string>
+    <string name="channel_slack_sync_stalled">Sincronização travada</string>
     <string name="layout_server_public_page_live">Público: qualquer pessoa pode ler os canais públicos sem fazer login</string>
     <string name="member_activity_overview_view_label">Visualização da atividade</string>
     <string name="member_activity_overview_view_overview">Visão geral</string>

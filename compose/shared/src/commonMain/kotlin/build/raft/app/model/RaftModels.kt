@@ -129,6 +129,17 @@ data class ChannelActivityNotificationPreference(
     }
 }
 
+/**
+ * Why a Slack channel's sync stopped, as its header and sidebar row say it (botiverse/slock
+ * packages/web/src/components/channel/slackSyncHeaderState.ts `slackSyncHeaderState().kind`,
+ * features/channel/ChannelSlackSyncBadge.tsx; the row since #16042): [Paused] (the pair or its Slack
+ * app stopped), [Waiting] (Raft messages held for Slack), [Stalled] (held too long). No value while it
+ * syncs or while the pair is being set up. Derived from `channel.bridge` by
+ * [build.raft.app.data.slackSyncProblemOrNull].
+ */
+@Serializable
+enum class RaftSlackSyncProblem { Paused, Waiting, Stalled }
+
 @Serializable
 data class ConversationSummary(
     val threadId: ThreadId,
@@ -169,6 +180,8 @@ data class ConversationSummary(
     val jointOverLimitGraceEndsAt: String? = null,
     val externalFreezeAt: String? = null,
     val bridgeProvider: String? = null,
+    /** A Slack channel's stopped sync (see [RaftSlackSyncProblem]); null while it syncs. */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /**
      * Channel row `guestVisible` (see [build.raft.app.data.HomeChannelWireDto.guestVisible]).
      * Only meaningful for `type == "channel"`; never true for DMs / threads.

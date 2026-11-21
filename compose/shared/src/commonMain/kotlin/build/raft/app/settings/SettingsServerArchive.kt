@@ -207,7 +207,8 @@ internal fun SettingsArchivedChannelsSection(ui: SettingsServerArchiveUi) {
 private fun settingsArchivedChannelTypeLabel(channel: ArchivedChannel): String =
     stringResource(
         when {
-            isRaftExternalSectionChannel(channel.type, channel.hasExternalRelation) -> Res.string.settings_archived_channels_joint
+            // Web ArchivedChannelsSection `isExternalMembersChannel`: a Slack channel is not tagged External.
+            isRaftExternalMembersChannel(channel.type, channel.hasExternalRelation) -> Res.string.settings_archived_channels_joint
             channel.type == "private" -> Res.string.settings_archived_channels_private
             else -> Res.string.settings_archived_channels_public
         }
@@ -241,7 +242,12 @@ private fun SettingsArchivedChannelRow(
         leading = {
             RaftIconTile(size = RaftIconTileSize.Sm) {
                 RaftChannelKindIcon(
-                    glyph = raftChannelRecordKindGlyph(channel.type, hasExternalRelation = channel.hasExternalRelation),
+                    glyph =
+                        raftChannelRecordKindGlyph(
+                            channel.type,
+                            hasExternalRelation = channel.hasExternalRelation,
+                            bridgeProvider = channel.bridgeProvider,
+                        ),
                     size = RaftIconTileSize.Sm.icon,
                     color = raftArgbHex(RaftColor.ForegroundMuted),
                 )

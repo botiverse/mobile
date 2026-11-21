@@ -16,6 +16,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
@@ -71,6 +72,8 @@ internal data class SharedConversationDirectoryProjection(
     val externalFreezeAt: String? = null,
     // task #396: external bridge provider ("slack") carried from `channel.bridge.provider`.
     val bridgeProvider: String? = null,
+    /** A Slack channel's stopped sync, from the Home channel row (the header's warning Badge). */
+    val slackSyncProblem: RaftSlackSyncProblem? = null,
     /** Channel `guestVisible` from the Home channel row; threads/DMs/inbox projections never carry it. */
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` from the Home channel row; threads/DMs/inbox projections never carry it. */
@@ -659,6 +662,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
             if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null
             else externalFreezeAt?.takeIf { it.isNotBlank() },
         bridgeProvider = if (kind == ConversationKind.Thread) null else bridgeProvider,
+        slackSyncProblem = if (kind == ConversationKind.Thread) null else slackSyncProblem,
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
         jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),

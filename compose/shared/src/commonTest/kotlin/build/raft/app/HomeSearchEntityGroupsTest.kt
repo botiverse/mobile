@@ -167,6 +167,36 @@ class HomeSearchEntityGroupsTest {
     }
 
     @Test
+    fun aChannelResultTakesTheGlobeAndSlackFromHomeAndPeopleFromOutsideFromItsStatus() {
+        // web EntityResultRow `SearchChannelIcon` (botiverse/slock 6b0965841): people from outside come
+        // from core's status (`external || guest`), the public page and Slack from the stored channel;
+        // the widest group wins (globe > Slack > two people).
+        val kinds =
+            RaftChannelKinds(
+                glyphsByChannelId =
+                    mapOf(
+                        "s" to RaftChannelKindGlyph.Slack,
+                        "p" to RaftChannelKindGlyph.SlackPrivate,
+                        "l" to RaftChannelKindGlyph.PublicPage,
+                    ),
+            )
+        fun glyph(hit: SearchChannelHit) = hit.toHomeSearchEntityResult(emptyMap(), "Channel").homeSearchChannelIconGlyph(kinds)
+
+        assertEquals(RaftChannelKindGlyph.Slack, glyph(channelHit("s")))
+        // A Guest in a public Slack channel: the Slack mark, no corner lock (it is not private).
+        assertEquals(RaftChannelKindGlyph.Slack, glyph(channelHit("s", guest = true)))
+        assertEquals(RaftChannelKindGlyph.SlackPrivate, glyph(channelHit("p", type = "private", external = true)))
+        // A Guest in a channel anyone can read on the web: the globe.
+        assertEquals(RaftChannelKindGlyph.PublicPage, glyph(channelHit("l", guest = true)))
+        // Not a Slack channel, or not loaded: two people from the status alone, with the lock when
+        // private; else the Home row's or the type's glyph.
+        assertEquals(RaftChannelKindGlyph.External, glyph(channelHit("x", external = true)))
+        assertEquals(RaftChannelKindGlyph.ExternalPrivate, glyph(channelHit("x", type = "private", guest = true)))
+        assertEquals(RaftChannelKindGlyph.Hash, glyph(channelHit("x")))
+        assertEquals(RaftChannelKindGlyph.Slack, channelRow("s", "partners-sync").homeSearchChannelIconGlyph(kinds))
+    }
+
+    @Test
     fun aServerRowReusesTheLoadedIdentityAndKey() {
         val loadedDm = ThreadLaunchConversationIdentity(threadId = ThreadId("dm-1"), channelId = ChannelId("dm-1"), kind = ConversationKind.DirectMessage)
         val localPerson = personRow("u-1", "Remy").copy(conversationIdentity = loadedDm, threadId = "dm-1")

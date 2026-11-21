@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.isRaftSlackChannel
 import build.raft.app.reportProjectionRowDropped
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.MemberKindWireContract
 import build.raft.app.strictMemberKindOrNull
@@ -15,6 +17,7 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -45,15 +48,69 @@ private val homeJson = Json {
 /**
  * task #396: presentation-only external bridge metadata attached by the server's
  * `channelService.attachExternalBridgeMetadata` to `GET /channels` and `GET /channels/:id`
- * (`bridge?: { provider: "slack"; providerConversationId; state: "active" | "paused" | "quarantined" }`).
- * Secret-free; mobile only reads [provider] to render the `[Slack]` badge (Web Sidebar parity).
+ * (botiverse/slock e60211734 packages/server/src/services/channelService.ts; web
+ * packages/web/src/store/channelStore.ts `Channel.bridge`):
+ * `bridge?: { provider: "slack"; providerConversationId; state: "active" | "paused" | "quarantined";
+ * stateReason?; outbound?; installState? }`. Secret-free. [provider] makes it a Slack channel (its
+ * icon, its External section); the rest says whether its sync stopped ([slackSyncProblemOrNull]).
  */
 @Serializable
 data class HomeChannelBridgeWireDto(
     val provider: String? = null,
     val providerConversationId: String? = null,
     val state: String? = null,
+    /** Why sync stopped; present only while the binding is not active. */
+    val stateReason: String? = null,
+    /** Present only while Raft messages for Slack are held (server `slackPairOutboundHold`). */
+    val outbound: HomeChannelBridgeOutboundWireDto? = null,
+    /** The Slack installation's state, present only while it is not active (`reauth_required`, ...). */
+    val installState: String? = null,
 )
+
+/**
+ * `bridge.outbound` (botiverse/slock packages/server/src/services/slackBridgePairQueue.ts
+ * `SlackPairOutboundHold`): `{ status: "waiting"; reason; detail?; since }` or
+ * `{ status: "stalled"; since }`. Only [status] picks the header's badge; the reason is its
+ * tooltip on the web, which the app does not show.
+ */
+@Serializable
+data class HomeChannelBridgeOutboundWireDto(
+    val status: String? = null,
+    val reason: String? = null,
+    val detail: String? = null,
+    val since: String? = null,
+)
+
+/**
+ * The sync state worth the warning Badge on a Slack channel's header and sidebar row (botiverse/slock
+ * e60211734 packages/web/src/components/channel/slackSyncHeaderState.ts `slackSyncHeaderState`, its
+ * `kind` only): an installation that is not active and a quarantined or paused pair are
+ * [RaftSlackSyncProblem.Paused] (not a pause still being set up: no reason, or `provisioning_*`);
+ * held Raft messages are [RaftSlackSyncProblem.Waiting] or [RaftSlackSyncProblem.Stalled]. Null while it
+ * syncs, and for a channel that is not connected to Slack. An `outbound.status` the app does not know
+ * draws no badge, as on the web, and is logged.
+ */
+internal fun HomeChannelBridgeWireDto?.slackSyncProblemOrNull(): RaftSlackSyncProblem? {
+    val bridge = this ?: return null
+    if (!isRaftSlackChannel(bridge.provider)) return null
+    // An installation that is not active stops every pair it carries.
+    if (!bridge.installState.isNullOrEmpty()) return RaftSlackSyncProblem.Paused
+    if (bridge.state == "quarantined") return RaftSlackSyncProblem.Paused
+    if (bridge.state == "paused") {
+        val reason = bridge.stateReason
+        if (reason.isNullOrEmpty() || reason.startsWith("provisioning_")) return null
+        return RaftSlackSyncProblem.Paused
+    }
+    return when (val status = bridge.outbound?.status) {
+        null -> null
+        "waiting" -> RaftSlackSyncProblem.Waiting
+        "stalled" -> RaftSlackSyncProblem.Stalled
+        else -> {
+            reportUnknownTypeDropped("home_channel_bridge", "outbound_status", status, fallback = "no_sync_badge")
+            null
+        }
+    }
+}
 
 /** One server connected to a joint channel (`jointServers[]`, slock #15809 `JointServerMetadata`). */
 @Serializable
@@ -532,6 +589,7 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
         externalFreezeAt = externalFreezeAt?.takeIf { it.isNotBlank() },
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
+        slackSyncProblem = bridge.slackSyncProblemOrNull(),
         guestVisible = visitorVisible ?: guestVisible,
         hasExternalRelation = hasExternalRelation,
         activityNotificationPreference =

@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
-import build.raft.app.components.RaftHashGlobeIcon
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
@@ -26,30 +25,54 @@ import kotlinx.coroutines.flow.map
 import build.raft.app.resources.*
 
 /**
- * A channel's kind glyph. [symbol] is the Home sidebar's glyph name (`#`, `lock`, the lucide
- * names, [HomeChannelSymbolHashGlobe]); [iconName] is the single icon a surface without the
- * combined hash-globe draws (the iOS native bar: globe).
+ * A channel's kind glyph: who can read what is written there (botiverse/slock 6b0965841, #16060,
+ * channelKindIcon.tsx; raft-design channel.md, stdrc 2026-11-21). The glyph is the widest group
+ * that can: [Hash] the whole server, [Lock] its members only, [External] people from outside
+ * (Guests, guest servers, an open invite: Lucide's two people), [Slack] people in Slack (the Slack
+ * mark), [PublicPage] anyone on the web (Lucide's globe). The corner only ever holds the small
+ * lock, for a channel private in the server whose glyph is not the lock itself:
+ * [ExternalPrivate], [SlackPrivate]. [Joint] (git-branch) is a joint channel known by its type
+ * alone. [symbol] is the Home sidebar's name for the glyph (`#`, else the icon's name);
+ * [iconName] is the icon every surface draws, the iOS native bar's asset included.
  */
 enum class RaftChannelKindGlyph(val symbol: String, val iconName: RaftLucideIconName) {
     Hash("#", RaftLucideIconName.Hash),
     Lock("lock", RaftLucideIconName.Lock),
     Joint("git-branch", RaftLucideIconName.GitBranch),
-    PublicPage(HomeChannelSymbolHashGlobe, RaftLucideIconName.Globe),
-    External("external-channel", RaftLucideIconName.ExternalChannel);
+    PublicPage("public-page-channel", RaftLucideIconName.PublicPageChannel),
+    External("external-channel", RaftLucideIconName.ExternalChannel),
+    ExternalPrivate("external-channel-private", RaftLucideIconName.ExternalChannelPrivate),
+    Slack("slack-channel", RaftLucideIconName.SlackChannel),
+    SlackPrivate("slack-channel-private", RaftLucideIconName.SlackChannelPrivate);
+
+    /** The Slack mark, with or without the corner lock. */
+    val isSlack: Boolean
+        get() = this == Slack || this == SlackPrivate
+
+    /**
+     * Chosen from what only the channel's record knows (people from outside, Slack): a surface that
+     * knows the channel's type alone cannot draw it, so it keeps the record's glyph.
+     */
+    val needsChannelRecord: Boolean
+        get() = this == External || this == ExternalPrivate || isSlack
 
     companion object {
         fun fromSymbol(symbol: String?): RaftChannelKindGlyph? = entries.firstOrNull { it.symbol == symbol }
     }
 }
 
+/** The wire value of `channel.bridge.provider` for a channel connected to Slack. */
+internal const val RaftBridgeProviderSlack = "slack"
+
 /**
- * The channel is in the web sidebar's External section (botiverse/slock
- * packages/web/src/components/layout/sidebarChannelVisibility.ts `isSidebarExternalSectionChannel`):
- * a joint channel (guest servers), or a public or private one with a Guest or an open external
- * invite (`hasExternalRelation`). The web also keeps a joint channel whose conversion job is still
- * running out of it; the app does not read conversion jobs, so a joint channel always counts.
+ * People from outside the Server are in the channel (botiverse/slock e60211734
+ * packages/web/src/components/layout/sidebarChannelVisibility.ts `isExternalMembersChannel`): a
+ * joint channel (guest servers), or a public or private one with a Guest or an open external
+ * invite (`hasExternalRelation`). Its icon is External and its details tag it External. The web
+ * also keeps a joint channel whose conversion job is still running out of it; the app does not
+ * read conversion jobs, so a joint channel always counts.
  */
-internal fun isRaftExternalSectionChannel(channelType: String?, hasExternalRelation: Boolean): Boolean =
+internal fun isRaftExternalMembersChannel(channelType: String?, hasExternalRelation: Boolean): Boolean =
     when (channelType?.trim()?.lowercase()) {
         JointChannelKindWireValue -> true
         "channel", "private" -> hasExternalRelation
@@ -57,15 +80,45 @@ internal fun isRaftExternalSectionChannel(channelType: String?, hasExternalRelat
     }
 
 /**
- * A channel's kind glyph from what is known of it (web channelKindIcon.tsx `ChannelKindIcon`):
+ * Connected to a Slack channel, its messages also reaching people in Slack (web
+ * sidebarChannelVisibility.ts `isSlackChannel`: `bridge.provider === "slack"`). [bridgeProvider] is the
+ * row's `bridge.provider`.
+ */
+internal fun isRaftSlackChannel(bridgeProvider: String?): Boolean =
+    bridgeProvider?.trim()?.lowercase() == RaftBridgeProviderSlack
+
+/**
+ * The channel sits in the sidebar's External section (web sidebarChannelVisibility.ts
+ * `isSidebarExternalSectionChannel` / `sidebarChannelHomeSectionKey`, botiverse/slock #16042): every
+ * channel people outside the Server read, so one with people from outside
+ * ([isRaftExternalMembersChannel]) and one connected to Slack ([isRaftSlackChannel]) (stdrc,
+ * #proj-raft-ui:5609bab0; raft-design channel.md).
+ */
+internal fun isRaftExternalSectionChannel(channelType: String?, hasExternalRelation: Boolean, bridgeProvider: String?): Boolean =
+    isRaftExternalMembersChannel(channelType, hasExternalRelation) || isRaftSlackChannel(bridgeProvider)
+
+/** [isRaftExternalSectionChannel] for a Home channel row: where it sits in the sidebar and the server drawer. */
+internal fun HomeChannelRow.isHomeExternalSectionChannel(): Boolean =
+    isRaftExternalSectionChannel(
+        channelType = if (kind == build.raft.app.model.ConversationKind.Joint) JointChannelKindWireValue else channelType,
+        hasExternalRelation = hasExternalRelation,
+        bridgeProvider = bridgeProvider,
+    )
+
+/**
+ * The one chooser of a channel's kind glyph (botiverse/slock 6b0965841, #16060,
+ * packages/web/src/components/channel/channelKindIcon.tsx `ChannelKindIcon`): the widest group that
+ * can read the channel wins, the globe over Slack over people from outside.
  *
- * - External (lock + arrow out) when [external] (a public, private or joint channel);
- * - else private: lock; a public channel on the server's live public page ([onPublicPage],
- *   [channelOnPublicPage]): the hash-globe; joint: git-branch; any other channel: `#`.
+ * - a public channel on the server's live public page ([onPublicPage], [channelOnPublicPage]):
+ *   the globe;
+ * - else, for a public, private or joint channel, [slack]: the Slack mark, then [external]: two
+ *   people; each with the corner lock only when the channel is private;
+ * - else private: the lock; joint: git-branch; any other channel: `#`.
  *
  * Called with the type alone it is the web's fallback for a channel that is not loaded
  * (`<ChannelKindIcon type={type} />`): a joint channel keeps git-branch. A surface that holds the
- * channel record takes [raftChannelRecordKindGlyph], which decides [external].
+ * channel record takes [raftChannelRecordKindGlyph], which decides [external] and [slack].
  *
  * [channelType] is the wire type (`channel` / `private` / `joint`); null or unknown draws `#`.
  */
@@ -73,14 +126,17 @@ internal fun raftChannelKindGlyph(
     channelType: String?,
     onPublicPage: Boolean = false,
     external: Boolean = false,
+    slack: Boolean = false,
 ): RaftChannelKindGlyph {
     val type = channelType?.trim()?.lowercase()
+    val isPrivate = type == "private"
+    val channelKind = type == "channel" || isPrivate || type == JointChannelKindWireValue
     return when {
-        external && (type == "channel" || type == "private" || type == JointChannelKindWireValue) ->
-            RaftChannelKindGlyph.External
-        type == "private" -> RaftChannelKindGlyph.Lock
-        type == JointChannelKindWireValue -> RaftChannelKindGlyph.Joint
         onPublicPage && (type == null || type == "channel") -> RaftChannelKindGlyph.PublicPage
+        slack && channelKind -> if (isPrivate) RaftChannelKindGlyph.SlackPrivate else RaftChannelKindGlyph.Slack
+        external && channelKind -> if (isPrivate) RaftChannelKindGlyph.ExternalPrivate else RaftChannelKindGlyph.External
+        isPrivate -> RaftChannelKindGlyph.Lock
+        type == JointChannelKindWireValue -> RaftChannelKindGlyph.Joint
         else -> RaftChannelKindGlyph.Hash
     }
 }
@@ -88,16 +144,23 @@ internal fun raftChannelKindGlyph(
 /**
  * The one chooser for a channel whose record is known (web components/channel/channelKind.ts
  * `channelKindIconProps`), so the sidebar, the header, Activity, search, pickers and composer
- * suggestions draw the same channel the same way: External when the channel is external
- * ([isRaftExternalSectionChannel]: a joint channel, or one with `hasExternalRelation`), like the
- * web (sidebarChannelVisibility.ts `isSidebarExternalOnlyChannel`). Otherwise [raftChannelKindGlyph].
+ * suggestions draw the same channel the same way: External when people from outside are in it
+ * ([isRaftExternalMembersChannel]: a joint channel, or one with `hasExternalRelation`), Slack when it
+ * is connected to Slack ([isRaftSlackChannel], [bridgeProvider] the row's `bridge.provider`).
+ * Otherwise [raftChannelKindGlyph].
  */
 internal fun raftChannelRecordKindGlyph(
     channelType: String?,
     onPublicPage: Boolean = false,
     hasExternalRelation: Boolean = false,
+    bridgeProvider: String? = null,
 ): RaftChannelKindGlyph =
-    raftChannelKindGlyph(channelType, onPublicPage, external = isRaftExternalSectionChannel(channelType, hasExternalRelation))
+    raftChannelKindGlyph(
+        channelType,
+        onPublicPage,
+        external = isRaftExternalMembersChannel(channelType, hasExternalRelation),
+        slack = isRaftSlackChannel(bridgeProvider),
+    )
 
 /** [raftChannelRecordKindGlyph] for a Home channel row (the canonical channel record). */
 internal fun HomeChannelRow.raftChannelKindGlyph(serverPublicPageLive: Boolean): RaftChannelKindGlyph {
@@ -106,6 +169,7 @@ internal fun HomeChannelRow.raftChannelKindGlyph(serverPublicPageLive: Boolean):
         channelType = type,
         onPublicPage = channelOnPublicPage(serverPublicPageLive, type, guestVisible, archived),
         hasExternalRelation = hasExternalRelation,
+        bridgeProvider = bridgeProvider,
     )
 }
 
@@ -168,9 +232,11 @@ private fun raftChannelKindsOf(state: SharedHomeState): RaftChannelKinds {
 }
 
 /**
- * A channel's kind glyph at [size] in [color] (an ARGB hex): the lucide icon, the public page's
- * hash-globe, or the external glyph, which carries its meaning for screen readers like the
- * hash-globe (web `ExternalChannelGlyph`, `channel.externalMembers`).
+ * The one drawer of a channel's kind glyph, at [size] in [color] (an ARGB hex): its icon
+ * ([RaftChannelKindGlyph.iconName]). A glyph with a meaning of its own carries it for screen
+ * readers (web `MeaningfulGlyph`): the globe (`channel.publicPageReadable`), two people
+ * (`channel.externalMembers` / `channel.externalMembersPrivate`) and the Slack mark
+ * (`channel.slackConnected` / `channel.slackConnectedPrivate`).
  */
 @Composable
 internal fun RaftChannelKindIcon(
@@ -179,23 +245,41 @@ internal fun RaftChannelKindIcon(
     color: String,
     modifier: Modifier = Modifier,
 ) {
-    when (glyph) {
-        RaftChannelKindGlyph.PublicPage -> RaftHashGlobeIcon(size = size, color = color, modifier = modifier)
-        RaftChannelKindGlyph.External -> {
-            val label = stringResource(Res.string.channel_external_members)
-            Box(modifier.size(size).semantics { contentDescription = label }) {
-                RaftLucideIcon(RaftLucideIconName.ExternalChannel, Modifier.size(size), color = color)
-            }
+    val label =
+        when (glyph) {
+            RaftChannelKindGlyph.Hash, RaftChannelKindGlyph.Lock, RaftChannelKindGlyph.Joint -> null
+            RaftChannelKindGlyph.PublicPage -> stringResource(Res.string.channel_public_page_readable)
+            RaftChannelKindGlyph.External -> stringResource(Res.string.channel_external_members)
+            RaftChannelKindGlyph.ExternalPrivate -> stringResource(Res.string.channel_external_members_private)
+            RaftChannelKindGlyph.Slack -> stringResource(Res.string.channel_slack_connected)
+            RaftChannelKindGlyph.SlackPrivate -> stringResource(Res.string.channel_slack_connected_private)
         }
-        else -> RaftLucideIcon(glyph.iconName, modifier.size(size), color = color)
+    if (label == null) {
+        RaftLucideIcon(glyph.iconName, modifier.size(size), color = color)
+    } else {
+        RaftMeaningfulChannelKindIcon(glyph, label, size, color, modifier)
     }
 }
 
-/** The kind name a host is told along with the glyph (`channel`, `private`, `joint`, `external`). */
+@Composable
+private fun RaftMeaningfulChannelKindIcon(
+    glyph: RaftChannelKindGlyph,
+    label: String,
+    size: Dp,
+    color: String,
+    modifier: Modifier,
+) {
+    Box(modifier.size(size).semantics { contentDescription = label }) {
+        RaftLucideIcon(glyph.iconName, Modifier.size(size), color = color)
+    }
+}
+
+/** The kind name a host is told along with the glyph (`channel`, `private`, `joint`, `external`, `slack`). */
 internal fun RaftChannelKindGlyph.wireChannelKind(): String =
     when (this) {
         RaftChannelKindGlyph.Hash, RaftChannelKindGlyph.PublicPage -> "channel"
         RaftChannelKindGlyph.Lock -> "private"
         RaftChannelKindGlyph.Joint -> JointChannelKindWireValue
-        RaftChannelKindGlyph.External -> "external"
+        RaftChannelKindGlyph.External, RaftChannelKindGlyph.ExternalPrivate -> "external"
+        RaftChannelKindGlyph.Slack, RaftChannelKindGlyph.SlackPrivate -> "slack"
     }

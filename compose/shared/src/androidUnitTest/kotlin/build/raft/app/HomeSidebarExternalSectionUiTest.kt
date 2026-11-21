@@ -24,6 +24,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -39,7 +40,8 @@ import org.robolectric.annotation.GraphicsMode
  * Home's External section on a real composition (AGENTS.md "Compose UI tests"), as the web draws it
  * since botiverse/slock #15939 (SidebarChatSections `isEmptySectionHidden(…, alwaysHide)`): titled
  * External, drawn only while it holds a channel whatever "Hide empty sections" says, and not kept
- * for its "+" when there is none.
+ * for its "+" when there is none. Since #16042 it also holds the channels connected to Slack, whose
+ * rows carry no "Slack" label and show a stopped sync with the header's warning Badge.
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -64,6 +66,10 @@ class HomeSidebarExternalSectionUiTest {
 
     private val general = RaftHomeConversationItem(id = "general", name = "general", kind = "channel")
     private val partners = RaftHomeConversationItem(id = "partners", name = "partners", kind = JointChannelKindWireValue)
+    private val partnersSync =
+        RaftHomeConversationItem(id = "partners-sync", name = "partners-sync", kind = "channel", channelType = "channel", bridgeProvider = "slack")
+    private val vendor =
+        RaftHomeConversationItem(id = "vendor", name = "vendor", kind = "channel", channelType = "private", hasExternalRelation = true)
 
     /** The shell as SettingsHomeScreen composes it, with the app's own labels and the "+" offered. */
     private fun ComposeUiTest.showHome(
@@ -125,5 +131,32 @@ class HomeSidebarExternalSectionUiTest {
             runOnIdle { channels = listOf(general) }
             onAllNodesWithText("External").assertCountEquals(0)
             onAllNodesWithContentDescription("Create external channel").assertCountEquals(0)
+        }
+
+    @Test
+    fun aSlackChannelSitsInExternalWithoutASlackLabelAndShowsAStoppedSync() =
+        runRobolectricComposeUiTest {
+            var channels by mutableStateOf(listOf(general, partnersSync))
+            showHome(channels = { channels }, hideEmptySections = { false })
+            // People in Slack read it, so it is External's channel, not one of Channels (stdrc,
+            // #proj-raft-ui:5609bab0): External is drawn only because it holds it.
+            onNodeWithText("External").assertExists()
+            onNodeWithText("partners-sync").assertExists()
+            // No "Slack" label after the name: the Slack mark says it.
+            onAllNodesWithText("SLACK").assertCountEquals(0)
+            onAllNodesWithText("Slack").assertCountEquals(0)
+            onAllNodesWithText("Sync paused").assertCountEquals(0)
+
+            // A stopped sync: the header's warning Badge on the row (web ChannelSlackSyncBadge).
+            runOnIdle { channels = listOf(general, partnersSync.copy(slackSyncProblem = RaftSlackSyncProblem.Paused)) }
+            onNodeWithText("Sync paused").assertExists()
+
+            // Disconnected from Slack, it is one of the server's channels again.
+            runOnIdle { channels = listOf(general, partnersSync.copy(bridgeProvider = null)) }
+            onAllNodesWithText("External").assertCountEquals(0)
+
+            // A channel with a Guest or an open invite sits in External too (web isExternalMembersChannel).
+            runOnIdle { channels = listOf(general, vendor) }
+            onNodeWithText("External").assertExists()
         }
 }
