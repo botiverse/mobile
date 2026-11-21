@@ -22,6 +22,7 @@ new product concept gets a Japanese rendering.
 | Human(s) | 人間 | Explicit contrast with エージェント (Members page sections) |
 | External user (unattributed bridged sender) | 外部ユーザー | Name shown for a message bridged from another app (e.g. Slack) without author details; copied from the web ja catalog (`message.author.externalFallback`) |
 | External (someone from another server) | 外部 | Profile card ribbon "外部：{servers}", author row "{servers} から"; copied from the web ja catalog `message.profilePreview.external*` / `fromServers` (botiverse/slock #14535) |
+| External (Home's section of external channels) / Create external channel | 外部 / 外部チャンネルを作成 | The section title and its "+"; replaces 共同チャンネル / 共同チャンネルを作成; copied from the web ja catalog `layout.sidebar.external` / `layout.sidebar.createExternalChannel` (botiverse/slock #15939) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
 | Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Pinned content (Channel details) | ピン留めされたコンテンツ | One Artifact pinned as a strip above a channel's timeline ("Artifact をピン留め", "ピン留めされたコンテンツの設定"); copied from the web ja catalog `channel.announcement.*` (botiverse/slock #15659). Not the product's AnnouncementDialog |

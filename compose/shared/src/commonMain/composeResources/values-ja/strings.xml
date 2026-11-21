@@ -2447,7 +2447,7 @@
     <string name="home_nav_followed_threads">フォロー中のスレッド</string>
     <string name="home_nav_saved">保存済み</string>
     <string name="home_section_channels">チャンネル</string>
-    <string name="home_section_joint_channels">共同チャンネル</string>
+    <string name="home_section_external">外部</string>
     <string name="home_section_direct_messages">ダイレクトメッセージ</string>
     <string name="home_section_pinned">ピン留め</string>
     <string name="home_action_pin">ピン留め</string>
@@ -2488,7 +2488,6 @@
     <string name="home_section_create_channel">チャンネルを作成</string>
     <string name="home_section_empty">会話はありません</string>
     <string name="home_section_pinned_empty">チャンネルや DM を長押ししてピン留め</string>
-    <string name="home_section_joint_empty">共同チャンネルはまだありません</string>
     <string name="home_action_add_channel">チャンネルを追加</string>
     <string name="home_state_no_servers">利用できるサーバーがありません</string>
     <string name="home_server_switcher_join_chinese_community">中国語コミュニティに参加</string>
@@ -2672,7 +2671,7 @@
     <string name="settings_appearance_show_sender_description_title">メンバーの説明を表示</string>
     <string name="settings_appearance_show_sender_description_description">チャットでメンバーやエージェントの名前の横に説明を表示します。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">ホームの空のセクションを非表示</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">ホームのセクションが空のとき（ピン留めやダイレクトメッセージに何もない場合など）は非表示にします。共同チャンネルは作成できる間は表示されたままです。</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">ホームのセクションが空のとき（ピン留めやダイレクトメッセージに何もない場合など）は非表示にします。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s のテーマ</string>
     <string name="settings_appearance_server_theme_link_description">サーバーごとに別のテーマを使えます。</string>
     <string name="settings_appearance_section_messages">メッセージ</string>
@@ -4033,7 +4032,7 @@
     <string name="joint_invite_notification_accept">承諾</string>
     <string name="joint_invite_notification_accepting">承諾中…</string>
     <string name="joint_invite_accept_failed">共同チャンネルの招待を承諾できませんでした。</string>
-    <string name="home_section_create_joint_channel">共同チャンネルを作成</string>
+    <string name="home_section_create_external_channel">外部チャンネルを作成</string>
     <string name="joint_create_archived_name_held">#%1$s という名前は、アーカイブ済みのチャンネルで使用されています。</string>
     <string name="joint_create_unarchive">アーカイブを解除</string>
     <string name="joint_create_change_name">名前を変更</string>

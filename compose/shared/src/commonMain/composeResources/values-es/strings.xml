@@ -2444,7 +2444,7 @@
     <string name="home_nav_followed_threads">Hilos seguidos</string>
     <string name="home_nav_saved">Guardado</string>
     <string name="home_section_channels">Canales</string>
-    <string name="home_section_joint_channels">Canales compartidos</string>
+    <string name="home_section_external">Externos</string>
     <string name="home_section_direct_messages">Mensajes directos</string>
     <string name="home_section_pinned">Fijadas</string>
     <string name="home_action_pin">Fijar</string>
@@ -2485,7 +2485,6 @@
     <string name="home_section_create_channel">Crear canal</string>
     <string name="home_section_empty">No hay conversaciones</string>
     <string name="home_section_pinned_empty">Mantén presionado un canal o MD para fijarlo</string>
-    <string name="home_section_joint_empty">Aún no hay canales compartidos</string>
     <string name="home_action_add_channel">Agregar canal</string>
     <string name="home_state_no_servers">No hay servidores disponibles</string>
     <string name="home_server_switcher_join_chinese_community">Unirse a la comunidad en chino</string>
@@ -2669,7 +2668,7 @@
     <string name="settings_appearance_show_sender_description_title">Mostrar descripciones de los miembros</string>
     <string name="settings_appearance_show_sender_description_description">Muestra la descripción de cada persona y agente junto a su nombre en el chat.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Ocultar secciones vacías de Inicio</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">Oculta las secciones de Inicio mientras no tengan contenido, como Fijados o Mensajes directos vacíos. Canales compartidos sigue visible mientras puedas crear uno.</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">Oculta las secciones de Inicio mientras no tengan contenido, como Fijados o Mensajes directos vacíos.</string>
     <string name="settings_appearance_server_theme_link_title">Tema en %1$s</string>
     <string name="settings_appearance_server_theme_link_description">Cada servidor puede tener su propio tema.</string>
     <string name="settings_appearance_section_messages">Mensajes</string>
@@ -3854,7 +3853,7 @@
     <string name="joint_invite_notification_accept">Aceptar</string>
     <string name="joint_invite_notification_accepting">Aceptando…</string>
     <string name="joint_invite_accept_failed">No se pudo aceptar la invitación al canal compartido.</string>
-    <string name="home_section_create_joint_channel">Crear canal compartido</string>
+    <string name="home_section_create_external_channel">Crear canal externo</string>
     <string name="joint_create_archived_name_held">El nombre #%1$s ya lo usa un canal archivado.</string>
     <string name="joint_create_unarchive">Desarchivar</string>
     <string name="joint_create_change_name">Cambiar nombre</string>

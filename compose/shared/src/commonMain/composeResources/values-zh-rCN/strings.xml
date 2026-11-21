@@ -2447,7 +2447,7 @@
     <string name="home_nav_followed_threads">已关注的消息列</string>
     <string name="home_nav_saved">已保存</string>
     <string name="home_section_channels">频道</string>
-    <string name="home_section_joint_channels">联合频道</string>
+    <string name="home_section_external">外部</string>
     <string name="home_section_direct_messages">私信</string>
     <string name="home_section_pinned">已置顶</string>
     <string name="home_action_pin">置顶</string>
@@ -2488,7 +2488,6 @@
     <string name="home_section_create_channel">创建频道</string>
     <string name="home_section_empty">没有会话</string>
     <string name="home_section_pinned_empty">长按频道或私信即可置顶</string>
-    <string name="home_section_joint_empty">还没有联合频道</string>
     <string name="home_action_add_channel">添加频道</string>
     <string name="home_state_no_servers">没有可用的服务器</string>
     <string name="home_server_switcher_join_chinese_community">加入中文社区</string>
@@ -2672,7 +2671,7 @@
     <string name="settings_appearance_show_sender_description_title">显示成员描述</string>
     <string name="settings_appearance_show_sender_description_description">在聊天里成员和 Agent 名字旁显示他们的描述。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">隐藏主页的空分区</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">当主页某个分区没有内容时（例如置顶、私信为空），整块隐藏不显示。只要你可以创建联合频道，联合频道分区就会保留显示。</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">当主页某个分区没有内容时（例如置顶、私信为空），整块隐藏不显示。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 的主题</string>
     <string name="settings_appearance_server_theme_link_description">每个服务器可以用不同的主题。</string>
     <string name="settings_appearance_section_messages">消息</string>
@@ -4033,7 +4032,7 @@
     <string name="joint_invite_notification_accept">接受</string>
     <string name="joint_invite_notification_accepting">正在接受…</string>
     <string name="joint_invite_accept_failed">接受联合频道邀请失败</string>
-    <string name="home_section_create_joint_channel">创建联合频道</string>
+    <string name="home_section_create_external_channel">创建外部频道</string>
     <string name="joint_create_archived_name_held">名称 #%1$s 已被一个已归档的频道占用。</string>
     <string name="joint_create_unarchive">取消归档</string>
     <string name="joint_create_change_name">修改名称</string>

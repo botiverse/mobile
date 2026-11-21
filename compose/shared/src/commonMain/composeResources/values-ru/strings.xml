@@ -2444,7 +2444,7 @@
     <string name="home_nav_followed_threads">Подписки на ветки</string>
     <string name="home_nav_saved">Сохранённое</string>
     <string name="home_section_channels">Каналы</string>
-    <string name="home_section_joint_channels">Общие каналы</string>
+    <string name="home_section_external">Внешние</string>
     <string name="home_section_direct_messages">Личные сообщения</string>
     <string name="home_section_pinned">Закреплённые</string>
     <string name="home_action_pin">Закрепить</string>
@@ -2485,7 +2485,6 @@
     <string name="home_section_create_channel">Создать канал</string>
     <string name="home_section_empty">Нет чатов</string>
     <string name="home_section_pinned_empty">Нажмите и удерживайте канал или личный чат, чтобы закрепить его</string>
-    <string name="home_section_joint_empty">Пока нет общих каналов</string>
     <string name="home_action_add_channel">Добавить канал</string>
     <string name="home_state_no_servers">Нет доступных серверов</string>
     <string name="home_server_switcher_join_chinese_community">Присоединиться к китайскому сообществу</string>
@@ -2669,7 +2668,7 @@
     <string name="settings_appearance_show_sender_description_title">Показывать описания участников</string>
     <string name="settings_appearance_show_sender_description_description">Показывать описание каждого человека и агента рядом с его именем в чате.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Скрывать пустые разделы на главной</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">Скрывать разделы на главной, пока в них ничего нет, например пустые «Закреплённые» или «Личные сообщения». Раздел «Общие каналы» остаётся видимым, пока вы можете создать общий канал.</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">Скрывать разделы на главной, пока в них ничего нет, например пустые «Закреплённые» или «Личные сообщения».</string>
     <string name="settings_appearance_server_theme_link_title">Тема на сервере %1$s</string>
     <string name="settings_appearance_server_theme_link_description">На каждом сервере может быть своя тема.</string>
     <string name="settings_appearance_section_messages">Сообщения</string>
@@ -3854,7 +3853,7 @@
     <string name="joint_invite_notification_accept">Принять</string>
     <string name="joint_invite_notification_accepting">Принятие…</string>
     <string name="joint_invite_accept_failed">Не удалось принять приглашение в общий канал.</string>
-    <string name="home_section_create_joint_channel">Создать общий канал</string>
+    <string name="home_section_create_external_channel">Создать внешний канал</string>
     <string name="joint_create_archived_name_held">Название #%1$s занято архивным каналом.</string>
     <string name="joint_create_unarchive">Вернуть из архива</string>
     <string name="joint_create_change_name">Изменить название</string>

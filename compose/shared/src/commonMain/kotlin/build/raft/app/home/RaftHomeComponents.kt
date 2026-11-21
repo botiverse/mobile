@@ -277,8 +277,8 @@ private val HomeSidebarSectionEmptyHintPaddingHorizontal = 12.dp
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
 // Web Sidebar's loading rows per section (sidebarSkeletonRows fallbacks): none for Pinned,
-// 2 for Joint Channels, 4 for Channels, 3 for Direct Messages.
-private const val HomeLoadingJointChannelSkeletonRows = 2
+// 4 for Channels, 3 for Direct Messages. External is not drawn while the lists load
+// ([homeSidebarSectionOrder]), so it has none.
 private const val HomeLoadingChannelSkeletonRows = 4
 private const val HomeLoadingDirectMessageSkeletonRows = 3
 // Web SidebarRowsSkeleton: one line of a fixed `w-32` (128px), at most the row's width.
@@ -654,7 +654,8 @@ data class RaftHomeShellLabels(
     val saved: String = "Saved",
     val drafts: String = "Drafts",
     val channels: String = "Channels",
-    val jointChannels: String = "Joint Channels",
+    /** Title of the External section, where joint channels sit (web `layout.sidebar.external`, slock #15939). */
+    val external: String = "External",
     val directMessages: String = "Direct Messages",
     val pinned: String = "Pinned",
     val pin: String = "Pin",
@@ -682,7 +683,6 @@ data class RaftHomeShellLabels(
     val createChannel: String = "Create channel",
     val sectionEmpty: String = "No conversations",
     val pinnedSectionEmpty: String = "Long-press a channel or DM to pin it",
-    val jointChannelsEmpty: String = "No joint channels yet",
     val newSectionMenu: String = "New section",
     val renameSection: String = "Edit section",
     val deleteSection: String = "Delete section",
@@ -692,7 +692,8 @@ data class RaftHomeShellLabels(
     val sectionNameLabel: String = "Name",
     val sectionNamePlaceholder: String = "My Project",
     val addChannel: String = "Add channel",
-    val createJointChannel: String = "Create Joint Channel",
+    /** The External section's "+" (web `layout.sidebar.createExternalChannel`). */
+    val createExternalChannel: String = "Create external channel",
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join Community",
@@ -710,7 +711,7 @@ data class RaftHomeShellLabels(
             saved = stringResource(Res.string.home_nav_saved),
             drafts = stringResource(Res.string.home_nav_drafts),
             channels = stringResource(Res.string.home_section_channels),
-            jointChannels = stringResource(Res.string.home_section_joint_channels),
+            external = stringResource(Res.string.home_section_external),
             directMessages = stringResource(Res.string.home_section_direct_messages),
             pinned = stringResource(Res.string.home_section_pinned),
             pin = stringResource(Res.string.home_action_pin),
@@ -736,7 +737,6 @@ data class RaftHomeShellLabels(
             createChannel = stringResource(Res.string.home_section_create_channel),
             sectionEmpty = stringResource(Res.string.home_section_empty),
             pinnedSectionEmpty = stringResource(Res.string.home_section_pinned_empty),
-            jointChannelsEmpty = stringResource(Res.string.home_section_joint_empty),
             newSectionMenu = stringResource(Res.string.home_section_new_menu),
             renameSection = stringResource(Res.string.home_section_rename),
             deleteSection = stringResource(Res.string.home_section_delete),
@@ -746,7 +746,7 @@ data class RaftHomeShellLabels(
             sectionNameLabel = stringResource(Res.string.home_section_name_label),
             sectionNamePlaceholder = stringResource(Res.string.home_section_name_placeholder),
             addChannel = stringResource(Res.string.home_action_add_channel),
-            createJointChannel = stringResource(Res.string.home_section_create_joint_channel),
+            createExternalChannel = stringResource(Res.string.home_section_create_external_channel),
             noServersAvailable = stringResource(Res.string.home_state_no_servers),
             joinChineseCommunityServer = stringResource(Res.string.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(Res.string.home_server_switcher_join_community),
@@ -1746,7 +1746,10 @@ internal class RaftStructuralHomeShellCallbacks(
     /** Server switcher "Invite Human"; null hides it (web gates on `inviteMembers`). */
     val onInviteHumanClick: (() -> Unit)? = null,
     val onCreateChannelClick: () -> Unit = {},
-    /** Joint Channels section "+" (web Sidebar `canCreateJointChannel`); null hides it. */
+    /**
+     * External section "+" (web Sidebar `canCreateJointChannel`); null hides it. Only drawn with the
+     * section, which an empty External is not ([homeSidebarSectionOrder]).
+     */
     val onCreateJointChannelClick: (() -> Unit)? = null,
     val onTabSelected: (String) -> Unit = {},
     val onInboxClick: () -> Unit = {},
@@ -2312,7 +2315,7 @@ private fun RaftStructuralHomeShellContent(
         )
     }
     // Web Sidebar.tsx (typed pinned section, #4569): a pinned channel or DM leaves its system
-    // section — Channels / Joint Channels / Direct Messages list and count only what is not
+    // section — Channels / External / Direct Messages list and count only what is not
     // already shown under Pinned. Only rows the Pinned section actually renders are removed, so
     // a stale pin can never hide a conversation from every section.
     val pinnedShownConversationIds = remember(displayedPinned) { displayedPinned.sidebarPinnedConversationIds() }
@@ -2390,8 +2393,6 @@ private fun RaftStructuralHomeShellContent(
         }
     val hasDisplayedPinned = displayedPinned.isNotEmpty()
     val hasDisplayedJointChannels = displayedJointChannels.isNotEmpty()
-    // Web keeps an empty Joint Channels section while its "+" can create one.
-    val canCreateJointChannel = onCreateJointChannelClick != null
     // Keep the DMs section while its rows are still loading (skeletons).
     val hasDisplayedDirectMessages = directMessageSectionRows.isNotEmpty() || showLoadingSkeletons
     val displayedSidebarSections =
@@ -2402,8 +2403,7 @@ private fun RaftStructuralHomeShellContent(
             hasDisplayedPinned,
             hasDisplayedJointChannels,
             hasDisplayedDirectMessages,
-            hideEmptySections,
-            canCreateJointChannel
+            hideEmptySections
         ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
@@ -2412,8 +2412,7 @@ private fun RaftStructuralHomeShellContent(
                 hasPinned = hasDisplayedPinned,
                 hasJointChannels = hasDisplayedJointChannels,
                 hasDirectMessages = hasDisplayedDirectMessages,
-                hideEmptySections = hideEmptySections,
-                canCreateJointChannel = canCreateJointChannel
+                hideEmptySections = hideEmptySections
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2469,12 +2468,6 @@ private fun RaftStructuralHomeShellContent(
             hasInlineError = inlineError != null,
             channelSkeletonCount =
                 if (channelsExpanded && loadingSkeletonRowsShown) HomeLoadingChannelSkeletonRows else 0,
-            jointSkeletonCount =
-                if (jointChannelsExpanded && displayedJointChannels.isEmpty() && loadingSkeletonRowsShown) {
-                    HomeLoadingJointChannelSkeletonRows
-                } else {
-                    0
-                },
             directMessageSkeletonCount =
                 if (directMessagesExpanded && loadingSkeletonRowsShown) HomeLoadingDirectMessageSkeletonRows else 0
         )
@@ -3093,10 +3086,12 @@ private fun RaftStructuralHomeShellContent(
                                         if (pinnedExpanded && !(displayedPinned.isEmpty() && showLoadingSkeletons)) item(key = "pinned-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
+                                    // External: only here while it holds a channel ([homeSidebarSectionOrder]),
+                                    // so it has no empty line and no loading rows.
                                     RaftHomeSidebarSection.JointChannels -> {
                                         item {
                                             HomeSidebarSectionHeader(
-                                                title = labels.jointChannels,
+                                                title = labels.external,
                                                 count = displayedJointChannels.size,
                                                 expanded = jointChannelsExpanded,
                                                 onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
@@ -3104,14 +3099,14 @@ private fun RaftStructuralHomeShellContent(
                                                 menuOpen = activeSystemSectionMenu == RaftHomeSortSection.JointChannels,
                                                 sortMenuOpen = activeSortMenu == RaftHomeSortSection.JointChannels,
                                                 attention = jointChannelSectionHasUnread,
-                                                sortLabel = "${labels.sortChannels} ${labels.jointChannels}",
+                                                sortLabel = "${labels.sortChannels} ${labels.external}",
                                                 onSortClick = { anchor ->
                                                     if (sidebarInteractionsEnabled) {
                                                         activeSortMenu = if (activeSortMenu == RaftHomeSortSection.JointChannels) null else RaftHomeSortSection.JointChannels
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
-                                                addLabel = labels.createJointChannel.takeIf { onCreateJointChannelClick != null },
+                                                addLabel = labels.createExternalChannel.takeIf { onCreateJointChannelClick != null },
                                                 onAddClick = onCreateJointChannelClick,
                                                 addEnabled = sidebarInteractionsEnabled,
                                                 onLongPress =
@@ -3126,18 +3121,7 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding)
                                             )
                                         }
-                                        if (jointChannelsExpanded) item(key = "joint-list-top:$currentServerId") { HomeSidebarListEdge(if (displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown) HomeSidebarEmptyListHeight else HomeSidebarListEdgeInset) }
-                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty() && !showLoadingSkeletons) {
-                                            item(key = "joint-empty:$currentServerId") {
-                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
-                                            }
-                                        }
-                                        // Web: an empty Joint Channels section shows two loading rows while the lists load.
-                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty() && loadingSkeletonRowsShown) {
-                                            items(HomeLoadingJointChannelSkeletonRows, key = { index -> "joint-skeleton-$index" }) {
-                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
-                                            }
-                                        }
+                                        if (jointChannelsExpanded) item(key = "joint-list-top:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                         if (jointChannelsExpanded) {
                                             items(displayedJointChannels.size, key = { index -> jointChannelLazyKeys[index] }) { index ->
                                                 val channel = displayedJointChannels[index]
@@ -3167,7 +3151,7 @@ private fun RaftStructuralHomeShellContent(
                                                 )
                                             }
                                         }
-                                        if (jointChannelsExpanded && !(displayedJointChannels.isEmpty() && showLoadingSkeletons && !loadingSkeletonRowsShown)) item(key = "joint-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
+                                        if (jointChannelsExpanded) item(key = "joint-list-bottom:$currentServerId") { HomeSidebarListEdge(HomeSidebarListEdgeInset) }
                                     }
 
                                     RaftHomeSidebarSection.Channels -> {
@@ -3903,7 +3887,7 @@ private fun RaftStructuralHomeShellContent(
                 RaftSidebarSortOverlay(
                     title = when (section) {
                         RaftHomeSortSection.Pinned -> labels.pinned
-                        RaftHomeSortSection.JointChannels -> labels.jointChannels
+                        RaftHomeSortSection.JointChannels -> labels.external
                         RaftHomeSortSection.DirectMessages -> labels.directMessages
                         RaftHomeSortSection.Channels -> labels.channels
                     },
@@ -4124,8 +4108,7 @@ internal fun homeLazyItemCount(
     pinnedExpanded: Boolean = false,
     hasInlineError: Boolean = false,
     channelSkeletonCount: Int = 0,
-    directMessageSkeletonCount: Int = 0,
-    jointSkeletonCount: Int = 0
+    directMessageSkeletonCount: Int = 0
 ): Int {
     val fixedItems =
         1 + // top spacer
@@ -4142,7 +4125,6 @@ internal fun homeLazyItemCount(
         pinnedSectionItems +
         (if (hasInlineError) 1 else 0) +
         channelSkeletonCount.coerceAtLeast(0) +
-        jointSkeletonCount.coerceAtLeast(0) +
         directMessageSkeletonCount.coerceAtLeast(0) +
         (if (channelsExpanded) channelsCount else 0) +
         (if (jointChannelsExpanded) jointCount else 0) +
@@ -4168,10 +4150,19 @@ internal sealed interface RaftHomeSidebarSection {
  * interleave in the user's order, and ids missing from it fall back to system
  * sections in canonical order, then custom sections in declaration order.
  * Visibility follows web's "Hide Empty Sections" display preference
- * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / Joint Channels /
- * DMs drop out; Joint Channels stays while [canCreateJointChannel] (its "+" is the only way
- * to create one); Channels always shows (it carries the empty-state hint) and so
- * does every custom section in [customSectionRows], empty or not.
+ * (sidebarEmptySectionVisibility.ts): when on, empty Pinned / DMs drop out;
+ * Channels always shows (it carries the empty-state hint) and so does every custom
+ * section in [customSectionRows], empty or not.
+ *
+ * External (`system:joint`, [hasJointChannels]) shows only while it holds a channel,
+ * whatever that preference (web SidebarChatSections `isEmptySectionHidden(…, alwaysHide)`,
+ * slock #15939): an empty one is not drawn, not even for its "+"; Create Channel's External
+ * choice (the Channels "+") still makes one. While the lists load it goes by the rows in
+ * hand: the web keeps a loading section unless it was empty the last time
+ * (`rememberedRows`), and here the last time is the durable Home cache, which opens with the
+ * server's external channels when it had some. The loading shell (no cache, no rows) has
+ * nothing to go on and most servers have none, so it does not draw External rather than
+ * have it come and go.
  */
 internal fun homeSidebarSectionOrder(
     sectionOrder: List<String>,
@@ -4180,16 +4171,13 @@ internal fun homeSidebarSectionOrder(
     hasPinned: Boolean,
     hasJointChannels: Boolean,
     hasDirectMessages: Boolean = true,
-    hideEmptySections: Boolean = true,
-    canCreateJointChannel: Boolean = false
+    hideEmptySections: Boolean = true
 ): List<RaftHomeSidebarSection> {
     val rowsBySectionId = customSectionRows.associateBy { it.section.id }
     return normalizeSidebarSectionOrder(sectionOrder, customSections).mapNotNull { id ->
         when (id) {
             "system:pinned" -> RaftHomeSidebarSection.Pinned.takeIf { hasPinned || !hideEmptySections }
-            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf {
-                    hasJointChannels || canCreateJointChannel || !hideEmptySections
-                }
+            "system:joint" -> RaftHomeSidebarSection.JointChannels.takeIf { hasJointChannels }
             "system:channels" -> RaftHomeSidebarSection.Channels
             "system:dms" -> RaftHomeSidebarSection.DirectMessages.takeIf { hasDirectMessages || !hideEmptySections }
             else -> rowsBySectionId[id]?.let { RaftHomeSidebarSection.Custom(it) }
@@ -4469,8 +4457,9 @@ internal fun raftHomePinnedMemberMenuItems(
  * [create channel (Channels only)] / Sort: Manual, Recent, A-Z (current one
  * checked) / Display: Hide Empty Sections (checked when on) / [rename] /
  * New Section… / [delete]. Rename and delete only exist on custom sections.
- * Web also offers "Create Joint Channel" on the Joint Channels menu; mobile
- * has no create-joint-channel flow yet, so it is omitted.
+ * Web also offers "Create external channel" on the External menu; here that is
+ * the External header's "+" (shown with the menu's section, which is only
+ * drawn while it has channels), so the menu leaves it out.
  */
 internal fun raftHomeSectionMenuItems(
     labels: RaftHomeShellLabels = RaftHomeShellLabels(),
@@ -4527,7 +4516,7 @@ internal fun raftHomeSectionMenuItems(
 /**
  * "Move to section" submenu (web SidebarRowContextMenu, slock #15514), the same choices as
  * channel settings' Sidebar section select ([ChannelSectionPlacement.options]): the
- * conversation's home section (Channels, Joint Channels or Direct Messages) first, then Pinned
+ * conversation's home section (Channels, External or Direct Messages) first, then Pinned
  * and the custom sections, the one the row is shown in checked (bold); then New section. There
  * is no "Remove from section": the home row moves it back (and unpins it). Item ids: `home`,
  * `pinned`, `section:<id>`, `create`.
@@ -4547,7 +4536,7 @@ internal fun raftHomeMoveToSectionMenuItems(
                             label =
                                 when {
                                     placement.directMessage -> labels.directMessages
-                                    placement.joint -> labels.jointChannels
+                                    placement.joint -> labels.external
                                     else -> labels.channels
                                 },
                             icon = RaftLucideIconName.FolderInput,
@@ -6662,7 +6651,7 @@ private fun HomeServerDrawerSectionHeader(
         when (section) {
             RaftHomeConversationSection.Pinned -> labels.pinned
             RaftHomeConversationSection.Channel -> labels.channels
-            RaftHomeConversationSection.JointChannel -> labels.jointChannels
+            RaftHomeConversationSection.JointChannel -> labels.external
             RaftHomeConversationSection.DirectMessage -> labels.directMessages
         }
     Row(
