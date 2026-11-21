@@ -652,9 +652,11 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    and canonical-final). The nightly (Xcode 27.0 and 27.1 lanes) and
    `release-*` pushes are unchanged. While the queue is not enabled on `main`
    (`stamp queue status botiverse/mobile`), nothing compiles iOS before merge:
-   the main push readback (iOS-specific or CI paths) and the nightly catch it,
-   and the main merge hold stops merges until a `fix-red` PR lands. Details:
-   skill `raft-ci-validation`.
+   the main push readback (iOS-specific or CI paths) and the nightly catch it.
+   The merge hold on `main` is off (owner decision, 2026-11-21): a red `main`
+   does not stop merges; Stamp still notifies the authors of the PRs merged
+   since the last green run, and whoever broke it fixes it the same day.
+   Details: skill `raft-ci-validation`.
 
    A new push voids the approval and any auto-merge registration. The reviewer
    reviews and approves the new head, and the author registers auto-merge

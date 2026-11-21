@@ -75,7 +75,9 @@ and `release-*` never reuse.
   no 27.1. `ios_runner` (dispatch only) moves the 27.0 lane, not the queue.
 - Until the queue is enabled on `main` (`stamp queue status botiverse/mobile`)
   nothing compiles iOS before merge; the main push readback and the nightly
-  catch it, and the main merge hold applies.
+  catch it. The merge hold on `main` is off (owner decision, 2026-11-21): a
+  red `main` does not stop merges, Stamp notifies the authors of the PRs
+  merged since the last green run, and the break is fixed the same day.
 
 ### Lanes and iOS tests
 
