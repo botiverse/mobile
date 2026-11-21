@@ -7,6 +7,7 @@ import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
+import build.raft.app.model.ServerId
 import build.raft.app.data.realtime.CredentialHoldDto
 import build.raft.app.data.realtime.ToolStuckDto
 import build.raft.app.data.realtime.toAgentCredentialHold
@@ -210,6 +211,9 @@ internal interface RaftAgentsApi {
     /** Runtime form protocol v2 for editing: `GET /agents/:id/runtime-form`, the create form plus `values`. */
     suspend fun agentRuntimeFormV2(agentId: MemberId): HomeNetworkResponse =
         error("agentRuntimeFormV2 is not implemented")
+    /** `GET /api/servers/:serverId/agent-usage?from=YYYY-MM-DD&to=YYYY-MM-DD[&agents=<agentId>]` (`agent_usage_v0`). */
+    suspend fun agentUsage(serverId: ServerId, from: String, to: String, agentId: MemberId? = null): HomeNetworkResponse =
+        error("agentUsage is not implemented")
 }
 
 internal class RaftAgentsNetworkApi(
@@ -426,6 +430,18 @@ internal class RaftAgentsNetworkApi(
             method = "PUT",
             bodyText = body
         )
+
+    override suspend fun agentUsage(serverId: ServerId, from: String, to: String, agentId: MemberId?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "servers/${serverId.value}/agent-usage",
+            query = buildList {
+                add("from" to from)
+                add("to" to to)
+                agentId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let { add("agents" to it) }
+            },
+            serverIdOverride = serverId,
+        )
 }
 
 internal class RaftAgentsApiClient(
@@ -596,6 +612,17 @@ internal class RaftAgentsApiClient(
             ListSerializer(AgentActivityWireDto.serializer()),
             diagnosticsLogger = diagnosticsLogger
         ) { wire -> AgentActivityPage(entryCount = wire.size) }
+
+    /** `GET /api/servers/:serverId/agent-usage` (`agent_usage_v0`, web `useAgentUsage`). */
+    suspend fun agentUsage(serverId: ServerId, from: String, to: String, agentId: MemberId? = null): DataResult<AgentUsageResponse> {
+        val response = transport.agentUsage(serverId, from, to, agentId)
+        if (!response.isSuccessful) return response.toAgentsDataError()
+        val body = response.bodyText?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "agent_usage_contract_mismatch", retryable = true))
+        val parsed = decodeAgentUsageResponse(body)
+            ?: return DataResult.Error(ScreenError(code = "agent_usage_contract_mismatch", retryable = true))
+        return DataResult.Content(parsed)
+    }
 
     suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String? = null): DataResult<AgentWorkspaceFilePage> =
         transport.agentWorkspaceFiles(agentId, dirPath).mapAgentsBody(

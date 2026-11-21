@@ -232,6 +232,13 @@ const val SERVER_LABS_UI_FEATURE_FLAG_KEY: String = "server_labs_ui_v0"
  */
 const val CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY: String = "claude_limit_reset_v2"
 
+/**
+ * Agent Usage tab (botiverse/slock `packages/shared/src/featureFlags.ts` `AGENT_USAGE_FEATURE_FLAG_KEY`):
+ * per server, default off. On, an agent's profile shows the Usage tab (between Activity and Chat) for
+ * viewers who may see private agent surfaces, excluding App Bots and archived agents.
+ */
+const val AGENT_USAGE_FEATURE_FLAG_KEY: String = "agent_usage_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
@@ -263,6 +270,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     EXTERNAL_CHANNELS_FEATURE_FLAG_KEY,
     // The Computer usage card's "Use a limit reset" for Claude Code.
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
+    // Agent profile Usage tab (slock `agent_usage_v0`).
+    AGENT_USAGE_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

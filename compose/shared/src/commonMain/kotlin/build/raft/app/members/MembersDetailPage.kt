@@ -12,6 +12,8 @@ import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.isOpening
 import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
+import build.raft.app.data.AGENT_USAGE_FEATURE_FLAG_KEY
+import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.isRaftHostVisible
@@ -925,6 +927,8 @@ internal fun MemberDetailPageContent(
                 val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
                 val loungeEnabled =
                     rememberAgentLoungeEnabled(provider.serverFeatureFlags, current.server.id.value, current.server.role)
+                val agentUsageEnabled =
+                    rememberServerFeatureLatched(provider.serverFeatureFlags, current.server.id, AGENT_USAGE_FEATURE_FLAG_KEY)
                 if (member == null) {
                     // The store has no detail for this agent until this page's load lands: keep the
                     // page's header and Back around the spinner.
@@ -1356,6 +1360,7 @@ internal fun MemberDetailPageContent(
                                 },
                             agentPanelTabOrder = agentPanelTabOrder,
                             agentPanelTabOrderReady = agentTabOrderReady,
+                            agentUsageEnabled = agentUsageEnabled,
                             onAgentPanelTabOrderChange = { orderedTabs ->
                                 val previousOrder = agentPanelTabOrder
                                 val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()

@@ -316,7 +316,9 @@ internal class MembersAgentDetailPresentation(
      * issue is offered, and its bundle sent, only while it is [RaftPrivacyMode.Off]. Visual
      * fixtures pin it off.
      */
-    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state
+    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
+    /** Server feature flag `agent_usage_v0`: exposes the Usage tab between Activity and Chat. */
+    val agentUsageEnabled: Boolean = false
 )
 
 @Composable
@@ -704,14 +706,20 @@ internal fun MembersDetailContent(
             }
         }
     }
-    val visibleTabs = remember(accessMode, canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
+    val managedByApp =
+        !detail?.summary?.managedByAppInstallId.isNullOrBlank() ||
+            !member.managedByAppInstallId.isNullOrBlank()
+    val agentUsageEnabled = presentation.agentUsageEnabled
+    val visibleTabs = remember(accessMode, canViewPrivate, deleted, managedByApp, agentUsageEnabled, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
             membersOrderedAgentTabs(
                 visibleTabs =
                     membersAgentDetailTabsForAccess(
                         accessMode = accessMode,
                         canViewPrivateSurfaces = canViewPrivate,
-                        deleted = deleted
+                        deleted = deleted,
+                        agentUsageEnabled = agentUsageEnabled,
+                        managedByApp = managedByApp,
                     ),
                 storedOrder = agentPanelTabOrder
             )
@@ -1162,6 +1170,15 @@ internal fun MembersDetailContent(
                             modifier = Modifier.fillMaxSize(),
                             subagentStop = activitySubagentStop
                         )
+                    } else if (pageTab == MembersAgentDetailTab.Usage) {
+                        MembersAgentUsageTab(
+                            agentId = member.id,
+                            serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId),
+                            agentsApiClient = agentsApiClient,
+                            timeContext = timeContext,
+                            onOpenComputer = onOpenComputer,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     } else {
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
@@ -1352,7 +1369,8 @@ internal fun MembersDetailContent(
                                             // Web AgentAppAccessTab: `px-5`.
                                             modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )
-                                        MembersAgentDetailTab.Activity -> Unit
+                                        MembersAgentDetailTab.Activity,
+                                        MembersAgentDetailTab.Usage -> Unit
                                     }
                                 }
                             }
