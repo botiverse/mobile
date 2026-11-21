@@ -241,7 +241,7 @@ class MembersRemoteAgentProfileUiTest {
         }
         waitForIdle()
 
-        onNodeWithText("Working").assertIsDisplayed()
+        onNodeWithText("Working…").assertIsDisplayed()
         onNodeWithText("Online").assertDoesNotExist()
         onNodeWithText("Description").assertIsDisplayed()
         onNodeWithText("Triages partner bug reports.").assertIsDisplayed()
