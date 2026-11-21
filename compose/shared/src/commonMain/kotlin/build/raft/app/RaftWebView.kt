@@ -288,6 +288,8 @@ internal fun RaftWebView(
     onUrlChange: (String) -> Unit = {},
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
+    /** [RaftWebViewConfig.mainFrameOrigin]. */
+    mainFrameOrigin: String? = null,
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
@@ -314,6 +316,7 @@ internal fun RaftWebView(
         onUrlChange = onUrlChange,
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,
+        mainFrameOrigin = mainFrameOrigin,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
         diagnosticsSurface = diagnosticsSurface,

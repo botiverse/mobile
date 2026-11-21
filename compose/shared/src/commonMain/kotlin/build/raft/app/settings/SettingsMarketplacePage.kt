@@ -19,6 +19,7 @@ internal fun Pager.openSettingsMarketplacePage(
 internal val settingsMarketplaceWebViewSpec =
     StandaloneSettingsWebViewSpec(
         surface = SettingsWebViewSurface.Marketplace,
+        lockToWebOrigin = true,
         buildWebUrl = { webBaseUrl, session, _ -> settingsMarketplaceWebViewUrl(webBaseUrl, session) },
     )
 
