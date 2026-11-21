@@ -312,6 +312,28 @@ class AgentActivityOverviewParserTest {
         assertEquals(listOf("line one\nline two", null, null), page.turns.map { it.lastText })
     }
 
+    /**
+     * `usageLimit` as the server returns it (botiverse/slock f273c7d6ff #13050, read at staging
+     * 4be606f7fd): packages/shared/src/activityTurnSummary.test.ts "readDaemonTurnSummary keeps a
+     * usage limit and its reset" (`{ resetsAt }`, or `{}` for a reset that is not a time) and the
+     * daemon's quota_exhausted turn (agentProcessManager.claude.test.ts,
+     * `Date.parse("2026-11-08T07:00:00.000Z")`); older producers send none.
+     */
+    @Test
+    fun aUsageLimitIsReadWithOrWithoutItsReset() {
+        val failed = { extra: String ->
+            """{"v":1,"startedAt":1,"endedAt":2,"outcome":"failed","actions":[],"toolCalls":0,"problems":[],"problemCount":0,"messagesSent":0$extra}"""
+        }
+        val withReset = failed(""","usageLimit":{"resetsAt":1794121200000}""")
+        val noReset = failed(""","usageLimit":{}""")
+        val olderProducer = failed("")
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage("""{"summaries":[$withReset,$noReset,$olderProducer]}"""))
+        assertEquals(
+            listOf(AgentActivityTurnUsageLimit(resetsAtEpochMillis = 1_794_121_200_000L), AgentActivityTurnUsageLimit(resetsAtEpochMillis = null), null),
+            page.turns.map { it.usageLimit },
+        )
+    }
+
     private fun <T : Any> assertIsNotNull(value: T?): T {
         kotlin.test.assertNotNull(value)
         return value

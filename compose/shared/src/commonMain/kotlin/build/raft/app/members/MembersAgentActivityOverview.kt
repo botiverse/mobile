@@ -71,6 +71,20 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.testTag
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.repeatWhileProcessForeground
+import build.raft.designsystem.components.RaftStepStatus
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.LayoutDirection
+import build.raft.app.data.AgentActivityQuietFailureItem
+import build.raft.app.data.groupAgentActivityQuietFailures
+import build.raft.designsystem.tokens.RaftStroke
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -159,7 +173,7 @@ internal fun MembersAgentActivityViewSwitch(
 /**
  * What the "now" card shows about the agent's live state. [indicator] is the detail page's
  * observed live status (the same one its header dot reads, external tiers included); null
- * means not observed yet, and the card then draws no dot rather than a manufactured one.
+ * means not observed yet, and the card then says [label] beside a resting Ottie.
  */
 internal data class MembersAgentActivityNow(
     val label: String,
@@ -185,8 +199,50 @@ internal fun membersAgentActivityWakeCrashLoop(
     return summaryWakeCrashLoop.takeIf { summaryDetailKind == AgentActivityDetailKindWakeCrashLoopBlocked }
 }
 
-/** The "now" card's dot colour: the live indicator's, or none. */
-internal fun MembersAgentActivityNow.dotColor(): Color? = indicator?.color
+/** The "now" card's Ottie (web AgentNowCard): from the live indicator's status, resting until it is observed. */
+internal fun MembersAgentActivityNow.otter(): RaftStepStatus = membersAgentRecentActivityOtter(indicator?.status)
+
+/** What the overview's "now" card says first (web AgentNowCard `headline`, botiverse/slock #13108). */
+internal sealed interface MembersAgentNowHeadline {
+    /** "Working · for 3m 12s": working or thinking with a turn running, timed from that turn's start. */
+    data class WorkingFor(val elapsedMillis: Long) : MembersAgentNowHeadline
+
+    /** "Idle · last turn ended 15:53": online, after a finished turn. */
+    data class IdleSince(val lastEndedAtEpochMillis: Long) : MembersAgentNowHeadline
+
+    /** Any other state reads as the overview always read it (a sign-in, a crash, a limit). */
+    data object Status : MembersAgentNowHeadline
+}
+
+/** Web AgentNowCard `busy`: the agent is working or thinking. */
+internal fun membersAgentNowBusy(status: AgentStatus?): Boolean =
+    status == AgentStatus.Working || status == AgentStatus.Thinking
+
+/**
+ * Web AgentNowCard: "Working · for …" while busy with a [running] turn (the server's `endedAt` for
+ * it is when the server read it, so the time counts from its start to [nowEpochMillis]); "Idle ·
+ * last turn ended …" while online after [lastFinished]; anything else is the status itself.
+ */
+internal fun membersAgentNowHeadline(
+    status: AgentStatus?,
+    running: AgentActivityTurn?,
+    lastFinished: AgentActivityTurn?,
+    nowEpochMillis: Long,
+): MembersAgentNowHeadline =
+    when {
+        membersAgentNowBusy(status) && running != null ->
+            MembersAgentNowHeadline.WorkingFor(membersAgentNowElapsedMillis(running.startedAtEpochMillis, nowEpochMillis))
+        status == AgentStatus.Online && lastFinished != null ->
+            MembersAgentNowHeadline.IdleSince(lastFinished.endedAtEpochMillis)
+        else -> MembersAgentNowHeadline.Status
+    }
+
+/**
+ * Web AgentNowCard `useElapsed`: the time from [startedAtEpochMillis] to [nowEpochMillis] in whole
+ * seconds, as it is shown (`Math.round`, half up).
+ */
+internal fun membersAgentNowElapsedMillis(startedAtEpochMillis: Long, nowEpochMillis: Long): Long =
+    (nowEpochMillis - startedAtEpochMillis + 500L).floorDiv(1_000L) * 1_000L
 
 @Composable
 internal fun MembersAgentActivityOverview(
@@ -231,12 +287,20 @@ internal fun MembersAgentActivityOverview(
     val timeline = remember(chronological, state.operatorEvents, runningStart) {
         agentActivityOverviewTimeline(chronological, state.operatorEvents, runningStart)
     }
+    // Each run of two or more retries that did nothing is one entry, never across an operator
+    // event (web TurnsWithQuietFailureRuns per run of turns, botiverse/slock #13050); one list per
+    // segment, empty for an events segment.
+    val segmentItems = remember(timeline) {
+        timeline.segments.map { segment ->
+            (segment as? AgentActivityOverviewSegment.Turns)?.let { groupAgentActivityQuietFailures(it.turns) }.orEmpty()
+        }
+    }
     val showTurns = loaded && (finished.isNotEmpty() || running != null)
     val listState = remember(state.agentId) { LazyListState() }
     val lastIndex = (if (state.next != null) 1 else 0) +
-        timeline.segments.sumOf { segment ->
-            when (segment) {
-                is AgentActivityOverviewSegment.Turns -> segment.turns.size
+        timeline.segments.indices.sumOf { index ->
+            when (timeline.segments[index]) {
+                is AgentActivityOverviewSegment.Turns -> segmentItems[index].size
                 is AgentActivityOverviewSegment.Events -> 1
             }
         } +
@@ -292,7 +356,7 @@ internal fun MembersAgentActivityOverview(
             // With no turns the "now" card stays above loading and empty states: it is what shows
             // a live error (e.g. a usage limit).
             item(key = "activity-overview-now") {
-                MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+                MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext)
             }
         }
         when {
@@ -344,18 +408,25 @@ internal fun MembersAgentActivityOverview(
                         }
                     }
                 }
-                timeline.segments.forEach { segment ->
+                timeline.segments.forEachIndexed { index, segment ->
                     when (segment) {
                         is AgentActivityOverviewSegment.Turns ->
-                            items(segment.turns, key = { "activity-overview-turn-${it.key}" }) { turn ->
-                                MembersAgentActivityTurnSection(
-                                    turn = turn,
-                                    replies = state.replies,
-                                    timeContext = timeContext,
-                                    onIntent = binding.onIntent,
-                                    onOpenUrl = onOpenUrl,
-                                    onOpenMessage = onOpenMessage,
-                                )
+                            items(segmentItems[index], key = { it.membersActivityOverviewItemKey() }) { entry ->
+                                val turnSection: @Composable (AgentActivityTurn) -> Unit = { turn ->
+                                    MembersAgentActivityTurnSection(
+                                        turn = turn,
+                                        replies = state.replies,
+                                        timeContext = timeContext,
+                                        onIntent = binding.onIntent,
+                                        onOpenUrl = onOpenUrl,
+                                        onOpenMessage = onOpenMessage,
+                                    )
+                                }
+                                when (entry) {
+                                    is AgentActivityQuietFailureItem.Turn -> turnSection(entry.turn)
+                                    is AgentActivityQuietFailureItem.Run ->
+                                        MembersAgentActivityQuietFailureRun(entry, timeContext, turnSection)
+                                }
                             }
                         is AgentActivityOverviewSegment.Events ->
                             item(key = "activity-overview-operator-${segment.events.first().id}") {
@@ -386,7 +457,7 @@ internal fun MembersAgentActivityOverview(
                     }
                 }
                 item(key = "activity-overview-now") {
-                    MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+                    MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext)
                 }
             }
         }
@@ -435,11 +506,12 @@ private fun LazyListState.isActivityOverviewAtBottom(lastIndex: Int): Boolean {
 }
 
 /**
- * The "now" card's headline: the live label, with the daemon's memory-limit texts in this locale
- * (web `getActivityTextDescriptor`, #10860).
+ * The "now" card's headline in any state but working and idle ([MembersAgentNowHeadline.Status]):
+ * the live label, with the daemon's memory-limit texts in this locale (web
+ * `getActivityTextDescriptor`, #10860).
  */
 @Composable
-private fun MembersAgentActivityNow.headline(): String {
+private fun MembersAgentActivityNow.statusHeadline(): String {
     val detailKind = indicator?.detailKind
     // The server paused automatic wakes; a manual start lifts it (web `activity.status.wakeCrashLoopBlocked`).
     if (wakeCrashLoop != null || detailKind == AgentActivityDetailKindWakeCrashLoopBlocked) {
@@ -460,80 +532,87 @@ private fun MembersAgentActivityNow.headline(): String {
     return indicator?.copy(label = label)?.localizedMemberStatusLabel() ?: label
 }
 
-/** [finished]: the finished turns shown, newest first; [running]: the turn still running, if any. */
+/**
+ * Web AgentNowCard as the Activity overview shows it (botiverse/slock #13108,
+ * AgentActivityOverview.tsx `withNowCard`): the profile's card without its status chip, heading
+ * and rows. Ottie, then the headline ([membersAgentNowHeadline]: "Working · for 3m 12s", counting
+ * on each second, or "Idle · last turn ended 15:53"), the step the agent is on while a turn runs,
+ * then who that turn (else the last one) answers and what it has done. [finished]: the finished
+ * turns shown, newest first; [running]: the turn still running, if any.
+ */
 @Composable
 private fun MembersAgentActivityNowCard(
     now: MembersAgentActivityNow,
     finished: List<AgentActivityTurn>,
     running: AgentActivityTurn?,
     timeContext: RaftTimeContext,
-    onOpenUrl: (String) -> Unit,
 ) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    val shown = listOfNotNull(running) + finished
-    RaftCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Sm),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            now.dotColor()?.let { RaftStatusDot(color = it, size = RaftStatusSize.Lg) }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val status = now.indicator?.status
+    MembersAgentNowCard(finished = finished, running = running, otter = now.otter(), timeContext = timeContext) {
+        val colors = RaftTheme.colors
+        val typography = RaftTheme.typography
+        // Read here, so only these lines follow the clock.
+        val nowEpochMillis = rememberMembersAgentNowClock(ticking = membersAgentNowBusy(status) && running != null)
+        val headline = membersAgentNowHeadline(status, running, finished.firstOrNull(), nowEpochMillis)
+        RaftText(
+            text = when (headline) {
+                is MembersAgentNowHeadline.WorkingFor ->
+                    stringResource(
+                        Res.string.member_recent_activity_working_for,
+                        stringResource(Res.string.member_activity_log_status_working),
+                        membersActivityOverviewDuration(headline.elapsedMillis),
+                    )
+                is MembersAgentNowHeadline.IdleSince ->
+                    stringResource(
+                        Res.string.member_recent_activity_last_ended,
+                        stringResource(Res.string.member_activity_log_status_idle),
+                        membersActivityOverviewClock(headline.lastEndedAtEpochMillis, timeContext),
+                    )
+                MembersAgentNowHeadline.Status -> now.statusHeadline()
+            },
+            style = typography.subhead.copy(fontWeight = FontWeight.Bold),
+            color = colors.foreground,
+            modifier = Modifier.testTag("agent-now-headline"),
+        )
+        // The step it is on: without a running turn the headline already says it (web).
+        if (headline is MembersAgentNowHeadline.WorkingFor) {
+            now.indicator?.copy(label = now.label)?.workingActivityDetailText()?.let { step ->
                 RaftText(
-                    text = now.headline(),
-                    style = typography.headline.copy(fontWeight = FontWeight.Bold),
+                    text = step.localizedText(),
+                    style = typography.callout,
                     color = colors.foreground,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("agent-now-step"),
                 )
-                // Paused after repeated stops at the Computer's per-agent memory limit: why, and what
-                // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
-                now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
-                    RaftText(
-                        text = stringResource(Res.string.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
-                        style = typography.callout,
-                        color = colors.foregroundMuted,
-                    )
-                }
-                val last = finished.firstOrNull()
-                val line = when {
-                    running != null -> {
-                        val time = membersActivityOverviewClock(running.startedAtEpochMillis, timeContext)
-                        membersActivityOverviewTriggerText(running.trigger.describe())
-                            ?.let { stringResource(Res.string.member_activity_overview_now_current_turn_for, time, it) }
-                            ?: stringResource(Res.string.member_activity_overview_now_current_turn, time)
-                    }
-                    last != null -> {
-                        val time = membersActivityOverviewClock(last.endedAtEpochMillis, timeContext)
-                        membersActivityOverviewTriggerText(last.trigger.describe())
-                            ?.let { stringResource(Res.string.member_activity_overview_now_last_turn_for, time, it) }
-                            ?: stringResource(Res.string.member_activity_overview_now_last_turn, time)
-                    }
-                    else -> null
-                }
-                line?.let {
-                    MembersActivityOverviewRefText(text = it, style = typography.callout, color = colors.foregroundMuted, onOpenUrl = onOpenUrl)
-                }
-                if (shown.isNotEmpty()) {
-                    val steps = shown.sumOf { it.toolCalls }
-                    val problems = shown.sumOf { it.problemStepCount }
-                    val parts = listOf(
-                        if (shown.size == 1) stringResource(Res.string.member_activity_overview_now_turns_one)
-                        else stringResource(Res.string.member_activity_overview_now_turns_other, shown.size),
-                        if (steps == 1) stringResource(Res.string.member_activity_overview_now_steps_one)
-                        else stringResource(Res.string.member_activity_overview_now_steps_other, steps),
-                        when (problems) {
-                            0 -> stringResource(Res.string.member_activity_overview_now_problems_none)
-                            1 -> stringResource(Res.string.member_activity_overview_now_problems_one)
-                            else -> stringResource(Res.string.member_activity_overview_now_problems_other, problems)
-                        },
-                    )
-                    RaftText(text = parts.joinToString(" · "), style = typography.caption, color = colors.foregroundHint)
-                }
             }
         }
+        // Paused after repeated stops at the Computer's per-agent memory limit: why, and what
+        // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
+        now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
+            RaftText(
+                text = stringResource(Res.string.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
+                style = typography.callout,
+                color = colors.foregroundMuted,
+            )
+        }
     }
+}
+
+/**
+ * The clock the "now" card reads (web AgentNowCard `useElapsed`): read again each second while
+ * [ticking] (a turn runs), and only while the app is in front; back in front it catches up at once.
+ */
+@Composable
+private fun rememberMembersAgentNowClock(ticking: Boolean): Long {
+    var nowEpochMillis by remember { mutableLongStateOf(defaultNowMillis()) }
+    LaunchedEffect(ticking) {
+        if (!ticking) return@LaunchedEffect
+        repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
+            nowEpochMillis = defaultNowMillis()
+        }
+    }
+    return nowEpochMillis
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -557,7 +636,10 @@ private fun MembersAgentActivityTurnSection(
     val duration = membersActivityOverviewDuration(turn.endedAtEpochMillis - turn.startedAtEpochMillis)
     val trigger = membersActivityOverviewTriggerText(turn.trigger.describe())
     val triggerMessage = turn.trigger.openableMessage()
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(MembersAgentActivityTurnSectionTag),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -641,6 +723,103 @@ private fun MembersAgentActivityTurnSection(
         }
     }
 }
+
+/** The overview list's key for an entry: a turn keeps its own, a run of retries takes its first turn's. */
+private fun AgentActivityQuietFailureItem.membersActivityOverviewItemKey(): String =
+    when (this) {
+        is AgentActivityQuietFailureItem.Turn -> "activity-overview-turn-${turn.key}"
+        is AgentActivityQuietFailureItem.Run -> "activity-overview-retries-${turns.first().key}"
+    }
+
+/**
+ * Web ActivityQuietFailureRuns `QuietFailureRun` (botiverse/slock f273c7d6ff #13050, #13091): two
+ * or more turns in a row that failed having done nothing, as one entry. Their span (the first
+ * start to the last end, each time as the overview's clock writes it) with the last turn's badges,
+ * then "Usage limit reached · resets … · N attempts" ("Usage limit reached · N attempts" when no
+ * reset was reported) or "N turns in a row ended with an error, with no tools used and no message
+ * sent", and Show each turn / Hide turns, which lists every turn ([turnSection]) under a hairline
+ * rule (web `border-l pl-4`). The reset time is [membersActivityOverviewClock]'s, as every time
+ * in the overview (a date only when not today), where the web writes a short date and time.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MembersAgentActivityQuietFailureRun(
+    run: AgentActivityQuietFailureItem.Run,
+    timeContext: RaftTimeContext,
+    turnSection: @Composable (AgentActivityTurn) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val first = run.turns.first()
+    val last = run.turns.last()
+    val count = run.turns.size
+    var open by rememberSaveable(first.key) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(MembersAgentActivityQuietFailureRunTag),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RaftText(
+                text = stringResource(
+                    Res.string.member_activity_overview_turn_range,
+                    membersActivityOverviewClock(first.startedAtEpochMillis, timeContext),
+                    membersActivityOverviewClock(last.endedAtEpochMillis, timeContext),
+                ),
+                style = typography.monoCode.copy(fontWeight = FontWeight.Bold),
+                color = colors.foreground,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+            MembersAgentActivityTurnBadges(last, Modifier.align(Alignment.CenterVertically))
+        }
+        val resetsAt = run.resetsAtEpochMillis
+        RaftText(
+            // A run is two turns or more: the count is never one.
+            text = when {
+                !run.endedOnUsageLimit -> stringResource(Res.string.member_activity_overview_retries_failed, count)
+                resetsAt != null ->
+                    stringResource(
+                        Res.string.member_activity_overview_retries_usage_limit_until,
+                        membersActivityOverviewClock(resetsAt, timeContext),
+                        count,
+                    )
+                else -> stringResource(Res.string.member_activity_overview_retries_usage_limit, count)
+            },
+            style = typography.callout,
+            color = colors.foregroundMuted,
+        )
+        RaftTextLink(
+            text = stringResource(
+                if (open) Res.string.member_activity_overview_retries_hide else Res.string.member_activity_overview_retries_show
+            ),
+            onClick = { open = !open },
+            style = typography.caption,
+        )
+        if (open) {
+            val rule = colors.lineHairline
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        // On the start edge, with the padding.
+                        val width = RaftStroke.Hairline.toPx()
+                        val x = if (layoutDirection == LayoutDirection.Rtl) size.width - width else 0f
+                        drawRect(rule, topLeft = Offset(x, 0f), size = Size(width, size.height))
+                    }
+                    .padding(start = RaftAppSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+            ) {
+                run.turns.forEach { turn -> key(turn.key) { turnSection(turn) } }
+            }
+        }
+    }
+}
+
+/** A turn's section and a run's entry, for tests (web `activity-overview-turn` / `activity-overview-retries`). */
+internal const val MembersAgentActivityTurnSectionTag = "activity-overview-turn"
+internal const val MembersAgentActivityQuietFailureRunTag = "activity-overview-retries"
 
 /**
  * The agent's own account of the turn, which went to no one (web TurnOutput). It must never read as
