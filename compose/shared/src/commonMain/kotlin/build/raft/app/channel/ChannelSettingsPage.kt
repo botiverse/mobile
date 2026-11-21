@@ -647,9 +647,10 @@ private fun ChannelSettingsPageScreen() {
             is ChannelSettingsEffect.Failure -> {
                 confirm = null
                 if (effect.action != ChannelSettingsAction.Profile && effect.action != ChannelSettingsAction.VisitorVisible) {
-                    bridge.toast(
+                    bridge.errorToast(
                         channelSettingsDisconnectGuestsPresentMessage(effect, settingsState.channel?.name)
-                            ?: channelSettingsFailureMessage(effect, failureLabels, errorStrings)
+                            ?: channelSettingsFailureMessage(effect, failureLabels, errorStrings),
+                        effect.traceId
                     )
                 }
             }
@@ -732,6 +733,7 @@ private fun ChannelSettingsPageScreen() {
                                 profileStatus = settingsState.profileStatus,
                                 profileErrorCode = settingsState.profileErrorCode,
                                 profileErrorMessage = settingsState.profileErrorMessage,
+                                profileErrorTraceId = settingsState.profileErrorTraceId,
                                 profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
@@ -902,6 +904,7 @@ internal data class ChannelSettingsUiModel(
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
     val profileErrorMessage: String? = null,
+    val profileErrorTraceId: String? = null,
     /** A rename refused for an archived channel's name (web `archivedCollision`); null hides the warning. */
     val profileCollision: ChannelInfoArchivedCollision? = null,
     /** The Slack channel pick (web ChannelSlackBridgeField); null hides it. */
@@ -1242,6 +1245,7 @@ private fun ChannelDetailsIdentitySection(model: ChannelSettingsUiModel, callbac
             onClearStatus = callbacks.onClearProfileStatus,
             archivedCollision = model.profileCollision,
             errorMessage = model.profileErrorMessage,
+            errorTraceId = model.profileErrorTraceId,
             whoSees = channelDetailsWhoSees(channel, model.serverName),
             onCancel = { editing = false },
         )
@@ -1526,6 +1530,8 @@ internal fun ChannelInfoForm(
     archivedCollision: ChannelInfoArchivedCollision? = null,
     /** The server's reason for a failed Unarchive from that warning, shown in the failure banner. */
     errorMessage: String? = null,
+    /** Server trace id of the failed profile save or unarchive request. */
+    errorTraceId: String? = null,
     /** Who sees the name and description (web `whoSees`), under the Description field; null shows none. */
     whoSees: String? = null,
     /** Cancel: the edit ends. */
@@ -1634,6 +1640,7 @@ internal fun ChannelInfoForm(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
             )
+            RaftTraceIdNote(errorTraceId)
         }
         // Web: Save, then Cancel, at the start of the line under the fields.
         Row(

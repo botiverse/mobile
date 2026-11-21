@@ -246,13 +246,18 @@ internal const val APP_SHELL_SUPPRESS_RESTORE_LANDING = "slockSuppressRestoreLan
 private const val APP_SHELL_AUTH_GATE_INSTANCE_ID = "slockAuthGateInstanceId"
 
 internal sealed interface AuthGateMessage {
-    data class Dynamic(val value: String) : AuthGateMessage
+    val traceId: String?
+
+    data class Dynamic(
+        val value: String,
+        override val traceId: String? = null,
+    ) : AuthGateMessage
 
     data class Static(
         val value: StringDesc,
         val pinSignOut: Boolean = false,
         /** The server error's trace id, shown with the message on the login page. */
-        val traceId: String? = null
+        override val traceId: String? = null,
     ) : AuthGateMessage
 }
 
@@ -1164,7 +1169,7 @@ private fun RaftAppShellReadyContent(
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
                 leaveChannel = { channelId -> channelRepository.leaveChannel(channelId) },
                 setChannelActivityMuted = { channelId, muted -> channelRepository.setChannelActivityMuted(channelId, muted) },
-                pinUpdateFailureCallback = { message -> bridge.toast(message) },
+                pinUpdateFailureWithTraceCallback = { message, traceId -> bridge.errorToast(message, traceId) },
             )
         }
     AppShellHomeStoreEffects(
@@ -2559,7 +2564,7 @@ private fun RaftAppShellReadyContent(
         }
         SharedAuthGateState.AuthRequired -> {
             val localizedAuthGateMessage = authGateMessage.localizedMessage()
-            val authGateTraceId = (authGateMessage as? AuthGateMessage.Static)?.traceId
+            val authGateTraceId = authGateMessage?.traceId
             LaunchedEffect(localizedAuthGateMessage) {
                 pager.openLoginReplacingCurrentPage(localizedAuthGateMessage, authGateTraceId)
             }
@@ -3005,7 +3010,7 @@ private fun RaftAppShellReadyContent(
                                 if (rejection.intent.source == MessageLinkNavigationSource) {
                                     pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
                                 } else {
-                                    bridge.toast(notificationServerUnavailableMessage)
+                                    bridge.errorToast(notificationServerUnavailableMessage, result.traceId)
                                 }
                             }
                     }
@@ -5790,10 +5795,10 @@ private fun RaftAppShellReadyContent(
                                     authStore = shellAuthStore,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = sharedStores.tasksDataStore,
-                                    onFailed = { code ->
+                                    onFailedWithTrace = { code, traceId ->
                                         when {
-                                            code.startsWith("tasks_status") -> bridge.toast(tasksUpdateFailedLabel)
-                                            code.startsWith("tasks_assign") -> bridge.toast(tasksAssignFailedLabel)
+                                            code.startsWith("tasks_status") -> bridge.errorToast(tasksUpdateFailedLabel, traceId)
+                                            code.startsWith("tasks_assign") -> bridge.errorToast(tasksAssignFailedLabel, traceId)
                                         }
                                     },
                                     log = { bridge.log(it) },

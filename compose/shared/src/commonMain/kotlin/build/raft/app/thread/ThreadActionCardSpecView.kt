@@ -316,6 +316,7 @@ internal fun ThreadActionCardSpecView(
             onSend = { values -> inline?.let { send(it)(values) } },
             modifier = modifier,
             serverIssuesTraceId = slice.inlineIssuesTraceId,
+            errorTraceId = slice.error.traceIdOrNull(),
         )
         return
     }
@@ -329,6 +330,7 @@ internal fun ThreadActionCardSpecView(
             controlsDisabled = question?.asked == false,
             busyElementKey = slice.busyElement(typedPending),
             error = error,
+            errorTraceId = slice.error.traceIdOrNull(),
             endedLine = endedLine,
         )
     RaftActionCardView(
@@ -503,7 +505,12 @@ internal fun ThreadActionCardSpecConfirmSheet(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 RaftCardTree(state.confirm.spec.root, state.confirm.spec.elements, context)
-                if (error != null) RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                if (error != null) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                        RaftTraceIdNote(state.error.traceIdOrNull())
+                    }
+                }
             }
         }
     }

@@ -111,7 +111,7 @@ internal sealed interface TaskConversationStart {
     data class Started(val conversationChannelId: ChannelId) : TaskConversationStart
 
     /** [serverMessage]: the server's `error` text when it gave one (web shows it), else null. */
-    data class Failed(val serverMessage: String?) : TaskConversationStart
+    data class Failed(val serverMessage: String?, val traceId: String? = null) : TaskConversationStart
 }
 
 /**
@@ -133,13 +133,16 @@ internal suspend fun startTaskConversation(
     val conversation =
         when (val opened = tasksDataSource.openTaskConversation(serverId, task.id)) {
             is DataResult.Content -> opened.data.conversationChannelId
-            is DataResult.Error -> return TaskConversationStart.Failed(opened.error.serverMessage)
-            is DataResult.NoPermission -> return TaskConversationStart.Failed(opened.blocker.serverMessage)
+            is DataResult.Error -> return TaskConversationStart.Failed(opened.error.serverMessage, opened.error.traceId)
+            is DataResult.NoPermission -> return TaskConversationStart.Failed(opened.blocker.serverMessage, opened.blocker.traceId)
             is DataResult.Empty -> return TaskConversationStart.Failed(null)
         }
     return when (val sent = send(conversation.value, text, randomId)) {
         is ThreadApiResult.Success -> TaskConversationStart.Started(conversation)
-        is ThreadApiResult.Failure -> TaskConversationStart.Failed(sent.toThreadAttachmentCommentsFailureProjection().serverMessage)
+        is ThreadApiResult.Failure -> {
+            val projection = sent.toThreadAttachmentCommentsFailureProjection()
+            TaskConversationStart.Failed(projection.serverMessage, projection.traceId)
+        }
     }
 }
 
@@ -287,6 +290,8 @@ internal class TaskOpenSurfaceFlow(
         private set
     var errorText by mutableStateOf<String?>(null)
         private set
+    var errorTraceId by mutableStateOf<String?>(null)
+        private set
 
     /**
      * The first send created the conversation and its page is opening over this one: the pending
@@ -301,6 +306,7 @@ internal class TaskOpenSurfaceFlow(
         this.surface = surface
         handingOff = false
         errorText = null
+        errorTraceId = null
     }
 
     /** Closes the page unless a send runs; the draft stays for the next open. */
@@ -309,6 +315,7 @@ internal class TaskOpenSurfaceFlow(
         surface = null
         handingOff = false
         errorText = null
+        errorTraceId = null
         return true
     }
 
@@ -333,6 +340,7 @@ internal class TaskOpenSurfaceFlow(
         handingOff = false
         surface = null
         errorText = null
+        errorTraceId = null
     }
 
     fun draft(serverId: String?, taskId: String): String = drafts.draft(serverId, taskId)
@@ -357,6 +365,7 @@ internal class TaskOpenSurfaceFlow(
                 if (sending) return null
                 surface = null
                 errorText = null
+                errorTraceId = null
                 fresh
             }
             else -> {
@@ -387,6 +396,7 @@ internal class TaskOpenSurfaceFlow(
         sending = true
         sendRunning.value = true
         errorText = null
+        errorTraceId = null
         try {
             val started = startTaskConversation(task, ServerId(serverId), text, tasksDataSource, randomId, sendMessage)
             if (currentServerId() != serverId) {
@@ -401,6 +411,7 @@ internal class TaskOpenSurfaceFlow(
                 }
                 is TaskConversationStart.Failed -> {
                     errorText = started.serverMessage ?: fallbackError
+                    errorTraceId = started.traceId
                     null
                 }
             }
@@ -439,6 +450,7 @@ internal class TaskPageEditing(
     val tasksDataStore: SharedTasksDataStore?,
     /** A refused write's [SharedTasksEvent.OperationFailed] code, for the host's toast. */
     val onFailed: (String) -> Unit = {},
+    val onFailedWithTrace: ((code: String, traceId: String?) -> Unit)? = null,
     val log: (String) -> Unit = {},
 )
 
@@ -478,9 +490,12 @@ internal fun TaskOpenSurfaceHost(
                 flow.onTaskChanged(listed, taskV2Enabled)?.let(onConversationArrived)
             }
             val onFailed by rememberUpdatedState(editing?.onFailed)
+            val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
             LaunchedEffect(channelTasks) {
                 channelTasks?.uiEvents?.collect { event ->
-                    if (event is SharedTasksEvent.OperationFailed) onFailed?.invoke(event.code)
+                    if (event is SharedTasksEvent.OperationFailed) {
+                        onFailedWithTrace?.invoke(event.code, event.traceId) ?: onFailed?.invoke(event.code)
+                    }
                 }
             }
             LaunchedEffect(flow.handingOff, hostVisible) {
@@ -504,6 +519,7 @@ internal fun TaskOpenSurfaceHost(
                     statusUpdating = channelTasksState?.statusUpdatingTaskId == task.id.value,
                     sending = flow.sending || flow.handingOff,
                     errorText = flow.errorText,
+                    errorTraceId = flow.errorTraceId,
                     joined = joined(task),
                     draft = flow.draft(serverId, task.id.value),
                     onDraftChange = { flow.onDraftChange(serverId, task.id.value, it) },
@@ -667,6 +683,7 @@ internal fun TaskPendingConversationPage(
      * when the first send swaps in the conversation page.
      */
     useHostSafeArea: Boolean = false,
+    errorTraceId: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -775,7 +792,12 @@ internal fun TaskPendingConversationPage(
                                 )
                             }
                         }
-                        errorText?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
+                        errorText?.let {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                RaftBanner(description = it, status = RaftBannerStatus.Warning)
+                                RaftTraceIdNote(errorTraceId)
+                            }
+                        }
                     }
                 }
             }

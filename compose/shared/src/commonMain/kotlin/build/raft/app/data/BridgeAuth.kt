@@ -121,7 +121,8 @@ internal class BridgeSettingsPlatformCapabilities(
                 if (code == SECOND_FACTOR_STEP_UP_REQUIRED_CODE) {
                     return DataResult.Error(mobileOAuthLinkStepUpError(response))
                 }
-                DataResult.Error(ScreenError(code, retryable = true))
+                val traceId = response?.optString("traceId")?.takeIf { it.isNotBlank() }
+                DataResult.Error(ScreenError(code, retryable = true, traceId = traceId))
             }
         }
     }
@@ -129,16 +130,17 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun startWebLogin(): DataResult<Unit> {
         val prep = settingsCapability(buildJsonObject { put("action", "appLoginPrepare") })
         val generation = prep?.optString("generation").orEmpty()
-        val url = RaftAppLogin.start(generation, prep?.optString("codeVerifier").orEmpty(),
+        val outcome = RaftAppLogin.startWithOutcome(generation, prep?.optString("codeVerifier").orEmpty(),
             prep?.optString("codeChallenge").orEmpty(), prep?.optString("returnUri").orEmpty())
-            ?: return DataResult.Error(ScreenError("web_login_prepare_failed", retryable = true))
+        val url = outcome.url
+            ?: return DataResult.Error(ScreenError("web_login_prepare_failed", retryable = true, traceId = outcome.errorTraceId))
         val result = settingsCapability(buildJsonObject {
             put("action", "appLoginOpen")
             put("authorizationUrl", url)
         })
         if (result?.optString("status") == "started") return DataResult.Content(Unit)
         RaftAppLogin.cancel(generation)
-        return DataResult.Error(ScreenError("web_login_browser_failed", retryable = true))
+        return DataResult.Error(ScreenError("web_login_browser_failed", retryable = true, traceId = null))
     }
 
     override suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> {
@@ -612,7 +614,7 @@ internal class BridgeSettingsPlatformCapabilities(
         if (flushDiagnostics) {
             flushRaftPlatformLogs()
             if (!diagnosticsFlush()) {
-                return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true))
+                return DataResult.Error(ScreenError("settings_diagnostics_flush_failed", retryable = true, traceId = null))
             }
         }
         val response =
@@ -641,7 +643,7 @@ internal class BridgeSettingsPlatformCapabilities(
                 val code = response?.optString("code").orEmpty()
                     .ifBlank { response?.optString("message").orEmpty() }
                     .ifBlank { "settings_feedback_submit_failed" }
-                DataResult.Error(ScreenError(code, retryable = true))
+                DataResult.Error(ScreenError(code, retryable = true, traceId = null))
             }
         }
     }
@@ -1119,5 +1121,6 @@ private fun mobileOAuthLinkStepUpError(response: JsonObject?): ScreenError {
         serverMessage = challenge.serverMessage,
         serverCode = SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
         secondFactorStepUp = challenge,
+        traceId = response?.optString("traceId")?.takeIf { it.isNotBlank() },
     )
 }

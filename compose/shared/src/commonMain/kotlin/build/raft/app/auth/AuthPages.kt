@@ -264,6 +264,7 @@ private fun AuthProfileSetupScreen() {
     var displayNameFieldValue by remember { mutableStateOf(TextFieldValue(state.displayName)) }
     var loaded by remember { mutableStateOf(false) }
     var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
+    var errorTraceId by remember { mutableStateOf<String?>(null) }
     var pendingProfileSetup by remember { mutableStateOf<PendingProfileSetup?>(null) }
 
     LaunchedEffect(Unit) {
@@ -284,6 +285,7 @@ private fun AuthProfileSetupScreen() {
             is SharedAuthResult.Failure -> {
                 loaded = true
                 errorPresentation = AuthErrorPresentation.Static(current.userMessage)
+                errorTraceId = current.traceId
             }
         }
     }
@@ -300,11 +302,13 @@ private fun AuthProfileSetupScreen() {
             is SharedAuthResult.Failure -> {
                 state = state.copy(submitting = false)
                 errorPresentation = AuthErrorPresentation.Static(result.userMessage)
+                errorTraceId = result.traceId
             }
             SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
             null -> {
                 state = state.copy(submitting = false)
                 errorPresentation = AuthErrorPresentation.Static(Res.string.auth_error_profile_setup_failed.desc())
+                errorTraceId = null
             }
         }
     }
@@ -319,6 +323,7 @@ private fun AuthProfileSetupScreen() {
         displayName = displayNameFieldValue,
         submitting = state.submitting,
         errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
+        errorTraceId = if (errorPresentation != null) errorTraceId else null,
         handleError = state.handleError.localizedMessage(),
         displayNameError = state.displayNameError.localizedMessage(),
         onHandleChange = { nextValue ->
@@ -327,6 +332,7 @@ private fun AuthProfileSetupScreen() {
                 updateOwner = { handleFieldValue = it },
                 projectText = {
                     errorPresentation = null
+                    errorTraceId = null
                     state = reducer.reduce(state, IdentitySetupFormEvent.HandleChanged(it)).state
                 },
             )
@@ -337,12 +343,14 @@ private fun AuthProfileSetupScreen() {
                 updateOwner = { displayNameFieldValue = it },
                 projectText = {
                     errorPresentation = null
+                    errorTraceId = null
                     state = reducer.reduce(state, IdentitySetupFormEvent.DisplayNameChanged(it)).state
                 },
             )
         },
         onSubmit = {
             errorPresentation = null
+            errorTraceId = null
             val update = reducer.reduce(state, IdentitySetupFormEvent.Submit)
             state = update.state
             when (val effect = update.effect) {
@@ -748,7 +756,8 @@ internal fun AuthProfileSetupContent(
     onHandleChange: (TextFieldValue) -> Unit,
     onDisplayNameChange: (TextFieldValue) -> Unit,
     onSubmit: () -> Unit,
-    onOpenDiagnostics: () -> Unit = {}
+    onOpenDiagnostics: () -> Unit = {},
+    errorTraceId: String? = null,
 ) {
     val displayNameFocusRequester = remember { FocusRequester() }
     val canSubmit =
@@ -810,7 +819,7 @@ internal fun AuthProfileSetupContent(
                 color = RaftColor.TextMutedGray,
                 modifier = Modifier.authPageStaticTextFocus()
             )
-            AuthError(errorMessage)
+            AuthError(errorMessage, errorTraceId)
             AuthActionButton(
                 text = if (submitting) {
                     stringResource(Res.string.auth_state_finishing_profile)

@@ -2302,7 +2302,7 @@ internal class SharedThreadDataSource(
                 } else {
                     val resolvedThreadId =
                         threadId
-                            ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+                            ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
                     fetchInitialThreadPayloadFromRepository(
                         session = session,
                         basePayload = resolvedBasePayload,
@@ -2315,7 +2315,7 @@ internal class SharedThreadDataSource(
             } else {
                 val resolvedThreadId =
                     threadId
-                        ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+                        ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
                 val response =
                     try {
                         val pageSize = threadPageSize(session.currentServerId)
@@ -2327,7 +2327,7 @@ internal class SharedThreadDataSource(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
-                        return DataResult.Error(ScreenError(code = "thread_network", retryable = true))
+                        return DataResult.Error(ScreenError(code = "thread_network", retryable = true, traceId = null))
                     }
                 val page =
                     when (response) {
@@ -2818,7 +2818,7 @@ internal class SharedThreadDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true, traceId = null))
             }
         return when (actionResult) {
             is DataResult.Content -> {
@@ -3807,7 +3807,7 @@ internal class SharedThreadDataSource(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+                    return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true, traceId = null))
                 }
             } else {
                 val response =
@@ -3816,7 +3816,7 @@ internal class SharedThreadDataSource(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
-                        return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+                        return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true, traceId = null))
                     }
                 when (response) {
                     is ThreadApiResult.Success -> DataResult.Content(response.data)
@@ -3877,7 +3877,7 @@ internal class SharedThreadDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true))
+                DataResult.Error(ScreenError(code = "task_conversation_ref_network", retryable = true, traceId = null))
             }
         val session = readSession()
         val serverId = session?.currentServerId?.takeIf { it.isNotBlank() } ?: return load()
@@ -4035,7 +4035,7 @@ internal class SharedThreadDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true))
+                return DataResult.Error(ScreenError(code = "thread_read_receipt_network", retryable = true, traceId = null))
             }
         return if (response is ThreadApiResult.Success) {
             DataResult.Content(
@@ -4126,7 +4126,7 @@ internal class SharedThreadDataSource(
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
-                        return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
+                        return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true, traceId = null))
                     }
                 val page =
                     when (response) {
@@ -4861,7 +4861,7 @@ internal class SharedThreadDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
+                return DataResult.Error(ScreenError(code = fallbackCode, retryable = true, traceId = null))
             }
         val detail = (result as? DataResult.Content)?.data?.canonicalConversationDetail
         if (detail != null) {

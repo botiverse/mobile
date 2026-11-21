@@ -489,7 +489,18 @@ internal fun MembersDetailContent(
     LaunchedEffect(turnStopState.feedback, turnStopState.feedbackAgentId) {
         val feedback = turnStopState.feedback ?: return@LaunchedEffect
         if (turnStopState.feedbackAgentId == member.id) {
-            onUnavailableAction(turnStopMessages.getValue(feedback))
+            val message = turnStopMessages.getValue(feedback)
+            if (feedback.isError && onAgentErrorToast != null) {
+                onAgentErrorToast(
+                    message,
+                    build.raft.app.data.ScreenError(
+                        code = "agent_turn_stop_failed",
+                        traceId = turnStopState.feedbackTraceId,
+                    ),
+                )
+            } else {
+                onUnavailableAction(message)
+            }
         }
         turnStopStore?.dispatch(AgentTurnStopIntent.ConsumeFeedback)
     }

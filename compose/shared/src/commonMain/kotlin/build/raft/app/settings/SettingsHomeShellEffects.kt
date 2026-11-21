@@ -958,7 +958,7 @@ internal fun AppShellRailTabOrderEffects(
     val railTabOrderSaveFailed = stringResource(Res.string.rail_tab_order_save_failed)
     LaunchedEffect(railTabOrderState.effect) {
         if (railTabOrderState.effect == build.raft.app.data.SharedRailTabOrderEffect.SaveFailed) {
-            bridge.toast(railTabOrderSaveFailed)
+            bridge.errorToast(railTabOrderSaveFailed, railTabOrderState.effectTraceId)
             railTabOrderStore.dispatch(build.raft.app.data.SharedRailTabOrderIntent.ConsumeEffect)
         }
     }

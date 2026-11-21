@@ -383,7 +383,7 @@ internal fun openActionCardSpecTarget(
 /** Why the last action of a card failed, as the frame or a sheet says it. */
 internal sealed interface ThreadActionCardSpecError {
     /** The server's words when it gave any, else the generic "Failed to execute action". */
-    data class Failed(val serverMessage: String? = null) : ThreadActionCardSpecError
+    data class Failed(val serverMessage: String? = null, val traceId: String? = null) : ThreadActionCardSpecError
 
     /** 422 `FORM_REQUIRED`: the card changed under this view; refresh to get its form. */
     data object FormRequired : ThreadActionCardSpecError
@@ -393,7 +393,7 @@ internal sealed interface ThreadActionCardSpecError {
      * shares with the feedback dialog. The card stays prepared; [retryAfterSeconds] is the
      * `Retry-After` wait when the answer named one.
      */
-    data class FeedbackRateLimited(val retryAfterSeconds: Long? = null) : ThreadActionCardSpecError
+    data class FeedbackRateLimited(val retryAfterSeconds: Long? = null, val traceId: String? = null) : ThreadActionCardSpecError
 
     /**
      * A question card answered on the card whose answer waited for its Undo while the card froze
@@ -402,14 +402,23 @@ internal sealed interface ThreadActionCardSpecError {
     data object QuestionNotSent : ThreadActionCardSpecError
 }
 
+internal fun ThreadActionCardSpecError?.traceIdOrNull(): String? =
+    when (this) {
+        is ThreadActionCardSpecError.Failed -> traceId
+        is ThreadActionCardSpecError.FeedbackRateLimited -> traceId
+        ThreadActionCardSpecError.FormRequired,
+        ThreadActionCardSpecError.QuestionNotSent,
+        null -> null
+    }
+
 internal const val ACTION_CARD_FEEDBACK_RATE_LIMITED_CODE = "feedback_rate_limited"
 
 /** A non-form execute refusal as the frame or sheet says it: the localized words for known codes, else the server's. */
 internal fun ScreenError.toThreadActionCardSpecError(): ThreadActionCardSpecError =
     if (serverCode == ACTION_CARD_FEEDBACK_RATE_LIMITED_CODE) {
-        ThreadActionCardSpecError.FeedbackRateLimited(retryAfterSeconds)
+        ThreadActionCardSpecError.FeedbackRateLimited(retryAfterSeconds, traceId)
     } else {
-        ThreadActionCardSpecError.Failed(serverMessage?.takeIf { it.isNotBlank() })
+        ThreadActionCardSpecError.Failed(serverMessage?.takeIf { it.isNotBlank() }, traceId)
     }
 
 /** The generic confirm before an execute (`confirm.v1`), over the card it confirms. */
@@ -725,12 +734,12 @@ internal class ThreadActionCardSpecStore(
                         null
                     }
                     is ActionCardExecuteOutcome.FormRequired -> ThreadActionCardSpecError.FormRequired
-                    is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
+                    is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage, outcome.traceId)
                 }
             is DataResult.Empty -> ThreadActionCardSpecError.Failed()
             is DataResult.Error -> expiredOrError(messageId, card, result.error)
             is DataResult.NoPermission ->
-                if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
+                if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() }, result.blocker.traceId)
         }
 
     private fun inlineValuesChanged(messageId: String, values: Map<String, ActionCardFormValue>) {
@@ -878,12 +887,12 @@ internal class ThreadActionCardSpecStore(
                         null
                     }
                     is ActionCardExecuteOutcome.FormRequired -> ThreadActionCardSpecError.FormRequired
-                    is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage)
+                    is ActionCardExecuteOutcome.FormInvalid -> ThreadActionCardSpecError.Failed(outcome.serverMessage, outcome.traceId)
                 }
             is DataResult.Empty -> ThreadActionCardSpecError.Failed()
             is DataResult.Error -> expiredOrError(messageId, card, result.error)
             is DataResult.NoPermission ->
-                if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() })
+                if (onNoPermission(result)) null else ThreadActionCardSpecError.Failed(result.blocker.serverMessage?.takeIf { it.isNotBlank() }, result.blocker.traceId)
         }
 
     /**
