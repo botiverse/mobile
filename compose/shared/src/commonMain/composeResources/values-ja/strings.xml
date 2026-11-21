@@ -3851,15 +3851,6 @@
     <string name="member_activity_overview_view_label">アクティビティ表示</string>
     <string name="member_activity_overview_view_overview">概要</string>
     <string name="member_activity_overview_view_raw">生ログ</string>
-    <string name="member_activity_overview_now_last_turn">前回のターンは %1$s に終了</string>
-    <string name="member_activity_overview_now_last_turn_for">前回のターンは %1$s に終了：%2$s</string>
-    <string name="member_activity_overview_now_turns_one">1 ターン</string>
-    <string name="member_activity_overview_now_turns_other">%1$d ターン</string>
-    <string name="member_activity_overview_now_steps_one">1 ステップ</string>
-    <string name="member_activity_overview_now_steps_other">%1$d ステップ</string>
-    <string name="member_activity_overview_now_problems_none">問題なし</string>
-    <string name="member_activity_overview_now_problems_one">1 ステップで問題が発生</string>
-    <string name="member_activity_overview_now_problems_other">%1$d ステップで問題が発生</string>
     <string name="member_activity_overview_duration_seconds">%1$d 秒</string>
     <string name="member_activity_overview_duration_minutes">%1$d 分 %2$d 秒</string>
     <string name="member_activity_overview_duration_hours">%1$d 時間 %2$d 分</string>
@@ -3929,8 +3920,6 @@
     <string name="member_activity_overview_empty_open_computer">コンピューターを開いてアップグレード</string>
     <string name="member_activity_overview_empty_show_raw">生ログを表示</string>
     <string name="member_activity_overview_load_more">以前のターンを表示</string>
-    <string name="member_activity_overview_now_current_turn">現在のターンは%1$sに開始</string>
-    <string name="member_activity_overview_now_current_turn_for">現在のターンは%1$sに開始：%2$s</string>
     <string name="member_activity_overview_turn_running_for">経過時間：%1$s</string>
     <string name="member_activity_overview_turn_trigger_and_running_for">%1$s · 経過時間：%2$s</string>
     <string name="member_activity_overview_trigger_app_event_from">%1$s の通知を処理：%2$s</string>
@@ -3938,6 +3927,8 @@
     <string name="member_activity_overview_trigger_open">メッセージを開く</string>
     <string name="member_activity_overview_outcome_running">進行中</string>
     <string name="member_recent_activity_title">最近のアクティビティ</string>
+    <string name="member_recent_activity_working_for">%1$s · %2$s 経過</string>
+    <string name="member_recent_activity_last_ended">%1$s · 前回のターンは %2$s に終了</string>
     <string name="member_recent_activity_this_turn">%1$s · このターン: %2$s</string>
     <string name="member_recent_activity_last_turn">前回: %1$s · %2$s</string>
     <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>

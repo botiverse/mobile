@@ -3672,15 +3672,6 @@
     <string name="member_activity_overview_view_label">활동 보기</string>
     <string name="member_activity_overview_view_overview">개요</string>
     <string name="member_activity_overview_view_raw">원시 로그</string>
-    <string name="member_activity_overview_now_last_turn">마지막 턴 %1$s 종료</string>
-    <string name="member_activity_overview_now_last_turn_for">마지막 턴 %1$s 종료: %2$s</string>
-    <string name="member_activity_overview_now_turns_one">위 턴 1개</string>
-    <string name="member_activity_overview_now_turns_other">위 턴 %1$d개</string>
-    <string name="member_activity_overview_now_steps_one">단계 1개</string>
-    <string name="member_activity_overview_now_steps_other">단계 %1$d개</string>
-    <string name="member_activity_overview_now_problems_none">문제 없음</string>
-    <string name="member_activity_overview_now_problems_one">1개 단계에서 문제 발생</string>
-    <string name="member_activity_overview_now_problems_other">%1$d개 단계에서 문제 발생</string>
     <string name="member_activity_overview_duration_seconds">%1$d초</string>
     <string name="member_activity_overview_duration_minutes">%1$d분 %2$d초</string>
     <string name="member_activity_overview_duration_hours">%1$d시간 %2$d분</string>
@@ -3750,8 +3741,6 @@
     <string name="member_activity_overview_empty_open_computer">컴퓨터 페이지에서 업그레이드</string>
     <string name="member_activity_overview_empty_show_raw">원시 로그 보기</string>
     <string name="member_activity_overview_load_more">이전 턴 더 보기</string>
-    <string name="member_activity_overview_now_current_turn">현재 턴 %1$s 시작</string>
-    <string name="member_activity_overview_now_current_turn_for">현재 턴 %1$s 시작: %2$s</string>
     <string name="member_activity_overview_turn_running_for">%1$s째 진행 중</string>
     <string name="member_activity_overview_turn_trigger_and_running_for">%1$s · %2$s째 진행 중</string>
     <string name="member_activity_overview_trigger_app_event_from">%1$s 알림 처리: %2$s</string>
@@ -3759,6 +3748,8 @@
     <string name="member_activity_overview_trigger_open">메시지 보기</string>
     <string name="member_activity_overview_outcome_running">진행 중</string>
     <string name="member_recent_activity_title">최근 활동</string>
+    <string name="member_recent_activity_working_for">%1$s · %2$s째</string>
+    <string name="member_recent_activity_last_ended">%1$s · 지난 턴 %2$s 종료</string>
     <string name="member_recent_activity_this_turn">%1$s · 이번 턴: %2$s</string>
     <string name="member_recent_activity_last_turn">지난 턴: %1$s · %2$s</string>
     <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>

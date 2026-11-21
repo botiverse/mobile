@@ -3672,15 +3672,6 @@
     <string name="member_activity_overview_view_label">Vista de actividad</string>
     <string name="member_activity_overview_view_overview">Resumen</string>
     <string name="member_activity_overview_view_raw">Registro sin procesar</string>
-    <string name="member_activity_overview_now_last_turn">El último turno terminó a las %1$s</string>
-    <string name="member_activity_overview_now_last_turn_for">El último turno terminó a las %1$s: %2$s</string>
-    <string name="member_activity_overview_now_turns_one">1 turno arriba</string>
-    <string name="member_activity_overview_now_turns_other">%1$d turnos arriba</string>
-    <string name="member_activity_overview_now_steps_one">1 paso</string>
-    <string name="member_activity_overview_now_steps_other">%1$d pasos</string>
-    <string name="member_activity_overview_now_problems_none">todo salió bien</string>
-    <string name="member_activity_overview_now_problems_one">1 paso salió mal</string>
-    <string name="member_activity_overview_now_problems_other">%1$d pasos salieron mal</string>
     <string name="member_activity_overview_duration_seconds">%1$d s</string>
     <string name="member_activity_overview_duration_minutes">%1$d min %2$d s</string>
     <string name="member_activity_overview_duration_hours">%1$d h %2$d min</string>
@@ -3750,8 +3741,6 @@
     <string name="member_activity_overview_empty_open_computer">Abrir computadora para actualizar</string>
     <string name="member_activity_overview_empty_show_raw">Ver registro sin procesar</string>
     <string name="member_activity_overview_load_more">Mostrar turnos anteriores</string>
-    <string name="member_activity_overview_now_current_turn">El turno actual empezó a las %1$s</string>
-    <string name="member_activity_overview_now_current_turn_for">El turno actual empezó a las %1$s: %2$s</string>
     <string name="member_activity_overview_turn_running_for">en curso desde hace %1$s</string>
     <string name="member_activity_overview_turn_trigger_and_running_for">%1$s · en curso desde hace %2$s</string>
     <string name="member_activity_overview_trigger_app_event_from">procesando una notificación de %1$s: %2$s</string>
@@ -3759,6 +3748,8 @@
     <string name="member_activity_overview_trigger_open">Abrir mensaje</string>
     <string name="member_activity_overview_outcome_running">En curso</string>
     <string name="member_recent_activity_title">Actividad reciente</string>
+    <string name="member_recent_activity_working_for">%1$s · desde hace %2$s</string>
+    <string name="member_recent_activity_last_ended">%1$s · último turno terminado: %2$s</string>
     <string name="member_recent_activity_this_turn">%1$s · este turno: %2$s</string>
     <string name="member_recent_activity_last_turn">Último turno: %1$s · %2$s</string>
     <string name="member_recent_activity_trigger_in_channel">%1$s · #%2$s</string>

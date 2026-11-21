@@ -71,6 +71,11 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.platform.testTag
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.repeatWhileProcessForeground
+import build.raft.designsystem.components.RaftStepStatus
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -159,7 +164,7 @@ internal fun MembersAgentActivityViewSwitch(
 /**
  * What the "now" card shows about the agent's live state. [indicator] is the detail page's
  * observed live status (the same one its header dot reads, external tiers included); null
- * means not observed yet, and the card then draws no dot rather than a manufactured one.
+ * means not observed yet, and the card then says [label] beside a resting Ottie.
  */
 internal data class MembersAgentActivityNow(
     val label: String,
@@ -185,8 +190,50 @@ internal fun membersAgentActivityWakeCrashLoop(
     return summaryWakeCrashLoop.takeIf { summaryDetailKind == AgentActivityDetailKindWakeCrashLoopBlocked }
 }
 
-/** The "now" card's dot colour: the live indicator's, or none. */
-internal fun MembersAgentActivityNow.dotColor(): Color? = indicator?.color
+/** The "now" card's Ottie (web AgentNowCard): from the live indicator's status, resting until it is observed. */
+internal fun MembersAgentActivityNow.otter(): RaftStepStatus = membersAgentRecentActivityOtter(indicator?.status)
+
+/** What the overview's "now" card says first (web AgentNowCard `headline`, botiverse/slock #13108). */
+internal sealed interface MembersAgentNowHeadline {
+    /** "Working · for 3m 12s": working or thinking with a turn running, timed from that turn's start. */
+    data class WorkingFor(val elapsedMillis: Long) : MembersAgentNowHeadline
+
+    /** "Idle · last turn ended 15:53": online, after a finished turn. */
+    data class IdleSince(val lastEndedAtEpochMillis: Long) : MembersAgentNowHeadline
+
+    /** Any other state reads as the overview always read it (a sign-in, a crash, a limit). */
+    data object Status : MembersAgentNowHeadline
+}
+
+/** Web AgentNowCard `busy`: the agent is working or thinking. */
+internal fun membersAgentNowBusy(status: AgentStatus?): Boolean =
+    status == AgentStatus.Working || status == AgentStatus.Thinking
+
+/**
+ * Web AgentNowCard: "Working · for …" while busy with a [running] turn (the server's `endedAt` for
+ * it is when the server read it, so the time counts from its start to [nowEpochMillis]); "Idle ·
+ * last turn ended …" while online after [lastFinished]; anything else is the status itself.
+ */
+internal fun membersAgentNowHeadline(
+    status: AgentStatus?,
+    running: AgentActivityTurn?,
+    lastFinished: AgentActivityTurn?,
+    nowEpochMillis: Long,
+): MembersAgentNowHeadline =
+    when {
+        membersAgentNowBusy(status) && running != null ->
+            MembersAgentNowHeadline.WorkingFor(membersAgentNowElapsedMillis(running.startedAtEpochMillis, nowEpochMillis))
+        status == AgentStatus.Online && lastFinished != null ->
+            MembersAgentNowHeadline.IdleSince(lastFinished.endedAtEpochMillis)
+        else -> MembersAgentNowHeadline.Status
+    }
+
+/**
+ * Web AgentNowCard `useElapsed`: the time from [startedAtEpochMillis] to [nowEpochMillis] in whole
+ * seconds, as it is shown (`Math.round`, half up).
+ */
+internal fun membersAgentNowElapsedMillis(startedAtEpochMillis: Long, nowEpochMillis: Long): Long =
+    (nowEpochMillis - startedAtEpochMillis + 500L).floorDiv(1_000L) * 1_000L
 
 @Composable
 internal fun MembersAgentActivityOverview(
@@ -292,7 +339,7 @@ internal fun MembersAgentActivityOverview(
             // With no turns the "now" card stays above loading and empty states: it is what shows
             // a live error (e.g. a usage limit).
             item(key = "activity-overview-now") {
-                MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+                MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext)
             }
         }
         when {
@@ -386,7 +433,7 @@ internal fun MembersAgentActivityOverview(
                     }
                 }
                 item(key = "activity-overview-now") {
-                    MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+                    MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext)
                 }
             }
         }
@@ -435,11 +482,12 @@ private fun LazyListState.isActivityOverviewAtBottom(lastIndex: Int): Boolean {
 }
 
 /**
- * The "now" card's headline: the live label, with the daemon's memory-limit texts in this locale
- * (web `getActivityTextDescriptor`, #10860).
+ * The "now" card's headline in any state but working and idle ([MembersAgentNowHeadline.Status]):
+ * the live label, with the daemon's memory-limit texts in this locale (web
+ * `getActivityTextDescriptor`, #10860).
  */
 @Composable
-private fun MembersAgentActivityNow.headline(): String {
+private fun MembersAgentActivityNow.statusHeadline(): String {
     val detailKind = indicator?.detailKind
     // The server paused automatic wakes; a manual start lifts it (web `activity.status.wakeCrashLoopBlocked`).
     if (wakeCrashLoop != null || detailKind == AgentActivityDetailKindWakeCrashLoopBlocked) {
@@ -460,80 +508,87 @@ private fun MembersAgentActivityNow.headline(): String {
     return indicator?.copy(label = label)?.localizedMemberStatusLabel() ?: label
 }
 
-/** [finished]: the finished turns shown, newest first; [running]: the turn still running, if any. */
+/**
+ * Web AgentNowCard as the Activity overview shows it (botiverse/slock #13108,
+ * AgentActivityOverview.tsx `withNowCard`): the profile's card without its status chip, heading
+ * and rows. Ottie, then the headline ([membersAgentNowHeadline]: "Working · for 3m 12s", counting
+ * on each second, or "Idle · last turn ended 15:53"), the step the agent is on while a turn runs,
+ * then who that turn (else the last one) answers and what it has done. [finished]: the finished
+ * turns shown, newest first; [running]: the turn still running, if any.
+ */
 @Composable
 private fun MembersAgentActivityNowCard(
     now: MembersAgentActivityNow,
     finished: List<AgentActivityTurn>,
     running: AgentActivityTurn?,
     timeContext: RaftTimeContext,
-    onOpenUrl: (String) -> Unit,
 ) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    val shown = listOfNotNull(running) + finished
-    RaftCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Sm),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            now.dotColor()?.let { RaftStatusDot(color = it, size = RaftStatusSize.Lg) }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val status = now.indicator?.status
+    MembersAgentNowCard(finished = finished, running = running, otter = now.otter(), timeContext = timeContext) {
+        val colors = RaftTheme.colors
+        val typography = RaftTheme.typography
+        // Read here, so only these lines follow the clock.
+        val nowEpochMillis = rememberMembersAgentNowClock(ticking = membersAgentNowBusy(status) && running != null)
+        val headline = membersAgentNowHeadline(status, running, finished.firstOrNull(), nowEpochMillis)
+        RaftText(
+            text = when (headline) {
+                is MembersAgentNowHeadline.WorkingFor ->
+                    stringResource(
+                        Res.string.member_recent_activity_working_for,
+                        stringResource(Res.string.member_activity_log_status_working),
+                        membersActivityOverviewDuration(headline.elapsedMillis),
+                    )
+                is MembersAgentNowHeadline.IdleSince ->
+                    stringResource(
+                        Res.string.member_recent_activity_last_ended,
+                        stringResource(Res.string.member_activity_log_status_idle),
+                        membersActivityOverviewClock(headline.lastEndedAtEpochMillis, timeContext),
+                    )
+                MembersAgentNowHeadline.Status -> now.statusHeadline()
+            },
+            style = typography.subhead.copy(fontWeight = FontWeight.Bold),
+            color = colors.foreground,
+            modifier = Modifier.testTag("agent-now-headline"),
+        )
+        // The step it is on: without a running turn the headline already says it (web).
+        if (headline is MembersAgentNowHeadline.WorkingFor) {
+            now.indicator?.copy(label = now.label)?.workingActivityDetailText()?.let { step ->
                 RaftText(
-                    text = now.headline(),
-                    style = typography.headline.copy(fontWeight = FontWeight.Bold),
+                    text = step.localizedText(),
+                    style = typography.callout,
                     color = colors.foreground,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("agent-now-step"),
                 )
-                // Paused after repeated stops at the Computer's per-agent memory limit: why, and what
-                // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
-                now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
-                    RaftText(
-                        text = stringResource(Res.string.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
-                        style = typography.callout,
-                        color = colors.foregroundMuted,
-                    )
-                }
-                val last = finished.firstOrNull()
-                val line = when {
-                    running != null -> {
-                        val time = membersActivityOverviewClock(running.startedAtEpochMillis, timeContext)
-                        membersActivityOverviewTriggerText(running.trigger.describe())
-                            ?.let { stringResource(Res.string.member_activity_overview_now_current_turn_for, time, it) }
-                            ?: stringResource(Res.string.member_activity_overview_now_current_turn, time)
-                    }
-                    last != null -> {
-                        val time = membersActivityOverviewClock(last.endedAtEpochMillis, timeContext)
-                        membersActivityOverviewTriggerText(last.trigger.describe())
-                            ?.let { stringResource(Res.string.member_activity_overview_now_last_turn_for, time, it) }
-                            ?: stringResource(Res.string.member_activity_overview_now_last_turn, time)
-                    }
-                    else -> null
-                }
-                line?.let {
-                    MembersActivityOverviewRefText(text = it, style = typography.callout, color = colors.foregroundMuted, onOpenUrl = onOpenUrl)
-                }
-                if (shown.isNotEmpty()) {
-                    val steps = shown.sumOf { it.toolCalls }
-                    val problems = shown.sumOf { it.problemStepCount }
-                    val parts = listOf(
-                        if (shown.size == 1) stringResource(Res.string.member_activity_overview_now_turns_one)
-                        else stringResource(Res.string.member_activity_overview_now_turns_other, shown.size),
-                        if (steps == 1) stringResource(Res.string.member_activity_overview_now_steps_one)
-                        else stringResource(Res.string.member_activity_overview_now_steps_other, steps),
-                        when (problems) {
-                            0 -> stringResource(Res.string.member_activity_overview_now_problems_none)
-                            1 -> stringResource(Res.string.member_activity_overview_now_problems_one)
-                            else -> stringResource(Res.string.member_activity_overview_now_problems_other, problems)
-                        },
-                    )
-                    RaftText(text = parts.joinToString(" · "), style = typography.caption, color = colors.foregroundHint)
-                }
             }
         }
+        // Paused after repeated stops at the Computer's per-agent memory limit: why, and what
+        // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
+        now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
+            RaftText(
+                text = stringResource(Res.string.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
+                style = typography.callout,
+                color = colors.foregroundMuted,
+            )
+        }
     }
+}
+
+/**
+ * The clock the "now" card reads (web AgentNowCard `useElapsed`): read again each second while
+ * [ticking] (a turn runs), and only while the app is in front; back in front it catches up at once.
+ */
+@Composable
+private fun rememberMembersAgentNowClock(ticking: Boolean): Long {
+    var nowEpochMillis by remember { mutableLongStateOf(defaultNowMillis()) }
+    LaunchedEffect(ticking) {
+        if (!ticking) return@LaunchedEffect
+        repeatWhileProcessForeground(intervalMillis = 1_000L, runImmediatelyOnStart = true) {
+            nowEpochMillis = defaultNowMillis()
+        }
+    }
+    return nowEpochMillis
 }
 
 @OptIn(ExperimentalLayoutApi::class)

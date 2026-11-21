@@ -102,24 +102,6 @@
   "many": "%1$d агентов",
   "other": "%1$d агента"
  },
- "member_activity_overview_now_turns": {
-  "one": "%1$d ход в списке",
-  "few": "%1$d хода в списке",
-  "many": "%1$d ходов в списке",
-  "other": "%1$d хода в списке"
- },
- "member_activity_overview_now_steps": {
-  "one": "%1$d шаг",
-  "few": "%1$d шага",
-  "many": "%1$d шагов",
-  "other": "%1$d шага"
- },
- "member_activity_overview_now_problems": {
-  "one": "%1$d шаг с ошибкой",
-  "few": "%1$d шага с ошибками",
-  "many": "%1$d шагов с ошибками",
-  "other": "%1$d шага с ошибками"
- },
  "member_activity_overview_outcome_problems": {
   "one": "%1$d шаг с ошибкой",
   "few": "%1$d шага с ошибками",
