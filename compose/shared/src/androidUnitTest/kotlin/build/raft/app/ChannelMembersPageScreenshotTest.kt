@@ -52,12 +52,16 @@ class ChannelMembersPageScreenshotTest {
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
 
-    // A joint channel's computed roster (#wg-rbac:#46): a member of this server whose first source
-    // is another server stays local (Remove, its other server's tag); another server's people
-    // name every server they are from, are removable only when the server says so, never Guest.
+    // A joint channel's computed roster (#wg-rbac:#46), grouped by the viewed server (web
+    // jointMemberGroups, slock #12853): "Members of Raft" (a member of this server whose first
+    // source is another server stays here: Remove, "Also in" its other server), then "Other
+    // servers" (people who name every server they are from, removable only when the server says
+    // so, never Guest), people before agents in each.
     @Test
     fun channelMembersJointLight() =
-        capture("channel.members.joint", RaftAppAppearance.Light) { ChannelMembersVisualContent(jointVisualRoster()) }
+        capture("channel.members.joint", RaftAppAppearance.Light) {
+            ChannelMembersVisualContent(jointVisualRoster(), channelKind = JointChannelKindWireValue, viewerServerName = "Raft")
+        }
 
     // Channel role actions (web MemberRoleActions, #triage:#398): one ⋯ on every row the viewer may
     // change or remove (its menu: Make admin / Demote or the server admin's cannot-demote note, and
@@ -118,6 +122,8 @@ class ChannelMembersPageScreenshotTest {
 private fun ChannelMembersVisualContent(
     roster: List<RaftThreadMemberItem>? = null,
     roleChange: ChannelMemberRoleChangeState = ChannelMemberRoleChangeState(),
+    channelKind: String? = null,
+    viewerServerName: String = "",
 ) {
     val members =
         remember {
@@ -183,6 +189,8 @@ private fun ChannelMembersVisualContent(
             onRemoveMember = {},
             onSubmit = {},
             roleChange = roleChange,
+            channelKind = channelKind,
+            viewerServerName = viewerServerName,
         )
     }
 }

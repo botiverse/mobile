@@ -3554,6 +3554,9 @@
     <string name="auth_web_login_stale_callback">Ese enlace de inicio de sesión es de un intento anterior. Termina de iniciar sesión en la página más reciente o vuelve a iniciar sesión.</string>
     <string name="channel_member_role_guest">Invitado</string>
     <string name="channel_members_also_in">También en %1$s</string>
+    <string name="channel_members_also_in_sentence">%1$s también es miembro de %2$s</string>
+    <string name="channel_members_group_viewer_server">Miembros de %1$s</string>
+    <string name="channel_members_group_other_servers">Otros servidores</string>
     <string name="channel_members_make_admin">Dar a %1$s el rol de admin del canal</string>
     <string name="channel_members_remove_admin">Quitar a %1$s el rol de admin del canal</string>
     <string name="channel_members_make_admin_short">Hacer admin</string>

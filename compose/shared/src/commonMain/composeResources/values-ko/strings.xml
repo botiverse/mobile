@@ -3554,6 +3554,9 @@
     <string name="auth_web_login_stale_callback">이전 로그인 시도의 링크예요. 가장 최근 페이지에서 로그인을 마치거나 다시 로그인하세요.</string>
     <string name="channel_member_role_guest">게스트</string>
     <string name="channel_members_also_in">%1$s에도 소속</string>
+    <string name="channel_members_also_in_sentence">%1$s 님은 %2$s의 멤버이기도 해요</string>
+    <string name="channel_members_group_viewer_server">%1$s 멤버</string>
+    <string name="channel_members_group_other_servers">다른 서버</string>
     <string name="channel_members_make_admin">%1$s 님을 채널 관리자로 지정</string>
     <string name="channel_members_remove_admin">%1$s 님의 채널 관리자 권한 해제</string>
     <string name="channel_members_make_admin_short">관리자로 지정</string>

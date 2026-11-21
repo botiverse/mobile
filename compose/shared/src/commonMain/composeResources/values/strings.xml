@@ -3734,6 +3734,9 @@
     <string name="auth_web_login_stale_callback">That sign-in link was from an earlier attempt. Finish signing in on the latest page, or sign in again.</string>
     <string name="channel_member_role_guest">Guest</string>
     <string name="channel_members_also_in">Also in %1$s</string>
+    <string name="channel_members_also_in_sentence">%1$s is also a member of %2$s</string>
+    <string name="channel_members_group_viewer_server">Members of %1$s</string>
+    <string name="channel_members_group_other_servers">Other servers</string>
     <string name="channel_members_make_admin">Make %1$s a channel admin</string>
     <string name="channel_members_remove_admin">Remove channel admin from %1$s</string>
     <string name="channel_members_make_admin_short">Make admin</string>

@@ -833,6 +833,9 @@ private fun ThreadMembersPageScreen() {
             canCreateAgents = canCreateAgents,
             localServerId = route.serverId.value,
             channelName = channelName,
+            // Web jointMemberGroups (#12853): a joint channel's roster as "Members of {server}" / "Other servers".
+            channelKind = channelKind,
+            viewerServerName = viewerServerName,
             externalInvites =
                 ExternalInvitesSection(
                     state = externalInvitesState,
@@ -1048,7 +1051,17 @@ internal fun ThreadMembersPageContent(
     externalInvites: ExternalInvitesSection? = null,
     roleChange: ChannelMemberRoleChangeState = ChannelMemberRoleChangeState(),
     onRoleAction: (RaftThreadMemberItem) -> Unit = {},
+    /** The channel's type (web `currentChannel.type`): a joint channel's roster groups by the viewed server. */
+    channelKind: String? = null,
+    /** The viewed server's name, for "Members of {server}" (web `currentServerName`). */
+    viewerServerName: String = "",
 ) {
+    // A joint channel's two groups fold like the other sections and start open (web
+    // MemberPageSection `defaultOpen`); only this page shows them, so their state stays here.
+    var viewerServerExpanded by remember { mutableStateOf(true) }
+    var otherServersExpanded by remember { mutableStateOf(true) }
+    val onViewerServerExpandedChange: (Boolean) -> Unit = { viewerServerExpanded = it }
+    val onOtherServersExpandedChange: (Boolean) -> Unit = { otherServersExpanded = it }
     val rosterListState = rememberLazyListState()
     // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
     val rosterPullState = rememberRaftStorePullRefreshState()
@@ -1154,8 +1167,6 @@ internal fun ThreadMembersPageContent(
                     }
                 }
             } else {
-                val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
-                val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
                 // Web design v5.0 A4: open external invites first, above Humans, for who can manage them.
                 val invites = externalInvites?.visibleInvites(rosterQuery.text).orEmpty()
                 if (externalInvites != null && invites.isNotEmpty()) {
@@ -1179,81 +1190,83 @@ internal fun ThreadMembersPageContent(
                         )
                     }
                 }
-                // Humans first, then agents, then bridge participants (web member page order).
-                if (humans.isNotEmpty()) {
-                    item(key = "section:humans") {
-                        RaftSidebarSectionHeader(
-                            title = stringResource(Res.string.thread_members_humans), count = humans.size,
-                            expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
-                            countSeparator = " · ",
-                        )
-                    }
-                    if (humansExpanded) items(humans.size, key = { humans[it].memberKey }) { index ->
-                        ThreadMembersPagerRow(
-                            member = humans[index],
-                            divider = index > 0,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
-                            onOpen = onOpenMember,
-                            onRemove = onRemoveMember,
-                            roleChanging = roleChange.changingKey == humans[index].memberKey,
-                            onRoleAction = onRoleAction,
-                        )
-                    }
-                }
-                if (agents.isNotEmpty()) {
-                    item(key = "section:agents") {
-                        RaftSidebarSectionHeader(
-                            title = stringResource(Res.string.thread_members_agents), count = agents.size,
-                            expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
-                            countSeparator = " · ",
-                        )
-                    }
-                    if (agentsExpanded) items(agents.size, key = { agents[it].memberKey }) { index ->
-                        ThreadMembersPagerRow(
-                            member = agents[index],
-                            divider = index > 0,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
-                            onOpen = onOpenMember,
-                            onRemove = onRemoveMember,
-                            roleChanging = roleChange.changingKey == agents[index].memberKey,
-                            onRoleAction = onRoleAction,
-                        )
-                    }
-                }
-                if (filteredExternal.isNotEmpty()) {
-                    item(key = "section:external") {
-                        RaftSidebarSectionHeader(
-                            title = stringResource(Res.string.thread_members_external), count = filteredExternal.size,
-                            expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
-                            countSeparator = " · ",
-                        )
-                    }
-                    if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
-                        val member = filteredExternal[index]
-                        // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
-                        // reads it), so the lime/cyan boundary moves on its minute tick.
-                        val now = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
-                        val handlesLine = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" }
-                        ChannelMembersRow(
-                            title = member.displayName,
-                            subtitle = handlesLine,
-                            avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
-                            avatarKind = RaftAvatarKind.Labeled,
-                            cacheSubject = null, cacheServerId = null,
-                            statusColor = member.lastSeenAt?.let { seen ->
-                                if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
-                            },
-                            badges = listOfNotNull(
-                                member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
-                            ),
-                            divider = index > 0,
-                            // A long press copies the handle line as shown ("@a", "@a · @b").
-                            subtitleCopyText = handlesLine,
-                        )
+                // Web member page order: Humans, Agents, then bridge participants; a joint channel
+                // lists "Members of {server}" and "Other servers" in place of Humans and Agents
+                // (ThreadMembersJointGroups.kt, web jointMemberGroups #12853).
+                val groupedByViewerServer = threadMembersGroupsByViewerServer(channelKind, members)
+                threadMembersRosterSections(channelKind, members, filteredMembers, filteredExternal).forEach { section ->
+                    when (section) {
+                        is ThreadMembersRosterSection.Members -> {
+                            val rows = section.members
+                            val expanded =
+                                when (section.group) {
+                                    ThreadMembersRosterGroup.Humans -> humansExpanded
+                                    ThreadMembersRosterGroup.Agents -> agentsExpanded
+                                    ThreadMembersRosterGroup.ViewerServer -> viewerServerExpanded
+                                    ThreadMembersRosterGroup.OtherServers -> otherServersExpanded
+                                }
+                            val onExpandedChange =
+                                when (section.group) {
+                                    ThreadMembersRosterGroup.Humans -> onHumansExpandedChange
+                                    ThreadMembersRosterGroup.Agents -> onAgentsExpandedChange
+                                    ThreadMembersRosterGroup.ViewerServer -> onViewerServerExpandedChange
+                                    ThreadMembersRosterGroup.OtherServers -> onOtherServersExpandedChange
+                                }
+                            item(key = section.key) {
+                                RaftSidebarSectionHeader(
+                                    title = threadMembersRosterGroupTitle(section.group, viewerServerName), count = rows.size,
+                                    expanded = expanded, onExpandedChange = onExpandedChange,
+                                    countSeparator = " · ",
+                                )
+                            }
+                            if (expanded) items(rows.size, key = { rows[it].memberKey }) { index ->
+                                ThreadMembersPagerRow(
+                                    member = rows[index],
+                                    divider = index > 0,
+                                    agentStatusResolver = agentStatusResolver,
+                                    memberAvatarResolver = memberAvatarResolver,
+                                    removing = removalGate.inFlight && removalGate.pending?.memberRowId == rows[index].id,
+                                    onOpen = onOpenMember,
+                                    onRemove = onRemoveMember,
+                                    roleChanging = roleChange.changingKey == rows[index].memberKey,
+                                    onRoleAction = onRoleAction,
+                                    alsoInSpokenAsSentence = groupedByViewerServer,
+                                )
+                            }
+                        }
+                        is ThreadMembersRosterSection.SlackParticipants -> {
+                            val participants = section.participants
+                            item(key = section.key) {
+                                RaftSidebarSectionHeader(
+                                    title = stringResource(Res.string.thread_members_external), count = participants.size,
+                                    expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
+                                    countSeparator = " · ",
+                                )
+                            }
+                            if (externalExpanded) items(participants.size, key = { "external:${participants[it].id}" }) { index ->
+                                val member = participants[index]
+                                // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
+                                // reads it), so the lime/cyan boundary moves on its minute tick.
+                                val now = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
+                                val handlesLine = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" }
+                                ChannelMembersRow(
+                                    title = member.displayName,
+                                    subtitle = handlesLine,
+                                    avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
+                                    avatarKind = RaftAvatarKind.Labeled,
+                                    cacheSubject = null, cacheServerId = null,
+                                    statusColor = member.lastSeenAt?.let { seen ->
+                                        if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
+                                    },
+                                    badges = listOfNotNull(
+                                        member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
+                                    ),
+                                    divider = index > 0,
+                                    // A long press copies the handle line as shown ("@a", "@a · @b").
+                                    subtitleCopyText = handlesLine,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1272,6 +1285,19 @@ internal fun ThreadMembersPageContent(
     }
     }
 }
+
+/**
+ * A roster section's heading: Humans / Agents, or a joint channel's "Members of {server}" /
+ * "Other servers" (web ViewerServerGroups.tsx `useGroupLabel`).
+ */
+@Composable
+private fun threadMembersRosterGroupTitle(group: ThreadMembersRosterGroup, viewerServerName: String): String =
+    when (group) {
+        ThreadMembersRosterGroup.Humans -> stringResource(Res.string.thread_members_humans)
+        ThreadMembersRosterGroup.Agents -> stringResource(Res.string.thread_members_agents)
+        ThreadMembersRosterGroup.ViewerServer -> stringResource(Res.string.channel_members_group_viewer_server, viewerServerName)
+        ThreadMembersRosterGroup.OtherServers -> stringResource(Res.string.channel_members_group_other_servers)
+    }
 
 @Composable
 private fun ThreadRemoveMemberConfirmationDialog(
@@ -1344,6 +1370,12 @@ internal fun ThreadMembersPagerRow(
     onRemove: (RaftThreadMemberItem) -> Unit,
     roleChanging: Boolean = false,
     onRoleAction: (RaftThreadMemberItem) -> Unit = {},
+    /**
+     * A roster grouped by the viewed server ([threadMembersGroupsByViewerServer]): a person's
+     * "Also in …" is spoken as "{name} is also a member of {servers}" (web `JointServerBadges`
+     * `sourceOf`, given to people's rows only).
+     */
+    alsoInSpokenAsSentence: Boolean = false,
 ) {
     // web `ChannelMemberRow` / `AgentActivityInfo`: an App Bot has no presence (it would read
     // "Offline" forever); the Bot badge follows its name instead.
@@ -1385,9 +1417,22 @@ internal fun ThreadMembersPagerRow(
     // server who is also in another reads "Also in Raft, Acme Corp" in the same quiet text (web
     // #14731 JointServerBadges, agents too; it was a blue chip).
     val originNames = raftOriginServerNames(member.originServers)
-    val alsoInNames =
-        member.alsoInServerLabels.filter { it.isNotBlank() }.takeIf { originNames.isEmpty() && it.isNotEmpty() }?.joinToString(", ")
-    val alsoIn = alsoInNames?.let { stringResource(Res.string.channel_members_also_in, it) }
+    val alsoInLabels =
+        member.alsoInServerLabels.filter { it.isNotBlank() }.takeIf { originNames.isEmpty() && it.isNotEmpty() }
+    val alsoIn = alsoInLabels?.let { stringResource(Res.string.channel_members_also_in, it.joinToString(", ")) }
+    // Web #12853 `JointServerBadges` `sourceOf`: the short text is hidden from screen readers and
+    // the sentence, the servers as a list ("Alpha and Charlie"), is spoken in its place. The web
+    // also shows the sentence as a hover tooltip, which touch has no equivalent for.
+    val alsoInSentence =
+        if (alsoInLabels != null && alsoInSpokenAsSentence && !member.kind.equals("agent", ignoreCase = true)) {
+            stringResource(
+                Res.string.channel_members_also_in_sentence,
+                member.displayName.ifBlank { member.handle },
+                jointMemberConnectNames(alsoInLabels),
+            )
+        } else {
+            null
+        }
     ChannelMembersRow(
         title = member.displayName,
         subtitle = readinessCopy?.title ?: subtitle,
@@ -1455,7 +1500,7 @@ internal fun ThreadMembersPagerRow(
                 {
                     appBot?.let { bot -> RaftAppBotBadge(identity = bot, botName = member.displayName) }
                     if (originNames.isNotEmpty()) ChannelMemberOriginServerNames(originNames)
-                    alsoIn?.let { ChannelMemberOriginServerNames(it, testTag = ChannelMemberAlsoInTestTag) }
+                    alsoIn?.let { ChannelMemberOriginServerNames(it, testTag = ChannelMemberAlsoInTestTag, spokenText = alsoInSentence) }
                 }
             },
         avatarOriginServers = member.originServers,
@@ -1619,7 +1664,8 @@ internal fun MemberProfile.toRaftThreadMemberItem(
         // A Guest label is a fact of the viewed server only (web `rosterRoleTag`).
         effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole,
         originServers = if (origin.external) origin.servers else emptyList(),
-        alsoInServerLabels = if (origin.external) emptyList() else memberServerBadgeLabels(this, viewerServerId)
+        alsoInServerLabels = if (origin.external) emptyList() else memberServerBadgeLabels(this, viewerServerId),
+        inViewerServer = inViewerServer
     )
 }
 
