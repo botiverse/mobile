@@ -2008,6 +2008,7 @@ class SharedServerMembersStore internal constructor(
         serverId: ServerId,
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: kotlin.time.ComparableTimeMark? = null,
     ): DataResult<Unit> {
         val key = serverId.value.normalizedServerMembersId()
             ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
@@ -2032,6 +2033,7 @@ class SharedServerMembersStore internal constructor(
                 priority = DataRequestPriority.Background,
                 reason = reason,
                 coalesceFreshWithin = coalesceFreshWithin,
+                notStartedBefore = notStartedBefore,
             )
         val agents =
             (loadResult.result as? DataResult.Content)?.data ?: run {

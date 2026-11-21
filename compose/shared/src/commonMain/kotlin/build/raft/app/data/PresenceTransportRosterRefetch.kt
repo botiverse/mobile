@@ -5,7 +5,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 /**
  * The members-roster half of a presence transport connect, after the provider moved the presence
@@ -53,11 +55,12 @@ internal class PresenceTransportRosterRefetch(
     /** Sync-on reconnect: re-read the server's machine list (online status), once per refetch. */
     private val refreshMachines: suspend (serverId: String) -> Unit = {},
     /** Optional coalescing-aware machine refresh hook; falls back to [refreshMachines] when unset. */
-    private val refreshMachinesWithCoalesce: (suspend (serverId: String, coalesceFreshWithin: Duration) -> Unit)? = null,
+    private val refreshMachinesWithCoalesce: (suspend (serverId: String, coalesceFreshWithin: Duration, notStartedBefore: ComparableTimeMark?) -> Unit)? = null,
     private val logger: (String) -> Unit = {},
     private val warnLogger: (String) -> Unit = {},
     /** Where a failed refetch's one retry waits and runs; null runs it inline (tests). */
     private val retryScope: CoroutineScope? = null,
+    private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
 ) {
     suspend fun onTransportRebaselined(
         owner: ProcessServerMembersOwner,
@@ -66,6 +69,10 @@ internal class PresenceTransportRosterRefetch(
         /** Decided once at this connect, with the pull: incremental sync covers the server's lists. */
         agentsOnlyOnReconnect: Boolean = false,
     ): RaftReconnectRefetchDecision {
+        // Record the connect boundary before scheduling or running any refill: only reads that
+        // STARTED at or after this connect may satisfy or be joined by this reconnect's refetch
+        // (never a read started before a disconnect).
+        val connectedAt = timeSource.markNow()
         // Sync off: retire the roster before the decision, as always (a delayed refetch may run at 0 ms).
         if (!agentsOnlyOnReconnect) invalidate(owner, REASON)
         val decision =
@@ -79,16 +86,17 @@ internal class PresenceTransportRosterRefetch(
                     rebaselineResult = rebaselineResult,
                     agentsOnly = agentsOnlyOnReconnect,
                     coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                    notStartedBefore = connectedAt,
                 )
             }
         if (decision == RaftReconnectRefetchDecision.Immediate) {
             // Sync on, first connect: the full forced refetch, so retire what the old transport read.
             if (agentsOnlyOnReconnect) invalidate(owner, REASON)
-            refetch(owner, transport, rebaselineResult, agentsOnly = false)
+            refetch(owner, transport, rebaselineResult, agentsOnly = false, notStartedBefore = connectedAt)
         } else if (decision == RaftReconnectRefetchDecision.ImmediateAfterSwitch) {
             // The user is looking at this server: no jitter, but a reconnect's scope (sync on: agents
             // and machines only, the roster stays valid; sync off: the invalidate above + full refetch).
-            refetch(owner, transport, rebaselineResult, agentsOnly = agentsOnlyOnReconnect)
+            refetch(owner, transport, rebaselineResult, agentsOnly = agentsOnlyOnReconnect, notStartedBefore = connectedAt)
         } else if (agentsOnlyOnReconnect) {
             logger(
                 "presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} " +
@@ -117,6 +125,7 @@ internal class PresenceTransportRosterRefetch(
         rebaselineResult: ProcessPresenceTransportRebaselineResult,
         agentsOnly: Boolean,
         coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: ComparableTimeMark? = null,
     ) {
         if (!isCurrentOwner(owner)) {
             logger("presence_transport_rebaseline serverId=${owner.serverId} epoch=${transport.epoch} result=owner_retired")
@@ -133,7 +142,7 @@ internal class PresenceTransportRosterRefetch(
                     try {
                         val coalescedMachines = refreshMachinesWithCoalesce
                         if (coalescedMachines != null) {
-                            coalescedMachines(owner.serverId, coalesceFreshWithin)
+                            coalescedMachines(owner.serverId, coalesceFreshWithin, notStartedBefore)
                         } else {
                             refreshMachines(owner.serverId)
                         }
@@ -153,6 +162,7 @@ internal class PresenceTransportRosterRefetch(
                                     serverId = ServerId(owner.serverId),
                                     reason = REASON,
                                     coalesceFreshWithin = coalesceFreshWithin,
+                                    notStartedBefore = notStartedBefore,
                                 )
                             } else {
                                 // Roster refill first, then peer-server agents of joint channels (not on

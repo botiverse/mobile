@@ -961,12 +961,14 @@ internal class RaftSharedStoreProvider private constructor(
         serverId: String,
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: kotlin.time.ComparableTimeMark? = null,
     ) {
         val outcome =
             machinesSyncRefreshCoalescer.runOrCoalesce(
                 serverId = serverId,
                 reason = reason,
                 coalesceFreshWithin = coalesceFreshWithin,
+                notStartedBefore = notStartedBefore,
             ) {
                 val stores = syncComputersStores(serverId)
                 var allSucceeded = true
@@ -1485,11 +1487,12 @@ internal class RaftSharedStoreProvider private constructor(
             storesForServer = ::serverMembersStoresShowing,
             isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
             refreshMachines = { serverId -> refreshMachinesForSync(serverId, reason = PresenceTransportRosterRefetch.REASON) },
-            refreshMachinesWithCoalesce = { serverId, coalesceFreshWithin ->
+            refreshMachinesWithCoalesce = { serverId, coalesceFreshWithin, notStartedBefore ->
                 refreshMachinesForSync(
                     serverId = serverId,
                     reason = PresenceTransportRosterRefetch.REASON,
                     coalesceFreshWithin = coalesceFreshWithin,
+                    notStartedBefore = notStartedBefore,
                 )
             },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),

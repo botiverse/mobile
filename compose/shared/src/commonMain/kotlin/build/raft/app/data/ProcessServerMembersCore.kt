@@ -10,10 +10,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.TimeMark
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal data class ProcessServerMembersOwner(
@@ -98,7 +99,7 @@ internal class ProcessServerMembersCore(
     private val maxEntries: Int = 16,
     private val logger: (String) -> Unit = {},
     private val staleForcedFlightAge: Duration = StaleForcedFlightAge,
-    private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
 ) {
     init {
         require(maxEntries > 0)
@@ -122,23 +123,38 @@ internal class ProcessServerMembersCore(
      * for the same owner & generation succeeded within that window (e.g. a foreground reconcile
      * followed seconds later by a jittered reconnect refetch), returns that fresh result without
      * issuing a duplicate `/agents` HTTP read (`startedByCaller = false` so live pushes still win).
+     *
+     * When [notStartedBefore] is given (e.g. a transport reconnect timestamp), only an in-flight or
+     * recently completed read that STARTED at or after [notStartedBefore] may be joined or reused;
+     * an earlier in-flight read is detached and superseded so state changes during a disconnect are
+     * never masked by a pre-connect read.
      */
     suspend fun loadAgents(
         owner: ProcessServerMembersOwner,
         priority: DataRequestPriority,
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: ComparableTimeMark? = null,
     ): ProcessServerAgentsLoadResult {
         val decision =
             mutex.withLock {
-                agentFlights[owner]?.let { active ->
-                    logger("process_agents_flight result=join ${owner.diagnosticsKey} reason=$reason")
-                    return@withLock AgentsLoadDecision.Flight(active, started = false)
+                val active = agentFlights[owner]
+                if (active != null) {
+                    if (notStartedBefore == null || active.startedAt >= notStartedBefore) {
+                        logger("process_agents_flight result=join ${owner.diagnosticsKey} reason=$reason")
+                        return@withLock AgentsLoadDecision.Flight(active, started = false)
+                    }
+                    agentFlights.remove(owner)
+                    agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
+                    logger("process_agents_flight result=replace_pre_boundary ${owner.diagnosticsKey} reason=$reason")
                 }
                 val generation = agentsGeneration(owner)
                 if (coalesceFreshWithin > Duration.ZERO) {
                     recentAgents[owner]?.let { cached ->
-                        if (cached.generation == generation) {
+                        if (
+                            cached.generation == generation &&
+                            (notStartedBefore == null || cached.startedAt >= notStartedBefore)
+                        ) {
                             val age = cached.completedAt.elapsedNow()
                             if (age <= coalesceFreshWithin) {
                                 logger(
@@ -158,6 +174,7 @@ internal class ProcessServerMembersCore(
                     }
                 }
                 val token = Any()
+                val startedAt = timeSource.markNow()
                 val deferred =
                     scope.async(start = CoroutineStart.LAZY) {
                         try {
@@ -182,6 +199,7 @@ internal class ProcessServerMembersCore(
                                             RecentAgentsEntry(
                                                 result = fetched,
                                                 generation = generation,
+                                                startedAt = startedAt,
                                                 completedAt = timeSource.markNow(),
                                             )
                                         while (recentAgents.size > maxEntries) {
@@ -195,7 +213,7 @@ internal class ProcessServerMembersCore(
                             mutex.withLock { if (agentFlights[owner]?.token === token) agentFlights.remove(owner) }
                         }
                     }
-                val flight = AgentsFlight(token, deferred)
+                val flight = AgentsFlight(token = token, startedAt = startedAt, result = deferred)
                 agentFlights[owner] = flight
                 logger("process_agents_flight result=start ${owner.diagnosticsKey} reason=$reason")
                 AgentsLoadDecision.Flight(flight, started = true)
@@ -370,11 +388,9 @@ internal class ProcessServerMembersCore(
 
     suspend fun invalidateRecentAgents(owner: ProcessServerMembersOwner, reason: String) {
         mutex.withLock {
-            val hadFlight = agentFlights.remove(owner) != null
+            agentFlights.remove(owner)
             recentAgents.remove(owner)
-            if (hadFlight) {
-                agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
-            }
+            agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
             logger("process_agents_invalidate ${owner.diagnosticsKey} reason=$reason")
         }
     }
@@ -544,13 +560,15 @@ internal class ProcessServerMembersCore(
 
     private class AgentsFlight(
         val token: Any,
+        val startedAt: ComparableTimeMark,
         val result: Deferred<ProcessServerAgentsLoadResult>
     )
 
     private data class RecentAgentsEntry(
         val result: DataResult.Content<List<MemberProfile>>,
         val generation: ProcessServerMembersGeneration,
-        val completedAt: TimeMark,
+        val startedAt: ComparableTimeMark,
+        val completedAt: ComparableTimeMark,
     )
 
     private sealed interface AgentsLoadDecision {

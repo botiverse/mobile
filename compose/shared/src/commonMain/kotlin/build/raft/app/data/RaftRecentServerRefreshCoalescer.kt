@@ -9,9 +9,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 /**
@@ -33,7 +33,7 @@ internal val RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW: Duration = 25.seconds
 internal class RaftRecentServerRefreshCoalescer(
     private val scope: CoroutineScope,
     private val maxEntries: Int = 16,
-    private val timeSource: TimeSource = TimeSource.Monotonic,
+    private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
     private val logger: (String) -> Unit = {},
 ) {
     init {
@@ -53,12 +53,14 @@ internal class RaftRecentServerRefreshCoalescer(
 
     private class Flight(
         val token: Any,
+        val startedAt: ComparableTimeMark,
         val deferred: Deferred<Result<Boolean>>,
     )
 
     private data class CompletedEntry(
         val generation: Generation,
-        val completedAt: TimeMark,
+        val startedAt: ComparableTimeMark,
+        val completedAt: ComparableTimeMark,
     )
 
     private val mutex = Mutex()
@@ -71,25 +73,41 @@ internal class RaftRecentServerRefreshCoalescer(
      * Runs [block] or coalesces it against an active/recent refresh for [serverId].
      * [block] returns `true` when the refresh succeeded and may satisfy coalescing callers within
      * [coalesceFreshWithin], or `false` when it failed/skipped and must not be cached as fresh.
+     *
+     * When [notStartedBefore] is given (e.g. a transport reconnect timestamp), only an in-flight or
+     * recently completed refresh that STARTED at or after [notStartedBefore] may satisfy this call;
+     * any earlier in-flight refresh is detached so a post-connect refill starts fresh instead of
+     * inheriting pre-disconnect state.
      */
     suspend fun runOrCoalesce(
         serverId: String,
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: ComparableTimeMark? = null,
         block: suspend () -> Boolean,
     ): Outcome {
         val key = serverId.trim()
         if (key.isEmpty()) return Outcome.FreshCoalesced
         val decision =
             mutex.withLock {
-                activeFlights[key]?.let { existing ->
-                    logger("sync_machines_coalesce serverId=$key result=join reason=$reason")
-                    return@withLock Decision.Join(existing)
+                val active = activeFlights[key]
+                if (active != null) {
+                    if (notStartedBefore == null || active.startedAt >= notStartedBefore) {
+                        logger("sync_machines_coalesce serverId=$key result=join reason=$reason")
+                        return@withLock Decision.Join(active)
+                    }
+                    activeFlights.remove(key)
+                    serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
+                    logger("sync_machines_coalesce serverId=$key result=replace_pre_boundary reason=$reason")
                 }
                 if (coalesceFreshWithin > Duration.ZERO) {
                     val last = completed[key]
                     val currentGen = generationLocked(key)
-                    if (last != null && last.generation == currentGen) {
+                    if (
+                        last != null &&
+                        last.generation == currentGen &&
+                        (notStartedBefore == null || last.startedAt >= notStartedBefore)
+                    ) {
                         val age = last.completedAt.elapsedNow()
                         if (age <= coalesceFreshWithin) {
                             logger(
@@ -102,6 +120,7 @@ internal class RaftRecentServerRefreshCoalescer(
                 }
                 val token = Any()
                 val gen = generationLocked(key)
+                val startedAt = timeSource.markNow()
                 val deferred =
                     scope.async(start = CoroutineStart.LAZY) {
                         var succeeded = false
@@ -121,7 +140,12 @@ internal class RaftRecentServerRefreshCoalescer(
                                     }
                                     if (succeeded && generationLocked(key) == gen) {
                                         completed.remove(key)
-                                        completed[key] = CompletedEntry(generation = gen, completedAt = timeSource.markNow())
+                                        completed[key] =
+                                            CompletedEntry(
+                                                generation = gen,
+                                                startedAt = startedAt,
+                                                completedAt = timeSource.markNow(),
+                                            )
                                         while (completed.size > maxEntries) {
                                             completed.remove(completed.keys.first())
                                         }
@@ -130,7 +154,7 @@ internal class RaftRecentServerRefreshCoalescer(
                             }
                         }
                     }
-                val flight = Flight(token = token, deferred = deferred)
+                val flight = Flight(token = token, startedAt = startedAt, deferred = deferred)
                 activeFlights[key] = flight
                 Decision.Start(flight)
             }
@@ -152,13 +176,11 @@ internal class RaftRecentServerRefreshCoalescer(
         val key = serverId.trim()
         if (key.isEmpty()) return
         mutex.withLock {
-            val hadActiveFlight = activeFlights.remove(key) != null
+            activeFlights.remove(key)
             completed.remove(key)
-            if (hadActiveFlight) {
-                serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
-            } else {
-                serverGenerations.remove(key)
-            }
+            // Keep per-server generations strictly monotonic so an orphaned in-flight read can
+            // never match a generation that wrapped back to 0 across a second invalidate.
+            serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
         }
     }
 
