@@ -63,6 +63,8 @@ internal class ThreadAppLinkCardActionHost(
     val toast: (String) -> Unit,
     /** [toast] with the tone Raft gives an operation's state (web `showToast`); plain where none is wired. */
     val toastWithIntent: (String, RaftToastIntent?) -> Unit = { text, _ -> toast(text) },
+    /** Failed action toast carrying this response's `X-Trace-Id` when present; plain where none is wired. */
+    val errorToast: (String, String?) -> Unit = { text, _ -> toast(text) },
     /** `POST /link-cards/status` for an operation; null where it is not wired (no following). */
     val status: (suspend (operationId: String) -> AppLinkOperationStatus)? = null,
     /** This server's `link_card.operation_changed` hints (RFC 076 §6.8); null: none followed. */
@@ -427,7 +429,7 @@ internal class ThreadAppLinkCardPress(
     }
 
     private suspend fun failure(host: ThreadAppLinkCardActionHost, failed: AppLinkActionResult.Failed) {
-        host.toast(failed.message ?: failedText)
+        host.errorToast(failed.message ?: failedText, failed.traceId)
         if (failed.outOfDate) host.reread(card.url)
     }
 

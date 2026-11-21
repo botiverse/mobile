@@ -73,6 +73,7 @@ internal data class RaftActionCardFrameState(
     val readOnly: Boolean = false,
     val busyElementKey: String? = null,
     val error: String? = null,
+    val errorTraceId: String? = null,
     val runsOnServerName: String? = null,
     val endedLine: String? = null,
     /**
@@ -254,6 +255,7 @@ internal fun RaftActionCardView(
             footer?.invoke()
             state.error?.takeIf { it.isNotBlank() }?.let { error ->
                 RaftBanner(description = error, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(state.errorTraceId)
             }
         }
     }

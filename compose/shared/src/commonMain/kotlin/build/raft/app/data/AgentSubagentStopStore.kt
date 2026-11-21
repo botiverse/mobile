@@ -37,7 +37,16 @@ internal fun DataResult<AgentSubagentStopOutcome>.toAgentSubagentStopFeedback():
                 else -> AgentSubagentStopFeedback.Failed(error)
             }
         is DataResult.Empty -> AgentSubagentStopFeedback.Failed(null)
-        is DataResult.NoPermission -> AgentSubagentStopFeedback.Failed(null)
+        is DataResult.NoPermission ->
+            AgentSubagentStopFeedback.Failed(
+                ScreenError(
+                    code = blocker.code,
+                    retryable = false,
+                    serverMessage = blocker.serverMessage,
+                    serverCode = blocker.serverCode,
+                    traceId = blocker.traceId,
+                )
+            )
     }
 
 internal data class AgentSubagentStopState(
@@ -87,7 +96,7 @@ internal class AgentSubagentStopStore(
                     mutableState.value = mutableState.value.copy(inFlightTaskId = null)
                     throw cancellation
                 } catch (_: Throwable) {
-                    DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError))
+                    DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
                 }
             mutableState.value =
                 mutableState.value.copy(

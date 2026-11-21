@@ -188,7 +188,7 @@ internal fun TaskConversationHeaderState.reduce(intent: TaskConversationHeaderIn
     }
 
 internal sealed interface TaskConversationHeaderEvent {
-    data class FollowFailed(val follow: Boolean, val code: String) : TaskConversationHeaderEvent
+    data class FollowFailed(val follow: Boolean, val code: String, val traceId: String? = null) : TaskConversationHeaderEvent
 }
 
 /**
@@ -259,7 +259,7 @@ internal class TaskConversationHeaderViewModel(
                     dispatch(TaskConversationHeaderIntent.FollowSettled(next, accepted = false))
                     throw cancellation
                 } catch (_: Throwable) {
-                    DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true))
+                    DataResult.Error(ScreenError(code = "task_conversation_follow_network", retryable = true, traceId = null))
                 }
             val accepted = result is DataResult.Content || result is DataResult.Empty
             log(
@@ -268,7 +268,13 @@ internal class TaskConversationHeaderViewModel(
             )
             dispatch(TaskConversationHeaderIntent.FollowSettled(next, accepted))
             if (!accepted) {
-                effects.emit(TaskConversationHeaderEvent.FollowFailed(next, result.failureCodeOrNull() ?: "task_conversation_follow_failed"))
+                effects.emit(
+                    TaskConversationHeaderEvent.FollowFailed(
+                        follow = next,
+                        code = result.failureCodeOrNull() ?: "task_conversation_follow_failed",
+                        traceId = result.failureTraceIdOrNull(),
+                    )
+                )
             }
         }
     }
@@ -314,7 +320,7 @@ internal class TaskConversationHeaderViewModel(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                DataResult.Error(ScreenError(code = "task_conversation_follow_refetch_network", retryable = true))
+                DataResult.Error(ScreenError(code = "task_conversation_follow_refetch_network", retryable = true, traceId = null))
             }
         val followed = (result as? DataResult.Content)?.data?.takeIf { it.id == ref.taskId }?.conversationFollowed
         log(

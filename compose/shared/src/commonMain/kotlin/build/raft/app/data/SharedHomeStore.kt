@@ -166,6 +166,7 @@ internal class SharedHomeStore(
      * tests keep compiling.
      */
     private var pinUpdateFailureCallback: (String) -> Unit = {},
+    private var pinUpdateFailureWithTraceCallback: ((String, String?) -> Unit)? = null,
     /**
      * A `conversation-read-all` ack, as the read-state push the server also sends. The process host
      * hands it to the Activity stores and invalidates the Activity unread summary, so the Activity
@@ -378,6 +379,7 @@ internal class SharedHomeStore(
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
         pinUpdateFailureCallback: (String) -> Unit = {},
+        pinUpdateFailureWithTraceCallback: ((String, String?) -> Unit)? = null,
         onConversationReadAllAcknowledged: (accountId: String, event: PerReceiverReadStateChanged) -> Unit =
             this.onConversationReadAllAcknowledged,
         onChannelLeft: (ChannelId) -> Unit = this.onChannelLeft
@@ -406,6 +408,7 @@ internal class SharedHomeStore(
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
         this.readStateV1Canary = readStateV1Canary
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
+        this.pinUpdateFailureWithTraceCallback = pinUpdateFailureWithTraceCallback
         this.onConversationReadAllAcknowledged = onConversationReadAllAcknowledged
         this.onChannelLeft = onChannelLeft
         diagnosticsLogger("home_runtime_integrations_updated")
@@ -3548,16 +3551,20 @@ internal class SharedHomeStore(
             }
     }
 
+    private fun notifyPinUpdateFailure(message: String, traceId: String? = null) {
+        pinUpdateFailureWithTraceCallback?.invoke(message, traceId) ?: pinUpdateFailureCallback(message)
+    }
+
     private suspend fun togglePinned(intent: SharedHomeIntent.TogglePinned) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val serverId = current?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("Unable to update pinned channels: home not loaded")
+            notifyPinUpdateFailure("Unable to update pinned channels: home not loaded")
             return
         }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to update pinned channels: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to update pinned channels: sidebar order not loaded")
             return
         }
         val target = current.snapshot.pinnedToggleTarget(intent)
@@ -3601,12 +3608,12 @@ internal class SharedHomeStore(
                     reloadSidebarOrderAfterConflict(serverId)
                 } else {
                     applySidebarOrderLocally(serverId = serverId, next = previous)
-                    pinUpdateFailureCallback("Unable to update pinned channels")
+                    notifyPinUpdateFailure("Unable to update pinned channels", result.error.traceId)
                 }
             }
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
-                pinUpdateFailureCallback("Unable to update pinned channels")
+                notifyPinUpdateFailure("Unable to update pinned channels", result.blocker.traceId)
             }
         }
     }
@@ -3614,12 +3621,12 @@ internal class SharedHomeStore(
     private suspend fun setPinnedSortMode(mode: RaftSidebarSortMode) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("Unable to update pinned sort mode: home not loaded")
+            notifyPinUpdateFailure("Unable to update pinned sort mode: home not loaded")
             return
         }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to update pinned sort mode: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to update pinned sort mode: sidebar order not loaded")
             return
         }
         if (previous.pinnedSortMode == mode.wireValue) return
@@ -3635,7 +3642,7 @@ internal class SharedHomeStore(
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
-                pinUpdateFailureCallback("Unable to update pinned sort mode")
+                notifyPinUpdateFailure("Unable to update pinned sort mode", result.failureTraceIdOrNull())
             }
         }
     }
@@ -3643,13 +3650,13 @@ internal class SharedHomeStore(
     private suspend fun reorderSidebar(intent: SharedHomeIntent.ReorderSidebar) {
         val current = _state.value.content as? SharedHomeContentState.Content
         if (current == null) {
-            pinUpdateFailureCallback("Unable to reorder sidebar: home not loaded")
+            notifyPinUpdateFailure("Unable to reorder sidebar: home not loaded")
             return
         }
         val serverId = current.snapshot.server.id
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to reorder sidebar: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to reorder sidebar: sidebar order not loaded")
             return
         }
         // The External section's channels (web useSidebarDnd `isSidebarExternalSectionChannel`,
@@ -3749,7 +3756,7 @@ internal class SharedHomeStore(
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
-                pinUpdateFailureCallback("Unable to reorder sidebar")
+                notifyPinUpdateFailure("Unable to reorder sidebar", result.failureTraceIdOrNull())
             }
         }
     }
@@ -3757,7 +3764,7 @@ internal class SharedHomeStore(
     private suspend fun reorderServers(serverOrder: List<String>) {
         val previousSession = _state.value.content.sessionOrNull()
         if (previousSession == null) {
-            pinUpdateFailureCallback("Unable to reorder servers: home not loaded")
+            notifyPinUpdateFailure("Unable to reorder servers: home not loaded")
             return
         }
         val optimisticSession = previousSession.withServerOrder(serverOrder)
@@ -3783,7 +3790,7 @@ internal class SharedHomeStore(
             is DataResult.NoPermission -> {
                 applyHomeSessionLocally(previousSession)
                 diagnosticsLogger("home_server_order_patch_result result=error")
-                pinUpdateFailureCallback("Unable to reorder servers")
+                notifyPinUpdateFailure("Unable to reorder servers", result.failureTraceIdOrNull())
             }
         }
     }
@@ -3791,12 +3798,12 @@ internal class SharedHomeStore(
     private suspend fun setChannelSortMode(mode: RaftSidebarSortMode) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("Unable to update channel sort mode: home not loaded")
+            notifyPinUpdateFailure("Unable to update channel sort mode: home not loaded")
             return
         }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to update channel sort mode: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to update channel sort mode: sidebar order not loaded")
             return
         }
         if (previous.channelSortMode == mode.wireValue) return
@@ -3808,7 +3815,7 @@ internal class SharedHomeStore(
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
-                pinUpdateFailureCallback("Unable to update channel sort mode")
+                notifyPinUpdateFailure("Unable to update channel sort mode", result.failureTraceIdOrNull())
             }
         }
     }
@@ -3816,12 +3823,12 @@ internal class SharedHomeStore(
     private suspend fun setJointChannelSortMode(mode: RaftSidebarSortMode) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("Unable to update joint channel sort mode: home not loaded")
+            notifyPinUpdateFailure("Unable to update joint channel sort mode: home not loaded")
             return
         }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to update joint channel sort mode: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to update joint channel sort mode: sidebar order not loaded")
             return
         }
         if (previous.jointChannelSortMode == mode.wireValue) return
@@ -3836,7 +3843,7 @@ internal class SharedHomeStore(
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 applySidebarOrderLocally(serverId = serverId, next = previous)
-                pinUpdateFailureCallback("Unable to update joint channel sort mode")
+                notifyPinUpdateFailure("Unable to update joint channel sort mode", result.failureTraceIdOrNull())
             }
         }
     }
@@ -3870,13 +3877,13 @@ internal class SharedHomeStore(
         val content = _state.value.content as? SharedHomeContentState.Content
         val serverId = content?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("$failureMessage: home not loaded")
+            notifyPinUpdateFailure("$failureMessage: home not loaded")
             return
         }
         sidebarSectionsMutex.withLock {
             val previous = ensureSidebarOrderLoaded()
             if (previous == null) {
-                pinUpdateFailureCallback("$failureMessage: sidebar order not loaded")
+                notifyPinUpdateFailure("$failureMessage: sidebar order not loaded")
                 return@withLock
             }
             val next = mutate(previous) ?: return@withLock
@@ -3900,12 +3907,12 @@ internal class SharedHomeStore(
                         reloadSidebarOrderAfterConflict(serverId)
                     } else {
                         applySidebarOrderLocally(serverId = serverId, next = previous)
-                        pinUpdateFailureCallback(failureMessage)
+                        notifyPinUpdateFailure(failureMessage, result.error.traceId)
                     }
                 }
                 is DataResult.NoPermission -> {
                     applySidebarOrderLocally(serverId = serverId, next = previous)
-                    pinUpdateFailureCallback(failureMessage)
+                    notifyPinUpdateFailure(failureMessage, result.blocker.traceId)
                 }
             }
         }
@@ -3997,7 +4004,7 @@ internal class SharedHomeStore(
     private suspend fun moveConversationToSection(conversationId: String, sectionId: String?) {
         val snapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
         if (snapshot == null) {
-            pinUpdateFailureCallback("Unable to move conversation to section: home not loaded")
+            notifyPinUpdateFailure("Unable to move conversation to section: home not loaded")
             return
         }
         mutateSidebarSections("Unable to move conversation to section") { previous ->
@@ -4011,7 +4018,7 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to mark conversation read: home not loaded")
+            notifyPinUpdateFailure("Unable to mark conversation read: home not loaded")
             return
         }
         // A mention-only row (count 0, web `mentionFlags`) is still worth a read: it clears the @.
@@ -4034,13 +4041,13 @@ internal class SharedHomeStore(
         val previous = current
         val channelId = target.messageStreamChannelId()
         applyHomeSnapshotLocally { it.withConversationUnread(conversationId, 0) }
-        when (markChannelReadAll(channelId)) {
+        when (val result = markChannelReadAll(channelId)) {
             is DataResult.Content,
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 rollbackHomeContent(previous)
-                pinUpdateFailureCallback("Unable to mark conversation read")
+                notifyPinUpdateFailure("Unable to mark conversation read", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4153,7 +4160,7 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to mark conversation read: home not loaded")
+            notifyPinUpdateFailure("Unable to mark conversation read: home not loaded")
             return
         }
         val channelId = target.messageStreamChannelId()
@@ -4199,7 +4206,7 @@ internal class SharedHomeStore(
                 if (now != null && now.snapshot.server.id == serverId && now.snapshot.currentMember.id.value == accountId) {
                     applyHomeSnapshotLocally { it.withConversationReadAllRestored(cleared) }
                 }
-                pinUpdateFailureCallback("Unable to mark conversation read")
+                notifyPinUpdateFailure("Unable to mark conversation read", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4263,7 +4270,7 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to mark conversation unread: home not loaded")
+            notifyPinUpdateFailure("Unable to mark conversation unread: home not loaded")
             return
         }
         val previous = current
@@ -4295,7 +4302,7 @@ internal class SharedHomeStore(
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 rollbackHomeContent(previous)
-                pinUpdateFailureCallback("Unable to mark conversation unread")
+                notifyPinUpdateFailure("Unable to mark conversation unread", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4303,12 +4310,12 @@ internal class SharedHomeStore(
     private suspend fun closeDirectMessage(conversationId: String) {
         val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
         if (serverId == null) {
-            pinUpdateFailureCallback("Unable to close chat: home not loaded")
+            notifyPinUpdateFailure("Unable to close chat: home not loaded")
             return
         }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
-            pinUpdateFailureCallback("Unable to close chat: sidebar order not loaded")
+            notifyPinUpdateFailure("Unable to close chat: sidebar order not loaded")
             return
         }
         if (conversationId in previous.hiddenDmIds) return
@@ -4325,7 +4332,7 @@ internal class SharedHomeStore(
             is DataResult.NoPermission -> {
                 reduceState(previousState)
                 sidebarOrderByServer[serverId] = previous
-                pinUpdateFailureCallback("Unable to close chat")
+                notifyPinUpdateFailure("Unable to close chat", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4368,7 +4375,7 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to archive channel: home not loaded")
+            notifyPinUpdateFailure("Unable to archive channel: home not loaded")
             return
         }
         val channelId = target.messageStreamChannelId()
@@ -4378,13 +4385,13 @@ internal class SharedHomeStore(
         if (_state.value.selectedConversationId == conversationId) {
             reduceState(_state.value.copy(selectedConversationId = null))
         }
-        when (archiveChannel(channelId)) {
+        when (val result = archiveChannel(channelId)) {
             is DataResult.Content,
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 reduceState(previousState)
-                pinUpdateFailureCallback("Unable to archive channel")
+                notifyPinUpdateFailure("Unable to archive channel", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4399,7 +4406,7 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId) as? HomeChannelRow
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to leave channel: home not loaded")
+            notifyPinUpdateFailure("Unable to leave channel: home not loaded")
             return
         }
         val channelId = target.messageStreamChannelId()
@@ -4412,13 +4419,13 @@ internal class SharedHomeStore(
         if (!keepsListed && _state.value.selectedConversationId == conversationId) {
             reduceState(_state.value.copy(selectedConversationId = null))
         }
-        when (leaveChannel(channelId)) {
+        when (val result = leaveChannel(channelId)) {
             is DataResult.Content,
             is DataResult.Empty -> onChannelLeft(channelId)
             is DataResult.Error,
             is DataResult.NoPermission -> {
                 reduceState(previousState)
-                pinUpdateFailureCallback("Unable to leave channel")
+                notifyPinUpdateFailure("Unable to leave channel", result.failureTraceIdOrNull())
             }
         }
     }
@@ -4427,13 +4434,13 @@ internal class SharedHomeStore(
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
         if (current == null || target == null) {
-            pinUpdateFailureCallback("Unable to update channel notifications: home not loaded")
+            notifyPinUpdateFailure("Unable to update channel notifications: home not loaded")
             return
         }
         // A muted conversation can always be unmuted, even once mute is no longer offered for it
         // (an App bot DM after the bot was removed), so a mute can never get stuck.
         if (!target.activityMuteSupported && !(target.activityMuted && !muted)) {
-            pinUpdateFailureCallback("Unable to update channel notifications")
+            notifyPinUpdateFailure("Unable to update channel notifications")
             return
         }
         if (target.activityMuted == muted) return
@@ -4465,7 +4472,7 @@ internal class SharedHomeStore(
                         // version is not durable authority. Drop the transient
                         // prediction instead of bypassing the shared gate.
                         applyChannelActivityMuteLocally(previousSettings)
-                        pinUpdateFailureCallback("Unable to update channel notifications")
+                        notifyPinUpdateFailure("Unable to update channel notifications")
                     }
                 } else {
                     val activeRequest = channelActivityMuteRequests[channelId]
@@ -4504,7 +4511,7 @@ internal class SharedHomeStore(
                 if (channelActivityMuteRequests[channelId] == request) {
                     channelActivityMuteRequests.remove(channelId)
                     applyChannelActivityMuteLocally(previousSettings)
-                    pinUpdateFailureCallback("Unable to update channel notifications")
+                    notifyPinUpdateFailure("Unable to update channel notifications")
                 }
             }
             is DataResult.Error,
@@ -4512,7 +4519,7 @@ internal class SharedHomeStore(
                 if (channelActivityMuteRequests[channelId] == request) {
                     channelActivityMuteRequests.remove(channelId)
                     applyChannelActivityMuteLocally(previousSettings)
-                    pinUpdateFailureCallback("Unable to update channel notifications")
+                    notifyPinUpdateFailure("Unable to update channel notifications", result.failureTraceIdOrNull())
                 }
             }
         }
@@ -4948,6 +4955,7 @@ class SharedHomeViewModel(
         DataResult.Empty(EmptyReason.NoChannels)
     },
     pinUpdateFailureCallback: (String) -> Unit = {},
+    pinUpdateFailureWithTraceCallback: ((String, String?) -> Unit)? = null,
     persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList()
 ) : ViewModel() {
     private val storeDelegate =
@@ -4963,6 +4971,7 @@ class SharedHomeViewModel(
                 markChannelUnread = markChannelUnread,
                 archiveChannel = archiveChannel,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
+                pinUpdateFailureWithTraceCallback = pinUpdateFailureWithTraceCallback,
                 persistSlices = persistSlices
             )
         }

@@ -103,6 +103,7 @@ internal sealed interface ChannelSettingsEffect {
         val action: ChannelSettingsAction,
         val code: String,
         val serverMessage: String? = null,
+        val traceId: String? = null,
     ) : ChannelSettingsEffect
     data class Updated(val action: ChannelSettingsAction) : ChannelSettingsEffect
     data object ProfileSaved : ChannelSettingsEffect
@@ -305,6 +306,8 @@ internal data class ChannelSettingsState(
     val profileErrorCode: String? = null,
     /** The server's reason for [profileErrorCode] where the form shows it (a failed Unarchive from the warning). */
     val profileErrorMessage: String? = null,
+    /** Server trace id of the failed profile save or archived-collision unarchive request. */
+    val profileErrorTraceId: String? = null,
     /**
      * Web EditChannelDialog `archivedCollision` (slock #12614): the rename was refused because an
      * archived channel the user can see holds the name; the form names it with Unarchive / Open Channel.
@@ -718,6 +721,7 @@ internal class ChannelSettingsStore(
                         profileStatus = ChannelProfileUpdateStatus.Idle,
                         profileErrorCode = null,
                         profileErrorMessage = null,
+                        profileErrorTraceId = null,
                     )
             ChannelSettingsIntent.ClearArchivedCollision ->
                 if (mutableState.value.profileCollision != null && !mutableState.value.collisionUnarchiving) {
@@ -932,6 +936,7 @@ internal class ChannelSettingsStore(
                 profileStatus = ChannelProfileUpdateStatus.InFlight,
                 profileErrorCode = null,
                 profileErrorMessage = null,
+                profileErrorTraceId = null,
                 // Web `saveChanges`: a new Save drops the last warning.
                 profileCollision = null,
                 effect = null,
@@ -983,6 +988,7 @@ internal class ChannelSettingsStore(
                 profileStatus = ChannelProfileUpdateStatus.Idle,
                 profileErrorCode = null,
                 profileErrorMessage = null,
+                profileErrorTraceId = null,
             )
         val requestGeneration = actionGeneration
         scope.launch {
@@ -1015,6 +1021,7 @@ internal class ChannelSettingsStore(
                             profileStatus = ChannelProfileUpdateStatus.Failed,
                             profileErrorCode = CHANNEL_SETTINGS_ARCHIVED_UNARCHIVE_FAILED,
                             profileErrorMessage = reason?.takeIf(String::isNotBlank),
+                            profileErrorTraceId = result.failureTraceIdOrNull(),
                         )
                     }
                 }
@@ -1118,6 +1125,7 @@ internal class ChannelSettingsStore(
                         actionInFlight = null,
                         profileStatus = ChannelProfileUpdateStatus.Succeeded,
                         profileErrorCode = null,
+                        profileErrorTraceId = null,
                         effect = ChannelSettingsEffect.ProfileSaved,
                     )
                 }
@@ -1254,8 +1262,9 @@ internal class ChannelSettingsStore(
                         mutableState.value.profileStatus
                     },
                 profileErrorCode = code.takeIf { action == ChannelSettingsAction.Profile },
+                profileErrorTraceId = if (action == ChannelSettingsAction.Profile) traceId else mutableState.value.profileErrorTraceId,
                 profileCollision = collision ?: mutableState.value.profileCollision,
-                effect = ChannelSettingsEffect.Failure(action, code, serverMessage),
+                effect = ChannelSettingsEffect.Failure(action, code, serverMessage, traceId),
             )
         // The profile part was confirmed (only the Slack Bridge step failed): it writes through.
         if (saved != null) writeThroughStored(ChannelSettingsAction.Profile, mutableState.value)
@@ -1290,7 +1299,7 @@ private suspend fun <T> runDataSourceCall(call: suspend () -> DataResult<T>): Da
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: Throwable) {
-        DataResult.Error(ScreenError(code = "channel_settings_network", retryable = true))
+        DataResult.Error(ScreenError(code = "channel_settings_network", retryable = true, traceId = null))
     }
 
 private fun DataResult<build.raft.app.data.ChannelMemberSnapshot>.toChannelSettingsMemberSlice(

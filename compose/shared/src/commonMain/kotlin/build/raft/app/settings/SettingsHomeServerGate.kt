@@ -482,7 +482,7 @@ internal fun AppShellServerGateContent(
             textAlign = TextAlign.Center
         )
         AuthFormColumn {
-            AuthError(errorMessage)
+            AuthError(errorMessage, traceId = errorPresentation?.traceId)
             if (showPinnedSignOut) {
                 AuthActionButton(
                     text = stringResource(Res.string.auth_action_sign_out),
@@ -727,7 +727,7 @@ internal fun serverGateActionFailureMessage(target: String, failure: SharedAuthR
 
 /** The client's localized copy when it has one ([SharedAuthResult.Failure.display]), else the server's words. */
 internal fun SharedAuthResult.Failure.authGateMessage(): AuthGateMessage =
-    display?.let { AuthGateMessage.Static(it) } ?: AuthGateMessage.Dynamic(message)
+    display?.let { AuthGateMessage.Static(it, traceId = traceId) } ?: AuthGateMessage.Dynamic(message, traceId = traceId)
 
 // Web parity: ServerSelector.tsx `toSlug` — lowercase, then every character
 // outside [a-z0-9-] becomes "-" (no collapsing, no trimming). The create form
@@ -950,7 +950,7 @@ internal fun AppShellEmailVerificationGateContent(
                     detail = it
                 )
             }
-            AuthError(errorMessage)
+            AuthError(errorMessage, traceId = errorPresentation?.traceId)
             AuthActionButton(
                 text = stringResource(Res.string.auth_action_resend_verification),
                 onClick = {

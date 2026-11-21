@@ -55,6 +55,7 @@ final class RaftIosOAuthRouteStore: ObservableObject {
             case "login_error":
                 self.replaceWithLoginError(
                     result.message ?? RaftHostStrings.shared.signInFailed(),
+                    traceId: result.traceId,
                     shellInstanceId: shellInstanceId
                 )
             case "settings_account":
@@ -70,8 +71,9 @@ final class RaftIosOAuthRouteStore: ObservableObject {
                     shellInstanceId: shellInstanceId
                 )
                 if let message = result.message, !message.isEmpty {
+                    let noticeTraceId = result.traceId
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        RaftIosMobileOAuthHost.shared.presentNotice(message)
+                        RaftIosMobileOAuthHost.shared.presentNotice(message, traceId: noticeTraceId)
                     }
                 }
             case "ignored", "retry":
@@ -79,26 +81,35 @@ final class RaftIosOAuthRouteStore: ObservableObject {
             default:
                 self.replaceWithLoginError(
                     RaftHostStrings.shared.signInFailed(),
+                    traceId: result.traceId,
                     shellInstanceId: shellInstanceId
                 )
             }
         }
     }
 
-    func showLoginError(_ message: String) {
+    func showLoginError(_ message: String, traceId: String? = nil) {
         runOnMain { [weak self] in
-            self?.replaceWithLoginError(message)
+            self?.replaceWithLoginError(message, traceId: traceId)
         }
     }
 
-    private func replaceWithLoginError(_ message: String, shellInstanceId: String? = nil) {
+    private func replaceWithLoginError(
+        _ message: String,
+        traceId: String? = nil,
+        shellInstanceId: String? = nil
+    ) {
+        var pageData: [String: Any] = [
+            "pageName": raftIosOAuthLoginPage,
+            "slockAuthMessage": message,
+            "slockReplaceCurrentPage": true,
+        ]
+        if let validTraceId = RaftHostStrings.shared.validTraceIdOrNull(traceId: traceId) {
+            pageData["slockAuthTraceId"] = validTraceId
+        }
         replace(
             pageName: raftIosOAuthLoginPage,
-            pageData: [
-                "pageName": raftIosOAuthLoginPage,
-                "slockAuthMessage": message,
-                "slockReplaceCurrentPage": true,
-            ],
+            pageData: pageData,
             shellInstanceId: shellInstanceId
         )
     }
@@ -246,7 +257,8 @@ final class RaftIosMobileOAuthHost: NSObject,
                         else {
                             completion(self.startError(
                                 code: result.errorCode ?? "ios_native_apple_start_failed",
-                                message: result.message ?? "Mobile sign-in could not be started."
+                                message: result.message ?? "Mobile sign-in could not be started.",
+                                traceId: result.traceId
                             ))
                             return
                         }
@@ -291,7 +303,8 @@ final class RaftIosMobileOAuthHost: NSObject,
                         completion(self.startError(
                             code: result.errorCode ?? "ios_mobile_oauth_start_failed",
                             message: result.message ?? "Mobile sign-in could not be started.",
-                            stepUpMethods: result.stepUpMethods
+                            stepUpMethods: result.stepUpMethods,
+                            traceId: result.traceId
                         ))
                         return
                     }
@@ -561,12 +574,19 @@ final class RaftIosMobileOAuthHost: NSObject,
         )
     }
 
-    func presentNotice(_ message: String) {
+    func presentNotice(_ message: String, traceId: String? = nil) {
         runOnMain {
             guard let controller = Self.topViewController(), controller.presentedViewController == nil else {
                 return
             }
-            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            let validTraceId = RaftHostStrings.shared.validTraceIdOrNull(traceId: traceId)
+            let formattedMessage = RaftHostStrings.shared.errorWithTraceId(message: message, traceId: validTraceId)
+            let alert = UIAlertController(title: nil, message: formattedMessage, preferredStyle: .alert)
+            if let validTraceId {
+                alert.addAction(UIAlertAction(title: RaftHostStrings.shared.traceIdCopyAction(), style: .default) { _ in
+                    UIPasteboard.general.string = validTraceId
+                })
+            }
             alert.addAction(UIAlertAction(title: RaftHostStrings.shared.ok(), style: .default))
             controller.present(alert, animated: true)
         }
@@ -878,10 +898,21 @@ final class RaftIosMobileOAuthHost: NSObject,
         return ["raft", "raft-alpha", "raft-beta", "raft-debug"].contains(scheme) ? scheme : nil
     }
 
-    private func startError(code: String, message: String, stepUpMethods: String? = nil) -> NSDictionary {
-        guard let stepUpMethods else { return ["status": "error", "code": code, "message": message] }
+    private func startError(
+        code: String,
+        message: String,
+        stepUpMethods: String? = nil,
+        traceId: String? = nil
+    ) -> NSDictionary {
+        var payload: [String: Any] = ["status": "error", "code": code, "message": message]
         // `second_factor_step_up_required`: shared settings reads the methods for "Verify it's you".
-        return ["status": "error", "code": code, "message": message, "methods": stepUpMethods]
+        if let stepUpMethods {
+            payload["methods"] = stepUpMethods
+        }
+        if let validTraceId = RaftHostStrings.shared.validTraceIdOrNull(traceId: traceId) {
+            payload["traceId"] = validTraceId
+        }
+        return payload as NSDictionary
     }
 
     /// The window to present sign-in over: the requesting page's window while its scene is in the

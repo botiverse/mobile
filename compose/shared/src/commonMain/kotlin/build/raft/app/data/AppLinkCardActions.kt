@@ -65,9 +65,15 @@ sealed interface AppLinkActionResult<out T> {
 
     /**
      * Refused or failed: [message] is the server's own words (it never carries the App's), [outOfDate]
-     * for 410 (the card or its confirmation is stale: read it again), [code] the server's code.
+     * for 410 (the card or its confirmation is stale: read it again), [code] the server's code,
+     * [traceId] this failed response's `X-Trace-Id` (null for local/unanswered failures).
      */
-    data class Failed(val message: String?, val code: String?, val outOfDate: Boolean) : AppLinkActionResult<Nothing>
+    data class Failed(
+        val message: String?,
+        val code: String?,
+        val outOfDate: Boolean,
+        val traceId: String? = null,
+    ) : AppLinkActionResult<Nothing>
 }
 
 /**
@@ -129,10 +135,15 @@ private val AppLinkTerminalStates = setOf("done", "refused", "failed_not_sent", 
 /** A `client_request_id` (16-128 of `A-Za-z0-9._~:-`) for one press: the same id repeats the same intent. */
 internal fun appLinkClientRequestId(random: String): String = "mobile-$random".take(128)
 
-internal fun parseAppLinkPrepareAnswer(status: Int, bodyText: String?): AppLinkActionResult<AppLinkPrepared> {
+internal fun parseAppLinkPrepareAnswer(
+    status: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): AppLinkActionResult<AppLinkPrepared> {
+    val responseTraceId = if (status == 0) null else traceId
     val obj = answerObject(bodyText)
-    if (status !in 200..299) return failed(status, obj)
-    val unreadable = AppLinkActionResult.Failed(null, null, outOfDate = false)
+    if (status !in 200..299) return failed(status, obj, responseTraceId)
+    val unreadable = AppLinkActionResult.Failed(null, null, outOfDate = false, traceId = responseTraceId)
     if (obj == null) return unreadable
     val description = obj["description"] as? JsonObject ?: return unreadable
     val id = obj.string("prepared_action_id") ?: return unreadable
@@ -152,10 +163,15 @@ internal fun parseAppLinkPrepareAnswer(status: Int, bodyText: String?): AppLinkA
     )
 }
 
-internal fun parseAppLinkExecuteAnswer(status: Int, bodyText: String?): AppLinkActionResult<AppLinkExecuted> {
+internal fun parseAppLinkExecuteAnswer(
+    status: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): AppLinkActionResult<AppLinkExecuted> {
+    val responseTraceId = if (status == 0) null else traceId
     val obj = answerObject(bodyText)
-    if (status !in 200..299) return failed(status, obj)
-    val unreadable = AppLinkActionResult.Failed(null, null, outOfDate = false)
+    if (status !in 200..299) return failed(status, obj, responseTraceId)
+    val unreadable = AppLinkActionResult.Failed(null, null, outOfDate = false, traceId = responseTraceId)
     if (obj == null) return unreadable
     val operation = obj.string("operation_id") ?: return unreadable
     val state = obj.string("state") ?: return unreadable
@@ -164,8 +180,8 @@ internal fun parseAppLinkExecuteAnswer(status: Int, bodyText: String?): AppLinkA
     return AppLinkActionResult.Ok(AppLinkExecuted(operation, state, toast?.string("text"), toast?.string("tone"), appToast))
 }
 
-private fun failed(status: Int, obj: JsonObject?): AppLinkActionResult.Failed =
-    AppLinkActionResult.Failed(obj?.string("error"), obj?.string("code"), outOfDate = status == 410)
+private fun failed(status: Int, obj: JsonObject?, traceId: String?): AppLinkActionResult.Failed =
+    AppLinkActionResult.Failed(obj?.string("error"), obj?.string("code"), outOfDate = status == 410, traceId = traceId)
 
 private fun answerObject(bodyText: String?): JsonObject? =
     bodyText?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() } as? JsonObject

@@ -2914,6 +2914,7 @@ internal class RaftSharedStoreProvider private constructor(
             DataResult.Empty(EmptyReason.NoChannels)
         },
         pinUpdateFailureCallback: (String) -> Unit = {},
+        pinUpdateFailureWithTraceCallback: ((String, String?) -> Unit)? = null,
         diagnosticsLogger: (String) -> Unit = {}
     ): SharedHomeStore {
         homeStores.get(scope)?.let { store ->
@@ -2934,6 +2935,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
+                pinUpdateFailureWithTraceCallback = pinUpdateFailureWithTraceCallback,
                 onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
                 onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) }
             )
@@ -2964,6 +2966,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
+                pinUpdateFailureWithTraceCallback = pinUpdateFailureWithTraceCallback,
                 onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
                 onChannelLeft = { channelId -> publishChannelAccessLost(scope, channelId) },
                 selectedConversationSeen = { raftHostShowsContent(scope.shellInstanceId) },

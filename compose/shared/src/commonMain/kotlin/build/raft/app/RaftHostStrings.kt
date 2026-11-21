@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import build.raft.app.data.AppLocale
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.network.raftValidTraceIdOrNull
 import org.jetbrains.compose.resources.StringResource
 
 internal fun appUpdateDetailStringDesc(
@@ -111,6 +112,18 @@ object RaftHostStrings {
 
     fun shareOpenFailed(): String = resolve(Res.string.share_open_failed)
 
+    /** Appends the localized short `X-Trace-Id` line when [traceId] is valid, for native host notices/toasts. */
+    fun errorWithTraceId(message: String, traceId: String?): String =
+        raftFormatHostErrorWithTraceId(message, traceId) { shortId ->
+            resolve(Res.string.error_trace_id_value.format(listOf(shortId)))
+        }
+
+    /** Normalized 32-char lowercase trace ID for clipboard copy in native host alerts, or null when invalid. */
+    fun validTraceIdOrNull(traceId: String?): String? = raftValidTraceIdOrNull(traceId)
+
+    /** Button label to copy a trace ID in native host alerts (avoid Objective-C `copy*` ARC method-family mangling). */
+    fun traceIdCopyAction(): String = resolve(Res.string.error_trace_id_copy)
+
     private fun resolve(resource: StringResource): String {
         return resolve(StringDesc.Resource(resource))
     }
@@ -123,4 +136,15 @@ object RaftHostStrings {
     private fun applyRuntimeLocale() {
         KmmResourceLocaleRuntime.locale.value?.let { StringDesc.localeType = it.stringDescLocaleType }
     }
+}
+
+/** Pure formatter backing [RaftHostStrings.errorWithTraceId], unit-testable without platform resource loading. */
+internal fun raftFormatHostErrorWithTraceId(
+    message: String,
+    traceId: String?,
+    formatTraceLine: (shortId: String) -> String,
+): String {
+    val valid = raftValidTraceIdOrNull(traceId) ?: return message
+    val line = formatTraceLine(raftShortTraceId(valid))
+    return if (message.isBlank()) line else "$message\n$line"
 }

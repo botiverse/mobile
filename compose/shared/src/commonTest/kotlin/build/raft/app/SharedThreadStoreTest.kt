@@ -28,6 +28,7 @@ import build.raft.app.model.MessageType
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
+import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -36,8 +37,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 
 class SharedThreadStoreTest {
@@ -47,7 +53,8 @@ class SharedThreadStoreTest {
         var newerBodyText: String = messagesResponse("newer body", id = "newer", seq = 100, historyLimited = false),
         var newerResponseCode: Int = 200,
         var failChannelMessages: Boolean = false,
-        var channelMessagesResponseCode: Int = 200
+        var channelMessagesResponseCode: Int = 200,
+        var channelMessagesResponseHeaders: Map<String, List<String>> = emptyMap(),
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
@@ -123,7 +130,12 @@ class SharedThreadStoreTest {
                     releaseAfterMessages?.await()
                     HomeNetworkResponse(code = newerResponseCode, bodyText = newerBodyText)
                 }
-                else -> HomeNetworkResponse(code = channelMessagesResponseCode, bodyText = responseBody)
+                else ->
+                    HomeNetworkResponse(
+                        code = channelMessagesResponseCode,
+                        bodyText = responseBody,
+                        responseHeaders = channelMessagesResponseHeaders,
+                    )
             }
         }
 
@@ -751,5 +763,72 @@ class SharedThreadStoreTest {
         )
         assertEquals(MemberKind.External, cachedMessage.author.kind)
         assertEquals("Alice in Slack", cachedMessage.externalAuthor?.displayName)
+    }
+
+    @Test
+    fun refreshFailureTraceIdIsClearedByUnansweredFailureAndSubsequentRecovery() = runTest {
+        val firstTrace = "11111111111111111111111111111111"
+        val secondTrace = "22222222222222222222222222222222"
+        val unrelatedTrace = "33333333333333333333333333333333"
+        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
+        val api =
+            FakeThreadApi(
+                bodyText = """{"error":"server_busy"}""",
+                channelMessagesResponseCode = 500,
+                channelMessagesResponseHeaders = mapOf("X-Trace-Id" to listOf(firstTrace)),
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                storeScope = backgroundScope,
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            )
+        val initialPayload = basePayload().copy(sourceThreadId = "channel-1", streamChannelId = "channel-1")
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource,
+                scope = scope,
+                initialPayload = initialPayload,
+            )
+        try {
+            store.dispatch(SharedThreadIntent.Start(initialPayload))
+            advanceUntilIdle()
+            assertEquals("error", store.state.value.payload.status)
+            assertEquals(firstTrace, store.state.value.payload.errorTraceId)
+
+            // Subsequent unanswered failure (status 0 / thrown network error) must clear the old trace ID
+            // and never borrow an unrelated failed request's trace ID from the recent recorder.
+            RaftFailedRequestTraceIds.recordResponse(503, mapOf("X-Trace-Id" to listOf(unrelatedTrace)))
+            api.channelMessagesResponseCode = 0
+            api.channelMessagesResponseHeaders = emptyMap()
+            api.failChannelMessages = true
+            store.dispatch(SharedThreadIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals("error", store.state.value.payload.status)
+            assertNull(
+                store.state.value.payload.errorTraceId,
+                "unanswered refresh failure must clear earlier errorTraceId rather than keeping or borrowing one"
+            )
+
+            // Another server 503 sets its own trace ID, then a successful reload clears it.
+            api.failChannelMessages = false
+            api.channelMessagesResponseCode = 503
+            api.channelMessagesResponseHeaders = mapOf("X-Trace-Id" to listOf(secondTrace))
+            store.dispatch(SharedThreadIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals(secondTrace, store.state.value.payload.errorTraceId)
+
+            api.channelMessagesResponseCode = 200
+            api.channelMessagesResponseHeaders = emptyMap()
+            api.bodyText = messagesResponse("recovered body")
+            store.dispatch(SharedThreadIntent.Refresh)
+            advanceUntilIdle()
+            assertEquals("content", store.state.value.payload.status)
+            assertNull(store.state.value.payload.errorTraceId, "successful recovery must clear errorTraceId")
+        } finally {
+            RaftFailedRequestTraceIds.clear()
+            scope.cancel()
+        }
     }
 }

@@ -283,6 +283,8 @@ internal class TaskPendingPageController(
         private set
     var errorText by mutableStateOf<String?>(null)
         private set
+    var errorTraceId by mutableStateOf<String?>(null)
+        private set
 
     fun draft(serverId: String?, taskId: String): String = drafts.draft(serverId, taskId)
 
@@ -300,6 +302,7 @@ internal class TaskPendingPageController(
         if (task.taskOpenSurface(taskV2Enabled) != null) return false
         handingOff = true
         errorText = null
+        errorTraceId = null
         return true
     }
 
@@ -323,6 +326,7 @@ internal class TaskPendingPageController(
         val randomId = drafts.randomId(serverId, taskId, newRandomId)
         sending = true
         errorText = null
+        errorTraceId = null
         try {
             val started = startTaskConversation(task, ServerId(serverId), text, tasksDataSource, randomId, sendMessage)
             if (currentServerId() != serverId) {
@@ -336,6 +340,7 @@ internal class TaskPendingPageController(
                 }
                 is TaskConversationStart.Failed -> {
                     errorText = started.serverMessage ?: fallbackError
+                    errorTraceId = started.traceId
                     null
                 }
             }
@@ -559,8 +564,8 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
         channelTasks?.uiEvents?.collect { event ->
             if (event is SharedTasksEvent.OperationFailed) {
                 when {
-                    event.code.startsWith("tasks_status") -> bridge.toast(updateTaskFailedLabel)
-                    event.code.startsWith("tasks_assign") -> bridge.toast(updateAssigneeFailedLabel)
+                    event.code.startsWith("tasks_status") -> bridge.errorToast(updateTaskFailedLabel, event.traceId)
+                    event.code.startsWith("tasks_assign") -> bridge.errorToast(updateAssigneeFailedLabel, event.traceId)
                 }
             }
         }
@@ -799,6 +804,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             statusUpdating = channelTasksState?.statusUpdatingTaskId == liveTask.id.value,
             sending = controller.sending || controller.handingOff,
             errorText = controller.errorText,
+            errorTraceId = controller.errorTraceId,
             joined = access.joined,
             draft = controller.draft(resolvedServerId, liveTask.id.value),
             onDraftChange = { controller.onDraftChange(resolvedServerId, liveTask.id.value, it) },
