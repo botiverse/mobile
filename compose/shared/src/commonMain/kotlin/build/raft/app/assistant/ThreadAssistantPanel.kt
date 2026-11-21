@@ -327,7 +327,12 @@ internal fun ThreadAssistantPanelSheet(
             modifier = Modifier.testTag(ThreadAssistantPanelSheetTestTag),
             clearNavigationBar = false,
             visible = otter.panelShown,
-            onHidden = { drawerShown = false },
+            onHidden = {
+                // Release window coverage in the same snapshot as unmounting the drawer so the
+                // root banner host re-appears on the exact frame the Dialog leaves composition.
+                coversPageChange(false)
+                drawerShown = false
+            },
             overlay = windowOverlay,
             state = drawerState,
             fill = RaftDrawerFill.Canvas,
