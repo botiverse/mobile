@@ -62,6 +62,30 @@ internal fun MemberProfile.toFixtureRaftAgentStatusIndicatorState(
         external = isExternal
     )
 
+/**
+ * Observed status from `GET /api/agents/:id` (`status` / `activity`) for a cross-server
+ * joint-channel agent ([MemberDetailAccessMode.RemoteProfileOnly]) when no live status is
+ * bound. Returns null when the server gives no runtime status (for example `status="active"`
+ * with no `activity`, or a failed profile read), so the hero renders no chip rather than an
+ * empty "—" placeholder.
+ */
+internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
+    summaryStatus: String?,
+    summaryActivity: String?,
+    external: Boolean = false
+): RaftAgentStatusIndicatorState? {
+    val status =
+        normalizedAgentRuntimeStatus(
+            activity = summaryActivity,
+            lifecycleStatus = summaryStatus
+        ) ?: return null
+    return raftAgentStatusIndicatorState(
+        status = status,
+        presence = status.presence,
+        external = external
+    )
+}
+
 internal val MemberProfile.detailHandle: String
     get() = handle.takeIf { it.isNotBlank() }?.let { if (it.startsWith("@")) it else "@$it" } ?: id.value
 
