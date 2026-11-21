@@ -53,8 +53,8 @@ val LocalRaftPageCoverSignal = staticCompositionLocalOf<RaftPageCoverSignal?> { 
  * While composed, calls the latest [onDismissRequest] when the page it is on is about to be
  * covered by a pushed page ([RaftPageCoverSignal]). Put it in every window-layer overlay (dialogs,
  * menus, popovers, tooltips) beside [build.raft.designsystem.gesture.RaftBlockBackSwipe] and
- * [build.raft.designsystem.focus.RaftAutofocusGuard.HoldOpenSurface], composed only while the
- * overlay is shown.
+ * its window's [build.raft.designsystem.focus.RaftAutofocusGuard.HoldOpenSurface]
+ * ([build.raft.designsystem.focus.LocalRaftAutofocusGuard]), composed only while the overlay is shown.
  */
 @Composable
 fun RaftDismissOnPageCover(onDismissRequest: () -> Unit) {

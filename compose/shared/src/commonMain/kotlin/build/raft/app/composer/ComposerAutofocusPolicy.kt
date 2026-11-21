@@ -200,7 +200,9 @@ internal val LocalComposerFocusHolders = staticCompositionLocalOf { ComposerFocu
  * One app window's focus bookkeeping: its own autofocus guard and composer focus holders, so a
  * dialog, a focused field or a focused composer in one window never decides automatic focus in
  * another (Android's app windows, one per server). Put it at the window's root, around every page
- * the window shows; popups and dialogs inside inherit it.
+ * the window shows; popups and dialogs inside inherit it. Android's app windows have it
+ * (RaftCmpActivity); iOS (one scene) and the desktop app (one main window) still share the app-wide
+ * defaults, so a second desktop window or iOS scene needs it at its root too.
  */
 @Composable
 fun RaftWindowFocusScope(content: @Composable () -> Unit) {
