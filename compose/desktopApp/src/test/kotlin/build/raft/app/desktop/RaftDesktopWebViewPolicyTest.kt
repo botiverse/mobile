@@ -112,6 +112,22 @@ class RaftDesktopWebViewPolicyTest {
         assertTrue(script.indexOf("slock_access_token") > guardAt)
         // No host bridge when host events are off.
         assertFalse("raftHostPort" in script)
+
+        // Unlocked Settings surfaces (allowNavigation = true, mainFrameOrigin = null) also guard
+        // injectedJavaScript to the configured web origin so external redirects never run it.
+        val unlockedSettingsScript =
+            RaftDesktopWebViewPolicy(
+                url = "$web/s/srv/settings/billing?embed=raft-settings-v1&shell=host",
+                allowNavigation = true,
+                allowedNavigationSchemes = setOf("http", "https"),
+                mainFrameOrigin = null,
+                hostEventsEnabled = false,
+                injectedJavaScript = "localStorage.setItem('slock_access_token', 't');",
+                channelSecret = "secret-2",
+            ).documentStartScript()
+        val unlockedGuardAt = unlockedSettingsScript.indexOf(guard)
+        assertTrue(unlockedGuardAt >= 0, unlockedSettingsScript)
+        assertTrue(unlockedSettingsScript.indexOf("slock_access_token") > unlockedGuardAt)
     }
 
     @Test fun `host messages need the WebView's secret and host events`() {

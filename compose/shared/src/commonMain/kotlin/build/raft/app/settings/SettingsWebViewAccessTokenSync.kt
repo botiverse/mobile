@@ -249,6 +249,8 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     visible: Boolean = true,
     /** A token reached the shown document (pushed into it). */
     onAccessTokenDispatched: (String) -> Unit = {},
+    /** Origin the WebView is trusted to write `slock_access_token` into (null keeps legacy unguarded JS for callers already locked at the host). */
+    webOrigin: String? = null,
 ) {
     val session = snapshot.session ?: return
     val activeBinding = binding ?: return
@@ -271,18 +273,28 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
         onDispose { fence.detach() }
     }
 
+    val currentWebOrigin by rememberUpdatedState(webOrigin)
+
     fun dispatch(update: SettingsWebViewAccessTokenUpdate) {
-        val dispatched =
-            controller.evaluateJavaScript(
-                settingsWebViewRuntimeAccessTokenJavaScript(
-                    accessToken = update.accessToken,
-                    accountId = update.accountId,
-                    serverId = update.serverId,
-                    sessionGeneration = update.sessionGeneration,
-                    webViewGeneration = update.webViewGeneration,
-                    sequence = update.sequence,
-                )
+        val script =
+            settingsWebViewRuntimeAccessTokenJavaScript(
+                accessToken = update.accessToken,
+                accountId = update.accountId,
+                serverId = update.serverId,
+                sessionGeneration = update.sessionGeneration,
+                webViewGeneration = update.webViewGeneration,
+                sequence = update.sequence,
+                webOrigin = currentWebOrigin,
             )
+        if (script.isEmpty()) {
+            fence.onDispatchFailed(update)
+            logger(
+                "settings_webview_access_token_sync surface=${surface.diagnosticsName} " +
+                    "generation=${update.authMutationGeneration} result=blocked_origin"
+            )
+            return
+        }
+        val dispatched = controller.evaluateJavaScript(script)
         if (!dispatched) fence.onDispatchFailed(update) else onAccessTokenDispatched(update.accessToken)
         logger(
             "settings_webview_access_token_sync surface=${surface.diagnosticsName} " +
