@@ -1396,6 +1396,8 @@
     <string name="activity_list_unread_count_description">%1$d nuevos</string>
     <string name="activity_list_draft_description">El hilo tiene un borrador sin enviar</string>
     <string name="activity_list_marked_done">Marcado como hecho</string>
+    <string name="activity_row_mark_row_done">Marcar %1$s como hecho</string>
+    <string name="activity_row_mark_thread_done">Marcar el hilo en %1$s como hecho</string>
     <string name="activity_list_day_today">Hoy</string>
     <string name="activity_list_day_yesterday">Ayer</string>
     <string name="activity_list_day_date">%1$s, %3$d de %2$s</string>

@@ -1394,6 +1394,8 @@
     <string name="activity_list_unread_count_description">%1$d 条新消息</string>
     <string name="activity_list_draft_description">消息列有未发送的草稿</string>
     <string name="activity_list_marked_done">已标记为完成</string>
+    <string name="activity_row_mark_row_done">将 %1$s 标记为完成</string>
+    <string name="activity_row_mark_thread_done">将 %1$s 中的消息列标记为完成</string>
     <string name="activity_list_day_today">今天</string>
     <string name="activity_list_day_yesterday">昨天</string>
     <string name="activity_list_day_date">%2$s%3$d日%1$s</string>

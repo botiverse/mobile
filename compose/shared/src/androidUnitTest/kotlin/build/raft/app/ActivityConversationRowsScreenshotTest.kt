@@ -25,6 +25,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
@@ -130,8 +131,9 @@ class ActivityConversationRowsScreenshotTest {
         }
 
     /**
-     * A mouse over the middle row (web ThreadsInbox `InboxItemActions reveal="hover"`): the cell hover fill
-     * and the outline Mark as Done button (Lucide Check) in place of its time and unread count.
+     * A mouse over the middle row (web InboxRowDone, `InboxItemActions reveal="hover"`): the cell hover fill
+     * and the ghost Mark as Done button (Lucide Check) at the row's end; its time and unread count move
+     * over by the button's width and 8dp and stay in view.
      */
     @Test
     fun activityRowsHoverDoneLight() =
@@ -532,7 +534,7 @@ private fun ActivityRowsHoverVisualContent(appearance: RaftAppAppearance) {
             base.copy(key = "channel:launch-2") to false,
         )
     val context = ActivityConversationListContext(channelSymbolsByChannelId = mapOf("launch-week" to "#", "release" to "#"))
-    RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
+    RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light, pointerInput = RaftPointerInput.Fine) {
         val layout = activityRowLayout
         // As SharedActivityList lays them out: 8dp above the first row, rows 2dp apart.
         Column(
@@ -554,7 +556,7 @@ private fun ActivityRowsHoverVisualContent(appearance: RaftAppAppearance) {
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
                     onSwipeDone = {},
-                    onHoverDone = {},
+                    onRowDone = {},
                     hoverPreview = hovered,
                 )
             }

@@ -744,6 +744,11 @@ private fun RaftButtonLabel(
  * - [onLongClick] is a second action on a long press (named [longClickLabel] for screen
  *   readers). The long press then belongs to the action: the tooltip opens only under a
  *   mouse or trackpad pointer.
+ * - [hitSize] widens its target, for every pointer, to that square around the button without
+ *   changing its layout or drawing (raft-ui's overhanging `::after`), such as the 44dp target of
+ *   a 32dp action that rests in a list row by touch (raft-ui InboxItem `pointer-coarse:after:-inset-1.5`).
+ *   It must sit above what it overhangs, and the space round it must stay free; null keeps the
+ *   size's own target.
  */
 @Composable
 fun RaftIconButton(
@@ -759,6 +764,7 @@ fun RaftIconButton(
     contentDescription: String? = tooltip,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
+    hitSize: Dp? = null,
     icon: @Composable () -> Unit,
 ) {
     val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
@@ -780,7 +786,7 @@ fun RaftIconButton(
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
         chipRadius = size.inline,
-        pointerHitSize = if (size.inline) RaftInlineIconButtonPointerHit else null,
+        pointerHitSize = hitSize ?: if (size.inline) RaftInlineIconButtonPointerHit else null,
         cornerRadius = size.radiusIn(controls, bar),
         icon = icon,
     )

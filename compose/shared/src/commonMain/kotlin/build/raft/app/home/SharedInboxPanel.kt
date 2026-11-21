@@ -2136,9 +2136,9 @@ internal fun SharedActivityList(
         swipeOpenRow = swipeOpenRow.close()
         runRowAction(currentItem, actionId)
     }
-    // The row's hover Done button (mouse / trackpad, web ThreadsInbox `InboxItemActions reveal="hover"`):
+    // The row's Done button (web InboxRowDone: on hover with a mouse or trackpad, at rest in the wide layout by touch):
     // the menu's Done, with the same Undo toast, as on the web.
-    fun hoverRowDone(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
+    fun rowDoneButton(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)
         swipeEndUndo = transition.state
@@ -2266,7 +2266,7 @@ internal fun SharedActivityList(
                                     onOpen = { openRow(item.key) },
                                     onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
                                     onSwipeDone = { swipeRowDone(item.key) },
-                                    onHoverDone = { hoverRowDone(item.key) },
+                                    onRowDone = { rowDoneButton(item.key) },
                                     swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                     onSwipeEnd = { swipeRowEnd(item.key) },
                                     onSwipeToggleRead = { swipeRowToggleRead(item.key) },

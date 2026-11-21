@@ -1396,6 +1396,8 @@
     <string name="activity_list_unread_count_description">Новых: %1$d</string>
     <string name="activity_list_draft_description">В ветке есть неотправленный черновик</string>
     <string name="activity_list_marked_done">Отмечено как обработанное</string>
+    <string name="activity_row_mark_row_done">Отметить как обработанное: %1$s</string>
+    <string name="activity_row_mark_thread_done">Отметить ветку в %1$s как обработанную</string>
     <string name="activity_list_day_today">Сегодня</string>
     <string name="activity_list_day_yesterday">Вчера</string>
     <string name="activity_list_day_date">%1$s, %3$d %2$s</string>
