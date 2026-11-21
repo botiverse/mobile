@@ -1059,34 +1059,6 @@ internal fun threadComposerImageAnnotationPayload(
     )
 }
 
-private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload(
-    kind: String,
-    title: String,
-    content: String = "",
-    imageUrl: String? = null,
-    message: String = "",
-    error: String? = null,
-    externalUrl: String? = null
-): RaftFilePreviewPayload =
-    RaftFilePreviewPayload(
-        kind = kind,
-        requestedKind = kind,
-        title = title,
-        subtitle = name.ifBlank { "Attachment" },
-        name = name.ifBlank { "Attachment" },
-        path = name,
-        meta = genericAttachmentMetaLine(),
-        content = content,
-        markdown = kind == "markdown",
-        imageUrl = imageUrl,
-        message = message,
-        messageDesc = null,
-        error = error,
-        externalUrl = externalUrl,
-        externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
-        externalMimeType = mimeType
-    )
-
 /** Renderer-facing URI; [PlatformFile.fileRef] remains the platform upload handle. */
 internal fun PlatformFile.composerLocalPreviewUri(): String? =
     previewUri?.takeIf { it.isNotBlank() }
