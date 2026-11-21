@@ -68,6 +68,7 @@ internal object AndroidPushRegistration {
 
     internal fun startSync(context: Context) {
         val appContext = context.applicationContext
+        var installed = false
         var registerFirebase = false
         try {
             val availability = RaftPlayServicesAvailability.fcmAvailability(appContext)
@@ -85,7 +86,7 @@ internal object AndroidPushRegistration {
             } else {
                 build.raft.app.shared.RaftNotificationPermissionReporter.report(appContext)
             }
-            val installed =
+            installed =
                 runCatching {
                     val candidateId = UUID.randomUUID().toString()
                     val installer = installBridgeForTests
@@ -119,13 +120,30 @@ internal object AndroidPushRegistration {
             }
             registerFirebase = true
         } finally {
-            val pendingFid =
+            try {
+                if (installed) {
+                    // Drain buffered FIDs while startInFlight stays true so a newer concurrent
+                    // onFirebaseInstallationId cannot overtake an older buffered FID.
+                    while (true) {
+                        val nextFid =
+                            synchronized(stateLock) {
+                                val buffered = pendingFirebaseInstallationId
+                                if (buffered == null) {
+                                    startInFlight = false
+                                    null
+                                } else {
+                                    pendingFirebaseInstallationId = null
+                                    buffered
+                                }
+                            } ?: break
+                        deliverFirebaseInstallationId(appContext, nextFid)
+                    }
+                }
+            } finally {
                 synchronized(stateLock) {
                     startInFlight = false
-                    pendingFirebaseInstallationId.also { pendingFirebaseInstallationId = null }
+                    pendingFirebaseInstallationId = null
                 }
-            if (pendingFid != null) {
-                onFirebaseInstallationId(appContext, pendingFid)
             }
         }
         if (!registerFirebase) return
@@ -162,6 +180,10 @@ internal object AndroidPushRegistration {
                 return
             }
         }
+        deliverFirebaseInstallationId(context, firebaseInstallationId)
+    }
+
+    private fun deliverFirebaseInstallationId(context: Context, firebaseInstallationId: String) {
         registrationSkippedReason?.let { skipped ->
             RaftAppLog.w(TAG, "fcm_installation_id_ignored reason=$skipped")
             return

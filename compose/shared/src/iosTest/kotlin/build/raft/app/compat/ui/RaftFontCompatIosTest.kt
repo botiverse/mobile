@@ -4,10 +4,13 @@ import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.PlatformFont
+import androidx.compose.ui.text.platform.SystemFont
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTextApi::class)
 class RaftFontCompatIosTest {
@@ -34,6 +37,9 @@ class RaftFontCompatIosTest {
         val third = KuiklyFont("SpaceGrotesk-Bold", FontWeight.Normal, FontStyle.Normal)
 
         assertEquals(1, lookups["space_grotesk_bold"])
+        assertFalse(first is SystemFont)
+        assertFalse(second is SystemFont)
+        assertFalse(third is SystemFont)
         assertEquals("SpaceGrotesk-Bold", (first as? PlatformFont)?.identity)
         assertEquals("SpaceGrotesk-Bold", (second as? PlatformFont)?.identity)
         assertEquals("SpaceGrotesk-Bold", (third as? PlatformFont)?.identity)
@@ -49,6 +55,7 @@ class RaftFontCompatIosTest {
 
         repeat(3) {
             val font = KuiklyFont("UnknownFace", FontWeight.Normal, FontStyle.Normal)
+            assertFalse(font is SystemFont)
             assertEquals("UnknownFace", (font as? PlatformFont)?.identity)
         }
 
@@ -66,6 +73,7 @@ class RaftFontCompatIosTest {
 
         repeat(3) {
             val font = KuiklyFont("MissingFace", FontWeight.Normal, FontStyle.Normal)
+            assertTrue(font is SystemFont)
             assertEquals("MissingFace", (font as? PlatformFont)?.identity)
         }
 

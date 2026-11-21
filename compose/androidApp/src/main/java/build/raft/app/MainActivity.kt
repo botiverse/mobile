@@ -81,9 +81,7 @@ class MainActivity : ComponentActivity() {
                 pendingExternalShareLookupJob =
                     lifecycleScope.launch {
                         val durablePending =
-                            withContext(Dispatchers.IO) {
-                                AndroidExternalShareProcessOwner.inbox(applicationContext).pendingLaunchOrNull()
-                            }
+                            AndroidExternalShareProcessOwner.awaitPendingLaunchOrNull(applicationContext)
                         if (isFinishing || isDestroyed) return@launch
                         if (durablePending == null) {
                             handleLaunchIntent(launchIntent)
@@ -145,6 +143,8 @@ class MainActivity : ComponentActivity() {
         generation: Long,
         result: AndroidExternalShareIntakeResult
     ) {
+        pendingExternalShareLookupJob?.cancel()
+        pendingExternalShareLookupJob = null
         when (result) {
             is AndroidExternalShareIntakeResult.Admitted ->
                 openSharedShellPageData(androidExternalSharePageData(result.launch))

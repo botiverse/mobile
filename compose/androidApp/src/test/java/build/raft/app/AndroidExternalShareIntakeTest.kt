@@ -6,6 +6,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -229,6 +232,57 @@ class AndroidExternalShareIntakeTest {
             assertTrue(inbox.isKnownNoPendingLaunch())
         } finally {
             parent.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrentPendingLaunchProbeDuringWritePendingTokenNeverPoisonsNegativeCache() {
+        val root = Files.createTempDirectory("external-share-concurrent-write").toFile()
+        val pendingWriteStarted = CountDownLatch(1)
+        val allowPendingWriteFinish = CountDownLatch(1)
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                tokenFactory = { "concurrent-token-123456" },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    if (file.name == AndroidExternalShareInbox.PendingFileName) {
+                        pendingWriteStarted.countDown()
+                        assertTrue(allowPendingWriteFinish.await(5L, TimeUnit.SECONDS))
+                    }
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file -> file.readText() }
+            )
+        val admitted = AtomicReference<AndroidExternalShareIntakeResult?>(null)
+        val writerThread =
+            Thread {
+                admitted.set(inbox.admit(spec("concurrent-share")))
+            }
+        try {
+            writerThread.start()
+            assertTrue(pendingWriteStarted.await(5L, TimeUnit.SECONDS))
+
+            // pending.txt is not renamed into place yet, so the probe observes null,
+            // but it must NOT poison the negative cache while the write is in flight.
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertFalse(inbox.isKnownNoPendingLaunch())
+
+            allowPendingWriteFinish.countDown()
+            writerThread.join(5_000L)
+            assertFalse(writerThread.isAlive)
+
+            val launch = (admitted.get() as AndroidExternalShareIntakeResult.Admitted).launch
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(launch, inbox.pendingLaunchOrNull())
+        } finally {
+            allowPendingWriteFinish.countDown()
+            writerThread.join(1_000L)
+            root.deleteRecursively()
         }
     }
 

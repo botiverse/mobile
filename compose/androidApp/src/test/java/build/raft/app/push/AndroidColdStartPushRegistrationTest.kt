@@ -151,6 +151,66 @@ class AndroidColdStartPushRegistrationTest {
         synchronized(deliveredFids) { assertTrue(deliveredFids.isEmpty()) }
     }
 
+    @Test
+    fun pushRegistrationFailedInstallDropsBufferedFidWithoutDelivering() {
+        val installEntered = CountDownLatch(1)
+        val releaseInstall = CountDownLatch(1)
+        val firebaseRegistered = AtomicBoolean(false)
+        val deliveredFids = mutableListOf<String>()
+
+        RaftPlayServicesAvailability.availabilityCodeProvider = { ConnectionResult.SUCCESS }
+        AndroidPushRegistration.reportPermissionForTests = { }
+        AndroidPushRegistration.installBridgeForTests = { _, _ ->
+            installEntered.countDown()
+            assertTrue(releaseInstall.await(5L, TimeUnit.SECONDS))
+            error("simulated_bridge_install_failure")
+        }
+        AndroidPushRegistration.updateRegistrationForTests = { fid, _, _ ->
+            synchronized(deliveredFids) { deliveredFids += fid }
+        }
+        AndroidPushRegistration.registerFirebaseForTests = { firebaseRegistered.set(true) }
+
+        val job = requireNotNull(AndroidPushRegistration.startAsync(context))
+        assertTrue(installEntered.await(5L, TimeUnit.SECONDS))
+        AndroidPushRegistration.onFirebaseInstallationId(context, "fid-during-failed-install")
+        releaseInstall.countDown()
+        runBlocking { job.join() }
+
+        assertFalse(firebaseRegistered.get())
+        synchronized(deliveredFids) { assertTrue(deliveredFids.isEmpty()) }
+    }
+
+    @Test
+    fun pushRegistrationPreservesOrderWhenNewerFidArrivesDuringDrain() {
+        val installEntered = CountDownLatch(1)
+        val releaseInstall = CountDownLatch(1)
+        val deliveredFids = mutableListOf<String>()
+
+        RaftPlayServicesAvailability.availabilityCodeProvider = { ConnectionResult.SUCCESS }
+        AndroidPushRegistration.reportPermissionForTests = { }
+        AndroidPushRegistration.installBridgeForTests = { _, _ ->
+            installEntered.countDown()
+            assertTrue(releaseInstall.await(5L, TimeUnit.SECONDS))
+        }
+        AndroidPushRegistration.updateRegistrationForTests = { fid, _, _ ->
+            if (fid == "fid-1") {
+                // While fid-1 is draining, startInFlight remains true so fid-2 is buffered
+                // behind fid-1 instead of overtaking it.
+                AndroidPushRegistration.onFirebaseInstallationId(context, "fid-2")
+            }
+            synchronized(deliveredFids) { deliveredFids += fid }
+        }
+        AndroidPushRegistration.registerFirebaseForTests = { }
+
+        val job = requireNotNull(AndroidPushRegistration.startAsync(context))
+        assertTrue(installEntered.await(5L, TimeUnit.SECONDS))
+        AndroidPushRegistration.onFirebaseInstallationId(context, "fid-1")
+        releaseInstall.countDown()
+        runBlocking { job.join() }
+
+        synchronized(deliveredFids) { assertEquals(listOf("fid-1", "fid-2"), deliveredFids) }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun backgroundConnectionControlsDeferBatteryOptimizationProbeUntilNeeded() {

@@ -29,6 +29,13 @@ object RaftAndroidPushRegistrationBridge {
 
     private var pendingDeliveryStatusRefreshReason: String? = null
 
+    private data class InstallResult(
+        val runtime: RaftPushRegistrationCoordinator,
+        val installationId: String,
+        val newlyInstalled: Boolean,
+        val pendingRefreshReason: String?
+    )
+
     /**
      * [fcmUnavailableReason] non-null (no Google Play services, so no FCM transport on this device) turns
      * registration off for the process before the startup reconcile runs: nothing is upserted, a payload
@@ -36,7 +43,7 @@ object RaftAndroidPushRegistrationBridge {
      * realtime path keeps posting this device's notifications itself.
      */
     fun install(candidateInstallationId: String, fcmUnavailableReason: String? = null): String {
-        val (runtime, newlyInstalled, pendingRefreshReason) =
+        val result =
             synchronized(bridgeLock) {
                 val existing = coordinator
                 val target = existing ?: createCoordinator()
@@ -45,6 +52,9 @@ object RaftAndroidPushRegistrationBridge {
                     // session observer could already start a flush of a payload persisted by an earlier process.
                     target.reportProviderUnavailable(fcmUnavailableReason)
                 }
+                // Persist or resolve the installation id before publishing the coordinator so concurrent
+                // observers/refreshes/registration updates never observe currentInstallationId() == null.
+                val installationId = target.installationId(candidateInstallationId)
                 if (existing == null) {
                     coordinator = target
                 }
@@ -55,20 +65,24 @@ object RaftAndroidPushRegistrationBridge {
                         pendingDeliveryStatusRefreshReason = null
                         null
                     }
-                Triple(target, existing == null, pending)
+                InstallResult(
+                    runtime = target,
+                    installationId = installationId,
+                    newlyInstalled = existing == null,
+                    pendingRefreshReason = pending
+                )
             }
-        if (newlyInstalled) {
-            RaftPushRegistrationLifecycle.install(runtime)
+        if (result.newlyInstalled) {
+            RaftPushRegistrationLifecycle.install(result.runtime)
         }
         if (fcmUnavailableReason != null) {
-            scope.launch { runtime.markProviderUnavailable(fcmUnavailableReason) }
+            scope.launch { result.runtime.markProviderUnavailable(fcmUnavailableReason) }
         }
-        val installationId = runtime.installationId(candidateInstallationId)
-        runtime.onSessionSaved()
-        if (pendingRefreshReason != null) {
-            refreshDeliveryStatus(pendingRefreshReason)
+        result.runtime.onSessionSaved()
+        if (result.pendingRefreshReason != null) {
+            refreshDeliveryStatus(result.pendingRefreshReason)
         }
-        return installationId
+        return result.installationId
     }
 
     fun updateRegistration(

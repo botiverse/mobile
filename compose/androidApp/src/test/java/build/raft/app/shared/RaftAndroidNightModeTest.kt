@@ -9,6 +9,11 @@ import android.os.Build
 import build.raft.app.R
 import build.raft.app.RaftAppAppearance
 import build.raft.app.data.RaftAppAppearanceRuntime
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -93,12 +98,92 @@ class RaftAndroidNightModeTest {
         assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = undefined, systemUiMode = light))
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     @Config(sdk = [34], qualifiers = "notnight")
-    fun installSkipsColdStartIpcWhenMatchingAndAppliesSettingsSwitchesImmediately() {
+    fun installSkipsColdStartIpcWhenMarkerMatchesAndAppliesSettingsSwitchesImmediately() {
         val appliedModes = mutableListOf<Int>()
+        val persistedMarker = AtomicReference<Int?>(UiModeManager.MODE_NIGHT_AUTO)
+        val testScope = TestScope(StandardTestDispatcher())
         RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
         RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.reconcileScopeForTests = testScope
+        RaftAndroidNightMode.appliedNightModeMarkerReaderForTests = { persistedMarker.get() }
+        RaftAndroidNightMode.appliedNightModeMarkerWriterForTests = { mode -> persistedMarker.set(mode) }
+        RaftAndroidNightMode.systemUiModeProviderForTests = {
+            Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
+        }
+        RaftAndroidNightMode.setApplicationNightModeForTests = { mode -> appliedModes += mode }
+
+        RaftAndroidNightMode.install(context as Application)
+        testScope.advanceUntilIdle()
+        assertEquals(emptyList<Int>(), appliedModes)
+        assertEquals(UiModeManager.MODE_NIGHT_AUTO, persistedMarker.get())
+
+        // Settings switches always apply immediately and persist the per-install marker; duplicate selections are deduped.
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
+        testScope.advanceUntilIdle()
+        assertEquals(UiModeManager.MODE_NIGHT_YES, persistedMarker.get())
+
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
+
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Light)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO), appliedModes)
+        testScope.advanceUntilIdle()
+        assertEquals(UiModeManager.MODE_NIGHT_NO, persistedMarker.get())
+
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
+        assertEquals(
+            listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO, UiModeManager.MODE_NIGHT_AUTO),
+            appliedModes,
+        )
+        testScope.advanceUntilIdle()
+        assertEquals(UiModeManager.MODE_NIGHT_AUTO, persistedMarker.get())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    @Config(sdk = [34], qualifiers = "notnight")
+    fun installReconcilesOffMainWhenPerInstallMarkerMissingAfterRestoreOrUpgrade() {
+        val appliedModes = mutableListOf<Int>()
+        val persistedMarker = AtomicReference<Int?>(null)
+        val testScope = TestScope(StandardTestDispatcher())
+        // Stored backed-up preference is Light on a Light OS, but the per-install marker is absent
+        // (fresh install after backup restore or upgrade), so UiModeManager still holds MODE_NIGHT_AUTO.
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Light)
+        RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.reconcileScopeForTests = testScope
+        RaftAndroidNightMode.appliedNightModeMarkerReaderForTests = { persistedMarker.get() }
+        RaftAndroidNightMode.appliedNightModeMarkerWriterForTests = { mode -> persistedMarker.set(mode) }
+        RaftAndroidNightMode.systemUiModeProviderForTests = {
+            Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
+        }
+        RaftAndroidNightMode.setApplicationNightModeForTests = { mode -> appliedModes += mode }
+
+        RaftAndroidNightMode.install(context as Application)
+        // Frame 1 already has Light night bits, so zero synchronous Binder IPC runs on Main.
+        assertEquals(emptyList<Int>(), appliedModes)
+
+        // Background reconciliation persists MODE_NIGHT_NO to UiModeManager and writes the marker.
+        testScope.advanceUntilIdle()
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_NO), appliedModes)
+        assertEquals(UiModeManager.MODE_NIGHT_NO, persistedMarker.get())
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    @Config(sdk = [34], qualifiers = "notnight")
+    fun settingsSwitchSupersedesPendingColdStartReconcile() {
+        val appliedModes = mutableListOf<Int>()
+        val persistedMarker = AtomicReference<Int?>(null)
+        val testScope = TestScope(StandardTestDispatcher())
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Light)
+        RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.reconcileScopeForTests = testScope
+        RaftAndroidNightMode.appliedNightModeMarkerReaderForTests = { persistedMarker.get() }
+        RaftAndroidNightMode.appliedNightModeMarkerWriterForTests = { mode -> persistedMarker.set(mode) }
         RaftAndroidNightMode.systemUiModeProviderForTests = {
             Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
         }
@@ -107,33 +192,37 @@ class RaftAndroidNightModeTest {
         RaftAndroidNightMode.install(context as Application)
         assertEquals(emptyList<Int>(), appliedModes)
 
-        // Settings switches always apply immediately; duplicate selections are deduped.
+        // User switches to Dark before the background cold-start reconcile executes.
         RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
         assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
-        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+
+        testScope.advanceUntilIdle()
         assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
-        RaftAppAppearanceRuntime.select(RaftAppAppearance.Light)
-        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO), appliedModes)
-        RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
-        assertEquals(
-            listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO, UiModeManager.MODE_NIGHT_AUTO),
-            appliedModes,
-        )
+        assertEquals(UiModeManager.MODE_NIGHT_YES, persistedMarker.get())
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     @Config(sdk = [34], qualifiers = "notnight")
-    fun installAppliesColdStartIpcWhenStoredAppearanceDisagreesWithAppConfiguration() {
+    fun installAppliesColdStartIpcSynchronouslyWhenStoredAppearanceDisagreesWithAppConfiguration() {
         val appliedModes = mutableListOf<Int>()
+        val persistedMarker = AtomicReference<Int?>(null)
+        val testScope = TestScope(StandardTestDispatcher())
         RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
         RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.reconcileScopeForTests = testScope
+        RaftAndroidNightMode.appliedNightModeMarkerReaderForTests = { persistedMarker.get() }
+        RaftAndroidNightMode.appliedNightModeMarkerWriterForTests = { mode -> persistedMarker.set(mode) }
         RaftAndroidNightMode.systemUiModeProviderForTests = {
             Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
         }
         RaftAndroidNightMode.setApplicationNightModeForTests = { mode -> appliedModes += mode }
 
         RaftAndroidNightMode.install(context as Application)
+        // Applied synchronously before Frame 1 because app config is notnight while pref is Dark.
         assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
+        testScope.advanceUntilIdle()
+        assertEquals(UiModeManager.MODE_NIGHT_YES, persistedMarker.get())
     }
 
     @Test
