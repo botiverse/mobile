@@ -152,43 +152,17 @@ class RaftBackSwipeUiTest {
         assertEquals(0, pager.currentPage, "a back drag from the body pages back")
     }
 
-    /**
-     * #wg-mobile-sync:#198 (iOS simulator): a fast fling from the leading edge turned to the next tab
-     * instead of going back. From the strip there is no room for a real swipe toward the end, but a
-     * fast back swipe can read as one in the page's own coordinates once the host starts moving the
-     * page. Whatever it reads as, a drag from the strip stays the pop's: nothing is consumed (which
-     * would let the Compose touch recogniser cancel the pop) and the pager does not move.
-     */
     @Test
-    fun edgePopPagerLeavesAForwardReadingFromTheLeadingStripToTheHost() = runComposeUiTest {
+    fun edgePopPagerStillTurnsForwardFromTheLeadingStrip() = runComposeUiTest {
         val regions = RaftBackSwipeRegions()
         setContent { BackSwipePager(regions, leadingEdgePops = true) }
-        // The first tab, then the middle one: the strip is the pop's on every tab.
-        movementConsumedAbove = false
-        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = 30f, endX = -90f, durationMillis = 40) }
-        waitForIdle()
-        assertFalse(movementConsumedAbove, "a drag from the strip must stay unconsumed on the first tab")
-        assertEquals(0, pager.currentPage)
-
         onNodeWithTag("pager").performTouchInput { swipeLeft(startX = right - 10f, endX = right - 120f, durationMillis = 80) }
         waitForIdle()
         assertEquals(1, pager.currentPage)
-        movementConsumedAbove = false
-        onNodeWithTag("pager").performTouchInput {
-            // One jump, as a fast fling arrives: down in the strip, the next reading far past it.
-            down(Offset(5f, 200f))
-            moveTo(Offset(-150f, 200f), delayMillis = 16)
-            up()
-        }
+        // Down inside the strip, then well past the pager's start edge (the gesture stays the pager's).
+        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = 30f, endX = -90f, durationMillis = 80) }
         waitForIdle()
-        assertFalse(movementConsumedAbove, "a drag from the strip must stay unconsumed past the first tab")
-        assertEquals(1, pager.currentPage)
-        assertEquals(0f, pager.currentPageOffsetFraction)
-
-        // From the body a swipe toward the end still turns the tab.
-        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = 200f, endX = 60f, durationMillis = 80) }
-        waitForIdle()
-        assertEquals(2, pager.currentPage, "a forward swipe from the body still turns the tab")
+        assertEquals(2, pager.currentPage, "only the back direction belongs to the pop")
     }
 
     @Test

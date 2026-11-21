@@ -188,17 +188,10 @@ internal fun raftBackSwipeYieldDecision(
 
 /**
  * Pure classification for a drag on a scroller whose leading edge pops the page
- * ([rememberRaftBackSwipeScroll] with `leadingEdgePops`), wherever the scroller is:
- *
- * - a drag that starts in the leading-edge strip is left unconsumed whichever way it reads: the
- *   strip is the host's pop. It is not even classified: there is no room for a real swipe toward
- *   the end from there, but a fast back swipe can read as one in the page's own coordinates once the
- *   host starts moving the page, and driving it then cancels the pop (#wg-mobile-sync:#198: on the
- *   iOS simulator a fast fling from the edge turned to the next tab instead of going back);
- * - elsewhere a back-direction drag is driven (pages back) when there is something before, a
- *   forward drag while there is something after, and anything else is left unconsumed (the host's
- *   pop on the first tab);
- * - vertical-dominant drags go to the content.
+ * ([rememberRaftBackSwipeScroll] with `leadingEdgePops`), wherever the scroller is: a back-direction
+ * drag is driven (pages back) only when there is something before and it did not start in the
+ * leading-edge strip, else it is left unconsumed for the host's pop; a forward drag is driven while
+ * there is something after; vertical-dominant drags go to the content.
  */
 internal fun raftEdgePopDragDecision(
     dxPx: Float,
@@ -209,13 +202,12 @@ internal fun raftEdgePopDragDecision(
     canScrollBackward: Boolean,
     canScrollForward: Boolean,
 ): RaftBackSwipeYieldDecision {
-    if (startsInLeadingEdge) return RaftBackSwipeYieldDecision.Release
     val adx = abs(dxPx)
     val ady = abs(dyPx)
     if (adx < touchSlopPx && ady < touchSlopPx) return RaftBackSwipeYieldDecision.Undecided
     if (ady > adx) return RaftBackSwipeYieldDecision.Release
     val forward = if (isLtr) dxPx < 0f else dxPx > 0f
-    val drives = if (forward) canScrollForward else canScrollBackward
+    val drives = if (forward) canScrollForward else canScrollBackward && !startsInLeadingEdge
     return if (drives) RaftBackSwipeYieldDecision.ClaimForward else RaftBackSwipeYieldDecision.Release
 }
 
@@ -280,12 +272,12 @@ class RaftBackSwipeScroll internal constructor(
  * ([raftClaimsHorizontalDragFirst]): the forward drag driven here then waits for that content to decide,
  * exactly like the scroller's own drag does.
  *
- * With [leadingEdgePops] (a page's tab pager) a drag that starts in the leading
- * [RaftBackSwipeEdgeWidth] strip is the host's pop wherever the scroller is, as a native
+ * With [leadingEdgePops] (a page's tab pager) a back drag that starts in the leading
+ * [RaftBackSwipeEdgeWidth] strip pops the page wherever the scroller is, as a native
  * `UINavigationController` edge pop wins over its content: the region leaves that strip out, the
- * scroller's own scrolling stays off on the back-swipe host, every horizontal drag from elsewhere is
- * driven here and none from the strip is ([raftEdgePopDragDecision]). On such a host horizontal
- * scroll a child leaves over (nested scrolling) no longer reaches this scroller.
+ * scroller's own scrolling stays off on the back-swipe host, and every horizontal drag is driven here
+ * ([raftEdgePopDragDecision]). On such a host horizontal scroll a child leaves over (nested scrolling)
+ * no longer reaches this scroller.
  */
 @Composable
 fun rememberRaftBackSwipeScroll(
@@ -330,8 +322,8 @@ fun rememberRaftBackSwipeScroll(
 /**
  * At the start of [state] (while [yielding]), claims forward horizontal drags and drives [state]
  * with them, settling with [fling] on release. Back-direction and vertical drags are never consumed.
- * With [leadingEdgePx] (edge-pop mode, yielding everywhere) it drives back drags too, and nothing
- * that starts in that leading strip ([raftEdgePopDragDecision]).
+ * With [leadingEdgePx] (edge-pop mode, yielding everywhere) it drives back drags too, except those
+ * that start in that leading strip ([raftEdgePopDragDecision]).
  * Over [nestedDrags] content the claim waits for the slop the content asked for.
  */
 private fun Modifier.raftForwardDragAtStart(

@@ -51,14 +51,15 @@ fun raftSegmentSwipeDecision(
 }
 
 /**
- * Whether a swipe that started here may turn a sub-tab at all: not when it starts in the leading-edge
- * strip on a host whose back swipe pops the page from there (iOS). That swipe belongs to the pop
- * whichever way it reads: a fast back swipe can read as one toward the end once the host starts
- * moving the page (see [raftEdgePopDragDecision]). Swipes that start elsewhere, and every swipe
- * without such a host, turn as before.
+ * Whether a swipe that started here may turn to the previous sub-tab: not when it starts in the
+ * leading-edge strip on a host whose back swipe pops the page from there (iOS), which keeps that
+ * swipe for the pop. Swipes that start elsewhere, and every swipe without such a host, turn as before.
  */
-internal fun raftSegmentSwipeTurnsFrom(hostHasBackSwipe: Boolean, startsInLeadingEdge: Boolean): Boolean =
-    !(hostHasBackSwipe && startsInLeadingEdge)
+internal fun raftSegmentSwipeCanGoBackward(
+    canGoBackward: Boolean,
+    hostHasBackSwipe: Boolean,
+    startsInLeadingEdge: Boolean,
+): Boolean = canGoBackward && !(hostHasBackSwipe && startsInLeadingEdge)
 
 /**
  * One gesture's hand-over of horizontal scroll a child scroller left over (the segment track itself,
@@ -126,9 +127,9 @@ internal class RaftSegmentNestedSwipe(private val decidePx: Float) {
  * end reaches the sub-tabs before the pager ([RaftSegmentNestedSwipe]), so a swipe on the sub-tab
  * switch itself turns the sub-tab too.
  *
- * On a host with a full-page back swipe (iOS) a swipe that starts in the leading
+ * On a host with a full-page back swipe (iOS) a back-direction swipe that starts in the leading
  * [RaftBackSwipeEdgeWidth] strip never turns a sub-tab: it is left unconsumed for the host's pop
- * ([raftSegmentSwipeTurnsFrom]), as the enclosing tab pager leaves it.
+ * ([raftSegmentSwipeCanGoBackward]), as the enclosing tab pager leaves it.
  */
 @Composable
 fun Modifier.raftSwipesBetweenSegments(
@@ -166,13 +167,12 @@ fun Modifier.raftSwipesBetweenSegments(
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 nested.reset()
-                val turnsHere =
-                    raftSegmentSwipeTurnsFrom(
+                val canGoBackwardHere =
+                    raftSegmentSwipeCanGoBackward(
+                        canGoBackward = backward,
                         hostHasBackSwipe = hostHasBackSwipe,
                         startsInLeadingEdge = raftStartsInLeadingEdge(down.position.x, size.width.toFloat(), edgePx, isLtr),
                     )
-                val canGoBackwardHere = backward && turnsHere
-                val canGoForwardHere = forward && turnsHere
                 var claimed = false
                 while (true) {
                     val event = awaitPointerEvent()
@@ -185,7 +185,7 @@ fun Modifier.raftSwipesBetweenSegments(
                     // A second finger, or a child (a list's scroll) took the drag: not a sub-tab swipe.
                     if (event.changes.size > 1 || change.isConsumed) break
                     val delta = change.position - down.position
-                    when (raftSegmentSwipeDecision(delta.x, delta.y, decidePx, isLtr, canGoBackwardHere, canGoForwardHere)) {
+                    when (raftSegmentSwipeDecision(delta.x, delta.y, decidePx, isLtr, canGoBackwardHere, forward)) {
                         RaftSegmentSwipeDecision.Undecided -> Unit
                         RaftSegmentSwipeDecision.Release -> break
                         RaftSegmentSwipeDecision.Forward, RaftSegmentSwipeDecision.Backward -> {
