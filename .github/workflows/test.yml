@@ -1465,12 +1465,17 @@ jobs:
           set -o pipefail
           device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-adaptive-editor-tests.log"
+          # assert_xctest_ran.py reads the result bundle: in the log the host app's stderr is cut
+          # into XCTest's lines (run 44830456744). xcodebuild refuses a bundle path that exists.
+          bundle="$RUNNER_TEMP/adaptive-editor-tests.xcresult"
+          rm -rf "$bundle"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme AdaptiveEditorTests \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -resultBundlePath "$bundle" \
             -only-testing:AdaptiveEditorTests/RaftAdaptiveEditorSnapshotTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
@@ -1478,7 +1483,7 @@ jobs:
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/print_xctest_failures.py" "$log"; tail -200 "$log"; exit 1; }
           tail -60 "$log"
-          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" RaftAdaptiveEditorSnapshotTests
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" --xcresult "$bundle" "$log" RaftAdaptiveEditorSnapshotTests
 
       - name: Test iOS host XCTests (iosAppTests bundle, UIKit)
         if: ${{ needs.plan.outputs.run_ios_tests == 'true' }}
@@ -1487,12 +1492,16 @@ jobs:
           set -o pipefail
           device_id=$(xcrun simctl list devices available -j | SDK="$(xcrun --sdk iphonesimulator --show-sdk-version)" python3 -c 'import json,os,re,sys; v=lambda s: tuple(int(p) for p in re.findall(r"\d+", s)); rs=sorted(((v(k.rsplit(".iOS-", 1)[1]), k, vs) for k, vs in json.load(sys.stdin)["devices"].items() if ".iOS-" in k), key=lambda t: t[0], reverse=True); rs=[t for t in rs if t[0] <= v(os.environ["SDK"])] or rs; ds=[(k, x) for _, k, vs in rs for x in vs if "iPhone" in x["name"]]; k, x=next((d for d in ds if "Duo" not in d[1]["name"]), ds[0]); print(x["name"], k, file=sys.stderr); print(x["udid"])')
           log="$GITHUB_WORKSPACE/xcodebuild-login-router-tests.log"
+          # The result bundle is what assert_xctest_ran.py reads (see the adaptive editor step).
+          bundle="$RUNNER_TEMP/ios-app-tests.xcresult"
+          rm -rf "$bundle"
           xcodebuild \
             -workspace iosApp.xcworkspace \
             -scheme iosAppTests \
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            -resultBundlePath "$bundle" \
             -only-testing:iosAppTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
@@ -1502,7 +1511,7 @@ jobs:
           tail -60 "$log"
           # Every class in the bundle must have run at least one case; xcodebuild itself
           # reports success when a selector matches nothing.
-          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" \
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" --xcresult "$bundle" "$log" \
             RaftRouterLoginTransitionTests \
             RaftIosComposeScrollEdgeEffectsTests \
             RaftCmpBridgeSelectorTests \
