@@ -91,7 +91,7 @@ fun RaftDrawer(
     fill: RaftDrawerFill = RaftDrawerFill.Popover,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    LaunchedEffect(visible, state) {
+    LaunchedEffect(visible, state, state?.dismissedByDrag) {
         if (visible && state?.dismissedByDrag == true) {
             state.clearDismissedByDrag()
         }
@@ -159,7 +159,7 @@ class RaftDrawerState(initialSnapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoin
         get() = if (defaultPx <= 0f) 1f else (extent / defaultPx).coerceIn(0f, 1f)
 
     /** True once [settle] finished animating the sheet completely off-screen to 0px. */
-    internal var dismissedByDrag: Boolean = false
+    internal var dismissedByDrag: Boolean by mutableStateOf(false)
         private set
 
     internal fun clearDismissedByDrag() {

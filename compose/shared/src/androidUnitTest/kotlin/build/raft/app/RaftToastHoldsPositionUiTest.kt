@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -19,7 +22,10 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.compat.ui.RaftProvidePageActive
+import build.raft.designsystem.components.LocalRaftToastAvoidanceActive
 import build.raft.designsystem.components.LocalRaftToastHostState
+import build.raft.designsystem.components.RaftToastBottomInsetProvider
 import build.raft.designsystem.components.RaftToastHost
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.raftToastAvoid
@@ -158,5 +164,138 @@ class RaftToastHoldsPositionUiTest {
         settle()
         val closed = bottomOf("Typing")
         assertEquals(onKeyboard + 200.dp, closed, "down by the keyboard's height, still above the composer")
+    }
+
+    @Test
+    fun aToastOnFirstFrameAlreadyClearsTheComposerWithoutDroppingToWindowEdge() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState().apply { show("Immediate") }
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .raftToastAvoid()
+                        )
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        // Single frame (no multi-frame settle): onPlaced + placement-phase layout already clears the bar.
+        val composerTop = onRoot().getBoundsInRoot().bottom - 120.dp
+        assertTrue(bottomOf("Immediate") <= composerTop - 16.dp, "frame 1 already sits above the composer")
+    }
+
+    @Test
+    fun topStackPageInMotionStillReportsToastAvoidanceAndDialogSubtreeDoesNot() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize()) {
+                        // Simulates Nav3 top page mid-slide: active=false (back handlers wait), toastAvoidActive=true.
+                        RaftProvidePageActive(active = false, toastAvoidActive = true) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .raftToastAvoid()
+                            )
+                        }
+                        // Simulates separate dialog window whose local bounds must not override host avoidance.
+                        CompositionLocalProvider(LocalRaftToastAvoidanceActive provides false) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(260.dp)
+                                    .raftToastAvoid()
+                            )
+                        }
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        state.show("Navigating")
+        settle()
+        val rootBottom = onRoot().getBoundsInRoot().bottom
+        val toastBottom = bottomOf("Navigating")
+        assertTrue(toastBottom <= rootBottom - 116.dp, "clears the 100dp bar of the sliding-in top page")
+        assertTrue(toastBottom > rootBottom - 260.dp, "ignores the 260dp bar inside an isolated dialog window")
+    }
+
+    @Test
+    fun bottomInsetProviderFollowsHostImeInsteadOfStaleWindowInsets() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        var hostBottomInsetDp by mutableStateOf(0.dp)
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize()) {
+                        RaftToastBottomInsetProvider { hostBottomInsetDp.toPx() }
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        state.show("Inset")
+        settle()
+        val resting = bottomOf("Inset")
+
+        hostBottomInsetDp = 240.dp
+        settle()
+        assertEquals(resting - 240.dp, bottomOf("Inset"), "lifts by host-reported IME inset")
+
+        hostBottomInsetDp = 0.dp
+        settle()
+        assertEquals(resting, bottomOf("Inset"), "returns to resting height once host IME closes")
+    }
+
+    @Test
+    fun zeroSizedAndHorizontallyClippedAvoidanceNodesDoNotShootToastToTop() = runRobolectricComposeUiTest {
+        val state = RaftToastHostState()
+        mainClock.autoAdvance = false
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize().clipToBounds()) {
+                        // Zero-sized avoided node (e.g., collapsed footer or hidden 0x0 subtree): ignored.
+                        Box(Modifier.size(0.dp).raftToastAvoid())
+                        // Horizontally translated completely offscreen inside a clipped parent (Frame 1 of push slide):
+                        // positionInRoot().y stays at bottom - 100dp instead of boundsInRoot()'s clipped Rect.Zero (top = 0).
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer { translationX = 2_000f }
+                        ) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(100.dp)
+                                    .raftToastAvoid()
+                            )
+                        }
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        state.show("Sliding")
+        settle()
+        val rootBottom = onRoot().getBoundsInRoot().bottom
+        val toastTop = onNodeWithText("Sliding").getBoundsInRoot().top
+        val toastBottom = bottomOf("Sliding")
+        assertTrue(toastTop > 100.dp, "toast must stay near bottom instead of shooting to y=0 ($toastTop)")
+        assertTrue(toastBottom <= rootBottom - 116.dp, "toast still clears the 100dp bar on the offscreen sliding page")
     }
 }

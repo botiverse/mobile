@@ -1,6 +1,8 @@
 package build.raft.designsystem
 
+import androidx.compose.ui.unit.Density
 import build.raft.designsystem.components.RaftToastActionTimeoutMillis
+import build.raft.designsystem.components.RaftToastAvoidance
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftToastTimeoutMillis
@@ -13,6 +15,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.testTimeSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** [RaftToastHostState] on virtual time: raft-ui's limit, timeouts, replace-not-queue, and the dedupe. */
@@ -125,5 +128,115 @@ class RaftToastHostStateTest {
         assertEquals(listOf("Uploading"), state.titles())
         state.dismiss(id)
         assertEquals(emptyList(), state.titles())
+    }
+
+    @Test
+    fun handOffPreservesRemainingTimeoutAppearAtOnceAndHeldPageHeight() = runTest {
+        val from = host(limit = 2)
+        val to = host(limit = 2)
+        from.show("Saved.")
+        from.putAvoidance("composer", RaftToastAvoidance.BottomBand(120f))
+        assertEquals(120f, from.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 24f))
+        advance(3_000)
+
+        var heldAtFirstEmission = -1f
+        val observer =
+            backgroundScope.launch {
+                to.toasts.collect { list ->
+                    if (list.isNotEmpty() && heldAtFirstEmission < 0f) {
+                        heldAtFirstEmission = to.currentHeldPageHeightPx
+                    }
+                }
+            }
+        runCurrent()
+
+        from.handOffTo(to)
+        runCurrent()
+        observer.cancel()
+
+        assertEquals(emptyList(), from.titles())
+        assertEquals(0f, from.currentHeldPageHeightPx)
+        assertEquals(listOf("Saved."), to.titles())
+        assertTrue(to.visible.single().appearAtOnce, "handed-off toast skips entry slide")
+        assertEquals(120f, heldAtFirstEmission, "held height is visible before toasts flow emits")
+        assertEquals(120f, to.currentHeldPageHeightPx, "handed-off toast keeps held height")
+        assertEquals(120f, to.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 24f))
+
+        advance(RaftToastTimeoutMillis - 3_001)
+        assertEquals(listOf("Saved."), to.titles())
+        advance(1)
+        assertEquals(emptyList(), to.titles(), "handed-off toast expires on its original remaining timeout")
+        assertEquals(0f, to.currentHeldPageHeightPx, "held height resets once the stack empties")
+    }
+
+    @Test
+    fun handOffHandlesPausedExpiredAndZeroDurationToasts() = runTest {
+        // Paused source toast keeps its paused remaining duration on target.
+        val pausedFrom = host(limit = 2)
+        val pausedTo = host(limit = 2)
+        pausedFrom.show("Paused")
+        advance(2_000)
+        pausedFrom.setPaused(true)
+        advance(20_000)
+        pausedFrom.handOffTo(pausedTo)
+        assertEquals(listOf("Paused"), pausedTo.titles())
+        advance(RaftToastTimeoutMillis - 2_001)
+        assertEquals(listOf("Paused"), pausedTo.titles())
+        advance(1)
+        assertEquals(emptyList(), pausedTo.titles())
+
+        // Zero-duration toast stays indefinite on target; expired toast without runTimers is dropped.
+        val rawFrom = RaftToastHostState(limit = 3, timeSource = testTimeSource)
+        val rawTo = host(limit = 3)
+        rawFrom.show("Expiring", durationMillis = 1_000)
+        rawFrom.show("Sticky", durationMillis = 0)
+        advance(2_000)
+        rawFrom.handOffTo(rawTo)
+        assertEquals(listOf("Sticky"), rawTo.titles())
+        advance(60_000)
+        assertEquals(listOf("Sticky"), rawTo.titles())
+    }
+
+    @Test
+    fun bottomInsetOverridesUseDeterministicLastRegisteredOrder() = runTest {
+        val state = host()
+        val density = Density(1f)
+        val first = Any()
+        val second = Any()
+        val third = Any()
+
+        state.putBottomInsetOverride(first) { 10f }
+        state.putBottomInsetOverride(second) { 20f }
+        state.putBottomInsetOverride(third) { 30f }
+        assertEquals(30f, state.bottomInsetOverrideOrNull()?.invoke(density))
+
+        state.removeBottomInsetOverride(third)
+        assertEquals(20f, state.bottomInsetOverrideOrNull()?.invoke(density))
+
+        state.removeBottomInsetOverride(second)
+        assertEquals(10f, state.bottomInsetOverrideOrNull()?.invoke(density))
+
+        state.removeBottomInsetOverride(first)
+        assertNull(state.bottomInsetOverrideOrNull())
+    }
+
+    @Test
+    fun bottomBandAvoidanceWorksEvenWhenHostBottomIsNotMeasuredYet() = runTest {
+        val state = host()
+        state.show("Copied")
+        state.putAvoidance("tab-bar", RaftToastAvoidance.BottomBand(84f))
+        assertEquals(84f, state.resolveBottomClearancePx(hostBottomPx = Float.NaN, safeBottomPx = 24f))
+    }
+
+    @Test
+    fun heldPageHeightSurvivesHostBottomChangesWhileToastStaysVisible() = runTest {
+        val state = host()
+        state.show("Copied")
+        state.putAvoidance("composer", RaftToastAvoidance.TopEdge(topPx = 680f))
+        assertEquals(120f, state.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 24f))
+
+        // Composer gone and host resizes (rotation / multi-window): held height must not reset.
+        state.removeAvoidance("composer")
+        assertEquals(120f, state.resolveBottomClearancePx(hostBottomPx = 600f, safeBottomPx = 24f))
     }
 }

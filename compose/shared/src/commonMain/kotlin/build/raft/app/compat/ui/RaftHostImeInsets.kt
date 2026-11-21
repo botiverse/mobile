@@ -1,7 +1,10 @@
 package build.raft.app.compat.ui
 
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -10,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Density
+import build.raft.designsystem.components.RaftToastBottomInsetProvider
 
 /*
  * The keyboard as the host window last reported it (Hands 1af517cc, Android 16, Huawei: in a DM
@@ -95,3 +99,19 @@ internal fun raftImeBottomPx(ime: WindowInsets, host: RaftHostImeInsets?, densit
 @Composable
 internal fun raftImeBottomPx(density: Density): Int =
     raftImeBottomPx(WindowInsets.ime, LocalRaftHostImeInsets.current, density)
+
+/**
+ * Feeds the host's live bottom safe-area + keyboard inset into the enclosing `RaftToastHost`
+ * ([RaftToastBottomInsetProvider]), so toasts follow the exact same IME source as the composer
+ * (Android's dispatched [LocalRaftHostImeInsets] and iOS's curve-matched keyboard tracker) instead
+ * of fighting CMP's raw `WindowInsets.safeDrawing`.
+ */
+@Composable
+fun RaftToastHostImeBottomInset() {
+    val nonImeBottom = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+    val ime = WindowInsets.ime
+    val hostIme = LocalRaftHostImeInsets.current
+    RaftToastBottomInsetProvider {
+        maxOf(nonImeBottom.getBottom(this), raftImeBottomPx(ime, hostIme, this)).toFloat()
+    }
+}

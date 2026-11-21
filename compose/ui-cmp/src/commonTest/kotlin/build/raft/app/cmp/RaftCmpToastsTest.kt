@@ -93,6 +93,7 @@ class RaftCmpToastsTest {
         a.setLifecycle(visible = false)
         assertEquals(emptyList(), a.titles())
         assertEquals(listOf("Saved."), b.titles())
+        assertTrue(b.state.visible.single().appearAtOnce, "handed-off toast does not replay entry slide")
 
         // A detached window takes nothing.
         b.detach()

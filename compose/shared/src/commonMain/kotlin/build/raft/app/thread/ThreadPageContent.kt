@@ -6,6 +6,7 @@ import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.raftToastAvoid
 import build.raft.app.data.ThreadFindIntent
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.components.RaftUiBanner
@@ -1427,7 +1428,12 @@ private fun ThreadPageContentContent(
                                 bottomSafeArea = composerBottomSafeArea,
                                 keyboardInsetExcludesBottomSafeArea =
                                     composerKeyboardInsetExcludesBottomSafeArea
-                            )
+                            ),
+                        keyboardLiftPx =
+                            rememberThreadComposerKeyboardLiftPx(
+                                bottomSafeArea = composerBottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                            ),
                     ) {
                         ThreadComposerRestingHeightPlaceholder(composerSurface)
                     }
@@ -1509,6 +1515,7 @@ private fun ThreadPageContentContent(
                             .onGloballyPositioned { coordinates ->
                                 shareState.shareCaptureViewportBottomPx = coordinates.positionInRoot().y
                             }
+                            .raftToastAvoid(enabled = !shareState.shareCaptureMode)
                             .alpha(if (shareState.shareCaptureMode) 0f else 1f)
                 ) {
                     ThreadShareSelectionToolbar(
@@ -1689,7 +1696,12 @@ private fun ThreadPageContentContent(
                             data.taskConversationHead?.let { taskHead ->
                                 Modifier.onFocusChanged { if (it.hasFocus) taskHead.closeFloat() }
                             } ?: Modifier
-                        )
+                        ),
+                    keyboardLiftPx =
+                        rememberThreadComposerKeyboardLiftPx(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea = composerKeyboardInsetExcludesBottomSafeArea,
+                        ),
                 ) {
                     CompositionLocalProvider(
                         LocalThreadComposerSuggestionPortal provides composerSuggestionPortal,

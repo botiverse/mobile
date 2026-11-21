@@ -4,7 +4,6 @@ import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.app.resources.*
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -983,7 +982,7 @@ internal fun ThreadJoinFooter(
             .background(RaftColor.Canvas)
             .raftSafeAreaHorizontalPadding()
             .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea)
-            .raftToastAvoid(enabled = LocalRaftPageActive.current),
+            .raftToastAvoid(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // slock #12426: "Joining…" and disabled while the join is in flight.

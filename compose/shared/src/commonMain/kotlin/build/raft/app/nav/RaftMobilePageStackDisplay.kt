@@ -116,7 +116,7 @@ fun RaftMobilePageStackDisplay(
                                 LocalRaftStackPageInMotion provides (top && !settled),
                                 LocalRaftStackPageLeaving provides leaving,
                             ) {
-                                RaftStackPageActivity(resumed = top, active = top && settled) { pageContent(page) }
+                                RaftStackPageActivity(resumed = top, active = top && settled, toastAvoidActive = top) { pageContent(page) }
                             }
                         }
                     }
@@ -167,7 +167,7 @@ private fun RaftMobileStackRootPage(
                     LocalRaftStackPageInMotion provides (top && !settled),
                     LocalRaftStackPageLeaving provides false,
                 ) {
-                    RaftStackPageActivity(maxLifecycle = maxLifecycle, active = top && settled) { pageContent(root) }
+                    RaftStackPageActivity(maxLifecycle = maxLifecycle, active = top && settled, toastAvoidActive = top) { pageContent(root) }
                 }
             }
         }
@@ -220,15 +220,29 @@ val LocalRaftStackPageLeaving = compositionLocalOf { false }
  * through the slide) and [active] once its motion settled; under the top page stopped and inactive.
  */
 @Composable
-internal fun RaftStackPageActivity(resumed: Boolean, active: Boolean = resumed, content: @Composable () -> Unit) =
-    RaftStackPageActivity(if (resumed) Lifecycle.State.RESUMED else Lifecycle.State.CREATED, active, content)
+internal fun RaftStackPageActivity(
+    resumed: Boolean,
+    active: Boolean = resumed,
+    toastAvoidActive: Boolean = active,
+    content: @Composable () -> Unit,
+) = RaftStackPageActivity(
+    if (resumed) Lifecycle.State.RESUMED else Lifecycle.State.CREATED,
+    active,
+    toastAvoidActive,
+    content,
+)
 
 /** [RaftStackPageActivity] with its lifecycle cap given. */
 @Composable
-internal fun RaftStackPageActivity(maxLifecycle: Lifecycle.State, active: Boolean, content: @Composable () -> Unit) {
+internal fun RaftStackPageActivity(
+    maxLifecycle: Lifecycle.State,
+    active: Boolean,
+    toastAvoidActive: Boolean = active,
+    content: @Composable () -> Unit,
+) {
     val owner = rememberLifecycleOwner(maxLifecycle = maxLifecycle)
     CompositionLocalProvider(LocalLifecycleOwner provides owner) {
-        RaftProvidePageActive(active, content)
+        RaftProvidePageActive(active = active, toastAvoidActive = toastAvoidActive, content = content)
     }
 }
 

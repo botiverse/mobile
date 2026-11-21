@@ -88,13 +88,9 @@ object RaftCmpToasts {
      * no other window in the foreground (the app went to the background) they stay.
      */
     internal fun handOff(from: RaftCmpToastWindow) {
-        val toasts = from.state.visible
-        if (toasts.isEmpty()) return
+        if (from.state.visible.isEmpty()) return
         val to = windows.value.filter { it !== from && it.foreground }.maxByOrNull { it.activation } ?: return
-        from.state.dismissAll()
-        toasts.forEach { toast ->
-            to.state.show(toast.title, toast.description, toast.intent, toast.actionLabel, toast.onAction, toast.durationMillis)
-        }
+        from.state.handOffTo(to.state)
     }
 }
 

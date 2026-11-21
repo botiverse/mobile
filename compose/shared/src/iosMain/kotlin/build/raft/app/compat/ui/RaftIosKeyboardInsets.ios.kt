@@ -193,8 +193,10 @@ private fun ProvideRaftIosAppOnMacPage(content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalDensity provides raftIosAppOnMacDensity(LocalDensity.current, onMac = true),
         LocalRaftHostImeInsets provides insets,
-        content = content,
-    )
+    ) {
+        RaftToastHostImeBottomInset()
+        content()
+    }
 }
 
 @Composable
@@ -238,6 +240,8 @@ private fun ProvideRaftIosKeyboardInsets(content: @Composable () -> Unit) {
     val noKeyboard = remember { raftIosAppOnMacImeInsets() }
     CompositionLocalProvider(
         LocalRaftHostImeInsets provides if (ignoresFrame) noKeyboard else insets,
-        content = content,
-    )
+    ) {
+        RaftToastHostImeBottomInset()
+        content()
+    }
 }

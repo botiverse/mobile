@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -90,8 +91,11 @@ fun RaftWindowDialog(
                 .fillMaxSize()
                 .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier),
         ) {
-            // Its own window: a head in it is no pane's of the row under it.
-            RaftPaneGridOutsideRow(content)
+            // Its own OS window: a head in it is no pane's of the row under it, and its local
+            // boundsInRoot() coordinates must not feed the host window's toast avoidances.
+            CompositionLocalProvider(LocalRaftToastAvoidanceActive provides false) {
+                RaftPaneGridOutsideRow(content)
+            }
         }
     }
 }
