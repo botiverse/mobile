@@ -3928,19 +3928,13 @@ private fun SharedThreadRouteContentContent(
                 onNoPermission = { result -> routeAuthRequired(result) },
                 loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
                 openInBrowser = { url ->
-                    bridge.log("thread_action_card_open_in_web")
-                    val activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl
-                    if (
-                        raftPlatformFollowsAppStoreBillingRules() &&
-                        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
-                    ) {
-                        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
-                        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
-                            pager.openSettingsBillingPage(storeScope)
-                        }
-                    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
-                        bridge.hostCapabilities.openUrlInBrowser(url)
-                    }
+                    openThreadActionCardWebUrl(
+                        url = url,
+                        activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl,
+                        pager = pager,
+                        storeScope = storeScope,
+                        bridge = bridge,
+                    )
                 },
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
@@ -7464,6 +7458,31 @@ private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient):
         passkeyOptions = repository::passkeyAssertionOptions,
         webStepUp = repository.webStepUp(),
     )
+}
+
+/**
+ * Opens an action card's "Open in web" link with the App Store 3.1.1 guard and own-origin
+ * authenticated WebView (out of SharedThreadRouteContentContent to stay below its JVM method-size cap).
+ */
+private fun openThreadActionCardWebUrl(
+    url: String,
+    activeWebUrl: String,
+    pager: Pager,
+    storeScope: RaftShellStoreScope,
+    bridge: build.raft.app.base.BridgeModule,
+) {
+    bridge.log("thread_action_card_open_in_web")
+    if (
+        raftPlatformFollowsAppStoreBillingRules() &&
+        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
+    ) {
+        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
+        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
+            pager.openSettingsBillingPage(storeScope)
+        }
+    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
+        bridge.hostCapabilities.openUrlInBrowser(url)
+    }
 }
 
 /**

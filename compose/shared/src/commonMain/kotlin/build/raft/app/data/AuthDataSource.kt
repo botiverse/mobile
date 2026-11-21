@@ -1485,7 +1485,7 @@ class SharedAuthDataSource(
     }
 
     /** Persistent WebView storage holds the previous account's web access token; drop it. */
-    private fun clearAccountWebViewStorage(source: String) {
+    private suspend fun clearAccountWebViewStorage(source: String) {
         runCatchingPreservingCancellation { build.raft.app.raftClearWebViewAuthStorage() }
             .onFailure { diagnosticsLogger("webview_storage_clear result=failure source=$source") }
     }
