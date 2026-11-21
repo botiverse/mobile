@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import sys
 import tempfile
 import unittest
@@ -222,6 +223,147 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
             [item.literal for item in findings],
         )
         self.assertEqual("multiline-toast-dialog", findings[0].sink)
+
+    def high(self, source: str) -> list[str]:
+        return [item.literal for item in self.scan(".kt", source) if item.confidence == "high"]
+
+    def test_ui_property_is_high_only_for_its_own_value(self) -> None:
+        cases = (
+            # JSON keys, ids and status tokens sharing the line with a UI property name.
+            ('label = msg(props["label"], 40, "$what.label"),', []),
+            ('val label = obj.safeText("label", 80) ?: return null', []),
+            ('add(RaftBaseMenuItem(id = "rename", label = labels.renameSection))', []),
+            ('enum class Kind(val label: String) { Sample("sample"), Interaction("interaction") }', []),
+            ('fun log(message: String) = report("Tag name", message)', []),
+            ('if (title == "Members") return', []),
+            # The value itself, including fallback chains and branches.
+            ('result(status = "cancelled", message = "Download cancelled")', ["Download cancelled"]),
+            ('val title = dm.name.trim().ifBlank { "Direct Message" }', ["Direct Message"]),
+            ('subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",', ["Recent DM"]),
+            ('label = if (scheduled) "Scheduled" else "Cancel subscription",', ["Scheduled", "Cancel subscription"]),
+            ('message = email?.let { "Invite created for $it" },', ["Invite created for $it"]),
+            ('val title: String = "Settings",', ["Settings"]),
+            ('fun validate(name: String, label: String = "Agent name"): String? {', ["Agent name"]),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(expected, self.high(source))
+
+    def test_literal_next_to_a_sink_is_medium_not_dropped(self) -> None:
+        findings = self.scan(".kt", 'add(RaftBaseMenuItem(id = "rename", label = labels.renameSection))')
+        self.assertEqual(
+            [("rename", "medium", "near-ui-property")],
+            [(item.literal, item.confidence, item.sink) for item in findings],
+        )
+
+    def test_direct_call_sink_is_high_only_for_its_own_arguments(self) -> None:
+        cases = (
+            ('Text("Hello there", modifier = Modifier.testTag("Hello tag"))', ["Hello there"]),
+            ('Html("html"), Markdown("markdown"), Text("text"), Csv("csv"), Pdf("pdf");', []),
+            ('value = ActionCardFormValue.Text("Shown text")', []),
+            ('val channelId = root.text("channelId thread") ?: return null', []),
+            ('RaftText("Compose Multiplatform", style = type.title)', ["Compose Multiplatform"]),
+            ('host.capabilities.toast("Hello from the host")', ["Hello from the host"]),
+            (
+                '\n'.join(["Text(", '    text = "Shown text",', '    modifier = Modifier.testTag("Tag text"),', ")"]),
+                ["Shown text"],
+            ),
+            ('\n'.join(["ActionCardSpecNode.Text(", '    tone = props.opt("tone value") { it },', ")"]), []),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(expected, self.high(source))
+
+    def test_log_regex_and_annotation_arguments_are_not_reported(self) -> None:
+        sources = (
+            '\n'.join(["@RequiresOptIn(", "    level = WARNING,", '    message = "Internal API only.",', ")"]),
+            '\n'.join(["raftLogWarn(", '    tag = "Tag",', '    message = "Something failed badly",', ")"]),
+            'private fun logAppLogin(message: String) = raftLogInfo("SlockAppLogin", message)',
+            'val text = content.replace(Regex("\\\\s+ here"), " ").trim()',
+            'Text(stringResource(Res.string.title)) // Text("Commented out")',
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertEqual([], self.scan(".kt", source))
+
+    def test_machine_shaped_literals_are_not_reported(self) -> None:
+        sources = (
+            'message = "play_services_check code=$code fcm_unavailable=$unavailable"',
+            'val label = "server=${id} scope=${scope} done"',
+            'label = "otterTuck",',
+            'emptyText = { query -> noMatches.replace("\\u0001", query) },',
+            '\n'.join(['val script = """', '    document.title = "Hello world";', '"""']),
+        )
+        for source in sources:
+            with self.subTest(source=source):
+                self.assertEqual([], self.scan(".kt", source))
+
+    def test_allowlist_object_form_needs_a_reason_for_every_entry(self) -> None:
+        valid = {
+            "excludeSourceSets": [{"sourceSet": "commonTest", "reason": "unit tests"}],
+            "excludePaths": [{"path": "src/Probe.kt", "reason": "developer probe"}],
+            "occurrences": [{"path": "Page.kt", "literal": "Shared label", "count": 2, "reason": "fixture"}],
+        }
+        invalid = (
+            {"excludePaths": [{"path": "src/Probe.kt"}]},
+            {"excludeSourceSets": [{"sourceSet": "commonTest", "reason": " "}]},
+            {"occurrences": [{"path": "Page.kt", "literal": "Label", "reason": "x", "count": 0}]},
+            {"occurrences": [{"path": "Page.kt", "literal": "Label", "reason": "x", "line": 3}]},
+            {"exclude": []},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "allowlist.json"
+            path.write_text(json.dumps(valid), encoding="utf-8")
+            allowlist = scanner.load_allowlist(path)
+            for payload in invalid:
+                with self.subTest(payload=payload):
+                    path.write_text(json.dumps(payload), encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        scanner.load_allowlist(path)
+        self.assertEqual(2, allowlist.occurrences[("Page.kt", "Shared label", None)].count)
+        self.assertEqual("developer probe", scanner.excluded_by("src/Probe.kt", allowlist.exclusions).reason)
+        in_test_source_set = scanner.excluded_by("mod/src/commonTest/kotlin/A.kt", allowlist.exclusions)
+        self.assertEqual("unit tests", in_test_source_set.reason)
+        for kept in ("src/ProbePage.kt", "mod/src/commonMain/kotlin/commonTest/A.kt"):
+            with self.subTest(kept=kept):
+                self.assertIsNone(scanner.excluded_by(kept, allowlist.exclusions))
+
+    def test_counted_allowlist_entry_covers_exactly_that_many_occurrences(self) -> None:
+        findings = self.scan(".kt", '\n'.join(['title = "Shared label"', 'subtitle = x', 'title = "Shared label"']))
+        entry = scanner.ReviewedException(path="SettingsPage.kt", literal="Shared label", reason="fixture", count=2)
+        resolved = scanner.resolve_allowlist_occurrences(findings, {(entry.path, entry.literal, None): entry})
+        self.assertEqual({1, 3}, {line for _, line, _, _ in resolved})
+        too_few = scanner.ReviewedException(path="SettingsPage.kt", literal="Shared label", reason="fixture", count=1)
+        with self.assertRaisesRegex(ValueError, "matches=2"):
+            scanner.resolve_allowlist_occurrences(findings, {(too_few.path, too_few.literal, None): too_few})
+
+    def test_main_skips_excluded_files_and_reports_stale_exclusions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("app/src/main/Page.kt", "app/src/main/Probe.kt", "app/src/test/PageTest.kt"):
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text('Text("Hardcoded English")\n', encoding="utf-8")
+            allowlist = root / "allowlist.json"
+            allowlist.write_text(
+                json.dumps(
+                    {
+                        "excludeSourceSets": [{"sourceSet": "test", "reason": "unit tests"}],
+                        "excludePaths": [
+                            {"path": "app/src/main/Probe.kt", "reason": "developer probe"},
+                            {"path": "app/src/main/Gone.kt", "reason": "moved away"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output = root / "report.json"
+            argv = ["--repo-root", str(root), "--source-root", "app/src", "--allowlist", str(allowlist)]
+            exit_code = scanner.main(argv + ["--format", "json", "--output", str(output), "--fail-on-stale"])
+            report = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(1, exit_code)
+        self.assertEqual((1, 2), (report["scannedFileCount"], report["excludedFileCount"]))
+        self.assertEqual(["app/src/main/Page.kt"], [item["path"] for item in report["findings"]])
+        self.assertEqual(["app/src/main/Gone.kt"], report["staleExcludePaths"])
 
 
 if __name__ == "__main__":

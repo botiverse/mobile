@@ -1,142 +1,909 @@
-[
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
-    "literal": "Child Page Host Smoke",
-    "reason": "internal child-host smoke page, not a product surface"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
-    "literal": "pageData.marker = $marker",
-    "reason": "internal child-host diagnostic marker"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "Tight Fallback Lines",
-    "reason": "internal typography probe label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "Message Body Path",
-    "reason": "internal typography probe label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
-    "literal": "Shared Tokens",
-    "reason": "internal visual token palette label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
-    "literal": "Shadow",
-    "reason": "internal visual token palette label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
-    "literal": "4px 4px 0px #141111",
-    "reason": "internal visual token palette measurement"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/AppUpdatePage.kt",
-    "literal": "WHAT'S NEW IN 1.6.0",
-    "reason": "internal app-update visual fixture copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/AppUpdatePage.kt",
-    "literal": "A focused update for faster collaboration",
-    "reason": "internal app-update visual fixture copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RouterPage.kt",
-    "literal": "$routeCount routes · Raft shared/KMP page launcher",
-    "reason": "internal developer route launcher diagnostic copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Bottom TabBar",
-    "reason": "internal bottom-tab smoke preview label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Shared tab bar smoke preview",
-    "reason": "internal bottom-tab smoke preview label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Edge",
-    "reason": "internal bottom-tab smoke variant label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Navigation Rail",
-    "reason": "internal bottom-tab smoke variant label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Rail layout",
-    "reason": "internal bottom-tab smoke layout label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
-    "literal": "Shared TabBar variant parity with Android",
-    "reason": "internal bottom-tab parity probe copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
-    "literal": "HOME",
-    "reason": "internal home app-update banner visual fixture label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
-    "literal": "Android proof for nested Kuikly child pages with independent child delegators.",
-    "reason": "internal nested child-page host proof copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
-    "literal": "If this renders inside the parent page, Android host registration and child onAttach pageData are working.",
-    "reason": "internal nested child-page host proof copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
-    "literal": "Lucide Icons",
-    "reason": "internal generated icon gallery heading"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
-    "literal": "${names.size} icons · generated vector paths",
-    "reason": "internal generated icon gallery diagnostic copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "Typography Probe",
-    "reason": "internal typography probe heading"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "Space Grotesk weight and CJK fallback parity checks",
-    "reason": "internal typography probe diagnostic copy"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "20sp/22sp · combining mark + emoji + CJK",
-    "reason": "internal typography probe measurement label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "RaftMarkdownBody · 14sp/24sp · regular",
-    "reason": "internal typography probe measurement label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
-    "literal": "RaftMarkdownBody · 14sp/24sp · medium probe",
-    "reason": "internal typography probe measurement label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
-    "literal": "FOO",
-    "reason": "example environment-variable name in the env-var key field placeholder; code-like, not prose"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
-    "literal": "bar",
-    "reason": "example environment-variable value in the env-var value field placeholder; code-like, not prose"
-  }
-]
+{
+  "excludeSourceSets": [
+    {
+      "sourceSet": "commonTest",
+      "reason": "multiplatform unit tests; never packaged"
+    },
+    {
+      "sourceSet": "androidUnitTest",
+      "reason": "Android unit and Robolectric screenshot tests; never packaged"
+    },
+    {
+      "sourceSet": "androidInstrumentedTest",
+      "reason": "instrumented tests of :shared; never packaged"
+    },
+    {
+      "sourceSet": "androidHostTest",
+      "reason": "host-side tests of :realtime-socket; never packaged"
+    },
+    {
+      "sourceSet": "iosTest",
+      "reason": "iOS unit tests; never packaged"
+    },
+    {
+      "sourceSet": "desktopTest",
+      "reason": "desktop unit and screenshot tests; never packaged"
+    },
+    {
+      "sourceSet": "desktopVcase",
+      "reason": "design-system visual cases, compiled only into desktopTest (compose/designsystem/build.gradle.kts)"
+    },
+    {
+      "sourceSet": "test",
+      "reason": "JVM unit tests of androidApp, desktopApp and buildSrc; never packaged"
+    },
+    {
+      "sourceSet": "androidTest",
+      "reason": "androidApp instrumented tests; never packaged"
+    },
+    {
+      "sourceSet": "visualFixtures",
+      "reason": "visual-test pages, compiled into commonMain only with -PslockVisualFixtures=true or SLOCK_VISUAL_FIXTURES (compose/shared/build.gradle.kts); release builds compile src/visualFixturesOff instead"
+    },
+    {
+      "sourceSet": "visualFixtureData",
+      "reason": "visual-test fixture data: joins commonMain only when visual fixtures are on, otherwise commonTest (compose/shared/build.gradle.kts); never in a release build"
+    },
+    {
+      "sourceSet": "debug",
+      "reason": "Android debug build type (compose/androidApp/build.gradle.kts); not in release or play builds"
+    },
+    {
+      "sourceSet": "alpha",
+      "reason": "Android alpha (Raft Alpha) test-build type; not in release or play builds"
+    },
+    {
+      "sourceSet": "connectedTest",
+      "reason": "Android connected-test build type; not in release or play builds"
+    }
+  ],
+  "excludePaths": [
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageVisualScreens.kt",
+      "reason": "visual-test fixture screens: every entry point is called only from src/visualFixtures and androidUnitTest screenshot tests"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersVisualFixtures.kt",
+      "reason": "visual-test fixture data: rendered by src/visualFixtures pages, androidUnitTest screenshot tests, or the MembersDetailPage seed hook, which needs a visual- instanceId no production opener creates (production uses members-detail-…)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeVisualFixtures.kt",
+      "reason": "visual-test fixtures and smoke payloads: used by src/visualFixtures, tests and the developer smoke pages (Settings/Bottom TabBar Smoke, Settings Account Preview); its SettingsServerProfilePage hooks only read the fullHeight pageData flag and log"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/TokenPaletteVisualPage.kt",
+      "reason": "visual-test token palette: TokenPaletteVisualContent is called only from src/visualFixtures"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RouterPage.kt",
+      "reason": "developer Route launcher (router): opened only from Settings › Developer, which has no visible row (7 taps on the Settings header or the About version row)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
+      "reason": "icon gallery page; listed only in the developer Route launcher"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
+      "reason": "typography probe page; listed only in the developer Route launcher"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftTabPagerProbePage.kt",
+      "reason": "QA tab-pager probe page (compose_tab_pager_probe): opened only by the qa-acceptance workflows or by typing its pageName into the developer Route launcher"
+    },
+    {
+      "path": "compose/ui-cmp/src/commonMain/kotlin/build/raft/app/cmp/pages/CmpHelloPage.kt",
+      "reason": "debug-only CMP host check page: RaftCmpRouter admits it only in debug builds (BuildConfig.DEBUG on Android, #if DEBUG on iOS)"
+    }
+  ],
+  "occurrences": [
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/core/data/AndroidPlatformFileResolver.kt",
+      "literal": "Unable to read file",
+      "count": 2,
+      "reason": "file-resolver read/stat error detail: readFile fills a synthetic error body whose `message` no error decoder reads (they read `error`); statFile callers check only the result code"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Attachment staging is being cleared",
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Save stopped",
+      "count": 3,
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Save stopped after account changed",
+      "count": 3,
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Previous save cleanup did not finish",
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Attachment staging cleared",
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/AttachmentDownloadsExportCoordinator.kt",
+      "literal": "Unable to clean up the pending Downloads file",
+      "reason": "Android export result message for a stopped/failed save; shared UI shows localized copy by status and only logs this text"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Local database",
+      "reason": "Android bridge storage-row title; the Storage page shows the localized settings_storage_row_* string by target instead"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Image cache",
+      "reason": "Android bridge storage-row title; the Storage page shows the localized settings_storage_row_* string by target instead"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Attachment staging",
+      "reason": "Android bridge storage-row title; the Storage page shows the localized settings_storage_row_* string by target instead"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Temporary files and logs",
+      "reason": "Android bridge storage-row title; the Storage page shows the localized settings_storage_row_* string by target instead"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Custom",
+      "reason": "defensive fallback label in the Android setApiEnvironment bridge; every caller sends a non-blank label"
+    },
+    {
+      "path": "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt",
+      "literal": "Attachment download failed",
+      "context": "message = result.message ?: result.errorKind ?: \"Attachment download failed\"",
+      "reason": "host exception message for a failed attachment download; shared UI maps the status to localized copy and only logs it"
+    },
+    {
+      "path": "compose/core/src/commonMain/kotlin/build/raft/app/model/AgentRuntimeConfig.kt",
+      "literal": "Agent name",
+      "reason": "English validation text used only as a match key; the sole production caller (SharedCreateAgentDialog localizedCreateAgentNameError) maps every reachable result to agent_create_error_name_* resources"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
+      "literal": "FOO",
+      "reason": "example environment-variable name in the env-var key field placeholder; code-like, not prose"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
+      "literal": "bar",
+      "reason": "example environment-variable value in the env-var value field placeholder; code-like, not prose"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/components/RaftUiMenuPrimitives.kt",
+      "literal": "Options",
+      "reason": "default parameter of RaftUiControlledSelect, which has no production caller (only src/visualFixtures RaftUiLibraryVisualFixtures.kt)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Message",
+      "count": 2,
+      "reason": "composer placeholder sentinel; localizedThreadComposerPlaceholder() maps \"Message\" to thread_composer_placeholder_message before display"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Message design",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Keeps visual testing release notes aligned.",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Turns product feedback, screenshots, and release notes into actionable UX specs.",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Implements shared Android/KMP UI fixes.",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Product and UI decisions",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Release tracking and acceptance",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Builds and screenshots",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/composer/ThreadComposerPage.kt",
+      "literal": "Suggestion row $index",
+      "reason": "composer visual-fixture payload: threadComposerVisualFixture() runs only inside ThreadComposerScreen(), which is hosted solely by src/visualFixtures VisualFixturePages.kt (absent from release builds)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt",
+      "literal": "## Raft feedback\n\n<!-- Describe what happened here. -->",
+      "reason": "default body of SettingsDiagnosticsFeedbackDraft; never read: prepareDiagnosticsFeedback() has no Kotlin caller and diagnosticsComposerMessage() ignores message"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
+      "literal": "Default browser",
+      "reason": "default SettingsMobileSnapshot.linkOpenMode option label; Settings > Appearance renders the options from settings_mobile_link_open_mode_* and reads only selectedKey/available"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/DataSnapshots.kt",
+      "literal": "In-app browser",
+      "reason": "default SettingsMobileSnapshot.linkOpenMode option label; Settings > Appearance renders the options from settings_mobile_link_open_mode_* and reads only selectedKey/available"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "literal": "Recent DM",
+      "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "literal": "Joined channel",
+      "count": 2,
+      "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/ForwardMessageTargetRepository.kt",
+      "literal": "Public channel",
+      "reason": "fallback ForwardMessageTarget.subtitle; never rendered: forward picker rows show the title only and nothing reads RaftForwardTargetPickerItem.subtitle"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
+      "literal": "App update available",
+      "reason": "legacy English SharedHomeNotification.title; titleDesc is always set and toHomeNotificationItem() renders titleDesc?.localized() ?: title"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/HomeDataSource.kt",
+      "literal": "Update available for $names",
+      "reason": "legacy English SharedHomeNotification.title; titleDesc (home_notification_machine_outdated_title_one/_many) is always set and wins in toHomeNotificationItem()"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "Thinking",
+      "reason": "English row identifier; Agent profile > Activity translates thinking rows by type (membersActivityTrajectoryTitle -> member_activity_log_thinking)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "Output",
+      "reason": "English row identifier; Agent profile > Activity translates text rows by type (membersActivityTrajectoryTitle -> member_activity_log_output)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "Raft action",
+      "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to member_activity_log_raft_action (membersActivityFixedTitleRes)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "System",
+      "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to activity_list_system_sender (membersActivityFixedTitleRes)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "Context Compaction Started",
+      "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_started)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/MemberAgentParser.kt",
+      "literal": "Context Compaction Finished",
+      "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_finished)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/RaftDesktopShortcut.kt",
+      "literal": "#channel",
+      "count": 2,
+      "reason": "unreachable fallback: title is \"#\"+name and never blank, so ifBlank never runs"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsParser.kt",
+      "literal": "Invite created for $it",
+      "reason": "SettingsServerActionResult.message is never read: SharedSettingsStore reloads the server snapshot and SharedInviteHumanDialog only checks success"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Plan Downgraded",
+      "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Final Trial Period",
+      "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Founder Plan",
+      "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Cancellation Scheduled",
+      "reason": "unrendered SettingsBillingSnapshot.notices copy; the billing page (SettingsBillingViewOnly) reads only summary/serverPlan/planDowngradedAt and builds text from resources"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Billing portal",
+      "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Cancel subscription",
+      "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Cancellation scheduled",
+      "reason": "unrendered SettingsBillingSnapshot.actions label; no screen reads billing actions (SettingsBillingViewOnly uses summary/serverPlan)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Billing Status",
+      "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Current Period End",
+      "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Cancel At Period End",
+      "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SettingsRepositoryDataSource.kt",
+      "literal": "Stripe Configured",
+      "reason": "unrendered SettingsServerSnapshot.usageRows; no UI reads usageRows"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedActivityStore.kt",
+      "literal": "activity",
+      "reason": "surface tag for stale-read recovery diagnostics log lines"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "literal": "Custom",
+      "count": 2,
+      "reason": "custom API environment label default; shown only on hidden developer surfaces (Settings > Developer via 7 taps, sign-in About via 5 taps on the logo)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "literal": "Production",
+      "reason": "API environment preset label; shown only on hidden developer surfaces (Developer > API Environment via 7 taps, sign-in About via 5 taps on the logo)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedApiEnvironmentStore.kt",
+      "literal": "Staging",
+      "reason": "API environment preset label; shown on hidden developer surfaces and in the floating environment badge that appears only when the app points at Raft staging"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/SharedSettingsStore.kt",
+      "literal": "Settings",
+      "reason": "default title of SharedSettingsHomeSnapshot; the snapshot is only checked for load state, never rendered"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "Thinking",
+      "reason": "English row identifier; Agent profile > Activity translates thinking rows by type (member_activity_log_thinking)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "Output",
+      "reason": "English row identifier; Agent profile > Activity translates text rows by type (member_activity_log_output)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "Raft action",
+      "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to member_activity_log_raft_action"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "System",
+      "reason": "English fallback title kept as row identifier; Agent profile > Activity maps it to activity_list_system_sender"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "Context Compaction Started",
+      "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_started)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/data/realtime/RealtimeEventMapper.kt",
+      "literal": "Context Compaction Finished",
+      "reason": "English row identifier; Agent profile > Activity translates compaction rows by type (member_activity_log_compaction_finished)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/files/RaftFilePreview.kt",
+      "literal": "Unable to compress image attachment",
+      "reason": "default message of RaftFilePreviewCompressedImageResult.Failure; production callers discard it and toast the localized compression error"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
+      "literal": "Could not refresh Home",
+      "reason": "home visual-fixture screen data; the enclosing *VisualScreen is called only from src/visualFixtures VisualFixturePages.kt and androidUnitTest screenshot tests"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
+      "literal": "Raft 1.6.0 is available",
+      "reason": "home visual-fixture screen data; the enclosing *VisualScreen is called only from src/visualFixtures VisualFixturePages.kt and androidUnitTest screenshot tests"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
+      "literal": "HOME",
+      "reason": "internal home app-update banner visual fixture label"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
+      "literal": "Android-Developer lost connection",
+      "reason": "home visual-fixture screen data; the enclosing *VisualScreen is called only from src/visualFixtures VisualFixturePages.kt and androidUnitTest screenshot tests"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/home/RaftHomeComponents.kt",
+      "literal": "Release gate needs review",
+      "reason": "home visual-fixture screen data; the enclosing *VisualScreen is called only from src/visualFixtures VisualFixturePages.kt and androidUnitTest screenshot tests"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Inline tags",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Channels, task references, and user mentions should render as clickable inline refs.",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Markdown blocks",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Lists, quotes, paragraphs, and inline code should keep normal markdown behavior.",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Code fence",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Code fences should keep syntax highlighting and avoid inline tag replacement.",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Image",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
+      "literal": "Remote markdown images should render through the platform image pipeline.",
+      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Inbox",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Control whether new activity can be delivered to this agent and wake it up.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Receive new inbox events and wake for activity from other people and agents.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Server",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Discover channels, members, and other agents in this server.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "List channels, members, and agents (slock server info).",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Channels",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "View channel rosters, join visible public channels, and leave channels the agent is no longer using.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Threads",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Follow and unfollow thread updates.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Messages",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Read, search, and send messages across channels, threads, and DMs.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Attachments",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Upload and view file attachments in conversation.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Tasks",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "List, create, and update tasks on the board.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Knowledge",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Read agent manual / knowledge base entries.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Actions",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
+      "literal": "Prepare action cards for the user to commit.",
+      "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersDetailPage.kt",
+      "literal": "Members",
+      "reason": "canonical sentinel: MembersListContent maps the exact value \"Members\" to members_page_title via canonicalMembersDisplayText before rendering"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersPage.kt",
+      "literal": "Members",
+      "context": "val title: String = \"Members\",",
+      "reason": "canonical sentinel: MembersListContent maps the exact value \"Members\" to members_page_title via canonicalMembersDisplayText before rendering"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersPage.kt",
+      "literal": "Members",
+      "context": "title = \"Members\",",
+      "reason": "internal Members smoke fixture (membersSmokePayload / ComposeMembersSmokePage), opened only from the developer Route launcher behind the hidden Developer menu"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersPage.kt",
+      "literal": "Onboarding Assistant",
+      "count": 2,
+      "reason": "internal Members smoke fixture (membersSmokePayload / ComposeMembersSmokePage), opened only from the developer Route launcher behind the hidden Developer menu"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersPage.kt",
+      "literal": "File and repo automation",
+      "reason": "internal Members smoke fixture (membersSmokePayload / ComposeMembersSmokePage), opened only from the developer Route launcher behind the hidden Developer menu"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersPage.kt",
+      "literal": "Owner",
+      "reason": "internal Members smoke fixture (membersSmokePayload / ComposeMembersSmokePage), opened only from the developer Route launcher behind the hidden Developer menu"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "literal": "Missing download request field",
+      "reason": "download coordinator result message; hosts forward it but the UI maps status/errorKind to localized copy and only logs it"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "literal": "Download cancelled",
+      "reason": "download coordinator cancel message; never rendered (cancel is silent or uses the localized 'download stopped' copy)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt",
+      "literal": "Download failed: HTTP ${statusCode ?: 0}",
+      "reason": "download coordinator failure message; never rendered, the UI maps status/errorKind to localized copy"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/AppUpdatePage.kt",
+      "literal": "WHAT'S NEW IN 1.6.0",
+      "reason": "internal app-update visual fixture copy"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/AppUpdatePage.kt",
+      "literal": "A focused update for faster collaboration",
+      "reason": "internal app-update visual fixture copy"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsAboutPage.kt",
+      "literal": "About",
+      "reason": "SettingsAboutPayloadCopy default; the only production builder settingsAboutPayloadCopy() passes Res.string.settings_about_title (defaults are used by tests only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsAboutPage.kt",
+      "literal": "Open Source Licenses",
+      "reason": "SettingsOpenSourceLicensesPayloadCopy default; production builder settingsOpenSourceLicensesPayloadCopy() passes Res.string.settings_open_source_licenses_title"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsBillingPage.kt",
+      "literal": "Get started in minutes.",
+      "reason": "settingsBillingSmokePayload preview data; only used by RouterPage 'Settings Billing Preview' (developer Route launcher behind the hidden Developer menu)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsBillingPage.kt",
+      "literal": "Final Trial Period",
+      "reason": "settingsBillingSmokePayload preview data; only used by RouterPage 'Settings Billing Preview' (developer Route launcher behind the hidden Developer menu)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsBillingPage.kt",
+      "literal": "Billing portal",
+      "reason": "settingsBillingSmokePayload preview data; only used by RouterPage 'Settings Billing Preview' (developer Route launcher behind the hidden Developer menu)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsBillingPage.kt",
+      "literal": "See all features and compare plans",
+      "reason": "settingsBillingSmokePayload preview data; only used by RouterPage 'Settings Billing Preview' (developer Route launcher behind the hidden Developer menu)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Developer",
+      "reason": "SettingsDeveloperPayloadCopy default; overridden by settingsDeveloperPayloadCopy() with Res.string.settings_developer_title (page itself is behind the hidden Developer menu)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Diagnostics",
+      "reason": "SettingsDiagnosticsPayloadCopy default; overridden by settingsDiagnosticsPayloadCopy() with Res.string.settings_diagnostics_title"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Developer tools",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Local Feature Overrides",
+      "count": 2,
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Registered keys",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Effective decision",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Server effective",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Client override",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Final effective",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Lifecycle and evidence",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "TTL and clear reason",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Consumer evidence",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Override",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Follow Server",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Force OFF",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Force ON",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Evidence",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsDeveloperPage.kt",
+      "literal": "Export diagnostics evidence",
+      "reason": "Local Feature Overrides developer tool; rendered only when diagnostic flag overrides are entitled (BuildConfig.READ_STATE_DIAGNOSTIC_OVERRIDE_ENABLED: Android debug/alpha/connectedTest builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHandsFeedbackContent.kt",
+      "literal": "Feedback",
+      "reason": "SettingsHandsFeedbackCopy default; the only production constructor settingsHandsFeedbackCopy() passes Res.string.settings_feedback_title"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHandsFeedbackContent.kt",
+      "literal": "Describe your idea or the bug you ran into…",
+      "reason": "SettingsHandsFeedbackCopy default; settingsHandsFeedbackCopy() passes Res.string.settings_feedback_describe_placeholder"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeMembers.kt",
+      "literal": "Members",
+      "reason": "canonical title sentinel; canonicalMembersDisplayText() replaces \"Members\" with Res.string.members_page_title before display"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHubPage.kt",
+      "literal": "Settings",
+      "reason": "RaftSettingsHomePayload default title; product Settings (appShellSettingsHomePayload) passes Res.string.settings_title; the default renders only on compose_settings_home, opened only from the developer Route launcher"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsNativeDetailContent.kt",
+      "literal": "Local Feature Overrides",
+      "count": 2,
+      "reason": "placeholder for the Local Feature Overrides route when overrides are unavailable; every opener is gated on localFeatureOverridesAvailable() (Android debug/alpha builds only)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsServerProfilePage.kt",
+      "literal": "Server Profile",
+      "reason": "toServerPayload title is never rendered: SharedSettingsServerContent reads only heroLabel and sections; the page header uses Res.string.settings_server_profile_title"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsServerProfilePage.kt",
+      "literal": "Profile",
+      "reason": "section title used as a skip sentinel: SharedSettingsServerContent drops sections titled \"Profile\" and renders its own localized profile card"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
+      "literal": "Local database",
+      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
+      "literal": "Image cache",
+      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
+      "literal": "Attachment staging",
+      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
+      "literal": "Temporary files and logs",
+      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
+      "literal": "Child Page Host Smoke",
+      "reason": "internal child-host smoke page, not a product surface"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
+      "literal": "Android proof for nested Kuikly child pages with independent child delegators.",
+      "reason": "internal nested child-page host proof copy"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
+      "literal": "pageData.marker = $marker",
+      "reason": "internal child-host diagnostic marker"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
+      "literal": "If this renders inside the parent page, Android host registration and child onAttach pageData are working.",
+      "reason": "internal nested child-page host proof copy"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/SharedThreadMessageMapping.kt",
+      "literal": "Task",
+      "reason": "model-only TaskSummary.title fallback for a projected reply parent; Message.task.title is never rendered (Message->RaftThreadMessageItem copies only task id/number/status/assignee)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/SharedThreadMessageMapping.kt",
+      "literal": "Task #$it",
+      "reason": "model-only TaskSummary.title fallback for a projected reply parent; Message.task.title is never rendered (Message->RaftThreadMessageItem copies only task id/number/status/assignee)"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadComposerRoute.kt",
+      "literal": "Attachment",
+      "count": 2,
+      "reason": "dead code: private toThreadAttachmentPreviewPayload has no callers"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessageTranslation.kt",
+      "literal": "Translating…",
+      "reason": "translation indicator model text; ThreadMessageTranslationIndicator renders translation_state_in_progress instead"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessageTranslation.kt",
+      "literal": "Translation unavailable",
+      "reason": "translation indicator model text; ThreadMessageTranslationIndicator renders translation_state_unavailable instead"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Make Private",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Restrict this channel to selected members",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Archive Channel",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Freeze writes and hide from sidebars",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Delete Channel",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    },
+    {
+      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadSettingsDrawer.kt",
+      "literal": "Permanently remove this channel",
+      "reason": "dead default channel-action list: defaultThreadSettingsChannelActions() is reached only via normalizedThreadSettingsChannelActions(), which only commonTest calls"
+    }
+  ]
+}

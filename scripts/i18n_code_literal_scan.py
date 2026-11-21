@@ -7,6 +7,17 @@ label, placeholder, toast, dialog, widget text, etc.), then reports exact
 file/line/context evidence. Machine strings, resource references, logging,
 routes, URLs, protocol tokens, tests, and visual fixtures are excluded.
 
+High confidence means the literal itself is what the sink shows: a direct
+argument of a Text/Button/toast/dialog call (not of a call nested in it), or
+the value of a UI property (`title = "…"`, `label: String = "…"`, and their
+`?:` / `.ifBlank { "…" }` / `if … else` branches). Other literals on such a
+line, such as JSON keys, status tokens and ids, are reported as medium.
+
+The allowlist file records reviewed exclusions: source sets and files that
+never ship or are developer-only (`excludeSourceSets`, `excludePaths`), and
+single occurrences that are not visible (`occurrences`). Every entry needs a
+reason.
+
 The default exit status is zero so teams can triage the first report. Use
 --fail-on-findings after reviewed exceptions have been recorded.
 """
@@ -44,18 +55,29 @@ LOCALIZED_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 URL_RE = re.compile(r"^(?:https?|wss?)://", re.IGNORECASE)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
-HIGH_SINKS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("text-call", re.compile(r"\b(?:Text|BasicText|Button|Slock\w*Text)\s*\(")),
-    ("arkui-text", re.compile(r"\b(?:Text|Button|Span)\s*\(|\.text\s*\(")),
-    (
-        "ui-property",
-        re.compile(
-            r"\b(?:text|title|subtitle|label|placeholder|contentDescription|description|"
-            r"message|emptyText|errorText|buttonText|actionText|headerText)\s*[:=]"
-        ),
-    ),
-    ("toast-dialog", re.compile(r"\b(?:showToast|Toast|AlertDialog|Dialog|Snackbar)\b")),
+# Compose-style calls only: `Foo.Text(` is a model constructor (ActionCardFormValue.Text, ...).
+TEXT_CALL_RE = re.compile(r"(?<![.\w])(?:Text|BasicText|Button|Raft\w*Text)\s*\(")
+UI_PROPERTY_RE = re.compile(
+    r"\b(?:text|title|subtitle|label|placeholder|contentDescription|description|"
+    r"message|emptyText|errorText|buttonText|actionText|headerText)\s*[:=]"
 )
+TOAST_DIALOG_RE = re.compile(r"\b(?:Toast|AlertDialog|Dialog|Snackbar)\b|\.(?:toast|errorToast)\s*\(")
+# The call whose arguments a toast/dialog literal must be in (AlertDialog.Builder(host) takes none).
+TOAST_DIALOG_CALL_RE = re.compile(
+    r"(?:\bToast\.makeText|(?<![.\w])(?:AlertDialog|Dialog|Snackbar)|\.(?:toast|errorToast))\s*\("
+)
+
+HIGH_SINKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("text-call", TEXT_CALL_RE),
+    ("ui-property", UI_PROPERTY_RE),
+    ("toast-dialog", TOAST_DIALOG_RE),
+)
+DIRECT_CALL_SINKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("text-call", TEXT_CALL_RE),
+    ("toast-dialog", TOAST_DIALOG_CALL_RE),
+)
+# Previous lines searched for a still-open direct call or an enclosing log/annotation call.
+MULTILINE_LOOKBACK = 4
 
 MEDIUM_SINK_RE = re.compile(
     r"\b(?:title|subtitle|label|placeholder|description|message|prompt|empty|error|action|"
@@ -68,11 +90,26 @@ UI_PATH_RE = re.compile(
 )
 
 NON_UI_CONTEXT_RE = re.compile(
-    r"\b(?:Log\.|console\.|println\(|print\(|recordLog|diagnostic|trace|metric|"
-    r"SerialName|JsonNames?|Regex\(|routeName|pageName|eventName|headerName|userAgent|"
+    r"\b(?:Log\.|console\.|recordLog|diagnostic|trace|metric|"
+    r"SerialName|JsonNames?|routeName|pageName|eventName|headerName|userAgent|"
     r"contentType|mimeType|queryParam|apiPath)\b",
     re.IGNORECASE,
 )
+# A literal inside the parentheses of one of these calls is never shown: log lines,
+# regex patterns and annotation arguments (@RequiresOptIn(message = …), @Deprecated(…)).
+NON_UI_CALL_RE = re.compile(
+    r"@[\w.]+"
+    r"|(?:[\w.]*\.)?(?:raftLog\w*|raftLogger|recordLog|recordCriticalLog|logOnce|diagnosticsLogger|"
+    r"logDebug|logInfo|logWarn|logError|println|print|NSLog|Regex)"
+    r"|(?:[\w.]*\.)?(?:RaftAppLog|Log)\.\w+"
+    r"|[\w.]*\.log"
+)
+# Machine-shaped literals: an id such as `otterTuck`, or a log line that starts
+# with a snake_case event (`play_services_check code=$code`) or a key=value pair.
+LOWER_CAMEL_ID_RE = re.compile(r"[a-z][a-z0-9]*(?:[A-Z][A-Za-z0-9]*)+")
+LOG_LINE_RE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?:\s|$)|[A-Za-z_][\w.]*=\S")
+ESCAPE_RE = re.compile(r"\\(u[0-9A-Fa-f]{4}|.)")
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "\\": "\\", '"': '"', "'": "'"}
 EXACT_TECHNICAL_LITERALS = {
     "API",
     "Android",
@@ -115,10 +152,8 @@ INTERNAL_FIELD_LITERALS = {
 }
 DIRECT_SINKS = {
     "text-call",
-    "arkui-text",
     "toast-dialog",
     "multiline-text-call",
-    "multiline-arkui-text",
     "multiline-toast-dialog",
 }
 
@@ -142,22 +177,42 @@ class Finding:
 
 @dataclass(frozen=True)
 class ReviewedException:
+    """Reviewed occurrences of one literal in one file: `count` identical ones, all not visible."""
+
     path: str
     literal: str
     reason: str
     context: str | None = None
+    count: int = 1
+
+
+@dataclass(frozen=True)
+class PathExclusion:
+    """A file (`path`) or source set (`source_set`, the directory under `src/`) the scan skips."""
+
+    reason: str
+    path: str | None = None
+    source_set: str | None = None
+
+
+@dataclass(frozen=True)
+class Allowlist:
+    exclusions: tuple[PathExclusion, ...]
+    occurrences: dict[tuple[str, str, str | None], ReviewedException]
 
 
 def decoded_literal(token: str) -> str:
-    quote = token[0]
     body = token[1:-1]
-    # Enough decoding for audit output without interpreting arbitrary source.
-    return (
-        body.replace(r"\n", "\n")
-        .replace(r"\t", "\t")
-        .replace(rf"\{quote}", quote)
-        .replace(r"\\", "\\")
-    )
+
+    # Enough decoding for audit output without interpreting arbitrary source. `\$` stays
+    # escaped so visible_literal_text() does not mistake it for a template.
+    def decode(match: re.Match[str]) -> str:
+        escape = match.group(1)
+        if escape.startswith("u") and len(escape) == 5:
+            return chr(int(escape[1:], 16))
+        return ESCAPES.get(escape, match.group(0))
+
+    return ESCAPE_RE.sub(decode, body)
 
 
 def visible_literal_text(value: str) -> str:
@@ -209,6 +264,8 @@ def is_pure_english_candidate(value: str) -> bool:
     if re.fullmatch(r"[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+", stripped):
         return False
     if re.fullmatch(r"[A-Fa-f0-9-]{16,}", stripped):
+        return False
+    if LOWER_CAMEL_ID_RE.fullmatch(stripped) or LOG_LINE_RE.match(stripped):
         return False
     return True
 
@@ -266,33 +323,6 @@ def literal_tokens(line: str, language: str) -> list[tuple[int, str]]:
     return sorted(tokens)
 
 
-def masked_source_line(line: str, language: str) -> str:
-    return width_preserving_masked_line(line, language)
-
-
-def width_preserving_masked_line(line: str, language: str) -> str:
-    """Mask literals without changing columns, for token-local context checks."""
-    characters = list(line)
-    for column, token in literal_tokens(line, language):
-        characters[column : column + len(token)] = " " * len(token)
-    return "".join(characters)
-
-
-def is_non_ui_token(line: str, column: int, language: str) -> bool:
-    """Exclude only the comment/expression that owns this literal token."""
-    masked = width_preserving_masked_line(line, language)
-    comment_column = masked.find("//")
-    code_end = comment_column if comment_column >= 0 else len(line)
-    if column >= code_end:
-        return True
-    expression_start = masked.rfind(";", 0, column) + 1
-    expression_end = masked.find(";", column, code_end)
-    if expression_end < 0:
-        expression_end = code_end
-    expression = masked[expression_start:expression_end]
-    return NON_UI_CONTEXT_RE.search(expression) is not None
-
-
 def is_machine_control_token(line: str, column: int, token: str) -> bool:
     """Reject branch/comparison keys nested inside an otherwise direct UI call."""
     before = line[:column]
@@ -304,83 +334,302 @@ def is_machine_control_token(line: str, column: int, token: str) -> bool:
     )
 
 
-def has_open_multiline_call(
-    lines: list[str],
-    index: int,
-    language: str,
-    pattern: re.Pattern[str],
-) -> bool:
-    start = max(0, index - 4)
-    masked = [masked_source_line(item, language) for item in lines[start : index + 1]]
-    for relative_index in range(len(masked) - 1, -1, -1):
-        line = masked[relative_index]
-        match = pattern.search(line)
-        if match is None:
-            continue
-        balance = 0
-        opened = False
-        # Only scan through the line before the candidate. If the call closed
-        # earlier, unrelated calls on the candidate line must not make it look
-        # open (e.g. a Toast followed by a multi-line log call).
-        for candidate_line in masked[relative_index:-1]:
-            source = candidate_line[match.start() :] if not opened else candidate_line
-            for char in source:
-                if char == "(":
-                    balance += 1
-                    opened = True
-                elif char == ")" and opened:
-                    balance -= 1
-                    if balance == 0:
-                        return False
-        return opened and balance > 0
-    return False
+CHAR_LITERAL_RE = re.compile(r"'(?:\\u[0-9A-Fa-f]{4}|\\.|[^'\\])'")
+OPENERS = "([{"
+CLOSERS = ")]}"
 
 
-def classify_context(path: Path, lines: list[str], index: int, language: str) -> tuple[str, str] | None:
-    line = lines[index]
-    masked_line = masked_source_line(line, language)
-    window_lines = lines[max(0, index - 2) : min(len(lines), index + 3)]
-    masked_window = " ".join(masked_source_line(item, language) for item in window_lines)
-    # Resource/non-UI references must not suppress the surrounding context
-    # window: a localized or logging sibling next to a hardcoded sink is still
-    # actionable. Resource identifiers are filtered per literal by
-    # is_pure_english_candidate(); non-UI ownership is checked per token by
-    # is_non_ui_token().
-    for name, pattern in HIGH_SINKS:
-        if name == "ui-property":
-            continue
-        if has_open_multiline_call(lines, index, language, pattern):
-            return "high", f"multiline-{name}"
-    for name, pattern in HIGH_SINKS:
-        if pattern.search(masked_line):
-            return "high", name
-    for name, pattern in HIGH_SINKS:
-        if pattern.search(masked_window):
-            return "medium", f"near-{name}"
-    if UI_PATH_RE.search(path.name) and MEDIUM_SINK_RE.search(masked_line):
-        return "medium", "ui-file-property"
+@dataclass(frozen=True)
+class SourceLine:
+    text: str
+    # Literals, char literals, comments and raw strings blanked (same width): what is left is code.
+    code: str
+    # Column where a // comment starts (len(text) when there is none).
+    code_end: int
+    # Spans inside a multi-line raw string or block comment: a quote there does not start a literal.
+    dead: tuple[tuple[int, int], ...]
+
+
+def source_lines(lines: list[str], language: str) -> list[SourceLine]:
+    """Blank everything that is not code, carrying block comments and raw strings across lines."""
+    result: list[SourceLine] = []
+    in_block = False
+    in_raw = False
+    for line in lines:
+        characters = list(line)
+        dead: list[tuple[int, int]] = []
+        code_end = len(line)
+        index = 0
+
+        def blank(start: int, end: int, is_dead: bool) -> None:
+            characters[start:end] = " " * (end - start)
+            if is_dead:
+                dead.append((start, end))
+
+        while index < len(line):
+            if in_block or in_raw:
+                close = line.find("*/" if in_block else '"""', index)
+                end = len(line) if close < 0 else close + (2 if in_block else 3)
+                blank(index, end, True)
+                if close >= 0:
+                    in_block = in_raw = False
+                index = end
+                continue
+            if line.startswith("//", index):
+                blank(index, len(line), False)
+                code_end = index
+                break
+            if line.startswith("/*", index) or line.startswith('"""', index):
+                is_block = line.startswith("/*", index)
+                close = line.find("*/" if is_block else '"""', index + (2 if is_block else 3))
+                if close < 0:
+                    in_block, in_raw = is_block, not is_block
+                    blank(index, len(line), True)
+                    break
+                end = close + (2 if is_block else 3)
+                # A one-line raw string stays tokenizable, as before; a block comment never is.
+                blank(index, end, is_block)
+                index = end
+                continue
+            char = line[index]
+            if char == '"':
+                end, _ = parse_literal_at(line, index, char, language)
+                blank(index, end, False)
+                index = end
+                continue
+            if char == "'":
+                match = CHAR_LITERAL_RE.match(line, index)
+                if match is not None:
+                    blank(index, match.end(), False)
+                    index = match.end()
+                    continue
+            index += 1
+        result.append(SourceLine(line, "".join(characters), code_end, tuple(dead)))
+    return result
+
+
+def call_name_before(code: str, paren: int) -> tuple[str, str]:
+    """The dotted name written before a "(" (e.g. `bridge.toast`, `@RequiresOptIn`) and the char before it."""
+    index = paren - 1
+    while index >= 0 and code[index].isspace():
+        index -= 1
+    end = index + 1
+    while index >= 0 and (code[index].isalnum() or code[index] in "_.@"):
+        index -= 1
+    previous = code[end - 1] if end > 0 else ""
+    if previous == ">" and end > 1 and code[end - 2] == "-":
+        previous = "->"
+    return code[index + 1 : end], previous
+
+
+def opens_call(code: str, paren: int) -> bool:
+    """True for the "(" of a call or condition, false for a grouping paren such as `= (a + b)`."""
+    name, previous = call_name_before(code, paren)
+    if name in ("else", "return"):
+        return False
+    return bool(name) or previous in (")", "]", ">")
+
+
+@dataclass(frozen=True)
+class Group:
+    """An open (, [ or { and, for a "(", the call it belongs to."""
+
+    kind: str
+    line: int
+    name: str = ""
+    call: bool = False
+    sink: str | None = None
+
+
+def default_value_start(code: str, index: int) -> int | None:
+    """After `name:`, skip the type; return where the value after its `=` starts, if there is one."""
+    depth = 0
+    for position in range(index, len(code)):
+        char = code[position]
+        if char in "([<":
+            depth += 1
+        elif char == ">" and code[position - 1] != "-":
+            depth -= 1
+        elif char in ")]":
+            if depth == 0:
+                return None
+            depth -= 1
+        elif char == "{" or (char in ",;" and depth == 0):
+            return None
+        elif char == "=" and depth == 0:
+            return None if code.startswith("=", position + 1) else position + 1
     return None
+
+
+def value_end(code: str, start: int) -> int:
+    """End of the argument/assignment value starting at `start`: the next top-level , or ; or closer."""
+    depth = 0
+    for position in range(start, len(code)):
+        char = code[position]
+        if char in OPENERS:
+            depth += 1
+        elif char in CLOSERS:
+            if depth == 0:
+                return position
+            depth -= 1
+        elif char in ",;" and depth == 0:
+            return position
+    return len(code)
+
+
+def ui_property_values(code: str) -> list[tuple[int, int]]:
+    """Spans of the values the UI property names on this line govern (`title = …`, `label: String = …`)."""
+    spans: list[tuple[int, int]] = []
+    for match in UI_PROPERTY_RE.finditer(code):
+        operator = match.end() - 1
+        if code.startswith(code[operator], operator + 1):
+            continue  # `title == x` or `Foo::title`
+        start = operator + 1 if code[operator] == "=" else default_value_start(code, operator + 1)
+        if start is not None:
+            spans.append((start, value_end(code, start)))
+    return spans
+
+
+def value_nesting(code: str, start: int, column: int) -> int:
+    """Calls and index brackets between a value's start and a literal. Lambdas, `when`/`ifBlank`
+    blocks and grouping parens do not count, so `x ?: "A"`, `if (c) "A" else "B"` and
+    `.ifBlank { "A" }` are the value itself while `opt("label")` and `props["label"]` are not."""
+    stack: list[bool] = []
+    for position in range(start, column):
+        char = code[position]
+        if char == "(":
+            stack.append(opens_call(code, position))
+        elif char == "[":
+            stack.append(True)
+        elif char == "{":
+            stack.append(False)
+        elif char in CLOSERS and stack:
+            stack.pop()
+    return sum(stack)
+
+
+class KotlinSource:
+    def __init__(self, path: Path, lines: list[str], language: str) -> None:
+        self.path = path
+        self.language = language
+        self.lines = source_lines(lines, language)
+        self._events: dict[int, list[tuple[int, str, Group | None]]] = {}
+        self._ui_values: dict[int, list[tuple[int, int]]] = {}
+
+    def tokens(self, index: int) -> list[tuple[int, str]]:
+        line = self.lines[index]
+        text = line.text
+        for start, end in line.dead:
+            text = text[:start] + " " * (end - start) + text[end:]
+        return literal_tokens(text, self.language)
+
+    def events(self, index: int) -> list[tuple[int, str, Group | None]]:
+        """Brackets on a line, with the Group each opener pushes."""
+        cached = self._events.get(index)
+        if cached is not None:
+            return cached
+        code = self.lines[index].code
+        sinks: dict[int, str] = {}
+        for name, pattern in DIRECT_CALL_SINKS:
+            for match in pattern.finditer(code):
+                sinks.setdefault(match.end() - 1, name)
+        events: list[tuple[int, str, Group | None]] = []
+        for column, char in enumerate(code):
+            if char == "(":
+                name, _ = call_name_before(code, column)
+                events.append((column, char, Group("(", index, name, opens_call(code, column), sinks.get(column))))
+            elif char in "[{":
+                events.append((column, char, Group(char, index)))
+            elif char in CLOSERS:
+                events.append((column, char, None))
+        self._events[index] = events
+        return events
+
+    def open_groups(self, index: int, column: int) -> list[Group]:
+        """Brackets still open at a literal, looking back MULTILINE_LOOKBACK lines."""
+        stack: list[Group] = []
+        for line_index in range(max(0, index - MULTILINE_LOOKBACK), index + 1):
+            for event_column, char, group in self.events(line_index):
+                if line_index == index and event_column >= column:
+                    break
+                if group is not None:
+                    stack.append(group)
+                elif stack:
+                    stack.pop()
+        return stack
+
+    def is_non_ui_token(self, index: int, column: int, groups: list[Group]) -> bool:
+        """Exclude a comment, a log/regex/annotation argument, or a non-UI expression on this line."""
+        line = self.lines[index]
+        if column >= line.code_end:
+            return True
+        if any(group.kind == "(" and group.name and NON_UI_CALL_RE.fullmatch(group.name) for group in groups):
+            return True
+        expression_start = line.code.rfind(";", 0, column) + 1
+        expression_end = line.code.find(";", column, line.code_end)
+        if expression_end < 0:
+            expression_end = line.code_end
+        return NON_UI_CONTEXT_RE.search(line.code[expression_start:expression_end]) is not None
+
+    def classify(self, index: int, column: int, groups: list[Group]) -> tuple[str, str] | None:
+        code = self.lines[index].code
+        # High: the literal is what the sink shows. A direct argument of the innermost open
+        # Text/Button/toast/dialog call; lambdas and grouping parens in between are transparent,
+        # a nested call or index (testTag("…"), opt("…"), props["…"]) is not.
+        open_sink: Group | None = None
+        for position in range(len(groups) - 1, -1, -1):
+            group = groups[position]
+            if group.sink is None:
+                continue
+            open_sink = group
+            inner = groups[position + 1 :]
+            if all(item.kind == "{" or (item.kind == "(" and not item.call) for item in inner):
+                return "high", group.sink if group.line == index else f"multiline-{group.sink}"
+            break
+        # High: the value of a UI property on this line, not any other literal on it.
+        values = self._ui_values.get(index)
+        if values is None:
+            values = self._ui_values[index] = ui_property_values(code)
+        for start, end in values:
+            if start <= column < end and value_nesting(code, start, column) == 0:
+                return "high", "ui-property"
+        # Medium: next to a sink without being its text (JSON keys, ids, status tokens, tags).
+        if open_sink is not None:
+            return "medium", f"near-{open_sink.sink}"
+        for name, pattern in HIGH_SINKS:
+            if pattern.search(code):
+                return "medium", f"near-{name}"
+        window = " ".join(line.code for line in self.lines[max(0, index - 2) : index + 3])
+        for name, pattern in HIGH_SINKS:
+            if pattern.search(window):
+                return "medium", f"near-{name}"
+        if UI_PATH_RE.search(self.path.name) and MEDIUM_SINK_RE.search(code):
+            return "medium", "ui-file-property"
+        return None
 
 
 def scan_file(path: Path, repo_root: Path) -> list[Finding]:
     text = path.read_text(encoding="utf-8", errors="replace")
-    lines = text.splitlines()
     language = source_language(path)
+    source = KotlinSource(path, text.splitlines(), language)
     findings: list[Finding] = []
-    for index, line in enumerate(lines):
-        stripped = line.lstrip()
+    for index, line in enumerate(source.lines):
+        stripped = line.text.lstrip()
         if stripped.startswith(("//", "/*", "*", "import ", "package ")):
             continue
-        classification = classify_context(path, lines, index, language)
-        if classification is None:
-            continue
-        confidence, sink = classification
-        for column, token in literal_tokens(line, language):
-            if is_non_ui_token(line, column, language) or is_machine_control_token(line, column, token):
+        for column, token in source.tokens(index):
+            if is_machine_control_token(line.text, column, token):
                 continue
             value = decoded_literal(token)
             if not is_pure_english_candidate(value):
                 continue
+            groups = source.open_groups(index, column)
+            if source.is_non_ui_token(index, column, groups):
+                continue
+            classification = source.classify(index, column, groups)
+            if classification is None:
+                continue
+            confidence, sink = classification
             findings.append(
                 Finding(
                     path=str(path.relative_to(repo_root)),
@@ -390,31 +639,41 @@ def scan_file(path: Path, repo_root: Path) -> list[Finding]:
                     confidence=confidence,
                     sink=sink,
                     literal=value,
-                    context=line.strip(),
+                    context=line.text.strip(),
                 )
             )
     return findings
 
 
-def parse_allowlist(path: Path) -> dict[tuple[str, str, str | None], ReviewedException]:
-    if not path.exists():
-        return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, list):
-        raise ValueError(f"allowlist must be an array: {path}")
+OCCURRENCE_KEYS = {"path", "literal", "reason", "context", "count"}
+
+
+def _nonblank(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def parse_occurrences(items: object, path: Path) -> dict[tuple[str, str, str | None], ReviewedException]:
+    if not isinstance(items, list):
+        raise ValueError(f"allowlist occurrences must be an array: {path}")
     result: dict[tuple[str, str, str | None], ReviewedException] = {}
-    for index, item in enumerate(payload):
+    for index, item in enumerate(items):
         if not isinstance(item, dict):
             raise ValueError(f"allowlist entry {index} must be an object: {path}")
+        unknown = set(item) - OCCURRENCE_KEYS
+        if unknown:
+            raise ValueError(f"allowlist entry {index} has unknown keys {sorted(unknown)}: {path}")
         source_path = item.get("path")
         literal = item.get("literal")
         reason = item.get("reason")
         context = item.get("context")
-        if not all(isinstance(value, str) and value.strip() for value in (source_path, literal, reason)):
+        count = item.get("count", 1)
+        if not all(_nonblank(value) for value in (source_path, literal, reason)):
             raise ValueError(f"allowlist entry {index} requires path, literal, and reason: {path}")
-        if context is not None and (not isinstance(context, str) or not context.strip()):
+        if context is not None and not _nonblank(context):
             raise ValueError(f"allowlist entry {index} context must be a nonblank string: {path}")
-        entry = ReviewedException(source_path, literal, reason, context)
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(f"allowlist entry {index} count must be a positive integer: {path}")
+        entry = ReviewedException(source_path, literal, reason, context, count)
         key = (entry.path, entry.literal, entry.context)
         if key in result:
             raise ValueError(f"duplicate allowlist entry: {entry.path} / {entry.literal} / {entry.context}")
@@ -422,29 +681,94 @@ def parse_allowlist(path: Path) -> dict[tuple[str, str, str | None], ReviewedExc
     return result
 
 
+def parse_exclusions(payload: dict[str, object], path: Path) -> tuple[PathExclusion, ...]:
+    exclusions: list[PathExclusion] = []
+    seen: set[tuple[str | None, str | None]] = set()
+    for field, key in (("excludeSourceSets", "sourceSet"), ("excludePaths", "path")):
+        items = payload.get(field, [])
+        if not isinstance(items, list):
+            raise ValueError(f"allowlist {field} must be an array: {path}")
+        for index, item in enumerate(items):
+            if not isinstance(item, dict) or set(item) != {key, "reason"}:
+                raise ValueError(f"allowlist {field} entry {index} needs exactly {key} and reason: {path}")
+            name, reason = item[key], item["reason"]
+            if not _nonblank(name) or not _nonblank(reason):
+                raise ValueError(f"allowlist {field} entry {index} needs a nonblank {key} and reason: {path}")
+            exclusion = (
+                PathExclusion(reason, source_set=name) if key == "sourceSet" else PathExclusion(reason, path=name)
+            )
+            identity = (exclusion.path, exclusion.source_set)
+            if identity in seen:
+                raise ValueError(f"duplicate allowlist {field} entry: {name}")
+            seen.add(identity)
+            exclusions.append(exclusion)
+    return tuple(exclusions)
+
+
+def load_allowlist(path: Path) -> Allowlist:
+    """Read the reviewed exclusions and occurrences (an object; a bare array is occurrences only)."""
+    if not path.exists():
+        return Allowlist((), {})
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        return Allowlist((), parse_occurrences(payload, path))
+    if not isinstance(payload, dict):
+        raise ValueError(f"allowlist must be an object or an array: {path}")
+    unknown = set(payload) - {"excludeSourceSets", "excludePaths", "occurrences"}
+    if unknown:
+        raise ValueError(f"allowlist has unknown keys {sorted(unknown)}: {path}")
+    return Allowlist(parse_exclusions(payload, path), parse_occurrences(payload.get("occurrences", []), path))
+
+
+def parse_allowlist(path: Path) -> dict[tuple[str, str, str | None], ReviewedException]:
+    return load_allowlist(path).occurrences
+
+
+def excluded_by(relative_path: str, exclusions: tuple[PathExclusion, ...]) -> PathExclusion | None:
+    """The exclusion covering a repo-relative path: the exact file, or its source set (dir under src/)."""
+    parts = relative_path.split("/")
+    for exclusion in exclusions:
+        if exclusion.path is not None and exclusion.path == relative_path:
+            return exclusion
+        if exclusion.source_set is not None and any(
+            parts[index] == "src" and parts[index + 1] == exclusion.source_set for index in range(len(parts) - 1)
+        ):
+            return exclusion
+    return None
+
+
+def stale_exclusions(exclusions: tuple[PathExclusion, ...], repo_root: Path) -> list[PathExclusion]:
+    """Excluded files that no longer exist (moved or deleted); update or remove the entry."""
+    return [item for item in exclusions if item.path is not None and not (repo_root / item.path).is_file()]
+
+
+def _matches(entry: ReviewedException, finding: Finding) -> bool:
+    return (
+        finding.path == entry.path
+        and finding.literal == entry.literal
+        and (entry.context is None or finding.context == entry.context)
+    )
+
+
 def resolve_allowlist_occurrences(
     findings: list[Finding],
     allowlist: dict[tuple[str, str, str | None], ReviewedException],
 ) -> set[tuple[str, int, int, str]]:
+    """Occurrences the reviewed entries cover. An entry covers exactly `count` occurrences, wherever
+    they are in the file: one more or one fewer fails, so new copy is never hidden by an old review."""
     resolved: set[tuple[str, int, int, str]] = set()
     for entry in allowlist.values():
-        matches = [
-            finding
-            for finding in findings
-            if finding.path == entry.path
-            and finding.literal == entry.literal
-            and (entry.context is None or finding.context == entry.context)
-        ]
+        matches = [finding for finding in findings if _matches(entry, finding)]
         if not matches:
             # The reviewed code changed or was removed; stale_allowlist_entries reports it.
             continue
-        if len(matches) != 1:
+        if len(matches) != entry.count:
+            lines = ", ".join(str(finding.line) for finding in matches)
             raise ValueError(
-                "allowlist entry must resolve to exactly one occurrence: "
-                f"{entry.path} / {entry.literal} / {entry.context} (matches={len(matches)})"
+                f"allowlist entry must resolve to exactly {entry.count} occurrence(s): "
+                f"{entry.path} / {entry.literal} / {entry.context} (matches={len(matches)}, lines {lines})"
             )
-        finding = matches[0]
-        resolved.add((finding.path, finding.line, finding.column, finding.literal))
+        resolved.update((finding.path, finding.line, finding.column, finding.literal) for finding in matches)
     return resolved
 
 
@@ -453,16 +777,7 @@ def stale_allowlist_entries(
     allowlist: dict[tuple[str, str, str | None], ReviewedException],
 ) -> list[ReviewedException]:
     """Reviewed exceptions that no longer match any occurrence; remove them from the allowlist."""
-    stale = [
-        entry
-        for entry in allowlist.values()
-        if not any(
-            finding.path == entry.path
-            and finding.literal == entry.literal
-            and (entry.context is None or finding.context == entry.context)
-            for finding in findings
-        )
-    ]
+    stale = [entry for entry in allowlist.values() if not any(_matches(entry, finding) for finding in findings)]
     return sorted(stale, key=lambda entry: (entry.path, entry.literal, entry.context or ""))
 
 
@@ -484,11 +799,15 @@ def markdown_report(
     scanned_files: int,
     suppressed_count: int,
     stale: list[ReviewedException] | None = None,
+    excluded_files: int = 0,
+    stale_excluded: list[PathExclusion] | None = None,
 ) -> str:
+    high = sum(1 for item in findings if item.confidence == "high")
     lines = [
         "# Kotlin user-visible English literal scan",
         "",
-        f"Scanned production files: **{scanned_files}** · findings: **{len(findings)}** · "
+        f"Scanned production files: **{scanned_files}** (excluded: **{excluded_files}**) · "
+        f"findings: **{len(findings)}** (high: **{high}**, medium: **{len(findings) - high}**) · "
         f"reviewed exceptions: **{suppressed_count}**",
         "",
         "| confidence | source | location | literal | existing MR key(s) | sink | context |",
@@ -506,15 +825,18 @@ def markdown_report(
         ]
         escaped = [value.replace("|", "\\|").replace("\n", r"\n") for value in values]
         lines.append("| " + " | ".join(escaped) + " |")
-    if stale:
+    stale = stale or []
+    stale_excluded = stale_excluded or []
+    if stale or stale_excluded:
         lines += [
             "",
-            f"## Stale allowlist entries: {len(stale)}",
+            f"## Stale allowlist entries: {len(stale) + len(stale_excluded)}",
             "",
             "These reviewed exceptions match nothing any more; remove them from the allowlist.",
             "",
         ]
         lines += [f"- `{entry.path}` / `{entry.literal}`" + (f" / `{entry.context}`" if entry.context else "") for entry in stale]
+        lines += [f"- excludePaths `{entry.path}` (no such file)" for entry in stale_excluded]
     return "\n".join(lines) + "\n"
 
 
@@ -540,7 +862,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fail-on-stale",
         action="store_true",
-        help="Exit 1 when an allowlist entry no longer matches any occurrence.",
+        help="Exit 1 when an allowlist entry no longer matches any occurrence (or names a missing file).",
     )
     return parser
 
@@ -555,7 +877,13 @@ def main(argv: list[str] | None = None) -> int:
         if not root.exists():
             continue
         source_files.extend(path for path in root.rglob("*") if path.suffix == ".kt")
-    source_files = sorted(set(source_files))
+    allowlist_path = args.allowlist if args.allowlist.is_absolute() else repo_root / args.allowlist
+    allowlist = load_allowlist(allowlist_path)
+    candidates = sorted(set(source_files))
+    source_files = [
+        path for path in candidates if excluded_by(path.relative_to(repo_root).as_posix(), allowlist.exclusions) is None
+    ]
+    excluded_count = len(candidates) - len(source_files)
 
     findings: list[Finding] = []
     for path in source_files:
@@ -563,10 +891,9 @@ def main(argv: list[str] | None = None) -> int:
     mr_base_path = args.mr_base if args.mr_base.is_absolute() else repo_root / args.mr_base
     mr_values = parse_mr_value_index(mr_base_path)
     findings = [replace(item, catalog_keys=mr_values.get(item.literal, ())) for item in findings]
-    allowlist_path = args.allowlist if args.allowlist.is_absolute() else repo_root / args.allowlist
-    allowlist = parse_allowlist(allowlist_path)
-    reviewed_occurrences = resolve_allowlist_occurrences(findings, allowlist)
-    stale = stale_allowlist_entries(findings, allowlist)
+    reviewed_occurrences = resolve_allowlist_occurrences(findings, allowlist.occurrences)
+    stale = stale_allowlist_entries(findings, allowlist.occurrences)
+    stale_excluded = stale_exclusions(allowlist.exclusions, repo_root)
     if args.direct_only:
         findings = [item for item in findings if is_direct_sink(item.sink)]
     if args.catalog_backed_only:
@@ -584,16 +911,18 @@ def main(argv: list[str] | None = None) -> int:
         output = json.dumps(
             {
                 "scannedFileCount": len(source_files),
+                "excludedFileCount": excluded_count,
                 "findingCount": len(findings),
                 "reviewedExceptionCount": suppressed_count,
                 "staleAllowlistEntries": [asdict(entry) for entry in stale],
+                "staleExcludePaths": [entry.path for entry in stale_excluded],
                 "findings": [asdict(item) for item in findings],
             },
             ensure_ascii=False,
             indent=2,
         ) + "\n"
     else:
-        output = markdown_report(findings, len(source_files), suppressed_count, stale)
+        output = markdown_report(findings, len(source_files), suppressed_count, stale, excluded_count, stale_excluded)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(output, encoding="utf-8")
@@ -601,7 +930,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(output)
     if args.fail_on_findings and findings:
         return 1
-    return 1 if args.fail_on_stale and stale else 0
+    return 1 if args.fail_on_stale and (stale or stale_excluded) else 0
 
 
 if __name__ == "__main__":
