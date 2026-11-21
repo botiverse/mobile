@@ -203,7 +203,7 @@ test("no record, an unreadable one or one without an acceptance is reported as u
   }
 });
 
-test("a record bound to another case, run case or GitHub run, without a valid attempt, or a pass not on a completed login record, is unknown/record_invalidated", async () => {
+test("a record bound to another case, run case or GitHub run, with an attempt other than 1, or a pass not on a completed login record, is unknown/record_invalidated", async () => {
   const testbed = await fakeTestbed(() => ({ status: 200 }));
   const pass = { verdict: "pass", reason: "signed_in_as_expected" };
   try {
@@ -217,6 +217,8 @@ test("a record bound to another case, run case or GitHub run, without a valid at
       // The required login phase without a readable input binds this job's run case but has no attempt.
       ["no attempt (the input never arrived)", (j) => writeAcceptance(j.out, j.env, "unknown", "input_missing", { ...BINDING, attempt: null })],
       ["attempt 0", (j) => writeRaw(j.out, j.env, { ...BINDING, attempt: 0, ...pass })],
+      // Testbed takes the first attempt only: a record written for attempt 2 is not this job's result.
+      ["attempt 2", (j) => writeAcceptance(j.out, j.env, "fail", "user_mismatch", { ...BINDING, attempt: 2 })],
       ["attempt as a string", (j) => writeRaw(j.out, j.env, { ...BINDING, attempt: "1", ...pass })],
       ["a fractional attempt", (j) => writeRaw(j.out, j.env, { ...BINDING, attempt: 1.5, verdict: "fail", reason: "server_mismatch" })],
       ["a record of another GitHub run", (j) => writeAcceptance(j.out, { ...j.env, GITHUB_RUN_ID: "1" }, "pass", "signed_in_as_expected")],

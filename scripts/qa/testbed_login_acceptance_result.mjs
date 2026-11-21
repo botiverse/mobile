@@ -15,13 +15,13 @@
 //
 // The verdict and reason come from this run's login record (qa-evidence/login-record.json, read through
 // login_phase.mjs readRecordAcceptance), sent as recorded only when the record is bound to this job: its
-// acceptance case_id is login-email-password, its run_case_id is STAMP_RUN_CASE_ID, its attempt a positive
-// integer, the record's run is this GitHub run (GITHUB_RUN_ID:GITHUB_RUN_ATTEMPT), its verdict/reason pair is
+// acceptance case_id is login-email-password, its run_case_id is STAMP_RUN_CASE_ID, its attempt 1 (Testbed
+// delivers the input only to the first attempt), the record's run is this GitHub run (GITHUB_RUN_ID:GITHUB_RUN_ATTEMPT), its verdict/reason pair is
 // one login_phase.mjs can record (LOGIN_ACCEPTANCE_REASONS, isLoginAcceptancePair), and a pass is on a record
 // readRecord accepts as a completed password login. Otherwise the verdict is unknown, with one of these reason
 // codes (RESULT_REASONS):
 //   record_missing      no record, unreadable, not a qa-login-record/v1 object, or no acceptance object
-//   record_invalidated  bound to another case, run case or GitHub run, no valid attempt, or a pass on a
+//   record_invalidated  bound to another case, run case or GitHub run, an attempt other than 1, or a pass on a
 //                       record readRecord does not accept as a completed login
 //   reason_unlisted     a verdict/reason pair login_phase.mjs cannot produce
 //
@@ -42,6 +42,8 @@ export const EVIDENCE_DIR = "qa-evidence";
 export const RESULT_REASONS = { missing: "record_missing", invalidated: "record_invalidated", unlisted: "reason_unlisted" };
 
 const POSITIVE = /^[1-9][0-9]*$/;
+// Testbed accepts the result of the first attempt only (rc.attempt = 1): any other attempt is not this job's.
+const TESTBED_ATTEMPT = 1;
 
 /** The { verdict, reason } to report for the login record in `out`, checked against this job (env). */
 export function resultFromRecord(out = EVIDENCE_DIR, env = process.env) {
@@ -52,7 +54,7 @@ export function resultFromRecord(out = EVIDENCE_DIR, env = process.env) {
   const thisRun = POSITIVE.test(env.GITHUB_RUN_ID ?? "") && POSITIVE.test(env.GITHUB_RUN_ATTEMPT ?? "") &&
     read.run === `${env.GITHUB_RUN_ID}:${env.GITHUB_RUN_ATTEMPT}`;
   const bound = acceptance.case_id === LOGIN_ACCEPTANCE_CASE && Boolean(env.STAMP_RUN_CASE_ID) && acceptance.run_case_id === env.STAMP_RUN_CASE_ID &&
-    Number.isSafeInteger(acceptance.attempt) && acceptance.attempt >= 1;
+    acceptance.attempt === TESTBED_ATTEMPT;
   if (!thisRun || !bound) return unknown(RESULT_REASONS.invalidated);
   if (!isLoginAcceptancePair(acceptance.verdict, acceptance.reason)) return unknown(RESULT_REASONS.unlisted);
   if (acceptance.verdict === "pass" && !read.completed) return unknown(RESULT_REASONS.invalidated);
