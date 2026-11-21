@@ -197,6 +197,13 @@ private data class WireAgent(
     val blockedReason: String? = null,
     /** Bounded public projection marker (`"channel_summary"`, `routes/agents.ts`). */
     val profileProjection: String? = null,
+    /** `GET /agents` `lastRuntimeError` (slock #15273/#15282): carries `spawnFailureReason` for sign-in status. */
+    val lastRuntimeError: WireAgentLastRuntimeError? = null,
+)
+
+@Serializable
+private data class WireAgentLastRuntimeError(
+    val spawnFailureReason: String? = null,
 )
 
 /** slock `projectAssistantPause` `assistantPausedBy`: `{ id, name }`. */
@@ -1029,6 +1036,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentStatus = agentStatus,
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
         agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
+        lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

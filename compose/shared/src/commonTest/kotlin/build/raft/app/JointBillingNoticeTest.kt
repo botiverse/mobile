@@ -13,7 +13,8 @@ class JointBillingNoticeTest {
     private fun jointProjection(
         id: String,
         locked: Boolean? = null,
-        graceEndsAt: String? = null
+        graceEndsAt: String? = null,
+        externalFreezeAt: String? = null,
     ): SharedConversationDirectoryProjection =
         SharedConversationDirectoryProjection(
             serverId = "server-1",
@@ -25,7 +26,24 @@ class JointBillingNoticeTest {
             title = "joint",
             permissions = ConversationPermissions(),
             jointBillingLocked = locked,
-            jointOverLimitGraceEndsAt = graceEndsAt
+            jointOverLimitGraceEndsAt = graceEndsAt,
+            externalFreezeAt = externalFreezeAt,
+        )
+
+    private fun channelProjection(
+        id: String,
+        externalFreezeAt: String? = null,
+    ): SharedConversationDirectoryProjection =
+        SharedConversationDirectoryProjection(
+            serverId = "server-1",
+            canonicalChannelId = id,
+            aliases = setOf(id),
+            conversationKind = ConversationKind.Channel,
+            surfaceKind = RaftThreadSurfaceKind.Channel,
+            channelKind = "public",
+            title = "general",
+            permissions = ConversationPermissions(),
+            externalFreezeAt = externalFreezeAt,
         )
 
     @Test
@@ -218,5 +236,165 @@ class JointBillingNoticeTest {
                 taskParentChannelId = "chan-1",
             ),
         )
+    }
+
+    @Test
+    fun externalFreezeAppliesToAnyChannelTypeAndFlipsActiveAtDeadline() {
+        val freezeIso = "2026-10-01T00:00:00Z"
+        val projections = mapOf("ch-1" to channelProjection("ch-1", externalFreezeAt = freezeIso))
+        // Before deadline -> Upcoming
+        assertEquals(
+            ExternalFreezeState.Upcoming(freezeIso),
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("ch-1"),
+                projections = projections,
+                nowEpochMillis = 1790640000000L,
+            ),
+        )
+        // Exactly at deadline -> Active (read-only)
+        assertEquals(
+            ExternalFreezeState.Active,
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("ch-1"),
+                projections = projections,
+                nowEpochMillis = 1790812800000L,
+            ),
+        )
+        // Reply thread inherits parent channel externalFreezeAt
+        assertEquals(
+            ExternalFreezeState.Active,
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentChannelId = "ch-1",
+                lookupIds = listOf("ch-1", "thread-1"),
+                projections = projections,
+                nowEpochMillis = 1790899200000L,
+            ),
+        )
+        // Task conversation inherits parent channel externalFreezeAt
+        assertEquals(
+            ExternalFreezeState.Active,
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("task-conv-1"),
+                projections = projections,
+                nowEpochMillis = 1790899200000L,
+                taskParentChannelId = "ch-1",
+            ),
+        )
+        // Direct messages never carry an external freeze
+        assertEquals(
+            ExternalFreezeState.None,
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                parentChannelId = null,
+                lookupIds = listOf("ch-1"),
+                projections = projections,
+                nowEpochMillis = 1790899200000L,
+            ),
+        )
+        // Unparseable freezeAt yields None
+        assertEquals(
+            ExternalFreezeState.None,
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("bad"),
+                projections = mapOf("bad" to channelProjection("bad", externalFreezeAt = "not-a-date")),
+                nowEpochMillis = 1790899200000L,
+            ),
+        )
+    }
+
+    @Test
+    fun externalFreezeReplacesJointGraceNoticeWhenBothApply() {
+        val freezeIso = "2026-10-05T00:00:00Z"
+        val graceIso = "2026-10-01T00:00:00Z"
+        val projections =
+            mapOf("joint-1" to jointProjection("joint-1", graceEndsAt = graceIso, externalFreezeAt = freezeIso))
+        // Before either deadline: external freeze replaces joint grace banner, while timer targets
+        // the earliest deadline (graceIso on Oct 1) so grace expiry still locks locally on time.
+        assertEquals(
+            JointBillingNotice.None,
+            jointBillingNoticeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790640000000L,
+            ),
+        )
+        val freeze =
+            externalFreezeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790640000000L,
+            )
+        assertEquals(ExternalFreezeState.Upcoming(freezeIso), freeze)
+        assertEquals(graceIso, nextChannelLimitDeadlineIso(freeze, JointBillingNotice.None, graceIso))
+        // Once joint grace expires (Oct 2) while externalFreezeAt (Oct 5) is still ahead:
+        // jointBillingNotice flips to Locked and nextChannelLimitDeadlineIso advances to freezeIso.
+        assertEquals(
+            JointBillingNotice.Locked,
+            jointBillingNoticeState(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                parentChannelId = null,
+                lookupIds = listOf("joint-1"),
+                projections = projections,
+                nowEpochMillis = 1790899200000L,
+            ),
+        )
+        assertEquals(freezeIso, nextChannelLimitDeadlineIso(freeze, JointBillingNotice.Locked, graceIso))
+    }
+
+    @Test
+    fun limitLockedPreservesChannelSettingsAndBlocksChatWrites() {
+        val payload =
+            RaftThreadScreenPayload(
+                showSettingsAction = true,
+                settingsActions = listOf(RaftThreadSettingsAction("archive", enabled = true)),
+                canAddMembers = true,
+                showReactionActions = true,
+                showTaskStatusActions = true,
+                showMessageSaveAction = true,
+            )
+        val locked = payload.withThreadWriteActionsEnabled(enabled = false, preserveSettingsAccess = true)
+        assertEquals(true, locked.showSettingsAction)
+        assertEquals(1, locked.settingsActions.size)
+        assertEquals(false, locked.canAddMembers)
+        assertEquals(false, locked.showReactionActions)
+        assertEquals(false, locked.showTaskStatusActions)
+        assertEquals(false, locked.showMessageSaveAction)
+
+        assertEquals(false, threadEventAllowed(writeActionsEnabled = true, action = "toggleReaction", limitLocked = true))
+        assertEquals(false, threadEventAllowed(writeActionsEnabled = true, action = "convertMessageToTask", limitLocked = true))
+        assertEquals(true, threadEventAllowed(writeActionsEnabled = true, action = "openChannelSettings", limitLocked = true))
+        assertEquals(true, threadEventAllowed(writeActionsEnabled = true, action = "removeMember", limitLocked = true))
+        assertEquals(true, threadEventAllowed(writeActionsEnabled = true, action = "settingsAction", limitLocked = true))
+        assertEquals(false, threadEventAllowed(writeActionsEnabled = false, action = "removeMember", limitLocked = true))
+    }
+
+    @Test
+    fun externalFreezeRoleAndPlanRulesMatchWebChannelLimitBanners() {
+        assertEquals(ExternalFreezeActionKind.ViewBilling, externalFreezeActionKind(plan = "pro", role = "owner"))
+        assertEquals(ExternalFreezeActionKind.ViewBilling, externalFreezeActionKind(plan = "pro", role = "member"))
+        assertEquals(ExternalFreezeActionKind.UpgradeToPro, externalFreezeActionKind(plan = "free", role = "owner"))
+        assertEquals(ExternalFreezeActionKind.UpgradeToPro, externalFreezeActionKind(plan = null, role = "owner"))
+        assertEquals(ExternalFreezeActionKind.AskOwner, externalFreezeActionKind(plan = "free", role = "admin"))
+        assertEquals(ExternalFreezeActionKind.AskOwner, externalFreezeActionKind(plan = "free", role = "member"))
+        assertEquals(true, externalFrozenUsesManagerCopy("owner"))
+        assertEquals(true, externalFrozenUsesManagerCopy("admin"))
+        assertEquals(false, externalFrozenUsesManagerCopy("member"))
+        assertEquals(false, externalFrozenUsesManagerCopy(null))
+        assertEquals(true, threadLimitLocksWrites(JointBillingNotice.None, ExternalFreezeState.Active))
+        assertEquals(false, threadLimitLocksWrites(JointBillingNotice.None, ExternalFreezeState.Upcoming("2026-10-01T00:00:00Z")))
+        assertEquals(true, threadLimitLocksWrites(JointBillingNotice.Locked, ExternalFreezeState.None))
     }
 }

@@ -58,8 +58,12 @@ internal class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
     val cardReads = mutableListOf<AppLinkCardReadRequestBody>()
     val cardReadResponses = ArrayDeque<HomeNetworkResponse>()
 
+    /** The dispatcher each batched read was sent from, in order. */
+    val cardReadDispatchers = mutableListOf<kotlin.coroutines.ContinuationInterceptor?>()
+
     override suspend fun readLinkCards(messageId: String, serverId: String, body: AppLinkCardReadRequestBody): HomeNetworkResponse {
         cardReads += body
+        cardReadDispatchers += kotlin.coroutines.coroutineContext[kotlin.coroutines.ContinuationInterceptor]
         readGate?.await()
         return cardReadResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"items":[],"prompts":[]}""")
     }

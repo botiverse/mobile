@@ -96,6 +96,15 @@ internal fun memberDetailStatusResolverServerId(
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
+/**
+ * Web `canViewPrivateAgentSurfaces`: an agent's tabs beyond Profile (and the details they carry) are
+ * for the server's owners and admins and for the agent's creator. A cache replay answers the same
+ * as the live page because the stored record keeps the viewer's role (#proj-mobile:#236).
+ */
+internal fun MemberDetailRouteState.Agent.viewerSeesPrivateAgentSurfaces(detail: AgentDetailSnapshot?): Boolean =
+    accessMode.allowsPrivateAgentSurfaces &&
+        (server.permissions.canManageSettings || detail?.summary?.creatorId == currentUserId)
+
 internal data class MemberDetailLoadPlan(
     val priority: DataRequestPriority,
     val showInitialLoading: Boolean,
@@ -416,6 +425,32 @@ internal class MemberDetailRouteProvider(
         return settingsRepository.updateServerMemberRole(
             SettingsServerMemberRoleUpdateRequest(memberId = memberId, role = role.wireValue)
         )
+    }
+
+    /**
+     * Self profile description edit (web HumanDetailPanel, botiverse/slock #15664): `PATCH /api/auth/me`
+     * with `{ description }` (explicit `null` clears), then patches all cached rosters/profiles for
+     * this user so reopened profiles and member lists stay in sync.
+     */
+    suspend fun updateHumanDescription(
+        memberId: MemberId,
+        description: String?
+    ): DataResult<build.raft.app.data.AccountDescriptionUpdateResult> {
+        val targetId = memberId.value.trim()
+        val startEnv = apiEnvironmentStore.current().apiBaseUrl
+        val startUserId = authStore.readSession()?.user?.id?.trim()
+        if (startUserId.isNullOrBlank() || startUserId != targetId) {
+            return DataResult.Error(ScreenError("member_description_account_changed", retryable = false))
+        }
+        val result = settingsRepository.updateAccountDescription(description)
+        if (result is DataResult.Content) {
+            val endEnv = apiEnvironmentStore.current().apiBaseUrl
+            val endUserId = authStore.readSession()?.user?.id?.trim()
+            if (endEnv == startEnv && endUserId == startUserId) {
+                serverMembersStore.updateHumanDescription(memberId, result.data.description)
+            }
+        }
+        return result
     }
 
     suspend fun cachedContext(

@@ -6,6 +6,8 @@ import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
 import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
 import build.raft.app.RAFT_ROUTE_SERVER_ID
+import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
 import build.raft.app.data.KeyValueAuthSessionStore
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
@@ -95,6 +97,10 @@ internal object AndroidShellWindowRegistry {
     fun targetForOwner(owner: AndroidShellRouteOwner): AndroidShellLaunchTarget? =
         shellsById.values.firstOrNull { registered -> registered.target.routeOwner == owner }?.target
 
+    /** The live window registered as [shellInstanceId] and the task it is in, or null. */
+    fun windowOrNull(shellInstanceId: String): Pair<AndroidShellLaunchTarget, Int?>? =
+        shellsById[shellInstanceId]?.let { registered -> registered.target to registered.taskId }
+
     fun hasShellInTask(taskId: Int): Boolean =
         shellsById.values.any { registered -> registered.taskId == taskId }
 
@@ -127,6 +133,44 @@ internal fun resolveAndroidShellLaunchTarget(
             documentShell = true,
             routeOwner = routeOwner,
         )
+}
+
+/**
+ * A server switch whose picked server already has a live window ([target]). [bringForwardTaskId]
+ * is that window's task when the switch names no destination: the task comes forward as it is and
+ * no Intent is sent. Null: the window is launched on the switch's page data (a kept tab).
+ */
+internal data class AndroidServerSwitchExistingWindow(
+    val target: AndroidShellLaunchTarget,
+    val bringForwardTaskId: Int?,
+)
+
+/**
+ * Multiple app windows: the window a server switch must use because it shows the picked server
+ * now. The shell names it in [RAFT_SERVER_SWITCH_WINDOW_ID], from what each window shows: the
+ * launcher window counts for the server it shows, which the route owner alone cannot say (it only
+ * identifies document windows), so switching to that server used to open it a second window.
+ *
+ * A new Intent makes the window rebuild itself on the Intent's page data
+ * (`RaftCmpActivity.onNewIntent`), and a server switch carries no destination, so the reused
+ * window lost the conversation it was on. With [RAFT_SERVER_SWITCH_KEEP_WINDOW] the task is
+ * brought forward instead, the way Recents does it.
+ *
+ * Null (setting off, no window named, or the named window is gone): the launch resolves as before.
+ */
+internal fun androidServerSwitchExistingWindowOrNull(
+    pageData: JSONObject,
+    multiShellHostEnabled: Boolean,
+): AndroidServerSwitchExistingWindow? {
+    if (!multiShellHostEnabled) return null
+    val windowId = pageData.optString(RAFT_SERVER_SWITCH_WINDOW_ID).trim().takeIf { it.isNotBlank() } ?: return null
+    val (registered, taskId) = AndroidShellWindowRegistry.windowOrNull(windowId) ?: return null
+    return AndroidServerSwitchExistingWindow(
+        // The launcher window's registered server is the one it was launched with, not the one it
+        // shows: the launch must not carry it.
+        target = if (registered.documentShell) registered else registered.copy(serverId = null),
+        bringForwardTaskId = taskId.takeIf { pageData.optBoolean(RAFT_SERVER_SWITCH_KEEP_WINDOW, false) },
+    )
 }
 
 internal fun JSONObject.withAndroidShellLaunchTarget(target: AndroidShellLaunchTarget): JSONObject =

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.MviDispatchReceipt
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftAttachmentUploadCancelReason
+import build.raft.app.data.RaftUploadCancelled
 import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -57,7 +59,8 @@ internal data class RaftComposerDraftUpload(
  *
  * Jobs and their attempt fence are the [orchestrator]'s; this adds the state a composer needs to
  * show the upload again after the page that started it went away. Cancelled only by [remove] (the
- * user removed the tile), [retireDraft] (sent or cleared) and [dispose] (sign-out, server lost).
+ * user removed the tile), [retireDraft] (sent or cleared) and [dispose] (sign-out, server lost);
+ * each cancels the jobs with a [RaftUploadCancelled] naming why (the event's `cancel_reason`).
  */
 internal class RaftComposerServerUploads(
     val accountId: String,
@@ -181,7 +184,7 @@ internal class RaftComposerServerUploads(
         val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return
         val id = attachmentId.trim()
         if (id.isBlank()) return
-        orchestrator.remove(id, key)
+        orchestrator.remove(id, key, RaftUploadCancelled(RaftAttachmentUploadCancelReason.UserRemoved))
         state.update { current ->
             val draft = current[key] ?: return@update current
             val removed =
@@ -197,17 +200,20 @@ internal class RaftComposerServerUploads(
         }
     }
 
-    /** The draft was sent or cleared: cancel what is left of its uploads and forget them all. */
-    fun retireDraft(draftKey: String?): Set<String> {
+    /**
+     * The draft was sent or cleared: cancel what is left of its uploads and forget them all.
+     * [reason]: [RaftAttachmentUploadCancelReason.DraftSent] or [RaftAttachmentUploadCancelReason.DraftCleared].
+     */
+    fun retireDraft(draftKey: String?, reason: RaftAttachmentUploadCancelReason): Set<String> {
         val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
-        val retired = orchestrator.retireDraft(key)
+        val retired = orchestrator.retireDraft(key, RaftUploadCancelled(reason))
         state.update { current -> current - key }
         return retired
     }
 
     /** Sign-out or lost server: cancel every upload of this server. The owner refuses new ones. */
     fun dispose() {
-        orchestrator.dispose()
+        orchestrator.dispose(RaftUploadCancelled(RaftAttachmentUploadCancelReason.SessionEnded))
         state.value = emptyMap()
     }
 

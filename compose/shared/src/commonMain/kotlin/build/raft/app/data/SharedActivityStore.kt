@@ -820,6 +820,7 @@ class SharedActivityStore internal constructor(
                 intent.item.threadChannelId?.value?.let { threadId ->
                     onThreadUnfollowProjection(SharedHomeIntent.ProjectThreadUnfollow(threadId, intent.phase))
                 }
+            is SharedActivityIntent.ProjectPendingDeferredHide -> projectPendingDeferredHide(intent)
             is SharedActivityIntent.ApplyReadReceiptPrediction -> applyReadReceiptPrediction(intent.prediction)
             is SharedActivityIntent.ApplyReadReceiptFailure -> handleReadReceiptFailure(intent.request)
             is SharedActivityIntent.ApplyReadReceiptResult ->
@@ -1501,7 +1502,8 @@ class SharedActivityStore internal constructor(
                         pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
-                        loadMoreErrorCode = null
+                        loadMoreErrorCode = null,
+                        pendingDeferredHide = null
                     )
                 true
             }
@@ -4302,6 +4304,7 @@ class SharedActivityStore internal constructor(
                 !append &&
                     freshAnswer &&
                     current.selectedFilter == InboxFilter.All &&
+                    !nextState.hasActivePendingDeferredHide() &&
                     (result is DataResult.Content || result is DataResult.Empty),
             summaryFactCounts =
                 if (!append && freshAnswer && current.selectedFilter == InboxFilter.All) {
@@ -5348,6 +5351,14 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    private fun projectPendingDeferredHide(intent: SharedActivityIntent.ProjectPendingDeferredHide) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            if (current.pendingDeferredHide == intent.pending) return@synchronized
+            reduceState(intent, current.copy(pendingDeferredHide = intent.pending))
+        }
+    }
+
     private fun updateThreadFollowProjection(key: String, following: Boolean) {
         synchronized(realtimeOwnerLock) {
             val current = _state.value
@@ -5356,7 +5367,8 @@ class SharedActivityStore internal constructor(
                 snapshot.projectActivityFollowMutation(
                     itemKey = key,
                     following = following,
-                    filter = current.selectedFilter
+                    filter = current.selectedFilter,
+                    retainedReadRowKeys = current.retainedReadRowKeys
                 )
             reduceState(
                 if (following) {
@@ -5366,7 +5378,14 @@ class SharedActivityStore internal constructor(
                 },
                 current.copy(
                     snapshot = updatedSnapshot,
-                    errorCode = null
+                    errorCode = null,
+                    retainedReadRowKeys =
+                        if (!following && !current.selectedFilter.listsUnfollowedActivityThreads) {
+                            current.retainedReadRowKeys - key
+                        } else {
+                            current.retainedReadRowKeys
+                        },
+                    pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey == key }
                 )
             )
         }
@@ -5782,7 +5801,8 @@ class SharedActivityStore internal constructor(
                                 totalCount = maxOf(0, snapshot.totalCount - rows.size),
                                 totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - rows.sumOf { it.unreadCount })
                             ),
-                        retainedReadRowKeys = current.retainedReadRowKeys - keys
+                        retainedReadRowKeys = current.retainedReadRowKeys - keys,
+                        pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey in keys }
                     )
                 )
             }
@@ -5905,7 +5925,8 @@ class SharedActivityStore internal constructor(
                                     totalCount = maxOf(0, totalCount),
                                     totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
                                 ),
-                            retainedReadRowKeys = current.retainedReadRowKeys - removedKeys
+                            retainedReadRowKeys = current.retainedReadRowKeys - removedKeys,
+                            pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey in removedKeys }
                         ),
                         summarySource = "activity_sync_inbox_rows"
                     )
@@ -5932,18 +5953,23 @@ class SharedActivityStore internal constructor(
     private fun removeItemOptimistically(item: InboxItem) {
         val current = _state.value
         val snapshot = current.snapshot ?: return
+        val alreadyLeftCount =
+            !current.selectedFilter.keepsReadActivityRows() &&
+                item.key in current.retainedReadRowKeys &&
+                !item.showsUnread
         reduceState(
             SharedActivityIntent.MarkDone(item),
             current.copy(
                 snapshot =
                     snapshot.copy(
                         items = snapshot.items.filterNot { it.key == item.key },
-                        totalCount = maxOf(0, snapshot.totalCount - 1),
+                        totalCount = if (alreadyLeftCount) snapshot.totalCount else maxOf(0, snapshot.totalCount - 1),
                         totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - item.unreadCount)
                     ),
                 errorCode = null,
                 // Done leaves at once, retained or not.
-                retainedReadRowKeys = current.retainedReadRowKeys - item.key
+                retainedReadRowKeys = current.retainedReadRowKeys - item.key,
+                pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey == item.key }
             )
         )
     }
@@ -5952,7 +5978,20 @@ class SharedActivityStore internal constructor(
         previous: SharedActivityState,
         code: String
     ) {
-        _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
+        synchronized(realtimeOwnerLock) {
+            // Preserve the live Undo-window projection instead of rolling back to a stale
+            // pendingDeferredHide captured before the failed mutation committed or expired.
+            val livePendingHide = _state.value.pendingDeferredHide
+            _state.value =
+                previous.copy(
+                    loading = false,
+                    refreshing = false,
+                    pullRefreshing = false,
+                    loadingMore = false,
+                    errorCode = code,
+                    pendingDeferredHide = livePendingHide
+                )
+        }
         load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
     }
 
@@ -6027,11 +6066,13 @@ class SharedActivityStore internal constructor(
         val serverId = next.ownerServerId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val accountId = next.ownerUserId?.trim()?.takeIf { it.isNotBlank() } ?: return
         val snapshot = next.snapshot ?: return
-        val previousVisibleCounts = previous.snapshot?.activityVisibleSummaryCounts()
+        val previousVisibleCounts =
+            previous.snapshot?.activityVisibleSummaryCounts(pendingDeferredHide = previous.pendingDeferredHide)
         val visibleCounts =
             snapshot.activityVisibleSummaryCounts(
                 totalUnreadCountOverride = countOverride?.first,
-                totalCountOverride = countOverride?.second
+                totalCountOverride = countOverride?.second,
+                pendingDeferredHide = next.pendingDeferredHide
             )
         val summaryChanged =
             previous.ownerServerId != next.ownerServerId ||
@@ -6440,7 +6481,13 @@ data class SharedActivityState(
      * self-hosted server without RisingWave). Waiting will not help, so the page says Activity is
      * temporarily unavailable (web `thread.unavailableNotice`) instead of "may be out of date".
      */
-    val unavailable: Boolean = false
+    val unavailable: Boolean = false,
+    /**
+     * A conversation row currently hidden behind Activity's 8 s Undo toast (Mark as Done or
+     * Unfollow) before the mutation is dispatched. Counts (header, filter bar, process unread
+     * summary) project it out at once and restore it if Undo cancels the action.
+     */
+    val pendingDeferredHide: SharedActivityPendingDeferredHide? = null
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()
@@ -6452,6 +6499,50 @@ data class SharedActivityState(
         get() = snapshot?.hasMore == true
     val nextOffset: Int?
         get() = snapshot?.nextOffset
+
+    /**
+     * Header counts `(totalCount, totalUnreadCount)` for [selectedFilter]:
+     * conversation totals with [pendingDeferredHide] projected out plus object rows for this filter.
+     */
+    fun activityHeaderCounts(): Pair<Int, Int> {
+        val current = snapshot
+        val (pendingCountDelta, pendingUnreadDelta) =
+            current?.activityPendingDeferredDeltas(
+                pendingDeferredHide = pendingDeferredHide,
+                selectedFilter = selectedFilter,
+                retainedReadRowKeys = retainedReadRowKeys
+            ) ?: (0 to 0)
+        val total = (totalCount - pendingCountDelta).coerceAtLeast(0) + (current?.objectCounts?.objectCount ?: 0)
+        val unread =
+            (totalUnreadCount - pendingUnreadDelta).coerceAtLeast(0) +
+                (current?.objectCounts?.unreadFor(selectedFilter) ?: 0)
+        return total to unread
+    }
+
+    /**
+     * Conversation-only unread count for [selectedFilter] with [pendingDeferredHide] projected out.
+     * Used by "Mark all read" (which clears conversations only, not workspace Artifact object rows).
+     */
+    fun activityConversationUnreadCount(): Int {
+        val current = snapshot
+        val (_, pendingUnreadDelta) =
+            current?.activityPendingDeferredDeltas(
+                pendingDeferredHide = pendingDeferredHide,
+                selectedFilter = selectedFilter,
+                retainedReadRowKeys = retainedReadRowKeys
+            ) ?: (0 to 0)
+        return (totalUnreadCount - pendingUnreadDelta).coerceAtLeast(0)
+    }
+
+    /** Whether [pendingDeferredHide] currently matches a countable conversation row in [snapshot]. */
+    internal fun hasActivePendingDeferredHide(): Boolean {
+        val hide = pendingDeferredHide ?: return false
+        return snapshot?.items?.any { item ->
+            item.key == hide.itemKey &&
+                item.kind != InboxItemKind.Object &&
+                !item.hasUnopenableInternalJointParentSource()
+        } == true
+    }
 
     /**
      * The Activity header shows its top-right refresh indicator (ticket 67609860, artin 10-28):
@@ -6470,7 +6561,7 @@ data class SharedActivityState(
  * independent `message_mentions` EXISTS, channelService.ts:13136-13168), so a
  * read / mark-all-read clears the row's attention there instead of removing it.
  */
-private fun InboxFilter.keepsReadActivityRows(): Boolean =
+internal fun InboxFilter.keepsReadActivityRows(): Boolean =
     this != InboxFilter.Unread
 
 /** A read row stays listed (shown read) when the filter keeps read rows or it was read this visit. */
@@ -6640,6 +6731,11 @@ sealed interface SharedActivityIntent {
      * ([HomeThreadUnfollowPhase.Restored]); Home's unread for the thread follows at once.
      */
     data class ProjectThreadUnfollow(val item: InboxItem, val phase: HomeThreadUnfollowPhase) : SharedActivityIntent
+    /**
+     * A row hidden in Activity behind the 8 s Undo toast before MarkDone / UnfollowThread commits
+     * (null once committed, undone, or cleared). Projects header & badge counts immediately.
+     */
+    data class ProjectPendingDeferredHide(val pending: SharedActivityPendingDeferredHide?) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true,
@@ -6714,6 +6810,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.UndoObjectDone -> "undo_object_done"
         is SharedActivityIntent.UnfollowObject -> "unfollow_object"
         is SharedActivityIntent.ProjectThreadUnfollow -> "project_thread_unfollow"
+        is SharedActivityIntent.ProjectPendingDeferredHide -> "project_pending_deferred_hide"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
@@ -6746,6 +6843,7 @@ internal fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
         is SharedActivityIntent.UnfollowObject,
         is SharedActivityIntent.ProjectThreadUnfollow,
+        is SharedActivityIntent.ProjectPendingDeferredHide,
         is SharedActivityIntent.ServerSelected,
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,

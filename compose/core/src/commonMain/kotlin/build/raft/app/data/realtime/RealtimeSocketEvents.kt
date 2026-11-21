@@ -148,6 +148,14 @@ object RealtimeSocketEvents {
     const val LinkCardOperationChanged = GeneratedRealtimeContract.SocketEvent.LinkCardOperationChanged
 
     /**
+     * A link card's object changed (botiverse/slock `services/linkCardChangedHints.ts`, shared
+     * `LINK_CARD_CHANGED_EVENT`): `{ app, object_key_sha256 }` to the viewer's `user:<id>:server:<id>`
+     * room, only to people who read a card of that object there in the last 24 hours. No content: the
+     * cards on screen that carry the digest are read again.
+     */
+    const val LinkCardChanged = GeneratedRealtimeContract.SocketEvent.LinkCardChanged
+
+    /**
      * botiverse/slock `packages/shared/src/actorResolveContract.ts` `ACTOR_UPDATED_EVENT`: an agent
      * of another server, seen here through a joint channel, changed its name or avatar.
      * `{ kind, id, homeServerId, name, displayName, avatarUrl }` to the joint projection channel

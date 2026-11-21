@@ -126,6 +126,19 @@ fun parseSharedAccountUsageDataSnapshot(bodyText: String): AccountUsageDataSnaps
     AccountUsageDataSnapshot(choice = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText).shareUsageData)
 }.getOrNull()
 
+/**
+ * `PATCH /api/auth/me` `{ description }` response: the canonical description the server stored
+ * plus any `warnings` about links some readers cannot open (botiverse/slock #15236, #15664).
+ * Null when the body is not a user object.
+ */
+fun parseSharedAccountDescriptionUpdateResult(bodyText: String): AccountDescriptionUpdateResult? = runCatching {
+    val user = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText)
+    AccountDescriptionUpdateResult(
+        description = user.description?.takeIf { it.isNotBlank() },
+        warnings = parseSharedDescriptionLinkWarnings(bodyText),
+    )
+}.getOrNull()
+
 fun parseSharedAccountProviderLinkStartResult(
     providerId: String,
     bodyText: String

@@ -27,11 +27,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Channel announcements, light and dark: the strip on a phone (unseen with its note and the dot,
- * seen with the text's first line, a long title cut at 55%), and the details' Announcement row
- * for an editor (the item with Remove and Replace) and with none (Set announcement). Fixed
- * fixture data and clock (five minutes after the version). Reports land in
- * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * Channel pinned content, light and dark: the strip on a phone (unseen with its note and the dot,
+ * seen with the text's first line, a long title cut at 55%), and the details' Pinned content row
+ * for an editor (the item with ⋯ Replace pin / Unpin before the chevron) and with none (Nothing
+ * pinned + Pin an Artifact). Fixed fixture data and clock (five minutes after the version). Reports
+ * land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

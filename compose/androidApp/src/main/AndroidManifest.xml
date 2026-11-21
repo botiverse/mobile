@@ -158,16 +158,20 @@
         </receiver>
         <!--
             App identity receipt (raft-app-identity-receipt/v1): read-only, answers only adb shell
-            (uid 2000) or root (uid 0), checked in code. Shipped in every build, store builds
-            included, but DISABLED: never instantiated until `adb shell pm enable` turns it on.
-            No intent filter. android:permission (DUMP) gates acquiring the provider; call() is not
-            covered by it, so AppIdentityReceiptProvider checks the calling uid itself.
+            (uid 2000) or root (uid 0), checked in code. Shipped ENABLED in every build, store
+            builds included. Why enabled: on Android 14+ the shell may not change a component's
+            state in a signed (non-debuggable) release ("Shell cannot change component state"), so
+            a provider shipped disabled could never be asked on the build QA has to verify.
+            Both guards are unchanged and both must stay: android:permission (DUMP) gates acquiring
+            the provider; call() is not covered by it, so AppIdentityReceiptProvider checks the
+            calling uid itself, before anything else. No intent filter.
+            What a caller gets, the exposure and the rules for changing it: AppIdentityReceiptProvider KDoc.
             Checked by AppIdentityReceiptProviderManifestTest and verify{Release,Play}IdentityReceiptProvider.
         -->
         <provider
             android:name=".core.data.auth.AppIdentityReceiptProvider"
             android:authorities="${applicationId}.identity-receipt"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:multiprocess="false"
             android:permission="android.permission.DUMP" />

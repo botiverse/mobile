@@ -10,7 +10,8 @@
 #   3. only after a "matched" decision for this attempt and request, and inside the same app
 #      process, the case runs as its scenario (scenarios/release_settings_case.mjs ->
 #      release_settings_case.sh: recorder, agent, post-run reads; verdict qa-evidence/agent-rc.txt);
-#   4. then its cleanup (web sign-out, capture browser, `pm disable`, which kills the app).
+#   4. then its cleanup (web sign-out, capture browser, and `pm disable` of the receipt provider,
+#      which kills the app, only for an older package where this run had to `pm enable` it).
 #
 # Its working evidence stays in RUNNER_TEMP (never uploaded). release_settings_terminal.mjs then
 # takes the one terminal decision for both exits and writes the public projection.

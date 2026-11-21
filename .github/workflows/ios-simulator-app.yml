@@ -264,7 +264,8 @@ jobs:
         env:
           ARCHS_INPUT: ${{ inputs.archs }}
         run: |
-          ./gradlew :shared:syncFramework \
+          # :verifyComposeUiPatch: the CMP-10674 patched Compose UI klibs (compose/build.gradle.kts).
+          ./gradlew :verifyComposeUiPatch :shared:syncFramework \
             -Pkotlin.native.cocoapods.platform=iphonesimulator \
             -Pkotlin.native.cocoapods.archs="${ARCHS_INPUT:-arm64}" \
             -Pkotlin.native.cocoapods.configuration=Debug \

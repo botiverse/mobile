@@ -23,6 +23,21 @@ on:
         required: false
         type: boolean
         default: false
+      hands_app_slug:
+        description: "Hands app this build files crashes and feedback to; blank keeps raft-android. For an isolated acceptance app (e.g. raft-android-jointtest) also give hands_client_key and an existing hands_channel of that app"
+        required: false
+        type: string
+        default: ""
+      hands_client_key:
+        description: "That app's public Hands SDK client key (a public identifier built into every APK, not a secret; `hands apps client-key <app>`); blank keeps the default"
+        required: false
+        type: string
+        default: ""
+      hands_channel:
+        description: "Hands channel this build reports under; blank keeps debug"
+        required: false
+        type: string
+        default: ""
   pull_request:
     types: [labeled, synchronize]
 
@@ -104,7 +119,9 @@ jobs:
       - name: Build alpha debug APK
         working-directory: compose
         env:
-          SLOCK_HANDS_CHANNEL: debug
+          SLOCK_HANDS_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.hands_channel || 'debug' }}
+          ALPHA_HANDS_APP_SLUG: ${{ github.event_name == 'workflow_dispatch' && inputs.hands_app_slug || '' }}
+          ALPHA_HANDS_CLIENT_KEY: ${{ github.event_name == 'workflow_dispatch' && inputs.hands_client_key || '' }}
           ALPHA_VERSION_PATCH: ${{ github.event_name == 'workflow_dispatch' && inputs.version_patch || '0' }}
           ALPHA_VERSION_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.version_build || '0' }}
           ALPHA_OPTIMIZED: ${{ github.event_name == 'workflow_dispatch' && inputs.optimized && 'true' || 'false' }}
@@ -118,6 +135,21 @@ jobs:
             echo "version_build must be an integer from 0 to 999" >&2
             exit 1
           fi
+          if ! [[ "${SLOCK_HANDS_CHANNEL}" =~ ^[a-z0-9-]{1,40}$ ]]; then
+            echo "hands_channel must be a channel slug (a-z, 0-9, -)" >&2
+            exit 1
+          fi
+          # Another Hands app (an isolated acceptance app): slug and key together, or neither.
+          # The build reads SLOCK_HANDS_* only when set, so blank inputs keep the defaults.
+          if [ -n "${ALPHA_HANDS_APP_SLUG}${ALPHA_HANDS_CLIENT_KEY}" ]; then
+            if ! [[ "${ALPHA_HANDS_APP_SLUG}" =~ ^[a-z0-9-]{1,60}$ ]] || ! [[ "${ALPHA_HANDS_CLIENT_KEY}" =~ ^qk_[0-9a-f]{16,64}$ ]]; then
+              echo "hands_app_slug and hands_client_key go together (slug a-z, 0-9, -; key qk_<hex>)" >&2
+              exit 1
+            fi
+            export SLOCK_HANDS_APP_SLUG="${ALPHA_HANDS_APP_SLUG}"
+            export SLOCK_HANDS_CLIENT_KEY="${ALPHA_HANDS_CLIENT_KEY}"
+          fi
+          echo "Hands target: app ${SLOCK_HANDS_APP_SLUG:-raft-android (default)}, channel ${SLOCK_HANDS_CHANNEL}" | tee -a "$GITHUB_STEP_SUMMARY"
           OPTIMIZED_ARGS=()
           if [ "${ALPHA_OPTIMIZED}" = "true" ]; then
             OPTIMIZED_ARGS=(-PraftAlphaOptimized=true)

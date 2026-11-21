@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.model.serverPermissionsForRole
 import kotlinx.serialization.Serializable
 
 /**
@@ -66,6 +67,13 @@ internal data class StoredAgentDetail(
     val serverId: String,
     val serverName: String,
     val currentUserId: String? = null,
+    /**
+     * The viewer's own role on the server when the page was stored (`owner` / `admin` / `member` /
+     * `guest`), so a cold or offline open paints the same tabs as the live page: an owner or admin
+     * sees an agent's private tabs from the first frame (#proj-mobile:#236). Null in records stored
+     * before this field: those paint as before until the refresh rewrites them.
+     */
+    val viewerRole: String? = null,
     val agentId: String,
     val summary: StoredAgentSummary? = null,
     val directMessages: List<StoredAgentDm> = emptyList(),
@@ -220,6 +228,7 @@ internal fun RaftCachedAgentDetail.toStoredAgentDetail(): StoredAgentDetail =
         serverId = server.id.value,
         serverName = server.name,
         currentUserId = currentUserId,
+        viewerRole = server.role,
         agentId = detail.agentId.value,
         summary = detail.summary?.toStored(),
         directMessages =
@@ -310,7 +319,13 @@ private fun AgentDetailSummary.toStored(): StoredAgentSummary =
 internal fun StoredAgentDetail.toCachedAgentDetail(): RaftCachedAgentDetail {
     val agent = MemberId(agentId)
     return RaftCachedAgentDetail(
-        server = ServerSummary(id = ServerId(serverId), name = serverName),
+        server =
+            ServerSummary(
+                id = ServerId(serverId),
+                name = serverName,
+                role = viewerRole,
+                permissions = serverPermissionsForRole(viewerRole)
+            ),
         currentUserId = currentUserId,
         detail =
             AgentDetailSnapshot(

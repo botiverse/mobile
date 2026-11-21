@@ -2,10 +2,12 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -15,9 +17,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -36,6 +41,7 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.APP_LINK_READ_MODE_V1
 import build.raft.app.data.AppLinkBatchRead
 import build.raft.app.data.AppLinkCardView
+import build.raft.app.data.AppLinkRowPresence
 import build.raft.app.data.appLinkCardReadLocale
 import build.raft.app.data.runtimeFormRequestLanguageTag
 import kotlinx.coroutines.awaitCancellation
@@ -46,6 +52,7 @@ import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import build.raft.app.data.SharedAppLinkPreviewStore
 import build.raft.app.data.appLinkAppKey
 import build.raft.app.data.appLinkDomain
@@ -191,6 +198,9 @@ internal fun ThreadAppLinkPreviewScope(
         return
     }
     val batch = rememberThreadAppLinkBatchRead(host, messageId, body)
+    // The row as the store sees it: on screen or not, and whether the person is on it (link_card.changed).
+    val presence = rememberThreadAppLinkRowPresence(host, messageId, body, batch)
+    val cardActivity = remember(messageId) { ThreadAppLinkCardActivity() }
     val state by host.store.state.collectAsState()
     val view =
         remember(state, host.viewerKey, messageId, body, host.conversationId, batch) {
@@ -200,8 +210,8 @@ internal fun ThreadAppLinkPreviewScope(
                 viewId = batch.read?.view?.id,
             )
         }
-    LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature, batch) {
-        if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read)
+    LaunchedEffect(host.store, host.viewerKey, messageId, body, view.wantsRead, view.readSignature, batch, presence) {
+        if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId, batch.read, presence)
     }
     // Links Raft answered rate_limited are read again only while this row is on screen.
     LaunchedEffect(host.store, batch, view.readsLimited) {
@@ -218,6 +228,8 @@ internal fun ThreadAppLinkPreviewScope(
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
     // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
     val cards = rememberThreadAppLinkCards(messageId, onOpenLink)
+    // No card changes under the person: a card of this message open, or Raft's question open on it.
+    ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || asking != null }
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
     // An Artifact link the author gave words to opens in place, as its card under the message does
     // (#proj-workspace:#289); the browser only when no page can open.
@@ -245,9 +257,10 @@ internal fun ThreadAppLinkPreviewScope(
     val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val read = batch.read
     val actionHost =
-        remember(host, messageId, body, read) {
+        remember(host, messageId, body, read, cardActivity) {
             read?.let { batchRead ->
                 ThreadAppLinkCardActionHost(
+                    activity = cardActivity,
                     prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
                     execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
                     reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
@@ -279,8 +292,9 @@ internal fun ThreadAppLinkPreviewScope(
     CompositionLocalProvider(
         LocalRaftAppLinkChips provides chipHost,
         LocalRaftMarkdownBlockCardHost provides blockHost,
-        content = content,
-    )
+    ) {
+        ThreadAppLinkRowOnScreen(presence, content)
+    }
     ThreadAppLinkCardPopoverHost(
         results = view.results,
         cards = cards,
@@ -298,6 +312,68 @@ internal fun ThreadAppLinkPreviewScope(
     }
     LaunchedEffect(prompt, promptShown) {
         if (prompt != null && !promptShown) asking = null
+    }
+}
+
+/**
+ * This row for the store's re-reads ([SharedAppLinkPreviewStore.keepFresh]; web: a mounted message
+ * view): kept while the row is composed, gone when it leaves. A list recycles its rows, so a row
+ * that scrolls away is a new one when it comes back.
+ */
+@Composable
+private fun rememberThreadAppLinkRowPresence(
+    host: ThreadAppLinkPreviewHost,
+    messageId: String,
+    body: String,
+    batch: ThreadAppLinkBatch,
+): AppLinkRowPresence {
+    val presence =
+        remember(host.store, host.viewerKey, host.serverId, messageId, body, batch) {
+            AppLinkRowPresence(host.viewerKey, host.serverId, messageId, body, batch.read)
+        }
+    DisposableEffect(host.store, presence) {
+        val job = host.store.keepFresh(presence)
+        onDispose {
+            presence.left()
+            job.cancel()
+        }
+    }
+    return presence
+}
+
+/**
+ * Tells the store when the person is on this message ([open], or Raft's confirmation open on one of
+ * its cards) and which cards' buttons are at work (web `engaged` and `linkCardViewBusy`).
+ */
+@Composable
+private fun ThreadAppLinkRowEngagementEffect(presence: AppLinkRowPresence, activity: ThreadAppLinkCardActivity, open: () -> Boolean) {
+    val latestOpen by rememberUpdatedState(open)
+    LaunchedEffect(presence, activity) {
+        snapshotFlow { (latestOpen() || activity.confirming) to activity.busyUrls }
+            .distinctUntilChanged()
+            .collect { (engaged, busy) ->
+                presence.engaged(engaged)
+                presence.busy(busy)
+            }
+    }
+}
+
+/**
+ * The message's text and block cards, reporting whether they are drawn inside the window (web: the
+ * row's IntersectionObserver). A list composes a row or two ahead of the scroll without placing
+ * them: those are not on screen, and nothing is read again for them. The box takes its content's
+ * constraints and size, so the layout is the content's own.
+ */
+@Composable
+private fun ThreadAppLinkRowOnScreen(presence: AppLinkRowPresence, content: @Composable () -> Unit) {
+    Box(
+        modifier =
+            Modifier.onGloballyPositioned { coordinates ->
+                presence.onScreen(coordinates.isAttached && !coordinates.boundsInWindow().isEmpty)
+            },
+        propagateMinConstraints = true,
+    ) {
+        content()
     }
 }
 

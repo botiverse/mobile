@@ -626,7 +626,7 @@ internal fun MembersAgentProfileStatus(
     // Web `runtimeSignInNeededOf` (slock #15282): the runtime is not signed in on the Computer, so
     // the agent cannot start. The error light and "Sign-in needed for {runtime}"; the chip opens
     // the Computer, where the runtime is signed in.
-    val runtimeSignInNeeded =
+    val rawRuntimeSignInNeeded =
         !appBot &&
             credentialReason == null &&
             membersAgentRuntimeSignInNeeded(
@@ -637,6 +637,16 @@ internal fun MembersAgentProfileStatus(
                 liveSpawnFailureReason = spawnFailure?.spawnFailure?.reason,
                 paused = !member.assistantPausedAt.isNullOrBlank(),
             )
+    val runtimeSignIn =
+        rememberAgentRuntimeSignInState(
+            state = agentStatusIndicatorState,
+            neededOverride = rawRuntimeSignInNeeded,
+            fallbackRuntime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
+            fallbackName = member.displayName.takeIf { it.isNotBlank() } ?: summary?.displayName ?: summary?.name,
+            fallbackMachineId = summary?.machineId ?: agentStatusIndicatorState?.machineId,
+            fallbackMachineName = summary?.machineName ?: agentStatusIndicatorState?.machineName,
+        )
+    val runtimeSignInNeeded = runtimeSignIn != null
     val showRetry =
         onRetry != null &&
             !appBot &&
@@ -672,8 +682,8 @@ internal fun MembersAgentProfileStatus(
             AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
         } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
-        } else if (runtimeSignInNeeded) {
-            agentRuntimeSignInText(runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime, full = showActivityDetail)
+        } else if (runtimeSignIn != null) {
+            runtimeSignIn.fullText
         } else if (credentialReason != null) {
             if (showActivityDetail) {
                 agentCredentialInvalidText(
@@ -716,21 +726,46 @@ internal fun MembersAgentProfileStatus(
         )
     }
     val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired || runtimeSignInNeeded }
+    val chipDetailSemantics =
+        if (runtimeSignIn != null) {
+            Modifier.semantics { contentDescription = runtimeSignIn.detail }
+        } else {
+            Modifier
+        }
     // Nothing known about its presence (e.g. a joint channel's agent of another server
     // whose profile read failed): no chip, never an empty "—" one.
     if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {
         if (openComputer != null) {
             // The step is on the Computer: the chip itself opens it (web #14585
-            // AgentStatusBadge `agent-status-computer-too-old`).
-            statusChip(
-                Modifier
-                    .padding(top = itemTop)
-                    .raftClickable(
-                        onClick = openComputer,
-                        onClickLabel = stringResource(Res.string.agent_status_open_computer),
-                        shape = RoundedCornerShape(RaftAppRadius.Control)
-                    )
-            )
+            // AgentStatusBadge `agent-status-computer-too-old`); when the viewer can sign in from
+            // here (slock #15282), offer the quiet Sign in action beside it.
+            val chipModifier =
+                chipDetailSemantics.raftClickable(
+                    onClick = openComputer,
+                    onClickLabel = stringResource(Res.string.agent_status_open_computer),
+                    shape = RoundedCornerShape(RaftAppRadius.Control)
+                )
+            if (runtimeSignIn?.offered == true) {
+                Row(
+                    modifier = Modifier.padding(top = itemTop),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    statusChip(Modifier.weight(1f, fill = false).then(chipModifier))
+                    AgentRuntimeSignInAction(signIn = runtimeSignIn, testTag = AgentRuntimeSignInTestTags.ProfileAction)
+                }
+            } else {
+                statusChip(Modifier.padding(top = itemTop).then(chipModifier))
+            }
+        } else if (runtimeSignIn?.offered == true) {
+            Row(
+                modifier = Modifier.padding(top = itemTop),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                statusChip(Modifier.weight(1f, fill = false).then(chipDetailSemantics))
+                AgentRuntimeSignInAction(signIn = runtimeSignIn, testTag = AgentRuntimeSignInTestTags.ProfileAction)
+            }
         } else if (showRetry && onRetry != null) {
             // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
             Row(
@@ -742,7 +777,7 @@ internal fun MembersAgentProfileStatus(
                 AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
             }
         } else {
-            statusChip(Modifier.padding(top = itemTop))
+            statusChip(Modifier.padding(top = itemTop).then(chipDetailSemantics))
         }
     }
     if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {
@@ -891,6 +926,7 @@ private fun MembersAgentProfileFieldsSection(
     edit: MembersAgentProfileEditInputs,
     sharedAgentDetailStore: SharedAgentDetailStore?,
     storeState: SharedAgentDetailState?,
+    showDescriptionWhenNotEditing: Boolean = true,
     /** The profile hero; receives the display-name pencil action (null when not editable). */
     hero: @Composable (onEditDisplayName: (() -> Unit)?) -> Unit
 ) {
@@ -1255,124 +1291,128 @@ private fun MembersAgentProfileFieldsSection(
 
     // Description — web AgentProfileInfo `px-5 py-3`: the eyebrow row (`mb-1`) over the text.
     // Its `py-3` bottom is 4dp short of the profile column's 16dp section spacing.
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = MembersProfileHeroToDescriptionGap)
-            .membersOverlapNextSection(RaftAppSpacing.Md - 12.dp),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        // Description field (independent edit state machine)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+    // On a bounded public projection (remote joint-channel agent or `channel_summary` projection),
+    // omit the whole section when empty instead of showing "No description".
+    if (editingRole || showDescriptionWhenNotEditing) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = MembersProfileHeroToDescriptionGap)
+                .membersOverlapNextSection(RaftAppSpacing.Md - 12.dp),
+            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
-            MembersEditableSectionTitleRow(
-                title = stringResource(Res.string.member_section_description),
-                showEdit = canEdit && !editingRole,
-                onEditClick = {
-                    roleEditorAuthority = agentProfileEditAuthority
-                    if (storeBackedProfileEdit) {
-                        profileStore.dispatch(
-                            SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
-                        )
-                    } else {
-                        localDraftRole = member.description.orEmpty()
-                        localRoleError = null
-                        localEditingRole = true
-                    }
-                }
-            )
-        }
-        if (editingRole) {
-            Column(
+            // Description field (independent edit state machine)
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                val shownRoleError =
-                    roleError?.takeIf { it.isNotBlank() } ?: descriptionTooLongMessage.takeIf { descriptionTooLong }
-                RaftField(
-                    label = null,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val descriptionFocus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) {
-                        delay(100)
-                        descriptionFocus.requestFocus()
+                MembersEditableSectionTitleRow(
+                    title = stringResource(Res.string.member_section_description),
+                    showEdit = canEdit && !editingRole,
+                    onEditClick = {
+                        roleEditorAuthority = agentProfileEditAuthority
+                        if (storeBackedProfileEdit) {
+                            profileStore.dispatch(
+                                SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
+                            )
+                        } else {
+                            localDraftRole = member.description.orEmpty()
+                            localRoleError = null
+                            localEditingRole = true
+                        }
                     }
-                    RaftTextarea(
-                        value = draftRole,
-                        placeholder = stringResource(Res.string.member_placeholder_description),
-                        modifier = Modifier.fillMaxWidth(),
-                        inputModifier = Modifier.focusRequester(descriptionFocus),
-                        invalid = shownRoleError != null,
-                        onValueChange = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
-                                )
-                            } else {
-                                localDraftRole = it
-                                if (localRoleError != null) localRoleError = null
-                            }
-                        },
-                        enabled = !savingRole
-                    )
-                }
-                // Web StableField message row: the hint (or the error) and the persistent "n/300"
-                // counter; one saved under the older limit reads e.g. 412/300 before it is edited.
-                RaftProfileDescriptionFoot(
-                    count = trimmedDraftRole.length,
-                    hint = stringResource(Res.string.agent_detail_description_hint),
-                    error = shownRoleError
                 )
-                if (roleError != null) RaftTraceIdNote(roleErrorTraceId)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RaftButton(
-                        text = if (savingRole) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
-                        onClick = { saveRole() },
-                        enabled = !savingRole && descriptionChanged && !descriptionTooLong,
-                        variant = RaftButtonVariant.Primary,
-                        size = RaftButtonSize.Lg
-                    )
-                    RaftButton(
-                        text = stringResource(Res.string.common_cancel),
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Lg,
-                        onClick = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.CancelEditRole
-                                )
-                            } else {
-                                localDraftRole = member.description.orEmpty()
-                                localRoleError = null
-                                localEditingRole = false
-                            }
-                        },
-                        enabled = !savingRole
-                    )
-                }
             }
-        } else {
-            Text(
-                text = member.description?.takeIf { it.isNotBlank() }
-                    ?: stringResource(Res.string.member_state_no_description),
-                // Web AgentProfileInfo: text-subhead (15/20 400); "No description" in hint ink, upright.
-                style = RaftType.Subhead,
-                color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
-                maxLines = 6,
-                overflow = TextOverflow.Ellipsis
-            )
-            RaftDescriptionLinkWarnings(
-                warnings = descriptionLinkWarnings,
-                subject = build.raft.app.data.DescriptionLinkSubject.Agent,
-                onDismiss = { descriptionLinkWarnings = emptyList() },
-            )
+            if (editingRole) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+                ) {
+                    val shownRoleError =
+                        roleError?.takeIf { it.isNotBlank() } ?: descriptionTooLongMessage.takeIf { descriptionTooLong }
+                    RaftField(
+                        label = null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val descriptionFocus = remember { FocusRequester() }
+                        LaunchedEffect(Unit) {
+                            delay(100)
+                            descriptionFocus.requestFocus()
+                        }
+                        RaftTextarea(
+                            value = draftRole,
+                            placeholder = stringResource(Res.string.member_placeholder_description),
+                            modifier = Modifier.fillMaxWidth(),
+                            inputModifier = Modifier.focusRequester(descriptionFocus),
+                            invalid = shownRoleError != null,
+                            onValueChange = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                    )
+                                } else {
+                                    localDraftRole = it
+                                    if (localRoleError != null) localRoleError = null
+                                }
+                            },
+                            enabled = !savingRole
+                        )
+                    }
+                    // Web StableField message row: the hint (or the error) and the persistent "n/300"
+                    // counter; one saved under the older limit reads e.g. 412/300 before it is edited.
+                    RaftProfileDescriptionFoot(
+                        count = trimmedDraftRole.length,
+                        hint = stringResource(Res.string.agent_detail_description_hint),
+                        error = shownRoleError
+                    )
+                    if (roleError != null) RaftTraceIdNote(roleErrorTraceId)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RaftButton(
+                            text = if (savingRole) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
+                            onClick = { saveRole() },
+                            enabled = !savingRole && descriptionChanged && !descriptionTooLong,
+                            variant = RaftButtonVariant.Primary,
+                            size = RaftButtonSize.Lg
+                        )
+                        RaftButton(
+                            text = stringResource(Res.string.common_cancel),
+                            variant = RaftButtonVariant.Default,
+                            size = RaftButtonSize.Lg,
+                            onClick = {
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.CancelEditRole
+                                    )
+                                } else {
+                                    localDraftRole = member.description.orEmpty()
+                                    localRoleError = null
+                                    localEditingRole = false
+                                }
+                            },
+                            enabled = !savingRole
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = member.description?.takeIf { it.isNotBlank() }
+                        ?: stringResource(Res.string.member_state_no_description),
+                    // Web AgentProfileInfo: text-subhead (15/20 400); "No description" in hint ink, upright.
+                    style = RaftType.Subhead,
+                    color = if (member.description.isNullOrBlank()) RaftColor.TextMutedGray else RaftColor.TextBlack,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis
+                )
+                RaftDescriptionLinkWarnings(
+                    warnings = descriptionLinkWarnings,
+                    subject = build.raft.app.data.DescriptionLinkSubject.Agent,
+                    onDismiss = { descriptionLinkWarnings = emptyList() },
+                )
+            }
         }
     }
 }
@@ -1691,6 +1731,12 @@ internal fun MembersAgentProfileTab(
         // One plain call, no capturing composable lambda here: this function's generated code is
         // shape-sensitive (see the note above MembersAgentRuntimeModelInputs), so the hero slot
         // lambda lives in [MembersAgentProfileIdentity] instead.
+        val showDescriptionWhenNotEditing =
+            membersShouldShowAgentDescriptionSection(
+                accessMode = accessMode,
+                profileProjection = summary?.profileProjection?.takeIf { it.isNotBlank() } ?: member.profileProjection,
+                description = member.description
+            )
         MembersAgentProfileIdentity(
             member = member,
             summary = summary,
@@ -1702,7 +1748,8 @@ internal fun MembersAgentProfileTab(
             agentStatusObservedState = agentStatusObservedState,
             memberAvatarResolver = memberAvatarResolver,
             onChangeAvatar = onChangeAvatar,
-            lifecycle = lifecycle
+            lifecycle = lifecycle,
+            showDescriptionWhenNotEditing = showDescriptionWhenNotEditing
         )
         if (!remoteProfile) {
             MembersAgentInfoSection(
@@ -1797,13 +1844,15 @@ private fun MembersAgentProfileIdentity(
     agentStatusObservedState: RaftAgentStatusIndicatorState?,
     memberAvatarResolver: RaftMemberAvatarResolver,
     onChangeAvatar: () -> Unit,
-    lifecycle: MembersAgentLifecycleInputs
+    lifecycle: MembersAgentLifecycleInputs,
+    showDescriptionWhenNotEditing: Boolean = true
 ) {
     MembersAgentProfileFieldsSection(
         member = member,
         edit = edit,
         sharedAgentDetailStore = sharedAgentDetailStore,
         storeState = storeState,
+        showDescriptionWhenNotEditing = showDescriptionWhenNotEditing,
         hero = { onEditDisplayName ->
             val toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck)
             val spawnFailure =

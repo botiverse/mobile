@@ -126,6 +126,22 @@ class SwcutilOutputTest(unittest.TestCase):
         other = '{ s = applinks, a = OTHER.app, d = app.raft.build }:\nPattern "https://app.raft.build/x" matched.\n'
         self.assertEqual("web", d.parse_swcutil(other, self.APP)[0])
 
+    def test_only_the_applinks_service_decides(self):
+        # 2026-11-21: the AASA gained `webcredentials` (passkeys); swcutil prints a block for it that
+        # "matches" every URL of the host. That is not a universal link.
+        web = "{ s = webcredentials, a = XDAPXFY8FZ.build.raft.app, d = app.raft.build }"
+        app = "{ s = applinks, a = XDAPXFY8FZ.build.raft.app, d = app.raft.build }"
+        same_line = web + ': Pattern "https://app.raft.build/login" matched.\n'
+        self.assertEqual("web", d.parse_swcutil(same_line, self.APP)[0])
+        next_line = web + ':\nPattern "https://app.raft.build/login" matched.\n'
+        self.assertEqual("web", d.parse_swcutil(next_line, self.APP)[0])
+        both_web = same_line + app + ":\nInput JSON did not match input URL.\n"
+        self.assertEqual("web", d.parse_swcutil(both_web, self.APP)[0])
+        both_app = same_line + app + ': Pattern "https://app.raft.build/s/x/dm/1" matched.\n'
+        self.assertEqual("app", d.parse_swcutil(both_app, self.APP)[0])
+        app_first = app + ':\nPattern "https://app.raft.build/s/x/dm/1" blocked match.\n' + next_line
+        self.assertEqual("web", d.parse_swcutil(app_first, self.APP)[0])
+
     def test_unknown_output_is_no_verdict(self):
         self.assertIsNone(d.parse_swcutil("swcutil: Operation not permitted\n", self.APP)[0])
 

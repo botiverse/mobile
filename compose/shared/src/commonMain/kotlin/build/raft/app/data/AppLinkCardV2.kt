@@ -36,10 +36,31 @@ import kotlinx.serialization.json.JsonObject
  * plain Undo button, and so do the buttons of the card a chip opens (#proj-mobile:#218; it was
  * read-only before). `block.v1`, as the web declares
  * it (it changes nothing in a version 3 answer). The same list and order as the web's desktop one,
- * then `unreviewed_app.v1` and `badge.color.v1` (below), as the web's `LINK_CARD_READ_CAPABILITIES`.
+ * then `unreviewed_app.v1` and `badge.color.v1` (below), as the web's `LINK_CARD_READ_CAPABILITIES`,
+ * and `card.changed.v1` ([APP_LINK_CARD_CHANGED_CAPABILITY]).
  */
 internal val APP_LINK_CARD_READ_CAPABILITIES: List<String> =
-    listOf("card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3", APP_LINK_UNREVIEWED_APP_CAPABILITY, APP_LINK_BADGE_COLOR_CAPABILITY)
+    listOf(
+        "card.v2", "inline.v1", "inline.tone.v2", "button.v1", "confirm.v1", "undo.v1", "block.v1", "preview.v3",
+        APP_LINK_UNREVIEWED_APP_CAPABILITY, APP_LINK_BADGE_COLOR_CAPABILITY, APP_LINK_CARD_CHANGED_CAPABILITY,
+    )
+
+/**
+ * `card.changed.v1` (botiverse/slock shared `LINK_CARD_CHANGED_CAPABILITY`; docs/development/app-link-previews.md
+ * "Telling Raft a card changed"): Raft puts `object_key_sha256` on a read item whose App named its
+ * object ([AppLinkResult.Card.objectKey]), and a `link_card.changed` nudge with the same digest reads
+ * that card again ([SharedAppLinkPreviewStore]). Without it Raft leaves the key out, since an older
+ * client reads each item strictly. The server's flag `link_card_changed_hints` only decides whether
+ * Raft records readers and sends nudges; the client has no flag of its own (nor has the web).
+ */
+internal const val APP_LINK_CARD_CHANGED_CAPABILITY = "card.changed.v1"
+
+/** Raft's digest of an App's object (shared `linkCardObjectKeySha256Schema`): 64 lowercase hex characters. Only ever compared. */
+internal fun isAppLinkObjectKeySha256(value: String): Boolean =
+    value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
+
+/** A card item's optional key of `linkCardReadItemSchema` (`v1`, `v2` and `v3` items). */
+private const val LINK_CARD_OBJECT_KEY = "object_key_sha256"
 
 /**
  * `badge.color.v1` (RFC 076 section 15; botiverse/slock `LINK_CARD_CAPABILITIES`, web `CardBadge` `fill`): Raft
@@ -312,6 +333,8 @@ internal data class AppLinkCardReadAnswer(
     val results: Map<String, AppLinkResult>,
     val limited: Map<String, Int>,
     val tickets: Map<String, String?>,
+    /** How many items Raft sent: more than the cards and rate_limited links read means some were refused here (diagnostics). */
+    val itemCount: Int = 0,
 )
 
 /**
@@ -331,7 +354,13 @@ internal fun parseAppLinkCardReadAnswer(
     val limitedKeys = mutableSetOf<String>()
     val tickets = LinkedHashMap<String, String?>()
     for (raw in items) {
-        val item = readLinkCardReadItem(raw) ?: continue
+        // `object_key_sha256` (card.changed.v1) is the item's own key, read apart from its kind's strict keys.
+        val obj = raw as? JsonObject ?: continue
+        val objectKey = obj[LINK_CARD_OBJECT_KEY]?.cardString()?.takeIf(::isAppLinkObjectKeySha256)
+        // There but not a digest: the strict schema refuses the item, so only that link stays plain.
+        if (LINK_CARD_OBJECT_KEY in obj && objectKey == null) continue
+        val rateLimited = obj["kind"].cardString() == "rate_limited"
+        val item = readLinkCardReadItem(if (rateLimited) obj else obj.withoutLinkCardObjectKey()) ?: continue
         val key = appLinkPreviewHref(item.url) ?: continue
         if (key in results || key in limitedKeys) continue
         when (item) {
@@ -341,15 +370,19 @@ internal fun parseAppLinkCardReadAnswer(
             }
             is LinkCardReadItem.Card -> {
                 tickets[item.url] = item.ticket
-                results[key] = item.result.copy(url = key, app = item.result.app.copy(icon = item.result.app.icon?.let(resolveIcon)))
+                results[key] = item.result.copy(url = key, app = item.result.app.copy(icon = item.result.app.icon?.let(resolveIcon)), objectKey = objectKey)
             }
             is LinkCardReadItem.V1 ->
-                results[key] = item.result.copy(url = key, app = item.result.app.copy(icon = item.result.app.icon?.let(resolveIcon)))
+                results[key] = item.result.copy(url = key, app = item.result.app.copy(icon = item.result.app.icon?.let(resolveIcon)), objectKey = objectKey)
         }
     }
     val prompts = (body["prompts"] as? JsonArray)?.toList().orEmpty()
-    return AppLinkCardReadAnswer(appLinkResultsWithPrompts(results, prompts, resolveIcon), limited, tickets)
+    return AppLinkCardReadAnswer(appLinkResultsWithPrompts(results, prompts, resolveIcon), limited, tickets, itemCount = items.size)
 }
+
+/** The item without its `object_key_sha256`, so each kind's strict key check stays as it was. */
+private fun JsonObject.withoutLinkCardObjectKey(): JsonObject =
+    if (LINK_CARD_OBJECT_KEY in this) JsonObject(filterKeys { it != LINK_CARD_OBJECT_KEY }) else this
 
 private sealed interface LinkCardReadItem {
     val url: String

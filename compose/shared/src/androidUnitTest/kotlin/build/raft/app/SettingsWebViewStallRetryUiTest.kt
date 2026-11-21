@@ -7,12 +7,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertRangeInfoEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -25,6 +30,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.designsystem.components.RaftPageLoadingBarAppearDelayMillis
+import build.raft.designsystem.components.RaftPageLoadingBarFadeOutMillis
+import build.raft.designsystem.components.RaftPageLoadingBarProgressMillis
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -73,9 +81,10 @@ class SettingsWebViewStallRetryUiTest {
             assertEquals(1, webViews().size, "the page's WebView is attached")
             val first = webViews().single()
             onNodeWithText("Could not load this page").assertDoesNotExist()
+            showLoadLine()
             onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
 
-            mainClock.advanceTimeBy(RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS - 1_000)
+            mainClock.advanceTimeBy(RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS - 1_000 - LOAD_LINE_APPEAR_MS)
             waitForIdle()
             onNodeWithText("Could not load this page").assertDoesNotExist()
 
@@ -101,7 +110,8 @@ class SettingsWebViewStallRetryUiTest {
 
     /**
      * No cover: the WebView is attached and shown (not hidden behind anything) from before its
-     * first commit, under the progress bar; the bar goes once the load finished.
+     * first commit, under the load line (which shows once its appear delay has passed); the line
+     * goes once the load finished and it has played its end.
      */
     @Test
     fun theWebViewShowsUnderTheProgressBarUntilTheLoadFinishes() =
@@ -119,6 +129,7 @@ class SettingsWebViewStallRetryUiTest {
             waitForIdle()
             val webView = webViews().single()
             assertEquals(View.VISIBLE, webView.visibility)
+            showLoadLine()
             onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
 
             runOnUiThread {
@@ -133,9 +144,61 @@ class SettingsWebViewStallRetryUiTest {
 
             runOnUiThread { shadowOf(webView).webViewClient.onPageFinished(webView, url) }
             waitForIdle()
+            // The line runs to the end and fades (or, with animations off, goes at once).
+            mainClock.advanceTimeBy(LOAD_LINE_EXIT_MS)
+            waitForIdle()
             onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertDoesNotExist()
             assertEquals(false, presentations.last().isLoading, "the finish reached the host: ${presentations.last()}")
             assertEquals(webView, webViews().single(), "the same WebView keeps showing the page")
+        }
+
+    /**
+     * A page whose session is slow: the placeholder waits 500ms, then the page takes its place and
+     * loads. The host's one load line shows from its appear delay on and is never absent across the
+     * swap, frame by frame on the test clock (and never doubled: the lookup fails on two lines).
+     */
+    @Test
+    fun theLoadLineStaysUpWhileThePlaceholderGivesWayToThePage() =
+        runRobolectricComposeUiTest {
+            var sessionKnown by mutableStateOf(false)
+            mainClock.autoAdvance = false
+            setContent {
+                Host {
+                    RaftWebPageLoadLineHost(Modifier.fillMaxSize()) {
+                        if (sessionKnown) {
+                            SettingsWebViewContent(url = url, diagnosticsName = "settings_billing")
+                        } else {
+                            SettingsWebViewLoadingPlaceholder()
+                        }
+                    }
+                }
+            }
+            var elapsed = 0L
+            fun advanceTo(millis: Long, lineExpected: Boolean) {
+                while (elapsed < millis) {
+                    mainClock.advanceTimeByFrame()
+                    elapsed += FRAME_MS
+                    if (lineExpected) {
+                        val line = onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG)
+                        runCatching { line.assertExists() }
+                            .onFailure { throw AssertionError("no load line ${elapsed}ms in (sessionKnown=$sessionKnown)", it) }
+                    }
+                }
+            }
+            advanceTo(LOAD_LINE_APPEAR_MS, lineExpected = false)
+            advanceTo(500, lineExpected = true)
+            sessionKnown = true
+            advanceTo(1_000, lineExpected = true)
+            assertEquals(1, webViews().size, "the page took the placeholder's place")
+
+            // The page's web view starts its load: the same line goes on, with the page's progress.
+            val webView = webViews().single()
+            runOnUiThread {
+                shadowOf(webView).webViewClient.onPageStarted(webView, url, null)
+                shadowOf(webView).webChromeClient.onProgressChanged(webView, 40)
+            }
+            advanceTo(1_300, lineExpected = true)
+            onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertRangeInfoEquals(ProgressBarRangeInfo(0.4f, 0f..1f))
         }
 
     @Test
@@ -180,6 +243,12 @@ class SettingsWebViewStallRetryUiTest {
             assertEquals(1, webViews().size)
         }
 
+    /** Lets the load line's appear delay pass. */
+    private fun ComposeUiTest.showLoadLine() {
+        mainClock.advanceTimeBy(LOAD_LINE_APPEAR_MS)
+        waitForIdle()
+    }
+
     private fun ComposeUiTest.webViews(): List<WebView> {
         val found = mutableListOf<WebView>()
         runOnUiThread { root?.let { collectWebViews(it, found) } }
@@ -189,6 +258,17 @@ class SettingsWebViewStallRetryUiTest {
     private fun collectWebViews(view: View, into: MutableList<WebView>) {
         if (view is WebView) into += view
         if (view is ViewGroup) for (index in 0 until view.childCount) collectWebViews(view.getChildAt(index), into)
+    }
+
+    private companion object {
+        /** Past the line's appear delay, with room for the frames around it. */
+        const val LOAD_LINE_APPEAR_MS = RaftPageLoadingBarAppearDelayMillis + 100L
+
+        /** One frame of the test clock. */
+        const val FRAME_MS = 16L
+
+        /** Past the line's run to the end and its fade. */
+        const val LOAD_LINE_EXIT_MS = RaftPageLoadingBarProgressMillis + RaftPageLoadingBarFadeOutMillis + 200L
     }
 
     @Composable

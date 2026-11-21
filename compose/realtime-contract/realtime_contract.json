@@ -105,6 +105,7 @@
     "notificationRetract": "notification:retract",
     "jointInvitesChanged": "joint-invites:changed",
     "linkCardOperationChanged": "link_card.operation_changed",
+    "linkCardChanged": "link_card.changed",
     "actorUpdated": "actor:updated",
     "messageDisplayPrefsUpdated": "message_display_prefs:updated"
   },
@@ -168,6 +169,7 @@
     "notificationRetract",
     "jointInvitesChanged",
     "linkCardOperationChanged",
+    "linkCardChanged",
     "actorUpdated",
     "messageDisplayPrefsUpdated"
   ],
@@ -191,6 +193,7 @@
     "DESKTOP_INPUT_PRESENCE_EVENT": "desktop:input-presence",
     "FEEDBACK_REPORT_SESSION_RECORD_EVENT": "feedback_report:session_record",
     "JOINT_INVITES_CHANGED_EVENT": "joint-invites:changed",
+    "LINK_CARD_CHANGED_EVENT": "link_card.changed",
     "LINK_CARD_OPERATION_CHANGED_EVENT": "link_card.operation_changed",
     "DESKTOP_NOTIFICATION_EVENT": "notification:desktop",
     "NOTIFICATION_RETRACT_EVENT": "notification:retract",

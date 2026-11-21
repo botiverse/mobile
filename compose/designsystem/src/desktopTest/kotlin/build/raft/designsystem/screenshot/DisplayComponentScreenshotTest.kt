@@ -132,6 +132,8 @@ import build.raft.designsystem.components.raftPressOverlayColor
 import build.raft.designsystem.components.RaftPressSurface
 import build.raft.designsystem.components.RaftMeter
 import build.raft.designsystem.components.RaftMeterSize
+import build.raft.designsystem.components.RaftPageLoadState
+import build.raft.designsystem.components.RaftPageLoadingBar
 import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.components.RaftProgressBarSize
 import build.raft.designsystem.components.RaftProgressBarVariant
@@ -817,6 +819,35 @@ class DisplayComponentScreenshotTest {
                 )
                 RaftProgressBar(value = 1f, label = "Downloaded", valueText = "100%")
                 RaftProgressBar(value = null, label = "Waiting for the server", animated = false)
+            }
+        }
+
+    /**
+     * The page load line on the top edge of a page (canvas, then card): no progress yet (the
+     * still 8% line), part way, and the most it shows while the load still runs (95%, for a
+     * page that reports 100%). Square ends, no track, from the start edge. Shown with no
+     * appear delay and no motion; the run to the end and the fade are covered by
+     * `RaftPageLoadingBarUiTest`.
+     */
+    @Test
+    fun pageLoadingBar() =
+        capture("page_loading_bar") {
+            val colors = RaftTheme.colors
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                listOf<Float?>(null, 0.42f, 1f).forEach { progress ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        listOf(colors.layerCanvas, colors.layerCard).forEach { surface ->
+                            Box(Modifier.size(width = 240.dp, height = 32.dp).background(surface)) {
+                                RaftPageLoadingBar(
+                                    state = RaftPageLoadState.Loading(progress),
+                                    contentDescription = "Loading",
+                                    reducedMotion = true,
+                                    appearDelayMillis = 0,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 

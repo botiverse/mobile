@@ -93,7 +93,10 @@ final class RaftIosNetworkRequestLifetimeAdapterTests: XCTestCase {
             notificationCenter.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
         }
 
-        wait(for: [delivered], timeout: 1.0)
+        // The wait ends as soon as the sink runs (tens of milliseconds). The limit only bounds a
+        // real hang: the hop from the global queue to the main queue has no deadline on a loaded
+        // CI simulator, and a 1 s limit failed there with nothing wrong in the adapter.
+        wait(for: [delivered], timeout: 30.0)
         XCTAssertEqual(observations.map(\.0), [true, false])
         XCTAssertEqual(observations.map(\.1), [true, true])
     }

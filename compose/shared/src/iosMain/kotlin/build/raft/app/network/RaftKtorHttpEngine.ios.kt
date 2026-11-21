@@ -153,5 +153,23 @@ internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTran
 
 internal actual fun takeRaftKtorTransportFacts(requestId: String): String? = RaftDarwinTransportFacts.take(requestId)
 
+private val RaftDarwinTransportErrorDomains = setOf("NSURLErrorDomain", "kCFErrorDomainCFNetwork", "NSPOSIXErrorDomain")
+
+/** `<NSError domain>:<code>` for the domains above (`NSURLErrorDomain:-1001`), never the error's text. */
+internal actual fun raftPlatformTransportErrorToken(error: Throwable): String? {
+    var current: Throwable? = error
+    var depth = 0
+    while (current != null && depth < 6) {
+        val origin = (current as? DarwinHttpRequestException)?.origin
+        if (origin != null) {
+            val domain = origin.domain
+            return if (domain != null && domain in RaftDarwinTransportErrorDomains) "$domain:${origin.code}" else "darwin:other"
+        }
+        current = current.cause.takeIf { it !== current }
+        depth += 1
+    }
+    return null
+}
+
 /** Bytes NSURLSession has sent ([RaftDarwinUploadProgress]), not bytes handed to Ktor's body channel. */
 internal actual fun platformRaftUploadProgressTracker(): RaftUploadProgressTracker = RaftDarwinUploadProgress.tracker

@@ -28,6 +28,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -681,7 +682,9 @@ internal fun MembersPageContent(
         createdAgentReceipt.land(landing)
     }
 
-    MembersRouteContent(
+    val membersRuntimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
+    CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides membersRuntimeUsageAccess) {
+        MembersRouteContent(
         payload = membersPayload,
         refreshing = membersRefreshing,
         onBack = { bridge.closePage() },
@@ -732,6 +735,7 @@ internal fun MembersPageContent(
         // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
         agentsApiClient = agentsApiClient
     )
+    }
     // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
 }
 

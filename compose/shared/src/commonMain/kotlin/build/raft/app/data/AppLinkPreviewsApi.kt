@@ -39,7 +39,7 @@ private val appLinkPreviewsJson = Json {
  * outside the read-only catalog ([RaftAppLinkCard]), makes it unreadable, like the web. One
  * result per link, one prompt per App. A conversation's messages are read with the batched
  * link-card read instead ([AppLinkCardV2.kt]), declaring
- * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`, `badge.color.v1`).
+ * [APP_LINK_CARD_READ_CAPABILITIES] (`card.v2`, `inline.v1`, `inline.tone.v2`, `button.v1`, `confirm.v1`, `undo.v1`, `block.v1`, `preview.v3`, `unreviewed_app.v1`, `badge.color.v1`, `card.changed.v1`).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
@@ -66,6 +66,11 @@ private data class WireAppLinkPreviewList(
     val previews: List<JsonElement>? = null,
     val prompts: List<JsonElement>? = null,
     val appIcons: Map<String, String?>? = null,
+    /**
+     * Preview `url` -> its `object_key_sha256`, only for a preview whose App named its object (shared
+     * `appLinkPreviewListResponseSchema` `objectKeys`); older servers leave it out.
+     */
+    val objectKeys: JsonElement? = null,
 )
 
 /**
@@ -131,6 +136,12 @@ sealed interface AppLinkResult {
          * one): what preparing one of its buttons claims. A block card's is [AppLinkBlockCard.businessRevision].
          */
         val businessRevision: String = "",
+        /**
+         * Raft's digest of the App's object this card shows (the read item's `object_key_sha256`, sent to a
+         * client that declares `card.changed.v1`); null when the App named none. A `link_card.changed` nudge
+         * with the same digest reads the card again ([SharedAppLinkPreviewStore]). Only ever compared.
+         */
+        val objectKey: String? = null,
     ) : AppLinkResult {
         /** The revision a `confirm: "prepare"` button of this card claims (web `card.businessRevision`): the block card's, else the chip card's. */
         val claimedRevision: String get() = block?.businessRevision ?: businessRevision
@@ -244,7 +255,12 @@ private fun readAppLinkPreviews(list: WireAppLinkPreviewList): List<AppLinkResul
     if (previews.size > 10) return null
     val icons = list.appIcons.orEmpty()
     if (icons.values.any { (it?.length ?: 0) > APP_LINK_PREVIEW_URL_MAX_LENGTH }) return null
-    return previews.map { element -> readAppLinkPreview(element, icons) ?: return null }
+    // A value that is not a digest is left out: that card is only never nudged.
+    val objectKeys =
+        (list.objectKeys as? JsonObject).orEmpty().mapNotNull { (url, value) ->
+            (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(::isAppLinkObjectKeySha256)?.let { url to it }
+        }.toMap()
+    return previews.map { element -> readAppLinkPreview(element, icons, objectKeys) ?: return null }
 }
 
 /** The keys a v1 list preview may carry (`appLinkPreviewResponseSchema.extend({ url, appName })`, strict). */
@@ -263,13 +279,13 @@ internal fun readAppLinkPreviewContent(obj: JsonObject, keys: Set<String>): Pair
 }
 
 /** One preview of the list, or null when the web's schema would refuse it. */
-private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>): AppLinkResult.Card? {
+private fun readAppLinkPreview(element: JsonElement, icons: Map<String, String?>, objectKeys: Map<String, String>): AppLinkResult.Card? {
     val obj = element as? JsonObject ?: return null
     val (title, card) = readAppLinkPreviewContent(obj, APP_LINK_PREVIEW_KEYS) ?: return null
     val rawUrl = obj["url"].jsonStringOrNull() ?: return null
     val url = appLinkPreviewHref(rawUrl) ?: return null
     val appName = obj["appName"].jsonStringOrNull()?.takeIf { it.length <= 300 } ?: return null
-    return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card)
+    return AppLinkResult.Card(url = url, app = AppLinkApp(name = appName, icon = icons[rawUrl]), title = title, card = card, objectKey = objectKeys[rawUrl])
 }
 
 /** The prompts as one list (web `promptListSchema`), or null when any of them can't be read. */

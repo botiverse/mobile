@@ -863,6 +863,11 @@ private fun RaftArtifactViewerWebBody(
     var handledHostActionCleared by remember { mutableStateOf(true) }
     val currentFreshReloadAvailable by rememberUpdatedState(freshReloadAvailable)
     val attachedAt = remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    val inColumn = LocalRaftArtifactViewerInColumn.current
+    // A message the page asks the App to open (`#host=open&to=…`, `hostOpen=message`; the page stays on the
+    // Artifact), being handled: the link (null: not one the App takes) and the fragment the address had before.
+    var pendingOpenMessage by remember { mutableStateOf<Pair<String?, String>?>(null) }
+    var hashBeforeHostRequest by remember { mutableStateOf("") }
     fun onAddress(url: String) {
         if (left) return
         address = url
@@ -871,10 +876,12 @@ private fun RaftArtifactViewerWebBody(
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_page_bar on=true")
         }
         val hostAction = raftArtifactViewerHostAction(url)
-        if (hostAction == null) {
+        val asksOpen = raftArtifactViewerAsksHostOpen(url)
+        if (hostAction == null && !asksOpen) {
             handledHostActionCleared = true
+            hashBeforeHostRequest = url.substringAfter('#', "")
         } else if (
-            pendingHostAction == null &&
+            pendingHostAction == null && pendingOpenMessage == null &&
             raftArtifactViewerHostActionIsNew(
                 url = url,
                 handledUrl = handledHostActionUrl,
@@ -885,7 +892,11 @@ private fun RaftArtifactViewerWebBody(
             handledHostActionUrl = url
             handledHostActionAt = kotlin.time.TimeSource.Monotonic.markNow()
             handledHostActionCleared = false
-            pendingHostAction = hostAction to url
+            if (hostAction != null) {
+                pendingHostAction = hostAction to url
+            } else {
+                pendingOpenMessage = raftArtifactViewerHostOpenMessageLink(url, scope.webOrigin) to hashBeforeHostRequest
+            }
         }
         val addressNavigation = raftArtifactViewerNavigation(url, scope.webOrigin, shownTarget.id)
         val switched = if (armed) raftArtifactViewerSwitchesInPlace(addressNavigation, conversationId) else null
@@ -983,6 +994,26 @@ private fun RaftArtifactViewerWebBody(
         val shown = raftArtifactViewerNavigation(url, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay
         currentOnHostAction(action, shown?.version)
         pendingHostAction = null
+    }
+    LaunchedEffect(pendingOpenMessage) {
+        val (link, hashBefore) = pendingOpenMessage ?: return@LaunchedEffect
+        // The request comes off the address (the fragment it had goes back): the page never left the Artifact.
+        if (controller.evaluateJavaScript(raftArtifactViewerHostOpenTakenScript(scope.webOrigin, hashBefore))) {
+            handledHostActionCleared = true
+        }
+        if (link == null) {
+            host.bridge.log("artifact_viewer_host_open result=dropped reason=not_a_message_link")
+        } else if (inColumn) {
+            // The wide layout's Artifact column closes for it, as when the page routed to the message itself.
+            host.bridge.log("artifact_viewer_host_open result=column_closes")
+            left = true
+            currentOnLeave(RaftArtifactViewerNavigation.OpenMessage(link), raftArtifactViewerLogDestination(link))
+        } else {
+            // Over the viewer, which stays as it is: Back from the conversation returns to this Artifact.
+            host.bridge.log("artifact_viewer_host_open result=opened_over to=${raftArtifactViewerLogDestination(link)}")
+            RaftMessageLinkIngress.accept(link, "artifact_viewer", scope.webOrigin)
+        }
+        pendingOpenMessage = null
     }
     LaunchedEffect(visible, address, hostDesktop) {
         if (!visible || address.isBlank() || pendingHostAction != null) return@LaunchedEffect

@@ -61,6 +61,7 @@ built from responses use the Developer environment `webUrl`
 Hosted CI (`raft-ci-validation`). `commonMain` must also pass the iOS
 compile, which ordinary PRs skip: JVM-only APIs (`Map.putIfAbsent`,
 `Map.merge`) break Kotlin/Native, so avoid them. The nightly iOS readback and
-the main merge hold catch a break; a deliberate `scope=ios` check is only for a
+the main push readback catch a break (after the merge: `main` no longer holds
+merges while red); a deliberate `scope=ios` check is only for a
 risky Kotlin/Native change (see `raft-ci-validation`). Say in the PR whether
 iOS ran.

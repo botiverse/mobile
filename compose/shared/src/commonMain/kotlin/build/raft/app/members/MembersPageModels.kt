@@ -142,6 +142,7 @@ internal enum class MembersAgentDetailTab(
 ) {
     Profile("Profile", RaftLucideIconName.Bot, privateSurface = false),
     Activity("Activity", RaftLucideIconName.Activity),
+    Usage("Usage", RaftLucideIconName.ChartColumn),
     // raft-ui `MessageIcon` (web AGENT_TABS chat).
     Chat("Chat", RaftLucideIconName.Message),
     Reminders("Reminders", RaftLucideIconName.AlarmClock),
@@ -154,6 +155,7 @@ internal fun MembersAgentDetailTab.localizedLabel(): String =
     when (this) {
         MembersAgentDetailTab.Profile -> stringResource(Res.string.member_label_profile)
         MembersAgentDetailTab.Activity -> stringResource(Res.string.member_tab_activity)
+        MembersAgentDetailTab.Usage -> stringResource(Res.string.member_tab_usage)
         MembersAgentDetailTab.Chat -> stringResource(Res.string.member_tab_chat)
         MembersAgentDetailTab.Reminders -> stringResource(Res.string.member_tab_reminders)
         MembersAgentDetailTab.Workspace -> stringResource(Res.string.member_tab_workspace)
@@ -252,6 +254,16 @@ internal fun membersHumanDeparture(membershipStatus: String?): MembersHumanDepar
 internal fun membersHumanIsSelf(member: MemberProfile, currentUserId: String?): Boolean {
     val selfId = currentUserId?.trim()?.takeIf { it.isNotBlank() } ?: return false
     return member.kind == MemberKind.Human && member.id.value.trim() == selfId
+}
+
+/**
+ * Web HumanDetailPanel (`isSelf && human.membershipStatus === "active"`): a signed-in person
+ * can edit their own profile description only while their membership is active.
+ */
+internal fun membersHumanCanEditDescription(member: MemberProfile, currentUserId: String?): Boolean {
+    if (!membersHumanIsSelf(member, currentUserId)) return false
+    val status = member.membershipStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    return status == "active"
 }
 
 /**
@@ -674,10 +686,19 @@ internal fun membersDirectMessageEligibility(
     return MembersDirectMessageEligibility.Peer
 }
 
-internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =
+internal fun membersVisibleAgentTabs(
+    canViewPrivateSurfaces: Boolean,
+    deleted: Boolean,
+    agentUsageEnabled: Boolean = false,
+    managedByApp: Boolean = false,
+): List<MembersAgentDetailTab> =
     MembersAgentDetailTab.entries.filter { tab ->
         when {
             tab == MembersAgentDetailTab.Profile -> true
+            // Web AgentDetailPanel: Usage is behind agent_usage_v0, private (same rule as Activity),
+            // and never shown for App Bots or archived/deleted agents.
+            tab == MembersAgentDetailTab.Usage ->
+                agentUsageEnabled && canViewPrivateSurfaces && !deleted && !managedByApp
             else -> canViewPrivateSurfaces
         }
     }
@@ -685,12 +706,19 @@ internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: B
 internal fun membersAgentDetailTabsForAccess(
     accessMode: MemberDetailAccessMode,
     canViewPrivateSurfaces: Boolean,
-    deleted: Boolean
+    deleted: Boolean,
+    agentUsageEnabled: Boolean = false,
+    managedByApp: Boolean = false,
 ): List<MembersAgentDetailTab> =
     if (!accessMode.allowsPrivateAgentSurfaces) {
         listOf(MembersAgentDetailTab.Profile)
     } else {
-        membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)
+        membersVisibleAgentTabs(
+            canViewPrivateSurfaces = canViewPrivateSurfaces,
+            deleted = deleted,
+            agentUsageEnabled = agentUsageEnabled,
+            managedByApp = managedByApp,
+        )
     }
 
 /**
@@ -701,6 +729,26 @@ internal fun membersAgentDetailTabsForAccess(
  */
 internal fun membersAgentProfileIsRemote(accessMode: MemberDetailAccessMode): Boolean =
     accessMode == MemberDetailAccessMode.RemoteProfileOnly
+
+/**
+ * Web AgentProfileInfo (`isBoundedPublicProjection`): a profile from another server of a joint
+ * channel ([MemberDetailAccessMode.RemoteProfileOnly]) or a bounded channel-summary projection
+ * (`profileProjection == "channel_summary"`). When empty on such a profile, the whole Description
+ * section is omitted rather than showing "No description".
+ */
+internal fun membersAgentIsBoundedPublicProjection(
+    accessMode: MemberDetailAccessMode,
+    profileProjection: String?
+): Boolean =
+    membersAgentProfileIsRemote(accessMode) ||
+        profileProjection?.trim()?.equals("channel_summary", ignoreCase = true) == true
+
+internal fun membersShouldShowAgentDescriptionSection(
+    accessMode: MemberDetailAccessMode,
+    profileProjection: String?,
+    description: String?
+): Boolean =
+    !membersAgentIsBoundedPublicProjection(accessMode, profileProjection) || !description.isNullOrBlank()
 
 /** pageData key of [RaftMemberDetailPayload.profileChannelId]. */
 internal const val MemberDetailProfileChannelIdKey = "profileChannelId"
@@ -1342,9 +1390,12 @@ internal fun unknownMembersAgentStatusIndicatorState(): RaftAgentStatusIndicator
 internal fun resolveMembersAgentStatusIndicatorStateOrNull(
     canonicalState: RaftAgentStatusIndicatorState?,
     fixtureFallback: RaftAgentStatusIndicatorState?,
-    fixtureStatusFallbackEnabled: Boolean
+    fixtureStatusFallbackEnabled: Boolean,
+    remoteProfileFallback: RaftAgentStatusIndicatorState? = null
 ): RaftAgentStatusIndicatorState? =
-    canonicalState ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
+    canonicalState
+        ?: remoteProfileFallback
+        ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
 
 /**
  * Label-facing resolution: never null, because an explicit unknown must outrank a stale
@@ -1354,12 +1405,14 @@ internal fun resolveMembersAgentStatusIndicatorStateOrNull(
 internal fun resolveMembersAgentStatusIndicatorState(
     canonicalState: RaftAgentStatusIndicatorState?,
     fixtureFallback: RaftAgentStatusIndicatorState?,
-    fixtureStatusFallbackEnabled: Boolean
+    fixtureStatusFallbackEnabled: Boolean,
+    remoteProfileFallback: RaftAgentStatusIndicatorState? = null
 ): RaftAgentStatusIndicatorState =
     resolveMembersAgentStatusIndicatorStateOrNull(
         canonicalState = canonicalState,
         fixtureFallback = fixtureFallback,
-        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+        remoteProfileFallback = remoteProfileFallback
     ) ?: unknownMembersAgentStatusIndicatorState()
 
 internal fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =

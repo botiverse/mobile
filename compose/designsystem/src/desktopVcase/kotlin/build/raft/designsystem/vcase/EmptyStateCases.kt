@@ -16,7 +16,7 @@ import dev.vcase.VCase
 /**
  * [RaftEmptyState] (raft-ui EmptyState): icon, title, description and an action; title and
  * description; the title alone; a long description cut at three lines; and one centred in a
- * taller box (`justify-center`). Replaces EmptyStateScreenshotTest (empty_state_light/_dark).
+ * taller box (`justify-center`).
  */
 @VCase("ds.empty-state.gallery")
 @Composable

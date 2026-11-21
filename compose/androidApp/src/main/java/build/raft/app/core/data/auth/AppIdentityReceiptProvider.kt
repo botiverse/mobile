@@ -20,13 +20,27 @@ import java.security.MessageDigest
  * App identity receipt, `raft-app-identity-receipt/v1`.
  *
  * Lets the QA runner confirm, over `adb shell content call`, WHICH signed package is running and
- * which account/server it is signed in to, without reading any of them in plain text. Shipped in
- * every build (store builds included), but:
- *  - the manifest declares it `android:enabled="false"`: on a normal device it is never
- *    instantiated. Only `adb shell pm enable` turns it on, and the runner turns it off again;
- *  - acquiring it needs `android.permission.DUMP` (manifest). `call()` is not covered by that
- *    permission, so [call] authorizes by [Binder.getCallingUid] alone: adb shell (2000) or root
- *    (0). Nothing passed in the request is trusted for authorization;
+ * which account/server it is signed in to, without reading any of them in plain text.
+ *
+ * Posture: shipped ENABLED in every build, store builds included. It used to ship disabled and be
+ * turned on with `adb shell pm enable`; on Android 14+ the shell may not change a component's state
+ * in a signed, non-debuggable release ("Shell cannot change component state"), which is exactly the
+ * build QA has to verify. Root was rejected. Decision: Tenny (CTO reviewer), 2026-11-20.
+ *
+ * Who can call:
+ *  - acquiring the provider needs `android.permission.DUMP` (manifest), which ordinary apps cannot
+ *    hold;
+ *  - `call()` is not covered by that permission, so [call] authorizes by [Binder.getCallingUid]
+ *    alone, before anything else: adb shell (2000) or root (0). Any other uid (another app, this
+ *    app itself, system 1000) gets `caller_not_allowed` and nothing else. Nothing passed in the
+ *    request is trusted for authorization.
+ *  Both guards stay. Removing or loosening either is a new security review.
+ *
+ * What an allowed caller gets: the closed field set of [buildAppIdentityReceipt] (package, version,
+ * signer certificate digest, debuggable, pid, process start ticks, signed_in, session origin and
+ * the salted digests below), at most [AppIdentityReceiptResponder.MAX_ANSWERS_PER_PROCESS] answers
+ * per process, one per request id. No email, name, token, raw user id or plain server id/slug
+ * leaves the app.
  *  - it only READS state that is already in memory: the session this process has already loaded
  *    ([KeyValueAuthSessionStore.readInMemorySessionSnapshot]), the package's own PackageInfo and
  *    `/proc/self/stat`. No session refresh, no network, no sign-in, no write, no side effect;
@@ -35,15 +49,39 @@ import java.security.MessageDigest
  *
  * `user_ref` / `server_ref` are verification digests salted with the request's nonce (shared
  * vector with Testbed): they let the runner confirm the expected account and server. With the
- * optional `pairing_salt` (Testbed's, 64 hex, never equal to the nonce, never echoed) the receipt
+ * optional `pairing_salt` (the caller's, 64 hex, never equal to the nonce, never echoed) the receipt
  * also carries `user_pair_ref` / `server_pair_ref`: the same digests salted with it, so Testbed can
  * compare across runs. All four come from one in-memory session snapshot. They are data
- * minimisation, not a way to make the user unidentifiable. No email, name, token, raw user id or
- * plain server id/slug leaves the app.
+ * minimisation, not a way to make the user unidentifiable.
+ *
+ * Exposure, known and accepted: the caller is an authorized debug host, i.e. someone with adb on
+ * an unlocked phone whose USB debugging they were authorized for, inside or outside a QA run.
+ *  - They choose the salt, so they can TEST A GUESS: compute the digest for a user id, or a server
+ *    id + slug, they already know and compare. They learn nothing about an id they cannot guess.
+ *  - By reusing a `pairing_salt` they can tell whether two observations are the same account and
+ *    server, without knowing the raw ids. The pairing refs stay; accepted by Tenny (2026-11-20)
+ *    because that host is inside the app's trust boundary and can already read the signed-in
+ *    account off the screen.
+ *
+ * Rules (changing either is a new security review):
+ *  1. No digest whose inputs are all guessable, and the raw id is always an input to every digest:
+ *     `user_ref` / `user_pair_ref` hash the raw user id; `server_ref` / `server_pair_ref` hash the
+ *     raw server id AND the slug together (agreed vector with Testbed). The caller's salt (nonce or
+ *     pairing salt) is added to those inputs and never replaces them. Do not add a digest over
+ *     values a caller can enumerate (a slug alone, a boolean, a small number, an email).
+ *  2. The answer set is closed. Adding, removing or changing a receipt field, a method or a digest
+ *     input is a new review, never a routine change.
+ *
+ * Because it is enabled, Android creates this provider at every process start, before
+ * `Application.onCreate`. Creation must therefore stay free: no work in a constructor, a field
+ * initializer or [onCreate], and nothing there may touch app state (MMKV, the session store,
+ * logging). All reads happen inside an authorized [call].
  */
 class AppIdentityReceiptProvider : ContentProvider() {
+    // Created at every process start, before Application.onCreate: an empty set, nothing else.
     private val responder = AppIdentityReceiptResponder()
 
+    /** Runs at every process start, before `Application.onCreate`: does nothing, by design. */
     override fun onCreate(): Boolean = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {

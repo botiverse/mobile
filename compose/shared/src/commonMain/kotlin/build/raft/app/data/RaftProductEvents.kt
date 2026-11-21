@@ -65,6 +65,7 @@ object RaftProductEvents {
     fun setSignedIn(serverId: String, userId: String? = null) {
         val normalized = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         recorder.client.setSignedIn(ServerId(normalized))
+        RaftClientTraceEvents.onSignedIn(userId)
         RaftInstallSourceReport.onSignedIn(userId)
         RaftAppSettingsSnapshotReport.onSignedIn()
     }
@@ -73,6 +74,7 @@ object RaftProductEvents {
         RaftInstallSourceReport.onSignedOut()
         RaftAppSettingsSnapshotReport.onSignedOut()
         recorder.client.setSignedOut()
+        RaftClientTraceEvents.onSignedOut()
     }
 
     /** The user changed "Share usage data": ask `/product-events/config` again before the next batch. */

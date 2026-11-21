@@ -12,6 +12,8 @@ import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.isOpening
 import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
+import build.raft.app.data.AGENT_USAGE_FEATURE_FLAG_KEY
+import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.isRaftHostVisible
@@ -623,11 +625,14 @@ internal fun MemberDetailPageContent(
         agentActivityLoadState = result.toMembersAgentActivityLoadState()
     }
 
+    var humanDescriptionEditRevision by remember(memberIdentity) { mutableStateOf(0L) }
+
     LaunchedEffect(memberIdentity, activeServerId, localAgentDetailRefreshKey) {
         if (memberIdentity == null) {
             routeState = MemberDetailRouteState.Error("member_identity_missing")
             return@LaunchedEffect
         }
+        val startHumanDescriptionRevision = humanDescriptionEditRevision
         if (
             (memberIdentity.kind == MemberKind.Agent || routeState !is MemberDetailRouteState.Human) &&
             !routeState.isCachedAgentDetailRoute(memberIdentity, provider.agentDetailStore.state.value)
@@ -707,7 +712,19 @@ internal fun MemberDetailPageContent(
         ) {
             return@LaunchedEffect
         }
-        routeState = loaded
+        val reconciled =
+            if (loaded is MemberDetailRouteState.Human && humanDescriptionEditRevision != startHumanDescriptionRevision) {
+                val confirmed = (routeState as? MemberDetailRouteState.Human)?.takeIf { it.member.id == loaded.member.id }
+                if (confirmed != null) {
+                    provider.serverMembersStore.updateHumanDescription(confirmed.member.id, confirmed.member.description)
+                    loaded.copy(member = loaded.member.copy(description = confirmed.member.description))
+                } else {
+                    loaded
+                }
+            } else {
+                loaded
+            }
+        routeState = reconciled
         // The canonical detail request already includes the freshly merged durable/current
         // activity snapshot. Do not immediately repeat the same visible activity request.
     }
@@ -867,8 +884,15 @@ internal fun MemberDetailPageContent(
     // Task #137: read-only runtime account usage for the agent's Runtime Config chip. Only
     // routes that allow private agent surfaces get a server id; the server still decides
     // access (403 hides the entry).
+    val runtimeAuthHost =
+        remember(bridge, provider.storeScope) {
+            ComputerRuntimeAuthHost(
+                realtime = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).realtimeDomainEventOwner(provider.storeScope),
+                openUrl = { url -> bridge.openUrl(url, inBrowser = true) },
+            )
+        }
     val runtimeAccountUsageAccess =
-        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker, runtimeAccountUsageViewer) {
+        remember(provider.runtimeAccountUsageStore, provider.computersStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker, runtimeAccountUsageViewer, runtimeAuthHost) {
             provider.runtimeAccountUsageStore?.let { store ->
                 MembersRuntimeAccountUsageAccess(
                     store = store,
@@ -877,7 +901,9 @@ internal fun MemberDetailPageContent(
                     onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } },
                     log = { message -> bridge.log(message) },
                     viewer = runtimeAccountUsageViewer,
+                    auth = runtimeAuthHost,
                     serverFeatureFlags = provider.serverFeatureFlags,
+                    computersStateFlow = provider.computersStore.state,
                 )
             }
         }
@@ -901,6 +927,8 @@ internal fun MemberDetailPageContent(
                 val member = selectedAgentDetail?.toStaticMembersProfile(current.server)
                 val loungeEnabled =
                     rememberAgentLoungeEnabled(provider.serverFeatureFlags, current.server.id.value, current.server.role)
+                val agentUsageEnabled =
+                    rememberServerFeatureLatched(provider.serverFeatureFlags, current.server.id, AGENT_USAGE_FEATURE_FLAG_KEY)
                 if (member == null) {
                     // The store has no detail for this agent until this page's load lands: keep the
                     // page's header and Back around the spinner.
@@ -1178,12 +1206,7 @@ internal fun MemberDetailPageContent(
                                 }
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
-                        canViewPrivateAgentSurfaces = { _, detail ->
-                            current.accessMode.allowsPrivateAgentSurfaces &&
-                                (current.server.permissions.canManageSettings ||
-                                detail?.summary?.creatorId == current.currentUserId
-                                )
-                        },
+                        canViewPrivateAgentSurfaces = { _, detail -> current.viewerSeesPrivateAgentSurfaces(detail) },
                         canManageAgent = { _, detail ->
                             membersRouteCanManageAgent(
                                 allowsPrivateAgentSurfaces = current.accessMode.allowsPrivateAgentSurfaces,
@@ -1337,6 +1360,7 @@ internal fun MemberDetailPageContent(
                                 },
                             agentPanelTabOrder = agentPanelTabOrder,
                             agentPanelTabOrderReady = agentTabOrderReady,
+                            agentUsageEnabled = agentUsageEnabled,
                             onAgentPanelTabOrderChange = { orderedTabs ->
                                 val previousOrder = agentPanelTabOrder
                                 val nextOrder = orderedTabs.toMembersAgentPanelTabOrderWireKeys()
@@ -1592,6 +1616,20 @@ internal fun MemberDetailPageContent(
                         humanAccessMode = current.accessMode,
                         onUpdateHumanRole = { memberId, role ->
                             provider.updateHumanRole(current.server.id.value, memberId, role)
+                        },
+                        onUpdateHumanDescription = { description ->
+                            provider.updateHumanDescription(current.member.id, description)
+                        },
+                        onApplyHumanDescription = { savedDescription ->
+                            humanDescriptionEditRevision += 1L
+                            routeState =
+                                (routeState as? MemberDetailRouteState.Human)?.let { state ->
+                                    if (state.member.id == current.member.id) {
+                                        state.copy(member = state.member.copy(description = savedDescription))
+                                    } else {
+                                        state
+                                    }
+                                } ?: routeState
                         }
                     ),
                     agentCallbacks = MembersAgentDetailCallbacks(

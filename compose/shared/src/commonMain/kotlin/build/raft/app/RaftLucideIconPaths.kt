@@ -84,6 +84,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M10 12h4"),
                     ),
                 )
+            RaftLucideIconName.ArrowDownRight ->
+                RaftLucideIconSpec(
+                    "arrow-down-right",
+                    listOf(
+                        RaftLucidePathSpec("m7 7 10 10"),
+                        RaftLucidePathSpec("M17 7v10H7"),
+                    ),
+                )
             RaftLucideIconName.ArrowDownUp ->
                 RaftLucideIconSpec(
                     "arrow-down-up",
@@ -291,6 +299,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M7 16h8"),
                         RaftLucidePathSpec("M7 11h12"),
                         RaftLucidePathSpec("M7 6h3"),
+                    ),
+                )
+            RaftLucideIconName.ChartColumn ->
+                RaftLucideIconSpec(
+                    "chart-column",
+                    listOf(
+                        RaftLucidePathSpec("M3 3v16a2 2 0 0 0 2 2h16"),
+                        RaftLucidePathSpec("M18 17V9"),
+                        RaftLucidePathSpec("M13 17V5"),
+                        RaftLucidePathSpec("M8 17v-3"),
                     ),
                 )
             RaftLucideIconName.Check ->

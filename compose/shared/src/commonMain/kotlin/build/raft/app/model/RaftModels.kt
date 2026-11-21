@@ -165,6 +165,7 @@ data class ConversationSummary(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    val externalFreezeAt: String? = null,
     val bridgeProvider: String? = null,
     /**
      * Channel row `guestVisible` (see [build.raft.app.data.HomeChannelWireDto.guestVisible]).
@@ -473,6 +474,11 @@ data class MemberProfile(
      * any other value keeps the agent's ordinary state, as the web does for one it doesn't know.
      */
     val agentBlockedReason: String? = null,
+    /**
+     * `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15273/#15282): kept failed-start
+     * reason (e.g. `runtime_login_required`), cleared by the server on the next successful start.
+     */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
     /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
@@ -1442,6 +1448,20 @@ data class UserProfileUpdated(
 data class LinkCardOperationChanged(
     val operationId: String,
     val receiptRevision: Long,
+) : RealtimeEvent
+
+/**
+ * `link_card.changed` `{ app, object_key_sha256 }` (botiverse/slock shared `LinkCardChangedEvent`,
+ * `services/linkCardChangedHints.ts`): an App told Raft the object behind one of the cards this
+ * viewer read on the connection's server changed. A nudge only, no content: the cards that carry
+ * [objectKeySha256] (the digest their read item carried) are read again (web
+ * `linkCardChangedRereads.ts`). [app] is the App's id; the digest already names it, so only the
+ * digest is compared.
+ */
+@Serializable
+data class LinkCardChanged(
+    val app: String,
+    val objectKeySha256: String,
 ) : RealtimeEvent
 
 /**

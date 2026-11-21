@@ -152,6 +152,38 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets.single().kind)
     }
 
+    @Test
+    fun fallbackExcludesChannelsWithActiveExternalFreezeButKeepsUpcoming() {
+        val nowMs = 1790899200000L // 2026-10-02T00:00:00Z
+        val targets =
+            fallbackForwardMessageTargets(
+                serverId = serverId,
+                directMessages = emptyList(),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-frozen"),
+                            channelId = ChannelId("ch-frozen"),
+                            name = "partner-frozen",
+                            joined = true,
+                            externalFreezeAt = "2026-10-01T00:00:00Z",
+                        ),
+                        HomeChannelRow(
+                            threadId = ThreadId("ch-upcoming"),
+                            channelId = ChannelId("ch-upcoming"),
+                            name = "partner-upcoming",
+                            joined = true,
+                            externalFreezeAt = "2026-10-05T00:00:00Z",
+                        ),
+                    ),
+                query = "partner",
+                limit = 10,
+                nowEpochMillis = nowMs,
+            )
+
+        assertEquals(listOf("#partner-upcoming"), targets.map { it.title })
+    }
+
     // The local fallback no longer turns server members into DM candidates (people are found
     // by the server search); an in-memory roster only enriches existing DM rows.
     @Test

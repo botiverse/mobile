@@ -10,6 +10,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.rememberTextMeasurer
 import build.raft.app.data.ComputerLoginStepAction
+import build.raft.app.data.ComputerProcJobSnapshot
+import build.raft.app.data.ComputerProcJobStopResult
 import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftRackUsageLinesMemory
 import build.raft.app.data.raftSharedPreferenceStore
@@ -2720,16 +2722,19 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 )
         }
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
+    val procJobsServerId = currentServerId?.takeIf { target.serverId == null || target.serverId == it }
+    val procJobsScope = rememberCoroutineScope()
+    var procJobsRefreshTick by remember(target.machineId) { mutableStateOf(0) }
     RaftComputersRealtimeEffect(
         pager = pager,
         storeScope = environment.storeScope,
         // Only the machine's own server: a target on another server renders Unavailable anyway.
-        serverId = currentServerId?.takeIf { target.serverId == null || target.serverId == it },
+        serverId = procJobsServerId,
         visible = pageVisible,
         dispatch = settingsViewModel::dispatch,
     )
     RaftLiveCatchUpEffect(
-        serverId = currentServerId?.takeIf { target.serverId == null || target.serverId == it },
+        serverId = procJobsServerId,
         visible = pageVisible,
     ) {
         settingsViewModel.dispatch(SharedSettingsIntent.CatchUpComputers)
@@ -2741,7 +2746,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             routeErrorCode = settingsState.routeErrorCode,
             refreshing = refreshing,
         )
-    fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+    fun refresh() {
+        settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+        procJobsRefreshTick += 1
+    }
     // Transfer owner offers the server's people: the members store's roster, no new API.
     val ownerMembersServerId = currentServerId?.let(::ServerId)
     val ownerMembersEntry by
@@ -2764,6 +2772,26 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
     // Agents header → Create agent: the canonical create form with this computer preselected, as
     // the signed-in owner of this computer's server (web `MachineAgentList` → `CreateAgentDialog`).
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val procJobsApi =
+        remember(sharedStores, environment.storeScope) {
+            RaftComputersApiClient(RaftComputersNetworkApi(sharedStores.networkClient(environment.storeScope)))
+        }
+    val procJobsController =
+        remember(procJobsApi, procJobsServerId, target.machineId) {
+            RaftComputerProcJobsController(
+                loadProcJobs = { serverId, machineId, priority -> procJobsApi.machineProcJobs(serverId, machineId, priority) },
+                stopProcJobApi = procJobsApi::stopMachineProcJob,
+            )
+        }
+    val computerOnline = (model as? RaftComputerDetailModel.Content)?.computer?.online == true
+    rememberComputerProcJobsEffect(
+        controller = procJobsController,
+        serverId = procJobsServerId?.let(::ServerId),
+        machineId = target.machineId,
+        online = computerOnline,
+        pageVisible = pageVisible,
+        refreshTick = procJobsRefreshTick,
+    )
     val routeOwner by
         remember(sharedStores, environment.storeScope) {
             sharedStores.authenticatedRouteOwnerFlow(environment.storeScope)
@@ -2881,6 +2909,16 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                         )
                     }
                 },
+                procJobsByAgent = procJobsController.jobsByAgent,
+                onStopProcJob = { job, onOutcome ->
+                    procJobsController.stopJob(
+                        job = job,
+                        scope = procJobsScope,
+                        serverId = procJobsServerId?.let(::ServerId),
+                        machineId = target.machineId,
+                        onOutcome = onOutcome,
+                    )
+                },
             )
         }
         }
@@ -2937,6 +2975,10 @@ internal fun RaftSettingsComputerDetailContent(
     bulkAgentActions: RaftComputerBulkAgentActions? = null,
     /** After a bulk action: the agents' state changed on the server. */
     onBulkAgentsChanged: () -> Unit = {},
+    /** Each agent's `raft proc` jobs on this Computer (web `useMachineProcJobs`); empty hides the block. */
+    procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
+    /** Stops one running `raft proc` job (web `POST …/proc-jobs/stop`); null hides Stop. */
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -2979,6 +3021,8 @@ internal fun RaftSettingsComputerDetailContent(
                     onCreateAgent = onCreateAgent,
                     bulkAgentActions = bulkAgentActions,
                     onBulkAgentsChanged = onBulkAgentsChanged,
+                    procJobsByAgent = procJobsByAgent,
+                    onStopProcJob = onStopProcJob,
                 )
         }
     }
@@ -3001,6 +3045,8 @@ private fun RaftComputerDetailBody(
     onCreateAgent: (() -> Unit)?,
     bulkAgentActions: RaftComputerBulkAgentActions?,
     onBulkAgentsChanged: () -> Unit,
+    procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>>,
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)?,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3253,6 +3299,9 @@ private fun RaftComputerDetailBody(
                 onOpenAgent,
                 onCreateAgent = onCreateAgent?.takeIf { snapshot.canManageMachines },
                 bulk = bulk,
+                canStopProcJobs = model.canControl && snapshot.computer.online && onStopProcJob != null,
+                procJobsByAgent = procJobsByAgent,
+                onStopProcJob = onStopProcJob,
             )
         }
         item(key = "workspaces") {
@@ -3785,6 +3834,10 @@ private fun RaftComputerAgentsSection(
     onCreateAgent: (() -> Unit)?,
     /** Web's bulk selection, for a viewer with `canManageMachines`; null hides it. */
     bulk: RaftComputerAgentsBulk?,
+    /** Web `canControl && machine.status === "online"`: offers Stop on running `raft proc` jobs. */
+    canStopProcJobs: Boolean = false,
+    procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
 ) {
     val agents = snapshot.agents
     val selecting = bulk?.state?.selectionMode == true
@@ -3829,22 +3882,40 @@ private fun RaftComputerAgentsSection(
                     }
                     RaftListRowGroup(Modifier.fillMaxWidth()) {
                         agents.forEachIndexed { index, agent ->
-                            if (selecting && bulk != null) {
-                                RaftComputerSelectableAgentRow(
-                                    agent = agent,
-                                    live = agentLive[agent.id],
-                                    divider = index > 0,
-                                    selected = agent.id in bulk.state.selected,
-                                    onToggle = { bulk.state.toggle(agent.id) },
-                                    avatar = { RaftComputerAgentAvatar(agent) },
-                                )
-                            } else {
-                                RaftComputerAgentRow(
-                                    agent = agent,
-                                    divider = index > 0,
-                                    live = agentLive[agent.id],
-                                    onClick = { onOpenAgent(agent) },
-                                )
+                            key(agent.id) {
+                                if (selecting && bulk != null) {
+                                    RaftComputerSelectableAgentRow(
+                                        agent = agent,
+                                        live = agentLive[agent.id],
+                                        divider = index > 0,
+                                        selected = agent.id in bulk.state.selected,
+                                        onToggle = { bulk.state.toggle(agent.id) },
+                                        avatar = { RaftComputerAgentAvatar(agent) },
+                                    )
+                                } else {
+                                    RaftComputerAgentRow(
+                                        agent = agent,
+                                        divider = index > 0,
+                                        live = agentLive[agent.id],
+                                        onClick = { onOpenAgent(agent) },
+                                    )
+                                    val agentJobs = procJobsByAgent[agent.id].orEmpty()
+                                    if (agentJobs.isNotEmpty()) {
+                                        RaftComputerAgentProcJobs(
+                                            agentName = agent.name,
+                                            jobs = agentJobs,
+                                            canStop = canStopProcJobs,
+                                            onStop = { job, onOutcome ->
+                                                val stop = onStopProcJob
+                                                if (stop != null) {
+                                                    stop(job, onOutcome)
+                                                } else {
+                                                    onOutcome(ComputerProcJobStopResult.Error("proc_job_unavailable"))
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

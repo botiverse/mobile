@@ -8,6 +8,7 @@ import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.AccountDescriptionUpdateResult
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationStore
@@ -161,7 +162,9 @@ internal class MembersHumanRoleInputs(
     val humanActorRole: String? = null,
     val humanOwnerCount: Int? = null,
     val humanAccessMode: MemberDetailAccessMode = MemberDetailAccessMode.LocalFull,
-    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null
+    val onUpdateHumanRole: (suspend (String, MembersHumanServerRole) -> DataResult<SettingsServerActionResult>)? = null,
+    val onUpdateHumanDescription: (suspend (String?) -> DataResult<AccountDescriptionUpdateResult>)? = null,
+    val onApplyHumanDescription: ((String?) -> Unit)? = null
 )
 
 internal class MembersAgentDetailCallbacks(
@@ -313,7 +316,9 @@ internal class MembersAgentDetailPresentation(
      * issue is offered, and its bundle sent, only while it is [RaftPrivacyMode.Off]. Visual
      * fixtures pin it off.
      */
-    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state
+    val privacyMode: StateFlow<RaftPrivacyMode> = RaftTelemetryPrivacy.state,
+    /** Server feature flag `agent_usage_v0`: exposes the Usage tab between Activity and Chat. */
+    val agentUsageEnabled: Boolean = false
 )
 
 @Composable
@@ -401,11 +406,26 @@ internal fun MembersDetailContent(
     val issueReportTitle = stringResource(Res.string.member_report_issue_title_for_agent, member.displayName)
     val issueTicketRetryFailed = stringResource(Res.string.member_report_issue_retry_ticket_failed)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
+    val remoteProfile = membersAgentProfileIsRemote(accessMode)
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
+    // task #258: cross-server joint-channel agents (RemoteProfileOnly) have no live status
+    // resolver bound, so fall back to the status/activity returned by GET /api/agents/:id when
+    // no live canonical state exists; live status still wins if bound, and absent status stays
+    // null so no chip is rendered.
     val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
             val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            val remoteProfileFallback =
+                if (remoteProfile) {
+                    membersRemoteProfileAgentStatusIndicatorStateOrNull(
+                        summaryStatus = detail?.summary?.status,
+                        summaryActivity = detail?.summary?.activity,
+                        external = false
+                    )
+                } else {
+                    null
+                }
             resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = canonicalState,
                 fixtureFallback =
@@ -417,7 +437,8 @@ internal fun MembersDetailContent(
                     } else {
                         null
                     },
-                fixtureStatusFallbackEnabled = stableVisualCapture
+                fixtureStatusFallbackEnabled = stableVisualCapture,
+                remoteProfileFallback = remoteProfileFallback
             )
         } else {
             null
@@ -685,14 +706,20 @@ internal fun MembersDetailContent(
             }
         }
     }
-    val visibleTabs = remember(accessMode, canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
+    val managedByApp =
+        !detail?.summary?.managedByAppInstallId.isNullOrBlank() ||
+            !member.managedByAppInstallId.isNullOrBlank()
+    val agentUsageEnabled = presentation.agentUsageEnabled
+    val visibleTabs = remember(accessMode, canViewPrivate, deleted, managedByApp, agentUsageEnabled, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
             membersOrderedAgentTabs(
                 visibleTabs =
                     membersAgentDetailTabsForAccess(
                         accessMode = accessMode,
                         canViewPrivateSurfaces = canViewPrivate,
-                        deleted = deleted
+                        deleted = deleted,
+                        agentUsageEnabled = agentUsageEnabled,
+                        managedByApp = managedByApp,
                     ),
                 storedOrder = agentPanelTabOrder
             )
@@ -1143,6 +1170,15 @@ internal fun MembersDetailContent(
                             modifier = Modifier.fillMaxSize(),
                             subagentStop = activitySubagentStop
                         )
+                    } else if (pageTab == MembersAgentDetailTab.Usage) {
+                        MembersAgentUsageTab(
+                            agentId = member.id,
+                            serverId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId),
+                            agentsApiClient = agentsApiClient,
+                            timeContext = timeContext,
+                            onOpenComputer = onOpenComputer,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     } else {
                         LazyColumn(
                             state = agentTabListStates.getValue(pageTab),
@@ -1333,7 +1369,8 @@ internal fun MembersDetailContent(
                                             // Web AgentAppAccessTab: `px-5`.
                                             modifier = Modifier.padding(horizontal = MembersAgentProfileInset)
                                         )
-                                        MembersAgentDetailTab.Activity -> Unit
+                                        MembersAgentDetailTab.Activity,
+                                        MembersAgentDetailTab.Usage -> Unit
                                     }
                                 }
                             }
@@ -1432,6 +1469,8 @@ internal fun MembersDetailContent(
                             currentServerId = currentServerId,
                             ownerCount = humanOwnerCount,
                             onUpdateRole = onUpdateHumanRole,
+                            onUpdateDescription = humanRole.onUpdateHumanDescription,
+                            onApplyDescription = humanRole.onApplyHumanDescription,
                             onRemoveMember = onRemoveMember?.takeIf {
                                 member.membershipStatus != "removed"
                             },

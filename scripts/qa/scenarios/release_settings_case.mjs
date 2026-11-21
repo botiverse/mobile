@@ -1,8 +1,9 @@
 // Release settings lane (qa-acceptance.yml login_mode=release-prelogin): the acceptance case runs
 // as release_auto_login.mjs's scenario, i.e. after Testbed answered "matched" and inside the very
 // app process that gave the matched receipt (release_auto_login.mjs checks the pid + start ticks
-// before and after). Cleanup (web sign-out, capture browser, `pm disable` of the receipt
-// provider, which kills the app) runs only after this returns.
+// before and after). Cleanup (web sign-out, capture browser and, for an older package whose
+// receipt provider this run enabled, its `pm disable`, which kills the app) runs only after this
+// returns.
 //
 // First it writes this run's qa-evidence/login-record.json (login_phase.mjs contract, mode
 // "release-prelogin", status "matched"), which the agent and both evidence exits

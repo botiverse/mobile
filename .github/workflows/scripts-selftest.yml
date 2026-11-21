@@ -5,7 +5,7 @@ on:
     paths:
       - "scripts/**"
       - ".github/**"
-      # Also exercised below: the mobile-use iOS tests and assert_xctest_ran.py.
+      # Also exercised below: the mobile-use iOS tests, assert_xctest_ran.py and print_xctest_failures.py.
       - "tools/mobile-use/**"
       - "compose/iosApp/scripts/**"
   push:
@@ -63,6 +63,7 @@ jobs:
         run: |
           PYTHONPATH=tools/mobile-use/src python3 tools/mobile-use/tests/test_ios_use.py
           python3 compose/iosApp/scripts/assert_xctest_ran.py --self-test
+          python3 compose/iosApp/scripts/print_xctest_failures.py --self-test
 
       - uses: actions/setup-node@v7
         with:

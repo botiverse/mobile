@@ -17,7 +17,6 @@ import dev.vcase.VCase
 /**
  * raft-ui Composer > `ComposerDropOverlay` (web MessageInput while files are dragged over it),
  * over a composer-sized box with text under it, which the overlay must hide.
- * Replaces ComposerDropOverlayScreenshotTest (composer_drop_overlay_light/_dark).
  */
 @VCase("ds.composer-drop-overlay.default")
 @Composable

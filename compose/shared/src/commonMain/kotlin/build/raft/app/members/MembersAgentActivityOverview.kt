@@ -681,7 +681,9 @@ private fun MembersAgentActivityTurnOutput(text: String) {
  * Only a turn that needs a look gets a badge (web TurnBadges): the running turn, steps that went
  * wrong, an error ending, a stop or an unknown ending; a turn that sent nothing gets a muted one.
  * [compact] (web AgentNowCard `TurnRowBadges`, a finished turn's line in the profile's Recent
- * activity): the same badges without their status lights.
+ * activity): the same badges without their status lights, each one an item of the caller's
+ * wrapping row (the web's fragment), so a badge that does not fit moves to the next line whole
+ * instead of being cut; [modifier] is not applied to them.
  */
 @Composable
 internal fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Modifier = Modifier, compact: Boolean = false) {
@@ -695,8 +697,20 @@ internal fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: M
         )
         return
     }
+    if (compact) {
+        MembersAgentActivityFinishedTurnBadges(turn, compact = true)
+    } else {
+        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+            MembersAgentActivityFinishedTurnBadges(turn, compact = false)
+        }
+    }
+}
+
+/** A finished turn's badges, one after another in the caller's row. */
+@Composable
+private fun MembersAgentActivityFinishedTurnBadges(turn: AgentActivityTurn, compact: Boolean) {
     val problems = turn.problemStepCount
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+    run {
         when {
             turn.outcome == AgentActivityTurnOutcome.Completed && problems > 0 ->
                 RaftBadge(

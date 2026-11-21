@@ -48,10 +48,12 @@ import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedActivityPendingDeferredHide
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.SharedActivityPresentationCheckpoint
 import build.raft.app.data.SharedActivityPresentationStore
 import build.raft.app.data.SharedActivityState
+import build.raft.app.data.listsUnfollowedActivityThreads
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
@@ -823,6 +825,7 @@ internal fun projectActivityStateWithProcessSummary(
         snapshot == null ||
         state.selectedFilter != InboxFilter.All ||
         !activitySummary.hasValue ||
+        state.hasActivePendingDeferredHide() ||
         snapshot.items.any { item -> item.hasUnopenableInternalJointParentSource() }
     ) {
         return state
@@ -1036,13 +1039,15 @@ private fun SharedActivityPanelContent(
             scrollSelectedPageToTop()
         }
     }
+    val (headerTotalCount, headerTotalUnreadCount) = state.activityHeaderCounts()
     Column(
         modifier = modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
     ) {
         SharedActivityHeader(
-            // Object rows (workspace Artifacts) count apart from the conversations' (web ThreadsInbox).
-            totalCount = state.totalCount + (state.snapshot?.objectCounts?.objectCount ?: 0),
-            totalUnreadCount = state.totalUnreadCount + (state.snapshot?.objectCounts?.unreadFor(state.selectedFilter) ?: 0),
+            // Object rows (workspace Artifacts) count apart from the conversations' (web ThreadsInbox),
+            // and a row hidden behind the 8 s Undo toast is already projected out at the store.
+            totalCount = headerTotalCount,
+            totalUnreadCount = headerTotalUnreadCount,
             onClose = onClose,
             mainTab = mainTab,
             topSafeAreaPadding = topSafeAreaPadding,
@@ -1066,7 +1071,7 @@ private fun SharedActivityPanelContent(
         var filterMenuExpanded by remember { mutableStateOf(false) }
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
-            totalUnreadCount = state.totalUnreadCount,
+            totalUnreadCount = state.activityConversationUnreadCount(),
             onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
             onMarkAllRead = {
                 RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
@@ -2003,9 +2008,25 @@ internal fun SharedActivityList(
             }
         }
     }
+    val latestSelectedFilter by rememberUpdatedState(selectedFilter)
+    fun syncPendingDeferredHide(pending: ActivityPendingSwipeDone?) {
+        latestOnIntent(
+            SharedActivityIntent.ProjectPendingDeferredHide(
+                pending?.let {
+                    SharedActivityPendingDeferredHide(
+                        itemKey = it.item.key,
+                        removesCountRow =
+                            it.action == ActivitySwipeDeferredAction.Done ||
+                                !latestSelectedFilter.listsUnfollowedActivityThreads,
+                    )
+                }
+            )
+        )
+    }
     fun applySwipeDone(transition: ActivitySwipeDoneTransition) {
         swipeDoneUndo = transition.state
         transition.commit?.let(::commitSwipeDone)
+        syncPendingDeferredHide(transition.state.pending)
     }
     // Workspace Artifacts: an object row's Done goes out at once (web `markObjectRowDone`); its
     // toast's Undo sends `undone`. Its Unfollow waits for its toast to end and is only sent then.
@@ -2334,7 +2355,9 @@ internal fun SharedActivityList(
                     if (pending.action == ActivitySwipeDeferredAction.Unfollow) {
                         latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(pending.item, HomeThreadUnfollowPhase.Restored))
                     }
-                    swipeDoneUndo = swipeDoneUndo.undo(pending.token)
+                    val nextUndo = swipeDoneUndo.undo(pending.token)
+                    swipeDoneUndo = nextUndo
+                    syncPendingDeferredHide(nextUndo.pending)
                 },
                 modifier =
                     Modifier

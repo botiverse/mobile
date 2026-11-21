@@ -37,11 +37,7 @@ DEFAULT_MAX_BYTES = 50 * 1024
 # past its size on that day (its ceiling); every other method must stay within the budget. Lower a
 # ceiling, or drop the entry, once its method is split. Keyed by the full "class.method(descriptor)"
 # that scan() reports, so a new overload with the same name keeps the normal budget.
-CEILINGS: dict[str, tuple[int, str]] = {
-    "build.raft.app.ThreadPageKt.SharedThreadRouteContentContent"
-    "(Lbuild/raft/app/SharedThreadRouteContentData;Lbuild/raft/app/SharedThreadRouteContentCallbacks;"
-    "Landroidx/compose/runtime/Composer;I)V": (54970, "tracked by #proj-mobile:#123"),
-}
+CEILINGS: dict[str, tuple[int, str]] = {}
 
 
 class ClassFormatError(Exception):

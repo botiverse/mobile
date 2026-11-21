@@ -9,7 +9,7 @@ import test from "node:test";
 import { readRecord, writeRecord } from "./login_phase.mjs";
 import { gate } from "./secure_evidence.mjs";
 import { threadtimeStamp, writeReleaseLoginRecord } from "./scenarios/release_settings_case.mjs";
-import { TERMINAL, applyTerminalDecision, recordingComplete, terminalDecision } from "./release_settings_terminal.mjs";
+import { REQUIRED_CLEANUP, TERMINAL, applyTerminalDecision, recordingComplete, terminalDecision } from "./release_settings_terminal.mjs";
 
 const env = { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "1" };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "release-case-"));
@@ -80,7 +80,11 @@ test("not vouched for: process changed, recorder not stopped, a required cleanup
     "recorder not stopped (case did not finish)": (s) => { s.scenario_result = "fail"; },
     "web session not signed out": (s) => { s.cleanup.web_session = "failed"; },
     "browser not restored": (s) => { s.cleanup.browser = "failed"; },
-    "provider not disabled": (s) => { s.cleanup.identity_receipt_provider = "failed"; },
+    "provider enabled by this run and not disabled again": (s) => { s.cleanup.identity_receipt_provider = "failed"; },
+    "provider start state unknown": (s) => { s.cleanup.identity_receipt_provider = "unknown"; },
+    "provider never reached": (s) => { s.cleanup.identity_receipt_provider = "not_enabled"; },
+    "provider status missing": (s) => { delete s.cleanup.identity_receipt_provider; },
+    "provider status not a known value": (s) => { s.cleanup.identity_receipt_provider = "enabled"; },
     "decision not matched": (s) => { s.identity_receipt.state = "awaiting_confirmation"; },
     "no summary": () => null,
   };
@@ -104,6 +108,36 @@ test("not vouched for: process changed, recorder not stopped, a required cleanup
   const s = cleanSummary();
   s.cleanup.app_session = "local_cleared_server_unconfirmed";
   assert.equal(terminalDecision({ summary: s, rc: 0 }).complete, true);
+});
+
+test("receipt provider terminal state: restored (older package) or enabled by the package and untouched (new package); every other value keeps its own name and does not complete", () => {
+  assert.deepEqual(REQUIRED_CLEANUP.identity_receipt_provider, ["disabled", "enabled_by_package"]);
+  const decide = (status) => {
+    const summary = cleanSummary();
+    if (status === undefined) delete summary.cleanup.identity_receipt_provider;
+    else summary.cleanup.identity_receipt_provider = status;
+    return terminalDecision({ summary, rc: 0 });
+  };
+  for (const status of ["disabled", "enabled_by_package"]) {
+    const decision = decide(status);
+    assert.equal(decision.complete, true, status);
+    assert.equal(decision.public.cleanup.identity_receipt_provider, status);
+    assert.equal(decision.public.terminal, "complete");
+  }
+  // A new package completes end to end: the completion record is written and the gate passes.
+  const dir = caseEvidence();
+  applyTerminalDecision(dir, decide("enabled_by_package"), env);
+  assert.equal(gate(dir, env).ok, true);
+  assert.ok(fs.existsSync(path.join(dir, TERMINAL)));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "release-login-summary.json"), "utf8")).cleanup.identity_receipt_provider, "enabled_by_package");
+  fs.rmSync(dir, { recursive: true });
+  for (const [status, shown] of [["unknown", "unknown"], ["failed", "failed"], ["not_enabled", "not_enabled"], [undefined, "missing"]]) {
+    const decision = decide(status);
+    assert.equal(decision.complete, false, shown);
+    assert.equal(decision.reason, `required cleanup not confirmed: identity_receipt_provider=${shown}`);
+    assert.equal(decision.public.cleanup.identity_receipt_provider, shown);
+    assert.equal(decision.public.terminal, "not_completed");
+  }
 });
 
 test("without a match there is no record: the gate withholds everything, as on the Alpha path", () => {

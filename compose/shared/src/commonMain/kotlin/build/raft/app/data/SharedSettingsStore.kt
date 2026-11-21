@@ -4408,11 +4408,18 @@ private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
                     currentUserId = session?.user?.id,
                     computer = data.computer
                 )
+            val canControl =
+                settingsComputerCanControl(
+                    serverRole = session.settingsCurrentServer()?.role,
+                    currentUserId = session?.user?.id,
+                    computer = data.computer
+                )
             DataResult.Content(
                 data.copy(
                     canManageMachines = permissions.canEdit || permissions.canRemove,
                     canEditMachine = permissions.canEdit,
                     canRemoveMachine = permissions.canRemove,
+                    canControlComputer = canControl,
                     canTransferOwner = owner.canTransfer,
                     canClaimOwner = owner.canClaim,
                     currentUserId = session?.user?.id?.trim()?.takeIf { it.isNotBlank() }
@@ -4484,6 +4491,26 @@ internal fun settingsComputerPermissions(
         canEdit = roleGrantsMachineCapabilities || ownsMachine,
         canRemove = roleGrantsMachineCapabilities || ownsMachine
     )
+}
+
+/**
+ * Mirrors web `canControlComputer` (`packages/web/src/utils/canManageMachine.ts`): server owner/admin
+ * (`controlComputers`), live Computer attacher (`attachedByCurrentUser`), managed Computer creator,
+ * or `controlledByCurrentUser` while `isComputer` is still true (never a revoked Computer or a raw
+ * daemon registered by a non-admin member).
+ */
+internal fun settingsComputerCanControl(
+    serverRole: String?,
+    currentUserId: String?,
+    computer: SettingsComputerSnapshot
+): Boolean {
+    val role = serverRole?.trim()
+    val roleGrantsControl = role == "owner" || role == "admin"
+    val userId = currentUserId?.trim()?.takeIf { it.isNotBlank() }
+    return roleGrantsControl ||
+        computer.attachedByCurrentUser ||
+        (userId != null && computer.creator?.id?.trim() == userId) ||
+        (computer.isComputer && computer.controlledByCurrentUser == true)
 }
 
 private fun ScreenLoadState<SettingsComputersSnapshot>.toAddComputerDialogState(): AddComputerDialogState {

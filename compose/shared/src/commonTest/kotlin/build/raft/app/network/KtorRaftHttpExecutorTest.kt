@@ -137,6 +137,111 @@ class KtorRaftHttpExecutorTest {
         assertFalse(harness.logs.any { "X-Amz" in it || "bucket.r2" in it || "secret-body" in it }, harness.logs.joinToString("\n"))
     }
 
+    /** `slock.attachment.upload_finished`: what the transport hands up for the two upload requests. */
+    @Test
+    fun uploadRequestsReportBodySizePhaseTimesAndEdgeLocation() = runBlocking {
+        val facts = "reusedConnection=false connectSetupMs=57 requestBodyMs=1840 responseWaitMs=312"
+        val harness =
+            Harness(transportFacts = { requestId -> facts.takeIf { requestId.startsWith("mobile-") } }) {
+                respond("{}", HttpStatusCode.OK, headersOf("X-Amz-Cf-Pop", "NRT57-P2"))
+            }
+        val traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+
+        val legacy =
+            harness.executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = "https://api.raft.test/api/attachments/upload",
+                fields = mapOf("channelId" to "c1"),
+                files =
+                    listOf(
+                        MultipartFile(
+                            name = "files",
+                            fileName = "a much longer file name than the file is.jpg",
+                            mimeType = "image/jpeg",
+                            bytes = ByteArray(64) { 1 },
+                        )
+                    ),
+                headers = mapOf("Authorization" to "Bearer access-1", "traceparent" to traceparent),
+            )
+        val direct =
+            harness.executor.executeBytes(
+                priority = RaftRequestPriority.Foreground,
+                url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc",
+                method = "PUT",
+                // A traceparent handed to the presigned path by mistake is not sent either.
+                headers = mapOf("Content-Type" to "image/jpeg", "traceparent" to traceparent),
+                bodyBytes = ByteArray(10) { it.toByte() },
+            )
+        val ordinary = harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
+
+        val (post, put, _) = harness.requests
+        // The caller's traceparent (the upload's trace) goes to the API; the storage host gets none.
+        assertEquals(traceparent, post.headers["traceparent"])
+        assertNull(put.headers["traceparent"])
+        assertTrue(put.headers["x-request-id"].orEmpty().startsWith("mobile-"))
+        // The file's own bytes: the multipart framing (which holds the file name) is not counted.
+        assertEquals(
+            RaftUploadWireFacts(requestBytes = 64L, connectMs = 57L, requestBodyMs = 1_840L, responseWaitMs = 312L, edgePop = "NRT57-P2"),
+            legacy.uploadFacts,
+        )
+        // The log line of an upload's API call names the trace it joins beside its own request id.
+        assertTrue(
+            harness.logs.any { it.startsWith("slock_http_multipart_start") && "sentTraceId=0af7651916cd43dd8448eb211c80319c " in it },
+            harness.logs.joinToString("\n"),
+        )
+        // A presigned PUT keeps none of the storage answer's headers, only the edge location's code.
+        assertTrue(direct.responseHeaders.isEmpty())
+        assertEquals(
+            RaftUploadWireFacts(requestBytes = 10L, connectMs = 57L, requestBodyMs = 1_840L, responseWaitMs = 312L, edgePop = "NRT57-P2"),
+            direct.uploadFacts,
+        )
+        assertNull(ordinary.uploadFacts, "only upload requests carry upload facts")
+    }
+
+    @Test
+    fun anUploadThatGotNoAnswerReportsWhatFailedAndNoPhaseItCouldNotMeasure() = runBlocking {
+        // The body went out, then nothing came back in time: a body time, no response wait, no edge.
+        // The error's text holds the signed URL; only its class is named.
+        val url = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc"
+        val answered = Harness(transportFacts = { "reusedConnection=true requestBodyMs=700" }) { throw SocketTimeoutException("no answer from $url") }
+        // The call ended with the body still going out.
+        val midBody =
+            Harness(transportFacts = { "reusedConnection=false connectSetupMs=90 requestBodyPartialMs=4200" }) {
+                throw IllegalStateException("stream was reset while sending /private/var/mobile/IMG_0042.jpg to $url")
+            }
+
+        val noAnswer = answered.executor.executeBytes(RaftRequestPriority.Foreground, url, "PUT", emptyMap(), ByteArray(10))
+        val reset = midBody.executor.executeBytes(RaftRequestPriority.Foreground, url, "PUT", emptyMap(), ByteArray(10))
+
+        assertEquals(0, noAnswer.code)
+        val noAnswerFacts = requireNotNull(noAnswer.uploadFacts) { "facts of a failed PUT" }
+        assertEquals(RaftTransportFailureKind.TIMEOUT, noAnswerFacts.failureKind)
+        assertTrue(noAnswerFacts.transportError.orEmpty().endsWith(":SocketTimeoutException"), noAnswerFacts.transportError)
+        assertEquals(
+            RaftUploadWireFacts(
+                requestBytes = 10L,
+                requestBodyMs = 700L,
+                failureKind = RaftTransportFailureKind.TIMEOUT,
+                transportError = noAnswerFacts.transportError,
+            ),
+            noAnswerFacts,
+        )
+        assertEquals(
+            RaftUploadWireFacts(
+                requestBytes = 10L,
+                connectMs = 90L,
+                requestBodyPartialMs = 4_200L,
+                failureKind = RaftTransportFailureKind.UNKNOWN,
+                transportError = "other",
+            ),
+            reset.uploadFacts,
+        )
+        listOf(noAnswer, reset).forEach { response ->
+            val facts = response.uploadFacts.toString()
+            assertFalse("bucket" in facts || "Signature" in facts || "IMG_0042" in facts, facts)
+        }
+    }
+
     @Test
     fun aMultipartUploadResetByTheConnectionIsSentOnceMore() = runBlocking {
         // Hands a5eae49e: a VPN reset the upload's stream after the body reached the server.
@@ -156,6 +261,8 @@ class KtorRaftHttpExecutorTest {
         assertEquals(200, response.code)
         assertEquals(2, harness.requests.size)
         assertTrue(harness.logs.any { it.startsWith("slock_http_multipart_retry") }, harness.logs.joinToString("\n"))
+        // slock.attachment.upload_finished: the body went twice inside this one call.
+        assertEquals(2, response.uploadFacts?.sends)
     }
 
     @Test
@@ -462,6 +569,7 @@ class KtorRaftHttpExecutorTest {
         coordinator: RaftNetworkRequestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
         engineReportsProtocol: Boolean = true,
         failedTraceIds: RaftRecentFailedTraceId = RaftRecentFailedTraceId(),
+        transportFacts: (requestId: String) -> String? = { null },
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) {
         val requests = mutableListOf<HttpRequestData>()
@@ -482,7 +590,7 @@ class KtorRaftHttpExecutorTest {
                     client
                 },
                 requestLifetimeCoordinator = coordinator,
-                transportFacts = { null },
+                transportFacts = transportFacts,
                 engineLabel = "ktor_test",
                 engineReportsProtocol = engineReportsProtocol,
                 // MockEngine consumes the body itself: count at the body writer here.

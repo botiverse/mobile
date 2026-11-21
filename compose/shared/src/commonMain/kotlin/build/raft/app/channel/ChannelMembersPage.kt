@@ -148,6 +148,10 @@ internal fun ChannelMembersRow(
     titleBadge: (@Composable () -> Unit)? = null,
     /** Someone from another server: the first one's tile on the avatar's top-left corner. */
     avatarOriginServers: List<MemberServerRef> = emptyList(),
+    /** Custom subtitle slot (e.g. 2-line runtime sign-in status + detail, slock #15282); wins over [subtitle]. */
+    subtitleContent: (@Composable () -> Unit)? = null,
+    /** Quiet trailing action before the role badges and ⋯ menu (e.g. Sign in, slock #15282). */
+    trailingAction: (@Composable () -> Unit)? = null,
     /** The row's ⋯ menu after the tags ([ChannelMemberRowMenuButton]: role action, Remove from channel). */
     moreActions: (@Composable () -> Unit)? = null,
 ) {
@@ -160,7 +164,8 @@ internal fun ChannelMembersRow(
         text = RaftListRowText.Member,
         titleCopyText = title,
         subtitleCopyText = subtitleCopyText,
-        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        subtitle = if (subtitleContent != null) null else subtitle?.takeIf { it.isNotBlank() },
+        subtitleContent = subtitleContent,
         leading = {
             RaftAvatarWithOriginCorner(servers = avatarOriginServers, avatarEdge = ChannelMembersAvatarSize) {
                 RaftAvatarWithStatus(
@@ -180,8 +185,9 @@ internal fun ChannelMembersRow(
             }
         },
         trailing =
-            if (badges.isNotEmpty() || moreActions != null) {
+            if (trailingAction != null || badges.isNotEmpty() || moreActions != null) {
                 {
+                    trailingAction?.invoke()
                     badges.forEach { badge ->
                         RaftBadge(
                             text = badge.text,

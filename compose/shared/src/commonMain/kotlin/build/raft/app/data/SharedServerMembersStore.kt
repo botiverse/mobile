@@ -387,7 +387,17 @@ data class SharedServerMemberStatus(
      * `AgentDisplayState.blocked`): its status says why instead of its last activity. Produced
      * only by [blockedMemberStatusOrNull], from the authoritative profile; never a presence fact.
      */
-    val blocked: AgentBlockedState? = null
+    val blocked: AgentBlockedState? = null,
+    /** Live failed-start reason from `agent:activity` `spawnFailure.reason` (slock #15282). */
+    val spawnFailureReason: String? = null,
+    /** Stored failed-start reason from `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15282). */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /** True while this personal assistant is paused (`assistantPausedAt` non-blank). */
+    val paused: Boolean = false,
+    /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
+    val machineId: String? = null,
+    /** The agent's Computer display name from the roster (`computer:` badge), for sign-in detail copy. */
+    val machineName: String? = null
 )
 
 /**
@@ -502,6 +512,10 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             // The newest observation wins whichever channel delivered it:
             // realtime agent:seen fact or the REST roster profile.
             .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
+    val memberMachineId = this?.agentComputerIdOrNull()
+    val memberMachineName = this?.agentComputerNameOrNull()
+    val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
+    val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
     if (
         presenceFact != null &&
         (
@@ -523,7 +537,12 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
             external = this?.isExternal == true,
-            lastSeenAt = resolvedLastSeenAt
+            lastSeenAt = resolvedLastSeenAt,
+            spawnFailureReason = presenceFact.spawnFailure?.reason?.trim()?.takeIf { it.isNotBlank() },
+            lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+            paused = memberPaused,
+            machineId = memberMachineId,
+            machineName = memberMachineName
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -532,13 +551,27 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         presence = presence,
         runtime = agentRuntimeOrNull(),
         external = isExternal,
-        lastSeenAt = resolvedLastSeenAt
+        lastSeenAt = resolvedLastSeenAt,
+        lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+        paused = memberPaused,
+        machineId = memberMachineId,
+        machineName = memberMachineName
     )
 }
 
 /** Agent profiles carry the runtime id in `roleDescription` (see `WireAgent.toMemberProfile`). */
 private fun MemberProfile.agentRuntimeOrNull(): String? =
     roleDescription?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
+
+private fun MemberProfile.agentComputerIdOrNull(): String? =
+    permissionBadges.firstNotNullOfOrNull { badge ->
+        badge.takeIf { it.startsWith("computer-id:") }?.removePrefix("computer-id:")?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+private fun MemberProfile.agentComputerNameOrNull(): String? =
+    permissionBadges.firstNotNullOfOrNull { badge ->
+        badge.takeIf { it.startsWith("computer:") }?.removePrefix("computer:")?.trim()?.takeIf { it.isNotBlank() }
+    }
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.
@@ -1856,6 +1889,105 @@ class SharedServerMembersStore internal constructor(
         }
         if (changed) {
             logger("shared_server_members_profile_updated serverHash=${key.raftAvatarDiagnosticsHash()} memberHash=${userKey.raftAvatarDiagnosticsHash()}")
+        }
+        return changed
+    }
+
+    /**
+     * Confirmed self description edit (`PATCH /api/auth/me` `{ description }`, botiverse/slock
+     * #15664): updates or clears (`null`) the signed-in person's description everywhere this store
+     * holds them (every loaded server roster, profile cache, and channel member slice) and writes
+     * loaded rosters through to the durable store.
+     */
+    internal suspend fun updateHumanDescription(userId: MemberId, description: String?): Boolean {
+        val userKey = userId.value.normalizedServerMembersId() ?: return false
+        val normalized = description?.takeIf { it.isNotBlank() }
+        fun MemberProfile.isPerson(): Boolean = kind == MemberKind.Human && id.value.trim() == userKey
+        fun MemberProfile.patched(): MemberProfile = copy(description = normalized)
+        val trackedServerKeys =
+            _state.value.entriesByServerId.keys +
+                _state.value.profileCacheByServerId.keys +
+                _state.value.channelMemberSlices.keys.map { it.serverId } +
+                _state.value.memberSuggestionSlices.keys.map { it.serverId }
+        trackedServerKeys.forEach { serverKey ->
+            processOwner(ServerId(serverKey))?.let { owner ->
+                processCore.invalidate(owner, reason = "human_description_updated")
+            }
+        }
+        val durableEpoch = durableStore?.epoch
+        var changed = false
+        val persistedEntries = mutableListOf<Pair<SharedServerChannelMembersOwnerBinding, MemberSnapshot>>()
+        mutex.withLock {
+            val current = _state.value
+            val nextEntries =
+                current.entriesByServerId.mapValues { (serverKey, entry) ->
+                    if (entry.members.none { it.isPerson() && it.description != normalized }) {
+                        entry
+                    } else {
+                        val nextMembers = entry.members.map { member -> if (member.isPerson()) member.patched() else member }
+                        val binding = currentDirectoryOwnerBinding(ServerId(serverKey))
+                        if (binding != null && entry.matches(binding) && entry.status == SharedServerMembersLoadStatus.Loaded) {
+                            entry.server?.let { server ->
+                                persistedEntries += binding to MemberSnapshot(server = server, members = nextMembers)
+                            }
+                        }
+                        entry.copy(members = nextMembers)
+                    }
+                }
+            val nextCaches =
+                current.profileCacheByServerId.mapValues { (_, cache) ->
+                    val existing = cache[userKey]
+                    if (existing != null && existing.isPerson() && existing.description != normalized) {
+                        cache + (userKey to existing.patched())
+                    } else {
+                        cache
+                    }
+                }
+            val nextSlices =
+                current.channelMemberSlices.mapValues { (_, slice) ->
+                    if (slice.members.none { it.isPerson() && it.description != normalized }) {
+                        slice
+                    } else {
+                        slice.copy(members = slice.members.map { member -> if (member.isPerson()) member.patched() else member })
+                    }
+                }
+            val nextSuggestionSlices =
+                current.memberSuggestionSlices.mapValues { (_, slice) ->
+                    if (slice.suggestions.none { it.kind == MemberKind.Human && it.memberId?.trim() == userKey && it.description != normalized }) {
+                        slice
+                    } else {
+                        slice.copy(
+                            suggestions =
+                                slice.suggestions.map { suggestion ->
+                                    if (suggestion.kind == MemberKind.Human && suggestion.memberId?.trim() == userKey) {
+                                        suggestion.copy(description = normalized)
+                                    } else {
+                                        suggestion
+                                    }
+                                }
+                        )
+                    }
+                }
+            if (nextEntries == current.entriesByServerId &&
+                nextCaches == current.profileCacheByServerId &&
+                nextSlices == current.channelMemberSlices &&
+                nextSuggestionSlices == current.memberSuggestionSlices
+            ) {
+                return@withLock
+            }
+            changed = true
+            _state.value =
+                current.copy(
+                    entriesByServerId = nextEntries,
+                    profileCacheByServerId = nextCaches,
+                    channelMemberSlices = nextSlices,
+                    memberSuggestionSlices = nextSuggestionSlices,
+                )
+        }
+        if (durableEpoch != null) {
+            persistedEntries.forEach { (binding, snapshot) ->
+                durableStore?.write(binding.durableKey(), snapshot, durableEpoch)
+            }
         }
         return changed
     }

@@ -3541,8 +3541,9 @@ internal class RaftSharedStoreProvider private constructor(
             val networkClient = scopedNetworkClientFactory(authStore)
             // Product analytics (RFC-067) sends through the shared client at Background priority.
             RaftProductEvents.bindTransport(networkClient)
-            // Client trace events (`/api/web-traces`, as web): `activity:inplace_check`.
-            RaftClientTraceEvents.bindTransport(networkClient)
+            // Client trace events (`/api/web-traces`, as web): `activity:inplace_check`. A batch goes
+            // out only while the session this client authenticates with is the account that recorded it.
+            RaftClientTraceEvents.bindTransport(networkClient) { authStore.readSession()?.user?.id }
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
                     scope = RaftStoreThreading.newScope(),
@@ -4655,6 +4656,11 @@ internal class SharedRealtimeDomainEventOwner(
             // that operation reads its status again (RaftLinkCardOperationHints).
             if (acceptedEvent is build.raft.app.model.LinkCardOperationChanged) {
                 RaftLinkCardOperationHints.publish(serverId, acceptedEvent)
+            }
+            // `link_card.changed` goes to the viewer's room on this server too: the cards of that
+            // object are read again (RaftLinkCardChangedHints -> SharedAppLinkPreviewStore).
+            if (acceptedEvent is build.raft.app.model.LinkCardChanged) {
+                RaftLinkCardChangedHints.publish(serverId, acceptedEvent)
             }
             if (acceptedEvent is build.raft.app.model.ActorUpdated) {
                 actorUpdatedSink?.invoke(serverId, acceptedEvent)
