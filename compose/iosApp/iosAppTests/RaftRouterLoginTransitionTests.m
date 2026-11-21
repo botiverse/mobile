@@ -354,12 +354,33 @@
     XCTAssertEqual(navigation.viewControllers[2], coveringPage,
                    @"Covering page above the source controller must stay untouched");
 
-    // Replacing again from the already-removed pendingTask is a safe no-op.
+    // Replacing again from the already-removed pendingTask with slockOpenWithoutAnimation is a safe no-op.
     [self.router openPageWithName:@"compose_thread"
-                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
                        controller:pendingTask];
     XCTAssertEqual(navigation.replacementCount, 1u,
-                   @"Detached non-login source must not replace another controller on the stack");
+                   @"Detached source with slockOpenWithoutAnimation must not replace another controller on the stack");
+
+    // Ordinary slockReplaceCurrentPage (without slockOpenWithoutAnimation) from an embedded child
+    // controller keeps replacing the top stack entry so container-hosted flows (auth/OAuth/gates) stay intact.
+    UIViewController *embeddedChild = [UIViewController new];
+    [coveringPage addChildViewController:embeddedChild];
+    [embeddedChild didMoveToParentViewController:coveringPage];
+    XCTAssertEqual(embeddedChild.navigationController, navigation);
+    XCTAssertEqual([navigation.viewControllers indexOfObjectIdenticalTo:embeddedChild], NSNotFound);
+
+    [self.router openPageWithName:@"compose_slock_app_shell"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:embeddedChild];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertNotEqual(navigation.topViewController, coveringPage,
+                      @"Ordinary replaceCurrent from an embedded child controller must still replace the top entry");
+    XCTAssertTrue(((RaftPageViewController *)navigation.topViewController).raftIsAppShellPage);
 }
 
 @end

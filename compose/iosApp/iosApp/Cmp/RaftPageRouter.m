@@ -74,20 +74,24 @@ static BOOL RaftRouterBool(id value) {
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
+            BOOL openWithoutAnimation = RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
             BOOL isLogin = [pageName isEqualToString:@"compose_login"];
-            NSUInteger targetIndex = [viewControllers indexOfObjectIdenticalTo:controller];
+            NSUInteger targetIndex = viewControllers.count - 1;
             if (isLogin) {
-                // Auth-loss replacement from an underlying shell retires and replaces the top page.
-                targetIndex = viewControllers.count - 1;
                 objc_setAssociatedObject(viewControllers.lastObject, &RaftRouterRetiredByLoginKey,
                                          @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            } else if (targetIndex == NSNotFound) {
-                // Source controller was already popped/removed; never clobber an unrelated top page.
-                return;
+            } else if (openWithoutAnimation) {
+                // Seamless in-place replacement (e.g., pending task -> conversation) replaces only
+                // the requesting stack entry so a covering page is never clobbered; if the source
+                // was already popped, leave the stack untouched.
+                targetIndex = [viewControllers indexOfObjectIdenticalTo:controller];
+                if (targetIndex == NSNotFound) {
+                    return;
+                }
             }
             UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
             [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
-            BOOL animated = !RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
+            BOOL animated = !openWithoutAnimation;
             [navigationController setViewControllers:viewControllers animated:animated];
         } else {
             // task #151: not the page on top again, and not over a transition still running (a
