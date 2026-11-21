@@ -54,6 +54,7 @@ internal fun SharedServerChannelMembersSlice.toStoredChannelMembers(): StoredCha
                 member.copy(
                     presence = Presence.Offline,
                     agentStatus = null,
+                    agentReadiness = null,
                     canChangeChannelRole = null,
                     canRemoveFromChannel = null,
                     createdAgents = emptyList(),

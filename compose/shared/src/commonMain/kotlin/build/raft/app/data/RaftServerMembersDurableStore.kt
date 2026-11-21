@@ -281,6 +281,10 @@ internal data class RaftServerMembersDurableRecord(
     val savedAtMs: Long = 0L,
 )
 
-/** Presence is live state owned by the presence registry; a persisted roster never carries it. */
-private fun MemberProfile.forDurableRoster(): MemberProfile =
-    if (presence == Presence.Offline) this else copy(presence = Presence.Offline)
+/** Presence and readiness are live server state; a persisted roster never carries them. */
+internal fun MemberProfile.forDurableRoster(): MemberProfile =
+    if (presence == Presence.Offline && agentReadiness == null) {
+        this
+    } else {
+        copy(presence = Presence.Offline, agentReadiness = null)
+    }

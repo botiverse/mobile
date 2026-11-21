@@ -66,8 +66,10 @@ import androidx.compose.ui.Modifier
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.compat.pager.LocalActivity
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight

@@ -1080,8 +1080,9 @@ private fun MembersListRowAvatar(
         // The Members tab does not subscribe to detailed agent:activity: coarse state only.
         rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
             ?.withoutActivityDetail()
+    val holdingReadiness = if (showsStatus) effectiveHoldingReadiness(rawStatus) else null
     val signIn =
-        if (showsStatus) {
+        if (showsStatus && holdingReadiness == null) {
             rememberAgentRuntimeSignInState(
                 state = rawStatus,
                 fallbackRuntime = member.roleDescription,
@@ -1090,7 +1091,12 @@ private fun MembersListRowAvatar(
         } else {
             null
         }
-    val status = if (signIn != null) rawStatus?.copy(color = RaftColor.AccentOrange) else rawStatus
+    val status =
+        when {
+            holdingReadiness != null -> rawStatus?.copy(color = holdingReadiness.dotColor())
+            signIn != null -> rawStatus?.copy(color = RaftColor.AccentOrange)
+            else -> rawStatus
+        }
     MembersAvatar(
         member = member,
         showStatusOverlay = showsStatus && status != null,

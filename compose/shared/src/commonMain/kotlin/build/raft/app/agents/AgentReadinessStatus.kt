@@ -19,6 +19,7 @@ import build.raft.app.model.ANTHROPIC_VERIFICATION_PORTAL_URL
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessLight
 import build.raft.app.model.RaftRelativeTimeUnit
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.agentReadinessResetCountdown
 import build.raft.app.model.holds
 import build.raft.app.model.light
@@ -129,7 +130,7 @@ private fun readinessWhoSpec(readiness: AgentReadiness): AgentReadinessTextSpec?
             }
         return AgentReadinessTextSpec(res = res, stringArg = actorName)
     }
-    val actor = readiness.actor?.trim()?.lowercase() ?: return null
+    val actor = readiness.actor?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
     val res =
         when (action) {
             "sign_in" ->
@@ -390,6 +391,7 @@ internal fun AgentReadinessVerificationLink(
         onClick = onOpenUrl,
         variant = RaftTextLinkVariant.Strong,
         style = RaftTheme.typography.footnote,
+        leavesRaft = true,
         modifier = modifier.testTag(AgentReadinessTestTags.ProfileLink),
     )
 }

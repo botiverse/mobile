@@ -9,10 +9,14 @@ import build.raft.app.data.PresenceNoopMemberRepository
 import build.raft.app.data.ProcessMemberPresenceRegistry
 import build.raft.app.data.ProcessPresenceTransportEpoch
 import build.raft.app.data.ProcessServerMembersOwner
+import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedSyncedAgentRow
+import build.raft.app.data.forDurableRoster
+import build.raft.app.data.likelyOnlineMemberStatusOrNull
 import build.raft.app.data.parseSharedAgentRow
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
+import build.raft.app.data.toStoredChannelMembers
 import build.raft.app.model.ANTHROPIC_VERIFICATION_PORTAL_URL
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessFact
@@ -410,5 +414,171 @@ class AgentReadinessStatusTest {
         val readyStatus = assertNotNull(store.currentMemberStatus(serverId, "agent-1"))
         assertEquals("ready", readyStatus.readiness?.state)
         assertFalse(readyStatus.readiness.holds())
+
+        // A later GET /api/agents that omits readiness clears any prior hold in both the
+        // authoritative roster and the fallback profile cache.
+        currentAgentsBody =
+            """
+            [
+              {
+                "id": "agent-1",
+                "serverId": "srv-1",
+                "name": "Antigravity",
+                "status": "active",
+                "runtime": "antigravity",
+                "activity": "online",
+                "activityDetail": "Idle",
+                "readiness": {
+                  "state": "waiting",
+                  "primary": {
+                    "resource": { "kind": "runtime", "runtime": "antigravity" },
+                    "code": "quota_exhausted",
+                    "behaviour": "waiting"
+                  }
+                }
+              }
+            ]
+            """.trimIndent()
+        store.refreshMembers(serverId, force = true, reason = "test")
+        assertTrue(store.currentMemberStatus(serverId, "agent-1")?.readiness.holds())
+
+        currentAgentsBody =
+            """
+            [
+              {
+                "id": "agent-1",
+                "serverId": "srv-1",
+                "name": "Antigravity",
+                "status": "active",
+                "runtime": "antigravity",
+                "activity": "online",
+                "activityDetail": "Idle"
+              }
+            ]
+            """.trimIndent()
+        store.refreshMembers(serverId, force = true, reason = "test")
+        val omittedStatus = assertNotNull(store.currentMemberStatus(serverId, "agent-1"))
+        assertNull(omittedStatus.readiness)
+        assertNull(store.state.value.profileCacheByServerId[serverId.value]?.get("agent-1")?.agentReadiness)
+    }
+
+    @Test
+    fun durableCachesStripAgentReadiness() {
+        val heldAgent =
+            requireNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [
+                      {
+                        "id": "agent-1",
+                        "serverId": "srv-1",
+                        "name": "Antigravity",
+                        "status": "active",
+                        "runtime": "antigravity",
+                        "activity": "online",
+                        "readiness": {
+                          "state": "waiting",
+                          "primary": {
+                            "resource": { "kind": "runtime", "runtime": "antigravity" },
+                            "code": "quota_exhausted",
+                            "behaviour": "waiting"
+                          }
+                        }
+                      }
+                    ]
+                    """.trimIndent(),
+                ),
+            ).single()
+        assertTrue(heldAgent.agentReadiness.holds())
+
+        val durableMember = heldAgent.forDurableRoster()
+        assertEquals(Presence.Offline, durableMember.presence)
+        assertNull(durableMember.agentReadiness)
+
+        val storedChannel =
+            SharedServerChannelMembersSlice(
+                channelId = "ch-1",
+                members = listOf(heldAgent),
+            ).toStoredChannelMembers()
+        assertEquals(Presence.Offline, storedChannel.members.single().presence)
+        assertNull(storedChannel.members.single().agentStatus)
+        assertNull(storedChannel.members.single().agentReadiness)
+    }
+
+    @Test
+    fun pausedPersonalAssistantPreservesPausedFlagAcrossLikelyOnlineAndNeutralReconnect() = runTest {
+        val heldReadiness =
+            AgentReadiness(
+                state = "waiting",
+                primary =
+                    AgentReadinessFact(
+                        resource = AgentReadinessResource(kind = "runtime", runtime = "antigravity"),
+                        code = "quota_exhausted",
+                        behaviour = "waiting",
+                    ),
+            )
+        val baseAgent =
+            requireNotNull(
+                parseSharedSettingsAgentsAsMembers(
+                    """
+                    [
+                      {
+                        "id": "agent-paused",
+                        "serverId": "srv-1",
+                        "name": "Assistant",
+                        "status": "active",
+                        "runtime": "antigravity"
+                      }
+                    ]
+                    """.trimIndent(),
+                ),
+            ).single().copy(
+                assistantPausedAt = "2026-11-21T00:00:00Z",
+                agentStatus = null,
+                agentReadiness = heldReadiness,
+            )
+
+        val likelyOnline = assertNotNull(baseAgent.likelyOnlineMemberStatusOrNull())
+        assertTrue(likelyOnline.paused)
+        assertNull(effectiveHoldingReadiness(likelyOnline.toRaftAgentStatusIndicatorState()))
+
+        // Neutral reconnect branch (live transport, no presence fact, lifecycle != active):
+        val serverId = ServerId("srv-1")
+        val server = ServerSummary(id = serverId, name = "Test", slug = "test")
+        val neutralAgent = baseAgent.copy(agentLifecycleStatus = "stopped")
+        val registry = ProcessMemberPresenceRegistry()
+        val owner = ProcessServerMembersOwner(environmentId = "prod", accountId = "acct-1", serverId = serverId.value)
+        val transport = ProcessPresenceTransportEpoch(1L)
+        val repo =
+            object : MemberRepository by PresenceNoopMemberRepository {
+                override suspend fun getMembers(
+                    priority: DataRequestPriority,
+                    serverId: ServerId,
+                ): DataResult<MemberSnapshot> =
+                    DataResult.Content(MemberSnapshot(server = server, members = listOf(neutralAgent)))
+            }
+        val store = SharedServerMembersStore(memberRepository = repo, presenceRegistry = registry)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "test")
+        val neutralStatus = assertNotNull(store.currentMemberStatus(serverId, "agent-paused"))
+        assertTrue(neutralStatus.paused)
+        assertNull(effectiveHoldingReadiness(neutralStatus.toRaftAgentStatusIndicatorState()))
+    }
+
+    @Test
+    fun blankActorDoesNotFallBackToServerAdmin() {
+        val spec =
+            resolveAgentReadinessCopySpec(
+                readiness =
+                    AgentReadiness(
+                        state = "blocked",
+                        primary = null,
+                        actor = "   ",
+                        action = "fix",
+                    ),
+                fallbackRuntimeId = "claude-code",
+                nowMillis = 1_795_246_000_000L,
+            )
+        assertNull(spec.actor)
     }
 }
