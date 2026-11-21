@@ -607,6 +607,90 @@ class RaftComputersRackFiltersTest {
         assertEquals(listOf("AWS", "Hetzner Cloud", "Vultr", "Personal computers"), byName.groups.map { it.title })
     }
 
+    // ---- Needs attention first (web #15534, artin #triage:#527) ----
+
+    @Test
+    fun attentionFirstPutsComputersNeedingAttentionFirstKeepingEachPartsOrder() {
+        // web computersRackAttentionOrder.behavior.test.ts
+        val computers =
+            listOf(
+                computer("mine-ok"),
+                computer("mine-update", upgradeAvailable = true),
+                computer("other-ok"),
+                computer("other-offline", online = false),
+                computer("other-update", upgradeAvailable = true),
+                computer("other-ok-2"),
+            )
+        assertEquals(
+            listOf("mine-update", "other-offline", "other-update", "mine-ok", "other-ok", "other-ok-2"),
+            ids(raftAttentionFirst(computers)),
+        )
+    }
+
+    @Test
+    fun attentionFirstFollowsServerVerdictWhenPresent() {
+        val computers =
+            listOf(
+                computer("update-but-server-clear", upgradeAvailable = true, serverNeedsAttention = false),
+                computer("server-flagged", serverNeedsAttention = true),
+                computer("plain"),
+            )
+        assertEquals(
+            listOf("server-flagged", "update-but-server-clear", "plain"),
+            ids(raftAttentionFirst(computers)),
+        )
+        assertEquals(1, computers.count(::raftComputerNeedsAttention))
+    }
+
+    @Test
+    fun attentionFirstIgnoresRawDaemonUpgradeSignalAndKeepsUnchangedLists() {
+        val healthy =
+            listOf(
+                computer("a"),
+                computer("daemon", isComputer = false, upgradeAvailable = true),
+                computer("b"),
+            )
+        assertEquals(healthy, raftAttentionFirst(healthy))
+        val allNeed = listOf(computer("x", online = false), computer("y", upgradeAvailable = true))
+        assertEquals(allNeed, raftAttentionFirst(allNeed))
+    }
+
+    @Test
+    fun defaultOrderLiftsComputersNeedingAttentionAheadOfMineWhileKeepingOfflineLastAndChosenSortWins() {
+        val fleet =
+            listOf(
+                computer("zulu", "zulu-box", owner = owner("user-2", "stdrc")),
+                computer("yankee", "yankee-box", owner = owner("user-1", "artin")),
+                computer("xray", "xray-box", upgradeAvailable = true),
+                computer("mike", "mike-box", attached = true, upgradeAvailable = true),
+                computer("lima", "lima-box", online = false, owner = owner("user-1", "artin")),
+            )
+        // Default (no sort): needing attention first (mine before others), then healthy (mine before others), offline last.
+        val defaultLayout = layout(fleet, RaftComputersRackToolbarState(), emptyMap(), "user-1")
+        assertEquals(listOf("mike", "xray", "yankee", "zulu"), ids(defaultLayout.groups.single().computers))
+        assertEquals(listOf("lima"), ids(defaultLayout.offline))
+        // A chosen sort still wins over attention-first.
+        val byName = layout(fleet, RaftComputersRackToolbarState(storedSort = nameAToZ), emptyMap(), "user-1")
+        assertEquals(listOf("mike", "xray", "yankee", "zulu", "lima"), rows(byName))
+        val byNameDesc = layout(fleet, RaftComputersRackToolbarState(storedSort = ComputersRackSort(ComputersRackSortKey.Name, Desc)), emptyMap(), "user-1")
+        assertEquals(listOf("zulu", "yankee", "xray", "mike", "lima"), rows(byNameDesc))
+    }
+
+    @Test
+    fun groupedWithNoSortKeepsOwnGroupsFirstWithAttentionFirstInsideEachGroup() {
+        val fleet =
+            listOf(
+                computer("aws-ok", hostProvider = "aws"),
+                computer("aws-update", hostProvider = "aws", upgradeAvailable = true),
+                computer("hetzner-mine-ok", hostProvider = "hetzner", owner = owner("user-1", "artin")),
+                computer("hetzner-other-update", hostProvider = "hetzner", upgradeAvailable = true),
+            )
+        val result = layout(fleet, RaftComputersRackToolbarState(groupBy = ComputersRackGroupBy.Provider), emptyMap(), "user-1")
+        assertEquals(listOf("Hetzner Cloud", "AWS"), result.groups.map { it.title })
+        assertEquals(listOf("hetzner-other-update", "hetzner-mine-ok"), ids(result.groups[0].computers))
+        assertEquals(listOf("aws-update", "aws-ok"), ids(result.groups[1].computers))
+    }
+
     // ---- Toolbar state and persistence ----
 
     @Test
@@ -763,6 +847,7 @@ class RaftComputersRackFiltersTest {
         isComputer: Boolean = true,
         attached: Boolean = false,
         upgradeAvailable: Boolean = false,
+        serverNeedsAttention: Boolean? = null,
         disk: SettingsComputerSizeStatusSnapshot? = null,
         memory: SettingsComputerSizeStatusSnapshot? = null,
     ) = SettingsComputerSnapshot(
@@ -781,6 +866,7 @@ class RaftComputersRackFiltersTest {
         hostProvider = hostProvider,
         diskStatus = disk,
         memoryStatus = memory,
+        serverNeedsAttention = serverNeedsAttention,
     )
 
     private fun sortComputer(id: String, name: String, diskUsed: Double?, memoryUsed: Double?, online: Boolean = true): SettingsComputerSnapshot {

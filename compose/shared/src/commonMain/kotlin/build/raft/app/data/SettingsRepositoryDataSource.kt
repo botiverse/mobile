@@ -3080,7 +3080,8 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         runtimeVersions = runtimeVersions,
         diskStatus = diskStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
         memoryStatus = memoryStatus?.let { SettingsComputerSizeStatusSnapshot(it.availableBytes, it.totalBytes) },
-        loginSteps = loginSteps.orEmpty()
+        loginSteps = loginSteps.orEmpty(),
+        serverNeedsAttention = serverNeedsAttention
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =
