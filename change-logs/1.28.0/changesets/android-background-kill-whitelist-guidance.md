@@ -2,7 +2,7 @@
 type: added
 area: notifications
 platforms: [android]
-pull_request: 0
+pull_request: 5255
 rollout: full
 ---
 
