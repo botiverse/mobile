@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RuntimeAuthAction
 import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthRuntime
@@ -138,14 +139,19 @@ internal fun rememberAgentRuntimeSignInState(
                 )
             }
         }
-    DisposableEffect(controller) { onDispose { controller?.dispose() } }
-    LaunchedEffect(controller) { controller?.read() }
     val realtime = access?.auth?.realtime
-    LaunchedEffect(controller, realtime) {
-        if (controller != null && realtime != null) {
-            realtime.events.collect(controller::onRealtime)
+    DisposableEffect(controller, realtime) {
+        if (controller == null) return@DisposableEffect onDispose {}
+        val sink = RealtimeGuardedActiveThreadSink { _, event -> controller.onRealtime(event) }
+        // On main: the controller and its sign-in session write Compose state and plain fields that
+        // the dialog also writes.
+        realtime?.registerGuardedActiveThreadSink(sink, onMain = true)
+        onDispose {
+            realtime?.unregisterGuardedActiveThreadSink(sink)
+            controller.dispose()
         }
     }
+    LaunchedEffect(controller) { controller?.read() }
     if (!needed || runtimeId == null) return null
     // The failed start (above all a stored one, kept until the next good start) can outlive the
     // sign-in it waited for: once the viewer's live read says the runtime is signed in, drop the status.

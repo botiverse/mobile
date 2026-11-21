@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.text.style.TextOverflow
 import build.raft.app.resources.*
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
