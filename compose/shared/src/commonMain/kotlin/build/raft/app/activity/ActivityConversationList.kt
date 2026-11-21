@@ -1560,7 +1560,7 @@ internal fun ActivityExcerptBesideMarks(
             style.color.isSpecified -> style.color
             else -> LocalRaftContentColor.current
         }
-    val resolvedStyle = style.merge(TextStyle(color = ink)).forCjkLineBox(text)
+    val resolvedStyle = style.copy(color = ink).forCjkLineBox(text)
     val measurer = rememberTextMeasurer()
     val semanticText = remember(text, accessibilityText) { accessibilityText?.let(::AnnotatedString) ?: text }
     SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
