@@ -4963,7 +4963,7 @@
     <string name="upgrade_dialog_eyebrow">Pro 功能</string>
     <string name="upgrade_dialog_eyebrow_seats">席位</string>
     <string name="upgrade_dialog_history_title">查看全部聊天记录</string>
-    <string name="upgrade_dialog_history_hint">免费版只保留最近 30 天的消息。升级到 Pro，%1$s 的全部历史都能查看和搜索。</string>
+    <string name="upgrade_dialog_history_hint">免费版下你和你的 Agent 只能读到最近 30 天的消息，升级到 Pro 就能查看和搜索 %1$s 的全部历史。</string>
     <string name="upgrade_dialog_upload_quota_title">本月的上传额度已用完</string>
     <string name="upgrade_dialog_upload_quota_hint">免费版每月可上传 100 MB。升级到 Pro，没有每月上限。</string>
     <string name="upgrade_dialog_file_size_title">上传更大的文件</string>

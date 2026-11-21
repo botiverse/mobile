@@ -3837,12 +3837,12 @@
     <string name="member_runtime_deprecated_warning">Este agente usa un runtime obsoleto. Puede seguir ejecutándose, pero los agentes nuevos no pueden elegir este runtime.</string>
     <string name="runtime_picker_recommended">Recomendados</string>
     <string name="runtime_picker_limited">Limitado</string>
-    <string name="runtime_capability_hint_no_subagents">May take longer on complex tasks in Raft, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_compaction_unreported">May use more tokens in Raft than recommended runtimes for the same work.</string>
-    <string name="runtime_capability_hint_no_subagents_compaction_unreported">May take longer and may use more tokens in Raft than recommended runtimes, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_compaction_unreported">May use more tokens in Raft, and can't take new instructions until it finishes the current task.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents">May be harder to correct in Raft: it can't take new instructions mid-task or split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">May be harder to correct and may use more tokens in Raft: it can't take new instructions mid-task or work in parallel.</string>
+    <string name="runtime_capability_hint_no_subagents">Puede tardar más en tareas complejas en Raft, porque no puede dividir el trabajo en tareas paralelas.</string>
+    <string name="runtime_capability_hint_compaction_unreported">Puede usar más tokens en Raft que los runtimes recomendados para el mismo trabajo.</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">Puede tardar más y usar más tokens en Raft que los runtimes recomendados, porque no puede dividir el trabajo en tareas paralelas.</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">Puede usar más tokens en Raft y no puede recibir instrucciones nuevas hasta que termine la tarea actual.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">Puede ser más difícil de corregir en Raft: no puede recibir instrucciones nuevas a mitad de una tarea ni dividir el trabajo en tareas paralelas.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">Puede ser más difícil de corregir y usar más tokens en Raft: no puede recibir instrucciones nuevas a mitad de una tarea ni trabajar en paralelo.</string>
     <string name="auth_private_deployment_title">Servidor autoalojado</string>
     <string name="auth_private_deployment_hint">Escribe las direcciones web y de API de tu servidor de Raft autoalojado. El servidor debe tener la versión 1.13.0 o posterior.</string>
     <string name="auth_private_deployment_web_label">Dirección web</string>
@@ -4777,7 +4777,7 @@
     <string name="upgrade_dialog_eyebrow">Función de Pro</string>
     <string name="upgrade_dialog_eyebrow_seats">Puestos</string>
     <string name="upgrade_dialog_history_title">Ver todo el historial de chat</string>
-    <string name="upgrade_dialog_history_hint">El plan Free conserva los mensajes de los últimos 30 días. Con Pro, se puede leer y buscar en todo el historial de %1$s.</string>
+    <string name="upgrade_dialog_history_hint">En el plan Free, tú y tus agentes solo pueden leer los mensajes de los últimos 30 días, mientras que con Pro se puede leer y buscar en todo el historial de %1$s.</string>
     <string name="upgrade_dialog_upload_quota_title">Se agotaron las subidas de este mes</string>
     <string name="upgrade_dialog_upload_quota_hint">El plan Free permite subir hasta 100 MB al mes. Pro no tiene límite mensual.</string>
     <string name="upgrade_dialog_file_size_title">Subir archivos más grandes</string>

@@ -4964,7 +4964,7 @@
     <string name="upgrade_dialog_eyebrow">Pro feature</string>
     <string name="upgrade_dialog_eyebrow_seats">Seats</string>
     <string name="upgrade_dialog_history_title">See your whole chat history</string>
-    <string name="upgrade_dialog_history_hint">Free keeps the last 30 days of messages. With Pro, all of %1$s's history can be read and searched.</string>
+    <string name="upgrade_dialog_history_hint">On Free, you and your agents can only read the last 30 days of messages, while on Pro all of %1$s's history can be read and searched.</string>
     <string name="upgrade_dialog_upload_quota_title">This month's uploads are used up</string>
     <string name="upgrade_dialog_upload_quota_hint">Free uploads up to 100 MB a month. Pro has no monthly limit.</string>
     <string name="upgrade_dialog_file_size_title">Upload larger files</string>

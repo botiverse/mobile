@@ -17,7 +17,7 @@
     <string name="raft_widget_could_not_refresh">無法重新整理</string>
     <string name="raft_widget_edit_to_choose_server">編輯小工具以選擇伺服器</string>
     <string name="raft_widget_no_conversations">還沒有對話</string>
-    <string name="raft_widget_signed_out">登入後查看工作空間動態。</string>
+    <string name="raft_widget_signed_out">登入後查看工作區動態。</string>
     <string name="raft_widget_open_raft_to_continue">開啟 Raft 繼續。</string>
     <string name="raft_widget_choose_server_title">選擇伺服器</string>
     <string name="raft_widget_choose_server_detail">長按小工具，然後編輯它來選擇伺服器。</string>
