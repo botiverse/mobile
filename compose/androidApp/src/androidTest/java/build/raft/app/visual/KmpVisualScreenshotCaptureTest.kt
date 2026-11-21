@@ -3588,7 +3588,8 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_runtime_form_visual",
             pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-open"),
             crop = FULL_VIEWPORT_CROP,
-            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") }
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") },
+            afterScreenshot = ::restoreRuntimeFormPickerKeyboards
         )
     }
 
@@ -3599,7 +3600,8 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_runtime_form_visual",
             pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-search"),
             crop = FULL_VIEWPORT_CROP,
-            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") }
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") },
+            afterScreenshot = ::restoreRuntimeFormPickerKeyboards
         )
     }
 
@@ -3612,6 +3614,16 @@ class KmpVisualScreenshotCaptureTest {
      * does the same (slock react-provider.spec.ts
      * openRuntimeFormPicker: a click, then the query typed into the combobox).
      */
+    private var runtimeFormPickerDisabledImes: List<String> = emptyList()
+
+    /** Re-enables the input methods [openRuntimeFormPicker] disabled, the first as the current one. */
+    private fun restoreRuntimeFormPickerKeyboards() {
+        val imes = runtimeFormPickerDisabledImes
+        runtimeFormPickerDisabledImes = emptyList()
+        imes.forEach { runShellCommand("ime enable $it") }
+        imes.firstOrNull()?.let { runShellCommand("ime set $it") }
+    }
+
     private fun openRuntimeFormPicker(caseId: String) {
         val picker = requireNotNull(runtimeFormVisualPicker(caseId)) { "$caseId has no picker in visual-cases.v3.json" }
         // The scoped logcat keeps only the harness tags: name an app crash during the picker there.
@@ -3697,7 +3709,13 @@ class KmpVisualScreenshotCaptureTest {
             search.getBoundsInScreen(bounds)
             require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} search row has empty bounds" }
             val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-            Log.i(VISUAL_LOG_TAG, "$caseId picker: tapping the search row at $bounds")
+            // No soft keyboard: the key events below reach the focused row without one, and starting
+            // the IME in a later instrumentation process of a shard got the app process killed in CI
+            // (no crash, no uncaught exception). restoreRuntimeFormPickerKeyboards turns them back on.
+            runtimeFormPickerDisabledImes =
+                readShellCommand("ime list -s").lines().map { it.trim() }.filter { it.isNotEmpty() }
+            runtimeFormPickerDisabledImes.forEach { runShellCommand("ime disable $it") }
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: disabled IMEs $runtimeFormPickerDisabledImes; tapping the search row at $bounds")
             tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
             Thread.sleep(300)
             Log.i(VISUAL_LOG_TAG, "$caseId picker: typing \"$query\"")
