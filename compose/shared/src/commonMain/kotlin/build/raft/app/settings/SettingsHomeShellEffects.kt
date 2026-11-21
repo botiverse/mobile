@@ -154,15 +154,22 @@ internal fun AppShellNotificationBadgeEffects(
                 }
         )
     }
-    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu.
-    LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed) {
+    // Sync top pinned channels / DMs to the host launcher icon dynamic shortcut menu. The label of a
+    // DM without a name is resolved here, in composition, so a language change syncs the menu again.
+    val directMessageShortcutTitle = stringResource(Res.string.thread_direct_message_title)
+    LaunchedEffect(homeState.content, readySession, authoritativeHomeStartAllowed, directMessageShortcutTitle) {
         if (!authoritativeHomeStartAllowed || readySession == null) {
             bridge.syncDesktopShortcuts(emptyList())
             return@LaunchedEffect
         }
         val content = homeState.content as? SharedHomeContentState.Content
         if (content != null) {
-            val shortcuts = build.raft.app.data.extractTopPinnedDesktopShortcuts(content.snapshot, maxCount = 4)
+            val shortcuts =
+                build.raft.app.data.extractTopPinnedDesktopShortcuts(
+                    content.snapshot,
+                    directMessageFallbackTitle = directMessageShortcutTitle,
+                    maxCount = 4
+                )
             bridge.syncDesktopShortcuts(shortcuts)
         }
     }

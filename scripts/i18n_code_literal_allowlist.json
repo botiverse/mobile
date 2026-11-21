@@ -128,5 +128,15 @@
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",
     "literal": "RaftMarkdownBody · 14sp/24sp · medium probe",
     "reason": "internal typography probe measurement label"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
+    "literal": "FOO",
+    "reason": "example environment-variable name in the env-var key field placeholder; code-like, not prose"
+  },
+  {
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/agents/SharedCreateAgentDialog.kt",
+    "literal": "bar",
+    "reason": "example environment-variable value in the env-var value field placeholder; code-like, not prose"
   }
 ]

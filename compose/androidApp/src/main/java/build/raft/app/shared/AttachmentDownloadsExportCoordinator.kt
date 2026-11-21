@@ -40,7 +40,11 @@ internal data class AttachmentDownloadsExportProgress(
 
 internal data class AttachmentDownloadsExportResult(
     val status: String,
-    val message: String,
+    /**
+     * Why a save did not finish, in the host's own words, for diagnostics; empty when it saved.
+     * Never UI copy: shared code words what the user sees by [status].
+     */
+    val message: String = "",
     val uri: String? = null,
     val fileName: String? = null,
     val sizeBytes: Long = 0L,
@@ -487,7 +491,6 @@ internal class AttachmentDownloadsExportCoordinator(
                 state,
                 AttachmentDownloadsExportResult(
                     status = "saved",
-                    message = "Saved to Downloads/Raft",
                     uri = uri,
                     fileName = request.displayName,
                     sizeBytes = request.source.length()
@@ -740,7 +743,6 @@ internal class AttachmentDownloadsExportCoordinator(
     private fun savedResult(state: ExportState, uri: String) =
         AttachmentDownloadsExportResult(
             status = "saved",
-            message = "Saved to Downloads/Raft",
             uri = uri,
             fileName = state.request.displayName,
             sizeBytes = state.request.source.length()

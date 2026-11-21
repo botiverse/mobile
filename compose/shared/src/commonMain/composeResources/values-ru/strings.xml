@@ -1962,6 +1962,7 @@
     <string name="file_preview_download_stopped">Скачивание остановлено</string>
     <string name="file_preview_download_failed">Не удалось скачать</string>
     <string name="file_preview_download_saved">Сохранено в папку «Загрузки»</string>
+    <string name="file_preview_download_already_saved">Уже скачано</string>
     <string name="file_preview_private_download_saved">Скачано</string>
     <string name="file_preview_export_saved">Сохранено в «Файлы»</string>
     <string name="file_preview_export_failed">Не удалось сохранить в «Файлы»</string>

@@ -1962,6 +1962,7 @@
     <string name="file_preview_download_stopped">下載已停止</string>
     <string name="file_preview_download_failed">下載失敗</string>
     <string name="file_preview_download_saved">已儲存到「下載」</string>
+    <string name="file_preview_download_already_saved">已經下載過</string>
     <string name="file_preview_private_download_saved">已下載</string>
     <string name="file_preview_export_saved">已儲存到「檔案」</string>
     <string name="file_preview_export_failed">無法儲存到「檔案」</string>

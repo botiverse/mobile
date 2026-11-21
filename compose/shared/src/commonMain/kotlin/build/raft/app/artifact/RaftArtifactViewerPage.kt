@@ -599,6 +599,9 @@ private fun RaftArtifactViewerScreen() {
     val shownLink = ArtifactLinkTarget(shown.id, if (addressed != null) addressed?.version else shown.version)
     val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
     val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
+    val downloadSavedToDownloads = stringResource(Res.string.file_preview_download_saved)
+    val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
+    val downloadSavedToFiles = stringResource(Res.string.file_preview_export_saved)
     val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
     val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
@@ -681,6 +684,9 @@ private fun RaftArtifactViewerScreen() {
                                         scope = scope,
                                         download = download,
                                         savedMessage = downloadSaved,
+                                        savedToDownloadsMessage = downloadSavedToDownloads,
+                                        alreadySavedMessage = downloadAlreadySaved,
+                                        savedToFilesMessage = downloadSavedToFiles,
                                         failedMessage = downloadFailed,
                                     )
                                 }
@@ -1290,6 +1296,9 @@ private suspend fun raftArtifactViewerSaveDownload(
     scope: RaftArtifactViewerScope,
     download: RaftWebViewDownload,
     savedMessage: String,
+    savedToDownloadsMessage: String,
+    alreadySavedMessage: String,
+    savedToFilesMessage: String,
     failedMessage: String,
 ) {
     val owner = currentAttachmentOwnerLease(host.storeScope)
@@ -1348,7 +1357,15 @@ private suspend fun raftArtifactViewerSaveDownload(
     when (val status = result?.optString("status").orEmpty()) {
         "saved" -> {
             host.bridge.log("artifact_viewer_download action=save result=saved")
-            host.bridge.toast(result?.optString("message").orEmpty().trim().ifBlank { savedMessage })
+            host.bridge.toast(
+                raftArtifactViewerSavedToast(
+                    result,
+                    saved = savedMessage,
+                    savedToDownloads = savedToDownloadsMessage,
+                    alreadySaved = alreadySavedMessage,
+                    savedToFiles = savedToFilesMessage,
+                )
+            )
         }
         "cancelled" -> host.bridge.log("artifact_viewer_download action=save result=cancelled")
         else -> {
@@ -1360,6 +1377,27 @@ private suspend fun raftArtifactViewerSaveDownload(
         }
     }
 }
+
+/**
+ * The toast after the host saved a file an Artifact page downloads, by the result's status words,
+ * never its `message` (the host's own English, for diagnostics). Android answers a file it had
+ * saved before with `alreadySaved`, and a copy committed to Downloads with `cached`; any other
+ * save (the iOS Files export, desktop) says [saved].
+ */
+internal fun raftArtifactViewerSavedToast(
+    result: JSONObject?,
+    saved: String,
+    savedToDownloads: String,
+    alreadySaved: String,
+    savedToFiles: String,
+): String =
+    when {
+        result?.optBoolean("alreadySaved") == true -> alreadySaved
+        result?.optBoolean("cached") == true -> savedToDownloads
+        // iOS: exported through the Files picker (HRBridgeModule `savedTo`).
+        result?.optString("savedTo") == "files" -> savedToFiles
+        else -> saved
+    }
 
 /** A file-name-safe key for the device copy of [url] in [serverId]: `artifact-<16 hex>` (FNV-1a 64). */
 internal fun raftArtifactViewerDownloadCacheId(serverId: String, url: String): String {

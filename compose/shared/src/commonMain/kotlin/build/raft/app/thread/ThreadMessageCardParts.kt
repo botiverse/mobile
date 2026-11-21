@@ -855,7 +855,8 @@ internal fun ThreadMessageFooterMeta(
     ) {
         if (hasTask) {
             // raft-ui TaskChip: the number and the assignee are two labels `gap-1.5` apart.
-            val labelParts = threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)
+            val untitledTaskLabel = stringResource(Res.string.drafts_row_task_untitled)
+            val labelParts = threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName, untitledTaskLabel)
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             val taskChipClick: ((RaftPopoverAnchor) -> Unit)? =
                 when {
@@ -877,7 +878,7 @@ internal fun ThreadMessageFooterMeta(
             // Backlog's chip is outlined (`line-hairline`, no tint).
             val statusOutline = selectedStatus.status.raftTaskStatusOutline(RaftAppThemeState.colors)
             RaftAnchoredMetaChip(
-                label = labelParts?.first ?: "Task",
+                label = labelParts?.first ?: untitledTaskLabel,
                 secondaryLabel = labelParts?.second,
                 iconName = if (statusPixel == null) selectedStatus.icon else null,
                 leadingContent = statusPixel?.let { pixel -> { RaftTaskStatusPixel(pixel) } },
@@ -1117,16 +1118,21 @@ private fun RaftThreadMessageItem.hasThreadTaskFooterMeta(): Boolean =
 
 internal fun threadMessageTaskMetaLabel(
     message: RaftThreadMessageItem,
-    resolvedTaskAssigneeName: String? = null
+    resolvedTaskAssigneeName: String? = null,
+    untitledLabel: String,
 ): String? =
-    threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName)?.let { (number, assignee) ->
+    threadMessageTaskMetaLabelParts(message, resolvedTaskAssigneeName, untitledLabel)?.let { (number, assignee) ->
         if (assignee == null) number else "$number $assignee"
     }
 
-/** The task chip's two labels: the number ("#10", or "Task") and the "@assignee", when shown. */
+/**
+ * The task chip's two labels: the number ("#10", or [untitledLabel], the localized "Task", when the
+ * task has none) and the "@assignee", when shown.
+ */
 internal fun threadMessageTaskMetaLabelParts(
     message: RaftThreadMessageItem,
-    resolvedTaskAssigneeName: String? = null
+    resolvedTaskAssigneeName: String? = null,
+    untitledLabel: String,
 ): Pair<String, String?>? {
     val number = message.taskNumber?.let { "#$it" }
     val assignee =
@@ -1137,7 +1143,7 @@ internal fun threadMessageTaskMetaLabelParts(
     if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
         return null
     }
-    return (number ?: "Task") to assignee?.let { "@$it" }
+    return (number ?: untitledLabel) to assignee?.let { "@$it" }
 }
 
 internal fun String.isDisplaySafeTaskAssigneeName(assigneeId: String? = null): Boolean {

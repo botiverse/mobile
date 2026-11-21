@@ -114,6 +114,10 @@
     <string name="attachment_save_as_cancel">取消</string>
     <string name="attachment_save_as_saved_toast">檔案已儲存</string>
     <string name="attachment_save_as_failed_toast">Raft 無法儲存此檔案，請再試一次。</string>
+    <string name="host_error_title">發生錯誤</string>
+    <string name="host_error_message">此頁面顯示時發生問題，已記錄報告。（%1$s）</string>
+    <string name="host_error_reload">重新載入</string>
+    <string name="host_error_close">關閉</string>
     <string name="raft_background_connection_channel_name">背景連線</string>
     <string name="raft_background_connection_channel_description">在沒有 Google Play 服務的裝置上，Raft 於背景保持連線以傳送訊息通知時顯示。</string>
     <string name="raft_background_connection_notification_title">Raft 正在接收訊息</string>

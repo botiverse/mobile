@@ -1021,7 +1021,8 @@ internal fun threadComposerImageAnnotationPayload(
     val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
     return RaftFilePreviewPayload(
         kind = "image",
-        title = "Image preview",
+        // Shown only when the image has no name; resolved in the app language like the gallery's.
+        titleDesc = Res.string.file_preview_image.desc(),
         subtitle = firstFile.fileName,
         name = firstFile.fileName,
         path = firstFile.fileName,

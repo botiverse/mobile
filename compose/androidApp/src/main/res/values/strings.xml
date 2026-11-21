@@ -117,6 +117,11 @@
     <string name="attachment_save_as_cancel">Cancel</string>
     <string name="attachment_save_as_saved_toast">File saved</string>
     <string name="attachment_save_as_failed_toast">Raft couldn’t save this file. Try again.</string>
+    <!-- Native error screen for a page the app cannot draw (RaftCmpActivity.showHostErrorSurface); %1$s is the reason code, e.g. UNKNOWN_PAGE. -->
+    <string name="host_error_title">Something went wrong</string>
+    <string name="host_error_message">This page hit a rendering problem. A report was recorded. (%1$s)</string>
+    <string name="host_error_reload">Reload</string>
+    <string name="host_error_close">Close</string>
     <string name="raft_background_connection_channel_name">Background connection</string>
     <string name="raft_background_connection_channel_description">Shown while Raft keeps its connection open in the background to deliver message notifications without Google Play services.</string>
     <string name="raft_background_connection_notification_title">Raft is receiving messages</string>

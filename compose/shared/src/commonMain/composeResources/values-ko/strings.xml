@@ -1962,6 +1962,7 @@
     <string name="file_preview_download_stopped">다운로드가 중지됐어요</string>
     <string name="file_preview_download_failed">다운로드하지 못했어요</string>
     <string name="file_preview_download_saved">다운로드 폴더에 저장했어요</string>
+    <string name="file_preview_download_already_saved">이미 다운로드되어 있어요</string>
     <string name="file_preview_private_download_saved">다운로드했어요</string>
     <string name="file_preview_export_saved">파일 앱에 저장했어요</string>
     <string name="file_preview_export_failed">파일 앱에 저장하지 못했어요</string>

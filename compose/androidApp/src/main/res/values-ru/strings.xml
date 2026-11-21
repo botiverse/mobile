@@ -116,6 +116,10 @@
     <string name="attachment_save_as_cancel">Отмена</string>
     <string name="attachment_save_as_saved_toast">Файл сохранён</string>
     <string name="attachment_save_as_failed_toast">Приложению Raft не удалось сохранить этот файл. Попробуйте ещё раз.</string>
+    <string name="host_error_title">Что-то пошло не так</string>
+    <string name="host_error_message">При отображении этой страницы возникла проблема. Отчёт сохранён. (%1$s)</string>
+    <string name="host_error_reload">Обновить</string>
+    <string name="host_error_close">Закрыть</string>
     <string name="raft_background_connection_channel_name">Фоновое подключение</string>
     <string name="raft_background_connection_channel_description">Показывается, пока Raft держит подключение в фоне, чтобы доставлять уведомления о сообщениях без Сервисов Google Play.</string>
     <string name="raft_background_connection_notification_title">Raft получает сообщения</string>

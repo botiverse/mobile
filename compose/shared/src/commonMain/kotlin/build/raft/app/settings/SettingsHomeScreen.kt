@@ -522,8 +522,8 @@ internal fun SharedHomeScreen(
                 val error =
                     localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage)
                 PageErrorContent(
-                    title = "Home",
-                    subtitle = "Workspace",
+                    title = stringResource(Res.string.tab_home),
+                    subtitle = stringResource(Res.string.settings_navigation_section_workspace),
                     iconName = RaftLucideIconName.House,
                     message = error.title,
                     code = current.code,
