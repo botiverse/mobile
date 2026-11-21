@@ -1022,15 +1022,21 @@ test("#216 qa-acceptance requires the login acceptance only for the claimed case
   assert.match(claim, /claimed_case=\$\(node -e '.*typeof v\.case_id==="string"&&\/\^\[a-z0-9\]\[a-z0-9-\]\{0,63\}\$\/\.test\(v\.case_id\)\?v\.case_id:""\)' "\$spec"\)\n/);
   const outputFile = /echo "bootstrap_required=\$required" >> ("\$\w+")/.exec(claim)[1];
   assert.ok(claim.includes(`echo "claimed_case=$claimed_case" >> ${outputFile}\n`), "claimed_case is a step output");
-  // Only that case sets up the certificate check and fetches its input, after the claim and right before the emulator step.
-  for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check", "Fetch the login acceptance input from Testbed"]) {
+  // Only that case sets up the certificate check and fetches its input. The account check precedes the emulator.
+  for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check"]) {
     assert.ok(step(name).includes(forCase), name);
     assert.ok(source.indexOf(`- name: ${name}`) > source.indexOf("- name: Stage release login credential") && source.indexOf(`- name: ${name}`) < source.indexOf("- name: Run acceptance agent"), name);
   }
   assert.match(step("Install build-tools 36.0.0 for the login acceptance certificate check"), /run: sdkmanager "build-tools;36\.0\.0"/);
   const fetchStep = step("Fetch the login acceptance input from Testbed");
+  assert.ok(fetchStep.includes(forCase));
+  const claimAt = source.indexOf("- name: Claim Stamp run case and resolve auth mode");
+  const inputAt = source.indexOf("- name: Fetch the login acceptance input from Testbed");
+  const probeAt = source.indexOf("- name: Preflight — QA account must not see the production server");
+  assert.ok(claimAt < inputAt && inputAt < probeAt && probeAt < source.indexOf("- name: Run acceptance agent"));
+  assert.match(step("Preflight — QA account must not see the production server"), /if \[ "\$STAMP_CLAIMED_CASE" = "login-email-password" \]; then\s+node scripts\/qa\/visible_servers_probe\.mjs --testbed-input/);
   assert.match(fetchStep, /continue-on-error: true\n/);
-  assert.match(fetchStep, /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs\n?$/);
+  assert.match(fetchStep.split("\n      #")[0].trimEnd(), /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs$/);
   assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
   assert.ok(step("Remove the login acceptance input").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
   assert.match(step("Run acceptance agent"), /STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}/);

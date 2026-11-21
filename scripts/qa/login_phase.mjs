@@ -235,7 +235,8 @@ export function testbedInputProblem(input, env = process.env) {
  *   { "case_id": "login-email-password", "run_case_id": "<uuid>", "attempt": <Testbed's attempt number>,
  *     "attempt_id": "pla_<32 hex>", "nonce": "<64 hex>",
  *     "expected_target": { "user_id": "...", "server_id": "...", "server_slug": "..." } }
- * It is read once (never through a link) and deleted at once, whatever it holds.
+ * The pre-emulator account check can read it without consuming it. The login phase deletes it
+ * immediately after reading, whatever it holds. Neither reader follows a link.
  * Without `required`, only an input that explicitly selects case_id "login-email-password" turns the
  * acceptance on; anything else (no file, unreadable, not a JSON object, another case) returns null and
  * the login phase runs as it does without one. With `required` (--require-acceptance: the job's
@@ -245,7 +246,7 @@ export function testbedInputProblem(input, env = process.env) {
  * request ids, the expected refs (computed from the same nonce the reads send, as the app does) and the
  * slug of the expected server }; the raw ids end here.
  */
-export function readTestbedInput(file, env = process.env, { required = false } = {}) {
+export function readTestbedInput(file, env = process.env, { required = false, consume = true } = {}) {
   let text = null;
   let state = "missing";
   let guarded = false;
@@ -265,7 +266,9 @@ export function readTestbedInput(file, env = process.env, { required = false } =
     } catch (error) {
       state = error?.code === "ENOENT" ? "missing" : "unreadable"; // a link (ELOOP), a directory, no permission
     }
-    try { fs.rmSync(file, { force: true }); } catch { /* Best effort: the runner temp directory goes with the job. */ }
+    if (consume) {
+      try { fs.rmSync(file, { force: true }); } catch { /* The job also removes the private directory. */ }
+    }
   }
   const unusable = (problem) => (required ? { binding: acceptanceBinding({ case_id: LOGIN_ACCEPTANCE_CASE, run_case_id: env.STAMP_RUN_CASE_ID }), problem } : null);
   if (state !== "read") return unusable(state === "missing" ? "input_missing" : "input_unreadable");

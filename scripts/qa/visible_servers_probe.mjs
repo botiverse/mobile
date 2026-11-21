@@ -26,6 +26,10 @@
 // is "servers" — the `api/` lives in the base URL. My control (4 files matched `api/servers`)
 // proved the pattern matched SOMETHING, not that it could match the thing I was looking for.
 
+import { pathToFileURL } from "node:url";
+import { serverRef, userRef } from "./app_identity_receipt_lib.mjs";
+import { readTestbedInput } from "./login_phase.mjs";
+
 export const PRODUCTION_SERVER_NAME = "Raft Android";
 export const REQUIRED_QA_SERVER = "OranixSlockTest";
 
@@ -115,84 +119,119 @@ export function judgeVisibleServers(servers, identity) {
 // All four still block. The reason only tells the reader what to do next.
 export const UNJUDGEABLE_REASONS = ["credential", "ratelimit", "infra", "contract"];
 
-function unjudgeable(reason, detail) {
-  console.error(`visible-servers probe: UNJUDGEABLE [${reason}] ${detail}`);
-  console.error(`reason=${reason}`);
-  if (reason === "ratelimit") {
-    console.error("visible-servers probe: do NOT rerun immediately — that is what caused this");
+const PRODUCTION_API = "https://api.raft.build/api/";
+
+class ProbeError extends Error {
+  constructor(reason, detail) {
+    super(detail);
+    this.reason = reason;
   }
-  if (reason === "contract") {
-    console.error("visible-servers probe: a passing rerun does NOT mean this is fixed — check the probe against the live endpoint");
-  }
-  process.exit(2); // 2 = could not judge, distinct from 1 = judged and failed
 }
 
-async function main() {
-  const base = (process.env.QA_API_BASE || "https://api.raft.build/api/").replace(/\/?$/, "/");
+async function jsonResponse(url, options, phase) {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (error) {
+    throw new ProbeError("infra", `${phase} request did not complete: ${error?.message ?? error}`);
+  }
+  if (response.status === 401 || response.status === 403) throw new ProbeError("credential", `${phase} rejected HTTP ${response.status}`);
+  const path = phase === "servers" ? "GET servers" : "login";
+  if (response.status === 429) throw new ProbeError("ratelimit", phase === "login"
+    ? "login rate-limited HTTP 429 — wait before retrying; log in once per run and reuse the token"
+    : "servers rate-limited HTTP 429 — wait before retrying");
+  if (response.status === 404) throw new ProbeError("contract", phase === "login"
+    ? "login endpoint returned 404 — the API shape may have moved" : "GET servers returned 404 — the endpoint may have moved");
+  if (!response.ok) throw new ProbeError("infra", `${path} failed HTTP ${response.status}`);
+  try {
+    return await response.json();
+  } catch {
+    throw new ProbeError("contract", `${phase} response was not JSON`);
+  }
+}
+
+function assignedAccountCode(list, identity, acceptance) {
+  if (typeof identity?.id !== "string" || userRef(acceptance.nonce, identity.id) !== acceptance.expected.userRef) {
+    return "configured_user_mismatch";
+  }
+  const matches = list.filter(server => server?.slug === acceptance.serverSlug);
+  const [target] = matches;
+  if (matches.length !== 1 || typeof target.id !== "string" || list.filter(server => server?.id === target.id).length !== 1 ||
+      serverRef(acceptance.nonce, target.id, target.slug) !== acceptance.expected.serverRef) {
+    return "configured_membership_mismatch";
+  }
+  return "account_and_server_confirmed";
+}
+
+async function probe(inputFile) {
+  const base = (process.env.QA_API_BASE || PRODUCTION_API).replace(/\/?$/, "/");
+  let acceptance;
+  if (inputFile) {
+    if (base !== PRODUCTION_API || !process.env.STAMP_RUN_CASE_ID) throw new ProbeError("contract", "private_target_unavailable");
+    acceptance = readTestbedInput(inputFile, process.env, { required: true, consume: false });
+    if (acceptance.problem || acceptance.binding.attempt !== 1) throw new ProbeError("contract", "private_target_unavailable");
+  }
   const email = process.env.QA_TEST_EMAIL;
   const password = process.env.QA_TEST_PASSWORD;
-  if (!email || !password) unjudgeable("credential", "QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
+  if (!email || !password) throw new ProbeError("credential", "QA_TEST_EMAIL / QA_TEST_PASSWORD not set");
 
-  let login;
+  // The dedicated job pins the first-party production origin and keeps the login on its runner.
+  const requestOptions = () => inputFile ? { redirect: "error", signal: AbortSignal.timeout(20000) } : {};
+  const session = await jsonResponse(`${base}auth/login`, {
+    ...requestOptions(), method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }),
+  }, "login");
   try {
-    login = await fetch(`${base}auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-  } catch (err) {
-    unjudgeable("infra", `login request did not complete: ${err?.message ?? err}`);
+    if (!session?.accessToken) throw new ProbeError("contract", "no accessToken in the login response — the contract changed");
+    if (inputFile && (typeof session.accessToken !== "string" || typeof session.refreshToken !== "string" || !session.refreshToken)) {
+      throw new ProbeError("contract", "incomplete login response");
+    }
+    const body = await jsonResponse(`${base}servers`, {
+      ...requestOptions(), headers: { Authorization: `Bearer ${session.accessToken}` },
+    }, "servers");
+    // The authenticated GET /api/servers is an array. Ordinary callers also support the legacy wrapper.
+    let list = body;
+    if (!inputFile && !Array.isArray(body)) list = body?.servers;
+    const visibility = judgeVisibleServers(list, session.user);
+    if (visibility.code === "not_a_list") throw new ProbeError("contract", visibility.detail);
+    if (!acceptance || !visibility.ok) return visibility;
+    const code = assignedAccountCode(list, session.user, acceptance);
+    return { ok: code === "account_and_server_confirmed", code };
+  } finally {
+    if (inputFile && typeof session?.refreshToken === "string" && session.refreshToken) {
+      // Only the session this probe just opened. The emulator still starts signed out.
+      let response;
+      try {
+        response = await fetch(`${base}auth/logout`, {
+          ...requestOptions(), method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: session.refreshToken }),
+        });
+      } catch { /* Report unavailable cleanup as an infrastructure problem. */ }
+      if (!response?.ok) throw new ProbeError("infra", "probe_logout_unconfirmed");
+    }
   }
-  if (login.status === 401 || login.status === 403) unjudgeable("credential", `login rejected HTTP ${login.status}`);
-  if (login.status === 404) unjudgeable("contract", "login endpoint returned 404 — the API shape may have moved");
-  if (login.status === 429) unjudgeable("ratelimit", "login rate-limited HTTP 429 — wait before retrying; log in once per run and reuse the token");
-  if (!login.ok) unjudgeable("infra", `login failed HTTP ${login.status}`);
-
-  let session;
-  try {
-    session = await login.json();
-  } catch {
-    unjudgeable("contract", "login response was not JSON");
-  }
-  const token = session?.accessToken;
-  if (!token) unjudgeable("contract", "no accessToken in the login response — the contract changed");
-  // Identity from the RESPONSE, never from the email we sent. See judgeVisibleServers.
-  const identity = session?.user ? { id: session.user.id, email: session.user.email, name: session.user.name } : null;
-
-  // GET servers is the one call that needs no X-Server-Id header (@HuaTuo, live 2026-08-31);
-  // sub-resources like /channels do, and answer 400 Missing X-Server-Id without it.
-  let res;
-  try {
-    res = await fetch(`${base}servers`, { headers: { Authorization: `Bearer ${token}` } });
-  } catch (err) {
-    unjudgeable("infra", `servers request did not complete: ${err?.message ?? err}`);
-  }
-  if (res.status === 401 || res.status === 403) unjudgeable("credential", `servers rejected HTTP ${res.status}`);
-  if (res.status === 404) unjudgeable("contract", "GET servers returned 404 — the endpoint may have moved");
-  if (res.status === 429) unjudgeable("ratelimit", "servers rate-limited HTTP 429 — wait before retrying");
-  if (!res.ok) unjudgeable("infra", `GET servers failed HTTP ${res.status}`);
-
-  let body;
-  try {
-    body = await res.json();
-  } catch {
-    unjudgeable("contract", "servers response was not JSON");
-  }
-  const list = Array.isArray(body) ? body : body?.servers;
-
-  const verdict = judgeVisibleServers(list, identity);
-  // A shape the judgement cannot read is a contract problem, not a product finding: it must not
-  // be reported as "the account's visibility is wrong".
-  if (verdict.code === "not_a_list") unjudgeable("contract", verdict.detail);
-  // Names only. Never print ids, tokens, or the raw body — this runs in CI logs.
-  console.log(`visible-servers probe: ${verdict.ok ? "PASS" : "FAIL"} [${verdict.code}] ${verdict.detail}`);
-  process.exit(verdict.ok ? 0 : 1);
 }
 
-
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main().catch((err) => {
-    console.error(`visible-servers probe: threw ${err?.message ?? err}`);
-    process.exit(2);
-  });
+if (import.meta.url === pathToFileURL(process.argv[1] || "").href) {
+  const args = process.argv.slice(2);
+  const privateMode = args.length !== 0;
+  try {
+    if (privateMode && (args.length !== 2 || args[0] !== "--testbed-input" || !args[1])) {
+      throw new ProbeError("contract", "private_target_unavailable");
+    }
+    const verdict = await probe(privateMode ? args[1] : null);
+    if (privateMode) console.log(`QA account preflight: ${verdict.code}`);
+    else console.log(`visible-servers probe: ${verdict.ok ? "PASS" : "FAIL"} [${verdict.code}] ${verdict.detail}`);
+    process.exitCode = verdict.ok ? 0 : 1;
+  } catch (error) {
+    const reason = error instanceof ProbeError ? error.reason : "contract";
+    if (privateMode) {
+      console.error(`QA account preflight: unavailable (${reason})`);
+    } else {
+      console.error(`visible-servers probe: UNJUDGEABLE [${reason}] ${error.message}`);
+      console.error(`reason=${reason}`);
+      if (reason === "ratelimit") console.error("visible-servers probe: do NOT rerun immediately — that is what caused this");
+      if (reason === "contract") console.error("visible-servers probe: a passing rerun does NOT mean this is fixed — check the probe against the live endpoint");
+    }
+    process.exitCode = 2;
+  }
 }
