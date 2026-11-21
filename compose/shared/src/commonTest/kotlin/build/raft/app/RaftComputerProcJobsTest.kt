@@ -5,10 +5,14 @@ import build.raft.app.data.ComputerProcJobState
 import build.raft.app.data.ComputerProcJobStopOutcome
 import build.raft.app.data.ComputerProcJobStopResult
 import build.raft.app.data.ComputerProcJobsRead
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RaftComputersApiClient
+import build.raft.app.data.SettingsComputerCreatorSnapshot
+import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.data.settingsComputerCanControl
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -82,8 +86,20 @@ class RaftComputerProcJobsTest {
         assertNull(parsed.jobs[1].rssBytes)
 
         api.nextProcJobsResponse = HomeNetworkResponse(200, """{"status":"unknown"}""")
-        val unknown = assertIs<DataResult.Content<ComputerProcJobsRead>>(client.machineProcJobs(ServerId("s-1"), "m-1")).data
+        val unknown =
+            assertIs<DataResult.Content<ComputerProcJobsRead>>(
+                client.machineProcJobs(ServerId("s-1"), "m-1", DataRequestPriority.Background)
+            ).data
         assertIs<ComputerProcJobsRead.Unknown>(unknown)
+        assertEquals(DataRequestPriority.Background, api.lastProcJobsPriority)
+
+        api.nextProcJobsResponse =
+            HomeNetworkResponse(
+                200,
+                """{"status":"known","reportedAt":"2026-11-21T01:00:00Z","jobs":[{"agentId":"a","name":"n","state":"paused","startedAt":"2026-11-21T00:00:00Z"}]}"""
+            )
+        val allDropped = assertIs<DataResult.Error>(client.machineProcJobs(ServerId("s-1"), "m-1"))
+        assertEquals("computer_proc_jobs_contract_mismatch", allDropped.error.code)
 
         api.nextProcJobsResponse = HomeNetworkResponse(200, """{"status":"unexpected"}""")
         assertIs<DataResult.Error>(client.machineProcJobs(ServerId("s-1"), "m-1"))
@@ -116,9 +132,9 @@ class RaftComputerProcJobsTest {
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
-        api.nextStopResponse = HomeNetworkResponse(200, """{"outcome":"failed"}""")
+        api.nextStopResponse = HomeNetworkResponse(200, """{"outcome":"failed"}""", traceId = "trace-12345678")
         assertEquals(
-            ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed),
+            ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed, traceId = "trace-12345678"),
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
@@ -132,9 +148,14 @@ class RaftComputerProcJobsTest {
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
-        api.nextStopResponse = HomeNetworkResponse(409, """{"code":"computer_offline","error":"This Computer is offline."}""")
+        api.nextStopResponse =
+            HomeNetworkResponse(
+                409,
+                """{"code":"computer_offline","error":"This Computer is offline."}""",
+                traceId = "trace-err99999"
+            )
         assertEquals(
-            ComputerProcJobStopResult.Error("computer_offline"),
+            ComputerProcJobStopResult.Error("computer_offline", traceId = "trace-err99999"),
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
@@ -260,13 +281,58 @@ class RaftComputerProcJobsTest {
     }
 
     @Test
+    fun settingsComputerCanControlMatchesWebRules() {
+        val base =
+            SettingsComputerSnapshot(
+                id = "m-1",
+                name = "Studio",
+                daemonVersion = "",
+                computerVersion = "1.0.55",
+                isComputer = true,
+                online = true
+            )
+        assertTrue(settingsComputerCanControl(serverRole = "owner", currentUserId = "u-1", computer = base))
+        assertTrue(settingsComputerCanControl(serverRole = "admin", currentUserId = "u-1", computer = base))
+        assertFalse(settingsComputerCanControl(serverRole = "member", currentUserId = "u-1", computer = base))
+        assertTrue(
+            settingsComputerCanControl(
+                serverRole = "member",
+                currentUserId = "u-1",
+                computer = base.copy(attachedByCurrentUser = true)
+            )
+        )
+        assertTrue(
+            settingsComputerCanControl(
+                serverRole = "member",
+                currentUserId = "u-1",
+                computer = base.copy(creator = SettingsComputerCreatorSnapshot(id = "u-1", name = "alice"))
+            )
+        )
+        assertTrue(
+            settingsComputerCanControl(
+                serverRole = "member",
+                currentUserId = "u-1",
+                computer = base.copy(isComputer = true, controlledByCurrentUser = true)
+            )
+        )
+        // Revoked Computer (`isComputer == false`): controlledByCurrentUser must not grant control.
+        assertFalse(
+            settingsComputerCanControl(
+                serverRole = "member",
+                currentUserId = "u-1",
+                computer = base.copy(isComputer = false, controlledByCurrentUser = true)
+            )
+        )
+    }
+
+    @Test
     fun controllerDropsStaleReadAnswersAndClearsWhenOffline() = runTest {
         val firstGate = CompletableDeferred<DataResult<ComputerProcJobsRead>>()
         val secondGate = CompletableDeferred<DataResult<ComputerProcJobsRead>>()
         var calls = 0
         val controller =
             RaftComputerProcJobsController(
-                loadProcJobs = { _, _ ->
+                loadProcJobs = { _, _, _ ->
                     calls += 1
                     if (calls == 1) firstGate.await() else secondGate.await()
                 },
@@ -294,15 +360,17 @@ class RaftComputerProcJobsTest {
     }
 
     @Test
-    fun controllerStopOverlaysExitedStateImmediatelyAndRefreshesAfterDelay() = runTest {
+    fun controllerStopNotifiesOutcomeBeforeRefreshOverlaysExitedStateAndRefreshesAfterDelay() = runTest {
         val runningJob =
             sampleJob("a1", "dev-server", ComputerProcJobState.Running, "2026-11-21T00:00:00Z")
                 .copy(rssBytes = 10_000L, memoryMaxBytes = 1_000_000L)
+        val events = mutableListOf<String>()
         var readCount = 0
         val controller =
             RaftComputerProcJobsController(
-                loadProcJobs = { _, _ ->
+                loadProcJobs = { _, _, _ ->
                     readCount += 1
+                    events += "read:$readCount"
                     if (readCount <= 2) {
                         // First load + immediate post-stop read still carry stale running report.
                         DataResult.Content(ComputerProcJobsRead.Known("2026-11-21T01:00:00Z", listOf(runningJob)))
@@ -334,9 +402,16 @@ class RaftComputerProcJobsTest {
         controller.refresh(ServerId("s-1"), "m-1", online = true)
         assertEquals(ComputerProcJobState.Running, controller.jobsByAgent["a1"]?.single()?.state)
 
-        val result = controller.stopJob(runningJob, this, ServerId("s-1"), "m-1", online = true)
+        val result =
+            controller.stopJob(
+                job = runningJob,
+                scope = this,
+                serverId = ServerId("s-1"),
+                machineId = "m-1",
+                onOutcome = { events += "outcome" }
+            )
         assertEquals(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped), result)
-        assertEquals(2, readCount)
+        assertEquals(listOf("read:1", "outcome", "read:2"), events)
         val optimistic = requireNotNull(controller.jobsByAgent["a1"]?.single())
         assertEquals(ComputerProcJobState.Exited, optimistic.state)
         assertEquals("owner_stop", optimistic.exitReason)
@@ -348,6 +423,34 @@ class RaftComputerProcJobsTest {
         val confirmed = requireNotNull(controller.jobsByAgent["a1"]?.single())
         assertEquals(ComputerProcJobState.Exited, confirmed.state)
         assertEquals("tygg", confirmed.stoppedBy)
+    }
+
+    @Test
+    fun controllerStopSkipsPostStopRefreshIfComputerWentOffline() = runTest {
+        val runningJob = sampleJob("a1", "dev-server", ComputerProcJobState.Running, "2026-11-21T00:00:00Z")
+        val stopGate = CompletableDeferred<ComputerProcJobStopResult>()
+        var readCount = 0
+        val controller =
+            RaftComputerProcJobsController(
+                loadProcJobs = { _, _, _ ->
+                    readCount += 1
+                    DataResult.Content(ComputerProcJobsRead.Known("2026-11-21T01:00:00Z", listOf(runningJob)))
+                },
+                stopProcJobApi = { _, _, _, _ -> stopGate.await() },
+                afterStopDelayMs = 50L
+            )
+
+        controller.refresh(ServerId("s-1"), "m-1", online = true)
+        assertEquals(1, readCount)
+
+        val stopCall = async { controller.stopJob(runningJob, this, ServerId("s-1"), "m-1") }
+        // Computer goes offline while stop request is in flight.
+        controller.refresh(ServerId("s-1"), "m-1", online = false)
+        stopGate.complete(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))
+        stopCall.await()
+        delay(100L)
+        assertEquals(1, readCount)
+        assertNull(controller.answer)
     }
 
     private fun sampleJob(
@@ -368,9 +471,19 @@ class RaftComputerProcJobsTest {
     private class FakeProcJobsComputersApi : RaftComputersApi {
         var nextProcJobsResponse: HomeNetworkResponse = HomeNetworkResponse(200, """{"status":"unknown"}""")
         var nextStopResponse: HomeNetworkResponse = HomeNetworkResponse(200, """{"outcome":"stopped"}""")
+        var lastProcJobsPriority: DataRequestPriority? = null
         val stopCalls = mutableListOf<StopCall>()
 
         override suspend fun machineProcJobs(serverId: ServerId, machineId: String): HomeNetworkResponse = nextProcJobsResponse
+
+        override suspend fun machineProcJobs(
+            serverId: ServerId,
+            machineId: String,
+            priority: DataRequestPriority
+        ): HomeNetworkResponse {
+            lastProcJobsPriority = priority
+            return nextProcJobsResponse
+        }
 
         override suspend fun stopMachineProcJob(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse {
             stopCalls += StopCall(serverId.value, machineId, body)

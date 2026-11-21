@@ -2057,6 +2057,12 @@ data class SettingsComputerDetailSnapshot(
     val canEditMachine: Boolean = false,
     /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
     val canRemoveMachine: Boolean = false,
+    /**
+     * Web `canControlComputer` (`canManageMachine.ts`): may send this Computer commands (restart,
+     * upgrade, stop `raft proc` jobs) — owner/admin, live attacher, creator, or controller while
+     * `isComputer` is true.
+     */
+    val canControlComputer: Boolean = canEditMachine,
     /** For the terminal commands the page offers; null while the session has no server slug. */
     val commandContext: SettingsComputerCommandContext? = null,
     /**

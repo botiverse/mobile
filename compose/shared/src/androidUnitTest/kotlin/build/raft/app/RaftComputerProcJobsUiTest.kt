@@ -90,7 +90,8 @@ class RaftComputerProcJobsUiTest {
 
     private fun detailSnapshot(
         online: Boolean = true,
-        canEditMachine: Boolean = true
+        canEditMachine: Boolean = true,
+        canControlComputer: Boolean = canEditMachine
     ): SettingsComputerDetailSnapshot =
         SettingsComputerDetailSnapshot(
             computer =
@@ -113,6 +114,7 @@ class RaftComputerProcJobsUiTest {
             canManageMachines = canEditMachine,
             canEditMachine = canEditMachine,
             canRemoveMachine = canEditMachine,
+            canControlComputer = canControlComputer,
             currentUserId = "user-1"
         )
 
@@ -135,7 +137,9 @@ class RaftComputerProcJobsUiTest {
                         onIntent = {},
                         onOpenAgent = {},
                         procJobsByAgent = mapOf("agent-1" to listOf(runningJob, exitedJob)),
-                        onStopProcJob = { ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped) }
+                        onStopProcJob = { _, onOutcome ->
+                            onOutcome(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))
+                        }
                     )
                 }
             }
@@ -144,20 +148,14 @@ class RaftComputerProcJobsUiTest {
         onAllNodesWithTag(COMPUTER_PROC_JOBS_SECTION_TEST_TAG).assertCountEquals(1)
         onNodeWithText("Jobs").assertIsDisplayed()
         onNodeWithText("dev-server").assertIsDisplayed()
+        onNodeWithText("300.0 MB of 4.0 GB").assertIsDisplayed()
         onNodeWithText("watcher").assertIsDisplayed()
         onAllNodesWithTag(computerProcJobStopButtonTestTag("dev-server")).assertCountEquals(0)
         onAllNodesWithTag(computerProcJobStopButtonTestTag("watcher")).assertCountEquals(0)
     }
 
     @Test
-    fun detailPageOffersStopOnlyForRunningJobsWhenOnlineController() = runRobolectricComposeUiTest {
-        val onlineControllerModel =
-            raftComputerDetailModel(
-                ScreenLoadState.Content(detailSnapshot(online = true, canEditMachine = true)),
-                machineId = "m-1",
-                targetServerId = null,
-                currentServerId = "server-1"
-            )
+    fun detailPageHidesStopWhenControllerComputerIsOffline() = runRobolectricComposeUiTest {
         val offlineControllerModel =
             raftComputerDetailModel(
                 ScreenLoadState.Content(detailSnapshot(online = false, canEditMachine = true)),
@@ -165,7 +163,6 @@ class RaftComputerProcJobsUiTest {
                 targetServerId = null,
                 currentServerId = "server-1"
             )
-
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 RaftComputersTheme {
@@ -176,14 +173,29 @@ class RaftComputerProcJobsUiTest {
                         onIntent = {},
                         onOpenAgent = {},
                         procJobsByAgent = mapOf("agent-1" to listOf(runningJob, exitedJob)),
-                        onStopProcJob = { ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped) }
+                        onStopProcJob = { _, onOutcome ->
+                            onOutcome(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))
+                        }
                     )
                 }
             }
         }
         waitForIdle()
         onAllNodesWithTag(computerProcJobStopButtonTestTag("dev-server")).assertCountEquals(0)
+        onAllNodesWithTag(computerProcJobStopButtonTestTag("watcher")).assertCountEquals(0)
+    }
 
+    @Test
+    fun detailPageOffersStopOnlyForRunningJobsWhenOnlineController() = runRobolectricComposeUiTest {
+        val onlineControllerModel =
+            raftComputerDetailModel(
+                ScreenLoadState.Content(
+                    detailSnapshot(online = true, canEditMachine = false, canControlComputer = true)
+                ),
+                machineId = "m-1",
+                targetServerId = null,
+                currentServerId = "server-1"
+            )
         setContent {
             RaftTheme(appearance = RaftAppearance.Light) {
                 RaftComputersTheme {
@@ -194,7 +206,9 @@ class RaftComputerProcJobsUiTest {
                         onIntent = {},
                         onOpenAgent = {},
                         procJobsByAgent = mapOf("agent-1" to listOf(runningJob, exitedJob)),
-                        onStopProcJob = { ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped) }
+                        onStopProcJob = { _, onOutcome ->
+                            onOutcome(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))
+                        }
                     )
                 }
             }
@@ -218,9 +232,9 @@ class RaftComputerProcJobsUiTest {
                             agentName = "Coder",
                             jobs = listOf(runningJob, exitedJob),
                             canStop = true,
-                            onStop = { job ->
+                            onStop = { job, onOutcome ->
                                 stoppedJobs += job.name
-                                nextResult
+                                onOutcome(nextResult)
                             },
                             timeContext = fixedTimeContext,
                             nowMillis = fixedNowMillis
@@ -232,8 +246,9 @@ class RaftComputerProcJobsUiTest {
         }
         waitForIdle()
 
-        // Running job shows uptime; exited job shows who stopped it + relative time.
+        // Running job shows uptime and memory; exited job shows who stopped it + relative time.
         onNodeWithText("Running 1h 0m").assertIsDisplayed()
+        onNodeWithText("300.0 MB of 4.0 GB").assertIsDisplayed()
         onNodeWithText("Stopped by @tygg · 5m ago").assertIsDisplayed()
 
         // Cancel closes dialog without calling onStop.
@@ -266,13 +281,14 @@ class RaftComputerProcJobsUiTest {
         waitForIdle()
         onNodeWithText("Update this Computer to stop its jobs from here.").assertIsDisplayed()
 
-        // Failed -> warning toast.
-        nextResult = ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed)
+        // Failed with trace ID -> warning toast with Trace ID description.
+        nextResult = ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed, traceId = "abcdef123456")
         onNodeWithTag(computerProcJobStopButtonTestTag("dev-server")).performClick()
         waitForIdle()
         onNodeWithTag(COMPUTER_PROC_JOBS_STOP_CONFIRM_TEST_TAG).performClick()
         waitForIdle()
         onNodeWithText("Couldn’t stop dev-server. Try again.").assertIsDisplayed()
+        onNodeWithText("Trace ID abcdef12").assertIsDisplayed()
 
         assertEquals(listOf("dev-server", "dev-server", "dev-server"), stoppedJobs)
     }

@@ -2779,7 +2779,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
     val procJobsController =
         remember(procJobsApi, procJobsServerId, target.machineId) {
             RaftComputerProcJobsController(
-                loadProcJobs = procJobsApi::machineProcJobs,
+                loadProcJobs = { serverId, machineId, priority -> procJobsApi.machineProcJobs(serverId, machineId, priority) },
                 stopProcJobApi = procJobsApi::stopMachineProcJob,
             )
         }
@@ -2910,13 +2910,13 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     }
                 },
                 procJobsByAgent = procJobsController.jobsByAgent,
-                onStopProcJob = { job ->
+                onStopProcJob = { job, onOutcome ->
                     procJobsController.stopJob(
                         job = job,
                         scope = procJobsScope,
                         serverId = procJobsServerId?.let(::ServerId),
                         machineId = target.machineId,
-                        online = computerOnline,
+                        onOutcome = onOutcome,
                     )
                 },
             )
@@ -2978,7 +2978,7 @@ internal fun RaftSettingsComputerDetailContent(
     /** Each agent's `raft proc` jobs on this Computer (web `useMachineProcJobs`); empty hides the block. */
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
     /** Stops one running `raft proc` job (web `POST …/proc-jobs/stop`); null hides Stop. */
-    onStopProcJob: (suspend (ComputerProcJobSnapshot) -> ComputerProcJobStopResult)? = null,
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -3046,7 +3046,7 @@ private fun RaftComputerDetailBody(
     bulkAgentActions: RaftComputerBulkAgentActions?,
     onBulkAgentsChanged: () -> Unit,
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>>,
-    onStopProcJob: (suspend (ComputerProcJobSnapshot) -> ComputerProcJobStopResult)?,
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)?,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3299,7 +3299,7 @@ private fun RaftComputerDetailBody(
                 onOpenAgent,
                 onCreateAgent = onCreateAgent?.takeIf { snapshot.canManageMachines },
                 bulk = bulk,
-                canStopProcJobs = canEdit && snapshot.computer.online && onStopProcJob != null,
+                canStopProcJobs = model.canControl && snapshot.computer.online && onStopProcJob != null,
                 procJobsByAgent = procJobsByAgent,
                 onStopProcJob = onStopProcJob,
             )
@@ -3837,7 +3837,7 @@ private fun RaftComputerAgentsSection(
     /** Web `canControl && machine.status === "online"`: offers Stop on running `raft proc` jobs. */
     canStopProcJobs: Boolean = false,
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
-    onStopProcJob: (suspend (ComputerProcJobSnapshot) -> ComputerProcJobStopResult)? = null,
+    onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
 ) {
     val agents = snapshot.agents
     val selecting = bulk?.state?.selectionMode == true
@@ -3905,9 +3905,13 @@ private fun RaftComputerAgentsSection(
                                             agentName = agent.name,
                                             jobs = agentJobs,
                                             canStop = canStopProcJobs,
-                                            onStop = { job ->
-                                                onStopProcJob?.invoke(job)
-                                                    ?: ComputerProcJobStopResult.Error("proc_job_unavailable")
+                                            onStop = { job, onOutcome ->
+                                                val stop = onStopProcJob
+                                                if (stop != null) {
+                                                    stop(job, onOutcome)
+                                                } else {
+                                                    onOutcome(ComputerProcJobStopResult.Error("proc_job_unavailable"))
+                                                }
                                             },
                                         )
                                     }

@@ -26,6 +26,7 @@ import build.raft.app.data.ComputerProcJobState
 import build.raft.app.data.ComputerProcJobStopOutcome
 import build.raft.app.data.ComputerProcJobStopResult
 import build.raft.app.data.ComputerProcJobsRead
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.format.RaftFormat
@@ -45,6 +46,7 @@ import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -164,7 +166,7 @@ private fun floorDivLong(a: Long, b: Long): Long {
  */
 @Stable
 internal class RaftComputerProcJobsController(
-    private val loadProcJobs: suspend (ServerId, String) -> DataResult<ComputerProcJobsRead>,
+    private val loadProcJobs: suspend (ServerId, String, DataRequestPriority) -> DataResult<ComputerProcJobsRead>,
     private val stopProcJobApi: suspend (ServerId, String, String, String) -> ComputerProcJobStopResult,
     private val nowMillisProvider: () -> Long = { defaultNowMillis() },
     private val afterStopDelayMs: Long = COMPUTER_PROC_JOBS_AFTER_STOP_MS
@@ -175,6 +177,7 @@ internal class RaftComputerProcJobsController(
     private var stoppedAtByKey by mutableStateOf<Map<String, String>>(emptyMap())
     private var readSeq: Long = 0L
     private var afterStopJob: Job? = null
+    private var currentOnline: Boolean = false
 
     val jobsByAgent: Map<String, List<ComputerProcJobSnapshot>>
         get() {
@@ -182,7 +185,13 @@ internal class RaftComputerProcJobsController(
             return groupComputerProcJobsByAgent(applyConfirmedComputerProcJobStops(known.jobs, stoppedAtByKey))
         }
 
-    suspend fun refresh(serverId: ServerId?, machineId: String, online: Boolean) {
+    suspend fun refresh(
+        serverId: ServerId?,
+        machineId: String,
+        online: Boolean,
+        priority: DataRequestPriority = DataRequestPriority.Visible
+    ) {
+        currentOnline = online
         val seq = ++readSeq
         if (serverId == null || !online || machineId.isBlank()) {
             cancelPendingRefresh()
@@ -191,13 +200,13 @@ internal class RaftComputerProcJobsController(
         }
         val result =
             try {
-                loadProcJobs(serverId, machineId)
+                loadProcJobs(serverId, machineId, priority)
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
                 null
             }
-        if (seq != readSeq) return
+        if (seq != readSeq || !currentOnline) return
         answer = (result as? DataResult.Content)?.data
     }
 
@@ -205,41 +214,55 @@ internal class RaftComputerProcJobsController(
         job: ComputerProcJobSnapshot,
         scope: CoroutineScope,
         serverId: ServerId?,
-        machineId: String,
-        online: Boolean
+        machineId: String
     ) {
         stoppedAtByKey = stoppedAtByKey + (computerProcJobKey(job) to computerProcEpochMillisToIsoUtc(nowMillisProvider()))
         afterStopJob?.cancel()
         afterStopJob =
             scope.launch {
                 delay(afterStopDelayMs)
-                refresh(serverId, machineId, online)
+                if (currentOnline) {
+                    refresh(serverId, machineId, online = true, priority = DataRequestPriority.Visible)
+                }
             }
     }
 
+    /**
+     * Runs `POST …/proc-jobs/stop` inside [scope] (the screen scope, so recomposition or clearing
+     * the agent's job list never cancels the request or drops the toast), delivers the outcome via
+     * [onOutcome] *before* re-reading jobs (matching web `MachineAgentList.tsx`), and then refreshes
+     * using live [currentOnline].
+     */
     suspend fun stopJob(
         job: ComputerProcJobSnapshot,
         scope: CoroutineScope,
         serverId: ServerId?,
         machineId: String,
-        online: Boolean
+        onOutcome: (ComputerProcJobStopResult) -> Unit = {}
     ): ComputerProcJobStopResult {
-        if (serverId == null || machineId.isBlank()) {
-            return ComputerProcJobStopResult.Error("proc_job_invalid")
-        }
-        val result =
-            try {
-                stopProcJobApi(serverId, machineId, job.agentId, job.name)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                ComputerProcJobStopResult.Error("request_failed")
+        val deferred =
+            scope.async {
+                if (serverId == null || machineId.isBlank()) {
+                    val invalid = ComputerProcJobStopResult.Error("proc_job_invalid")
+                    onOutcome(invalid)
+                    return@async invalid
+                }
+                val result =
+                    try {
+                        stopProcJobApi(serverId, machineId, job.agentId, job.name)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        ComputerProcJobStopResult.Error("request_failed")
+                    }
+                if (result is ComputerProcJobStopResult.Completed && result.outcome == ComputerProcJobStopOutcome.Stopped) {
+                    markStopped(job, scope, serverId, machineId)
+                }
+                onOutcome(result)
+                refresh(serverId, machineId, online = currentOnline, priority = DataRequestPriority.Visible)
+                result
             }
-        if (result is ComputerProcJobStopResult.Completed && result.outcome == ComputerProcJobStopOutcome.Stopped) {
-            markStopped(job, scope, serverId, machineId, online)
-        }
-        refresh(serverId, machineId, online)
-        return result
+        return deferred.await()
     }
 
     fun cancelPendingRefresh() {
@@ -334,10 +357,10 @@ internal fun rememberComputerProcJobsEffect(
             controller.cancelPendingRefresh()
             return@LaunchedEffect
         }
-        controller.refresh(serverId, machineId, online = true)
+        controller.refresh(serverId, machineId, online = true, priority = DataRequestPriority.Visible)
         while (true) {
             delay(COMPUTER_PROC_JOBS_POLL_MS)
-            controller.refresh(serverId, machineId, online = true)
+            controller.refresh(serverId, machineId, online = true, priority = DataRequestPriority.Background)
         }
     }
 }
@@ -417,7 +440,7 @@ internal fun RaftComputerAgentProcJobs(
     agentName: String,
     jobs: List<ComputerProcJobSnapshot>,
     canStop: Boolean,
-    onStop: suspend (ComputerProcJobSnapshot) -> ComputerProcJobStopResult,
+    onStop: suspend (ComputerProcJobSnapshot, onOutcome: (ComputerProcJobStopResult) -> Unit) -> Unit,
     timeContext: RaftTimeContext? = currentRaftTimeContextProvider?.current,
     nowMillis: Long = timeContext?.nowEpochMillis ?: defaultNowMillis()
 ) {
@@ -426,8 +449,8 @@ internal fun RaftComputerAgentProcJobs(
     val typography = RaftTheme.typography
     val scope = rememberCoroutineScope()
     val toastHost = LocalRaftToastHostState.current
-    var confirming by remember(agentName) { mutableStateOf<ComputerProcJobSnapshot?>(null) }
-    var busy by remember(agentName) { mutableStateOf(false) }
+    var confirming by remember { mutableStateOf<ComputerProcJobSnapshot?>(null) }
+    var busy by remember { mutableStateOf(false) }
 
     LaunchedEffect(canStop) {
         if (!canStop && !busy) confirming = null
@@ -438,7 +461,7 @@ internal fun RaftComputerAgentProcJobs(
             Modifier
                 .fillMaxWidth()
                 .testTag(COMPUTER_PROC_JOBS_SECTION_TEST_TAG)
-                .padding(start = 60.dp, end = 16.dp, top = 0.dp, bottom = 12.dp),
+                .padding(start = 63.dp, end = 16.dp, top = 0.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         RaftText(
@@ -461,6 +484,32 @@ internal fun RaftComputerAgentProcJobs(
         val alreadyEndedToast = stringResource(Res.string.settings_computers_proc_jobs_toast_already_ended, targetJob.name)
         val failedToast = stringResource(Res.string.settings_computers_proc_jobs_toast_failed, targetJob.name)
         val upgradeRequiredToast = stringResource(Res.string.settings_computers_proc_jobs_toast_upgrade_required)
+        val traceIdFormat = stringResource(Res.string.error_trace_id_value, "%s")
+        val showOutcome: (ComputerProcJobStopResult) -> Unit = { result ->
+            when (result) {
+                is ComputerProcJobStopResult.Completed ->
+                    when (result.outcome) {
+                        ComputerProcJobStopOutcome.Stopped -> Unit
+                        ComputerProcJobStopOutcome.AlreadyExited,
+                        ComputerProcJobStopOutcome.NotFound ->
+                            toastHost?.show(alreadyEndedToast)
+                        ComputerProcJobStopOutcome.Failed ->
+                            toastHost?.show(
+                                title = failedToast,
+                                description = result.traceId?.takeIf { it.isNotBlank() }?.let { traceIdFormat.replace("%s", it.take(8)) },
+                                intent = RaftToastIntent.Warning
+                            )
+                    }
+                ComputerProcJobStopResult.UpgradeRequired ->
+                    toastHost?.show(upgradeRequiredToast, intent = RaftToastIntent.Warning)
+                is ComputerProcJobStopResult.Error ->
+                    toastHost?.show(
+                        title = failedToast,
+                        description = result.traceId?.takeIf { it.isNotBlank() }?.let { traceIdFormat.replace("%s", it.take(8)) },
+                        intent = RaftToastIntent.Warning
+                    )
+            }
+        }
         RaftDialog(
             onDismissRequest = { if (!busy) confirming = null },
             title = stringResource(Res.string.settings_computers_proc_jobs_stop_title, targetJob.name),
@@ -485,22 +534,7 @@ internal fun RaftComputerAgentProcJobs(
                         busy = true
                         scope.launch {
                             try {
-                                val result = onStop(targetJob)
-                                when (result) {
-                                    is ComputerProcJobStopResult.Completed ->
-                                        when (result.outcome) {
-                                            ComputerProcJobStopOutcome.Stopped -> Unit
-                                            ComputerProcJobStopOutcome.AlreadyExited,
-                                            ComputerProcJobStopOutcome.NotFound ->
-                                                toastHost?.show(alreadyEndedToast)
-                                            ComputerProcJobStopOutcome.Failed ->
-                                                toastHost?.show(failedToast, intent = RaftToastIntent.Warning)
-                                        }
-                                    ComputerProcJobStopResult.UpgradeRequired ->
-                                        toastHost?.show(upgradeRequiredToast, intent = RaftToastIntent.Warning)
-                                    is ComputerProcJobStopResult.Error ->
-                                        toastHost?.show(failedToast, intent = RaftToastIntent.Warning)
-                                }
+                                onStop(targetJob, showOutcome)
                             } finally {
                                 busy = false
                                 confirming = null
@@ -539,26 +573,20 @@ private fun RaftComputerProcJobLine(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftText(
-                    text = job.name,
-                    style = typography.monoMeta,
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                RaftText(
-                    text = stateText,
-                    style = typography.caption,
-                    color = colors.foregroundMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-            }
+            RaftText(
+                text = job.name,
+                style = typography.monoMeta,
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            RaftText(
+                text = stateText,
+                style = typography.caption,
+                color = colors.foregroundMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             if (memoryText != null) {
                 RaftText(
                     text = memoryText,

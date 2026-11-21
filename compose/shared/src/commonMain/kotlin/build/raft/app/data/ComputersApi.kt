@@ -203,6 +203,12 @@ interface RaftComputersApi {
     suspend fun machineProcJobs(serverId: ServerId, machineId: String): HomeNetworkResponse =
         error("machineProcJobs is not implemented")
 
+    suspend fun machineProcJobs(
+        serverId: ServerId,
+        machineId: String,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = machineProcJobs(serverId, machineId)
+
     /**
      * `POST servers/:id/machines/:machineId/proc-jobs/stop` with `{ agentId, name }` (slock #15595).
      */
@@ -280,8 +286,15 @@ internal class RaftComputersNetworkApi(
         )
 
     override suspend fun machineProcJobs(serverId: ServerId, machineId: String): HomeNetworkResponse =
+        machineProcJobs(serverId, machineId, DataRequestPriority.Visible)
+
+    override suspend fun machineProcJobs(
+        serverId: ServerId,
+        machineId: String,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
         networkClient.request(
-            priority = DataRequestPriority.Visible,
+            priority = priority,
             path = "servers/${serverId.value}/machines/${machineId.trim()}/proc-jobs",
             serverIdOverride = serverId
         )
@@ -930,13 +943,14 @@ internal class RaftComputersApiClient(
      */
     suspend fun machineProcJobs(
         serverId: ServerId,
-        machineId: String
+        machineId: String,
+        priority: DataRequestPriority = DataRequestPriority.Visible
     ): DataResult<ComputerProcJobsRead> {
         val cleanMachineId = machineId.trim()
         if (cleanMachineId.isBlank()) {
             return DataResult.Error(ScreenError("computer_proc_jobs_machine_required", retryable = false))
         }
-        val response = transport.machineProcJobs(serverId, cleanMachineId)
+        val response = transport.machineProcJobs(serverId, cleanMachineId, priority)
         if (!response.isSuccessful) return response.toComputersDataError()
         val payload = response.bodyText?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError("computer_proc_jobs_contract_mismatch", retryable = true))
@@ -945,13 +959,20 @@ internal class RaftComputersApiClient(
                 ?: return DataResult.Error(ScreenError("computer_proc_jobs_contract_mismatch", retryable = true))
         return when (wire.status.trim()) {
             "unknown" -> DataResult.Content(ComputerProcJobsRead.Unknown)
-            "known" ->
-                DataResult.Content(
-                    ComputerProcJobsRead.Known(
-                        reportedAt = wire.reportedAt.orEmpty().trim(),
-                        jobs = wire.jobs.orEmpty().mapNotNull { it.toDomainOrNull() }
+            "known" -> {
+                val rawJobs = wire.jobs.orEmpty()
+                val parsedJobs = rawJobs.mapNotNull { it.toDomainOrNull() }
+                if (rawJobs.isNotEmpty() && parsedJobs.isEmpty()) {
+                    DataResult.Error(ScreenError("computer_proc_jobs_contract_mismatch", retryable = true))
+                } else {
+                    DataResult.Content(
+                        ComputerProcJobsRead.Known(
+                            reportedAt = wire.reportedAt.orEmpty().trim(),
+                            jobs = parsedJobs
+                        )
                     )
-                )
+                }
+            }
             else -> DataResult.Error(ScreenError("computer_proc_jobs_contract_mismatch", retryable = true))
         }
     }
@@ -973,6 +994,7 @@ internal class RaftComputersApiClient(
         }
         val body = buildComputerProcJobStopBody(agentId = cleanAgentId, name = cleanName)
         val response = transport.stopMachineProcJob(serverId, cleanMachineId, body)
+        val traceId = response.traceId?.trim()?.takeIf { it.isNotBlank() }
         val payload = response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText?.takeIf { it.isNotBlank() }
         if (!response.isSuccessful) {
             val errCode =
@@ -982,7 +1004,7 @@ internal class RaftComputersApiClient(
             return if (errCode == "computer_upgrade_required") {
                 ComputerProcJobStopResult.UpgradeRequired
             } else {
-                ComputerProcJobStopResult.Error(errCode)
+                ComputerProcJobStopResult.Error(code = errCode, traceId = traceId)
             }
         }
         val wire =
@@ -997,8 +1019,8 @@ internal class RaftComputersApiClient(
                 "failed" -> ComputerProcJobStopOutcome.Failed
                 else -> null
             }
-        return outcome?.let(ComputerProcJobStopResult::Completed)
-            ?: ComputerProcJobStopResult.Error("computer_proc_job_stop_contract_mismatch")
+        return outcome?.let { ComputerProcJobStopResult.Completed(it, traceId = traceId) }
+            ?: ComputerProcJobStopResult.Error(code = "computer_proc_job_stop_contract_mismatch", traceId = traceId)
     }
 }
 
@@ -1043,9 +1065,9 @@ enum class ComputerProcJobStopOutcome {
 }
 
 sealed interface ComputerProcJobStopResult {
-    data class Completed(val outcome: ComputerProcJobStopOutcome) : ComputerProcJobStopResult
+    data class Completed(val outcome: ComputerProcJobStopOutcome, val traceId: String? = null) : ComputerProcJobStopResult
     data object UpgradeRequired : ComputerProcJobStopResult
-    data class Error(val code: String? = null) : ComputerProcJobStopResult
+    data class Error(val code: String? = null, val traceId: String? = null) : ComputerProcJobStopResult
 }
 
 internal data class ComputerListSummary(
@@ -2076,7 +2098,15 @@ private data class ComputerProcJobDto(
             when (state.trim()) {
                 "running" -> ComputerProcJobState.Running
                 "exited" -> ComputerProcJobState.Exited
-                else -> return null
+                else -> {
+                    reportUnknownTypeDropped(
+                        source = "machines.proc_jobs",
+                        field = "state",
+                        value = state,
+                        fallback = "drop"
+                    )
+                    return null
+                }
             }
         return ComputerProcJobSnapshot(
             agentId = cleanAgentId,
@@ -2097,10 +2127,11 @@ private data class ComputerProcJobDto(
 @Serializable
 private data class ComputerProcJobStopResponseDto(val outcome: String? = null)
 
+@Serializable
+private data class ComputerProcJobStopBody(val agentId: String, val name: String)
+
 internal fun buildComputerProcJobStopBody(agentId: String, name: String): String =
     computersApiJson.encodeToString(
-        buildJsonObject {
-            put("agentId", agentId)
-            put("name", name)
-        }
+        ComputerProcJobStopBody.serializer(),
+        ComputerProcJobStopBody(agentId = agentId, name = name)
     )
