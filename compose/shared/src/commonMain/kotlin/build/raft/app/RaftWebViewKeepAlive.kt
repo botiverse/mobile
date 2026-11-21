@@ -32,6 +32,22 @@ internal expect fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
 /** Destroys every kept WebView (sign-out, an account or server switch, a 403/404). */
 internal expect fun raftWebViewKeepAliveClear()
 
+/** Test-only hook notified when [raftClearWebViewAuthStorage] runs. */
+@kotlin.concurrent.Volatile
+internal var raftWebViewAuthStorageClearHookForTest: (() -> Unit)? = null
+
+/**
+ * Clears persistent WebView storage (localStorage, cookies, cached site data) and drops any kept
+ * or spare WebViews so an account's web access token does not outlive sign-out or leak into the
+ * in-app browser or a subsequent account (#proj-mobile:#204).
+ */
+internal fun raftClearWebViewAuthStorage() {
+    raftWebViewAuthStorageClearHookForTest?.invoke()
+    raftClearPlatformWebViewAuthStorage()
+}
+
+internal expect fun raftClearPlatformWebViewAuthStorage()
+
 /**
  * Creates and keeps a WebView for [config] (which has a [RaftWebViewConfig.keepAliveKey]) ahead
  * of its page, unless one is kept under that key already. No-op where keep-alive isn't supported.

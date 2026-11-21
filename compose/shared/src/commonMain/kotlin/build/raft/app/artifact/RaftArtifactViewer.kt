@@ -651,6 +651,7 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
     webOrigin: String,
     artifactId: String,
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
+    blockAppStoreBilling: Boolean = raftPlatformFollowsAppStoreBillingRules(),
 ): RaftArtifactViewerBlockedTarget {
     if (url.trim().startsWith("blob:", ignoreCase = true)) return RaftArtifactViewerBlockedTarget.Download
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
@@ -673,7 +674,14 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
     val path = url.substringAfter("://").let { rest -> rest.indexOf('/').let { if (it < 0) "/" else rest.substring(it) } }
     if (path.startsWith("/api/")) return RaftArtifactViewerBlockedTarget.Download
     fun sameOriginWebTarget(targetUrl: String): RaftArtifactViewerBlockedTarget =
-        if (raftAuthenticatedOwnWebPageUrlOrNull(targetUrl, webOrigin, embedHostShell = false) != null) {
+        if (
+            raftAuthenticatedOwnWebPageUrlOrNull(
+                rawUrl = targetUrl,
+                activeWebBaseUrl = webOrigin,
+                embedHostShell = false,
+                blockAppStoreBilling = blockAppStoreBilling,
+            ) != null
+        ) {
             RaftArtifactViewerBlockedTarget.RaftWebPage(targetUrl)
         } else {
             RaftArtifactViewerBlockedTarget.SystemBrowser(targetUrl)
@@ -707,8 +715,21 @@ internal fun raftArtifactViewerRoutesDocumentAsLink(
     webOrigin: String,
     artifactId: String,
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
-): Boolean =
-    when (val routed = raftArtifactViewerBlockedNavigationTarget(url, webOrigin, artifactId, appHosts)) {
+    blockAppStoreBilling: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+): Boolean {
+    if (blockAppStoreBilling && raftUrlIsAppStoreRestrictedPurchaseUrl(url, webOrigin, appHosts)) {
+        return true
+    }
+    return when (
+        val routed =
+            raftArtifactViewerBlockedNavigationTarget(
+                url = url,
+                webOrigin = webOrigin,
+                artifactId = artifactId,
+                appHosts = appHosts,
+                blockAppStoreBilling = blockAppStoreBilling,
+            )
+    ) {
         is RaftArtifactViewerBlockedTarget.OpenMessage,
         is RaftArtifactViewerBlockedTarget.OpenArtifact -> true
         is RaftArtifactViewerBlockedTarget.RaftWebPage ->
@@ -724,6 +745,7 @@ internal fun raftArtifactViewerRoutesDocumentAsLink(
                 !raftArtifactViewerHasEmbedContract(url)
         RaftArtifactViewerBlockedTarget.Download -> false
     }
+}
 
 /**
  * Where a top-level address of the viewer's WebView takes the viewer. Under the embed contract the

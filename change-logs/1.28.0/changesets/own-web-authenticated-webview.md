@@ -11,12 +11,12 @@ rollout: full
 
 ## zh-CN
 
-在应用内打开 Raft 网页（如消息与 Artifact 中的网页链接、账号登录与安全设置、动作卡片「在网页中打开」、Artifact 回退页，以及 Android / 桌面端的升级引导页）时，现在直接在带登录态的应用内页面加载，无需重新登录，并可在顶栏一键转到外部浏览器打开。
+在 Android 和桌面端打开应用内暂无原生页面的 Raft 网页（如消息与 Artifact 中的网页链接、动作卡片「在网页中打开」、Artifact 回退页以及升级引导页）时，现在直接在带登录态的应用内页面加载，无需重新登录，并可在顶栏一键转到外部浏览器打开；iOS 上 Artifact 回退页同步支持登录态打开，同时退出登录会清理持久化 WebView 登录态。
 
 ## en
 
-Opening Raft web pages from the app—including Raft web links in messages and Artifacts, account login & security settings, action card web links, Artifact fallbacks, and upgrade pages on Android and desktop—now opens inside an authenticated in-app view without asking you to sign in again, with a header button to open in your default browser whenever needed.
+Opening Raft web pages without a native screen on Android and desktop—including Raft web links in messages and Artifacts, action card web links, Artifact fallbacks, and upgrade pages—now loads inside an authenticated in-app view without asking you to sign in again, with a header button to open in your default browser whenever needed; on iOS, Artifact fallback pages open authenticated in-app, and signing out clears persistent WebView auth storage.
 
 ## ja
 
-アプリ内から Raft のウェブページ（メッセージや Artifact 内のリンク、アカウントのログインとセキュリティ設定、アクションカードのウェブリンク、Artifact のフォールバックページ、および Android・デスクトップのアップグレード案内）を開く際、再ログイン不要の認証済みアプリ内画面で表示されるようになり、ヘッダーからいつでも既定のブラウザで開けるようになりました。
+Android およびデスクトップでネイティブ画面のない Raft ウェブページ（メッセージや Artifact 内のリンク、アクションカードのウェブリンク、Artifact のフォールバックページ、アップグレード案内）を開く際、再ログイン不要の認証済みアプリ内画面で表示されるようになり、ヘッダーからいつでも既定のブラウザで開けます。iOS でも Artifact のフォールバックページが認証済みで開かれ、サインアウト時に永続的な WebView 認証ストレージをクリアします。

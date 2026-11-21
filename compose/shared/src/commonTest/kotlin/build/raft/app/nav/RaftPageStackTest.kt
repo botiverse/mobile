@@ -168,4 +168,19 @@ class RaftPageStackTest {
             page.args.pageData,
         )
     }
+
+    @Test fun `open logs redact web URL paths past first segment and query`() {
+        val logs = mutableListOf<String>()
+        val loggedStack = RaftPageStack(log = { logs += it })
+        loggedStack.open(
+            build.raft.app.SETTINGS_WEB_VIEW_PAGE,
+            data(
+                build.raft.app.SETTINGS_WEB_VIEW_SURFACE to "web-page",
+                build.raft.app.SETTINGS_WEB_VIEW_TARGET_URL to "https://app.raft.build/integration-invites/secret-token-xyz?ticket=abc#frag",
+            ),
+            from = loggedStack.pages.single(),
+        )
+        assertTrue(logs.any { "https://app.raft.build/integration-invites" in it }, "expected redacted origin+first segment in $logs")
+        assertTrue(logs.none { "secret-token-xyz" in it || "ticket=abc" in it }, "secret path/query leaked into logs: $logs")
+    }
 }

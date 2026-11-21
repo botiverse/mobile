@@ -172,7 +172,28 @@ class RaftArtifactViewerCacheTest {
                 "javascript:alert(1)" to RaftArtifactViewerBlockedTarget.Ignore,
                 "intent://x#Intent;end" to RaftArtifactViewerBlockedTarget.Ignore,
             )
-        for ((url, expected) in cases) assertEquals(expected, raftArtifactViewerBlockedNavigationTarget(url, web, target.id), url)
+        for ((url, expected) in cases) {
+            assertEquals(
+                expected,
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, blockAppStoreBilling = false),
+                url,
+            )
+        }
+        // On iOS (App Store rules), general own-origin pages do not open in the new authenticated WebView.
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme"),
+            raftArtifactViewerBlockedNavigationTarget("$web/s/acme", web, target.id, blockAppStoreBilling = true),
+        )
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser("$web/servers/srv-1/upgrade"),
+            raftArtifactViewerBlockedNavigationTarget("$web/servers/srv-1/upgrade", web, target.id, blockAppStoreBilling = true),
+        )
+        assertTrue(
+            raftArtifactViewerRoutesDocumentAsLink("$web/servers/srv-1/upgrade", web, target.id, emptySet(), blockAppStoreBilling = true),
+        )
+        assertTrue(
+            raftArtifactViewerRoutesDocumentAsLink("https://checkout.stripe.com/c/pay/cs_1", web, target.id, emptySet(), blockAppStoreBilling = true),
+        )
     }
 
     @Test
@@ -209,11 +230,20 @@ class RaftArtifactViewerCacheTest {
             raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/${target.id}", web, target.id, emptySet()),
         )
         // Same-origin Raft pages without a native screen (including the web's task panel) open in
-        // the authenticated in-app WebView; cross-origin Raft pages stay in the system browser so
-        // tokens never leave the active environment.
+        // the authenticated in-app WebView on Android/Desktop; cross-origin Raft pages stay in the
+        // system browser so tokens never leave the active environment.
         for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1")) {
-            assertEquals(RaftArtifactViewerBlockedTarget.RaftWebPage(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
-            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
+            assertEquals(
+                RaftArtifactViewerBlockedTarget.RaftWebPage(url),
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet(), blockAppStoreBilling = false),
+                url,
+            )
+            assertEquals(
+                RaftArtifactViewerBlockedTarget.SystemBrowser(url),
+                raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet(), blockAppStoreBilling = true),
+                "iOS keeps existing behavior for $url",
+            )
+            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet(), blockAppStoreBilling = false), url)
         }
         val otherOriginWebPage = "https://app.raft.build/s/acme/agent/a1"
         assertEquals(

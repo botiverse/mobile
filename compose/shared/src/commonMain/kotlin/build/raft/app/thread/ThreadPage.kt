@@ -3929,7 +3929,16 @@ private fun SharedThreadRouteContentContent(
                 loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
                 openInBrowser = { url ->
                     bridge.log("thread_action_card_open_in_web")
-                    if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl)) {
+                    val activeWebUrl = sharedStores.apiEnvironmentStore.current().webUrl
+                    if (
+                        raftPlatformFollowsAppStoreBillingRules() &&
+                        raftUrlIsAppStoreRestrictedPurchaseUrl(url, activeWebUrl)
+                    ) {
+                        bridge.logWarn("thread_action_card_appstore_purchase_blocked url=${raftOwnWebUrlForLog(url)}")
+                        if (raftUrlIsOwnBillingPath(url, activeWebUrl)) {
+                            pager.openSettingsBillingPage(storeScope)
+                        }
+                    } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
                         bridge.hostCapabilities.openUrlInBrowser(url)
                     }
                 },

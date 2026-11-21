@@ -182,6 +182,7 @@ internal class RaftIosSandboxWebView(
     private var revealTimer: NSTimer? = null
     /** Host-initiated [loadCurrentSrc] URL awaiting its own [decideNavigationPolicy] callback (not a page link). */
     private var pendingHostLoadUrl: String? = null
+    private var diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT
 
     private val delegate = RaftIosWebViewDelegate(this)
     private val scriptMessageHandler = RaftIosWebViewScriptMessageHandler(this)
@@ -240,6 +241,7 @@ internal class RaftIosSandboxWebView(
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
+        diagnosticsSurface = config.diagnosticsSurface
         showsFormAccessoryBar = config.showsFormAccessoryBar
         (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
         configured = true
@@ -542,7 +544,7 @@ internal class RaftIosSandboxWebView(
         requestedAt = TimeSource.Monotonic.markNow()
         diagnosticsInfo(
             "load_src spare=$usingSpare sinceAttachMs=${attachedAt.elapsedNow().inWholeMilliseconds} " +
-                "url=${raftWebViewUrlForLog(target)}"
+                "url=${formatUrlForLog(target)}"
         )
         pendingHostLoadUrl = url.absoluteString ?: target
         val cachePolicy = if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
@@ -649,7 +651,7 @@ internal class RaftIosSandboxWebView(
             val isPendingHostLoad = pendingHostLoadUrl != null && pendingHostLoadUrl == targetString
             if (isPendingHostLoad) pendingHostLoadUrl = null
             if (!isPendingHostLoad && events.routesMainFrameNavigation?.invoke(targetString) == true) {
-                diagnosticsInfo("navigation_routed_as_link url=${raftWebViewUrlForLog(targetString)}")
+                diagnosticsInfo("navigation_routed_as_link url=${formatUrlForLog(targetString)}")
                 handleBlockedMainFrameNavigation(targetString)
                 return false
             }
@@ -664,7 +666,7 @@ internal class RaftIosSandboxWebView(
         if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         loadStartedAt = TimeSource.Monotonic.markNow()
-        diagnosticsInfo("page_started url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_started url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
         currentLoading = true
@@ -683,7 +685,7 @@ internal class RaftIosSandboxWebView(
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
         // Android's name for the first paint of the new document; WebKit's nearest is the commit.
-        diagnosticsInfo("page_commit_visible url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_commit_visible url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         if (!pageRevealed && revealTimer == null) {
             // Not shown yet: what the page paints right after its commit may not be its theme yet.
             revealTimer = NSTimer.scheduledTimerWithTimeInterval(RevealCapSeconds, repeats = false) { _ ->
@@ -715,7 +717,7 @@ internal class RaftIosSandboxWebView(
         currentTitle = source.title ?: ""
         currentProgress = 100
         currentLoading = false
-        diagnosticsInfo("page_finished url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsInfo("page_finished url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
         notifyLoadSuccess(currentURL)
@@ -763,7 +765,7 @@ internal class RaftIosSandboxWebView(
         }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
-        diagnosticsWarn("page_error code=${error.code} url=${raftWebViewUrlForLog(currentURL)} ${loadElapsedField()}")
+        diagnosticsWarn("page_error code=${error.code} url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         notifyNavigationState(force = false)
         notifyLoadFailure(error.localizedDescription)
     }
@@ -782,7 +784,7 @@ internal class RaftIosSandboxWebView(
         // which the viewer would read as leaving its Artifact), if it may load here.
         val restoreUrl =
             raftWebViewRendererGoneRestoreUrl(src, currentURL, ::rendererGoneRestoreAllows)
-        diagnosticsInfo("content_process_gone_restore url=${raftWebViewUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
+        diagnosticsInfo("content_process_gone_restore url=${formatUrlForLog(restoreUrl)} shown=${restoreUrl != src}")
         rebuildWebView(restoreUrl)
         notifyNavigationState(force = true)
     }
@@ -853,9 +855,16 @@ internal class RaftIosSandboxWebView(
         if (lastSuccessfulURL == url) return
         lastSuccessfulURL = url
         lastLoadFailureKey = ""
-        diagnosticsInfo("page_success phase=finished url=${raftWebViewUrlForLog(url)} ${loadElapsedField()}")
+        diagnosticsInfo("page_success phase=finished url=${formatUrlForLog(url)} ${loadElapsedField()}")
         events.onLoadSuccess()
     }
+
+    private fun formatUrlForLog(url: String): String =
+        if (diagnosticsSurface == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+            raftOwnWebUrlForLog(url)
+        } else {
+            raftWebViewUrlForLog(url)
+        }
 
     private fun notifyLoadFailure(reason: String) {
         val failureKey = "$currentURL|$reason"
