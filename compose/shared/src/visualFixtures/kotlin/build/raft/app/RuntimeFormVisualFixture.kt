@@ -45,7 +45,8 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * pageData `caseId`: an id from visual-cases.v3.json. A case with a `state` file sets its
  * `values` over the form's initial values, shows its `retryingSourceIds` as being re-requested
- * and, with `showValidationErrors`, every validation error (web `showValidationErrors`).
+ * and, with `showValidationErrors`, every validation error (web `showValidationErrors`). A case
+ * with a `picker` is drawn closed here too; the capture opens it ([runtimeFormVisualPicker]).
  */
 @Page("compose_runtime_form_visual", supportInLocal = true)
 internal class ComposeRuntimeFormVisualPage : BasePager() {
@@ -69,11 +70,37 @@ private val runtimeFormVisualJson = Json { ignoreUnknownKeys = true }
 private fun runtimeFormVisualFixture(name: String): String =
     RUNTIME_FORM_VISUAL_FIXTURES[name] ?: error("runtime form visual fixture $name is not synced (run scripts/runtime_form/sync_v2_fixtures.py)")
 
-private fun runtimeFormVisualCase(caseId: String): RuntimeFormVisualCase {
+private fun runtimeFormVisualEntry(caseId: String): JsonObject {
     val cases = runtimeFormVisualJson.parseToJsonElement(runtimeFormVisualFixture("visual-cases.v3.json")).jsonObject["cases"]!!.jsonArray
-    val entry =
-        cases.map { it.jsonObject }.firstOrNull { it["caseId"]?.jsonPrimitive?.contentOrNull == caseId }
-            ?: error("unknown runtime form visual case: $caseId")
+    return cases.map { it.jsonObject }.firstOrNull { it["caseId"]?.jsonPrimitive?.contentOrNull == caseId }
+        ?: error("unknown runtime form visual case: $caseId")
+}
+
+/**
+ * A picker case's choice field (visual-cases.v3.json `picker`): its key, the label its trigger is
+ * announced with ("Provider, Required, DeepSeek"), and the text typed into the open list's search
+ * (null: the list is captured unfiltered).
+ */
+data class RuntimeFormVisualPicker(val fieldKey: String, val fieldLabel: String, val query: String?)
+
+/**
+ * The `picker` of runtime form visual case [caseId], or null for a case that captures the form at
+ * rest. The page draws the form closed; the emulator capture (KmpVisualScreenshotCaptureTest)
+ * opens the field with a tap and types the query into the sheet's search row, as web's capture
+ * (slock react-provider.spec.ts openRuntimeFormPicker) clicks it and types into the combobox.
+ */
+fun runtimeFormVisualPicker(caseId: String): RuntimeFormVisualPicker? {
+    val entry = runtimeFormVisualEntry(caseId)
+    val picker = entry["picker"] as? JsonObject ?: return null
+    val fieldKey = picker["field"]!!.jsonPrimitive.content
+    val formFile = entry["form"]!!.jsonPrimitive.content
+    val form = parseRuntimeFormV2(runtimeFormVisualFixture(formFile)) ?: error("$formFile is not a runtime form")
+    val field = form.fields.firstOrNull { it.key == fieldKey } ?: error("$caseId: $formFile has no field $fieldKey")
+    return RuntimeFormVisualPicker(fieldKey, field.label, (picker["query"] as? JsonPrimitive)?.contentOrNull)
+}
+
+private fun runtimeFormVisualCase(caseId: String): RuntimeFormVisualCase {
+    val entry = runtimeFormVisualEntry(caseId)
     val formFile = entry["form"]!!.jsonPrimitive.content
     val form = parseRuntimeFormV2(runtimeFormVisualFixture(formFile)) ?: error("$formFile is not a runtime form")
     val sources =

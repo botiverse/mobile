@@ -20,6 +20,7 @@ import android.view.WindowInsets
 import android.view.inspector.WindowInspector
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import build.raft.app.runtimeFormVisualPicker
 import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -3575,6 +3576,153 @@ class KmpVisualScreenshotCaptureTest {
             pageData = JSONObject().put("caseId", "components.runtime-form.create.pi"),
             crop = FULL_VIEWPORT_CROP
         )
+    }
+
+    // Runtime form picker cases (visual-cases.v3.json `picker`): the form at rest, then the capture
+    // opens the named choice field and types the query into its list's search (one screen, not full
+    // length: slock sharedCases has no capture.fullLength for them).
+    @Test
+    fun captureRuntimeFormPickerBuiltinProviderOpen() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.picker.builtin.provider-open",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-open"),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") }
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormPickerBuiltinProviderSearch() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.picker.builtin.provider-search",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-search"),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") }
+        )
+    }
+
+    /**
+     * Opens the field of [caseId]'s picker (visual-cases.v3.json `picker`, read through
+     * [runtimeFormVisualPicker]) as a person does: a tap (accessibility click) on the trigger
+     * announced as "<label>[, Required], <value>" (RaftSelectTrigger), then waits for the window the
+     * list opens in (RaftCombobox: over ten options, a sheet with a search row) to take input focus.
+     * A query is typed into that window's search row (a tap, then `input text`). Web's capture
+     * does the same (slock react-provider.spec.ts
+     * openRuntimeFormPicker: a click, then the query typed into the combobox).
+     */
+    /** Logs whether this app holds Play services' FontsProvider (see RaftCmpActivity.onCmpFirstFrame). */
+    private fun logRuntimeFormPickerFontsProvider(caseId: String, step: String) {
+        // The app process's own record lists the providers it is connected to (a provider dump
+        // filtered by name also prints unrelated records, so it cannot say who holds this one).
+        val process = readShellCommand("dumpsys activity processes build.raft.app.connectedtest")
+        val held = process.lineSequence().any { "fonts.provider.FontsProvider" in it }
+        Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app ($step)=$held")
+    }
+
+    private fun openRuntimeFormPicker(caseId: String) {
+        val picker = requireNotNull(runtimeFormVisualPicker(caseId)) { "$caseId has no picker in visual-cases.v3.json" }
+        awaitFixtureIsActiveInputWindow("the ${picker.fieldLabel} field")
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun descendants(root: android.view.accessibility.AccessibilityNodeInfo?): List<android.view.accessibility.AccessibilityNodeInfo> {
+            val nodes = mutableListOf<android.view.accessibility.AccessibilityNodeInfo>()
+            fun visit(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || depth > ACCESSIBILITY_TREE_MAX_DEPTH) return
+                nodes += node
+                for (index in 0 until node.childCount) visit(node.getChild(index), depth + 1)
+            }
+            visit(root, 0)
+            return nodes
+        }
+        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
+        var formWindowId = -1
+        var trigger: android.view.accessibility.AccessibilityNodeInfo? = null
+        var seen = emptyList<String>()
+        while (trigger == null) {
+            val root = uiAutomation.rootInActiveWindow
+            formWindowId = root?.windowId ?: -1
+            val nodes = descendants(root)
+            // The trigger, or the node carrying its name, then its clickable self or ancestor. The
+            // drop-down role (a Spinner) wins over the field's label row, which also starts with the label.
+            trigger =
+                nodes
+                    .filter { node ->
+                        val name = (node.contentDescription ?: node.text)?.toString()?.trim().orEmpty()
+                        name.startsWith("${picker.fieldLabel}, ")
+                    }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isClickable } }
+                    .sortedByDescending { it.className?.toString()?.endsWith("Spinner") == true }
+                    .firstOrNull()
+                    ?: nodes.firstOrNull { it.isClickable && it.className?.toString()?.endsWith("Spinner") == true }
+            seen =
+                nodes
+                    .mapNotNull { node ->
+                        val name = (node.contentDescription ?: node.text)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                        if (name == null && !node.isClickable) null else "${node.className?.toString()?.substringAfterLast('.')}${if (node.isClickable) "*" else ""}:${name?.take(40)}"
+                    }
+                    .take(40)
+            if (trigger != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(trigger) {
+            "$caseId: no field trigger announced as \"${picker.fieldLabel}, …\"; window=$formWindowId " +
+                "nodes (class, * = clickable: name)=${seen.joinToString(" | ")}"
+        }
+        if (!trigger.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+            // As tapComposeNodeWithText: a tap at the trigger's centre.
+            val bounds = android.graphics.Rect()
+            trigger.getBoundsInScreen(bounds)
+            require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} trigger has empty bounds" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
+        }
+        Log.i(VISUAL_LOG_TAG, "$caseId picker: opened ${picker.fieldLabel}")
+        logRuntimeFormPickerFontsProvider(caseId, "opened")
+        var listRoot: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (listRoot == null) {
+            listRoot =
+                uiAutomation.rootInActiveWindow?.takeIf { it.windowId != formWindowId }
+                    ?: uiAutomation.windows
+                        .mapNotNull { it.root }
+                        .lastOrNull { it.windowId != formWindowId && it.packageName == "build.raft.app.connectedtest" }
+            if (listRoot != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(listRoot) { "$caseId: tapping ${picker.fieldLabel} opened no list window" }
+        val query = picker.query
+        if (query != null) {
+            val search =
+                requireNotNull(descendants(listRoot).firstOrNull { it.isEditable }) {
+                    "$caseId: the ${picker.fieldLabel} list has no search row to type \"$query\" into"
+                }
+            // A tap on the search row (it takes focus), then the text as key events, as a person types it.
+            val bounds = android.graphics.Rect()
+            search.getBoundsInScreen(bounds)
+            require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} search row has empty bounds" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: tapping the search row at $bounds")
+            tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
+            Thread.sleep(300)
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: typing \"$query\"")
+            require(query.all { it.isLetterOrDigit() || it == '-' }) { "$caseId: query \"$query\" needs escaping for input text" }
+            runShellCommand("input text $query")
+            var shown: String? = null
+            while (SystemClock.uptimeMillis() < deadline + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS) {
+                val root = uiAutomation.rootInActiveWindow ?: listRoot
+                shown = descendants(root).firstOrNull { it.isEditable }?.text?.toString()
+                if (shown == query) break
+                Thread.sleep(250)
+            }
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: search row shows \"$shown\"")
+            // The capture app must not hold Play services' FontsProvider: when Play services restarts
+            // itself, ActivityManager kills every process holding it (run 44924992344). Visual pages
+            // skip the WebView warmup for that (RaftCmpActivity.onCmpFirstFrame).
+            logRuntimeFormPickerFontsProvider(caseId, "after typing")
+            require(shown == query) { "$caseId: the ${picker.fieldLabel} search row shows \"$shown\" after typing \"$query\"" }
+        }
+        // The sheet slides in (RaftSheetWindow); the stable-frame capture waits for the rest.
+        Thread.sleep(800)
     }
 
     private fun captureMembersCreateAgentStateCase(
