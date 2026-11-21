@@ -501,6 +501,148 @@ class RaftAttachmentUploadTelemetryTest {
         )
     }
 
+    /** `cancel_reason`: the canceller's reason, on every `cancelled` event and on no other. */
+    @Test
+    fun aCancelSaysWhyWithEachReason() {
+        RaftAttachmentUploadCancelReason.entries.forEach { reason ->
+            val emitted = mutableListOf<Emitted>()
+            val logs = mutableListOf<String>()
+            val upload = attempt(logs = logs, emitted = emitted)
+
+            upload.reportCancellation(true, RaftUploadCancelled(reason, site = "test_site"))
+
+            val attrs = emitted.single().attrs
+            assertEquals("cancelled", attrs.text("outcome"), "$reason")
+            assertEquals(reason.wire, attrs.text("cancel_reason"), "$reason")
+            assertNull(attrs["error_code"], "$reason")
+            if (reason == RaftAttachmentUploadCancelReason.Other) {
+                assertEquals(2, logs.size, "$reason: logs=$logs")
+                assertEquals(
+                    "thread_composer_attachment_upload_cancel_other site=test_site traceId=${upload.recorder.traceIds.traceId}",
+                    logs[1],
+                )
+            } else {
+                assertEquals(1, logs.size, "$reason: only the event's own line, logs=$logs")
+            }
+            assertTrue(logs.first().contains("cancel_reason=${reason.wire}"), logs.first())
+        }
+        assertEquals(
+            listOf("user_removed", "draft_sent", "draft_cleared", "session_ended", "other"),
+            RaftAttachmentUploadCancelReason.entries.map { it.wire },
+        )
+    }
+
+    @Test
+    fun cancelReasonIsNeverOnAnOkErrorOrTimeout() {
+        val reason = RaftAttachmentUploadCancelReason.UserRemoved.wire
+        val notCancelled =
+            listOf(
+                RaftAttachmentUploadFinished(route = null, durationMs = 40L, cancelReason = reason),
+                RaftAttachmentUploadFinished(route = null, errorCode = "http_500", durationMs = 40L, cancelReason = reason),
+                RaftAttachmentUploadFinished(route = null, errorCode = "network_timeout", durationMs = 40L, cancelReason = reason),
+            )
+        assertEquals(
+            listOf("ok", "error", "timeout"),
+            notCancelled.map { finished -> raftAttachmentUploadFinishedAttrs(finished).text("outcome") },
+        )
+        notCancelled.forEach { finished -> assertNull(raftAttachmentUploadFinishedAttrs(finished)["cancel_reason"], "$finished") }
+        // A cancel always has one: `other` when nobody said why.
+        assertEquals("other", raftAttachmentUploadFinishedAttrs(RaftAttachmentUploadFinished(route = null, cancelled = true, durationMs = 40L)).text("cancel_reason"))
+
+        // Through the attempt: a result that arrived before the cancel stands, without a reason; a
+        // cancellation from below is an error, without a reason; neither writes the `other` line.
+        val emitted = mutableListOf<Emitted>()
+        val logs = mutableListOf<String>()
+        attempt(logs = logs, emitted = emitted).apply {
+            settle(DataResult.Content(Unit))
+            reportCancellation(true, RaftUploadCancelled(RaftAttachmentUploadCancelReason.DraftSent))
+        }
+        attempt(logs = logs, emitted = emitted).apply {
+            settle(DataResult.Error(ScreenError(code = "http_503")))
+            reportCancellation(true, RaftUploadCancelled(RaftAttachmentUploadCancelReason.SessionEnded))
+        }
+        attempt(logs = logs, emitted = emitted)
+            .reportCancellation(false, RaftUploadCancelled(RaftAttachmentUploadCancelReason.UserRemoved))
+        attempt(logs = logs, emitted = emitted).report(failureCode = "attachment_upload_failed")
+        assertEquals(listOf("ok", "error", "error", "error"), emitted.map { it.attrs.text("outcome") })
+        emitted.forEach { assertNull(it.attrs["cancel_reason"], "${it.attrs}") }
+        assertEquals(4, logs.size, "logs=$logs")
+        assertTrue(logs.none { "cancel_reason" in it || "cancel_other" in it }, "logs=$logs")
+    }
+
+    @Test
+    fun aCancelNobodyExplainedIsOtherWithOneLineSayingWhereItWasSeen() {
+        // The job was cancelled with no reason attached (its scope, for example).
+        val emitted = mutableListOf<Emitted>()
+        val logs = mutableListOf<String>()
+        val untagged = attempt(logs = logs, emitted = emitted)
+        untagged.reportCancellation(true, IllegalStateException("not a reason"), null)
+        assertEquals("other", emitted.single().attrs.text("cancel_reason"))
+        assertEquals(
+            listOf("thread_composer_attachment_upload_cancel_other site=untagged traceId=${untagged.recorder.traceIds.traceId}"),
+            logs.drop(1),
+        )
+
+        // The upload itself returned the `cancelled` code: no canceller.
+        val resultEmitted = mutableListOf<Emitted>()
+        val resultLogs = mutableListOf<String>()
+        attempt(logs = resultLogs, emitted = resultEmitted).apply {
+            settle(DataResult.Error(ScreenError(code = "cancelled", retryable = false)))
+            report()
+        }
+        assertEquals("cancelled", resultEmitted.single().attrs.text("outcome"))
+        assertEquals("other", resultEmitted.single().attrs.text("cancel_reason"))
+        assertTrue(resultLogs[1].startsWith("thread_composer_attachment_upload_cancel_other site=upload_result "), resultLogs[1])
+
+        // A cancel site that reports `other` names itself; the line holds only the site and the trace.
+        val siteLogs = mutableListOf<String>()
+        attempt(logs = siteLogs, emitted = mutableListOf())
+            .reportCancellation(
+                true,
+                RaftUploadCancelled(RaftAttachmentUploadCancelReason.Other, RaftUploadCancelSiteOrphanRecovery),
+            )
+        assertEquals(
+            listOf("thread_composer_attachment_upload_cancel_other", "site=orphan_recovery"),
+            siteLogs[1].split(' ').take(2),
+        )
+        assertEquals(3, siteLogs[1].split(' ').size, siteLogs[1])
+    }
+
+    @Test
+    fun theReasonIsFoundOnTheCauseChainAndTheFirstOneStands() {
+        val removed = RaftUploadCancelled(RaftAttachmentUploadCancelReason.UserRemoved)
+        val sent = RaftUploadCancelled(RaftAttachmentUploadCancelReason.DraftSent)
+        // A copy of the exception (stack-trace recovery) keeps the original as its cause.
+        assertEquals(removed, raftUploadCancelledIn(IllegalStateException("copy", removed)))
+        // The exception that ended the task first, then the job's own cancellation.
+        assertEquals(removed, raftUploadCancelledIn(null, removed, sent))
+        assertEquals(sent, raftUploadCancelledIn(IllegalStateException("below"), sent))
+        assertNull(raftUploadCancelledIn())
+        assertNull(raftUploadCancelledIn(null, IllegalStateException("x", IllegalStateException("y"))))
+    }
+
+    /** However many catch blocks report a cancel, the attempt has one event and at most one `other` line. */
+    @Test
+    fun aCancelledAttemptStillEmitsExactlyOneEvent() {
+        val emitted = mutableListOf<Emitted>()
+        val logs = mutableListOf<String>()
+        attempt(logs = logs, emitted = emitted).apply {
+            reportCancellation(taskCancelled = true)
+            reportCancellation(true, RaftUploadCancelled(RaftAttachmentUploadCancelReason.UserRemoved))
+            reportCancellation(taskCancelled = false)
+            report(failureCode = "attachment_upload_failed")
+            report(cancelled = true, cancellation = RaftUploadCancelled(RaftAttachmentUploadCancelReason.DraftSent))
+        }
+        attempt(logs = logs, emitted = emitted).apply {
+            reportCancellation(true, RaftUploadCancelled(RaftAttachmentUploadCancelReason.SessionEnded))
+            reportCancellation(taskCancelled = true)
+        }
+
+        assertEquals(listOf("other", "session_ended"), emitted.map { it.attrs.text("cancel_reason") })
+        assertEquals(3, logs.size, "two events' lines and one `other` line: $logs")
+        assertEquals(1, logs.count { it.startsWith("thread_composer_attachment_upload_cancel_other ") }, "logs=$logs")
+    }
+
     /** The composer's own report: a result whose texts hold a URL, a host and a file name puts none of them in the event or its log line. */
     @Test
     fun aResultCarryingAUrlOrAFileNameLeavesNoneOfItInTheReportedEvent() {

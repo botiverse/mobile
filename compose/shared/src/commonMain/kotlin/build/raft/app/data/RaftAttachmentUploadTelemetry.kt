@@ -7,10 +7,15 @@ import build.raft.app.network.RaftUploadWireFacts
 import build.raft.app.network.newRaftTraceIds
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -28,6 +33,13 @@ import kotlinx.serialization.json.put
  * - `outcome`: `ok` / `error` / `timeout` / `cancelled`. `timeout_phase` (only with `timeout`): the
  *   web's `create` / `transfer` / `response` / `complete` / `status`. `error_code`: a bounded set
  *   ([raftAttachmentUploadErrorCode]).
+ * - `cancel_reason` (only with `cancelled`, always then; never on `ok`, `error` or `timeout`): why the
+ *   upload's task was cancelled, a closed set ([RaftAttachmentUploadCancelReason]): `user_removed`
+ *   (the user removed the tile), `draft_sent` (the draft was sent), `draft_cleared` (the draft was
+ *   cleared), `session_ended` (sign-out, or the server is no longer available) or `other` (a cancel
+ *   that carried none of these). Each place that cancels an upload says why ([RaftUploadCancelled]);
+ *   an `other` also writes one diagnostics line naming where it came from
+ *   ([raftAttachmentUploadCancelOtherLogLine]).
  * - `attempt`: 1 for the first upload of a picked file, 2 for its first Retry, and so on (counted
  *   while the conversation stays open).
  * - `size_bucket`, `elapsed_bucket`, `duration_ms`: as the web. The clock starts when the picked
@@ -60,6 +72,56 @@ internal const val RaftAttachmentUploadPhaseTransfer = "transfer"
 internal const val RaftAttachmentUploadPhaseResponse = "response"
 internal const val RaftAttachmentUploadPhaseComplete = "complete"
 internal const val RaftAttachmentUploadPhaseStatus = "status"
+
+/** The event's `cancel_reason` values. */
+internal enum class RaftAttachmentUploadCancelReason(val wire: String) {
+    /** The user removed the tile. */
+    UserRemoved("user_removed"),
+
+    /** The draft was sent. */
+    DraftSent("draft_sent"),
+
+    /** The draft was cleared without being sent. */
+    DraftCleared("draft_cleared"),
+
+    /** Sign-out, or the server is no longer available. */
+    SessionEnded("session_ended"),
+
+    /** A cancel that carried none of the above; [RaftUploadCancelled.site] says where it came from. */
+    Other("other"),
+}
+
+/** Cancel sites that report `other`: short stable identifiers for the diagnostics line, never text. */
+internal const val RaftUploadCancelSiteOrphanRecovery = "orphan_recovery"
+internal const val RaftUploadCancelSiteFailAttempts = "fail_attempts"
+/** The task's job was cancelled with no [RaftUploadCancelled] (its scope was cancelled, for example). */
+internal const val RaftUploadCancelSiteUntagged = "untagged"
+/** The upload itself returned the `cancelled` code, so no canceller was involved. */
+internal const val RaftUploadCancelSiteResult = "upload_result"
+
+/**
+ * The cause a composer upload's job is cancelled with (`job.cancel(RaftUploadCancelled(...))`), so the
+ * attempt's event can say why ([RaftAttachmentUploadAttempt.reportCancellation]). [site] names the
+ * cancelling code path; it is only written (to the device log) for [RaftAttachmentUploadCancelReason.Other].
+ */
+internal class RaftUploadCancelled(
+    val reason: RaftAttachmentUploadCancelReason,
+    val site: String = reason.wire,
+) : CancellationException("attachment upload cancelled: ${reason.wire}")
+
+/** The first [RaftUploadCancelled] in [causes] or their cause chains (a copied exception keeps the original as its cause). */
+internal fun raftUploadCancelledIn(vararg causes: Throwable?): RaftUploadCancelled? {
+    for (cause in causes) {
+        var current = cause
+        var depth = 0
+        while (current != null && depth < 8) {
+            if (current is RaftUploadCancelled) return current
+            current = current.cause
+            depth += 1
+        }
+    }
+    return null
+}
 
 /**
  * One upload attempt's timing, filled in by the network layer as the upload runs. The composer puts
@@ -214,6 +276,8 @@ internal data class RaftAttachmentUploadFinished(
     val bytesSent: Long? = null,
     val progressSpanMs: Long? = null,
     val controlTimeoutPhase: String? = null,
+    /** [RaftAttachmentUploadCancelReason.wire]; written only when the outcome is `cancelled` (`other` when null). */
+    val cancelReason: String? = null,
 )
 
 /** Web `directPutSizeBucket`. */
@@ -377,6 +441,7 @@ internal fun raftAttachmentUploadFinishedAttrs(finished: RaftAttachmentUploadFin
     return buildJsonObject {
         put("route", finished.route ?: RaftAttachmentUploadRouteUnknown)
         put("outcome", outcome)
+        if (outcome == "cancelled") put("cancel_reason", finished.cancelReason ?: RaftAttachmentUploadCancelReason.Other.wire)
         if (outcome == "timeout") timeoutPhase?.let { put("timeout_phase", it) }
         errorCode?.let { put("error_code", it) }
         put("attempt", finished.attempt.coerceAtLeast(1))
@@ -407,6 +472,10 @@ internal fun raftAttachmentUploadFinishedLogLine(attrs: JsonObject, traceId: Str
     "thread_composer_attachment_upload_finished " +
         attrs.entries.joinToString(" ") { (name, value) -> "$name=${value.toString().trim('"')}" } +
         " traceId=$traceId"
+
+/** The one extra diagnostics line of a `cancelled` event whose `cancel_reason` is `other`: where the cancel came from. */
+internal fun raftAttachmentUploadCancelOtherLogLine(site: String, traceId: String): String =
+    "thread_composer_attachment_upload_cancel_other site=$site traceId=$traceId"
 
 /**
  * One composer upload attempt's report: owns the attempt's [recorder] and emits its event exactly
@@ -447,18 +516,41 @@ internal class RaftAttachmentUploadAttempt(
     /**
      * The upload's task ended with a CancellationException and no result. [taskCancelled]: its own job
      * was cancelled, which only the tile's removal, the draft being sent or cleared, or sign-out /
-     * losing the server do; that is `cancelled`. Otherwise the exception came from below while the
-     * task was still wanted: an `error` with [RaftAttachmentUploadInterruptedCode], never `cancelled`.
+     * losing the server do; that is `cancelled`, and its `cancel_reason` is the [RaftUploadCancelled]
+     * found in [causes] (the exception that ended the task, the job's own cancellation), else `other`.
+     * Otherwise the exception came from below while the task was still wanted: an `error` with
+     * [RaftAttachmentUploadInterruptedCode], never `cancelled`.
      */
-    fun reportCancellation(taskCancelled: Boolean) {
-        if (taskCancelled) report(cancelled = true) else report(failureCode = RaftAttachmentUploadInterruptedCode)
+    fun reportCancellation(taskCancelled: Boolean, vararg causes: Throwable?) {
+        if (taskCancelled) {
+            report(cancelled = true, cancellation = raftUploadCancelledIn(*causes))
+        } else {
+            report(failureCode = RaftAttachmentUploadInterruptedCode)
+        }
+    }
+
+    /**
+     * The upload task's `catch` of [caught] (a CancellationException, no result yet), run in the
+     * task's coroutine: [reportCancellation] with whether the task's own job was cancelled, and the
+     * [RaftUploadCancelled] its canceller passed, read from [caught] and from the job itself.
+     */
+    suspend fun reportTaskCancellation(caught: CancellationException) {
+        val context = currentCoroutineContext()
+        val taskCancelled = !context.isActive
+        val jobCancellation = if (taskCancelled) runCatching { context.ensureActive() }.exceptionOrNull() else null
+        reportCancellation(taskCancelled, caught, jobCancellation)
     }
 
     /**
      * Emits the attempt's event, once. A settled upload reports its result whatever [cancelled] says;
-     * an unsettled one is `cancelled`, or failed with [failureCode]. Never throws.
+     * an unsettled one is `cancelled` (why: [cancellation], `other` without one), or failed with
+     * [failureCode]. Never throws.
      */
-    fun report(cancelled: Boolean = false, failureCode: String = "attachment_upload_failed") {
+    fun report(
+        cancelled: Boolean = false,
+        failureCode: String = "attachment_upload_failed",
+        cancellation: RaftUploadCancelled? = null,
+    ) {
         val result =
             synchronized(lock) {
                 if (reported) return
@@ -483,9 +575,18 @@ internal class RaftAttachmentUploadAttempt(
                         bytesSent = timing.bytesSent,
                         progressSpanMs = timing.progressSpanMs,
                         controlTimeoutPhase = timing.controlTimeoutPhase,
+                        cancelReason = if (result == null) cancellation?.reason?.wire else null,
                     )
                 )
             log(raftAttachmentUploadFinishedLogLine(attrs, recorder.traceIds.traceId))
+            if (attrs["cancel_reason"]?.jsonPrimitive?.content == RaftAttachmentUploadCancelReason.Other.wire) {
+                val site =
+                    when {
+                        result != null -> RaftUploadCancelSiteResult
+                        else -> cancellation?.site ?: RaftUploadCancelSiteUntagged
+                    }
+                log(raftAttachmentUploadCancelOtherLogLine(site, recorder.traceIds.traceId))
+            }
             val server = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return@runCatching
             emit(server, attrs, recorder.traceIds.traceId, recorder.traceIds.spanId)
         }

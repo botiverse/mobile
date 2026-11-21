@@ -28,6 +28,7 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -4958,7 +4959,7 @@ private fun SharedThreadRouteContentContent(
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
         // The draft went out with its ready attachments: forget its uploads (the send gate let it
         // through only with none in flight).
-        attachmentUploads.retireDraft(currentDraftState.draftKey)
+        attachmentUploads.retireDraft(currentDraftState.draftKey, RaftAttachmentUploadCancelReason.DraftSent)
         // Before the request: the canonical echo may beat the HTTP response, and it must already
         // resolve these attachment ids to the local image instead of downloading it again.
         build.raft.app.image.RaftSentAttachmentLocalImages.registry.register(

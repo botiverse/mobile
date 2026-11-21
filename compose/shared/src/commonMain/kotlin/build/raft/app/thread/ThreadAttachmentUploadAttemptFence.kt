@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftAttachmentUploadCancelReason
+import build.raft.app.data.RaftUploadCancelSiteFailAttempts
+import build.raft.app.data.RaftUploadCancelled
+import kotlinx.coroutines.CancellationException
 import kotlinx.atomicfu.locks.ReentrantLock
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.reentrantLock
@@ -388,8 +392,11 @@ internal class ThreadAttachmentUploadOrchestrator(
         }
     }
 
-    /** Retires/cancels all active attempts for exactly one draft and returns their local ids. */
-    fun retireDraft(draftKey: String?): Set<String> {
+    /**
+     * Retires/cancels all active attempts for exactly one draft and returns their local ids. [cause]
+     * (a [RaftUploadCancelled]) tells the attempts' telemetry why; without one it reports `other`.
+     */
+    fun retireDraft(draftKey: String?, cause: CancellationException? = null): Set<String> {
         val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
         val retirement =
             publicationLockFor(normalizedDraftKey).withLock {
@@ -411,7 +418,7 @@ internal class ThreadAttachmentUploadOrchestrator(
             }
                 ?: return emptySet()
         val (retiredIdentities, jobsToCancel) = retirement
-        jobsToCancel.forEach(Job::cancel)
+        jobsToCancel.forEach { job -> job.cancel(cause) }
         return retiredIdentities.mapTo(mutableSetOf()) { it.localAttachmentId }
     }
 
@@ -426,26 +433,30 @@ internal class ThreadAttachmentUploadOrchestrator(
     ): Set<String> =
         terminateAndCancel(
             draftKey = draftKey,
-            localAttachmentIds = attachmentIds
+            localAttachmentIds = attachmentIds,
+            cause = RaftUploadCancelled(RaftAttachmentUploadCancelReason.Other, RaftUploadCancelSiteFailAttempts)
         )
 
-    fun remove(localAttachmentId: String, draftKey: String?) {
-        terminateAndCancel(draftKey, setOf(localAttachmentId))
+    /** Cancels one attempt; [cause] as for [retireDraft]. */
+    fun remove(localAttachmentId: String, draftKey: String?, cause: CancellationException? = null) {
+        terminateAndCancel(draftKey, setOf(localAttachmentId), cause)
     }
 
-    fun dispose() {
+    /** Cancels every attempt and refuses new ones; [cause] as for [retireDraft]. */
+    fun dispose(cause: CancellationException? = null) {
         val draftKeys =
             synchronized(stateLock) {
                 disposed = true
                 (fence.activeAttemptTokens.keys + jobs.keys)
                     .mapTo(mutableSetOf()) { identity -> identity.draftKey }
             }
-        draftKeys.sorted().forEach(::retireDraft)
+        draftKeys.sorted().forEach { draftKey -> retireDraft(draftKey, cause) }
     }
 
     private fun terminateAndCancel(
         draftKey: String?,
-        localAttachmentIds: Set<String>
+        localAttachmentIds: Set<String>,
+        cause: CancellationException?
     ): Set<String> {
         val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
         val requestedIds =
@@ -469,7 +480,7 @@ internal class ThreadAttachmentUploadOrchestrator(
             }
                 ?: return emptySet()
         val (normalizedIds, jobsToCancel) = retirement
-        jobsToCancel.forEach(Job::cancel)
+        jobsToCancel.forEach { job -> job.cancel(cause) }
         return normalizedIds
     }
 
