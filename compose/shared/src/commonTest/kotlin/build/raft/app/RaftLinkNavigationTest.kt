@@ -71,6 +71,81 @@ class RaftLinkNavigationTest {
     }
 
     @Test
+    fun raftWebPagesPreferAuthenticatedInAppWebViewUnlessForcedExternal() {
+        val ownPage = "https://app.raft.build/s/hq/apps"
+        val otherEnvPage = "https://staging.raft.build/s/hq/apps"
+        val opened = mutableListOf<String>()
+        fun navigator(mode: LinkOpenMode) =
+            RaftLinkNavigator(
+                modeProvider = { mode },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+                openRaftWebPageInApp = { url ->
+                    if (url == ownPage) {
+                        opened += "auth_web:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, ownPage),
+            navigator(LinkOpenMode.SystemBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPage),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, ownPage),
+            navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPage),
+        )
+        // Unmatched origin falls back cleanly to browser/in-app browser.
+        navigator(LinkOpenMode.SystemBrowser).open(otherEnvPage, RaftLinkOpenIntent.RaftWebPage)
+        // Explicit external intents always bypass authenticated in-app WebView.
+        navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.ForceExternal)
+        navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPageInBrowser)
+
+        assertEquals(
+            listOf(
+                "auth_web:$ownPage",
+                "auth_web:$ownPage",
+                "browser:$otherEnvPage",
+                "view:$ownPage",
+                "browser:$ownPage",
+            ),
+            opened,
+        )
+    }
+
+    @Test
+    fun appStoreBlockedBillingPagesAlwaysUseRealSystemBrowserEvenInInAppMode() {
+        val billingUrl = "https://app.raft.build/s/hq/settings/billing"
+        val opened = mutableListOf<String>()
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+                isRaftWebPage = { it == billingUrl },
+                openRaftWebPageInApp = { opened += "auth_web:$it"; true },
+                isAppStoreBlockedBillingPage = { it == billingUrl },
+            )
+
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, billingUrl),
+            navigator.open(billingUrl, RaftLinkOpenIntent.Ordinary),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, billingUrl),
+            navigator.open(billingUrl, RaftLinkOpenIntent.RaftWebPage),
+        )
+        assertEquals(listOf("browser:$billingUrl", "browser:$billingUrl"), opened)
+    }
+
+    @Test
     fun mailAndTelephoneLinksAlwaysUseTheExternalHandler() {
         assertEquals(
             RaftLinkOpenTarget.ExternalBrowser,

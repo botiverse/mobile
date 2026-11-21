@@ -107,8 +107,8 @@ class RaftStackPageAllowlistTest {
         assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_COMPUTERS_PAGE, data("machineId" to "m1"), fromRoot = false))
     }
 
-    @Test fun `batch 2 allowlist has the four Settings web pages and no other web surface`() {
-        val onStack = listOf("billing", "administration", "im-bridges", "marketplace")
+    @Test fun `batch 2 allowlist has the Settings web pages and no other web surface`() {
+        val onStack = listOf("billing", "administration", "im-bridges", "marketplace", "web-page")
         assertEquals(onStack, RaftStackSettingsWebSurfaces.map { it.diagnosticsName })
         onStack.forEach { surface ->
             assertEquals(RaftStackOpenRoute.Stack, route(SETTINGS_WEB_VIEW_PAGE, data("settingsWebViewSurface" to surface)), surface)

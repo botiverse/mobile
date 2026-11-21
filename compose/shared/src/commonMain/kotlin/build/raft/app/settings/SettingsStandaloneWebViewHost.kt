@@ -231,12 +231,13 @@ private fun SettingsWebViewScreen() {
         // Keep old settings-webview route payloads compatible while rendering
         // the Hands-hosted Release Notes WebView.
         SettingsWebViewSurface.ReleaseNotes -> ReleaseNotesScreen()
+        SettingsWebViewSurface.WebPage -> SettingsOwnWebViewPage(pager)
         null -> SettingsWebViewInvalidRoute(pager)
     }
 }
 
 @Composable
-private fun SettingsWebViewInvalidRoute(pager: Pager) {
+internal fun SettingsWebViewInvalidRoute(pager: Pager) {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         RaftTopPageHeader(
             title = stringResource(Res.string.settings_title),
@@ -282,6 +283,8 @@ internal data class StandaloneSettingsWebViewSpec(
      * sites inside the authenticated Settings WebView.
      */
     val lockToWebOrigin: Boolean = false,
+    /** [RaftWebViewConfig.frameHosts] for embedded sub-frames (e.g. Artifact content fallback on Desktop). */
+    val frameHosts: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
@@ -300,6 +303,12 @@ internal fun StandaloneSettingsWebViewPage(
     iconName: RaftLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
+    onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit = {},
+    onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     SettingsWebViewPageScaffold(
         pager = pager,
@@ -307,13 +316,21 @@ internal fun StandaloneSettingsWebViewPage(
         title = title,
         iconName = iconName,
         headerFollowsDocumentTitle = spec.headerFollowsDocumentTitle,
-    ) { controller, onNavigationStateChange ->
+        trailingContent = trailingContent,
+        nativeActions = nativeActions,
+    ) { controller, onScaffoldNavigationStateChange ->
         StandaloneSettingsWebViewBody(
             pager = pager,
             spec = spec,
             controller = controller,
-            onNavigationStateChange = onNavigationStateChange,
+            onNavigationStateChange = { update ->
+                onScaffoldNavigationStateChange(update)
+                onNavigationStateChange(update)
+            },
             onHostMessage = onHostMessage,
+            onOpenExternalLink = onOpenExternalLink,
+            onOpenBlockedNavigation = onOpenBlockedNavigation,
+            routesMainFrameNavigation = routesMainFrameNavigation,
         )
     }
 }
@@ -325,6 +342,8 @@ internal fun SettingsWebViewPageScaffold(
     title: String,
     iconName: RaftLucideIconName,
     headerFollowsDocumentTitle: Boolean = false,
+    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable (
         controller: RaftWebViewController,
         onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
@@ -381,6 +400,8 @@ internal fun SettingsWebViewPageScaffold(
                 backgroundColor = RaftColor.SurfaceWhite,
                 applyTopSafeArea = !wideDetail,
                 onBack = if (settingsWebViewHandlesBack(wideDetail, navigationState.canGoBack)) ::goBackOrClose else null,
+                trailingContent = trailingContent,
+                nativeActions = nativeActions,
             )
         }
         // One load line for the body: it stays composed while the placeholder gives way to the page.
@@ -472,6 +493,9 @@ private fun StandaloneSettingsWebViewBody(
     controller: RaftWebViewController,
     onNavigationStateChange: (SettingsWebViewNavigationUpdate) -> Unit,
     onHostMessage: (String, JSONObject) -> Unit,
+    onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val sharedStores = remember(bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
@@ -519,6 +543,9 @@ private fun StandaloneSettingsWebViewBody(
         },
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
+        onOpenExternalLink = onOpenExternalLink,
+        onOpenBlockedNavigation = onOpenBlockedNavigation,
+        routesMainFrameNavigation = routesMainFrameNavigation,
     )
 }
 
@@ -539,6 +566,8 @@ internal fun StandaloneSettingsWebViewContent(
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher? = null,
     accessTokenRefreshVisible: Boolean = true,
     onOpenExternalLink: ((String) -> Unit)? = null,
+    onOpenBlockedNavigation: ((String) -> Unit)? = null,
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     val linkNavigator = LocalRaftLinkNavigator.current
     val uriHandler = LocalUriHandler.current
@@ -550,6 +579,7 @@ internal fun StandaloneSettingsWebViewContent(
         }
     val openExternalLink = onOpenExternalLink ?: defaultOpenExternalLink
     val currentOpenExternalLink by rememberUpdatedState(openExternalLink)
+    val currentOpenBlockedNavigation by rememberUpdatedState(onOpenBlockedNavigation ?: openExternalLink)
     val currentLogger by rememberUpdatedState(accessTokenSyncLogger)
     val session = authSnapshot.session
     val localeTag = rememberStandaloneSettingsLocaleTag(spec.includeLocaleQuery)
@@ -639,6 +669,7 @@ internal fun StandaloneSettingsWebViewContent(
                 diagnosticsName = "settings_${spec.surface.diagnosticsName}",
                 allowedNavigationSchemes = spec.allowedNavigationSchemes,
                 mainFrameOrigin = mainFrameOrigin,
+                frameHosts = spec.frameHosts,
                 allowNavigation = spec.allowNavigation,
                 hostEventsEnabled = spec.hostEventsEnabled,
                 bottomContentPadding = spec.bottomContentPadding,
@@ -660,7 +691,7 @@ internal fun StandaloneSettingsWebViewContent(
                             "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
                                 "action=open url=${raftWebViewUrlForLog(target)}"
                         )
-                        currentOpenExternalLink(target)
+                        currentOpenBlockedNavigation(target)
                     } else {
                         currentLogger(
                             "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
@@ -679,6 +710,7 @@ internal fun StandaloneSettingsWebViewContent(
                 },
                 onHostMessage = onHostMessage,
                 onDocumentReadyChange = { documentReady = it },
+                routesMainFrameNavigation = routesMainFrameNavigation,
             )
         }
     }
@@ -721,6 +753,7 @@ internal fun SettingsWebViewContent(
     hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     mainFrameOrigin: String? = null,
+    frameHosts: Set<String> = emptySet(),
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     injectedJavaScript: String = "",
@@ -736,6 +769,7 @@ internal fun SettingsWebViewContent(
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     onWebViewInvalidated: () -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
+    routesMainFrameNavigation: ((String) -> Boolean)? = null,
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
     /** The document committed (first content on its way); gates [documentReady], not visibility. */
@@ -800,6 +834,7 @@ internal fun SettingsWebViewContent(
                     allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
                     mainFrameOrigin = mainFrameOrigin,
+                    frameHosts = frameHosts,
                     domStorageEnabled = true,
                     cacheEnabled = true,
                     ephemeral = false,
@@ -839,6 +874,7 @@ internal fun SettingsWebViewContent(
                             onHostMessage(kind, payload)
                         }
                     },
+                    routesMainFrameNavigation = routesMainFrameNavigation,
                     onNavigationStateChange = { state ->
                         if (navigationAuthority.accepts(navigationOwner)) {
                             if (state.isLoading && !navigationState.isLoading) onWebViewInvalidated()

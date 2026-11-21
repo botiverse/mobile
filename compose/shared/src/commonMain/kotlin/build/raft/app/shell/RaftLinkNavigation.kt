@@ -230,6 +230,16 @@ internal class RaftLinkNavigator(
      * opens as [RaftLinkOpenIntent.RaftWebPage], a real browser in "Default browser" mode.
      */
     private val isRaftWebPage: (String) -> Boolean = { false },
+    /**
+     * #proj-mobile:#204: opens a Raft own-origin web page in the authenticated in-app WebView
+     * regardless of [LinkOpenMode]. Returning false falls through to the unauthenticated browser path.
+     */
+    private val openRaftWebPageInApp: (String) -> Boolean = { false },
+    /**
+     * iOS App Store Guideline 3.1.1: Raft billing URLs must never open inside any in-app WebView
+     * (including [RaftInAppBrowserPage], which shares `WKWebsiteDataStore.default()` storage).
+     */
+    private val isAppStoreBlockedBillingPage: (String) -> Boolean = { false },
 ) {
     fun open(
         rawUrl: String,
@@ -248,9 +258,18 @@ internal class RaftLinkNavigator(
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && openOwnLink(decision.url)) {
             return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
-        // A Raft page it has none for: the web page, in a real browser when that is the setting.
+        // A Raft page it has none for: the web page, authenticated in-app when on the active environment.
         if (intent == RaftLinkOpenIntent.Ordinary && decision.target != RaftLinkOpenTarget.Rejected && isRaftWebPage(decision.url)) {
             return open(decision.url, RaftLinkOpenIntent.RaftWebPage)
+        }
+        // App Store Guideline 3.1.1: never load Raft billing pages in any in-app WebView on iOS.
+        if (intent == RaftLinkOpenIntent.RaftWebPage && decision.target != RaftLinkOpenTarget.Rejected && isAppStoreBlockedBillingPage(decision.url)) {
+            return open(decision.url, RaftLinkOpenIntent.RaftWebPageInBrowser)
+        }
+        // Active-environment Raft web pages open in the authenticated WebView regardless of LinkOpenMode;
+        // ForceExternal and RaftWebPageInBrowser bypass this and always reach the system browser.
+        if (intent == RaftLinkOpenIntent.RaftWebPage && decision.target != RaftLinkOpenTarget.Rejected && openRaftWebPageInApp(decision.url)) {
+            return RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, decision.url)
         }
         return when (decision.target) {
             RaftLinkOpenTarget.InAppBrowser -> {
@@ -383,6 +402,18 @@ internal fun rememberRaftLinkNavigator(
                     log = { bridge.log(it) },
                 ),
             isRaftWebPage = { url -> raftOwnLinkIsWebPage(url, RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl) },
+            openRaftWebPageInApp = { url ->
+                routeScope == RaftInAppBrowserRouteScope.InheritShell &&
+                    pager.openRaftOwnWebPage(
+                        rawUrl = url,
+                        storeScopeOverride = artifactStoreScope,
+                        activeWebBaseUrl = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl,
+                    )
+            },
+            isAppStoreBlockedBillingPage = { url ->
+                raftPlatformFollowsAppStoreBillingRules() &&
+                    raftUrlIsOwnBillingPath(url, RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current().webUrl)
+            },
         )
     }
 }

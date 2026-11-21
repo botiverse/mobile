@@ -55,7 +55,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
@@ -3916,7 +3915,6 @@ private fun SharedThreadRouteContentContent(
         }
     val installAppDialogStateHolder = installAppDialogStore.state.collectAsState()
 
-    val actionCardSpecCopiedLabel = stringResource(Res.string.common_copied)
     // A4: spec card Buttons that run the card (execute, its confirm, a form) go through this store
     // to SharedThreadDataSource.executeActionCardSpec; links and the typed path don't
     // (threadActionCardSpecPress).
@@ -3928,15 +3926,12 @@ private fun SharedThreadRouteContentContent(
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
-                loadWebUrl = {
-                    (
-                        BridgeSettingsPlatformCapabilities(bridge = bridge, copiedMessage = actionCardSpecCopiedLabel)
-                            .loadDeveloper() as? DataResult.Content
-                    )?.data?.webUrl
-                },
+                loadWebUrl = { sharedStores.apiEnvironmentStore.current().webUrl },
                 openInBrowser = { url ->
                     bridge.log("thread_action_card_open_in_web")
-                    bridge.hostCapabilities.openUrlInBrowser(url)
+                    if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = sharedStores.apiEnvironmentStore.current().webUrl)) {
+                        bridge.hostCapabilities.openUrlInBrowser(url)
+                    }
                 },
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )

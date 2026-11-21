@@ -296,7 +296,7 @@ private fun SettingsAccountScreen() {
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     val loginSecurityNetworkClient =
         remember(bridge, environment.storeScope) { RaftSharedStoreRegistry.get(bridge).networkClient(environment.storeScope) }
-    val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient)
+    val loginSecurityStore = rememberSettingsAccountLoginSecurityStore(loginSecurityNetworkClient, pager)
     val loginSecurityState by loginSecurityStore.state.collectAsState()
     val signedInDevicesStore =
         rememberSettingsSignedInDevicesStore(
@@ -381,7 +381,11 @@ private fun SettingsAccountScreen() {
                             webBaseUrl = environment.webBaseUrl,
                             serverSlug = { standaloneSettingsServerSlug(session.value) },
                             log = { line -> bridge.log(line) },
-                            openInBrowser = { url -> bridge.openUrl(url, inBrowser = true) },
+                            openInBrowser = { url ->
+                                if (!pager.openRaftOwnWebPage(url, environment.storeScope, activeWebBaseUrl = environment.webBaseUrl)) {
+                                    bridge.openUrl(url, inBrowser = true)
+                                }
+                            },
                         ),
                     onRetry = { loginSecurityStore.dispatch(SharedAccountLoginSecurityIntent.Refresh) },
                 ),

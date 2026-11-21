@@ -88,7 +88,7 @@ internal fun settingsWebViewHostOpenExternalUrl(
  * Strict RFC 3986 / `decodeURIComponent` UTF-8 decoder: does NOT treat `+` as space, requires two
  * ASCII hex digits after `%`, and rejects invalid UTF-8 byte sequences instead of emitting U+FFFD.
  */
-private fun strictPercentDecodeUtf8OrNull(encoded: String): String? {
+internal fun strictPercentDecodeUtf8OrNull(encoded: String): String? {
     val bytes = ByteArray(encoded.length)
     var outIndex = 0
     var i = 0
