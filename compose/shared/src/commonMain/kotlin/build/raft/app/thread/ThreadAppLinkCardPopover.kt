@@ -6,15 +6,15 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -27,13 +27,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLinkResult
-import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardV2Element
-import build.raft.app.data.artifactWebUrl
 import build.raft.designsystem.components.RaftPreviewCardButton
-import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardDetail
 
@@ -77,17 +73,6 @@ internal class ThreadAppLinkCards(
         opened = ThreadAppLinkOpenCard(card.url, anchor)
     }
 
-    /** An Artifact chip's tap: its item card by the chip, or its page ([webUrl]) when the chip is detached. */
-    fun openArtifact(target: ArtifactLinkTarget, webUrl: String) {
-        val key = threadArtifactCardKey(target.key)
-        val anchor = resolve(key)
-        if (anchor == null) {
-            openLink(webUrl)
-            return
-        }
-        opened = ThreadAppLinkOpenCard(key, anchor)
-    }
-
     fun close() {
         opened = null
     }
@@ -124,54 +109,11 @@ internal val LocalThreadAppLinkCardFixture = staticCompositionLocalOf<ThreadAppL
 internal fun ThreadAppLinkCardPopoverHost(
     results: Map<String, AppLinkResult>,
     cards: ThreadAppLinkCards,
-    artifacts: Map<String, ArtifactSummary> = emptyMap(),
-    artifactWebBaseUrl: String = "",
     actions: ThreadAppLinkCardActionHost? = null,
 ) {
     val fixture = LocalThreadAppLinkCardFixture.current
     // Before every return below: the presses live with the message row, not with the open card.
     val presses = rememberThreadAppLinkChipCardPresses(results, cards, actions)
-    val openedArtifact = cards.opened?.url?.let(::threadArtifactRefKeyOrNull)
-    if (fixture == null && openedArtifact != null) {
-        val opened = cards.opened ?: return
-        val summary = artifacts[openedArtifact]
-        LaunchedEffect(opened, summary == null) {
-            if (summary == null) cards.close()
-        }
-        if (summary == null) return
-        val openArtifactWebPage = rememberRaftWebPageOpener()
-        val target = ArtifactLinkTarget(summary.id, openedArtifact.substringAfter(";version=", "").toIntOrNull())
-        // Open: the in-app viewer (header from this card at once); the browser only when no page can open.
-        val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
-        Modal(onWillDismiss = { cards.close() }) {
-            RaftDesignSystemTheme {
-                ThreadAppLinkCardPopoverFrame(
-                    key = opened.url,
-                    anchor = opened.anchor,
-                    onDismiss = cards::close,
-                ) { modifier ->
-                    RaftArtifactLinkCardView(
-                        summary = summary,
-                        modifier = modifier,
-                        // Opens Raft's own viewer: a link that stays in Raft, so no ↗.
-                        buttons =
-                            listOf(
-                                RaftPreviewCardButton(
-                                    label = stringResource(Res.string.thread_link_preview_open_link),
-                                    kind = RaftPreviewCardButtonKind.Link,
-                                    leavesRaft = false,
-                                    onClick = {
-                                        cards.close()
-                                        artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "chat_card")
-                                    },
-                                ),
-                            ),
-                    )
-                }
-            }
-        }
-        return
-    }
     if (fixture != null) {
         val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
         LaunchedEffect(card) {
@@ -347,10 +289,7 @@ internal fun ThreadAppLinkCardPopoverFrame(
     }
 }
 
-/** The open-card key of an Artifact chip (by [ArtifactLinkTarget.key]); never an http(s) URL. */
-internal fun threadArtifactCardKey(refKey: String): String = "artifact:$refKey"
 
-internal fun threadArtifactRefKeyOrNull(openKey: String): String? = openKey.takeIf { it.startsWith("artifact:") }?.removePrefix("artifact:")
 
 /** raft-ui `PreviewCardContent size="item"`: 400px (raft-design #939); narrower windows give less. */
 private val ThreadAppLinkCardWidth = RaftPreviewCardDefaults.ItemWidth
