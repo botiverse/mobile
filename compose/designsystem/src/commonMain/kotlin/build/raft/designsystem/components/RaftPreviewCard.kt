@@ -787,6 +787,8 @@ enum class RaftPreviewCardButtonKind {
  * - [loading]: this button's work is running.
  * - [opensItem]: a link to the item the card is about (Stamp's Open in Stamp, Raft's Open Link): a
  *   block card's title already opens it, so it is in the More menu ([raftAppLinkCardButtonLayout]).
+ * - [loadingLabel]: the name of the spinner while [loading] (raft-ui Button `loadingLabel`; the
+ *   web's App link card says "Working…"); null: the theme's [RaftStrings.loading][build.raft.designsystem.theme.RaftStrings.loading].
  */
 @Immutable
 data class RaftPreviewCardButton(
@@ -799,6 +801,7 @@ data class RaftPreviewCardButton(
     val enabled: Boolean = true,
     val loading: Boolean = false,
     val opensItem: Boolean = false,
+    val loadingLabel: String? = null,
 )
 
 /** An item card's buttons as [raftPreviewCardButtonLayout] places them: [row] left to right, then [more], the More menu's, top to bottom. */
@@ -935,6 +938,7 @@ private fun RaftPreviewCardRowButton(button: RaftPreviewCardButton, modifier: Mo
             variant = if (button.frameless) RaftButtonVariant.Ghost else RaftButtonVariant.Default,
             enabled = reason == null && button.enabled,
             loading = button.loading,
+            loadingLabel = button.loadingLabel ?: RaftTheme.strings.loading,
             trailingIcon = if (button.leavesRaft && reason == null) { { RaftGlyphIcon(RaftGlyph.ArrowUpRight, size = 16.dp) } } else null,
         )
     }

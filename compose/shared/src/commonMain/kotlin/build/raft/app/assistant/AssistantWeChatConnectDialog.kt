@@ -138,6 +138,7 @@ internal fun AssistantWeChatConnectFlowDialog(
                 confirmDiscard = false
                 onClose()
             },
+            testTag = "wechat-discard-confirm",
         )
     }
 }

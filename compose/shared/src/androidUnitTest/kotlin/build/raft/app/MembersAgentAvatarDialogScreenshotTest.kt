@@ -175,9 +175,9 @@ class MembersAgentAvatarDialogScreenshotTest {
         node("Close").click()
         settle()
         assertEquals(0, dismissed, "× with a staged change does not close at once")
-        val discard = nodes().firstOrNull { it.texts().contains("Discard Changes") }
-        assertNotNull(discard, "the discard confirmation opened")
-        discard.click()
+        // Two buttons, so a question (slock #14958): Discard changes? with Discard.
+        assertTrue(nodes().any { it.texts().contains("Discard changes?") }, "the discard confirmation asks Discard changes?")
+        node("Discard").click()
         settle()
         assertEquals(1, dismissed)
     }

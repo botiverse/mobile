@@ -809,15 +809,25 @@ internal fun AssistantInstructionsEditorBody(
     }
 }
 
-/** Web AlertDialog `assistant-instructions-discard`: Keep Editing, then the red Discard Changes. */
+/**
+ * Discard changes? before closing the instructions or the WeChat connect flow with unsaved edits
+ * (web `assistant-instructions-discard` / `wechat-discard-confirm`, slock #14958 and #14967): a
+ * question with two buttons, so a small dialog with × in the head, Keep Editing then the red
+ * Discard. ×, Back and a tap outside keep editing.
+ */
 @Composable
-internal fun AssistantInstructionsDiscardDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
+internal fun AssistantInstructionsDiscardDialog(
+    onKeepEditing: () -> Unit,
+    onDiscard: () -> Unit,
+    /** The web's `data-testid`: `assistant-instructions-discard`, or WeChat's `wechat-discard-confirm`. */
+    testTag: String = "assistant-instructions-discard",
+) {
     RaftDialog(
         onDismissRequest = onKeepEditing,
-        title = stringResource(Res.string.member_avatar_unsaved_title),
+        title = stringResource(Res.string.member_avatar_discard_title),
+        modifier = Modifier.testTag(testTag),
+        size = RaftDialogSize.Sm,
         description = stringResource(Res.string.member_avatar_discard_body),
-        dismissOnClickOutside = false,
-        showClose = false,
         footer = {
             RaftButton(
                 text = stringResource(Res.string.member_avatar_keep_editing),
@@ -826,7 +836,7 @@ internal fun AssistantInstructionsDiscardDialog(onKeepEditing: () -> Unit, onDis
                 size = RaftButtonSize.Lg,
             )
             RaftButton(
-                text = stringResource(Res.string.member_avatar_discard_changes),
+                text = stringResource(Res.string.member_avatar_discard),
                 onClick = onDiscard,
                 variant = RaftButtonVariant.Danger,
                 size = RaftButtonSize.Lg,

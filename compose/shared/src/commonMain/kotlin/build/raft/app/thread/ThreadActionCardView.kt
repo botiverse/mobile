@@ -10,6 +10,9 @@ import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.runsInApp
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
+import build.raft.app.data.ActionCardSpecEntityRef
+import build.raft.app.data.ConnectMcpActionCardType
+import build.raft.app.data.isConnectMcpAction
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -333,6 +336,10 @@ private fun ThreadActionCard.actionCardNotice(): String? =
                 ?: stringResource(Res.string.thread_action_card_agent)
             stringResource(Res.string.thread_action_card_approval_hint, agent.removePrefix("@"), service)
         }
+        // A connect card has no notice (slock #13298): its legacy warning ("An agent tried to use this
+        // MCP server... Choose a connection to grant") is an instruction for the web's picker, and a
+        // state that ends at the grant; the title already says which App, for whom.
+        isConnectMcpAction() -> null
         else -> presentationWarning?.takeIf { it.isNotBlank() }
     }
 
@@ -432,10 +439,35 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
             stringResource(Res.string.thread_action_card_title_recover_owner)
         "integration:update_app_registration" ->
             stringResource(Res.string.thread_action_card_unavailable)
-        else ->
-            presentationTitle?.takeIf { it.isNotBlank() }
-                ?: stringResource(Res.string.thread_action_card_title_generic, humanizeActionCardType(type))
+        ConnectMcpActionCardType -> {
+            val names = LocalThreadActionCardNames.current
+            val viewerServerId = LocalThreadViewerServerId.current
+            connectMcpTitle(rememberActionCardDisplayLocale()) { ref ->
+                names.actionCardSpecEntityName(ref, ref.serverIdOr(sourceServerId), viewerServerId)
+            } ?: legacyActionCardTitle()
+        }
+        else -> legacyActionCardTitle()
     }
+
+/** The server's legacy `presentation.title`, else "Approve {type}". */
+@Composable
+private fun ThreadActionCard.legacyActionCardTitle(): String =
+    presentationTitle?.takeIf { it.isNotBlank() }
+        ?: stringResource(Res.string.thread_action_card_title_generic, humanizeActionCardType(type))
+
+/**
+ * A connect card's title as its spec says it (slock #13298, shared `connectMcp`): "Authorize {app}
+ * for {agent}", the App by the name the server resolved when it prepared the card and the agent by
+ * [entityName] (its display name here), else by the name the server had; a card prepared without
+ * the App's name keeps the spec's fixed "Authorize MCP connection", in the reader's language
+ * ([displayLocale]). Null for another type, or a card without a spec this App reads (the legacy
+ * title then).
+ */
+internal fun ThreadActionCard.connectMcpTitle(displayLocale: String, entityName: (ActionCardSpecEntityRef) -> String?): String? {
+    if (!isConnectMcpAction()) return null
+    val title = presentationCard?.title ?: return null
+    return actionCardMsgPlain(title, RaftCardTreeContext(displayLocale = displayLocale, entityName = entityName))
+}
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {

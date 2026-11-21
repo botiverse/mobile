@@ -20,9 +20,11 @@ import build.raft.app.data.ActionCardSpecNavigateTarget
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.CardStack
+import build.raft.app.data.ConnectMcpActionCardType
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.FeedbackSubmitActionCardType
+import build.raft.app.data.InstallMarketplaceAppActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
@@ -47,11 +49,13 @@ import kotlinx.coroutines.launch
 // Which card renders (task #39, A4).
 
 /**
- * Types that keep their typed card (web `TYPED_CARD_ONLY_ACTION_TYPES`): the MCP
- * connect picker, and the install confirmation that shows the App's prompt text and turns its 409
- * refusals into copy (ThreadInstallAppActionDialog); the spec has neither yet.
+ * Types that keep their typed card (web `TYPED_CARD_ONLY_ACTION_TYPES`, gone on the web since
+ * slock #13189): the MCP connect card, whose spec has no button because the web mounts its
+ * connection picker under it (the App has no picker: the typed card opens it on the web, titled
+ * from its spec, slock #13298); and the install card, whose Install the App still confirms in
+ * ThreadInstallAppActionDialog from the set bound to the card.
  */
-internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf("integration:connect_mcp", "integration:install_marketplace_app")
+internal val ThreadActionCardTypedOnlyTypes: Set<String> = setOf(ConnectMcpActionCardType, InstallMarketplaceAppActionCardType)
 
 /**
  * The one line a phone shows instead of [this] card, or null to draw the card. `plan:trial` (Cindy's

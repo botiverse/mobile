@@ -763,6 +763,15 @@ internal fun ThreadActionCard.runsInApp(feedbackEntryEnabled: Boolean): Boolean 
 internal const val InstallMarketplaceAppActionCardType = "integration:install_marketplace_app"
 
 /**
+ * `integration:connect_mcp`: an agent has no authorized connection to an MCP App. The web grants
+ * one in a picker it mounts under the card (`McpConnectCardSlot`); the App has none, so the card
+ * opens on the web (`genericApprovalAllowed: false`).
+ */
+internal const val ConnectMcpActionCardType = "integration:connect_mcp"
+
+internal fun ThreadActionCard.isConnectMcpAction(): Boolean = type.equals(ConnectMcpActionCardType, ignoreCase = true)
+
+/**
  * `integration:install_marketplace_app` (web `InstallAppCardDialog`, audit V-85): installing
  * approves the app's whole declared set on this Server, not just this login's scopes, so the
  * card's button opens a confirmation of the set bound to the card; only that dialog's Install

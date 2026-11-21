@@ -219,6 +219,8 @@ internal fun RaftMessageCardActingButton(
                 // No way to press it here (no conversation): drawn disabled, never a button that does nothing.
                 enabled = pressable?.enabled ?: false,
                 loading = pressable?.loading ?: false,
+                // "Working…" while it runs (web MessageCardActingButtons `loadingLabel`).
+                loadingLabel = pressable?.loadingLabel ?: RaftTheme.strings.loading,
             )
         }
         is RaftMessageCardActingState.AskConsent ->
