@@ -60,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -1564,7 +1565,7 @@ internal fun ActivityExcerptBesideMarks(
     val measurer = rememberTextMeasurer()
     val semanticText = remember(text, accessibilityText) { accessibilityText?.let(::AnnotatedString) ?: text }
     SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
-        val width = constraints.maxWidth
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.minWidth
         val clampedMaxLines = maxLines.coerceAtLeast(1)
         val gap = 8.dp.roundToPx()
         val slotHeight =
@@ -1599,16 +1600,40 @@ internal fun ActivityExcerptBesideMarks(
             }.first().measure(Constraints.fixed(width, totalHeight))
         val inlinePlacements =
             plan.inlinePlacements.mapIndexed { index, placement ->
+                val clipLeftInBox = (placement.clipLeft - placement.x).coerceAtLeast(0)
+                val clipRightInBox = (placement.clipRight - placement.x).coerceAtMost(placement.width)
+                val needsClip = clipLeftInBox > 0 || clipRightInBox < placement.width
                 val placeable =
                     subcompose("inline-$index") {
-                        placement.span.content.children(placement.span.alternateText)
-                    }.firstOrNull()?.measure(Constraints.fixed(placement.width, placement.height))
+                        Box(
+                            Modifier
+                                .clearAndSetSemantics {}
+                                .then(
+                                    if (needsClip) {
+                                        Modifier.drawWithContent {
+                                            clipRect(
+                                                left = clipLeftInBox.toFloat(),
+                                                top = -slotHeight.toFloat(),
+                                                right = clipRightInBox.toFloat(),
+                                                bottom = (placement.height + slotHeight).toFloat(),
+                                            ) {
+                                                drawContent()
+                                            }
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        ) {
+                            placement.span.content.children(placement.span.alternateText)
+                        }
+                    }.first().measure(Constraints(maxWidth = placement.width, maxHeight = placement.height))
                 Triple(placeable, placement.x, placement.y)
             }
         layout(width, totalHeight) {
             textCanvas.place(0, 0)
             inlinePlacements.forEach { (placeable, x, y) ->
-                placeable?.place(x, y)
+                placeable.place(x, y)
             }
             var xFromEnd = width
             marksPlaceables.forEach { marksPlaceable ->
@@ -1631,6 +1656,8 @@ private data class ActivityExcerptInlinePlacement(
     val y: Int,
     val width: Int,
     val height: Int,
+    val clipLeft: Int,
+    val clipRight: Int,
 )
 
 private data class ActivityExcerptLayoutPlan(
@@ -1645,6 +1672,21 @@ private data class ActivityExcerptLayoutPlan(
     val firstLineText: String,
     val restText: String?,
 )
+
+/**
+ * Normalizes line-0 end offset across Android (`StaticLayout.getLineEnd`, which includes the
+ * terminating line break) and Skia on iOS/Desktop (`SkiaParagraph.getLineEnd`, which excludes it):
+ * when [rawLineEnd] stops right before a line break that line 0 has not consumed yet, advances past
+ * at most one line terminator (`\r\n`, `\n`, or `\r`) without eating a following blank line.
+ */
+internal fun advancePastSingleLineBreak(text: CharSequence, rawLineEnd: Int): Int {
+    var split = rawLineEnd.coerceIn(0, text.length)
+    if (split < text.length && (split == 0 || (text[split - 1] != '\n' && text[split - 1] != '\r'))) {
+        if (text[split] == '\r') split++
+        if (split < text.length && text[split] == '\n') split++
+    }
+    return split
+}
 
 private fun planActivityExcerptLayout(
     measurer: TextMeasurer,
@@ -1681,7 +1723,7 @@ private fun planActivityExcerptLayout(
             }
         val line0Top = if (line0 != null) (slotHeight - line0.size.height) / 2 else 0
         if (line0 != null) {
-            collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, placements)
+            collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, Int.MAX_VALUE, placements)
         }
         return ActivityExcerptLayoutPlan(
             line0 = line0,
@@ -1692,7 +1734,7 @@ private fun planActivityExcerptLayout(
             rest = null,
             restTop = slotHeight,
             inlinePlacements = placements,
-            firstLineText = text.text,
+            firstLineText = if (line0 != null) text.text else "",
             restText = null,
         )
     }
@@ -1711,19 +1753,21 @@ private fun planActivityExcerptLayout(
             null
         }
     val line0Top = if (line0 != null) (slotHeight - line0.size.height) / 2 else 0
-    val splitOffset =
+    val rawLine0End =
         if (line0 != null && line0.lineCount > 0) {
             line0.getLineEnd(0, visibleEnd = false).coerceIn(0, text.length)
         } else {
             0
         }
+    val splitOffset = if (line0 != null) advancePastSingleLineBreak(text, rawLine0End) else 0
     if (line0 != null) {
-        collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, placements)
+        collectInlinePlacements(line0, allSpans, line0Left, line0Top, line0Left, line0Left + line0Width, splitOffset, placements)
     }
     val restAnnotated = if (splitOffset < text.length) text.subSequence(splitOffset, text.length) else null
-    val restSpans = restAnnotated?.takeIf { it.text.isNotBlank() }?.inlinePlaceholderSpans(inlineContent).orEmpty()
+    val restSpans = restAnnotated?.inlinePlaceholderSpans(inlineContent).orEmpty()
+    val hasRestContent = restAnnotated != null && (restAnnotated.text.isNotBlank() || restSpans.isNotEmpty())
     val rest =
-        if (restAnnotated != null && restAnnotated.text.isNotBlank() && width > 0) {
+        if (hasRestContent && width > 0) {
             measurer.measure(
                 text = restAnnotated,
                 style = style,
@@ -1743,7 +1787,7 @@ private fun planActivityExcerptLayout(
         }
     val restTop = slotHeight + (slotHeight - restFirstLineHeight) / 2
     if (rest != null) {
-        collectInlinePlacements(rest, restSpans, 0, restTop, 0, width, placements)
+        collectInlinePlacements(rest, restSpans, 0, restTop, 0, width, Int.MAX_VALUE, placements)
     }
     return ActivityExcerptLayoutPlan(
         line0 = line0,
@@ -1754,8 +1798,8 @@ private fun planActivityExcerptLayout(
         rest = rest,
         restTop = restTop,
         inlinePlacements = placements,
-        firstLineText = text.text.substring(0, splitOffset),
-        restText = restAnnotated?.text?.takeIf { it.isNotBlank() },
+        firstLineText = if (line0 != null) text.text.substring(0, splitOffset) else "",
+        restText = if (rest != null) restAnnotated?.text else null,
     )
 }
 
@@ -1766,16 +1810,28 @@ private fun collectInlinePlacements(
     originY: Int,
     clipLeft: Int,
     clipRight: Int,
+    maxRangeStartExclusive: Int,
     out: MutableList<ActivityExcerptInlinePlacement>,
 ) {
     result.placeholderRects.forEachIndexed { index, rect ->
         if (rect == null || index >= spans.size) return@forEachIndexed
+        val span = spans[index]
+        if (span.range.start >= maxRangeStartExclusive) return@forEachIndexed
         val x = originX + rect.left.roundToInt()
         val width = rect.width.roundToInt().coerceAtLeast(0)
         val height = rect.height.roundToInt().coerceAtLeast(0)
         if (width <= 0 || height <= 0) return@forEachIndexed
         if (x + width <= clipLeft || x >= clipRight) return@forEachIndexed
-        out += ActivityExcerptInlinePlacement(spans[index], x = x, y = originY + rect.top.roundToInt(), width = width, height = height)
+        out +=
+            ActivityExcerptInlinePlacement(
+                span = span,
+                x = x,
+                y = originY + rect.top.roundToInt(),
+                width = width,
+                height = height,
+                clipLeft = clipLeft,
+                clipRight = clipRight,
+            )
     }
 }
 
