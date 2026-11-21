@@ -882,8 +882,15 @@ internal fun MemberDetailPageContent(
     // Task #137: read-only runtime account usage for the agent's Runtime Config chip. Only
     // routes that allow private agent surfaces get a server id; the server still decides
     // access (403 hides the entry).
+    val runtimeAuthHost =
+        remember(bridge, provider.storeScope) {
+            ComputerRuntimeAuthHost(
+                realtime = build.raft.app.data.RaftSharedStoreRegistry.get(bridge).realtimeDomainEventOwner(provider.storeScope),
+                openUrl = { url -> bridge.openUrl(url, inBrowser = true) },
+            )
+        }
     val runtimeAccountUsageAccess =
-        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker, runtimeAccountUsageViewer) {
+        remember(provider.runtimeAccountUsageStore, provider.computersStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker, runtimeAccountUsageViewer, runtimeAuthHost) {
             provider.runtimeAccountUsageStore?.let { store ->
                 MembersRuntimeAccountUsageAccess(
                     store = store,
@@ -892,7 +899,9 @@ internal fun MemberDetailPageContent(
                     onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } },
                     log = { message -> bridge.log(message) },
                     viewer = runtimeAccountUsageViewer,
+                    auth = runtimeAuthHost,
                     serverFeatureFlags = provider.serverFeatureFlags,
+                    computersStateFlow = provider.computersStore.state,
                 )
             }
         }

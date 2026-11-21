@@ -570,19 +570,22 @@ internal fun RaftAppShellContent(
     // already created the provider or shown the database recovery page, so this is the same
     // instance and never the first database open.
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
-    RaftAppShellReadyContent(
-        pageVisibleTick = pageVisibleTick,
-        initialAuthRestoreTick = initialAuthRestoreTick,
-        pageVisible = pageVisible,
-        adaptivePane = adaptivePane,
-        conversationForwardRequestTick = conversationForwardRequestTick,
-        hostDidAppearTick = hostDidAppearTick,
-        wideHistoryRequest = wideHistoryRequest,
-        searchHandoff = searchHandoff,
-        onSearchHandoffApplied = onSearchHandoffApplied,
-        searchShortcutTick = searchShortcutTick,
-        sharedStores = sharedStores,
-    )
+    val shellRuntimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
+    CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides shellRuntimeUsageAccess) {
+        RaftAppShellReadyContent(
+            pageVisibleTick = pageVisibleTick,
+            initialAuthRestoreTick = initialAuthRestoreTick,
+            pageVisible = pageVisible,
+            adaptivePane = adaptivePane,
+            conversationForwardRequestTick = conversationForwardRequestTick,
+            hostDidAppearTick = hostDidAppearTick,
+            wideHistoryRequest = wideHistoryRequest,
+            searchHandoff = searchHandoff,
+            onSearchHandoffApplied = onSearchHandoffApplied,
+            searchShortcutTick = searchShortcutTick,
+            sharedStores = sharedStores,
+        )
+    }
 }
 
 @Composable

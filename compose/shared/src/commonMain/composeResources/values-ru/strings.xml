@@ -4855,6 +4855,7 @@
     <string name="agent_status_credential_sign_in">Нужно снова войти в %1$s</string>
     <string name="agent_status_runtime_sign_in_full">Нужно войти в %1$s</string>
     <string name="agent_status_runtime_sign_in_short">Нужен вход</string>
+    <string name="agent_status_runtime_sign_in_detail">%1$s не запустится, пока не выполнен вход в %2$s на компьютере %3$s. Войдите там или переключите %1$s на другую среду выполнения.</string>
     <string name="agent_status_credential_plan_model">Тариф не включает %1$s</string>
     <string name="agent_status_credential_plan_default_model">Тариф не включает эту модель</string>
     <string name="agent_status_credential_billing">Баланс провайдера исчерпан</string>

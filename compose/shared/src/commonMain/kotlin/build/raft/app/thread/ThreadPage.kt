@@ -1015,7 +1015,9 @@ private fun ThreadPageScreen(
         }
     // The head's title and its parent link (ThreadHeaderOriginalTitle.kt): one per thread page.
     val headerOriginalState = remember(payload.instanceId) { ThreadHeaderOriginalState() }
+    val threadRuntimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
     CompositionLocalProvider(
+        LocalMembersRuntimeAccountUsageAccess provides threadRuntimeUsageAccess,
         LocalThreadHeaderOriginalState provides headerOriginalState,
         LocalConversationUnavailableNav provides conversationUnavailableNav,
         LocalThreadOutlineApi provides threadOutlineApi,

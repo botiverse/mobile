@@ -16,8 +16,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.SharedComputersState
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageKey
@@ -67,6 +68,19 @@ internal class MembersRuntimeAccountUsageAccess(
     val auth: ComputerRuntimeAuthHost? = null,
     /** The server's feature flags (`claude_limit_reset_v2` for the cards' Claude limit resets); null reads every flag as off. */
     val serverFeatureFlags: SharedServerFeatureFlags? = null,
+    /**
+     * Live computers state for fail-closed `canViewMachineRuntimeAccountUsage` and computer display
+     * name resolution. Collected only by leaves that actually need sign-in status, so Computer
+     * heartbeats never recompose the shell or reset sibling usage/auth controllers.
+     */
+    val computersStateFlow: StateFlow<SharedComputersState>? = null,
+    /**
+     * Explicit override for web `canViewMachineRuntimeAccountUsage` (tests); when null, leaves
+     * evaluate fail-closed from [viewer] and [computersStateFlow] (false when viewer is unknown).
+     */
+    val canViewMachine: ((serverId: String, machineId: String) -> Boolean)? = null,
+    /** Explicit override for Computer display name (`name` or `hostname`); when null, reads [computersStateFlow]. */
+    val machineName: ((serverId: String, machineId: String) -> String?)? = null,
 )
 
 /**
@@ -107,7 +121,7 @@ internal class MembersRuntimeAccountUsageOwnerTracker(
 internal fun AuthSessionEvent.changesRuntimeAccountUsageOwner(): Boolean = this !is AuthSessionEvent.TokensRotated
 
 internal val LocalMembersRuntimeAccountUsageAccess =
-    staticCompositionLocalOf<MembersRuntimeAccountUsageAccess?> { null }
+    compositionLocalOf<MembersRuntimeAccountUsageAccess?> { null }
 
 /** The exact read subject, or null when this runtime/agent cannot show account usage. */
 internal fun membersRuntimeAccountUsageKey(

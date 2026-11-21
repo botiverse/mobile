@@ -4879,6 +4879,7 @@
     <string name="agent_status_credential_sign_in">É preciso entrar de novo no %1$s</string>
     <string name="agent_status_runtime_sign_in_full">É preciso entrar no %1$s</string>
     <string name="agent_status_runtime_sign_in_short">Login necessário</string>
+    <string name="agent_status_runtime_sign_in_detail">%1$s só pode iniciar depois que o %2$s estiver conectado em %3$s. Entre nesse computador ou troque %1$s para outro runtime.</string>
     <string name="agent_status_credential_plan_model">O plano não inclui %1$s</string>
     <string name="agent_status_credential_plan_default_model">O plano não inclui este modelo</string>
     <string name="agent_status_credential_billing">Saldo do provedor esgotado</string>

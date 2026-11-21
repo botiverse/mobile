@@ -5055,6 +5055,7 @@
     <string name="agent_status_credential_sign_in">需要重新登录 %1$s</string>
     <string name="agent_status_runtime_sign_in_full">需要登录 %1$s</string>
     <string name="agent_status_runtime_sign_in_short">需要登录</string>
+    <string name="agent_status_runtime_sign_in_detail">%2$s 在 %3$s 上登录后，%1$s 才能启动。请在那台电脑上登录，或者把 %1$s 换到其他运行时。</string>
     <string name="agent_status_credential_plan_model">套餐不包含 %1$s</string>
     <string name="agent_status_credential_plan_default_model">套餐不包含这个模型</string>
     <string name="agent_status_credential_billing">服务商余额已用完</string>

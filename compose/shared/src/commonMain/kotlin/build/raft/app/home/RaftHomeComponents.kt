@@ -924,7 +924,11 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
                 messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, accountId)
             }
     }
-    CompositionLocalProvider(LocalRaftEmojiPickerOwnerKey provides emojiPickerOwnerKey) {
+    val standaloneRuntimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
+    CompositionLocalProvider(
+        LocalMembersRuntimeAccountUsageAccess provides standaloneRuntimeUsageAccess,
+        LocalRaftEmojiPickerOwnerKey provides emojiPickerOwnerKey,
+    ) {
     RaftStructuralHomeShell(
         currentServerName = payload.currentServerName,
         currentServerId = payload.currentServerId,
@@ -8229,6 +8233,7 @@ internal fun HomeSidebarDirectMessageRow(
                                         agentMemberId = agentMemberId,
                                         agentStatusResolver = agentStatusResolver,
                                         selected = selected,
+                                        agentName = name.ifBlank { avatarLabel },
                                         modifier = Modifier.weight(1f, fill = false).raftHomeDmTrailingColumnCap()
                                     )
                             }
@@ -8284,8 +8289,14 @@ private fun DirectMessageAvatar(
     kind: RaftAvatarKind
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val signIn =
+        if (agentMemberId != null) {
+            rememberAgentRuntimeSignInState(status, fallbackName = avatarLabel)
+        } else {
+            null
+        }
     RaftAvatarWithStatus(
-        statusColor = status?.color,
+        statusColor = if (signIn != null && status?.external != true) RaftColor.AccentOrange else status?.color,
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8300,20 +8311,40 @@ private fun DirectMessageAvatar(
 
 /**
  * Web `SidebarAgentMeta`: while the agent works, what it is doing (`rf-srow__meta--live`,
- * Grotesk 13/18 regular, foreground-muted); otherwise its runtime name (`SidebarItemMeta`,
- * Space Mono 12/16, foreground-hint). Sticker ink on the selected row. One line with an
- * ellipsis. Visual only (web `aria-hidden`): the row's accessible name stays the agent's name
- * and a sentence that changes every few seconds is not announced. A leaf: it alone reads the
- * status, so an agent:activity push recomposes only this text.
+ * Grotesk 13/18 regular, foreground-muted); while a start waits for its runtime's sign-in
+ * (slock #15282), "Sign-in needed" in Space Mono with the detail sentence in semantics; otherwise
+ * its runtime name (`SidebarItemMeta`, Space Mono 12/16, foreground-hint). Sticker ink on the
+ * selected row. One line with an ellipsis.
  */
 @Composable
 private fun DirectMessageAgentMeta(
     agentMemberId: String?,
     agentStatusResolver: RaftAgentStatusResolver,
     selected: Boolean,
+    agentName: String? = null,
     modifier: Modifier = Modifier
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val signIn =
+        if (agentMemberId != null && status?.external != true) {
+            rememberAgentRuntimeSignInState(status, fallbackName = agentName)
+        } else {
+            null
+        }
+    if (signIn != null) {
+        Text(
+            signIn.shortText,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentRuntimeSignInTestTags.SidebarShort)
+                    .semantics { contentDescription = signIn.detail },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val meta = raftHomeDmAgentMeta(status) ?: return
     val (text, style, color) =
         when (meta) {
