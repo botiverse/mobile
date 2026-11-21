@@ -1,8 +1,9 @@
 package build.raft.app.data
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RuntimeInfo
@@ -15,6 +16,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -278,7 +283,12 @@ private fun RuntimeInfo.toBundledEntry(): RuntimeCatalogEntry =
 
 /**
  * The catalogs read in this process, for naming a runtime anywhere (subtitles, chips, profile
- * cards). Snapshot state, so a label on screen follows a catalog that lands later.
+ * cards). Backed by a [MutableStateFlow] rather than a top-level Compose `mutableStateOf`:
+ * initializing a process-wide `mutableStateOf` lazily on a background thread while the main thread
+ * holds an open `Recomposer` `MutableSnapshot` creates the state in a newer snapshot ID and throws
+ * `IllegalStateException: Reading a state that was created after the snapshot was taken` (Hands
+ * `25b91174`, `#proj-mobile-release:#35`). Composables subscribe via [observeCatalog] /
+ * [observeCatalogs], which collect inside their own composition snapshot.
  *
  * A runtime's lifecycle (deprecated, experimental) is a per-server answer (Antigravity is offered
  * again where the server says so): [entry] reads only the catalog of the server asked for, else the
@@ -287,37 +297,57 @@ private fun RuntimeInfo.toBundledEntry(): RuntimeCatalogEntry =
  * catalog read here when neither the server asked for nor the bundled table knows the runtime.
  */
 internal class RaftRuntimeCatalogNameRegistry {
-    private var catalogs by mutableStateOf<Map<String, ServerRuntimeCatalog>>(emptyMap())
+    private val catalogsFlow = MutableStateFlow<Map<String, ServerRuntimeCatalog>>(emptyMap())
 
     // Fetches for different servers publish in parallel off main: the read-modify-write of the map
-    // is one step under this lock, so neither server's catalog is lost. The write itself is a single
-    // global-snapshot write, which Compose allows from any thread.
+    // is one step under this lock, so neither server's catalog is lost.
     private val publishLock = SynchronizedObject()
 
     fun publish(serverId: String, catalog: ServerRuntimeCatalog) {
         val key = serverId.trim()
         if (key.isBlank()) return
         synchronized(publishLock) {
-            if (catalogs[key] != catalog) catalogs = catalogs + (key to catalog)
+            val current = catalogsFlow.value
+            if (current[key] != catalog) catalogsFlow.value = current + (key to catalog)
         }
     }
 
     fun clear() {
-        synchronized(publishLock) { catalogs = emptyMap() }
+        synchronized(publishLock) { catalogsFlow.value = emptyMap() }
     }
 
     /** [serverId]'s entry for [runtimeId], else (no server, or a catalog not read yet) the bundled one. */
     fun entry(runtimeId: String, serverId: String? = null): RuntimeCatalogEntry? {
         val id = runtimeId.trim()
         val server = serverId?.trim()?.takeIf { it.isNotBlank() }
-        return server?.let { catalogs[it]?.entry(id) } ?: BundledRuntimeCatalog.entry(id)
+        return server?.let { catalogsFlow.value[it]?.entry(id) } ?: BundledRuntimeCatalog.entry(id)
     }
 
     /** For a name only: [entry], else the first catalog read here that lists [runtimeId]. */
     fun displayNameEntry(runtimeId: String, serverId: String? = null): RuntimeCatalogEntry? =
-        entry(runtimeId, serverId) ?: runtimeId.trim().let { id -> catalogs.values.firstNotNullOfOrNull { it.entry(id) } }
+        entry(runtimeId, serverId) ?: runtimeId.trim().let { id -> catalogsFlow.value.values.firstNotNullOfOrNull { it.entry(id) } }
 
-    fun catalog(serverId: String?): ServerRuntimeCatalog? = serverId?.trim()?.let { catalogs[it] }
+    fun catalog(serverId: String?): ServerRuntimeCatalog? = serverId?.trim()?.let { catalogsFlow.value[it] }
+
+    /** Reactive flow of [serverId]'s catalog. */
+    fun catalogFlow(serverId: String): Flow<ServerRuntimeCatalog?> {
+        val key = serverId.trim()
+        return catalogsFlow.map { it[key] }.distinctUntilChanged()
+    }
+
+    /** Composition-safe reactive observation of every server catalog read in this process. */
+    @Composable
+    fun observeCatalogs(): Map<String, ServerRuntimeCatalog> = catalogsFlow.collectAsState().value
+
+    /** Composition-safe reactive observation of [serverId]'s catalog only. */
+    @Composable
+    fun observeCatalog(serverId: String?): ServerRuntimeCatalog? {
+        val serverKey = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return key(this, serverKey) {
+            val flow = remember { catalogFlow(serverKey) }
+            flow.collectAsState(initial = catalog(serverKey)).value
+        }
+    }
 }
 
 /** The process-wide registry every runtime name on screen reads. */
@@ -327,9 +357,31 @@ internal val RaftRuntimeCatalogNames: RaftRuntimeCatalogNameRegistry = RaftRunti
 internal fun runtimeCatalogDisplayName(runtimeId: String, serverId: String? = null): String =
     RaftRuntimeCatalogNames.displayNameEntry(runtimeId, serverId)?.displayName ?: runtimeId
 
+/** Composition-reactive counterpart of [runtimeCatalogDisplayName]. */
+@Composable
+internal fun observeRuntimeCatalogDisplayName(runtimeId: String, serverId: String? = null): String {
+    val catalogs = RaftRuntimeCatalogNames.observeCatalogs()
+    val id = runtimeId.trim()
+    val server = serverId?.trim()?.takeIf { it.isNotBlank() }
+    val resolved =
+        server?.let { catalogs[it]?.entry(id) }
+            ?: BundledRuntimeCatalog.entry(id)
+            ?: catalogs.values.firstNotNullOfOrNull { it.entry(id) }
+    return resolved?.displayName ?: runtimeId
+}
+
 /** Deprecated on [serverId] (its catalog, else the bundled table); no server: the bundled table. */
 internal fun runtimeCatalogIsDeprecated(runtimeId: String, serverId: String?): Boolean =
     RaftRuntimeCatalogNames.entry(runtimeId, serverId)?.deprecated == true
+
+/** Composition-reactive counterpart of [runtimeCatalogIsDeprecated]. */
+@Composable
+internal fun observeRuntimeCatalogIsDeprecated(runtimeId: String, serverId: String?): Boolean {
+    val catalog = RaftRuntimeCatalogNames.observeCatalog(serverId)
+    val id = runtimeId.trim()
+    val entry = catalog?.entry(id) ?: BundledRuntimeCatalog.entry(id)
+    return entry?.deprecated == true
+}
 
 // ── Transport, cache, repository ──
 

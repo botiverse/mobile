@@ -38,7 +38,6 @@ import build.raft.app.data.RuntimePlanHeading
 import build.raft.app.data.RuntimeQuotaWindowKind
 import build.raft.app.data.cardWindowKind
 import build.raft.app.data.isDefaultAccount
-import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.data.runtimePlanHeading
 import build.raft.app.data.unsupportedReasonLine
 import build.raft.app.data.usageBadge
@@ -1972,7 +1971,7 @@ private fun ComputerRuntimeVersionLine(runtimeVersion: String?, auth: ComputerRu
     ) {
         if (outcome != null) {
             RaftText(
-                stringResource(outcome.message, auth?.let { runtimeCatalogDisplayName(it.raftRuntimeId) }.orEmpty(), *outcome.args.toTypedArray()),
+                stringResource(outcome.message, auth?.let { build.raft.app.data.observeRuntimeCatalogDisplayName(it.raftRuntimeId) }.orEmpty(), *outcome.args.toTypedArray()),
                 modifier = Modifier.testTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG),
                 style = typography.caption,
                 color = if (outcome.success) colors.foreground else colors.warningStrong,

@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.model.ServerId
 import build.raft.app.model.RuntimeModelInfo
 import kotlinx.coroutines.CompletableDeferred
@@ -178,6 +179,33 @@ class ServerRuntimeCatalogApiTest {
         assertFalse(names.entry("antigravity")!!.deprecated)
         assertFalse(names.entry("antigravity", "other")!!.deprecated)
         assertFalse(names.entry("antigravity", " ")!!.deprecated)
+    }
+
+    // Regression for Hands 25b91174 (#proj-mobile-release:#35): a cold-start background thread
+    // initializing the registry after the main thread's Recomposer has already opened a
+    // MutableSnapshot must never cause SnapshotKt.readError when that snapshot reads the catalog.
+    @Test
+    fun readingRegistryCreatedAfterMutableSnapshotWasTakenNeverThrows() {
+        val snapshot = Snapshot.takeMutableSnapshot()
+        try {
+            // Instantiated in GlobalSnapshot AFTER `snapshot` was taken (newer snapshot ID).
+            val names = RaftRuntimeCatalogNameRegistry()
+            val catalog =
+                ServerRuntimeCatalog(
+                    catalogVersion = 1,
+                    runtimes = listOf(entry("claude", displayName = "Claude Code (server)")),
+                    source = RuntimeCatalogSource.Server
+                )
+            names.publish("s1", catalog)
+
+            snapshot.enter {
+                assertEquals(catalog, names.catalog("s1"))
+                assertEquals("Claude Code (server)", names.entry("claude", "s1")?.displayName)
+                assertEquals("Claude Code (server)", names.displayNameEntry("claude", "s1")?.displayName)
+            }
+        } finally {
+            snapshot.dispose()
+        }
     }
 
     @Test

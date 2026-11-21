@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.SharedCreateAgentRuntimeModelCatalog
 import build.raft.app.SharedCreateAgentRuntimeModelOption
 import build.raft.app.authorRowModelLabel
@@ -260,5 +261,28 @@ class ServerModelLabelCatalogTest {
             "Claude Code · Fable 5.2",
             raftComputerAgentIdentityLabel("claude", "fable", serverId = "srv-1", machineId = "m-1")
         )
+    }
+
+    // Regression for Hands 25b91174 (#proj-mobile-release:#35): creating and publishing a
+    // RaftModelLabelCatalogRegistry after an active MutableSnapshot was opened must never throw
+    // SnapshotKt.readError when that snapshot reads the catalog or label.
+    @Test
+    fun readingModelLabelRegistryCreatedAfterMutableSnapshotWasTakenNeverThrows() {
+        val snapshot = Snapshot.takeMutableSnapshot()
+        try {
+            val registry = RaftModelLabelCatalogRegistry()
+            val catalog =
+                ServerModelLabelCatalog(
+                    machines = mapOf("m-1" to mapOf("claude" to mapOf("fable" to "Fable 5.2")))
+                )
+            registry.publish("srv-1", catalog)
+
+            snapshot.enter {
+                assertEquals(catalog, registry.catalog("srv-1"))
+                assertEquals("Fable 5.2", registry.label("srv-1", "m-1", "claude", "fable"))
+            }
+        } finally {
+            snapshot.dispose()
+        }
     }
 }

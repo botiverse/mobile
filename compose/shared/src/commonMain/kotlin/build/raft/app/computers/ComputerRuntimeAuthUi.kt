@@ -36,7 +36,6 @@ import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.SettingsComputerAgentSnapshot
-import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -310,7 +309,7 @@ private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier 
 @Composable
 internal fun ComputerRuntimeSignInButton(auth: ComputerRuntimeAuthCardState, onSignIn: () -> Unit, modifier: Modifier = Modifier) {
     RaftButton(
-        text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_title, runtimeCatalogDisplayName(auth.raftRuntimeId)),
+        text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_title, build.raft.app.data.observeRuntimeCatalogDisplayName(auth.raftRuntimeId)),
         onClick = onSignIn,
         modifier = modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG),
         variant = RaftButtonVariant.Primary,

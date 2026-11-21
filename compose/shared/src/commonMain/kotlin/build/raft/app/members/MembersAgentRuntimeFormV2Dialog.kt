@@ -224,7 +224,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         enabled = !saving,
                         quotaMachine = quotaMachine,
                         // This server's catalog read in this process, else bundled until it lands.
-                        catalog = RaftRuntimeCatalogNames.catalog(access.serverId.value) ?: BundledRuntimeCatalog,
+                        catalog = RaftRuntimeCatalogNames.observeCatalog(access.serverId.value) ?: BundledRuntimeCatalog,
                         currentRuntimeId = runtimeId,
                         options = membersRuntimeSwitchRows(agentRuntimeOptions, machineId)
                     ) {
@@ -295,6 +295,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
         }
 
     pendingSwitchSubmit?.let { submit ->
+        build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
         val confirmation = membersRuntimeFormV2SwitchConfirmation(runtimeId, submit.runtimeId)
         MembersRuntimeSwitchConfirmationDialog(
             title = confirmation.title.localized(),

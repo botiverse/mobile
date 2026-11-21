@@ -536,12 +536,20 @@ internal fun MembersAgentRuntimeConfigSection(
         val runtimeModelsCatalog = canonicalRuntimeId?.let(agentRuntimeModelsByRuntime::get)
         // The agent's server: its catalog says whether the runtime is deprecated there.
         val runtimeCatalogServerId = member.serverId?.value ?: agentProfileEditAuthority?.serverId?.value
+        val runtimeCatalog = build.raft.app.data.RaftRuntimeCatalogNames.observeCatalog(runtimeCatalogServerId)
+        val runtimeDeprecated =
+            canonicalRuntimeId?.let { id ->
+                runtimeDeprecatedForAgent(id, agentRuntimeOptions, runtimeCatalogServerId) { rt ->
+                    val normalized = rt.trim()
+                    (runtimeCatalog?.entry(normalized) ?: build.raft.app.data.BundledRuntimeCatalog.entry(normalized))?.deprecated == true
+                }
+            }
         MembersAgentRuntimeConfigRows(
             resolution = runtimeConfigResolution,
             runtimeModelsCatalog = runtimeModelsCatalog,
             machineId = summary?.machineId ?: member.membersComputerId,
             serverId = runtimeCatalogServerId,
-            runtimeDeprecated = canonicalRuntimeId?.let { runtimeDeprecatedForAgent(it, agentRuntimeOptions, runtimeCatalogServerId) }
+            runtimeDeprecated = runtimeDeprecated
         )
         // Web AgentProfileInfo: under the runtime rows (`mt-3`), before Environment Variables, only
         // when the server says the session reported Raft default limits (botiverse/slock #13492).
@@ -639,6 +647,8 @@ internal fun MembersAgentRuntimeConfigRows(
         return
     }
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalog(serverId)
     val runtimeId = runtimeConfig.runtime
     val modelLabel =
         membersAgentRuntimeModelDisplayLabel(
@@ -779,8 +789,9 @@ internal fun membersAgentRuntimeModelDisplayLabel(
         this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
 
     // Server model-label catalog first (web `projectRuntimeModelLabelPresentation`, slock #15780):
-    // always read during composition so Compose tracks catalog refreshes (including after live detect)
-    // instead of letting a stale per-runtime `runtimeModelsCatalog` mask updated labels.
+    // always checked before `runtimeModelsCatalog` so updated labels (including after live detect)
+    // win instead of letting a stale per-runtime `runtimeModelsCatalog` mask them. Callers in
+    // composition subscribe via `RaftModelLabelCatalogs.observeCatalog` / `RaftRuntimeCatalogNames.observeCatalog`.
     return build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, normalizedRuntimeId, normalizedModelId)
         ?.trim()
         ?.takeIf { it.isNotBlank() }

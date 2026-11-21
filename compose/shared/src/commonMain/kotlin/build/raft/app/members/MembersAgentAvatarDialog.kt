@@ -432,9 +432,10 @@ internal fun ColumnScope.MembersAgentAvatarDialogBody(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val defaultKey = PixelAvatarActiveDefaultKey
+    val avatarData = RaftPixelAvatarRuntime.observeCurrent()
+    val defaultKey = avatarData.defaultKey
     val selectedPreset = membersAgentAvatarSelectedPreset(draft, member, defaultKey)
-    val groups = remember(RaftPixelAvatarRuntime.current) { pixelAvatarPickerGroups() }
+    val groups = remember(avatarData) { pixelAvatarPickerGroups(avatarData) }
     val scroll = rememberScrollState()
     // The banner sits under the preview, so a failure shows where the list starts.
     LaunchedEffect(error) { if (error != null) scroll.animateScrollTo(0) }

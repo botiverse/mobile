@@ -329,6 +329,7 @@ internal fun rememberAgentReadinessDisplayCopy(
     timeContext: RaftTimeContext? = null,
 ): AgentReadinessDisplayCopy? {
     if (readiness == null || !readiness.holds()) return null
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     val nowMillis =
         currentRaftTimeContextProvider?.current?.nowEpochMillis
             ?: timeContext?.nowEpochMillis
