@@ -1395,6 +1395,8 @@
     <string name="activity_list_unread_count_description">새 답글 %1$d개</string>
     <string name="activity_list_draft_description">이 스레드에 보내지 않은 초안이 있어요</string>
     <string name="activity_list_marked_done">완료로 표시했어요</string>
+    <string name="activity_row_mark_row_done">%1$s을(를) 완료로 표시</string>
+    <string name="activity_row_mark_thread_done">%1$s의 스레드를 완료로 표시</string>
     <string name="activity_list_day_today">오늘</string>
     <string name="activity_list_day_yesterday">어제</string>
     <string name="activity_list_day_date">%2$s %3$d일 %1$s</string>

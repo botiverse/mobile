@@ -1395,6 +1395,8 @@
     <string name="activity_list_unread_count_description">%1$d novas</string>
     <string name="activity_list_draft_description">A thread tem um rascunho não enviado</string>
     <string name="activity_list_marked_done">Marcada como concluída</string>
+    <string name="activity_row_mark_row_done">Marcar %1$s como concluída</string>
+    <string name="activity_row_mark_thread_done">Marcar a conversa em %1$s como concluída</string>
     <string name="activity_list_day_today">Hoje</string>
     <string name="activity_list_day_yesterday">Ontem</string>
     <string name="activity_list_day_date">%1$s, %3$d de %2$s</string>

@@ -1396,6 +1396,8 @@
     <string name="activity_list_unread_count_description">%1$d new</string>
     <string name="activity_list_draft_description">Thread has an unsent draft</string>
     <string name="activity_list_marked_done">Marked as done</string>
+    <string name="activity_row_mark_row_done">Mark %1$s as Done</string>
+    <string name="activity_row_mark_thread_done">Mark the thread in %1$s as Done</string>
     <string name="activity_list_day_today">Today</string>
     <string name="activity_list_day_yesterday">Yesterday</string>
     <string name="activity_list_day_date">%1$s, %2$s %3$d</string>

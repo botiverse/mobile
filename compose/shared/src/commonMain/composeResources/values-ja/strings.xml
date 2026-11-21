@@ -1395,6 +1395,8 @@
     <string name="activity_list_unread_count_description">新着メッセージ %1$d 件</string>
     <string name="activity_list_draft_description">スレッドに未送信の下書きがあります</string>
     <string name="activity_list_marked_done">完了にしました</string>
+    <string name="activity_row_mark_row_done">%1$s を完了にする</string>
+    <string name="activity_row_mark_thread_done">%1$s のスレッドを完了にする</string>
     <string name="activity_list_day_today">今日</string>
     <string name="activity_list_day_yesterday">昨日</string>
     <string name="activity_list_day_date">%2$s%3$d日%1$s</string>

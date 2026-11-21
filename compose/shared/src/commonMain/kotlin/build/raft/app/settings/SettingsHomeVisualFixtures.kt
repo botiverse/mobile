@@ -1069,7 +1069,8 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
 // renders them. A display label such as "6 minutes ago" is not a timestamp:
 // under the page's live clock it reads "unknown time". No task and no draft:
 // the React fixture has neither.
-private val homeActivityVisualSnapshot = InboxSnapshot(
+// Also the rows of the wide layout's screens.wide.activity-task (WideShellVisualFixtures), as on the web.
+internal val homeActivityVisualSnapshot = InboxSnapshot(
     server = homeSearchVisualServer,
     items =
         listOf(
