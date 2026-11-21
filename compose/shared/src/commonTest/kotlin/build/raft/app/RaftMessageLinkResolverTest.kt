@@ -30,6 +30,11 @@ import kotlinx.coroutines.test.runTest
  * targetMessageId, canonicalTarget?, messages, … }` (a thread reply's canonicalTarget is
  * `{ kind: "thread", channelId: <parent channel>, messageId, threadParentMessageId,
  * threadChannelId }`), and a target behind the history window answers 404 with `hiddenTarget`.
+ * A server the account is not in is read through `GET /api/public/servers/:slug`
+ * (botiverse/slock@0ea95d1cd packages/server/src/routes/publicServer.ts): 200 `{ server: { id, name,
+ * slug, avatarUrl, translationEnabled }, channels: [{ id, name, description }], translationAvailable }`
+ * listing the channels a stranger may read, 404 `{ error: "Not found" }` for a server that is
+ * missing, deleted or not public.
  */
 class RaftMessageLinkResolverTest {
     private val serverId = "5e7a0c1d-0000-4000-8000-00000000a001"
@@ -39,6 +44,10 @@ class RaftMessageLinkResolverTest {
     private val pid = "a3b4c5d6-e7f8-4a1b-8c2d-3e4f5a6b7c8d"
     private val mid = "0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9"
     private val threadChannelId = "7c7c7c7c-1111-4222-8333-444455556666"
+    /** A server the account is not in, and another channel of it. */
+    private val publicSlug = "open-source-club"
+    private val publicServerId = "5e7a0c1d-0000-4000-8000-00000000a003"
+    private val otherPublicChannelId = "9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a"
     private val servers =
         listOf(
             StoredAuthServer(id = otherServerId, name = "Other", slug = "other"),
@@ -67,13 +76,92 @@ class RaftMessageLinkResolverTest {
     private fun replyTarget(parent: String = pid) =
         """{"kind":"thread","channelId":"$cid","messageId":"$mid","threadParentMessageId":"$parent","threadChannelId":"$threadChannelId"}"""
 
+    /** `GET /api/public/servers/:slug` 200: the public server's card, listing [channelIds]. */
+    private fun publicServerBody(vararg channelIds: String): String {
+        val channels = channelIds.joinToString(",") { id -> """{"id":"$id","name":"release-notes","description":null}""" }
+        return """{"server":{"id":"$publicServerId","name":"Open Source Club","slug":"$publicSlug","avatarUrl":null,""" +
+            """"translationEnabled":false},"channels":[$channels],"translationAvailable":false}"""
+    }
+
     @Test
-    fun serverTheAccountHasNotJoinedGoesToThePublicPreviewWithoutMemberRequests() = runTest {
-        val network = FakeMessageLinkNetwork()
-        val target = link(slug = "someone-elses", msg = mid)
-        val result = RaftMessageLinkResolver(network).resolve(target, servers)
-        assertEquals(RaftMessageLinkResolution.PublicPreview(target), result)
-        assertTrue(network.requests.isEmpty())
+    fun serverTheAccountHasNotJoinedOpensThePublicPreviewWhenItListsTheChannel() = runTest {
+        // A message link, a thread link (on its parent message's channel), and a channel id in capitals.
+        for (target in listOf(
+            link(slug = publicSlug, msg = mid),
+            link(slug = publicSlug, msg = mid, threadParent = pid),
+            link(slug = publicSlug, channelId = cid.uppercase()),
+        )) {
+            val network = FakeMessageLinkNetwork(publicServer = HomeNetworkResponse(200, publicServerBody(otherPublicChannelId, cid)))
+            val result = RaftMessageLinkResolver(network).resolve(target, servers)
+            assertEquals(RaftMessageLinkResolution.PublicPreview(target), result, "link=$target")
+            // One anonymous request, at the priority of an open the user waits on; no member route.
+            assertEquals(
+                listOf(
+                    RecordedMessageLinkRequest(
+                        path = "public/servers/$publicSlug",
+                        query = emptyList(),
+                        serverIdOverride = null,
+                        priority = DataRequestPriority.Foreground,
+                    )
+                ),
+                network.requests,
+                "link=$target",
+            )
+        }
+    }
+
+    @Test
+    fun serverNotPublicOrWithoutTheLinkedChannelIsOneMessageLinkNotFoundAnswer() = runTest {
+        val messageLink = link(slug = publicSlug, msg = mid)
+        val cases =
+            listOf(400, 403, 404).map { code ->
+                // No such server, deleted, or not public (slock answers 404 for each; 400 and 403 read the same).
+                Triple(messageLink, HomeNetworkResponse(code, """{"error":"Not found"}"""), "public_server_$code")
+            } +
+                listOf(
+                    // Public, but the channel is not one a stranger may read (private, not shown, archived, deleted).
+                    Triple(messageLink, HomeNetworkResponse(200, publicServerBody(otherPublicChannelId)), "public_channel_not_listed"),
+                    Triple(link(slug = publicSlug), HomeNetworkResponse(200, publicServerBody()), "public_channel_not_listed"),
+                    // A DM is never public, even under the id of a listed channel.
+                    Triple(
+                        link(slug = publicSlug, kind = ConversationKind.DirectMessage, msg = mid),
+                        HomeNetworkResponse(200, publicServerBody(cid)),
+                        "public_route_kind_mismatch",
+                    ),
+                )
+        for ((target, answer, reason) in cases) {
+            val network = FakeMessageLinkNetwork(publicServer = answer)
+            val result = RaftMessageLinkResolver(network).resolve(target, servers)
+            assertEquals(RaftMessageLinkResolution.PublicNotFound(reason), result, "code=${answer.code}")
+            // The same single request for every one of them.
+            assertEquals(listOf("public/servers/$publicSlug"), network.requests.map { it.path }, "reason=$reason")
+        }
+    }
+
+    @Test
+    fun publicServerCheckWithoutAnAnswerStillOpensThePublicPreview() = runTest {
+        // A temporary failure is never "not found": the preview's own load shows Retry. 401 (the auth
+        // layer's), 408, 429, 5xx and no response (0), for a channel link and a DM link alike, and a
+        // 2xx that is not the card.
+        val channelLink = link(slug = publicSlug, msg = mid)
+        val dmLink = link(slug = publicSlug, kind = ConversationKind.DirectMessage, msg = mid)
+        val cases =
+            listOf(401, 408, 429, 500, 502, 503, 0).flatMap { code ->
+                listOf(channelLink to HomeNetworkResponse(code, null), dmLink to HomeNetworkResponse(code, null))
+            } + (channelLink to HomeNetworkResponse(200, "<!doctype html><title>Raft</title>"))
+        for ((target, answer) in cases) {
+            val network = FakeMessageLinkNetwork(publicServer = answer)
+            assertEquals(
+                RaftMessageLinkResolution.PublicPreview(target),
+                RaftMessageLinkResolver(network).resolve(target, servers),
+                "code=${answer.code} kind=${target.routeKind}",
+            )
+            assertEquals(listOf("public/servers/$publicSlug"), network.requests.map { it.path })
+        }
+        // Offline: the request throws.
+        val offline = FakeMessageLinkNetwork(throwOnPublicServer = true)
+        assertEquals(RaftMessageLinkResolution.PublicPreview(channelLink), RaftMessageLinkResolver(offline).resolve(channelLink, servers))
+        assertEquals(listOf("public/servers/$publicSlug"), offline.requests.map { it.path })
     }
 
     @Test
@@ -675,6 +763,9 @@ private class FakeMessageLinkNetwork(
     private val context: HomeNetworkResponse? = null,
     private val throwOnContext: Boolean = false,
     private val throwOnChannel: Boolean = false,
+    /** `GET /api/public/servers/:slug`; unset, the request is unexpected. */
+    private val publicServer: HomeNetworkResponse? = null,
+    private val throwOnPublicServer: Boolean = false,
 ) : RaftNetworkClient {
     val requests = mutableListOf<RecordedMessageLinkRequest>()
 
@@ -698,6 +789,10 @@ private class FakeMessageLinkNetwork(
             path.startsWith("messages/context/") -> {
                 if (throwOnContext) error("socket closed")
                 context ?: HomeNetworkResponse(200, """{"channelId":null,"messages":[]}""")
+            }
+            path.startsWith("public/servers/") -> {
+                if (throwOnPublicServer) error("offline")
+                publicServer ?: error("unexpected request $path")
             }
             else -> error("unexpected request $path")
         }

@@ -8,7 +8,9 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.isRaftMessageContextHistoryLimited
 import build.raft.app.data.parseRaftMessageLinkChannelProbe
+import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.data.parseSharedMessageContext
+import build.raft.app.data.raftPublicServerPath
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -28,11 +30,23 @@ internal sealed interface RaftMessageLinkResolution {
     ) : RaftMessageLinkResolution
 
     /**
-     * {slug} is not one of the account's servers: the link opens the read-only public preview
+     * {slug} is not one of the account's servers, and its public card lists the link's channel
+     * among those a stranger may read, or could not be read now (a transient failure never decides
+     * "not found"): the link opens the read-only public preview
      * ([RaftPublicConversationPreviewStore]), which reads it through the anonymous public routes
      * and shows the same not-found state when a stranger may not read it either.
      */
     data class PublicPreview(val link: RaftMessageLink) : RaftMessageLinkResolution
+
+    /**
+     * {slug} is not one of the account's servers, and its public card says there is nothing here
+     * for a stranger: no such server or not public (400/403/404), or public without the link's
+     * channel among those listed, or a DM link (the public routes serve channels only). The shell
+     * opens the neutral "Message not found" page ([openRaftMessageLinkNotFoundPage]), as the web
+     * shows its not-found page instead of the public page; never the conversation-unavailable page,
+     * which is for a conversation on one of the account's servers.
+     */
+    data class PublicNotFound(val reason: String) : RaftMessageLinkResolution
 
     /**
      * The conversation/message is not there or not for this reader (400/403/404: no access,
@@ -46,7 +60,8 @@ internal sealed interface RaftMessageLinkResolution {
  * Resolves a link for the signed-in account: {slug} against the account's servers, then the
  * conversation (`GET /api/channels/:id`) and the message (`GET /api/messages/context/:id`) on that
  * server. Only what the API returns for this reader becomes identity; ids from the link that the
- * API did not confirm are never opened.
+ * API did not confirm are never opened. A {slug} that is not one of the account's servers is
+ * asked whether it is public first (`GET /api/public/servers/:slug`, see [resolveOutsideAccount]).
  *
  * A transient failure (5xx, 408/429, timeout, offline, DNS) never decides "not found": the
  * link opens and the conversation page shows its own load/retry/offline state, as a
@@ -64,10 +79,7 @@ internal class RaftMessageLinkResolver(
     suspend fun resolve(link: RaftMessageLink, servers: List<StoredAuthServer>): RaftMessageLinkResolution {
         val server =
             servers.firstOrNull { it.slug?.equals(link.serverSlug, ignoreCase = true) == true }
-                ?: run {
-                    diagnosticsLogger("message_link_resolved result=public_preview")
-                    return RaftMessageLinkResolution.PublicPreview(link)
-                }
+                ?: return resolveOutsideAccount(link)
         val serverId = ServerId(server.id)
         val focusMessageId = link.focusMessageId
         // Before the requests: the page's revision and head epoch must predate its fetch.
@@ -286,6 +298,38 @@ internal class RaftMessageLinkResolver(
     }
 
     /**
+     * {slug} is not one of the account's servers. The public preview opens only once
+     * `GET /api/public/servers/:slug` says the server is public and lists the link's channel among
+     * those a stranger may read, as the web reads that card before it shows its public page
+     * (botiverse/slock@0ea95d1cd packages/web/src/pages/PublicServerPage.tsx,
+     * packages/server/src/routes/publicServer.ts). One request, whatever it answers:
+     *
+     * - 400/403/404 (no such server, deleted, not public), or 2xx for a DM link (the public routes
+     *   serve ordinary channels only) or without the link's channel: [RaftMessageLinkResolution.PublicNotFound];
+     * - 2xx listing the channel (a thread link names its parent channel): the preview;
+     * - no answer (offline, timeout, DNS), 401, 408, 429, 5xx, or a 2xx body that is not the card:
+     *   the preview as well, whose own Retry handles it. A temporary failure never decides "not found".
+     */
+    private suspend fun resolveOutsideAccount(link: RaftMessageLink): RaftMessageLinkResolution {
+        // The public routes are anonymous: no server of the account is named.
+        val response = request(serverId = null, path = raftPublicServerPath(link.serverSlug))
+        return when (response.linkOutcome()) {
+            RaftLinkProbeOutcome.NotFound -> publicNotFound("public_server_${response?.code}")
+            RaftLinkProbeOutcome.Unavailable -> publicPreview(link, reason = "public_server_${response?.code ?: "transport"}")
+            RaftLinkProbeOutcome.Found -> {
+                if (link.routeKind != ConversationKind.Channel) return publicNotFound("public_route_kind_mismatch")
+                val card = parseRaftPublicServerCard(response?.bodyText) ?: return publicPreview(link, reason = "public_server_unreadable")
+                // Channel ids are UUIDs: a link may spell one in either case.
+                if (card.channelIds.none { it.equals(link.channelId, ignoreCase = true) }) {
+                    publicNotFound("public_channel_not_listed")
+                } else {
+                    publicPreview(link, reason = "public_channel_listed")
+                }
+            }
+        }
+    }
+
+    /**
      * botiverse/slock #12371 (web `useOtherServerMessageLink`): a link to a joint channel names the
      * copy on the server it was copied from; a reader who takes part only through another of their
      * servers can't read it there. Asks each other server of the account, one at a time, whether it
@@ -336,8 +380,9 @@ internal class RaftMessageLinkResolver(
         return null
     }
 
+    /** [serverId] null: no server binding (the anonymous public routes). */
     private suspend fun request(
-        serverId: ServerId,
+        serverId: ServerId?,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
     ): HomeNetworkResponse? =
@@ -380,6 +425,16 @@ internal class RaftMessageLinkResolver(
     private fun notFound(reason: String): RaftMessageLinkResolution.NotFound {
         diagnosticsLogger("message_link_resolved result=not_found reason=$reason")
         return RaftMessageLinkResolution.NotFound(reason)
+    }
+
+    private fun publicNotFound(reason: String): RaftMessageLinkResolution.PublicNotFound {
+        diagnosticsLogger("message_link_resolved result=not_found reason=$reason")
+        return RaftMessageLinkResolution.PublicNotFound(reason)
+    }
+
+    private fun publicPreview(link: RaftMessageLink, reason: String): RaftMessageLinkResolution.PublicPreview {
+        diagnosticsLogger("message_link_resolved result=public_preview reason=$reason")
+        return RaftMessageLinkResolution.PublicPreview(link)
     }
 }
 

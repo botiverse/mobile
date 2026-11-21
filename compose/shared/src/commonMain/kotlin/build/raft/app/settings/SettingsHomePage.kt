@@ -3107,6 +3107,13 @@ private fun RaftAppShellReadyContent(
                 pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
                 null
             }
+            is RaftMessageLinkResolution.PublicNotFound -> {
+                // A server the account is not in, with nothing public for this link: the neutral
+                // "Message not found" page over whatever is shown, as a rejected link opens it (not
+                // the conversation-unavailable page, which is for one of the account's servers).
+                pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                null
+            }
         }
     }
     val latestResolveMessageLink by latestResolveMessageLinkState
