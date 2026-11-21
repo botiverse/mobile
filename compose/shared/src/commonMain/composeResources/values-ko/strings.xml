@@ -1573,9 +1573,6 @@
     <string name="member_runtime_config_applied_now">적용되었어요. 다음 턴부터 반영돼요.</string>
     <string name="member_runtime_config_applies_when_idle">이번 턴이 끝나면 자동으로 전환돼요.</string>
     <string name="member_runtime_config_new_session_when_idle">이번 턴이 끝나면 새 세션을 자동으로 시작해요.</string>
-    <string name="member_runtime_config_applies_next_start">다음 시작 때 적용돼요.</string>
-    <string name="member_action_restart_now">지금 재시작</string>
-    <string name="member_runtime_config_running_switches_when_idle">%1$s 실행 중 · 대기 상태가 되면 %2$s(으)로 전환</string>
     <string name="member_action_view_service">서비스 보기</string>
     <string name="member_action_view_logs">로그 보기</string>
     <string name="member_action_refresh">새로고침</string>
@@ -2990,7 +2987,6 @@
     <string name="settings_computers_bulk_model_restart_line_many">실행 중인 에이전트 %1$d개가 재시작돼요.</string>
     <string name="settings_computers_bulk_model_idle_line_one">실행 중인 에이전트 %1$d개에 바로 적용돼요 (작업 중이면 즉시 재시작해 이어가요).</string>
     <string name="settings_computers_bulk_model_idle_line_many">실행 중인 에이전트 %1$d개에 바로 적용돼요 (작업 중이면 즉시 재시작해 이어가요).</string>
-    <string name="settings_computers_bulk_model_restart_now">실행 중인 에이전트 지금 재시작</string>
     <string name="settings_computers_bulk_model_apply_one">에이전트 %1$d개 변경</string>
     <string name="settings_computers_bulk_model_apply_many">에이전트 %1$d개 변경</string>
     <string name="settings_computers_bulk_model_applying_title_one">에이전트 %1$d개 변경 중…</string>

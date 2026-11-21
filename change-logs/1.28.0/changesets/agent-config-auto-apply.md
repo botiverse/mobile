@@ -3,7 +3,7 @@ type: changed
 area: agents
 platforms: [android, ios, desktop]
 pull_request: 5201
-rollout: always
+rollout: full
 ---
 
 ## zh-CN

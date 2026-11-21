@@ -56,12 +56,14 @@ class MembersRuntimeConfigApplyUiTest {
     }
 
     @Test
-    fun appliedAndRestartedShowPlainConfirmationWithNoRestartButton() = runRobolectricComposeUiTest {
+    fun appliedAndRestartedShowPlainConfirmationWithNoRestartButton() {
         for (apply in listOf(AgentConfigApply.Applied, AgentConfigApply.Restarted)) {
-            showNotice(apply)
-            onNodeWithText("witty's settings saved").assertIsDisplayed()
-            onNodeWithText("Applied — active for the next turn.").assertIsDisplayed()
-            assertEquals(0, countText("Restart now"))
+            runRobolectricComposeUiTest {
+                showNotice(apply)
+                onNodeWithText("witty's settings saved").assertIsDisplayed()
+                onNodeWithText("Applied — active for the next turn.").assertIsDisplayed()
+                assertEquals(0, countText("Restart now"))
+            }
         }
     }
 
@@ -82,7 +84,7 @@ class MembersRuntimeConfigApplyUiTest {
     }
 
     @Test
-    fun savedShowsNoRestartPromptEvenWhenActive() = runRobolectricComposeUiTest {
+    fun savedShowsNoRestartPromptEvenWhenActive() {
         assertNull(membersRuntimeConfigApplyNotice(AgentConfigApply.Saved, agentActive = true, newSession = false))
     }
 
