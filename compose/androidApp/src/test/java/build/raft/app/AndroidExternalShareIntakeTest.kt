@@ -160,6 +160,78 @@ class AndroidExternalShareIntakeTest {
         )
     }
 
+    @Test
+    fun pendingLaunchFastPathSkipsRepeatedDiskReadsWhenNoShareExistsAndInvalidatesOnAdmit() = runTest {
+        val root = Files.createTempDirectory("external-share-fastpath").toFile()
+        var readerCalls = 0
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                tokenFactory = { "fastpath-token-123456" },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file ->
+                    readerCalls += 1
+                    file.readText()
+                }
+            )
+        try {
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertTrue(inbox.isKnownNoPendingLaunch())
+            val readsAfterFirstProbe = readerCalls
+
+            // Repeated probes hit the in-memory negative cache with zero disk reads.
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertEquals(readsAfterFirstProbe, readerCalls)
+
+            // Admitting a new share invalidates the negative cache so recovery sees it.
+            val admitted = inbox.admit(spec("shared-text")) as AndroidExternalShareIntakeResult.Admitted
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(admitted.launch, inbox.pendingLaunchOrNull())
+
+            // Consuming clears the pending file and the next probe re-establishes the negative cache.
+            assertEquals(
+                RaftExternalShareEnvelopeHostMutationResult.Success,
+                inbox.consume(admitted.launch.token, "external-share-consume:${admitted.launch.token}")
+            )
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertTrue(inbox.isKnownNoPendingLaunch())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun pendingLaunchReturnsNullWithoutTouchingReaderWhenInboxDirectoryDoesNotExist() {
+        val parent = Files.createTempDirectory("external-share-missing-root").toFile()
+        val missingRoot = File(parent, "never-created")
+        var readerCalls = 0
+        val inbox =
+            AndroidExternalShareInbox(
+                root = missingRoot,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                atomicReader = { file ->
+                    readerCalls += 1
+                    file.readText()
+                }
+            )
+        try {
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertEquals(0, readerCalls)
+            assertTrue(inbox.isKnownNoPendingLaunch())
+        } finally {
+            parent.deleteRecursively()
+        }
+    }
+
     private fun spec(text: String, vararg refs: String): AndroidExternalShareSpec =
         AndroidExternalShareSpec(text = text, subject = "", uris = refs.toList())
 

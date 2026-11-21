@@ -25,6 +25,7 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
@@ -109,13 +110,31 @@ internal class AndroidExternalShareAdmissionOwner<T>(
 
 internal object AndroidExternalShareProcessOwner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var inbox: AndroidExternalShareInbox? = null
     @Volatile private var owner: AndroidExternalShareAdmissionOwner<Intent>? = null
+    @Volatile private var preloadJob: Job? = null
+
+    fun peekInboxOrNull(): AndroidExternalShareInbox? = inbox
 
     fun inbox(context: Context): AndroidExternalShareInbox =
         inbox ?: synchronized(this) {
             inbox ?: AndroidExternalShareInbox(context.applicationContext).also { inbox = it }
         }
+
+    /**
+     * Warms the durable pending-share status on [Dispatchers.IO] during process start so a normal
+     * launcher cold start in [MainActivity] does not call `noBackupFilesDir` or read `pending.txt`
+     * on the main thread.
+     */
+    fun preloadPendingLaunch(context: Context): Job {
+        val appContext = context.applicationContext
+        return preloadJob ?: synchronized(this) {
+            preloadJob ?: ioScope.launch {
+                runCatching { inbox(appContext).pendingLaunchOrNull() }
+            }.also { preloadJob = it }
+        }
+    }
 
     fun admissionOwner(context: Context): AndroidExternalShareAdmissionOwner<Intent> =
         owner ?: synchronized(this) {
@@ -133,6 +152,15 @@ internal object AndroidExternalShareProcessOwner {
                     }
                 ).also { owner = it }
         }
+
+    internal fun resetForTests() {
+        synchronized(this) {
+            preloadJob?.cancel()
+            preloadJob = null
+            inbox = null
+            owner = null
+        }
+    }
 }
 
 fun installAndroidExternalShareInbox(context: Context) {
@@ -140,6 +168,7 @@ fun installAndroidExternalShareInbox(context: Context) {
     RaftExternalShareEnvelopeHostProvider.installAppScopeHost {
         AndroidExternalShareProcessOwner.inbox(appContext)
     }
+    AndroidExternalShareProcessOwner.preloadPendingLaunch(appContext)
 }
 
 internal class AndroidExternalShareInbox(
@@ -222,7 +251,33 @@ internal class AndroidExternalShareInbox(
         }
     }
 
+    private val pendingStateLock = Any()
+    private var pendingStateKnownAbsent = false
+    private var pendingMutationGeneration = 0L
+
+    /** True once this process has confirmed no unconsumed pending share is on disk (no I/O). */
+    fun isKnownNoPendingLaunch(): Boolean =
+        synchronized(pendingStateLock) { pendingStateKnownAbsent }
+
     fun pendingLaunchOrNull(): AndroidExternalShareLaunch? {
+        val generationBefore =
+            synchronized(pendingStateLock) {
+                if (pendingStateKnownAbsent) return null
+                pendingMutationGeneration
+            }
+        val result = readPendingLaunchFromDisk()
+        if (result == null) {
+            synchronized(pendingStateLock) {
+                if (pendingMutationGeneration == generationBefore) {
+                    pendingStateKnownAbsent = true
+                }
+            }
+        }
+        return result
+    }
+
+    private fun readPendingLaunchFromDisk(): AndroidExternalShareLaunch? {
+        if (!root.isDirectory) return null
         val token = runCatching { atomicReader(pendingFile()).trim() }.getOrNull()
             ?.takeIf(::isSafeToken)
             ?: return null
@@ -428,12 +483,20 @@ internal class AndroidExternalShareInbox(
 
     private fun writePendingToken(token: String) {
         if (!root.exists() && !root.mkdirs()) reject("external_share_storage_unavailable")
+        synchronized(pendingStateLock) {
+            pendingMutationGeneration += 1L
+            pendingStateKnownAbsent = false
+        }
         atomicWriter(pendingFile(), token.toByteArray(Charsets.UTF_8))
     }
 
     private fun clearPendingIfMatches(token: String) {
         val pending = pendingFile()
         if (runCatching { atomicReader(pending).trim() }.getOrNull() == token) {
+            synchronized(pendingStateLock) {
+                pendingMutationGeneration += 1L
+                pendingStateKnownAbsent = false
+            }
             pending.delete()
         }
     }

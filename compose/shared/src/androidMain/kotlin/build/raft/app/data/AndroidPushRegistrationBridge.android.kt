@@ -22,9 +22,12 @@ import kotlinx.coroutines.launch
  */
 object RaftAndroidPushRegistrationBridge {
     private val scope = CoroutineScope(SupervisorJob())
+    private val bridgeLock = Any()
 
     @Volatile
     private var coordinator: RaftPushRegistrationCoordinator? = null
+
+    private var pendingDeliveryStatusRefreshReason: String? = null
 
     /**
      * [fcmUnavailableReason] non-null (no Google Play services, so no FCM transport on this device) turns
@@ -33,15 +36,28 @@ object RaftAndroidPushRegistrationBridge {
      * realtime path keeps posting this device's notifications itself.
      */
     fun install(candidateInstallationId: String, fcmUnavailableReason: String? = null): String {
-        val existing = coordinator
-        val runtime = existing ?: createCoordinator()
-        if (fcmUnavailableReason != null) {
-            // Before the coordinator is published or handed to the lifecycle: once installed there, a
-            // session observer could already start a flush of a payload persisted by an earlier process.
-            runtime.reportProviderUnavailable(fcmUnavailableReason)
-        }
-        if (existing == null) {
-            coordinator = runtime
+        val (runtime, newlyInstalled, pendingRefreshReason) =
+            synchronized(bridgeLock) {
+                val existing = coordinator
+                val target = existing ?: createCoordinator()
+                if (fcmUnavailableReason != null) {
+                    // Before the coordinator is published or handed to the lifecycle: once installed there, a
+                    // session observer could already start a flush of a payload persisted by an earlier process.
+                    target.reportProviderUnavailable(fcmUnavailableReason)
+                }
+                if (existing == null) {
+                    coordinator = target
+                }
+                val pending =
+                    if (fcmUnavailableReason == null) {
+                        pendingDeliveryStatusRefreshReason.also { pendingDeliveryStatusRefreshReason = null }
+                    } else {
+                        pendingDeliveryStatusRefreshReason = null
+                        null
+                    }
+                Triple(target, existing == null, pending)
+            }
+        if (newlyInstalled) {
             RaftPushRegistrationLifecycle.install(runtime)
         }
         if (fcmUnavailableReason != null) {
@@ -49,6 +65,9 @@ object RaftAndroidPushRegistrationBridge {
         }
         val installationId = runtime.installationId(candidateInstallationId)
         runtime.onSessionSaved()
+        if (pendingRefreshReason != null) {
+            refreshDeliveryStatus(pendingRefreshReason)
+        }
         return installationId
     }
 
@@ -77,7 +96,13 @@ object RaftAndroidPushRegistrationBridge {
      * its periodic tick). The coordinator spaces the requests; this never throws into the caller.
      */
     fun refreshDeliveryStatus(reason: String) {
-        val runtime = coordinator ?: return
+        val runtime =
+            synchronized(bridgeLock) {
+                coordinator ?: run {
+                    pendingDeliveryStatusRefreshReason = reason
+                    return
+                }
+            }
         scope.launch {
             try {
                 runtime.refreshDeliveryStatus(reason = reason)

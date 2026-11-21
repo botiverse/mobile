@@ -8,6 +8,8 @@ import android.content.res.Resources
 import android.os.Build
 import build.raft.app.R
 import build.raft.app.RaftAppAppearance
+import build.raft.app.data.RaftAppAppearanceRuntime
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -28,6 +30,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class RaftAndroidNightModeTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
+
+    @After
+    fun tearDown() {
+        RaftAndroidNightMode.resetForTests()
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
+    }
 
     @Test
     fun lightAndDarkPinTheNightBitsAndSystemFollowsTheDevice() {
@@ -59,6 +67,73 @@ class RaftAndroidNightModeTest {
         assertEquals(UiModeManager.MODE_NIGHT_YES, raftApplicationNightMode(RaftAppAppearance.Dark))
         // AUTO clears the app's override: the device setting applies.
         assertEquals(UiModeManager.MODE_NIGHT_AUTO, raftApplicationNightMode(RaftAppAppearance.System))
+    }
+
+    @Test
+    fun coldStartDecisionSkipsRedundantIpcWhenSystemModeAlreadyMatches() {
+        val light = Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
+        val dark = Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_YES
+        val undefined = Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_UNDEFINED
+
+        // System appearance matching OS skips; stale override mismatch applies.
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = light, systemUiMode = light))
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = dark, systemUiMode = dark))
+        assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = dark, systemUiMode = light))
+        assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = light, systemUiMode = dark))
+
+        // Explicit Dark / Light skip when app config already reflects the persisted mode, apply on mismatch.
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Dark, appUiMode = dark, systemUiMode = light))
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Dark, appUiMode = dark, systemUiMode = dark))
+        assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Dark, appUiMode = light, systemUiMode = light))
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Light, appUiMode = light, systemUiMode = dark))
+        assertFalse(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Light, appUiMode = light, systemUiMode = light))
+        assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.Light, appUiMode = dark, systemUiMode = dark))
+
+        // Undefined night bits always apply.
+        assertTrue(shouldApplyApplicationNightModeOnColdStart(RaftAppAppearance.System, appUiMode = undefined, systemUiMode = light))
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "notnight")
+    fun installSkipsColdStartIpcWhenMatchingAndAppliesSettingsSwitchesImmediately() {
+        val appliedModes = mutableListOf<Int>()
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
+        RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.systemUiModeProviderForTests = {
+            Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
+        }
+        RaftAndroidNightMode.setApplicationNightModeForTests = { mode -> appliedModes += mode }
+
+        RaftAndroidNightMode.install(context as Application)
+        assertEquals(emptyList<Int>(), appliedModes)
+
+        // Settings switches always apply immediately; duplicate selections are deduped.
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Light)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO), appliedModes)
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.System)
+        assertEquals(
+            listOf(UiModeManager.MODE_NIGHT_YES, UiModeManager.MODE_NIGHT_NO, UiModeManager.MODE_NIGHT_AUTO),
+            appliedModes,
+        )
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "notnight")
+    fun installAppliesColdStartIpcWhenStoredAppearanceDisagreesWithAppConfiguration() {
+        val appliedModes = mutableListOf<Int>()
+        RaftAppAppearanceRuntime.select(RaftAppAppearance.Dark)
+        RaftAndroidNightMode.resetForTests()
+        RaftAndroidNightMode.systemUiModeProviderForTests = {
+            Configuration.UI_MODE_TYPE_NORMAL or Configuration.UI_MODE_NIGHT_NO
+        }
+        RaftAndroidNightMode.setApplicationNightModeForTests = { mode -> appliedModes += mode }
+
+        RaftAndroidNightMode.install(context as Application)
+        assertEquals(listOf(UiModeManager.MODE_NIGHT_YES), appliedModes)
     }
 
     @Test

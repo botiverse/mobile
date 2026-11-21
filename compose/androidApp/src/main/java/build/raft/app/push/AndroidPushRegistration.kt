@@ -5,10 +5,16 @@ import build.raft.app.BuildConfig
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import com.google.android.gms.common.ConnectionResult
-import com.google.android.gms.common.GoogleApiAvailabilityLight
 import com.google.firebase.installations.FirebaseInstallations
 import com.google.firebase.messaging.FirebaseMessaging
 import java.util.UUID
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Android host half of RFC 045 push registration. The shared bridge owns
@@ -17,45 +23,115 @@ import java.util.UUID
  */
 internal object AndroidPushRegistration {
     private const val TAG = "SlockFCM"
+    private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stateLock = Any()
 
     /** Non-null once this process decided not to register: "fcm_unavailable" or "fcm_deferred". */
     @Volatile
     private var registrationSkippedReason: String? = null
 
+    private var startInFlight = false
+    private var pendingFirebaseInstallationId: String? = null
+
+    @Volatile
+    internal var startupDispatcherForTests: CoroutineDispatcher? = null
+
+    @Volatile
+    internal var reportPermissionForTests: ((Context) -> Unit)? = null
+
+    @Volatile
+    internal var installBridgeForTests: ((candidateInstallationId: String, fcmUnavailableReason: String?) -> Unit)? = null
+
+    @Volatile
+    internal var updateRegistrationForTests: ((firebaseInstallationId: String, applicationId: String, appVersion: String) -> Unit)? = null
+
+    @Volatile
+    internal var registerFirebaseForTests: ((Context) -> Unit)? = null
+
     fun start(context: Context) {
-        val availability = checkFcmAvailability(context)
-        val unavailableReason = (availability as? RaftFcmAvailability.Unavailable)?.reason
-        registrationSkippedReason =
-            when (availability) {
-                RaftFcmAvailability.Available -> null
-                is RaftFcmAvailability.Unavailable -> "fcm_unavailable"
-                is RaftFcmAvailability.Deferred -> "fcm_deferred"
+        startAsync(context)
+    }
+
+    internal fun startAsync(context: Context): Job? {
+        val appContext = context.applicationContext
+        synchronized(stateLock) {
+            if (startInFlight) return null
+            startInFlight = true
+        }
+        // Keep Play services, NotificationManager/SharedPreferences, and Firebase initialization
+        // off the main thread during Application.onCreate. Any FID arriving while startup is in
+        // flight is buffered and delivered once the bridge is installed.
+        return startupScope.launch(startupDispatcherForTests ?: EmptyCoroutineContext) {
+            startSync(appContext)
+        }
+    }
+
+    internal fun startSync(context: Context) {
+        val appContext = context.applicationContext
+        var registerFirebase = false
+        try {
+            val availability = RaftPlayServicesAvailability.fcmAvailability(appContext)
+            val unavailableReason = (availability as? RaftFcmAvailability.Unavailable)?.reason
+            registrationSkippedReason =
+                when (availability) {
+                    RaftFcmAvailability.Available -> null
+                    is RaftFcmAvailability.Unavailable -> "fcm_unavailable"
+                    is RaftFcmAvailability.Deferred -> "fcm_deferred"
+                }
+            // Before the first upsert, so the registration starts with the real OS permission.
+            val permissionReporter = reportPermissionForTests
+            if (permissionReporter != null) {
+                permissionReporter(appContext)
+            } else {
+                build.raft.app.shared.RaftNotificationPermissionReporter.report(appContext)
             }
-        // Before the first upsert, so the registration starts with the real OS permission.
-        build.raft.app.shared.RaftNotificationPermissionReporter.report(context)
-        runCatching {
-            RaftAndroidPushRegistrationBridge.install(
-                candidateInstallationId = UUID.randomUUID().toString(),
-                fcmUnavailableReason = unavailableReason
-            )
-        }.onFailure { error ->
-            RaftAppLog.w(TAG, "push_registration_install_failed errorType=${error::class.simpleName ?: "unknown"}")
-            return
+            val installed =
+                runCatching {
+                    val candidateId = UUID.randomUUID().toString()
+                    val installer = installBridgeForTests
+                    if (installer != null) {
+                        installer(candidateId, unavailableReason)
+                    } else {
+                        RaftAndroidPushRegistrationBridge.install(
+                            candidateInstallationId = candidateId,
+                            fcmUnavailableReason = unavailableReason
+                        )
+                    }
+                }.onFailure { error ->
+                    RaftAppLog.w(TAG, "push_registration_install_failed errorType=${error::class.simpleName ?: "unknown"}")
+                }.isSuccess
+            if (!installed) return
+            if (unavailableReason != null) {
+                // Without Google Play services FCM cannot deliver to this device (Huawei without GMS,
+                // including HarmonyOS's Android compatibility layer). The Firebase Installation ID is still
+                // readable over plain HTTPS, but uploading it would register a token FCM rejects, so nothing
+                // is registered; the realtime path keeps posting this device's notifications.
+                RaftAppLog.w(TAG, "fcm_unavailable reason=$unavailableReason")
+                return
+            }
+            if (availability is RaftFcmAvailability.Deferred) {
+                // Google Play services is present but not usable right now (updating, update required, a
+                // transient check failure). FCM may well work in a later process, so nothing is cleared and the
+                // provider is not marked unavailable: the binding, pending payload and delivery-status answer
+                // stay; this process only skips registering.
+                RaftAppLog.w(TAG, "fcm_deferred reason=${availability.reason}")
+                return
+            }
+            registerFirebase = true
+        } finally {
+            val pendingFid =
+                synchronized(stateLock) {
+                    startInFlight = false
+                    pendingFirebaseInstallationId.also { pendingFirebaseInstallationId = null }
+                }
+            if (pendingFid != null) {
+                onFirebaseInstallationId(appContext, pendingFid)
+            }
         }
-        if (unavailableReason != null) {
-            // Without Google Play services FCM cannot deliver to this device (Huawei without GMS,
-            // including HarmonyOS's Android compatibility layer). The Firebase Installation ID is still
-            // readable over plain HTTPS, but uploading it would register a token FCM rejects, so nothing
-            // is registered; the realtime path keeps posting this device's notifications.
-            RaftAppLog.w(TAG, "fcm_unavailable reason=$unavailableReason")
-            return
-        }
-        if (availability is RaftFcmAvailability.Deferred) {
-            // Google Play services is present but not usable right now (updating, update required, a
-            // transient check failure). FCM may well work in a later process, so nothing is cleared and the
-            // provider is not marked unavailable: the binding, pending payload and delivery-status answer
-            // stay; this process only skips registering.
-            RaftAppLog.w(TAG, "fcm_deferred reason=${availability.reason}")
+        if (!registerFirebase) return
+        val firebaseRegistrar = registerFirebaseForTests
+        if (firebaseRegistrar != null) {
+            firebaseRegistrar(appContext)
             return
         }
         // Registration by Firebase Installation ID: the FID arrives through
@@ -68,7 +144,7 @@ internal object AndroidPushRegistration {
             // dedupes, so delivering the same FID twice costs nothing.
             FirebaseInstallations.getInstance().id
                 .addOnSuccessListener { fid ->
-                    if (!fid.isNullOrBlank()) onFirebaseInstallationId(context, fid)
+                    if (!fid.isNullOrBlank()) onFirebaseInstallationId(appContext, fid)
                 }
                 .addOnFailureListener { error ->
                     RaftAppLog.w(TAG, "fcm_installation_id_unavailable errorType=${error::class.simpleName ?: "unknown"}")
@@ -80,8 +156,19 @@ internal object AndroidPushRegistration {
     }
 
     fun onFirebaseInstallationId(context: Context, firebaseInstallationId: String) {
+        synchronized(stateLock) {
+            if (startInFlight) {
+                pendingFirebaseInstallationId = firebaseInstallationId
+                return
+            }
+        }
         registrationSkippedReason?.let { skipped ->
             RaftAppLog.w(TAG, "fcm_installation_id_ignored reason=$skipped")
+            return
+        }
+        val updater = updateRegistrationForTests
+        if (updater != null) {
+            updater(firebaseInstallationId, context.packageName, BuildConfig.VERSION_NAME)
             return
         }
         RaftAndroidPushRegistrationBridge.updateRegistration(
@@ -91,12 +178,18 @@ internal object AndroidPushRegistration {
         )
     }
 
-    private fun checkFcmAvailability(context: Context): RaftFcmAvailability =
-        runCatching {
-            raftFcmAvailabilityFor(GoogleApiAvailabilityLight.getInstance().isGooglePlayServicesAvailable(context))
-        }.getOrElse { error ->
-            RaftFcmAvailability.Deferred("play_services_check_failed errorType=${error::class.simpleName ?: "unknown"}")
+    internal fun resetForTests() {
+        synchronized(stateLock) {
+            startInFlight = false
+            pendingFirebaseInstallationId = null
         }
+        registrationSkippedReason = null
+        startupDispatcherForTests = null
+        reportPermissionForTests = null
+        installBridgeForTests = null
+        updateRegistrationForTests = null
+        registerFirebaseForTests = null
+    }
 }
 
 /** Whether this device can receive FCM, from Google Play services' availability check. */

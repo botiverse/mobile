@@ -10,18 +10,29 @@ import build.raft.app.data.RaftBackgroundConnectionControlsRegistry
 import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.push.RaftPlayServicesAvailability
 import com.tencent.mmkv.MMKV
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 internal object AndroidRealtimeKeepAliveController {
     private const val LOG_TAG = "SlockRealtimeKeepAlive"
+    private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Process start: on a device without Play services, default the keep-alive preference to on (only if the
-     * user never chose) and expose the Settings controls for the background connection.
+     * Process start: wires the Settings controls synchronously (no IPC) and moves the Play
+     * services, service-declaration, default-seeding, and battery-exemption probes onto IO.
      */
     fun installNoPlayServicesFallback(context: Context) {
         val appContext = context.applicationContext
-        RaftBackgroundConnectionControlsRegistry.controls = RaftAndroidBackgroundConnectionControls(appContext)
-        seedNoPlayServicesDefault(appContext, noPlayServicesFallbackApplies(appContext))
+        val controls = RaftAndroidBackgroundConnectionControls(appContext)
+        RaftBackgroundConnectionControlsRegistry.controls = controls
+        startupScope.launch {
+            if (noPlayServicesFallbackApplies(appContext)) {
+                seedNoPlayServicesDefault(appContext, fcmUnavailable = true)
+                controls.refreshBatteryOptimizationStatus()
+            }
+        }
     }
 
     /** Play services missing/disabled/invalid and this build ships the background connection service. */
@@ -176,9 +187,11 @@ internal object AndroidRealtimeKeepAliveController {
     /** Called from activity resume: re-reads inputs that can change while the app was away. */
     fun onHostResumed(context: Context) {
         val appContext = context.applicationContext
-        RaftPlayServicesAvailability.refresh(appContext)
-        (RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls)
-            ?.refreshBatteryOptimizationStatus()
+        val fcmUnavailable = RaftPlayServicesAvailability.refresh(appContext)
+        if (fcmUnavailable && RaftBackgroundConnectionService.isDeclared(appContext)) {
+            (RaftBackgroundConnectionControlsRegistry.controls as? RaftAndroidBackgroundConnectionControls)
+                ?.refreshBatteryOptimizationStatus()
+        }
     }
 
     /** The policy decision from the current stored inputs (used by the service when its command runs). */
