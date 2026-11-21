@@ -3614,6 +3614,11 @@ class KmpVisualScreenshotCaptureTest {
      */
     private fun openRuntimeFormPicker(caseId: String) {
         val picker = requireNotNull(runtimeFormVisualPicker(caseId)) { "$caseId has no picker in visual-cases.v3.json" }
+        // The scoped logcat keeps only the harness tags: name an app crash during the picker there.
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        if (previousHandler !is RuntimeFormPickerCrashLogger) {
+            Thread.setDefaultUncaughtExceptionHandler(RuntimeFormPickerCrashLogger(previousHandler))
+        }
         awaitFixtureIsActiveInputWindow("the ${picker.fieldLabel} field")
         val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
         fun descendants(root: android.view.accessibility.AccessibilityNodeInfo?): List<android.view.accessibility.AccessibilityNodeInfo> {
@@ -3668,6 +3673,7 @@ class KmpVisualScreenshotCaptureTest {
             val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
             tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
         }
+        Log.i(VISUAL_LOG_TAG, "$caseId picker: opened ${picker.fieldLabel}")
         var listRoot: android.view.accessibility.AccessibilityNodeInfo? = null
         while (listRoot == null) {
             listRoot =
@@ -3691,8 +3697,10 @@ class KmpVisualScreenshotCaptureTest {
             search.getBoundsInScreen(bounds)
             require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} search row has empty bounds" }
             val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: tapping the search row at $bounds")
             tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
             Thread.sleep(300)
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: typing \"$query\"")
             require(query.all { it.isLetterOrDigit() || it == '-' }) { "$caseId: query \"$query\" needs escaping for input text" }
             runShellCommand("input text $query")
             var shown: String? = null
@@ -3702,6 +3710,7 @@ class KmpVisualScreenshotCaptureTest {
                 if (shown == query) break
                 Thread.sleep(250)
             }
+            Log.i(VISUAL_LOG_TAG, "$caseId picker: search row shows \"$shown\"")
             require(shown == query) { "$caseId: the ${picker.fieldLabel} search row shows \"$shown\" after typing \"$query\"" }
         }
         // The sheet slides in (RaftSheetWindow); the stable-frame capture waits for the rest.
@@ -7631,5 +7640,13 @@ class KmpVisualScreenshotCaptureTest {
         // run ~90-100s at 3x density, so keep well above that. It only trips on
         // a genuinely stuck case, failing that case alone instead of the shard.
         private const val PER_CASE_TIMEOUT_SECONDS = 150L
+    }
+}
+
+/** Logs an uncaught exception under the harness tag (kept by the scoped logcat), then hands it on. */
+private class RuntimeFormPickerCrashLogger(private val next: Thread.UncaughtExceptionHandler?) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(thread: Thread, error: Throwable) {
+        Log.e("VisualCapture", "UNCAUGHT on ${thread.name}: ${Log.getStackTraceString(error).take(3500)}")
+        next?.uncaughtException(thread, error)
     }
 }
