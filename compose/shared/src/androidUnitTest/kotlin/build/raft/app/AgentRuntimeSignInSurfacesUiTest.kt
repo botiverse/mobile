@@ -261,6 +261,7 @@ class AgentRuntimeSignInSurfacesUiTest {
             val api = FakeRuntimeSignInApi(kimiStatus = "logged_in", canAct = true)
             val state = signInIndicator(spawnFailureReason = null, lastRuntimeErrorSpawnFailureReason = "runtime_login_required")
             val member = MemberProfile(id = MemberId("agent-1"), displayName = "Milo", handle = "milo", kind = MemberKind.Agent)
+            val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent)
             val summary =
                 AgentDetailSummary(
                     id = "agent-1",
@@ -275,8 +276,28 @@ class AgentRuntimeSignInSurfacesUiTest {
             setContent {
                 val access = remember { testAccess(api) }
                 CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
-                    RaftDesignSystemTheme {
-                        Column(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize()) {
+                        ThreadPageHeader(
+                            payload = RaftThreadScreenPayload(instanceId = "dm-milo", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content"),
+                            headerDisplay =
+                                ThreadHeaderDisplayModel(
+                                    title = "Milo",
+                                    subtitle = null,
+                                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                                    channelKind = "dm",
+                                    dmPeerAvatarLabel = "MI",
+                                    dmPeerIdentity = identity,
+                                ),
+                            agentStatusResolver = { flowOf(state) },
+                            applyTopSafeArea = false,
+                            onBack = {},
+                            onOpenInChannel = {},
+                            onOpenMemberProfile = {},
+                            onOpenSearch = {},
+                            onShowMembers = {},
+                            onShowSettings = {},
+                        )
+                        RaftDesignSystemTheme {
                             MembersAgentProfileHeader(
                                 member = member,
                                 summary = summary,
@@ -284,17 +305,70 @@ class AgentRuntimeSignInSurfacesUiTest {
                                 agentStatusObservedState = state,
                                 agentStatusIndicatorState = state,
                                 onChangeAvatar = {},
-                                showActivityDetail = true,
+                                showActivityDetail = false,
                             )
                         }
                     }
                 }
             }
             waitUntil(timeoutMillis = 5_000) {
-                api.authReads > 0 && onAllNodesWithText("Sign-in needed for Kimi Code", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
+                api.authReads > 0 &&
+                    onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderStatus, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() &&
+                    onAllNodesWithText("Sign-in needed for Kimi Code", useUnmergedTree = true).fetchSemanticsNodes().isEmpty()
             }
+            onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true).assertCountEquals(0)
             onAllNodesWithTag(AgentRuntimeSignInTestTags.ProfileAction, useUnmergedTree = true).assertCountEquals(0)
             onAllNodesWithText("Offline", useUnmergedTree = true).onFirst().assertExists()
+        }
+
+    @Test
+    fun unknownViewerWithoutCanViewMachineFailsClosedWithZeroReads() =
+        runRobolectricComposeUiTest {
+            val api = FakeRuntimeSignInApi(kimiStatus = "logged_out", canAct = true)
+            val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent)
+            val state = signInIndicator()
+            setContent {
+                val store = remember { SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { OWNER }) }
+                val access =
+                    remember(store) {
+                        MembersRuntimeAccountUsageAccess(
+                            store = store,
+                            owner = OWNER,
+                            serverId = "srv-1",
+                            viewer = null,
+                            auth = ComputerRuntimeAuthHost(realtime = null, openUrl = {}),
+                            canViewMachine = null,
+                        )
+                    }
+                CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
+                    ThreadPageHeader(
+                        payload = RaftThreadScreenPayload(instanceId = "dm-milo", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content"),
+                        headerDisplay =
+                            ThreadHeaderDisplayModel(
+                                title = "Milo",
+                                subtitle = null,
+                                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                                channelKind = "dm",
+                                dmPeerAvatarLabel = "MI",
+                                dmPeerIdentity = identity,
+                            ),
+                        agentStatusResolver = { flowOf(state) },
+                        applyTopSafeArea = false,
+                        onBack = {},
+                        onOpenInChannel = {},
+                        onOpenMemberProfile = {},
+                        onOpenSearch = {},
+                        onShowMembers = {},
+                        onShowSettings = {},
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithTag(AgentRuntimeSignInTestTags.DmHeaderStatus, useUnmergedTree = true)
+                .assertExists()
+                .assertTextEquals("Sign-in needed")
+            onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true).assertCountEquals(0)
+            assertEquals(0, api.authReads)
         }
 
     @Test
@@ -317,29 +391,29 @@ class AgentRuntimeSignInSurfacesUiTest {
         val identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent)
         setContent {
             val access = remember { testAccess(api, canViewMachine = canViewMachine) }
+            // Production ThreadPageHeader renders outside RaftDesignSystemTheme; keep this test
+            // unwrapped so AgentRuntimeSignInAction's own theme boundary is exercised directly.
             CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
-                RaftDesignSystemTheme {
-                    ThreadPageHeader(
-                        payload = RaftThreadScreenPayload(instanceId = "dm-milo", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content"),
-                        headerDisplay =
-                            ThreadHeaderDisplayModel(
-                                title = "Milo",
-                                subtitle = null,
-                                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                                channelKind = "dm",
-                                dmPeerAvatarLabel = "MI",
-                                dmPeerIdentity = identity,
-                            ),
-                        agentStatusResolver = { flowOf(state) },
-                        applyTopSafeArea = false,
-                        onBack = {},
-                        onOpenInChannel = {},
-                        onOpenMemberProfile = {},
-                        onOpenSearch = {},
-                        onShowMembers = {},
-                        onShowSettings = {},
-                    )
-                }
+                ThreadPageHeader(
+                    payload = RaftThreadScreenPayload(instanceId = "dm-milo", surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content"),
+                    headerDisplay =
+                        ThreadHeaderDisplayModel(
+                            title = "Milo",
+                            subtitle = null,
+                            surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                            channelKind = "dm",
+                            dmPeerAvatarLabel = "MI",
+                            dmPeerIdentity = identity,
+                        ),
+                    agentStatusResolver = { flowOf(state) },
+                    applyTopSafeArea = false,
+                    onBack = {},
+                    onOpenInChannel = {},
+                    onOpenMemberProfile = {},
+                    onOpenSearch = {},
+                    onShowMembers = {},
+                    onShowSettings = {},
+                )
             }
         }
     }

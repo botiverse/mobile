@@ -57,7 +57,7 @@ class AgentRuntimeSignInNeededTest {
 
     @Test
     fun signInRuntimeForMatchesWebSingleSignInRule() {
-        assertEquals(RuntimeAuthRuntime.Claude, signInRuntimeFor("claude-code"))
+        assertEquals(RuntimeAuthRuntime.Claude, signInRuntimeFor("claude"))
         assertEquals(RuntimeAuthRuntime.Codex, signInRuntimeFor("codex"))
         assertEquals(RuntimeAuthRuntime.Kimi, signInRuntimeFor("kimi-sdk"))
         assertEquals(RuntimeAuthRuntime.Qoder, signInRuntimeFor("qoder"))
@@ -66,7 +66,7 @@ class AgentRuntimeSignInNeededTest {
         // Per-provider and no-login runtimes have no single sign-in to offer.
         assertNull(signInRuntimeFor("pi"))
         assertNull(signInRuntimeFor("opencode"))
-        assertNull(signInRuntimeFor("qwen-code"))
+        assertNull(signInRuntimeFor("qwen"))
         assertNull(signInRuntimeFor("dsh"))
         assertNull(signInRuntimeFor("builtin"))
         assertNull(signInRuntimeFor("kimi"))
@@ -81,18 +81,18 @@ class AgentRuntimeSignInNeededTest {
             canAct: Boolean = true,
             availability: RuntimeAuthAvailability = RuntimeAuthAvailability.Ok,
         ) = RuntimeAuthView(
-            collectedAt = "2026-11-21T00:00:00Z",
-            statuses = if (status != null) mapOf(RuntimeAuthRuntime.Kimi to status) else emptyMap(),
+            canAct = canAct,
             availability = availability,
+            status = if (status != null) mapOf(RuntimeAuthRuntime.Kimi to status) else emptyMap(),
             runtimes = listOf(RuntimeAuthRuntime.Kimi),
             logoutRuntimes = listOf(RuntimeAuthRuntime.Kimi),
-            canAct = canAct,
         )
 
         assertTrue(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, canAct = false), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerOffline), RuntimeAuthRuntime.Kimi))
-        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.NotSupported), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerUpgradeRequired), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerNotAttached), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedIn()), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.Unknown), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)), RuntimeAuthRuntime.Kimi))
@@ -142,6 +142,7 @@ class AgentRuntimeSignInNeededTest {
                 status = AgentStatus.Offline,
                 presence = Presence.Offline,
                 runtime = "kimi-sdk",
+                external = false,
                 spawnFailureReason = "runtime_login_required",
                 lastRuntimeErrorSpawnFailureReason = "runtime_login_required",
                 paused = false,

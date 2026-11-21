@@ -8233,6 +8233,7 @@ internal fun HomeSidebarDirectMessageRow(
                                         agentMemberId = agentMemberId,
                                         agentStatusResolver = agentStatusResolver,
                                         selected = selected,
+                                        agentName = name.ifBlank { avatarLabel },
                                         modifier = Modifier.weight(1f, fill = false).raftHomeDmTrailingColumnCap()
                                     )
                             }
@@ -8320,12 +8321,13 @@ private fun DirectMessageAgentMeta(
     agentMemberId: String?,
     agentStatusResolver: RaftAgentStatusResolver,
     selected: Boolean,
+    agentName: String? = null,
     modifier: Modifier = Modifier
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
     val signIn =
         if (agentMemberId != null && status?.external != true) {
-            rememberAgentRuntimeSignInState(status)
+            rememberAgentRuntimeSignInState(status, fallbackName = agentName)
         } else {
             null
         }

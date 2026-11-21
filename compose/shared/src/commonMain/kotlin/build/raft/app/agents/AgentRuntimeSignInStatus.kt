@@ -3,18 +3,24 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.RuntimeAuthAction
 import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.canViewMachineRuntimeAccountUsage
+import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -77,9 +83,11 @@ internal data class AgentRuntimeSignInState(
  * - Returns `null` for every other state, for an agent without a known runtime, and once the
  *   viewer's live read of the Computer reports `logged_in`.
  * - Never reads `GET …/runtime-auth` unless sign-in is needed, the runtime has a single sign-in,
- *   the viewer may see the Computer's sign-in state (`canViewMachine`), and the shell provided
- *   [LocalMembersRuntimeAccountUsageAccess].
- * - `offered` is true only when [runtimeSignInOffered] holds and an interactive auth host is bound.
+ *   the viewer may see the Computer's sign-in state (`canViewMachine` or fail-closed `viewer` +
+ *   `computersStateFlow`), and the shell provided [LocalMembersRuntimeAccountUsageAccess].
+ * - Hosts [ComputerRuntimeAuthDialogHost] whenever an interactive sign-in dialog is open, even
+ *   after `logged_in` arrives or `offered` flips transiently, so the user sees the completion
+ *   confirmation and can close the session cleanly.
  */
 @Composable
 internal fun rememberAgentRuntimeSignInState(
@@ -113,17 +121,43 @@ internal fun rememberAgentRuntimeSignInState(
     val authRuntime = if (needed) signInRuntimeFor(runtimeId) else null
     val owner = access?.owner
     val serverId = access?.serverId?.trim()?.takeIf { it.isNotEmpty() }
+    // Collect computers state only for rows that actually need sign-in so Computer heartbeats
+    // never recompose the shell or healthy rows.
+    val computersStateFlow = if (needed) access?.computersStateFlow else null
+    val computersState = if (computersStateFlow != null) computersStateFlow.collectAsState().value else null
+    val matchedMachine =
+        if (serverId != null && machineId != null && computersState != null) {
+            computersState.selectComputerServerSlice(serverId).machines.firstOrNull { it.id == machineId }
+        } else {
+            null
+        }
+    // Fail-closed: never issue GET .../runtime-auth unless canViewMachine or viewer + machine proves access.
     val canView =
         if (access == null || serverId == null || machineId == null) {
             false
+        } else if (access.canViewMachine != null) {
+            access.canViewMachine.invoke(serverId, machineId)
         } else {
-            access.canViewMachine?.invoke(serverId, machineId)
-                ?: (access.viewer == null || access.viewer.canEditMachines)
+            val currentViewer = access.viewer
+            when {
+                currentViewer == null -> false
+                currentViewer.canEditMachines -> true
+                matchedMachine != null ->
+                    canViewMachineRuntimeAccountUsage(
+                        attachedByCurrentUser = matchedMachine.attachedByCurrentUser,
+                        creatorId = matchedMachine.creatorUserId ?: matchedMachine.creator?.id,
+                        currentUserId = currentViewer.currentUserId,
+                        canEditMachines = currentViewer.canEditMachines,
+                    )
+                else -> false
+            }
         }
     val active = needed && authRuntime != null && owner != null && serverId != null && machineId != null && canView
     val scope = rememberCoroutineScope()
+    val currentLog by rememberUpdatedState(access?.log)
+    val currentOnIdentityChanged by rememberUpdatedState(access?.onIdentityChanged)
     val controller =
-        remember(active, access?.store, owner, serverId, machineId, runtimeId, authRuntime, access?.onIdentityChanged, access?.log) {
+        remember(active, access?.store, owner, serverId, machineId, runtimeId, authRuntime) {
             if (!active || access == null || owner == null || serverId == null || machineId == null || runtimeId == null || authRuntime == null) {
                 null
             } else {
@@ -134,8 +168,8 @@ internal fun rememberAgentRuntimeSignInState(
                     runtime = authRuntime,
                     ops = StoreComputerRuntimeAuthOps(access.store, owner, serverId, machineId),
                     scope = scope,
-                    log = { message -> access.log("agent_status_$message") },
-                    onIdentityChanged = access.onIdentityChanged,
+                    log = { message -> currentLog?.invoke("agent_status_$message") },
+                    onIdentityChanged = { currentOnIdentityChanged?.invoke() },
                 )
             }
         }
@@ -153,21 +187,36 @@ internal fun rememberAgentRuntimeSignInState(
     }
     LaunchedEffect(controller) { controller?.read() }
     if (!needed || runtimeId == null) return null
-    // The failed start (above all a stored one, kept until the next good start) can outlive the
-    // sign-in it waited for: once the viewer's live read says the runtime is signed in, drop the status.
-    if (controller?.status is RuntimeAuthStatus.LoggedIn) return null
 
     val runtimeName = raftAgentRuntimeDisplayName(runtimeId)
-    val agentName =
-        (state?.agentDisplayName ?: fallbackName)?.trim()?.takeIf { it.isNotEmpty() }
-            ?: stringResource(Res.string.thread_member_role_agent)
     val rawComputerName =
         (state?.machineName ?: fallbackMachineName)?.trim()?.takeIf { it.isNotEmpty() }
             ?: if (serverId != null && machineId != null) {
                 access?.machineName?.invoke(serverId, machineId)?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: matchedMachine?.name?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: matchedMachine?.hostname?.trim()?.takeIf { it.isNotEmpty() }
             } else {
                 null
             }
+    val openUrl = access?.auth?.openUrl ?: {}
+    // Keep any open sign-in dialog hosted until the user dismisses it, even after the live read
+    // flips to LoggedIn or offered flaps transiently (never strand an open Computer login session).
+    if (controller != null && controller.dialog != null) {
+        ComputerRuntimeAuthDialogHost(
+            controller = controller,
+            runtimeName = runtimeName,
+            computerName = rawComputerName,
+            agents = null,
+            openUrl = openUrl,
+        )
+    }
+    // The failed start (above all a stored one, kept until the next good start) can outlive the
+    // sign-in it waited for: once the viewer's live read says the runtime is signed in, drop the status.
+    if (controller?.status is RuntimeAuthStatus.LoggedIn) return null
+
+    val agentName =
+        (state?.agentDisplayName ?: fallbackName)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: stringResource(Res.string.thread_member_role_agent)
     val computerName = rawComputerName ?: stringResource(Res.string.settings_computers_runtime_auth_this_computer)
     val fullText = stringResource(Res.string.agent_status_runtime_sign_in_full, runtimeName)
     val shortText = stringResource(Res.string.agent_status_runtime_sign_in_short)
@@ -187,14 +236,15 @@ internal fun rememberAgentRuntimeSignInState(
         controller = controller,
         runtimeDisplayName = runtimeName,
         computerDisplayName = rawComputerName,
-        openUrl = access?.auth?.openUrl ?: {},
+        openUrl = openUrl,
     )
 }
 
 /**
  * Web `RuntimeSignInAction` (`packages/web/src/components/machine/RuntimeSignInAction.tsx`,
  * slock #15282): quiet `Sign in` text link beside an agent's "Sign-in needed" status in the
- * member list and DM header, opening the Computer's `ComputerRuntimeSignInDialog` in place.
+ * member list, DM header, and agent profile, opening the Computer's `ComputerRuntimeSignInDialog`
+ * in place (hosted by [rememberAgentRuntimeSignInState]).
  * Accessible name names the runtime (`"Sign in to Kimi Code"`).
  */
 @Composable
@@ -206,19 +256,16 @@ internal fun AgentRuntimeSignInAction(
     val controller = signIn.controller
     if (!signIn.offered || controller == null) return
     val signInTitle = stringResource(Res.string.settings_computers_runtime_auth_sign_in_title, signIn.runtimeDisplayName)
-    RaftTextLink(
-        text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_action),
-        onClick = controller::openSignIn,
-        variant = RaftTextLinkVariant.Muted,
-        style = RaftTheme.typography.footnote,
-        maxLines = 1,
-        modifier = modifier.testTag(testTag).semantics { contentDescription = signInTitle },
-    )
-    ComputerRuntimeAuthDialogHost(
-        controller = controller,
-        runtimeName = signIn.runtimeDisplayName,
-        computerName = signIn.computerDisplayName,
-        agents = null,
-        openUrl = signIn.openUrl,
-    )
+    // DM header and other legacy shells render outside RaftDesignSystemTheme; wrap the design
+    // system text link here so RaftTheme.typography / RaftTheme.colors are always provided.
+    RaftDesignSystemTheme {
+        RaftTextLink(
+            text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_action),
+            onClick = controller::openSignIn,
+            variant = RaftTextLinkVariant.Muted,
+            style = RaftTheme.typography.footnote,
+            maxLines = 1,
+            modifier = modifier.testTag(testTag).semantics { contentDescription = signInTitle },
+        )
+    }
 }

@@ -241,7 +241,6 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
         }
     }
     val owner by tracker.owner.collectAsState()
-    val computersState by computersStore.state.collectAsState()
     val scope = rememberCoroutineScope()
     val authHost =
         remember(sharedStores, storeScope, bridge) {
@@ -251,7 +250,7 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
                 openUrl = { url -> bridge.openUrl(url, inBrowser = true) },
             )
         }
-    return remember(store, computersState, owner, serverId, viewer, tracker, authHost) {
+    return remember(store, computersStore, owner, serverId, viewer, tracker, authHost) {
         MembersRuntimeAccountUsageAccess(
             store = store,
             owner = owner,
@@ -261,23 +260,7 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
             viewer = viewer,
             auth = authHost,
             serverFeatureFlags = sharedStores.serverFeatureFlags,
-            canViewMachine = { srvId, mId ->
-                val currentViewer = viewer ?: return@MembersRuntimeAccountUsageAccess false
-                if (currentViewer.canEditMachines) return@MembersRuntimeAccountUsageAccess true
-                val machine = computersState.selectComputerServerSlice(srvId).machines.firstOrNull { it.id == mId }
-                machine != null &&
-                    build.raft.app.data.canViewMachineRuntimeAccountUsage(
-                        attachedByCurrentUser = machine.attachedByCurrentUser,
-                        creatorId = machine.creatorUserId ?: machine.creator?.id,
-                        currentUserId = currentViewer.currentUserId,
-                        canEditMachines = currentViewer.canEditMachines,
-                    )
-            },
-            machineName = { srvId, mId ->
-                val machine = computersState.selectComputerServerSlice(srvId).machines.firstOrNull { it.id == mId }
-                machine?.name?.trim()?.takeIf { it.isNotEmpty() }
-                    ?: machine?.hostname?.trim()?.takeIf { it.isNotEmpty() }
-            },
+            computersStateFlow = computersStore.state,
         )
     }
 }

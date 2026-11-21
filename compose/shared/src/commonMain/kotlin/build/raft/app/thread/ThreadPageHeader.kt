@@ -533,7 +533,11 @@ internal fun ThreadPageHeader(
                         RaftAppBotBadge(identity = dmAppBot, botName = localizedHeaderTitle)
                     } else {
                         dmAgentActivity?.let {
-                            ThreadDmAgentActivity(state = it, modifier = Modifier.layoutId(ThreadHeaderYieldingSlot))
+                            ThreadDmAgentActivity(
+                                state = it,
+                                agentName = localizedHeaderTitle,
+                                modifier = Modifier.layoutId(ThreadHeaderYieldingSlot)
+                            )
                         }
                     }
                 }
@@ -925,13 +929,17 @@ private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Co
 }
 
 @Composable
-private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier: Modifier = Modifier) {
+private fun ThreadDmAgentActivity(
+    state: RaftAgentStatusIndicatorState,
+    agentName: String? = null,
+    modifier: Modifier = Modifier
+) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise, a failed start waiting for runtime sign-in
     // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" below 768dp) on the
     // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
-    val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state) else null
+    val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state, fallbackName = agentName) else null
     if (signIn != null) {
         val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= 768.dp
         val signInLabel = if (wide) signIn.fullText else signIn.shortText

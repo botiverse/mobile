@@ -683,7 +683,7 @@ internal fun MembersAgentProfileStatus(
         } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
         } else if (runtimeSignIn != null) {
-            if (showActivityDetail) runtimeSignIn.fullText else runtimeSignIn.shortText
+            runtimeSignIn.fullText
         } else if (credentialReason != null) {
             if (showActivityDetail) {
                 agentCredentialInvalidText(
