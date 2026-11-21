@@ -3629,23 +3629,52 @@ class KmpVisualScreenshotCaptureTest {
         val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
         var formWindowId = -1
         var trigger: android.view.accessibility.AccessibilityNodeInfo? = null
+        var seen = emptyList<String>()
         while (trigger == null) {
             val root = uiAutomation.rootInActiveWindow
             formWindowId = root?.windowId ?: -1
+            val nodes = descendants(root)
+            // The trigger, or the node carrying its name, then its clickable self or ancestor. The
+            // drop-down role (a Spinner) wins over the field's label row, which also starts with the label.
             trigger =
-                descendants(root).firstOrNull { node ->
-                    node.isClickable && node.contentDescription?.toString()?.startsWith("${picker.fieldLabel}, ") == true
-                }
+                nodes
+                    .filter { node ->
+                        val name = (node.contentDescription ?: node.text)?.toString()?.trim().orEmpty()
+                        name.startsWith("${picker.fieldLabel}, ")
+                    }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isClickable } }
+                    .sortedByDescending { it.className?.toString()?.endsWith("Spinner") == true }
+                    .firstOrNull()
+                    ?: nodes.firstOrNull { it.isClickable && it.className?.toString()?.endsWith("Spinner") == true }
+            seen =
+                nodes
+                    .mapNotNull { node ->
+                        val name = (node.contentDescription ?: node.text)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                        if (name == null && !node.isClickable) null else "${node.className?.toString()?.substringAfterLast('.')}${if (node.isClickable) "*" else ""}:${name?.take(40)}"
+                    }
+                    .take(40)
             if (trigger != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
-        requireNotNull(trigger) { "$caseId: no field trigger announced as \"${picker.fieldLabel}, …\"" }
-        require(trigger.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
-            "$caseId: the ${picker.fieldLabel} trigger rejected the click"
+        requireNotNull(trigger) {
+            "$caseId: no field trigger announced as \"${picker.fieldLabel}, …\"; window=$formWindowId " +
+                "nodes (class, * = clickable: name)=${seen.joinToString(" | ")}"
+        }
+        if (!trigger.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+            // As tapComposeNodeWithText: a tap at the trigger's centre.
+            val bounds = android.graphics.Rect()
+            trigger.getBoundsInScreen(bounds)
+            require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} trigger has empty bounds" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
         }
         var listRoot: android.view.accessibility.AccessibilityNodeInfo? = null
         while (listRoot == null) {
-            listRoot = uiAutomation.rootInActiveWindow?.takeIf { it.windowId != formWindowId }
+            listRoot =
+                uiAutomation.rootInActiveWindow?.takeIf { it.windowId != formWindowId }
+                    ?: uiAutomation.windows
+                        .mapNotNull { it.root }
+                        .lastOrNull { it.windowId != formWindowId && it.packageName == "build.raft.app.connectedtest" }
             if (listRoot != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
