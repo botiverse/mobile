@@ -153,6 +153,30 @@ class RaftTimeTest {
     }
 
     @Test
+    fun formatsDaylessContextAsLocalizedDateAndTimeWithoutLeakingRawIso() {
+        val dayless =
+            RaftTimeContext(
+                localOffsetMinutes = -420,
+                todayEpochDay = null,
+                nowEpochMillis = null,
+                timeFormat = RaftTimeFormat24Hour,
+            )
+
+        assertEquals(
+            "2026-11-21 14:26",
+            formatRaftTimestampLabel("2026-11-21T21:26:57.189Z", dayless)
+        )
+        assertEquals(
+            "2026-11-21 02:26 PM",
+            formatRaftTimestampLabel("2026-11-21T21:26:57.189Z", dayless.copy(timeFormat = RaftTimeFormat12Hour))
+        )
+        assertEquals(
+            "raw value",
+            formatRaftTimestampLabel("raw value", dayless)
+        )
+    }
+
+    @Test
     fun refreshesTimeContextAcrossLocalMidnight() {
         val beforeMidnight =
             parseRaftTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!

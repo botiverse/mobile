@@ -215,9 +215,21 @@ internal fun resolvePendingTaskSummary(
             candidateHasConversation && !bestHasConversation -> best = candidate
             !candidateHasConversation && bestHasConversation -> Unit
             candidate.revision != null && best.revision != null -> {
-                if (candidate.revision > best.revision) best = candidate
+                if (candidate.revision > best.revision) {
+                    best = candidate
+                } else if (
+                    candidate.revision == best.revision &&
+                    candidate.conversationDetailsLoaded &&
+                    !best.conversationDetailsLoaded
+                ) {
+                    best = candidate
+                }
             }
             candidate.revision != null && best.revision == null -> best = candidate
+            candidate.revision == null &&
+                best.revision == null &&
+                candidate.conversationDetailsLoaded &&
+                !best.conversationDetailsLoaded -> best = candidate
         }
     }
     return best
@@ -538,6 +550,51 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     var joinedLocally by remember(resolvedChannelId) { mutableStateOf(false) }
     var pendingSentConversationId by remember(route.taskId) { mutableStateOf<ChannelId?>(null) }
     var pendingSentTask by remember(route.taskId) { mutableStateOf<TaskSummary?>(null) }
+    val pendingServerId = resolvedServerId?.takeIf { it.isNotBlank() }
+    val pendingChannelId = liveTask?.channelId
+    val pendingTaskNumber = liveTask?.taskNumber
+    var summaryDetailHydrationSettled by remember(route.taskId, pendingServerId, pendingChannelId, pendingTaskNumber) {
+        mutableStateOf(false)
+    }
+
+    // Belt-and-suspenders: if this pending route ever receives a `detail=summary` task row
+    // (`!conversationDetailsLoaded`, e.g. from process restoration or a fallback open), fetch the
+    // full row via `GET /tasks/channel/:channelId/number/:n` so an existing conversation hands off
+    // immediately instead of staying on "No discussion in this task yet".
+    val needsSummaryHydration =
+        liveTask != null &&
+            !liveTask.conversationDetailsLoaded &&
+            liveTask.conversationChannelId == null &&
+            !summaryDetailHydrationSettled &&
+            pendingServerId != null &&
+            pendingChannelId != null &&
+            pendingTaskNumber != null
+    LaunchedEffect(
+        liveTask?.id,
+        liveTask?.conversationDetailsLoaded,
+        pendingServerId,
+        pendingChannelId,
+        pendingTaskNumber,
+    ) {
+        val summaryTask = liveTask ?: return@LaunchedEffect
+        if (summaryDetailHydrationSettled || summaryTask.conversationDetailsLoaded || summaryTask.conversationChannelId != null) {
+            return@LaunchedEffect
+        }
+        val serverId = pendingServerId ?: return@LaunchedEffect
+        val channelId = pendingChannelId ?: return@LaunchedEffect
+        val taskNumber = pendingTaskNumber ?: return@LaunchedEffect
+        val detail =
+            tasksDataSource.loadChannelTaskByNumber(
+                serverId = ServerId(serverId),
+                channelId = channelId,
+                taskNumber = taskNumber,
+                priority = build.raft.app.data.DataRequestPriority.Visible,
+            )
+        if (detail is DataResult.Content && detail.data.task.id == summaryTask.id) {
+            sharedStores.tasksDataStore.upsertTaskForCurrentOwner(serverId, detail.data.task)
+        }
+        summaryDetailHydrationSettled = true
+    }
 
     val sendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
     val updateTaskFailedLabel = stringResource(Res.string.thread_error_update_task)
@@ -878,6 +935,7 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             onMoveToBacklog = { reason -> edits?.moveToBacklog(liveTask, reason) },
             onAmend = channelTasks.taskHeadAmend(liveTask),
             useHostSafeArea = true,
+            loadingDiscussion = needsSummaryHydration,
         )
     }
 }

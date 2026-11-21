@@ -1502,7 +1502,9 @@ internal data class TaskWireDto(
     // The message the task hangs under (`tasks.source_message_id`, falling back to the pre-v2 host
     // server-side). The default marks a DTO without the field; an explicit null decodes as null.
     val sourceMessageId: String? = TaskSourceMessageIdAbsent,
-    val conversationChannelId: String? = null,
+    // Absent on `GET /tasks/server?detail=summary` rows (slock `toServerTaskSummary`), where an
+    // explicit `null` on a full row means "no conversation created yet" (web `isSummaryOnlyTask`).
+    val conversationChannelId: String? = TaskConversationChannelIdAbsent,
     val conversationAnchored: Boolean? = null,
     val conversationReplyCount: Int? = null,
     val isLegacy: Boolean? = null,
@@ -1515,7 +1517,11 @@ internal data class TaskWireDto(
  * than a host message's thread. A DTO without the v2 fields (older server) is pre-v2.
  */
 internal fun TaskWireDto.isTaskV2Conversation(): Boolean =
-    isTaskV2Conversation(isLegacy, conversationAnchored, conversationChannelId)
+    isTaskV2Conversation(
+        isLegacy = isLegacy,
+        conversationAnchored = conversationAnchored,
+        conversationChannelId = conversationChannelId?.takeIf { it != TaskConversationChannelIdAbsent },
+    )
 
 /** Web `isTaskV2Task` over the raw DTO fields (task lists and `task:*` realtime frames share it). */
 internal fun isTaskV2Conversation(isLegacy: Boolean?, conversationAnchored: Boolean?, conversationChannelId: String?): Boolean =
@@ -1535,6 +1541,9 @@ internal fun taskOpenableMessageId(id: String, messageId: String?, hostMessageId
 /** The default of a task DTO's `sourceMessageId` when the field is missing (never a real id). */
 internal const val TaskSourceMessageIdAbsent: String = "\u0000absent"
 
+/** The default of a task DTO's `conversationChannelId` when omitted by `detail=summary`. */
+internal const val TaskConversationChannelIdAbsent: String = "\u0000absent"
+
 internal fun String?.reportedSourceMessageId(): MessageId? =
     this?.takeIf { it.isNotBlank() && it != TaskSourceMessageIdAbsent }?.let(::MessageId)
 
@@ -1542,6 +1551,13 @@ internal fun TaskWireDto.toTaskSummary(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): TaskSummary? {
     val displayTitle = title?.trim().orEmpty().ifBlank { taskNumber?.let { "#$it" }.orEmpty() }
+    val conversationChannelIdAbsent = conversationChannelId == TaskConversationChannelIdAbsent
+    val resolvedConversationChannelId =
+        conversationChannelId?.takeIf { it != TaskConversationChannelIdAbsent && it.isNotBlank() }
+    val conversationDetailsLoaded =
+        isLegacy == true ||
+            !conversationChannelIdAbsent ||
+            (hasDescription == null && sourceSenderType == TaskSourceMessageIdAbsent)
     val taskV2 = isTaskV2Conversation()
     // A v2 task's `messageId` is the task id (compatibility fallback), never a message: only the
     // real host message (pre-v2 discussion) may be opened as a message / thread parent.
@@ -1570,13 +1586,14 @@ internal fun TaskWireDto.toTaskSummary(
         hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         sourceMessageId = sourceMessageId.reportedSourceMessageId(),
         sourceMessageReported = sourceMessageId != TaskSourceMessageIdAbsent,
-        conversationChannelId = conversationChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        conversationChannelId = resolvedConversationChannelId?.let(::ChannelId),
         conversationAnchored = taskV2,
         conversationReplyCount = conversationReplyCount?.coerceAtLeast(0) ?: 0,
         isLegacy = isLegacy == true,
         conversationFollowed = conversationFollowed,
         createdAt = createdAt?.trim()?.takeIf { it.isNotBlank() },
         descriptionLoaded = description != null || hasDescription != true,
+        conversationDetailsLoaded = conversationDetailsLoaded,
         activityAt = (activityAt ?: lastActivityAt ?: updatedAt)?.trim()?.takeIf { it.isNotBlank() },
         sourceSenderType = sourceSenderType?.takeIf { it != TaskSourceMessageIdAbsent && it.isNotBlank() },
         sourceSenderId = sourceSenderId?.takeIf { sourceSenderType != TaskSourceMessageIdAbsent && it.isNotBlank() },

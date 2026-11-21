@@ -1102,7 +1102,8 @@ internal fun TaskConversationHeadRoute(
         }
     }
     var assigneeQuery by remember(task.id) { mutableStateOf("") }
-    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, timeContext, editable, serverId, canWriteChannel)
+    val effectiveTimeContext = currentRaftDateTimeContext(timeContext)
+    val model = task.taskConversationHeadModel(state, details, statusUpdating, assigneeCandidates, effectiveTimeContext, editable, serverId, canWriteChannel)
     // The pulled-down head closes when the keyboard comes up, so the text is edited in the head's
     // row, not there.
     val editing =

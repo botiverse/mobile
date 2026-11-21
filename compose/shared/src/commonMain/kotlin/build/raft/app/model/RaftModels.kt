@@ -1049,6 +1049,14 @@ data class TaskSummary(
      */
     val descriptionLoaded: Boolean = true,
     /**
+     * False for a `detail=summary` row from `GET /api/tasks/server?detail=summary` (slock
+     * `toServerTaskSummary`), which omits `conversationChannelId`, `conversationAnchored`, and
+     * `hostMessageId` (web `isSummaryOnlyTask`). A null [conversationChannelId] on such a row does
+     * not mean the task has no discussion yet — fetch the full row via
+     * `GET /api/tasks/channel/:channelId/number/:taskNumber` before treating it as pending.
+     */
+    val conversationDetailsLoaded: Boolean = true,
+    /**
      * When the task last moved (slock `activityAt`: lastActivityAt ?? updatedAt), what the Tasks
      * page's `sort=activity` orders by; null from a source without it.
      */

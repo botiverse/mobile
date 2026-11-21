@@ -10,7 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -29,15 +32,19 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.TaskConversationHeaderState
+import build.raft.app.data.TaskDetailLoad
+import build.raft.app.data.TaskSourceMessagePreview
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -161,6 +168,73 @@ class TaskConversationHeadEditUiTest {
             waitForIdle()
             onNodeWithText("Todo").assertDoesNotExist()
             assertEquals(emptyList(), dispatched)
+        }
+
+    @Test
+    fun sourceTimestampUsesLocalTimeProviderWhenCallerPassesDaylessOrNullTimeContext() =
+        runRobolectricComposeUiTest {
+            val today = raftEpochDayForDate(2026, 11, 21)
+            val provider =
+                RaftTimeContextProvider(
+                    RaftTimeContext(
+                        localOffsetMinutes = -420,
+                        todayEpochDay = today,
+                        nowEpochMillis = null,
+                    )
+                )
+            val taskWithSource =
+                task.copy(
+                    hostMessageId = null,
+                    sourceMessageId = MessageId("msg-src"),
+                    sourceMessageReported = true,
+                )
+            val details =
+                TaskConversationDetailsState(
+                    taskId = taskWithSource.id,
+                    sourceMessageId = MessageId("msg-src"),
+                    source =
+                        TaskDetailLoad.Loaded(
+                            TaskSourceMessagePreview(
+                                messageId = MessageId("msg-src"),
+                                author = artin,
+                                firstLine = "Task detail check",
+                                createdAt = "2026-11-21T21:26:57.189Z",
+                            )
+                        ),
+                )
+            var contextState by mutableStateOf<RaftTimeContext?>(
+                RaftTimeContext(localOffsetMinutes = -420, todayEpochDay = null, nowEpochMillis = null)
+            )
+            setContent {
+                Host {
+                    CompositionLocalProvider(LocalRaftTimeContextProvider provides provider) {
+                        val scrollState = remember { TaskHeadScrollState() }
+                        TaskConversationHeadRoute(
+                            task = taskWithSource,
+                            state = TaskConversationHeaderState(ChannelId("conv-35")),
+                            details = details,
+                            statusUpdating = false,
+                            assigneeCandidates = listOf(artin, lagoon),
+                            timeContext = contextState,
+                            onUpdateStatus = {},
+                            onAssign = {},
+                            onOpenSource = {},
+                            onOpenEarlierDiscussion = {},
+                            scrollState = scrollState,
+                            placement = TaskHeadPlacement.FirstRow,
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithText("14:26", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("2026-11-21T21:26:57.189Z", useUnmergedTree = true).assertDoesNotExist()
+
+            // Null caller timeContext also resolves through LocalRaftTimeContextProvider DI.
+            runOnIdle { contextState = null }
+            waitForIdle()
+            onNodeWithText("14:26", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("2026-11-21T21:26:57.189Z", useUnmergedTree = true).assertDoesNotExist()
         }
 
     @Composable

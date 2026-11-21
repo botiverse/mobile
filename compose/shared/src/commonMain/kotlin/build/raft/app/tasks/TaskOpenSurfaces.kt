@@ -38,9 +38,11 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.components.RaftWindowDialogProperties
 import build.raft.designsystem.components.rememberRaftStableWindowInsets
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -506,6 +508,57 @@ internal fun TaskOpenSurfaceHost(
                 flow.finishHandOff()
             }
             val task = surface.task
+            val resolvedServer = serverId?.takeIf { it.isNotBlank() }
+            val taskChannelId = task.channelId
+            val taskNumber = task.taskNumber
+            val hydrationDataSource = editing?.tasksDataSource
+            val currentEditing by rememberUpdatedState(editing)
+            val currentTaskV2Enabled by rememberUpdatedState(taskV2Enabled)
+            val currentOnConversationArrived by rememberUpdatedState(onConversationArrived)
+            var summaryDetailHydrationSettled by remember(task.id, resolvedServer, taskChannelId, taskNumber) {
+                mutableStateOf(false)
+            }
+            val needsSummaryHydration =
+                hydrationDataSource != null &&
+                    !task.conversationDetailsLoaded &&
+                    task.conversationChannelId == null &&
+                    !summaryDetailHydrationSettled &&
+                    resolvedServer != null &&
+                    taskChannelId != null &&
+                    taskNumber != null
+            LaunchedEffect(
+                task.id,
+                task.conversationDetailsLoaded,
+                resolvedServer,
+                taskChannelId,
+                taskNumber,
+                hydrationDataSource,
+            ) {
+                if (
+                    hydrationDataSource == null ||
+                    summaryDetailHydrationSettled ||
+                    task.conversationDetailsLoaded ||
+                    task.conversationChannelId != null
+                ) {
+                    return@LaunchedEffect
+                }
+                val activeServer = resolvedServer ?: return@LaunchedEffect
+                val channelId = taskChannelId ?: return@LaunchedEffect
+                val number = taskNumber ?: return@LaunchedEffect
+                val detail =
+                    hydrationDataSource.loadChannelTaskByNumber(
+                        serverId = ServerId(activeServer),
+                        channelId = channelId,
+                        taskNumber = number,
+                        priority = build.raft.app.data.DataRequestPriority.Visible,
+                    )
+                if (detail is DataResult.Content && detail.data.task.id == task.id) {
+                    val fullTask = detail.data.task
+                    currentEditing?.tasksDataStore?.upsertTaskForCurrentOwner(activeServer, fullTask)
+                    flow.onTaskChanged(fullTask, currentTaskV2Enabled)?.let(currentOnConversationArrived)
+                }
+                summaryDetailHydrationSettled = true
+            }
             val edits = channelTasks?.let { TaskHeadEdits(it::dispatch) }
             TaskPendingConversationWindow(onDismissRequest = { flow.requestClose() }) {
                 TaskPendingConversationPage(
@@ -531,6 +584,7 @@ internal fun TaskOpenSurfaceHost(
                     serverId = serverId,
                     onMoveToBacklog = { reason -> edits?.moveToBacklog(task, reason) },
                     onAmend = channelTasks.taskHeadAmend(task),
+                    loadingDiscussion = needsSummaryHydration,
                 )
             }
         }
@@ -684,6 +738,11 @@ internal fun TaskPendingConversationPage(
      */
     useHostSafeArea: Boolean = false,
     errorTraceId: String? = null,
+    /**
+     * True while resolving whether a `detail=summary` task row already has a conversation on the
+     * server: shows a spinner instead of falsely claiming "No discussion in this task yet".
+     */
+    loadingDiscussion: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -778,18 +837,22 @@ internal fun TaskPendingConversationPage(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            RaftText(
-                                text = stringResource(Res.string.task_conversation_empty_title),
-                                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                                color = colors.foreground,
-                            )
-                            if (task.hostMessageId != null) {
+                            if (loadingDiscussion) {
+                                build.raft.designsystem.components.RaftSpinner()
+                            } else {
                                 RaftText(
-                                    text = stringResource(Res.string.task_conversation_empty_body),
-                                    style = typography.callout,
-                                    color = colors.foregroundMuted,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    text = stringResource(Res.string.task_conversation_empty_title),
+                                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colors.foreground,
                                 )
+                                if (task.hostMessageId != null) {
+                                    RaftText(
+                                        text = stringResource(Res.string.task_conversation_empty_body),
+                                        style = typography.callout,
+                                        color = colors.foregroundMuted,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    )
+                                }
                             }
                         }
                         errorText?.let {
@@ -839,7 +902,7 @@ internal fun TaskPendingConversationPage(
                             instanceId = "task-pending:${task.id.value}",
                             seedText = draft,
                             placeholder = stringResource(Res.string.task_conversation_composer_placeholder),
-                            enabled = !sending,
+                            enabled = !sending && !loadingDiscussion,
                             attachmentActionsEnabled = false,
                             originalImageOptionEnabled = false,
                             showAsTaskToggle = false,
@@ -848,7 +911,7 @@ internal fun TaskPendingConversationPage(
                     attachmentReorderEnabled = false,
                     onSendRequest = { request ->
                         val text = request.value.text
-                        if (sending || text.isBlank()) {
+                        if (sending || loadingDiscussion || text.isBlank()) {
                             ThreadComposerSendAdmission.Rejected
                         } else {
                             onSend(text)
@@ -993,5 +1056,189 @@ internal fun TaskOpenSurfaceIncomingNavigationEffect(flow: TaskOpenSurfaceFlow, 
     DisposableEffect(flow, signal) {
         val unregister = signal.register { flow.closeForIncomingNavigation() }
         onDispose { unregister() }
+    }
+}
+
+/**
+ * Resolves and opens a task tapped from the Tasks tab:
+ * 1. Picks the freshest copy from [tasksDataStore] (channel scope, server scope, tapped row).
+ * 2. If the row came from `GET /tasks/server?detail=summary` (`!conversationDetailsLoaded &&
+ *    conversationChannelId == null`), hydrates the full row via `GET /tasks/channel/:channelId/number/:n`
+ *    regardless of `taskV2Enabled` (per-task v2 tasks open as task conversations even when the flag is off).
+ * 3. Acquires [gate] once and always releases it in a single `try / finally`, verifies `full.id == stored.id`,
+ *    checks [isStillActive], resolves joint conversation IDs inline, and opens the resulting surface or page.
+ */
+internal fun launchTasksTabTaskOpen(
+    task: TaskSummary,
+    serverId: String?,
+    taskV2Enabled: Boolean,
+    tasksDataStore: SharedTasksDataStore,
+    tasksDataSource: SharedTasksDataSource,
+    gate: TaskOpenGate,
+    scope: CoroutineScope,
+    isStillActive: () -> Boolean,
+    openSurface: (TaskOpenSurface) -> Unit,
+    openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
+    onLoadError: (build.raft.app.data.ScreenError) -> Unit,
+    onNoPermission: (traceId: String?) -> Unit,
+    onNotFound: () -> Unit,
+    log: (String) -> Unit,
+) {
+    val activeServerId = serverId?.takeIf { it.isNotBlank() }
+    val storedTask =
+        activeServerId?.let { id ->
+            val channelMatch =
+                task.channelId?.let { channelId ->
+                    tasksDataStore
+                        .projection(id, SharedTasksScope.Channel(channelId))
+                        .tasks
+                        .firstOrNull { it.id == task.id }
+                }
+            val serverMatch =
+                tasksDataStore
+                    .projection(id, SharedTasksScope.Server)
+                    .tasks
+                    .firstOrNull { it.id == task.id }
+            resolvePendingTaskSummary(task.id.value, channelMatch, serverMatch, task)
+        } ?: task
+
+    val taskChannelId = storedTask.channelId
+    val taskNumber = storedTask.taskNumber
+    val needsHydration =
+        !storedTask.conversationDetailsLoaded &&
+            storedTask.conversationChannelId == null &&
+            activeServerId != null &&
+            taskChannelId != null &&
+            taskNumber != null
+
+    if (!needsHydration) {
+        when (val surface = storedTask.taskOpenSurface(taskV2Enabled)) {
+            is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
+                openSurface(surface)
+                return
+            }
+            null -> Unit
+        }
+    }
+
+    val gateTaskId = storedTask.id.value
+    if (!gate.tryBegin(gateTaskId)) {
+        log("tasks_open_ignored reason=in_flight task=$gateTaskId")
+        return
+    }
+
+    if (!needsHydration && storedTask.taskOpenTarget(taskV2Enabled) != TaskOpenTarget.ResolveConversation) {
+        try {
+            openPage(storedTask, null)
+        } finally {
+            gate.finish(gateTaskId)
+        }
+        return
+    }
+
+    scope.launch {
+        try {
+            val resolvedTask =
+                if (needsHydration) {
+                    when (
+                        val detail =
+                            tasksDataSource.loadChannelTaskByNumber(
+                                serverId = ServerId(activeServerId!!),
+                                channelId = taskChannelId!!,
+                                taskNumber = taskNumber!!,
+                                priority = build.raft.app.data.DataRequestPriority.Foreground,
+                            )
+                    ) {
+                        is DataResult.Content -> {
+                            val fullTask = detail.data.task
+                            if (fullTask.id == storedTask.id) {
+                                tasksDataStore.upsertTaskForCurrentOwner(activeServerId, fullTask)
+                                fullTask
+                            } else {
+                                log("tasks_open_hydrate_id_mismatch expected=$gateTaskId actual=${fullTask.id.value}")
+                                if (isStillActive()) onNotFound()
+                                return@launch
+                            }
+                        }
+                        is DataResult.Error -> {
+                            if (!isStillActive()) return@launch
+                            if (
+                                detail.error.code == build.raft.app.data.TaskByNumberNotFoundErrorCode ||
+                                storedTask.conversationReplyCount > 0
+                            ) {
+                                onLoadError(detail.error)
+                                return@launch
+                            }
+                            storedTask
+                        }
+                        is DataResult.NoPermission -> {
+                            if (isStillActive()) onNoPermission(detail.blocker.traceId)
+                            return@launch
+                        }
+                        is DataResult.Empty -> {
+                            if (isStillActive()) onNotFound()
+                            return@launch
+                        }
+                    }
+                } else {
+                    storedTask
+                }
+
+            if (!isStillActive()) return@launch
+            when (val surface = resolvedTask.taskOpenSurface(taskV2Enabled)) {
+                is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
+                    openSurface(surface)
+                    return@launch
+                }
+                null -> Unit
+            }
+            val conversationId =
+                if (resolvedTask.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+                    resolveTaskOpenConversationChannelId(
+                        task = resolvedTask,
+                        serverId = activeServerId.orEmpty(),
+                        tasksDataSource = tasksDataSource,
+                        taskV2Enabled = taskV2Enabled,
+                        log = log,
+                    )
+                } else {
+                    null
+                }
+            if (!isStillActive()) return@launch
+            openPage(resolvedTask, conversationId)
+        } finally {
+            gate.finish(gateTaskId)
+        }
+    }
+}
+
+/** Opens an arrived task conversation (from a pending surface), resolving joint channel IDs first when needed. */
+internal fun launchArrivedTaskConversationOpen(
+    arrived: TaskSummary,
+    serverId: String?,
+    taskV2Enabled: Boolean,
+    tasksDataSource: SharedTasksDataSource,
+    scope: CoroutineScope,
+    isStillActive: () -> Boolean,
+    openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
+    log: (String) -> Unit,
+) {
+    if (arrived.taskOpenTarget(taskV2Enabled) != TaskOpenTarget.ResolveConversation) {
+        openPage(arrived, null)
+        return
+    }
+    val activeServerId = serverId?.takeIf { it.isNotBlank() } ?: return
+    scope.launch {
+        val conversationId =
+            resolveTaskOpenConversationChannelId(
+                task = arrived,
+                serverId = activeServerId,
+                tasksDataSource = tasksDataSource,
+                taskV2Enabled = taskV2Enabled,
+                log = log,
+            )
+        if (isStillActive() && conversationId != null) {
+            openPage(arrived, conversationId)
+        }
     }
 }

@@ -2231,17 +2231,15 @@ private fun RaftAppShellReadyContent(
         homeSurfaceVisible = homeSurfaceVisible,
     )
     val sessionTimeFormat = readySession.appShellThreadTimeFormat()
+    // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or
+    // 12h/24h format change — never on 1-minute ticks) so child tabs and task heads always format
+    // dates/clocks consistently instead of leaking raw ISO strings.
     val threadTimeContext =
-        remember(hostThreadTimeCapabilities, sessionTimeFormat) {
-            hostThreadTimeCapabilities
-                ?.let {
-                    RaftTimeContext(
-                        localOffsetMinutes = it.localOffsetMinutes,
-                        timeFormat = it.timeFormat
-                    )
-                }
-                .withTimeFormat(sessionTimeFormat)
-        }
+        hostThreadTimeContextProvider.dateContext
+            ?.withTimeFormat(sessionTimeFormat)
+            ?: remember(hostThreadTimeCapabilities, sessionTimeFormat) {
+                hostThreadTimeCapabilities?.staticContext().withTimeFormat(sessionTimeFormat)
+            }
     fun selectAppShellTab(
         nextTab: String,
         directChildSwitch: Boolean = false,
@@ -5722,7 +5720,10 @@ private fun RaftAppShellReadyContent(
                                 { channelId -> appShellConversationDirectory.canWriteTasksInChannel(tasksChannelWriteServerId, channelId) }
                             }
                         val latestTasksOpenServerId by rememberUpdatedState(readyServerId)
+                        val latestTasksTabActive by rememberUpdatedState(active)
+                        val latestTasksPageVisible by rememberUpdatedState(pageVisible)
                         val tasksSendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
+                        val tasksOpenFailedLabel = stringResource(Res.string.thread_error_open_task)
                         val tasksUpdateFailedLabel = stringResource(Res.string.thread_error_update_task)
                         val tasksAssignFailedLabel = stringResource(Res.string.thread_error_update_assignee)
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
@@ -5806,8 +5807,18 @@ private fun RaftAppShellReadyContent(
                             hostVisible = pageVisible,
                             taskV2Enabled = tasksOpenTaskV2Enabled,
                             onConversationArrived = { arrived ->
+                                val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
-                                openTaskPage(arrived, null)
+                                launchArrivedTaskConversationOpen(
+                                    arrived = arrived,
+                                    serverId = serverId,
+                                    taskV2Enabled = tasksOpenTaskV2Enabled,
+                                    tasksDataSource = tasksDataSource,
+                                    scope = appShellCoroutineScope,
+                                    isStillActive = { latestTasksOpenServerId == serverId && latestTasksTabActive && latestTasksPageVisible },
+                                    openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId) },
+                                    log = bridge::log,
+                                )
                             },
                             onSend = { task, text ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
@@ -5842,8 +5853,18 @@ private fun RaftAppShellReadyContent(
                             val taskId = tasksOpenSurfaceTaskId ?: return@LaunchedEffect
                             val fresh = (tasksState.loadState as? build.raft.app.data.ScreenLoadState.Content)?.data?.tasks.orEmpty().firstOrNull { it.id == taskId }
                             tasksOpenSurfaceFlow.onTaskChanged(fresh, tasksOpenTaskV2Enabled)?.let { arrived ->
+                                val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
-                                openTaskPage(arrived, null)
+                                launchArrivedTaskConversationOpen(
+                                    arrived = arrived,
+                                    serverId = serverId,
+                                    taskV2Enabled = tasksOpenTaskV2Enabled,
+                                    tasksDataSource = tasksDataSource,
+                                    scope = appShellCoroutineScope,
+                                    isStillActive = { latestTasksOpenServerId == serverId && latestTasksTabActive && latestTasksPageVisible },
+                                    openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId) },
+                                    log = bridge::log,
+                                )
                             }
                         }
                         // The task opened from the page stands in a column beside the list on the wide
@@ -5910,71 +5931,52 @@ private fun RaftAppShellReadyContent(
                             identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
                             taskV2Enabled = tasksOpenTaskV2Enabled,
-                            onOpenTask = open@{ task ->
+                            onOpenTask = { task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
-                                // Task v2 (web useOpenTask): with the flag on every non-legacy task opens as its conversation.
-                                val taskV2Enabled =
-                                    readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
-                                        sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
-                                    } == true
-                                // On compact/single-pane layouts a task without a conversation pushes its own
-                                // page (#proj-mobile:#161); wide dual-pane keeps the existing overlay so first
-                                // send opens beside the list in the adaptive detail column. Legacy orphans keep
-                                // their read-only panel sheet. Opening never creates a conversation.
-                                when (val surface = task.taskOpenSurface(taskV2Enabled)) {
-                                    is TaskOpenSurface.Pending -> {
-                                        val useAdaptiveDetail =
-                                            desktopModeOnLargeScreen && adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
-                                        if (useAdaptiveDetail) {
-                                            bridge.log("tasks_open_surface kind=Pending task=${task.id.value} layout=dual_pane")
-                                            tasksOpenSurfaceFlow.open(surface)
-                                        } else {
-                                            bridge.log("tasks_open_pending_page task=${task.id.value}")
-                                            pager.openTaskPendingPage(
-                                                task = surface.task,
-                                                serverId = readyServerId,
-                                                storeScope = navigationStoreScope,
-                                                foregroundBannerStore = foregroundBannerStore,
-                                                timeContext = threadTimeContext,
-                                                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                                compactConsecutiveMessages = compactConsecutiveMessages,
-                                                canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
-                                            )
+                                val serverId = readyServerId?.takeIf { it.isNotBlank() }
+                                launchTasksTabTaskOpen(
+                                    task = task,
+                                    serverId = serverId,
+                                    taskV2Enabled = tasksOpenTaskV2Enabled,
+                                    tasksDataStore = sharedStores.tasksDataStore,
+                                    tasksDataSource = tasksDataSource,
+                                    gate = tasksOpenGate,
+                                    scope = appShellCoroutineScope,
+                                    isStillActive = { latestTasksOpenServerId == serverId && latestTasksTabActive && latestTasksPageVisible },
+                                    openSurface = { surface ->
+                                        when (surface) {
+                                            is TaskOpenSurface.Pending -> {
+                                                val useAdaptiveDetail =
+                                                    desktopModeOnLargeScreen && adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
+                                                if (useAdaptiveDetail) {
+                                                    bridge.log("tasks_open_surface kind=Pending task=${surface.task.id.value} layout=dual_pane")
+                                                    tasksOpenSurfaceFlow.open(surface)
+                                                } else {
+                                                    bridge.log("tasks_open_pending_page task=${surface.task.id.value}")
+                                                    pager.openTaskPendingPage(
+                                                        task = surface.task,
+                                                        serverId = readyServerId,
+                                                        storeScope = navigationStoreScope,
+                                                        foregroundBannerStore = foregroundBannerStore,
+                                                        timeContext = threadTimeContext,
+                                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                                        compactConsecutiveMessages = compactConsecutiveMessages,
+                                                        canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
+                                                    )
+                                                }
+                                            }
+                                            is TaskOpenSurface.Legacy -> {
+                                                bridge.log("tasks_open_surface kind=Legacy task=${surface.task.id.value}")
+                                                tasksOpenSurfaceFlow.open(surface)
+                                            }
                                         }
-                                        return@open
-                                    }
-                                    is TaskOpenSurface.Legacy -> {
-                                        bridge.log("tasks_open_surface kind=Legacy task=${task.id.value}")
-                                        tasksOpenSurfaceFlow.open(surface)
-                                        return@open
-                                    }
-                                    null -> Unit
-                                }
-                                if (!tasksOpenGate.tryBegin(task.id.value)) {
-                                    bridge.log("tasks_open_ignored reason=in_flight task=${task.id.value}")
-                                    return@open
-                                }
-                                if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
-                                    // Task v2: a joint surface's local conversation id comes from the server first.
-                                    appShellCoroutineScope.launch {
-                                        try {
-                                            val conversationId =
-                                                resolveTaskOpenConversationChannelId(
-                                                    task = task,
-                                                    serverId = readyServerId.orEmpty(),
-                                                    tasksDataSource = tasksDataSource,
-                                                    taskV2Enabled = taskV2Enabled,
-                                                    log = bridge::log,
-                                                )
-                                            openTaskPage(task, conversationId)
-                                        } finally {
-                                            tasksOpenGate.finish(task.id.value)
-                                        }
-                                    }
-                                } else {
-                                    openTaskPage(task, null)
-                                    tasksOpenGate.finish(task.id.value)
-                                }
+                                    },
+                                    openPage = { openedTask, conversationId -> openTaskPage(openedTask, conversationId) },
+                                    onLoadError = { error -> bridge.errorToast(tasksOpenFailedLabel, error) },
+                                    onNoPermission = { traceId -> bridge.errorToast(tasksOpenFailedLabel, traceId) },
+                                    onNotFound = { bridge.toast(tasksOpenFailedLabel) },
+                                    log = bridge::log,
+                                )
                             }
                         )
                         }

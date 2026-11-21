@@ -118,11 +118,13 @@ private fun SharedTasksDataStore.loadedTaskReference(
     if (channelProjection.status == SharedTasksDataStoreStatus.Loaded && channelProjection.isExactScopeLoaded) {
         channelProjection.tasks
             .firstOrNull { task -> task.taskNumber == taskNumber }
+            ?.takeIf { it.conversationDetailsLoaded }
             ?.let { return SharedTaskReferenceResolution.Found(it, SharedTaskReferenceResolutionSource.LoadedChannel) }
     }
     val serverProjection = projection(serverId, SharedTasksScope.Server)
     if (serverProjection.status != SharedTasksDataStoreStatus.Loaded || !serverProjection.isExactScopeLoaded) return null
     return serverProjection.tasks
         .firstOrNull { task -> task.taskNumber == taskNumber && task.channelId == channelId }
+        ?.takeIf { it.conversationDetailsLoaded }
         ?.let { SharedTaskReferenceResolution.Found(it, SharedTaskReferenceResolutionSource.LoadedServer) }
 }

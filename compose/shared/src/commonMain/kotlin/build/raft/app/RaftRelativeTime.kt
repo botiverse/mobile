@@ -299,7 +299,31 @@ internal fun nextRaftTimestampDisplayMode(
 @Composable
 internal fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
     timeContext?.takeIf { it.nowEpochMillis != null }
-        ?: currentRaftTimeContextProvider?.current
+        ?: currentRaftTimeContextProvider?.current?.let { live ->
+            if (timeContext != null) live.copy(timeFormat = timeContext.timeFormat) else live
+        }
+
+/**
+ * Resolves a date/clock formatting [RaftTimeContext] from an optional caller-supplied [timeContext]
+ * and the enclosing [LocalRaftTimeContextProvider] / [LocalRaftPageBaseTimeContextProvider] DI.
+ *
+ * Subscribes only to the provider's low-frequency [RaftTimeContextProvider.dateContext] (changes on
+ * midnight, timezone/DST shift, or 12h/24h preference change), so absolute timestamps never
+ * recompose on 1-minute ticks while keeping `(localOffsetMinutes, todayEpochDay)` consistently paired.
+ */
+@Composable
+internal fun currentRaftDateTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? {
+    if (timeContext != null && (timeContext.todayEpochDay != null || timeContext.nowEpochMillis != null)) {
+        return timeContext
+    }
+    val liveDate = currentRaftTimeContextProvider?.dateContext ?: return timeContext
+    if (timeContext == null) return liveDate
+    return if (liveDate.localOffsetMinutes == timeContext.localOffsetMinutes && liveDate.todayEpochDay != null) {
+        timeContext.copy(todayEpochDay = liveDate.todayEpochDay)
+    } else {
+        liveDate.copy(timeFormat = timeContext.timeFormat)
+    }
+}
 
 /**
  * For timestamps of things that already happened (an Activity row's last message): a client
