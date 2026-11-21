@@ -495,7 +495,7 @@ internal class RaftAndroidSandboxWebView(
                         currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                         currentProgress = 100
                         currentIsLoading = false
-                        evaluateInjectedJavaScript()
+                        evaluateInjectedJavaScript(url)
                         if (bootstrapNavigationFence.mayUncover(url)) {
                             onPagePainted()
                             notifyLoadSuccess(url, "finished", beforeCallback = ::flushPendingRuntimeJavaScript)
@@ -1003,10 +1003,17 @@ internal class RaftAndroidSandboxWebView(
         events.onNavigationStateChange(state)
     }
 
-    private fun evaluateInjectedJavaScript() {
-        if (destroyed) return
-        if (!isTopDocumentOnLockedOrigin()) return
-        val script = injectedJavaScript.takeIf { allowScripts && it.isNotBlank() } ?: return
+    private fun evaluateInjectedJavaScript(pageUrl: String? = null) {
+        if (destroyed || !allowScripts) return
+        val script = injectedJavaScript.takeIf { it.isNotBlank() } ?: return
+        val activeUrl = pageUrl?.takeIf { it.isNotBlank() } ?: webView.url.orEmpty()
+        val sourceOrigin = raftDocumentStartScriptOriginRule(src)
+        val activeOrigin = raftDocumentStartScriptOriginRule(activeUrl)
+        if (sourceOrigin == null || activeOrigin != sourceOrigin) return
+        val viewUrl = webView.url?.takeIf { it.isNotBlank() }
+        if (viewUrl != null && raftDocumentStartScriptOriginRule(viewUrl) != sourceOrigin) return
+        if (mainFrameOrigin != null && activeOrigin != mainFrameOrigin) return
+        if (!allowNavigation && !isAllowedMainDocumentUrl(activeUrl)) return
         webView.evaluateJavascript(script, null)
     }
 
@@ -1419,12 +1426,6 @@ internal class RaftAndroidSandboxWebView(
         mainFrameOrigin != null ||
             allowedNavigationSchemes.isNotEmpty() && (!allowNavigation || injectedJavaScript.isBlank())
 
-    /** True unless an origin lock is set and the top-level document is elsewhere. */
-    private fun isTopDocumentOnLockedOrigin(): Boolean {
-        val locked = mainFrameOrigin ?: return true
-        return raftDocumentStartScriptOriginRule(webView.url.orEmpty()) == locked
-    }
-
     private fun injectedJavaScriptBootstrapHtml(targetUrl: String): String {
         val safeScript = injectedJavaScript.replace("</script", "<\\/script", ignoreCase = true)
         val safeTargetUrl = AndroidJSONObject.quote(targetUrl)
@@ -1506,7 +1507,8 @@ internal fun raftDocumentStartScriptOriginRule(targetUrl: String): String? =
         val uri = URI(targetUrl)
         val scheme = uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return null
         val host = uri.host?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
-        val port = uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()
+        val defaultPort = if (scheme == "https") 443 else 80
+        val port = uri.port.takeIf { it >= 0 && it != defaultPort }?.let { ":$it" }.orEmpty()
         "$scheme://$host$port"
     }.getOrNull()
 

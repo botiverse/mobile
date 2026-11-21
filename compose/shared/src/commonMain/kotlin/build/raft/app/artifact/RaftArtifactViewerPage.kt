@@ -1263,6 +1263,7 @@ private fun RaftArtifactViewerWebBody(
             refresher = accessTokenRefresher,
             visible = rememberRaftPagerAppeared(host.pager),
             onAccessTokenDispatched = { token -> pageTokens.onPushed(token, build.raft.app.data.defaultNowMillis()) },
+            webOrigin = scope.webOrigin,
         )
         if (loadError) {
             SettingsWebViewErrorContent(

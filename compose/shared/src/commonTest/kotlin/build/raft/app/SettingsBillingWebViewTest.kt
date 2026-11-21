@@ -39,9 +39,18 @@ class SettingsBillingWebViewTest {
     @Test
     fun billingBootstrapClearsRefreshOwnerAndProvidesAccessAndServer() {
         val session = billingSession()
-        val script = standaloneSettingsWebViewInjectedJavaScript(session, null, SettingsWebViewSurface.Billing)
+        val script =
+            standaloneSettingsWebViewInjectedJavaScript(
+                session,
+                null,
+                SettingsWebViewSurface.Billing,
+                webOrigin = "https://app.raft.build/s/workspace/settings/billing?embed=raft-settings-v1&shell=host",
+            )
 
+        val guard = "if (window.top !== window || window.location.origin !== \"https://app.raft.build\") return;"
+        assertContains(script, guard)
         assertContains(script, "slock_access_token")
+        assertTrue(script.indexOf(guard) < script.indexOf("slock_access_token"))
         assertContains(script, "slock_refresh_token")
         assertContains(script, "removeItem(\"slock_refresh_token\")")
         assertFalse(script.contains(session.refreshToken))

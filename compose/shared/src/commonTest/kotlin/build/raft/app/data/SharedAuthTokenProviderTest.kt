@@ -291,9 +291,9 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(original)
         val scripts =
             listOf(
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Billing),
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Marketplace),
-                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Administration),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Billing, "https://app.raft.build"),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Marketplace, "https://app.raft.build"),
+                standaloneSettingsWebViewInjectedJavaScript(original, null, SettingsWebViewSurface.Administration, "https://app.raft.build"),
             )
         scripts.forEach { script ->
             assertContains(script, "removeItem(\"slock_refresh_token\")")
