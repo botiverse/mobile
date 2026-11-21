@@ -1571,8 +1571,9 @@
     <string name="member_action_save_runtime_change">Save Runtime Change</string>
     <string name="member_runtime_switch_inactive_message">This will switch the runtime from %1$s to %2$s.</string>
     <string name="member_runtime_config_saved_title">%1$s's settings saved</string>
-    <string name="member_runtime_config_applies_when_idle">They apply when it's next idle.</string>
-    <string name="member_runtime_config_new_session_when_idle">It starts a new session when it's next idle.</string>
+    <string name="member_runtime_config_applied_now">Applied — active for the next turn.</string>
+    <string name="member_runtime_config_applies_when_idle">Switches automatically after this turn.</string>
+    <string name="member_runtime_config_new_session_when_idle">Starts a new session automatically after this turn.</string>
     <string name="member_runtime_config_applies_next_start">They apply the next time it starts.</string>
     <string name="member_action_restart_now">Restart now</string>
     <string name="member_runtime_config_running_switches_when_idle">Running %1$s · switches to %2$s when idle</string>
@@ -2991,8 +2992,8 @@
     <string name="settings_computers_bulk_model_skip_no_change">No change</string>
     <string name="settings_computers_bulk_model_restart_line_one">%1$d running agent will restart.</string>
     <string name="settings_computers_bulk_model_restart_line_many">%1$d running agents will restart.</string>
-    <string name="settings_computers_bulk_model_idle_line_one">%1$d running agent switches when next idle.</string>
-    <string name="settings_computers_bulk_model_idle_line_many">%1$d running agents switch when next idle.</string>
+    <string name="settings_computers_bulk_model_idle_line_one">%1$d running agent applies immediately (restarting if busy).</string>
+    <string name="settings_computers_bulk_model_idle_line_many">%1$d running agents apply immediately (restarting if busy).</string>
     <string name="settings_computers_bulk_model_restart_now">Restart running agents now</string>
     <string name="settings_computers_bulk_model_apply_one">Change %1$d agent</string>
     <string name="settings_computers_bulk_model_apply_many">Change %1$d agents</string>

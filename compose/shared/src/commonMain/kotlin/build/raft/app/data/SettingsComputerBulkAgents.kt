@@ -91,8 +91,8 @@ fun raftBulkAgentHasOnlyRebuildableSettings(agent: SettingsComputerAgentSnapshot
 private fun SettingsComputerAgentSnapshot.matches(target: RaftBulkModelTarget): Boolean =
     runtime == target.runtime && model == target.model && reasoningEffort == target.reasoningEffort
 
-/** [restartNow]: running agents restart at once instead of switching at their next idle point. */
-fun planRaftBulkModelChange(agents: List<RaftBulkPlanAgent>, target: RaftBulkModelTarget, restartNow: Boolean): RaftBulkPlan {
+/** [restartNow] (default false): running agents apply immediately (stopping silently if idle, or restarting immediately if busy). */
+fun planRaftBulkModelChange(agents: List<RaftBulkPlanAgent>, target: RaftBulkModelTarget, restartNow: Boolean = false): RaftBulkPlan {
     val rows =
         agents.map { input ->
             val agent = input.agent

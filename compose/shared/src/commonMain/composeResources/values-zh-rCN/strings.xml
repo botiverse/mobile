@@ -1568,8 +1568,9 @@
     <string name="member_action_save_runtime_change">保存运行时修改</string>
     <string name="member_runtime_switch_inactive_message">这会将运行时从 %1$s 切换到 %2$s。</string>
     <string name="member_runtime_config_saved_title">%1$s 的设置已保存</string>
-    <string name="member_runtime_config_applies_when_idle">下次空闲时生效。</string>
-    <string name="member_runtime_config_new_session_when_idle">下次空闲时开始新会话。</string>
+    <string name="member_runtime_config_applied_now">已自动生效。</string>
+    <string name="member_runtime_config_applies_when_idle">当前轮结束后自动切换。</string>
+    <string name="member_runtime_config_new_session_when_idle">当前轮结束后自动开启新会话。</string>
     <string name="member_runtime_config_applies_next_start">下次启动时生效。</string>
     <string name="member_action_restart_now">立即重启</string>
     <string name="member_runtime_config_running_switches_when_idle">正在运行 %1$s · 空闲时切换到 %2$s</string>
@@ -2990,8 +2991,8 @@
     <string name="settings_computers_bulk_model_skip_no_change">无变化</string>
     <string name="settings_computers_bulk_model_restart_line_one">%1$d 个运行中的 Agent 会重启。</string>
     <string name="settings_computers_bulk_model_restart_line_many">%1$d 个运行中的 Agent 会重启。</string>
-    <string name="settings_computers_bulk_model_idle_line_one">%1$d 个运行中的 Agent 会在下次空闲时切换。</string>
-    <string name="settings_computers_bulk_model_idle_line_many">%1$d 个运行中的 Agent 会在下次空闲时切换。</string>
+    <string name="settings_computers_bulk_model_idle_line_one">%1$d 个运行中的 Agent 会立即生效（执行中将立即重启并继续）。</string>
+    <string name="settings_computers_bulk_model_idle_line_many">%1$d 个运行中的 Agent 会立即生效（执行中将立即重启并继续）。</string>
     <string name="settings_computers_bulk_model_restart_now">立即重启运行中的 Agent</string>
     <string name="settings_computers_bulk_model_apply_one">更换 %1$d 个 Agent</string>
     <string name="settings_computers_bulk_model_apply_many">更换 %1$d 个 Agent</string>
