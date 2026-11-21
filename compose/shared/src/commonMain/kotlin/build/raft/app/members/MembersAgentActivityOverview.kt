@@ -141,10 +141,15 @@ internal fun MembersAgentActivityViewSwitch(
     modifier: Modifier = Modifier,
     showOverview: Boolean = true,
     subagentCount: Int? = null,
+    /** The views' pager position ([build.raft.designsystem.components.RaftSegmentedPagerState.position]): the sticker slides with it. */
+    selectionPosition: (() -> Float)? = null,
 ) {
     // Web: the SegmentedControl's aria-label "Activity view".
     val groupLabel = stringResource(Res.string.member_activity_overview_view_label)
-    RaftSegmentedControl(modifier = modifier.semantics { contentDescription = groupLabel }) {
+    RaftSegmentedControl(
+        modifier = modifier.semantics { contentDescription = groupLabel },
+        selectionPosition = selectionPosition,
+    ) {
         if (showOverview) {
             RaftSegment(
                 text = stringResource(Res.string.member_activity_overview_view_overview),
