@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -792,7 +793,9 @@ private fun ThreadMembersPageScreen() {
     val memberAppBotResolver = remember(serverMembersStore, route.serverId) {
         raftMemberAppBotResolver(serverMembersStore, route.serverId.value)
     }
+    val runtimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
     CompositionLocalProvider(
+        LocalMembersRuntimeAccountUsageAccess provides runtimeUsageAccess,
         LocalRaftMemberAppBotResolver provides memberAppBotResolver,
         LocalRaftViewerServerLogos provides viewerServerLogos,
     ) {
@@ -1335,6 +1338,12 @@ internal fun ThreadMembersPagerRow(
     // "Offline" forever); the Bot badge follows its name instead.
     val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
     val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
+    val signIn =
+        if (appBot == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentRuntimeSignInState(status, fallbackName = member.displayName)
+        } else {
+            null
+        }
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
@@ -1365,12 +1374,44 @@ internal fun ThreadMembersPagerRow(
     ChannelMembersRow(
         title = member.displayName,
         subtitle = subtitle,
+        subtitleContent =
+            signIn?.let { s ->
+                {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        RaftText(
+                            text = s.fullText,
+                            style = RaftTheme.typography.caption,
+                            color = RaftTheme.colors.foregroundMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowStatus),
+                        )
+                        RaftText(
+                            text = s.detail,
+                            style = RaftTheme.typography.caption,
+                            color = RaftTheme.colors.foregroundHint,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowDetail),
+                        )
+                    }
+                }
+            },
+        trailingAction =
+            signIn?.takeIf { it.offered }?.let { s ->
+                {
+                    AgentRuntimeSignInAction(
+                        signIn = s,
+                        testTag = AgentRuntimeSignInTestTags.MemberRowAction,
+                    )
+                }
+            },
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
         avatarKind = raftAvatarKind(member.kind.parsedMemberKindOrNull()),
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
-        statusColor = status?.color,
+        statusColor = if (signIn != null) RaftColor.AccentOrange else status?.color,
         badges = listOfNotNull(roleBadge),
         titleBadge =
             if (appBot == null && originNames.isEmpty() && alsoIn == null) {

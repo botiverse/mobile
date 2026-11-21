@@ -62,7 +62,19 @@ internal data class RaftAgentStatusIndicatorState(
      * [status] is Error and [label] the English words; [localizedMemberStatusLabel] says why in
      * this locale on every surface, whatever the agent last did.
      */
-    val blocked: AgentBlockedState? = null
+    val blocked: AgentBlockedState? = null,
+    /** Live failed-start reason (`agent:activity` `spawnFailure.reason`, slock #15282). */
+    val spawnFailureReason: String? = null,
+    /** Stored failed-start reason (`GET /agents` `lastRuntimeError.spawnFailureReason`, slock #15282). */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /** True while this personal assistant is paused. */
+    val paused: Boolean = false,
+    /** The agent's Computer id from the roster, for live sign-in status / in-place Sign in. */
+    val machineId: String? = null,
+    /** The agent's Computer display name from the roster, for sign-in detail copy. */
+    val machineName: String? = null,
+    /** The agent's display name (or handle), for sign-in detail copy. */
+    val agentDisplayName: String? = null
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -200,7 +212,13 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         toolStuck = toolStuck,
         errorCode = errorCode,
         likelyOnline = likelyOnline,
-        blocked = blocked
+        blocked = blocked,
+        spawnFailureReason = spawnFailureReason,
+        lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
+        paused = paused,
+        machineId = machineId,
+        machineName = machineName,
+        agentDisplayName = agentDisplayName
     )
 
 /**

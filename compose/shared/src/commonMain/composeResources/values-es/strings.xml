@@ -4879,6 +4879,7 @@
     <string name="agent_status_credential_sign_in">Hay que volver a iniciar sesión en %1$s</string>
     <string name="agent_status_runtime_sign_in_full">Hay que iniciar sesión en %1$s</string>
     <string name="agent_status_runtime_sign_in_short">Hay que iniciar sesión</string>
+    <string name="agent_status_runtime_sign_in_detail">%1$s no puede iniciarse hasta que %2$s tenga la sesión iniciada en %3$s. Inicia sesión allí o cambia %1$s a otro runtime.</string>
     <string name="agent_status_credential_plan_model">El plan no incluye %1$s</string>
     <string name="agent_status_credential_plan_default_model">El plan no incluye este modelo</string>
     <string name="agent_status_credential_billing">Saldo del proveedor agotado</string>

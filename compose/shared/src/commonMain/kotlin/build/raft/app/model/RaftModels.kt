@@ -475,6 +475,11 @@ data class MemberProfile(
      */
     val agentBlockedReason: String? = null,
     /**
+     * `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15273/#15282): kept failed-start
+     * reason (e.g. `runtime_login_required`), cleared by the server on the next successful start.
+     */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via

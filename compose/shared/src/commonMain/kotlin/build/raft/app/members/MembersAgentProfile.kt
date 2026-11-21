@@ -626,7 +626,7 @@ internal fun MembersAgentProfileStatus(
     // Web `runtimeSignInNeededOf` (slock #15282): the runtime is not signed in on the Computer, so
     // the agent cannot start. The error light and "Sign-in needed for {runtime}"; the chip opens
     // the Computer, where the runtime is signed in.
-    val runtimeSignInNeeded =
+    val rawRuntimeSignInNeeded =
         !appBot &&
             credentialReason == null &&
             membersAgentRuntimeSignInNeeded(
@@ -637,6 +637,16 @@ internal fun MembersAgentProfileStatus(
                 liveSpawnFailureReason = spawnFailure?.spawnFailure?.reason,
                 paused = !member.assistantPausedAt.isNullOrBlank(),
             )
+    val runtimeSignIn =
+        rememberAgentRuntimeSignInState(
+            state = agentStatusIndicatorState,
+            neededOverride = rawRuntimeSignInNeeded,
+            fallbackRuntime = summary?.runtime ?: agentStatusIndicatorState?.runtime,
+            fallbackName = member.displayName.takeIf { it.isNotBlank() } ?: summary?.displayName ?: summary?.name,
+            fallbackMachineId = summary?.machineId ?: agentStatusIndicatorState?.machineId,
+            fallbackMachineName = summary?.machineName ?: agentStatusIndicatorState?.machineName,
+        )
+    val runtimeSignInNeeded = runtimeSignIn != null
     val showRetry =
         onRetry != null &&
             !appBot &&
@@ -672,8 +682,8 @@ internal fun MembersAgentProfileStatus(
             AgentBlockedState.ComputerUpdateRequired.localizedStatusLabel()
         } else if (blocked != null) {
             stringResource(Res.string.member_row_status_error)
-        } else if (runtimeSignInNeeded) {
-            agentRuntimeSignInText(runtime = summary?.runtime ?: agentStatusIndicatorState?.runtime, full = showActivityDetail)
+        } else if (runtimeSignIn != null) {
+            if (showActivityDetail) runtimeSignIn.fullText else runtimeSignIn.shortText
         } else if (credentialReason != null) {
             if (showActivityDetail) {
                 agentCredentialInvalidText(
@@ -716,21 +726,46 @@ internal fun MembersAgentProfileStatus(
         )
     }
     val openComputer = onOpenComputer?.takeIf { blocked == AgentBlockedState.ComputerUpdateRequired || runtimeSignInNeeded }
+    val chipDetailSemantics =
+        if (runtimeSignIn != null) {
+            Modifier.semantics { contentDescription = runtimeSignIn.detail }
+        } else {
+            Modifier
+        }
     // Nothing known about its presence (e.g. a joint channel's agent of another server
     // whose profile read failed): no chip, never an empty "—" one.
     if (!appBot && statusLabel != MembersUnknownAgentStatusLabel) {
         if (openComputer != null) {
             // The step is on the Computer: the chip itself opens it (web #14585
-            // AgentStatusBadge `agent-status-computer-too-old`).
-            statusChip(
-                Modifier
-                    .padding(top = itemTop)
-                    .raftClickable(
-                        onClick = openComputer,
-                        onClickLabel = stringResource(Res.string.agent_status_open_computer),
-                        shape = RoundedCornerShape(RaftAppRadius.Control)
-                    )
-            )
+            // AgentStatusBadge `agent-status-computer-too-old`); when the viewer can sign in from
+            // here (slock #15282), offer the quiet Sign in action beside it.
+            val chipModifier =
+                chipDetailSemantics.raftClickable(
+                    onClick = openComputer,
+                    onClickLabel = stringResource(Res.string.agent_status_open_computer),
+                    shape = RoundedCornerShape(RaftAppRadius.Control)
+                )
+            if (runtimeSignIn?.offered == true) {
+                Row(
+                    modifier = Modifier.padding(top = itemTop),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    statusChip(Modifier.weight(1f, fill = false).then(chipModifier))
+                    AgentRuntimeSignInAction(signIn = runtimeSignIn, testTag = AgentRuntimeSignInTestTags.ProfileAction)
+                }
+            } else {
+                statusChip(Modifier.padding(top = itemTop).then(chipModifier))
+            }
+        } else if (runtimeSignIn?.offered == true) {
+            Row(
+                modifier = Modifier.padding(top = itemTop),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                statusChip(Modifier.weight(1f, fill = false).then(chipDetailSemantics))
+                AgentRuntimeSignInAction(signIn = runtimeSignIn, testTag = AgentRuntimeSignInTestTags.ProfileAction)
+            }
         } else if (showRetry && onRetry != null) {
             // Web `flex items-center gap-1.5`: the quiet Retry right after the chip.
             Row(
@@ -742,7 +777,7 @@ internal fun MembersAgentProfileStatus(
                 AgentStatusRetryLink(inProgress = retryInProgress, onRetry = onRetry)
             }
         } else {
-            statusChip(Modifier.padding(top = itemTop))
+            statusChip(Modifier.padding(top = itemTop).then(chipDetailSemantics))
         }
     }
     if (blocked != null && blocked != AgentBlockedState.ComputerUpdateRequired) {

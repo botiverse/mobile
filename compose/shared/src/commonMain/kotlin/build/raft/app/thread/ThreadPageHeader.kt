@@ -65,6 +65,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -925,9 +927,46 @@ private fun ThreadHeaderNameFirstRow(modifier: Modifier = Modifier, content: @Co
 @Composable
 private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState, modifier: Modifier = Modifier) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
-    // warning colour, not as a plain "busy". Otherwise the same localized caption as every
-    // other live-status surface (SSOT audit).
+    // warning colour, not as a plain "busy". Otherwise, a failed start waiting for runtime sign-in
+    // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" below 768dp) on the
+    // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
+    val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state) else null
+    if (signIn != null) {
+        val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= 768.dp
+        val signInLabel = if (wide) signIn.fullText else signIn.shortText
+        Row(
+            modifier = modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+        ) {
+            RaftStatusIndicator(
+                color = RaftColor.AccentOrange,
+                size = ThreadHeaderDmAgentActivityDotSize,
+            )
+            Text(
+                text = signInLabel,
+                style =
+                    RaftType.Caption.copy(
+                        color = RaftColor.ForegroundHint,
+                        fontFamily = RaftMonoFamily
+                    ),
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .testTag(AgentRuntimeSignInTestTags.DmHeaderStatus)
+                        .semantics { contentDescription = signIn.detail }
+            )
+            AgentRuntimeSignInAction(
+                signIn = signIn,
+                testTag = AgentRuntimeSignInTestTags.DmHeaderAction,
+            )
+        }
+        return
+    }
     val label = if (toolStuck != null) localizedAgentToolStuckText(toolStuck) else state.localizedMemberStatusLabel()
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(

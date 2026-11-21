@@ -387,7 +387,19 @@ data class SharedServerMemberStatus(
      * `AgentDisplayState.blocked`): its status says why instead of its last activity. Produced
      * only by [blockedMemberStatusOrNull], from the authoritative profile; never a presence fact.
      */
-    val blocked: AgentBlockedState? = null
+    val blocked: AgentBlockedState? = null,
+    /** Live failed-start reason from `agent:activity` `spawnFailure.reason` (slock #15282). */
+    val spawnFailureReason: String? = null,
+    /** Stored failed-start reason from `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15282). */
+    val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /** True while this personal assistant is paused (`assistantPausedAt` non-blank). */
+    val paused: Boolean = false,
+    /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
+    val machineId: String? = null,
+    /** The agent's Computer display name from the roster (`computer:` badge), for sign-in detail copy. */
+    val machineName: String? = null,
+    /** The agent's display name (or handle), for sign-in detail copy. */
+    val agentDisplayName: String? = null
 )
 
 /**
@@ -502,6 +514,11 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             // The newest observation wins whichever channel delivered it:
             // realtime agent:seen fact or the REST roster profile.
             .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
+    val memberMachineId = this?.agentComputerIdOrNull()
+    val memberMachineName = this?.agentComputerNameOrNull()
+    val memberDisplayName = this?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: this?.handle?.trim()?.takeIf { it.isNotBlank() }
+    val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
+    val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
     if (
         presenceFact != null &&
         (
@@ -523,7 +540,13 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
             external = this?.isExternal == true,
-            lastSeenAt = resolvedLastSeenAt
+            lastSeenAt = resolvedLastSeenAt,
+            spawnFailureReason = presenceFact.spawnFailure?.reason?.trim()?.takeIf { it.isNotBlank() },
+            lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+            paused = memberPaused,
+            machineId = memberMachineId,
+            machineName = memberMachineName,
+            agentDisplayName = memberDisplayName
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -532,13 +555,28 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         presence = presence,
         runtime = agentRuntimeOrNull(),
         external = isExternal,
-        lastSeenAt = resolvedLastSeenAt
+        lastSeenAt = resolvedLastSeenAt,
+        lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+        paused = memberPaused,
+        machineId = memberMachineId,
+        machineName = memberMachineName,
+        agentDisplayName = memberDisplayName
     )
 }
 
 /** Agent profiles carry the runtime id in `roleDescription` (see `WireAgent.toMemberProfile`). */
 private fun MemberProfile.agentRuntimeOrNull(): String? =
     roleDescription?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
+
+private fun MemberProfile.agentComputerIdOrNull(): String? =
+    permissionBadges.firstNotNullOfOrNull { badge ->
+        badge.takeIf { it.startsWith("computer-id:") }?.removePrefix("computer-id:")?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+private fun MemberProfile.agentComputerNameOrNull(): String? =
+    permissionBadges.firstNotNullOfOrNull { badge ->
+        badge.takeIf { it.startsWith("computer:") }?.removePrefix("computer:")?.trim()?.takeIf { it.isNotBlank() }
+    }
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.

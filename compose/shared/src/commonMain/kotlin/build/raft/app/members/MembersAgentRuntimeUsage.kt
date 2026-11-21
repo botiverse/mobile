@@ -67,6 +67,13 @@ internal class MembersRuntimeAccountUsageAccess(
     val auth: ComputerRuntimeAuthHost? = null,
     /** The server's feature flags (`claude_limit_reset_v2` for the cards' Claude limit resets); null reads every flag as off. */
     val serverFeatureFlags: SharedServerFeatureFlags? = null,
+    /**
+     * Web `canViewMachineRuntimeAccountUsage` check for a `(serverId, machineId)` pair; null defers
+     * to `viewer == null || viewer.canEditMachines` (keeps non-authorized viewers from issuing reads).
+     */
+    val canViewMachine: ((serverId: String, machineId: String) -> Boolean)? = null,
+    /** Looks up a Computer's display name (`name` or `hostname`) from the live computers store when the member row has none. */
+    val machineName: ((serverId: String, machineId: String) -> String?)? = null,
 )
 
 /**

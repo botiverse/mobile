@@ -47,6 +47,7 @@ import build.raft.app.data.RuntimeAccountUsageWindowFill
 import build.raft.app.data.RuntimeAccountUsageCreditsLine
 import build.raft.app.data.creditsLine
 import build.raft.app.data.needsUsageAttention
+import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.windowFill
 import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthView
@@ -219,22 +220,28 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
     val store = remember(sharedStores, storeScope) { sharedStores.runtimeAccountUsageStore(storeScope) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
     val tracker = remember(sharedStores, storeScope) { MembersRuntimeAccountUsageOwnerTracker { sharedStores.computersOwner(storeScope) } }
+    val computersStore = remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
     var serverId by remember(authStore) { mutableStateOf<String?>(null) }
+    var viewer by remember(authStore) { mutableStateOf<build.raft.app.data.RuntimeAccountUsageViewer?>(null) }
     LaunchedEffect(tracker, authStore) {
         suspend fun read() {
-            serverId = authStore.readSession()?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            val session = authStore.readSession()
+            serverId = session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            viewer = build.raft.app.data.runtimeAccountUsageViewerFor(session)
             tracker.refresh()
         }
         read()
         (authStore as? RaftAuthSessionEventSource)?.authSessionEvents?.collect { event ->
             if (event.changesRuntimeAccountUsageOwner()) {
                 serverId = null
+                viewer = null
                 tracker.invalidate()
             }
             read()
         }
     }
     val owner by tracker.owner.collectAsState()
+    val computersState by computersStore.state.collectAsState()
     val scope = rememberCoroutineScope()
     val authHost =
         remember(sharedStores, storeScope, bridge) {
@@ -244,15 +251,33 @@ internal fun rememberShellRuntimeAccountUsageAccess(): MembersRuntimeAccountUsag
                 openUrl = { url -> bridge.openUrl(url, inBrowser = true) },
             )
         }
-    return remember(store, owner, serverId, tracker, authHost) {
+    return remember(store, computersState, owner, serverId, viewer, tracker, authHost) {
         MembersRuntimeAccountUsageAccess(
             store = store,
             owner = owner,
             serverId = serverId,
             onIdentityChanged = { scope.launch { tracker.invalidate() } },
             log = { message -> bridge.log(message) },
+            viewer = viewer,
             auth = authHost,
             serverFeatureFlags = sharedStores.serverFeatureFlags,
+            canViewMachine = { srvId, mId ->
+                val currentViewer = viewer ?: return@MembersRuntimeAccountUsageAccess false
+                if (currentViewer.canEditMachines) return@MembersRuntimeAccountUsageAccess true
+                val machine = computersState.selectComputerServerSlice(srvId).machines.firstOrNull { it.id == mId }
+                machine != null &&
+                    build.raft.app.data.canViewMachineRuntimeAccountUsage(
+                        attachedByCurrentUser = machine.attachedByCurrentUser,
+                        creatorId = machine.creatorUserId ?: machine.creator?.id,
+                        currentUserId = currentViewer.currentUserId,
+                        canEditMachines = currentViewer.canEditMachines,
+                    )
+            },
+            machineName = { srvId, mId ->
+                val machine = computersState.selectComputerServerSlice(srvId).machines.firstOrNull { it.id == mId }
+                machine?.name?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: machine?.hostname?.trim()?.takeIf { it.isNotEmpty() }
+            },
         )
     }
 }
