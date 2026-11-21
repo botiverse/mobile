@@ -68,6 +68,12 @@ class ThreadAuthorRowFactsTest {
         assertEquals(emptyList(), external.copy(inViewerServer = true).authorFacts(server).originServers)
         // An external sender whose server was not named has no tile to draw.
         assertEquals(emptyList(), person.copy(serverId = ServerId(peer.id)).authorFacts(server).originServers)
+        // With the channel's `jointServers[]`, a bare external agent resolves both name and logo (slock #15809/#15817).
+        val peerWithLogo = peer.copy(avatarUrl = "/api/avatars/server-peer/logo.webp")
+        assertEquals(
+            listOf(peerWithLogo),
+            agent.copy(serverId = ServerId(peer.id)).authorFacts(server, knownServers = listOf(peerWithLogo)).originServers,
+        )
 
         val facts = external.authorFacts(server)
         val row = RaftThreadMessageItem(id = "m-2", authorId = "user-2", authorName = "Ada", authorKind = "human")

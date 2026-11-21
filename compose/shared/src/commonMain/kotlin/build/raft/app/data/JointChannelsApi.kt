@@ -79,6 +79,7 @@ private data class WireJointServer(
     val serverId: String,
     val serverName: String = "",
     val serverSlug: String = "",
+    val serverAvatarUrl: String? = null,
     val role: String? = null,
     val status: String,
     val isCurrentServer: Boolean = false,
@@ -358,6 +359,8 @@ data class JointChannelServer(
     val plan: JointChannelServerPlan?,
     /** Null on pending rows and on the legacy single-peer fallback. */
     val role: JointChannelRole? = null,
+    /** The server's logo (`jointServers[].serverAvatarUrl`, slock #15809); null for pending or none. */
+    val avatarUrl: String? = null,
 )
 
 data class JointChannelConnections(
@@ -459,6 +462,7 @@ private fun WireJointServer.toDomain(): JointChannelServer? {
                 else -> null
             },
         role = JointChannelRole.fromWire(role),
+        avatarUrl = serverAvatarUrl?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
 

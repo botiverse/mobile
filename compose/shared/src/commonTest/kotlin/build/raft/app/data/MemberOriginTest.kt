@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -94,5 +95,69 @@ class MemberOriginTest {
         assertFalse(memberRemovableFromChannel(external, viewer))
         assertTrue(memberRemovableFromChannel(localFirstSourceElsewhere, viewer))
         assertTrue(memberRemovableFromChannel(person, viewer))
+    }
+
+    @Test
+    fun originLogoCarriesServersAvatarUrlAndFallsBackToJointChannelServers() {
+        // slock #15809/#15817: a bare home server id (such as an external agent) takes its name
+        // and logo from the joint channel's `jointServers[]`, while the row's own `servers[].avatarUrl`
+        // wins over the channel's logo.
+        val acmeLogo = "/api/avatars/server-acme/aaaa.webp"
+        val channelOtherLogo = "/api/avatars/server-acme/other.webp"
+        val channelAcme = MemberServerRef("server-acme", "Acme Corp", "acme", avatarUrl = acmeLogo)
+        val pendingLumen = MemberServerRef("server-lumen", "Lumen", "lumen", avatarUrl = null)
+
+        val bareAgent =
+            MemberProfile(
+                id = MemberId("agent-2"),
+                displayName = "Bot",
+                handle = "bot",
+                kind = MemberKind.Agent,
+                serverId = ServerId(channelAcme.id),
+            )
+        val fromChannel = memberOrigin(bareAgent, viewer, knownServers = listOf(channelAcme, pendingLumen))
+        assertEquals(listOf(channelAcme), fromChannel.servers)
+
+        val pendingAgent = bareAgent.copy(serverId = ServerId(pendingLumen.id))
+        val fromPending = memberOrigin(pendingAgent, viewer, knownServers = listOf(channelAcme, pendingLumen))
+        assertEquals(listOf(pendingLumen), fromPending.servers)
+
+        val personWithOwnLogo =
+            person.copy(
+                serverId = ServerId(channelAcme.id),
+                inViewerServer = false,
+                servers = listOf(MemberServerRef(channelAcme.id, "Acme Corp", "acme", avatarUrl = acmeLogo)),
+            )
+        val ownWins =
+            memberOrigin(
+                personWithOwnLogo,
+                viewer,
+                knownServers = listOf(channelAcme.copy(avatarUrl = channelOtherLogo)),
+            )
+        assertEquals(acmeLogo, ownWins.servers.single().avatarUrl)
+    }
+
+    @Test
+    fun wireParsersPreserveServersAvatarUrlAndChannelJointServersAvatarUrl() {
+        val alphaLogo = "/api/avatars/server-alpha/1234.webp"
+        val channelMembersBody =
+            """{"humans":[{"id":"u-1","name":"pat","displayName":"Pat","serverId":"srv-alpha","inViewerServer":false,"servers":[{"id":"srv-alpha","name":"Alpha","slug":"alpha","avatarUrl":"$alphaLogo"}]}],"agents":[]}"""
+        val parsedMembers = parseSharedChannelMemberSnapshot(channelMembersBody, ChannelId("ch-1"))
+        assertEquals(alphaLogo, parsedMembers?.members?.single()?.servers?.single()?.avatarUrl)
+
+        val memberProfileBody =
+            """{"userId":"u-1","name":"pat","displayName":"Pat","serverId":"srv-alpha","servers":[{"id":"srv-alpha","name":"Alpha","slug":"alpha","avatarUrl":"$alphaLogo"}]}"""
+        assertEquals(alphaLogo, parseSharedMemberProfile(memberProfileBody)?.servers?.single()?.avatarUrl)
+
+        val channelDetailBody =
+            """{"id":"ch-1","name":"acme-launch","type":"joint","jointServers":[{"serverId":"srv-alpha","serverName":"Alpha","serverSlug":"alpha","serverAvatarUrl":"$alphaLogo","role":"participant","status":"active"},{"serverId":"srv-pending","serverName":"Pending","serverSlug":"pending","serverAvatarUrl":null,"role":null,"status":"pending"}]}"""
+        val parsedChannel = parseRaftChannelDetail(channelDetailBody)
+        assertEquals(
+            listOf(
+                MemberServerRef("srv-alpha", "Alpha", "alpha", avatarUrl = alphaLogo),
+                MemberServerRef("srv-pending", "Pending", "pending", avatarUrl = null),
+            ),
+            parsedChannel?.jointServers,
+        )
     }
 }

@@ -51,11 +51,12 @@ class JointChannelsApiTest {
                 parseSharedJointChannelConnections(
                     """{"id":"ch-1","name":"room","type":"joint","jointRole":"owner",
                     |"channelCapabilities":{"federateChannels":false},
-                    |"jointServers":[{"serverId":"s1","serverName":"S","serverSlug":"s","role":"admin","status":"active","plan":"free"}]}""".trimMargin()
+                    |"jointServers":[{"serverId":"s1","serverName":"S","serverSlug":"s","serverAvatarUrl":"/api/avatars/server-s1/logo.webp","role":"admin","status":"active","plan":"free"}]}""".trimMargin()
                 )
             )
         assertNull(unknown.jointRole)
         assertNull(unknown.servers.single().role)
+        assertEquals("/api/avatars/server-s1/logo.webp", unknown.servers.single().avatarUrl)
         assertEquals(false, unknown.federateChannels)
     }
 

@@ -67,12 +67,13 @@ private data class WireGuestChannel(
     val name: String = "",
 )
 
-/** `channelService.ChannelMemberServer`: `{ id, name, slug }`. */
+/** `channelService.ChannelMemberServer`: `{ id, name, slug, avatarUrl }`. */
 @Serializable
 private data class WireMemberServer(
     val id: String,
     val name: String? = null,
     val slug: String? = null,
+    val avatarUrl: String? = null,
 )
 
 @Serializable
@@ -1064,7 +1065,12 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
 }
 
 private fun WireMemberServer.toMemberServerRef(): MemberServerRef =
-    MemberServerRef(id = id, name = name.orEmpty(), slug = slug.orEmpty())
+    MemberServerRef(
+        id = id,
+        name = name.orEmpty(),
+        slug = slug.orEmpty(),
+        avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotEmpty() },
+    )
 
 private fun String?.toServerIdOrNull(): ServerId? =
     this?.takeIf { it.isNotBlank() }?.let(::ServerId)

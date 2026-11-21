@@ -122,10 +122,12 @@ internal fun raftProfilePreviewCardModel(
     readReceipt: RaftProfilePreviewReadReceipt? = null,
     /** The server the card is opened on; where the profile is from is read against it. */
     viewerServerId: String? = null,
+    /** Connected servers of the active joint channel (`jointServers[]`, slock #15809/#15817). */
+    knownServers: List<MemberServerRef> = emptyList(),
 ): RaftProfilePreviewCardModel {
     val appBot = profile.appBotIdentityOrNull()
     val isAgent = profile.kind == MemberKind.Agent
-    val origin = memberOrigin(profile, viewerServerId)
+    val origin = memberOrigin(profile, viewerServerId, knownServers)
     // web `hideAgentServerFacts`: another server's agent comes with its identity only.
     val agentFacts = isAgent && appBot == null && !origin.external
     val runtimeId = (status?.runtime ?: profile.roleDescription)?.trim()?.takeIf { it.isNotBlank() }
@@ -181,6 +183,8 @@ internal fun rememberRaftProfilePreviewCardModel(
     memberAvatarResolver: RaftMemberAvatarResolver = remember(serverMembersStore, serverId) { raftMemberAvatarResolver(serverMembersStore, serverId) },
     /** The server the card is opened on (the profile may be read from the member's own [serverId]). */
     viewerServerId: String? = serverId,
+    /** Connected servers of the active joint channel (`jointServers[]`, slock #15809/#15817). */
+    knownServers: List<MemberServerRef> = emptyList(),
 ): RaftProfilePreviewCardModel {
     val cleanServerId = remember(serverId) { serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) }
     val profileFlow =
@@ -195,11 +199,11 @@ internal fun rememberRaftProfilePreviewCardModel(
     val status = rememberRaftAgentStatusIndicatorState(agentStatusResolver, memberId.takeIf { kind == MemberKind.Agent })
     val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     val current = profile
-    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId) {
+    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers) {
         if (current == null) {
             RaftProfilePreviewCardModel.unavailable(memberId, kind, fallbackHandle)
         } else {
-            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId)
+            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId, knownServers)
         }
     }
 }

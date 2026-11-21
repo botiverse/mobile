@@ -14,6 +14,7 @@ import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -54,6 +55,16 @@ data class HomeChannelBridgeWireDto(
     val state: String? = null,
 )
 
+/** One server connected to a joint channel (`jointServers[]`, slock #15809 `JointServerMetadata`). */
+@Serializable
+data class HomeJointServerWireDto(
+    val serverId: String,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
+    val serverAvatarUrl: String? = null,
+    val status: String? = null,
+)
+
 @Serializable
 data class HomeChannelWireDto(
     val id: String,
@@ -69,6 +80,7 @@ data class HomeChannelWireDto(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointServers: List<HomeJointServerWireDto>? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     /**
@@ -170,6 +182,7 @@ private data class HomeChannelDetailWireDto(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    val jointServers: List<HomeJointServerWireDto>? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     /**
@@ -278,6 +291,7 @@ internal fun parseRaftChannelDetail(
             jointPeerServerName = wire.jointPeerServerName,
             jointPeerServerSlug = wire.jointPeerServerSlug,
             jointPeerStatus = wire.jointPeerStatus,
+            jointServers = wire.jointServers,
             jointBillingLocked = wire.jointBillingLocked,
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
             externalFreezeAt = wire.externalFreezeAt,
@@ -504,6 +518,16 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerServerName = jointPeerServerName?.takeIf { it.isNotBlank() },
         jointPeerServerSlug = jointPeerServerSlug?.takeIf { it.isNotBlank() },
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
+        jointServers =
+            jointServers.orEmpty().mapNotNull { server ->
+                val cleanId = server.serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                MemberServerRef(
+                    id = cleanId,
+                    name = server.serverName?.trim().orEmpty(),
+                    slug = server.serverSlug?.trim().orEmpty(),
+                    avatarUrl = server.serverAvatarUrl?.trim()?.takeIf { it.isNotEmpty() },
+                )
+            },
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
         externalFreezeAt = externalFreezeAt?.takeIf { it.isNotBlank() },

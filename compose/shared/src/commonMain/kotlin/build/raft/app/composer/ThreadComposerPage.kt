@@ -1302,7 +1302,9 @@ internal data class RaftComposerMemberItem(
     val description: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = displayName.toRaftAvatarLabel(),
-    val memberId: String? = null
+    val memberId: String? = null,
+    /** Someone from another server ([memberOrigin]): carries `servers[].avatarUrl` for the @ badge. */
+    val originServers: List<MemberServerRef> = emptyList(),
 )
 
 @Serializable
@@ -4176,6 +4178,7 @@ private fun ComposerSuggestionHeader(
  */
 internal fun RaftComposerMemberItem.mentionOriginServers(): List<MemberServerRef> {
     if (isLocalServer) return emptyList()
+    if (originServers.isNotEmpty()) return originServers
     val label = sourceServerLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
     return listOf(MemberServerRef(id = sourceServerId?.trim().orEmpty(), name = label))
 }

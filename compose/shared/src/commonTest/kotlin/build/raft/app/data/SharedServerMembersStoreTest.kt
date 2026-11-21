@@ -3408,6 +3408,79 @@ class SharedServerMembersStoreTest {
         )
     }
 
+    @Test
+    fun authoritativeChannelMemberMergePreservesAndUpgradesOriginServerLogos() = runBlocking {
+        val repository = FakeMemberRepository()
+        val serverId = ServerId("server-1")
+        val channelId = ChannelId("joint-1")
+        val serverAWithoutLogo = MemberServerRef(id = "server-a", name = "Alpha", slug = "alpha", avatarUrl = null)
+        val serverAWithLogo = MemberServerRef(id = "server-a", name = "Alpha", slug = "alpha", avatarUrl = "/alpha.webp")
+        val serverBWithLogo = MemberServerRef(id = "server-b", name = "Beta", slug = "beta", avatarUrl = "/beta.webp")
+
+        // Load channel members initially with ServerA (no logo) + ServerB (logo), and a bare-serverId
+        // agent initially seeded on the viewer server so authoritative patch must upgrade its serverId.
+        val store = SharedServerMembersStore(repository)
+        val extHumanFirst =
+            member("ext-user-1", "Alice").copy(
+                serverId = ServerId("server-a"),
+                inViewerServer = false,
+                servers = listOf(serverAWithoutLogo, serverBWithLogo),
+            )
+        val extAgentSeededOnViewer =
+            member("ext-agent-1", "Volta").copy(
+                kind = MemberKind.Agent,
+                serverId = serverId,
+            )
+        val extAgentAuthoritative =
+            extAgentSeededOnViewer.copy(
+                serverId = ServerId("server-b"),
+            )
+        repository.channelMembersByChannel[channelId.value] = listOf(extHumanFirst, extAgentSeededOnViewer)
+        store.loadChannelMembers(serverId, channelId, force = true)
+        store.ensureMemberSuggestionsForServer(
+            serverId = serverId,
+            mentionChannelId = channelId.value,
+            memberScopedMentions = true,
+            force = true,
+        )
+        val cachedFirst = assertNotNull(store.currentMemberProfile(serverId, "ext-user-1"))
+        assertEquals(false, cachedFirst.inViewerServer)
+        assertEquals(listOf(serverAWithoutLogo, serverBWithLogo), cachedFirst.servers)
+        assertEquals(serverId, store.currentMemberProfile(serverId, "ext-agent-1")?.serverId)
+
+        // Patching with an upgraded ServerA logo while ServerB already had a logo updates both
+        // channel member profile and mention suggestion originServers per server id; patching the
+        // bare-serverId external agent updates its serverId over the viewer-server seed.
+        val extHumanSecond = extHumanFirst.copy(servers = listOf(serverAWithLogo, serverBWithLogo))
+        store.patchMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = channelId.value,
+            memberScopedMentions = true,
+            member = extHumanSecond,
+            inMentionChannel = true,
+        )
+        store.patchMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = channelId.value,
+            memberScopedMentions = true,
+            member = extAgentAuthoritative,
+            inMentionChannel = true,
+        )
+        val cachedSecond = assertNotNull(store.currentMemberProfile(serverId, "ext-user-1"))
+        assertEquals(listOf(serverAWithLogo, serverBWithLogo), cachedSecond.servers)
+        assertEquals(ServerId("server-b"), store.currentMemberProfile(serverId, "ext-agent-1")?.serverId)
+        val suggestion =
+            store.state.value
+                .memberSuggestionSlice(
+                    serverId = serverId,
+                    mentionChannelId = channelId.value,
+                    memberScopedMentions = true,
+                )
+                .suggestions
+                .first { it.memberId == "ext-user-1" }
+        assertEquals(listOf(serverAWithLogo, serverBWithLogo), suggestion.originServers)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
