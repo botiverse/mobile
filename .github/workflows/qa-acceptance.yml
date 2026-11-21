@@ -191,9 +191,10 @@ jobs:
     needs: build
     # Run when build succeeded OR was skipped (pinned-bits inputs replace it).
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
-    # id-token: the release settings lane proves this job's identity to Testbed with a GitHub
-    # OIDC token per endpoint (audience = Testbed origin + exact path). Only
-    # testbed_release_settings.mjs requests one; the agent runs with the request variables unset.
+    # id-token: the release settings lane, and the login acceptance input fetch of the claimed case
+    # login-email-password, prove this job's identity to Testbed with a GitHub OIDC token per endpoint
+    # (audience = Testbed origin + exact path). Only testbed_release_settings.mjs requests one (also
+    # through testbed_login_acceptance_input.mjs); the agent runs with the request variables unset.
     permissions:
       contents: read
       actions: read
@@ -479,6 +480,9 @@ jobs:
           required=$(node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(v.required===true?"true":"false")' "$spec")
           echo "bootstrap_required=$required" >> "$GITHUB_OUTPUT"
           echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"
+          # The claimed Testbed case (claim response case_id, kept by stamp_report.sh): login-email-password makes the login acceptance mandatory (#216).
+          claimed_case=$(node -e 'const fs=require("fs"),v=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));process.stdout.write(typeof v.case_id==="string"&&/^[a-z0-9][a-z0-9-]{0,63}$/.test(v.case_id)?v.case_id:"")' "$spec")
+          echo "claimed_case=$claimed_case" >> "$GITHUB_OUTPUT"
 
       # Password-login cases still exercise the UI normally. The QA account goes only to the
       # steps that use it, through their own env: from secrets.*, and only on the legacy path
@@ -555,6 +559,8 @@ jobs:
         if: ${{ inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         run: bash scripts/qa/build_login_form.sh "$RUNNER_TEMP/qa-login-form.jar"
 
+      # For the claimed case login-email-password (#216) stamp_report.sh sends no credential receipt, here
+      # or in report-evidence: that case reports only its verdict and reason code.
       - name: Freeze legacy credential identity receipt
         if: ${{ inputs.stamp_run_case_id != '' && inputs.login_mode != 'release-prelogin' && steps.stamp-claim.outputs.bootstrap_required != 'true' }}
         env:
@@ -619,6 +625,32 @@ jobs:
           [ -n "$QA_TEST_EMAIL" ] && [ -n "$QA_TEST_PASSWORD" ] || { echo "::error::QA account secrets are missing"; exit 1; }
           printf '%s\n%s\n' "$QA_TEST_EMAIL" "$QA_TEST_PASSWORD" > "$dir/account"
 
+      # Login acceptance (#216), only for the claimed Testbed case login-email-password; every other
+      # case skips these three steps. login_phase.mjs checks the app's signing certificate with apksig
+      # (AppIdentityApkSigner.java on build-tools 36.0.0, as the release lane), so it needs the JDK and
+      # build-tools here. The fetch writes Testbed's answer, only on HTTP 200 with the six-field input,
+      # to a 0700 directory as a 0600 file; on anything else it writes nothing and the required login
+      # phase ends unknown (input_missing), so a failed fetch must not stop the job before it.
+      - name: Setup JDK 17 for the login acceptance certificate check
+        if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install build-tools 36.0.0 for the login acceptance certificate check
+        if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        run: sdkmanager "build-tools;36.0.0"
+
+      - name: Fetch the login acceptance input from Testbed
+        if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        continue-on-error: true
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: node scripts/qa/testbed_login_acceptance_input.mjs
+
       - name: Run acceptance agent
         uses: reactivecircus/android-emulator-runner@v2
         env:
@@ -640,6 +672,8 @@ jobs:
           STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id || '' }}
           STAMP_URL: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_URL || '' }}
           STAMP_TOKEN: ${{ inputs.stamp_run_case_id != '' && secrets.STAMP_TOKEN || '' }}
+          # The claimed Testbed case (empty without a Stamp claim): login-email-password requires the login acceptance (#216).
+          STAMP_CLAIMED_CASE: ${{ steps.stamp-claim.outputs.claimed_case || '' }}
         with:
           api-level: 34
           arch: x86_64
@@ -678,7 +712,8 @@ jobs:
             # Login phase (#222), before the recorder and the agent: the form receives values via stdin.
             # Release settings lane: release_settings_login.sh marks qa-release-lane and runs the whole case (recorder, agent, post-run reads) inside release_auto_login.mjs after Testbed's matched, in the matched app process; the lines marked "[ -f qa-release-lane ] && exit 0" are skipped there.
             # Failures publish a structural UI summary; bootstrap runs record "no login". Only a complete record of this run creates qa-login-ok.
-            if [ "${QA_RELEASE_PRELOGIN:-false}" = "true" ]; then bash scripts/qa/release_settings_login.sh || true; else rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"; fi
+            # The claimed Testbed case login-email-password (#216) adds its fetched input and --require-acceptance: no input, or anything the identity reads cannot prove, ends unknown, never the ordinary login. Every other case runs the unchanged command.
+            if [ "${QA_RELEASE_PRELOGIN:-false}" = "true" ]; then bash scripts/qa/release_settings_login.sh || true; else rm -f qa-login-ok; PW=true; [ "${STAMP_BOOTSTRAP_REQUIRED:-false}" = "true" ] && PW=false; if [ "${STAMP_CLAIMED_CASE:-}" = "login-email-password" ]; then node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence --testbed-input "$RUNNER_TEMP/testbed-login-acceptance/input.json" --require-acceptance login-email-password && touch qa-login-ok || echo "::error::login acceptance did not pass: see the login acceptance line above; acceptance evidence withheld"; else node scripts/qa/login_phase.mjs login --platform android --password-login "$PW" --package "$(cat qa-app-package.txt 2>/dev/null || echo build.raft.app)" --out qa-evidence && touch qa-login-ok || echo "::error::login phase UNKNOWN: see the protected login UI summary; acceptance evidence withheld"; fi; fi
             [ -f qa-release-lane ] && exit 0; adb logcat -c
             # task #14 perf v1: reset gfxinfo counters and stamp the capture
             # window start before the agent drives the app (record-only,
@@ -706,6 +741,11 @@ jobs:
       - name: Remove release login credential
         if: ${{ always() && inputs.login_mode == 'release-prelogin' }}
         run: rm -rf "$RUNNER_TEMP/release-login-credential"
+
+      # The login phase deletes the input as it reads it; this also covers a job that never reached it.
+      - name: Remove the login acceptance input
+        if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        run: rm -rf "$RUNNER_TEMP/testbed-login-acceptance"
 
       - name: Required-marker gate
         if: ${{ always() && inputs.require_markers != '' }}

@@ -23,7 +23,10 @@
 //
 // Login acceptance (#216, agreed with Testbed). Only for an attempt whose run-bound Testbed input
 // (--testbed-input <file>, see readTestbedInput) explicitly selects case_id "login-email-password";
-// every other job, with or without some input, runs exactly as above. In this one process and one
+// every other job, with or without some input, runs exactly as above. qa-acceptance.yml adds
+// --require-acceptance login-email-password when the job's claimed Testbed case is that case: then a
+// missing, unreadable, unprotected or invalid input, another case, or a mode that does not log in with
+// the Android form ends unknown without logging in (never a pass, never the ordinary login). In this one process and one
 // app process it proves, from the app's own identity receipt (app_identity_receipt_lib.mjs; the
 // package must ship the provider enabled), that (1) the app started signed out (read on its sign-in
 // page, before any tap), (2) this form was submitted, and (3) afterwards the app is signed in through
@@ -32,7 +35,10 @@
 // is checked against the OS: the echo, the installed package and its signing certificate (apksig on
 // the installed APK: build-tools 36.0.0 + java), the same pid and start time. The expected refs are
 // computed from the same nonce. A fresh device has no server selected after login (server chooser):
-// the phase taps the one row reading "/<expected slug>", then reads again. Receipts, refs, the nonce,
+// the phase taps the one row reading "/<expected slug>", then reads again. Both refs are checked in the
+// library's format before any comparison: a signed-in receipt without a valid user ref, or with a
+// malformed server ref, is unknown; only two valid refs that differ are a mismatch, and no server ref
+// after the selection step is server_not_selected. Receipts, refs, the nonce,
 // ids and screen text stay in this process. The record gets one more field, `acceptance`:
 // {case_id, run_case_id, attempt, verdict: pass|fail|unknown, reason: <LOGIN_ACCEPTANCE_REASONS code>};
 // only a pass completes the record (fail and unknown leave it "unknown", so nothing is captured).
@@ -41,7 +47,8 @@
 // "$RUNNER_TEMP/qa-login-form.jar" in a step without the account environment.
 // Usage:
 //   node scripts/qa/login_phase.mjs login --platform android|ios --password-login true|false \
-//     --out qa-evidence [--package build.raft.app] [--device emulator-5554] [--testbed-input <file>]
+//     --out qa-evidence [--package build.raft.app] [--device emulator-5554] [--testbed-input <file>] \
+//     [--require-acceptance login-email-password]
 //   node scripts/qa/login_phase.mjs check --out qa-evidence    (exit 0 only for a valid record)
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -56,7 +63,6 @@ import {
   parseApkSignerInspector,
   serverRef,
   userRef,
-  verificationStatus,
 } from "./app_identity_receipt_lib.mjs";
 import { ENVIRONMENTS } from "./release_auto_login_lib.mjs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
@@ -78,12 +84,18 @@ export const LOGIN_ACCEPTANCE_REASONS = {
   pass: ["signed_in_as_expected"],
   fail: ["user_mismatch", "server_mismatch", "server_not_selected", "user_and_server_mismatch"],
   unknown: [
-    "input_unprotected", "input_missing", "input_invalid", "input_run_case_mismatch", // the Testbed input
+    // The Testbed input. Only with --require-acceptance (without it such an input is ignored): no file,
+    // not a regular file read without a link, not a JSON object, another case or none. In both modes,
+    // for an input of the case: readable by others, a field missing or of another format, another run
+    // case than this job's.
+    "input_missing", "input_unreadable", "input_invalid", "input_case_mismatch",
+    "input_unprotected", "input_field_missing", "input_field_invalid", "input_run_case_mismatch",
+    "login_mode_unsupported", // --require-acceptance in a mode that does not log in with the Android form
     "provider_unavailable", "os_facts_unavailable", "signer_unverified", // before the login window
     "start_read_missing", "start_read_failed", "start_not_signed_out", // the read on the sign-in page
     "receipt_echo_mismatch", "package_mismatch", "signer_mismatch", "process_changed", // any read
     "form_not_submitted", "no_login_receipt", "login_not_completed", // the form login itself
-    "after_read_failed", "session_origin_not_app_login", // the read after login
+    "after_read_failed", "session_origin_not_app_login", "user_ref_invalid", "server_ref_invalid", // the read after login
     "not_finished", "record_invalidated", // the phase never finished; a later step invalidated the record
   ],
 };
@@ -167,47 +179,72 @@ export function readRecord(out, env = process.env) {
 }
 
 /**
- * Testbed's run-bound input for the login acceptance (#216): the JSON file given as --testbed-input,
- * written for this run with mode 0600 by the runner user:
- *   { "case_id": "login-email-password", "run_case_id": "<uuid>", "attempt": <integer >= 1>,
+ * Why a parsed Testbed input cannot be used for the login acceptance (#216), or null: another case
+ * (or none), a field missing or empty, a field of another format, or another run case than this job's
+ * (STAMP_RUN_CASE_ID, when the job has one). testbed_login_acceptance_input.mjs checks Testbed's answer
+ * with the same rules before it writes the input file.
+ */
+export function testbedInputProblem(input, env = process.env) {
+  const binding = input && typeof input === "object" && !Array.isArray(input) ? acceptanceBinding(input) : null;
+  if (!binding) return "input_case_mismatch";
+  const target = input.expected_target && typeof input.expected_target === "object" ? input.expected_target : {};
+  const fields = [input.run_case_id, input.attempt, input.attempt_id, input.nonce, target.user_id, target.server_id, target.server_slug];
+  if (fields.some((value) => value === undefined || value === null || value === "")) return "input_field_missing";
+  if (!binding.run_case_id || !binding.attempt || !ATTEMPT_ID.test(String(input.attempt_id)) || !HEX64.test(String(input.nonce)) ||
+      [target.user_id, target.server_id, target.server_slug].some((value) => typeof value !== "string")) return "input_field_invalid";
+  if (env.STAMP_RUN_CASE_ID && env.STAMP_RUN_CASE_ID !== input.run_case_id) return "input_run_case_mismatch";
+  return null;
+}
+
+/**
+ * Testbed's run-bound input for the login acceptance (#216): the JSON file given as --testbed-input
+ * (qa-acceptance.yml: $RUNNER_TEMP/testbed-login-acceptance/input.json, which
+ * testbed_login_acceptance_input.mjs writes 0600 from Testbed's answer), exactly:
+ *   { "case_id": "login-email-password", "run_case_id": "<uuid>", "attempt": <Testbed's attempt number>,
  *     "attempt_id": "pla_<32 hex>", "nonce": "<64 hex>",
  *     "expected_target": { "user_id": "...", "server_id": "...", "server_slug": "..." } }
- * It is read once (never through a link) and deleted at once, whatever it holds. Only an input that
- * explicitly selects case_id "login-email-password" turns the acceptance on; anything else (another
- * case, no case, not JSON, unreadable) returns null, and the login phase runs as it does without one.
- * For the selected case it returns the run binding, a `problem` code when the input cannot be used
- * (the verdict is then unknown), and otherwise the request ids, the expected refs (computed from the
- * same nonce the reads send, as the app does) and the slug of the expected server; the raw ids end here.
+ * It is read once (never through a link) and deleted at once, whatever it holds.
+ * Without `required`, only an input that explicitly selects case_id "login-email-password" turns the
+ * acceptance on; anything else (no file, unreadable, not a JSON object, another case) returns null and
+ * the login phase runs as it does without one. With `required` (--require-acceptance: the job's
+ * claimed Testbed case is login-email-password) each of those is a problem instead, bound to this job's
+ * run case: the verdict is unknown and the phase ends without logging in.
+ * Returns null, { binding, problem } when the input cannot be used, or { binding, problem: null, the
+ * request ids, the expected refs (computed from the same nonce the reads send, as the app does) and the
+ * slug of the expected server }; the raw ids end here.
  */
-export function readTestbedInput(file, env = process.env) {
+export function readTestbedInput(file, env = process.env, { required = false } = {}) {
   let text = null;
+  let state = "missing";
   let guarded = false;
-  try {
-    const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  if (file) {
     try {
-      const stat = fs.fstatSync(fd);
-      if (stat.isFile()) {
-        text = fs.readFileSync(fd, "utf8");
-        guarded = (stat.mode & 0o077) === 0 && (typeof process.getuid !== "function" || stat.uid === process.getuid());
+      const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      try {
+        const stat = fs.fstatSync(fd);
+        state = stat.isFile() ? "read" : "unreadable";
+        if (stat.isFile()) {
+          text = fs.readFileSync(fd, "utf8");
+          guarded = (stat.mode & 0o077) === 0 && (typeof process.getuid !== "function" || stat.uid === process.getuid());
+        }
+      } finally {
+        fs.closeSync(fd);
       }
-    } finally {
-      fs.closeSync(fd);
+    } catch (error) {
+      state = error?.code === "ENOENT" ? "missing" : "unreadable"; // a link (ELOOP), a directory, no permission
     }
-  } catch { /* Missing, a link or unreadable: it selects nothing. */ }
-  try { fs.rmSync(file, { force: true }); } catch { /* Best effort: the runner temp directory goes with the job. */ }
+    try { fs.rmSync(file, { force: true }); } catch { /* Best effort: the runner temp directory goes with the job. */ }
+  }
+  const unusable = (problem) => (required ? { binding: acceptanceBinding({ case_id: LOGIN_ACCEPTANCE_CASE, run_case_id: env.STAMP_RUN_CASE_ID }), problem } : null);
+  if (state !== "read") return unusable(state === "missing" ? "input_missing" : "input_unreadable");
   let input;
-  try { input = JSON.parse(text); } catch { return null; }
-  const binding = input && !Array.isArray(input) ? acceptanceBinding(input) : null;
-  if (!binding) return null;
-  const target = input.expected_target && typeof input.expected_target === "object" ? input.expected_target : {};
-  const required = [input.run_case_id, input.attempt, input.attempt_id, input.nonce, target.user_id, target.server_id, target.server_slug];
-  const invalid = !binding.run_case_id || !binding.attempt || !ATTEMPT_ID.test(String(input.attempt_id)) || !HEX64.test(String(input.nonce)) ||
-    [target.user_id, target.server_id, target.server_slug].some((value) => typeof value !== "string");
-  const problem = !guarded ? "input_unprotected"
-    : required.some((value) => value === undefined || value === null || value === "") ? "input_missing"
-      : invalid ? "input_invalid"
-        : env.STAMP_RUN_CASE_ID && env.STAMP_RUN_CASE_ID !== input.run_case_id ? "input_run_case_mismatch" : null;
+  try { input = JSON.parse(text); } catch { return unusable("input_invalid"); }
+  if (!input || typeof input !== "object" || Array.isArray(input)) return unusable("input_invalid");
+  const binding = acceptanceBinding(input);
+  if (!binding) return unusable("input_case_mismatch");
+  const problem = guarded ? testbedInputProblem(input, env) : "input_unprotected";
   if (problem) return { binding, problem };
+  const target = input.expected_target;
   return {
     binding, problem: null, attemptId: input.attempt_id, nonce: input.nonce, serverSlug: target.server_slug,
     expected: { userRef: userRef(input.nonce, target.user_id), serverRef: serverRef(input.nonce, target.server_id, target.server_slug) },
@@ -263,13 +300,20 @@ function identityReadProblem({ receipt, os: proc }, request, facts) {
   return samePid && sameStart ? null : "process_changed";
 }
 
-// The verdict on the after-login receipt (every read valid, one process), with Testbed's comparison
-// (verificationStatus): a ref the app does not have fails like a different one.
+// The after-login refs in the library's ref format (64 lowercase hex), checked before any comparison:
+// a signed-in app always has a user ref; a server ref is empty until a server is selected and
+// well-formed otherwise. A code when either is not, else null.
+const refProblem = (receipt) => (!HEX64.test(receipt.user_ref ?? "") ? "user_ref_invalid"
+  : !empty(receipt.server_ref) && !HEX64.test(receipt.server_ref) ? "server_ref_invalid" : null);
+
+// The verdict on the after-login receipt (every read valid, one process, refs well-formed). Only two
+// valid refs that differ are a mismatch; no server ref after the selection step is server_not_selected.
 function acceptanceVerdict(receipt, expected) {
-  const { user_check: user, server_check: server } = verificationStatus({ receipt, request: {}, expected });
-  if (user === "pass" && server === "pass") return { verdict: "pass", code: "signed_in_as_expected" };
-  if (user !== "pass") return { verdict: "fail", code: server === "pass" ? "user_mismatch" : "user_and_server_mismatch" };
-  return { verdict: "fail", code: HEX64.test(receipt.server_ref ?? "") ? "server_mismatch" : "server_not_selected" };
+  if (empty(receipt.server_ref)) return { verdict: "fail", code: "server_not_selected" };
+  const user = receipt.user_ref === expected.userRef;
+  const server = receipt.server_ref === expected.serverRef;
+  if (user && server) return { verdict: "pass", code: "signed_in_as_expected" };
+  return { verdict: "fail", code: user ? "server_mismatch" : server ? "user_mismatch" : "user_and_server_mismatch" };
 }
 
 // What the OS says about the installed package, never the app: its versionCode, and the certificate a
@@ -515,6 +559,8 @@ export async function androidPasswordLogin({ out, pkg = "build.raft.app", device
       const r = after.receipt;
       if (String(r.pid) !== String(startReceipt.pid) || r.process_start_ticks !== startReceipt.process_start_ticks) return { verdict: "unknown", code: "process_changed" };
       if (r.signed_in !== true || r.session_origin !== "app_login") return { verdict: "unknown", code: "session_origin_not_app_login" };
+      const malformed = refProblem(r);
+      if (malformed) return { verdict: "unknown", code: malformed };
       if (!empty(r.server_ref) || reads >= AFTER_READS) return acceptanceVerdict(r, acceptance.expected);
       if (!choseServer) {
         choseServer = true;
@@ -700,19 +746,34 @@ async function main() {
     process.exit(r.ok ? 0 : 1);
   }
   if (argv[0] !== "login") { console.error("usage: login_phase.mjs login|check ..."); process.exit(2); }
+  // --require-acceptance login-email-password: the job's claimed Testbed case (qa-acceptance.yml sets it
+  // for that case only) makes the acceptance mandatory. No usable input, or a mode that does not log in
+  // with the Android form, then ends unknown without logging in; never a pass, never the ordinary login.
+  const required = argv.includes("--require-acceptance");
+  if (required && arg("--require-acceptance") !== LOGIN_ACCEPTANCE_CASE) { console.error(`--require-acceptance takes only ${LOGIN_ACCEPTANCE_CASE}`); process.exit(2); }
   // Testbed's run-bound input (#216): read and deleted first, in every mode; only Android password
   // login runs the acceptance it may select.
   const testbedInput = arg("--testbed-input");
-  const acceptance = testbedInput ? readTestbedInput(testbedInput) : null;
+  const acceptance = testbedInput || required ? readTestbedInput(testbedInput, process.env, { required }) : null;
   const platform = arg("--platform", "android");
   const passwordLogin = arg("--password-login");
   if (!["true", "false"].includes(passwordLogin)) { console.error("--password-login true|false is required"); process.exit(2); }
+  const unsupported = (mode) => {
+    const reason = "login acceptance unknown: login_mode_unsupported";
+    writeRecord(out, { mode, status: "unknown", login_end: null, reason, acceptance: { ...acceptance.binding, verdict: "unknown", reason: "login_mode_unsupported" } });
+    return { ok: false, reason, acceptance: { verdict: "unknown", reason: "login_mode_unsupported" } };
+  };
   let result;
   if (passwordLogin === "false") {
-    writeRecord(out, { mode: "none", status: "no-login", login_end: null, reason: "this mode never signs in" });
-    result = { ok: true };
+    if (required) result = unsupported("none");
+    else {
+      writeRecord(out, { mode: "none", status: "no-login", login_end: null, reason: "this mode never signs in" });
+      result = { ok: true };
+    }
   } else if (platform === "android") {
     result = await androidPasswordLogin({ out, pkg: arg("--package", "build.raft.app"), device: arg("--device"), acceptance });
+  } else if (required) {
+    result = unsupported("password");
   } else {
     const reason = `${platform} has no safe way to type a secret; password login fails closed`;
     markUnknown(out, reason);

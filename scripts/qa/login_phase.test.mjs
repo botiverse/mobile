@@ -90,18 +90,20 @@ function choose(s, y) {
 }
 // AppIdentityReceiptProvider's answer (buildAppIdentityReceipt): its keys in its order, the refs salted with the
 // request's nonce (s.refNonce: an app that salts with another), nulls while signed out or without a selected server.
+// s.refOverrides replaces the refs of a signed-in receipt (an app reporting a missing or malformed ref).
 const crypto = require("crypto");
 const ref = (...parts) => crypto.createHash("sha256").update(parts.join("\u0000"), "utf8").digest("hex");
 function identityReceipt(s, request) {
   const session = s.session, salt = s.refNonce || request.nonce;
   const server = session && session.server && session.server.slug ? session.server : null;
-  return JSON.stringify({
+  const receipt = {
     contract: "raft-app-identity-receipt/v1", attempt_id: request.attempt_id, nonce: request.nonce, request_id: s.echoRequestId || request.request_id,
     package: APP, version_name: "1.26.0", version_code: 12600, signer_sha256: s.appSigner, debuggable: false,
     pid: s.appPid, process_start_ticks: s.startTicks, signed_in: Boolean(session), session_origin: session ? session.origin : null,
     user_ref: session ? ref("raft-qa-readiness-user/v1", salt, session.user) : null,
     server_ref: server ? ref("raft-qa-readiness-server/v1", salt, server.id, server.slug) : null,
-  });
+  };
+  return JSON.stringify(session ? Object.assign(receipt, s.refOverrides) : receipt);
 }
 module.exports = { APP, CHROME, load, save, log, screen, frame, type, xml, submit, choose, identityReceipt };
 `;
@@ -781,8 +783,9 @@ test("#216 pass: signed out on the sign-in page, the form submitted, then the ex
   try {
     const input = writeTestbedInput(w.root);
     const ev = path.join(w.root, "qa-evidence");
+    // As qa-acceptance.yml runs it for the claimed case: the required switch and the job's run case.
     const r = await runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--platform", "android", "--password-login", "true", "--device", "emulator-5554",
-      "--out", ev, "--testbed-input", input], { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD });
+      "--out", ev, "--testbed-input", input, "--require-acceptance", "login-email-password"], { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^login phase: OK$/m);
     assert.match(r.stdout, /^login acceptance: pass \(signed_in_as_expected\)$/m);
@@ -818,10 +821,14 @@ test("#216 fail: valid reads in one process, but the app is signed in as another
     ["different slug", { account: { user: fixture.subject, server: serverOf(control("different slug")) } }, "server_mismatch"],
     ["missing slug", { account: { user: fixture.subject, server: serverOf(control("missing slug")) } }, "server_not_selected"],
     ["refs salted with a different nonce", { refNonce: nonce }, "user_and_server_mismatch"],
+    // The chooser row of the expected server was tapped, and the app still reports no server ref.
+    ["empty server ref after the selection step", { chooserAfterLogin: true, displayName: "Fixture Person", servers: [{ name: "Fixture team", ...FIXTURE_SERVER }],
+      refOverrides: { server_ref: null } }, "server_not_selected"],
   ]) {
     const w = identityWorld(state);
     try {
       const result = await loginWith(w, phase.readTestbedInput(writeTestbedInput(w.root), w.env));
+      if (state.chooserAfterLogin) assert.deepEqual([w.state().session.server, w.state().signOutTaps], [FIXTURE_SERVER, undefined], `${name}: the expected row was chosen`);
       assert.deepEqual(result.acceptance, { verdict: "fail", reason: code }, name);
       assert.equal(result.ok, false, name);
       const record = recordOf(w);
@@ -837,8 +844,10 @@ test("#216 fail: valid reads in one process, but the app is signed in as another
 
 test("#216 unknown: anything the reads cannot prove, with its reason; nothing is typed before the app said signed out", async () => {
   for (const [name, state, input, options, code, typed] of [
-    ["an input without the nonce", {}, { patch: { nonce: undefined } }, {}, "input_missing", false],
-    ["an input without the server slug", {}, { patch: { expected_target: { user_id: fixture.subject, server_id: fixture.server_id } } }, {}, "input_missing", false],
+    ["an input without the nonce", {}, { patch: { nonce: undefined } }, {}, "input_field_missing", false],
+    ["an input without the server slug", {}, { patch: { expected_target: { user_id: fixture.subject, server_id: fixture.server_id } } }, {}, "input_field_missing", false],
+    // Only values of the agreed format travel through the binding: the record says attempt null.
+    ["an input whose attempt is not a number", {}, { patch: { attempt: "1" }, binding: { attempt: null } }, {}, "input_field_invalid", false],
     ["an input others can read", {}, { mode: 0o644 }, {}, "input_unprotected", false],
     ["an input of another run case", {}, { env: { STAMP_RUN_CASE_ID: "00000000-0000-4000-8000-000000000000" } }, {}, "input_run_case_mismatch", false],
     ["a package that ships the provider disabled", { provider: "disabled" }, {}, {}, "provider_unavailable", false],
@@ -849,6 +858,10 @@ test("#216 unknown: anything the reads cannot prove, with its reason; nothing is
     ["an app already signed in at the start", { session: { origin: "app_login", user: fixture.subject, server: FIXTURE_SERVER } }, {}, {}, "start_not_signed_out", false],
     ["another app process after login", { restartAfterLogin: true }, {}, {}, "process_changed", true],
     ["a session that is not the app's own login", { loginOrigin: "qa_bootstrap" }, {}, {}, "session_origin_not_app_login", true],
+    // The refs are checked in the library's format before any comparison: never a mismatch from a bad ref.
+    ["a signed-in receipt without a user ref", { refOverrides: { user_ref: null } }, {}, {}, "user_ref_invalid", true],
+    ["a malformed user ref", { refOverrides: { user_ref: fixture.user_ref.toUpperCase() } }, {}, {}, "user_ref_invalid", true],
+    ["a malformed server ref", { refOverrides: { server_ref: fixture.server_ref.slice(1) } }, {}, {}, "server_ref_invalid", true],
     ["no app_login_complete receipt", { noReceipt: true }, {}, { timeoutMs: 4000 }, "no_login_receipt", true],
   ]) {
     const w = identityWorld(state);
@@ -858,7 +871,7 @@ test("#216 unknown: anything the reads cannot prove, with its reason; nothing is
       assert.deepEqual(result.acceptance, { verdict: "unknown", reason: code }, name);
       const record = recordOf(w);
       assert.equal(record.status, "unknown", name);
-      assert.deepEqual(record.acceptance, { ...BINDING, verdict: "unknown", reason: code }, name);
+      assert.deepEqual(record.acceptance, { ...BINDING, ...input.binding, verdict: "unknown", reason: code }, name);
       assert.equal(phase.readRecord(path.join(w.root, "ev"), RUN).ok, false, name);
       const calls = fs.readFileSync(w.files.argv, "utf8");
       if (code.startsWith("input_")) assert.equal(calls, "", `${name}: no device call`);
@@ -893,6 +906,118 @@ test("#216 a later invalidation keeps the run binding and makes the verdict unkn
     complete({});
     phase.markUnknown(dir, "y", RUN);
     assert.deepEqual(Object.keys(read()), V1_KEYS);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- #216 --require-acceptance: the claimed case login-email-password makes the acceptance mandatory ----
+
+test("#216 --require-acceptance: no usable input ends unknown before any device call; without it the same input selects nothing", async () => {
+  const env = { STAMP_RUN_CASE_ID: RUN_CASE_ID };
+  const at = (dir) => path.join(dir, "input.json");
+  const write = (dir, text) => { fs.writeFileSync(at(dir), text, { mode: 0o600 }); return at(dir); };
+  const selecting = (dir, patch, mode) => fs.renameSync(writeTestbedInput(dir, patch, mode), at(dir)) ?? at(dir);
+  for (const [name, make, code] of [
+    ["no input file", (dir) => at(dir), "input_missing"],
+    ["no --testbed-input at all", () => "", "input_missing"],
+    ["a directory", (dir) => { fs.mkdirSync(at(dir)); return at(dir); }, "input_unreadable"],
+    ["a link to a valid input", (dir) => { fs.symlinkSync(writeTestbedInput(fs.mkdtempSync(path.join(dir, "target-"))), at(dir)); return at(dir); }, "input_unreadable"],
+    ["invalid JSON", (dir) => write(dir, "{"), "input_invalid"],
+    ["a JSON array", (dir) => write(dir, "[]"), "input_invalid"],
+    ["another case", (dir) => selecting(dir, { case_id: "send-message-in-channel" }), "input_case_mismatch"],
+    ["no case_id", (dir) => selecting(dir, { case_id: undefined }), "input_case_mismatch"],
+    ["an input others can read", (dir) => selecting(dir, {}, 0o640), "input_unprotected"],
+  ]) {
+    // Without the switch: an input that does not select the case is ignored, so the ordinary login runs.
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "testbed-plain-"));
+    try {
+      const result = phase.readTestbedInput(make(plain), env);
+      if (code === "input_unprotected") assert.equal(result.problem, code, name);
+      else assert.equal(result, null, `${name}: ignored without the switch`);
+    } finally { fs.rmSync(plain, { recursive: true, force: true }); }
+    const w = identityWorld();
+    try {
+      const result = await loginWith(w, phase.readTestbedInput(make(w.root), env, { required: true }));
+      assert.deepEqual(result.acceptance, { verdict: "unknown", reason: code }, name);
+      const record = recordOf(w);
+      assert.deepEqual([record.status, record.login_end], ["unknown", null], name);
+      // Bound to this job's run case; the attempt is the input's only when the input itself was readable.
+      assert.deepEqual(record.acceptance, { ...BINDING, attempt: code === "input_unprotected" ? 1 : null, verdict: "unknown", reason: code }, name);
+      assert.equal(phase.readRecord(path.join(w.root, "ev"), RUN).ok, false, name);
+      assert.equal(fs.readFileSync(w.files.argv, "utf8"), "", `${name}: no device call, nothing typed`);
+      assert.ok(phase.LOGIN_ACCEPTANCE_REASONS.unknown.includes(code), code);
+    } finally { w.close(); }
+  }
+});
+
+test("#216 --require-acceptance on the command line: no input or a mode that cannot run it is unknown; another case is a usage error", async () => {
+  const w = identityWorld();
+  try {
+    const login = (args, extra = {}) => runAsync(w, [path.join(here, "login_phase.mjs"), "login", "--out", path.join(w.root, "ev"), ...args],
+      { QA_TEST_EMAIL: EMAIL, QA_TEST_PASSWORD: PASSWORD, STAMP_RUN_CASE_ID: RUN_CASE_ID, ...extra });
+    const missing = await login(["--platform", "android", "--password-login", "true", "--require-acceptance", "login-email-password"]);
+    assert.equal(missing.status, 1);
+    assert.match(missing.stdout, /^login acceptance: unknown \(input_missing\)$/m);
+    assert.deepEqual(recordOf(w).acceptance, { ...BINDING, attempt: null, verdict: "unknown", reason: "input_missing" });
+    assert.equal(fs.readFileSync(w.files.argv, "utf8"), "", "no device call");
+    for (const [mode, args] of [["none", ["--platform", "android", "--password-login", "false"]], ["password", ["--platform", "ios", "--password-login", "true"]]]) {
+      const input = writeTestbedInput(w.root);
+      const r = await login([...args, "--testbed-input", input, "--require-acceptance", "login-email-password"]);
+      assert.equal(r.status, 1, mode);
+      assert.match(r.stdout, /^login acceptance: unknown \(login_mode_unsupported\)$/m, mode);
+      assert.equal(fs.existsSync(input), false, `${mode}: the input is consumed`);
+      const record = recordOf(w);
+      assert.deepEqual([record.mode, record.status], [mode, "unknown"], mode);
+      assert.deepEqual(record.acceptance, { ...BINDING, verdict: "unknown", reason: "login_mode_unsupported" }, mode);
+    }
+    fs.rmSync(path.join(w.root, "ev"), { recursive: true, force: true });
+    const other = await login(["--platform", "android", "--password-login", "true", "--require-acceptance", "send-message-in-channel"]);
+    assert.equal(other.status, 2);
+    assert.equal(fs.existsSync(path.join(w.root, "ev", "login-record.json")), false);
+  } finally { w.close(); }
+});
+
+test("#216 qa-acceptance requires the login acceptance only for the claimed case login-email-password", () => {
+  const source = fs.readFileSync(path.join(here, "../../.github/workflows/qa-acceptance.yml"), "utf8");
+  const step = (name) => { const i = source.indexOf(`      - name: ${name}\n`); assert.ok(i > 0, name); return source.slice(i, source.indexOf("\n      - name:", i + 1)); };
+  const forCase = "if: ${{ steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}";
+  // The claim keeps the claimed case (stamp_report.sh keeps the claim response's case_id) as a step
+  // output, format-checked, written to the same output file as bootstrap_required.
+  const claim = step("Claim Stamp run case and resolve auth mode");
+  assert.match(claim, /claimed_case=\$\(node -e '.*typeof v\.case_id==="string"&&\/\^\[a-z0-9\]\[a-z0-9-\]\{0,63\}\$\/\.test\(v\.case_id\)\?v\.case_id:""\)' "\$spec"\)\n/);
+  const outputFile = /echo "bootstrap_required=\$required" >> ("\$\w+")/.exec(claim)[1];
+  assert.ok(claim.includes(`echo "claimed_case=$claimed_case" >> ${outputFile}\n`), "claimed_case is a step output");
+  // Only that case sets up the certificate check and fetches its input, after the claim and right before the emulator step.
+  for (const name of ["Setup JDK 17 for the login acceptance certificate check", "Install build-tools 36.0.0 for the login acceptance certificate check", "Fetch the login acceptance input from Testbed"]) {
+    assert.ok(step(name).includes(forCase), name);
+    assert.ok(source.indexOf(`- name: ${name}`) > source.indexOf("- name: Stage release login credential") && source.indexOf(`- name: ${name}`) < source.indexOf("- name: Run acceptance agent"), name);
+  }
+  assert.match(step("Install build-tools 36.0.0 for the login acceptance certificate check"), /run: sdkmanager "build-tools;36\.0\.0"/);
+  const fetchStep = step("Fetch the login acceptance input from Testbed");
+  assert.match(fetchStep, /continue-on-error: true\n/);
+  assert.match(fetchStep, /run: node scripts\/qa\/testbed_login_acceptance_input\.mjs\n?$/);
+  assert.deepEqual([...fetchStep.matchAll(/^ {10}([A-Z_]+):/gm)].map((m) => m[1]), ["STAMP_RUN_CASE_ID", "STAMP_URL", "STAMP_TOKEN"], "no QA account in the fetch step");
+  assert.ok(step("Remove the login acceptance input").includes("if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}"));
+  assert.match(step("Run acceptance agent"), /STAMP_CLAIMED_CASE: \$\{\{ steps\.stamp-claim\.outputs\.claimed_case \|\| '' \}\}/);
+
+  // The login line itself, run as the emulator action runs it (sh -c), with a stand-in for node.
+  const line = source.split("\n").find((l) => /login_phase\.mjs login --platform android/.test(l)).trim();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "login-line-"));
+  try {
+    fs.mkdirSync(path.join(dir, "bin"));
+    fs.writeFileSync(path.join(dir, "bin", "node"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${path.join(dir, "argv")}"\nexit 0\n`, { mode: 0o755 });
+    const run = (env) => {
+      fs.rmSync(path.join(dir, "qa-login-ok"), { force: true });
+      const r = spawnSync("sh", ["-c", line], { cwd: dir, encoding: "utf8", env: { PATH: `${path.join(dir, "bin")}:/usr/bin:/bin`, RUNNER_TEMP: "/runner-temp", ...env } });
+      assert.equal(r.status, 0, r.stderr);
+      return { argv: fs.readFileSync(path.join(dir, "argv"), "utf8").trim().split("\n"), ok: fs.existsSync(path.join(dir, "qa-login-ok")) };
+    };
+    const today = ["scripts/qa/login_phase.mjs", "login", "--platform", "android", "--password-login", "true", "--package", "build.raft.app", "--out", "qa-evidence"];
+    for (const claimed of [undefined, "", "send-message-in-channel"]) {
+      assert.deepEqual(run(claimed === undefined ? {} : { STAMP_CLAIMED_CASE: claimed }), { argv: today, ok: true }, `claimed ${claimed}: the unchanged command`);
+    }
+    assert.deepEqual(run({ STAMP_CLAIMED_CASE: "login-email-password" }), { argv: [...today, "--testbed-input", "/runner-temp/testbed-login-acceptance/input.json", "--require-acceptance", "login-email-password"], ok: true });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
