@@ -22,8 +22,7 @@ import build.raft.designsystem.components.RaftButtonVariant
  * Web `ArchivedNameCollisionBanner.tsx` (slock #12614): the warning for a channel name an
  * archived channel holds. Open Channel goes to the archived channel (read-only); Unarchive
  * restores it, offered only to whoever may unarchive it; Change Name clears the name for
- * another (create only). [showHint] adds the line saying what to do (Create Channel; Create Joint Channel
- * leaves it out, as on the web).
+ * another (create only). [showHint] adds the line saying what to do (web `showHint`, on by default).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

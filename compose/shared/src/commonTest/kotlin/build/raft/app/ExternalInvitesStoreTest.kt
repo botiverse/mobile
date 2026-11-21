@@ -120,28 +120,29 @@ class ExternalInvitesStoreTest {
     ) = ExternalInviteChannel(type, name, archived, jointRole, hasExternalRelation)
 
     @Test
-    fun accessNeedsTheFlagAnOwnerOrAdminAndAnInvitableChannel() {
-        assertTrue(externalInviteAccess(true, "owner", channel()))
-        assertTrue(externalInviteAccess(true, "admin", channel(type = "channel")))
-        assertTrue(externalInviteAccess(true, "admin", channel(type = "joint", jointRole = "host")))
+    fun accessNeedsAnOwnerOrAdminAndAnInvitableChannel() {
+        assertTrue(externalInviteAccess("owner", channel()))
+        assertTrue(externalInviteAccess("admin", channel(type = "channel")))
+        assertTrue(externalInviteAccess("admin", channel(type = "joint", jointRole = "host")))
         listOf(
-            externalInviteAccess(false, "owner", channel()),
-            externalInviteAccess(true, "member", channel()),
-            externalInviteAccess(true, null, channel()),
-            externalInviteAccess(true, "owner", channel(name = "all", type = "channel")),
-            externalInviteAccess(true, "owner", channel(archived = true)),
+            externalInviteAccess("member", channel()),
+            externalInviteAccess(null, channel()),
+            externalInviteAccess("owner", channel(name = "all", type = "channel")),
+            externalInviteAccess("owner", channel(archived = true)),
             // Another server's projection of a joint channel is the host's to share.
-            externalInviteAccess(true, "owner", channel(type = "joint", jointRole = "member")),
-            externalInviteAccess(true, "owner", channel(type = "dm")),
-            externalInviteAccess(true, "owner", null),
+            externalInviteAccess("owner", channel(type = "joint", jointRole = "member")),
+            externalInviteAccess("owner", channel(type = "dm")),
+            externalInviteAccess("owner", null),
         ).forEachIndexed { index, allowed -> assertFalse(allowed, "case $index") }
     }
 
     @Test
-    fun managementOutlivesTheFlagWhileTheChannelIsStillExternal() {
-        assertFalse(externalInviteManagement(false, "owner", channel()))
-        assertTrue(externalInviteManagement(false, "owner", channel(hasExternalRelation = true)))
-        assertFalse(externalInviteManagement(false, "member", channel(hasExternalRelation = true)))
+    fun managementIsForTheSameOwnersAndAdminsAsAccess() {
+        // Web useExternalInviteManagement is useExternalInviteAccess (botiverse/slock #15939): whether
+        // or not the channel is external yet, its owners and admins see and withdraw its open invites.
+        assertTrue(externalInviteManagement("owner", channel()))
+        assertTrue(externalInviteManagement("admin", channel(hasExternalRelation = true)))
+        assertFalse(externalInviteManagement("member", channel(hasExternalRelation = true)))
     }
 
     @Test

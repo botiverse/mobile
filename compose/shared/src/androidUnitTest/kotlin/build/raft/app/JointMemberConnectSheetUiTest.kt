@@ -41,7 +41,6 @@ class JointMemberConnectSheetUiTest {
 
     private fun ComposeUiTest.show(
         connections: JointChannelConnections = memberTestConnections(),
-        externalChannels: Boolean = true,
         answer: MemberConnectResponse? = null,
     ): Pair<JointChannelConnectionsStore, FakeJointConnectionsDataSource> {
         val dataSource = FakeJointConnectionsDataSource(connections = connections)
@@ -52,7 +51,6 @@ class JointMemberConnectSheetUiTest {
                 CoroutineScope(Dispatchers.Main.immediate),
                 connectedByYouSlot = MemberConnectedByYouSlot(MemberConnectedByYouMemory(), "ui"),
             )
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(memberTestAccount()))
         store.dispatch(JointChannelConnectionsIntent.Load)
         setContent {
@@ -60,15 +58,6 @@ class JointMemberConnectSheetUiTest {
             RaftDesignSystemTheme {
                 JointConnectedServersSection(
                     state = state,
-                    slug = "",
-                    people = "",
-                    sameAdminConfirmed = false,
-                    statusMessage = null,
-                    onSlugChange = {},
-                    onPeopleChange = {},
-                    onSameAdminConfirmedChange = {},
-                    onSendInvite = {},
-                    onResend = {},
                     onConnectYourServers = { store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect) },
                 )
                 JointMemberConnectSheet(
@@ -93,12 +82,6 @@ class JointMemberConnectSheetUiTest {
         waitForIdle()
         onNodeWithTag(JointMemberConnectMenuItemTag, useUnmergedTree = true).performClick()
         waitForIdle()
-    }
-
-    @Test
-    fun noMenuWithTheFlagOff() = runRobolectricComposeUiTest {
-        show(externalChannels = false)
-        assertEquals(0, count(JointMemberConnectMenuTag))
     }
 
     @Test

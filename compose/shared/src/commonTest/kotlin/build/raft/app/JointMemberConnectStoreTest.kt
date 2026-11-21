@@ -4,8 +4,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
-import build.raft.app.data.JointSameAdminContext
-import build.raft.app.data.JointSameAdminServer
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerConnectOutcome
@@ -17,7 +15,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -71,22 +68,19 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun theMenuNeedsTheFlagAndAServerToConnect() = runTest {
-        val store = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections()), externalChannels = false)
-        assertFalse(store.state.value.memberConnectAvailable)
-        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
-        assertNull(store.state.value.memberConnectSheet)
-
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(true))
+    fun theMenuNeedsAServerToConnect() = runTest {
+        val store = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections()))
         assertTrue(store.state.value.memberConnectAvailable)
 
-        // Only servers already connected or not administered: no menu.
+        // Only servers already connected or not administered: no menu, and no sheet opens.
         store.dispatch(
             JointChannelConnectionsIntent.SetMemberConnectAccount(
                 memberTestAccount().let { it.copy(servers = it.servers.filter { server -> server.id in setOf("srv-mine", "srv-member", "srv-cur") }) }
             )
         )
         assertFalse(store.state.value.memberConnectAvailable)
+        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
+        assertNull(store.state.value.memberConnectSheet)
         store.clear()
     }
 
@@ -263,7 +257,7 @@ class JointMemberConnectStoreTest {
         assertEquals(MemberConnectMessage.GuestsPresent, refused("guests_present"))
         assertEquals(MemberConnectMessage.JointPartyLimit, refused("joint_party_limit"))
         assertEquals(MemberConnectMessage.ConnectInProgress, refused("connect_in_progress"))
-        assertEquals(MemberConnectMessage.HostLimit, refused("joint_channel_free_limit_reached"))
+        assertEquals(MemberConnectMessage.HostLimit, refused("joint_channel_plan_limit_reached"))
         assertEquals(MemberConnectMessage.Busy, refused("channel_conversion_fence_conflict"))
         // A limit: the viewer's own server's (upgrade it), else the host's.
         assertEquals(MemberConnectMessage.TargetFreeLimit, refused("free_external_limit"))
@@ -299,23 +293,10 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun turningTheFlagOffClosesTheSheet() = runTest {
-        val store = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections()))
-        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
-        assertNotNull(store.state.value.memberConnectSheet)
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(false))
-        assertNull(store.state.value.memberConnectSheet)
-        assertIs<JointChannelConnectionsState>(store.state.value)
-        store.clear()
-    }
-
-    @Test
-    fun aFailedLoadDropsTheChannelButKeepsTheFlagAndTheAccount() = runTest {
+    fun aFailedLoadDropsTheChannelButKeepsTheAccount() = runTest {
         val memory = MemberConnectedByYouMemory().apply { add("k", listOf("srv-zed")) }
-        val sameAdmin = JointSameAdminContext("current-co", "Current Co", "me", null, listOf(JointSameAdminServer("zed-co", "Zed Co", "owner")))
         val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
         val store = memberStore(dataSource, connectedByYou = MemberConnectedByYouSlot(memory, "k"))
-        store.dispatch(JointChannelConnectionsIntent.SetSameAdminContext(sameAdmin))
         assertEquals(JointChannelConnectionsLoadStatus.Content, store.state.value.status)
         assertNotNull(store.state.value.connections)
 
@@ -332,9 +313,7 @@ class JointMemberConnectStoreTest {
         assertFalse(lost.refreshing)
         assertEquals(emptyList(), lost.displayServers)
         assertFalse(lost.memberConnectAvailable)
-        assertTrue(lost.externalChannelsEnabled)
         assertEquals(memberTestAccount(), lost.memberConnectAccount)
-        assertEquals(sameAdmin, lost.sameAdminContext)
         assertEquals(setOf("srv-zed"), lost.connectedByYou)
 
         // The next load that answers paints with them, no re-dispatch needed.
@@ -347,7 +326,7 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun aFirstLoadThatFailsKeepsTheFlagAndTheAccount() = runTest {
+    fun aFirstLoadThatFailsKeepsTheAccount() = runTest {
         val dataSource =
             FakeJointConnectionsDataSource(
                 loadResult = DataResult.Error(ScreenError(code = "joint_http_500", retryable = true)),
@@ -357,19 +336,16 @@ class JointMemberConnectStoreTest {
         val failed = store.state.value
         assertEquals(JointChannelConnectionsLoadStatus.Error, failed.status)
         assertNull(failed.connections)
-        assertTrue(failed.externalChannelsEnabled)
         assertEquals(memberTestAccount(), failed.memberConnectAccount)
         store.clear()
     }
 
     private fun TestScope.memberStore(
         dataSource: FakeJointConnectionsDataSource,
-        externalChannels: Boolean = true,
         account: MemberConnectAccount = memberTestAccount(),
         connectedByYou: MemberConnectedByYouSlot? = null,
     ): JointChannelConnectionsStore {
         val store = JointChannelConnectionsStore(dataSource, this, connectedByYouSlot = connectedByYou)
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(account))
         store.dispatch(JointChannelConnectionsIntent.Load)
         runCurrent()

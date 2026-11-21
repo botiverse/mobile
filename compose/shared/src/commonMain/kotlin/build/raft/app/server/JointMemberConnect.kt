@@ -189,7 +189,6 @@ private val APPROVER_REFUSAL_MESSAGES =
         "connect_in_progress" to MemberConnectMessage.ConnectInProgress,
         "channel_full" to MemberConnectMessage.ChannelFull,
         "joint_server_limit" to MemberConnectMessage.ChannelFull,
-        "joint_channel_free_limit_reached" to MemberConnectMessage.HostLimit,
         "joint_channel_plan_limit_reached" to MemberConnectMessage.HostLimit,
         "channel_conversion_in_progress" to MemberConnectMessage.Busy,
         "channel_conversion_fence_conflict" to MemberConnectMessage.Busy,

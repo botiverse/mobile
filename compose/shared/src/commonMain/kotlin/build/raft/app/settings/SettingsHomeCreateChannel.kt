@@ -83,8 +83,6 @@ internal fun SharedCreateChannelDialog(
     initialSelectedMemberKeys: Set<RaftMemberPickerKey> = emptySet(),
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean = false,
-    /** Web `twoStep` (external_channels_v1 on): step 1 names it, step 2 adds people. */
-    twoStep: Boolean = false,
     /** Web `useExternalChannelCreateAccess`: External is offered ([externalStore] reads the rest). */
     externalStore: CreateExternalChannelStore? = null,
     serverName: String = "",
@@ -145,7 +143,7 @@ internal fun SharedCreateChannelDialog(
     // On step 2 it follows the emails and "Your servers" of an External channel.
     val memberPickerItemIndex =
         when {
-            twoStep && step == SharedCreateChannelStep.People ->
+            step == SharedCreateChannelStep.People ->
                 if (visibility == SharedCreateChannelVisibility.External && externalAvailability == ExternalChannelCreateAvailability.Open) 2 else 0
             archivedCollision != null -> 4
             else -> 3
@@ -181,12 +179,12 @@ internal fun SharedCreateChannelDialog(
     // No Guest: a new channel is never its bound one (403 guest_other_channel; web isAddableToNewChannel, #15362).
     val selectableMembers =
         members.filter { (it.kind == MemberKind.Human || it.kind == MemberKind.Agent) && it.isAddableToNewChannel() }
-    val onDetails = !twoStep || step == SharedCreateChannelStep.Details
+    val onDetails = step == SharedCreateChannelStep.Details
     val externalBusy = externalState?.invite?.busy == true
     // The one commit: the footer's Create on a wide window, the phone sheet's head button.
     val commitLabel =
         when {
-            twoStep && step == SharedCreateChannelStep.Details -> stringResource(Res.string.channel_external_invite_next)
+            onDetails -> stringResource(Res.string.channel_external_invite_next)
             external && externalBusy -> stringResource(Res.string.channel_external_invite_checking)
             external -> stringResource(Res.string.channel_create_external_submit)
             submitting -> stringResource(Res.string.channel_create_action_creating)
@@ -196,7 +194,7 @@ internal fun SharedCreateChannelDialog(
     val commit: () -> Unit = {
         when {
             // Step 1's Next: the name is checked here so step 2 only creates.
-            twoStep && step == SharedCreateChannelStep.Details -> step = SharedCreateChannelStep.People
+            step == SharedCreateChannelStep.Details -> step = SharedCreateChannelStep.People
             // The review first (design E1): nothing is created until it is confirmed.
             external -> externalStore?.dispatch(CreateExternalChannelIntent.Review)
             else -> {
@@ -213,7 +211,7 @@ internal fun SharedCreateChannelDialog(
     }
     val commitEnabled =
         when {
-            twoStep && step == SharedCreateChannelStep.Details ->
+            onDetails ->
                 trimmedName.isSubmittableChannelName() && !submitting && !externalAtLimit && !externalLoading
             external -> canSubmit && externalState?.canReview == true
             else -> canSubmit
@@ -329,7 +327,7 @@ internal fun SharedCreateChannelDialog(
                         .onGloballyPositioned { createChannelViewport = it.boundsInRoot() },
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-            if (!twoStep || step == SharedCreateChannelStep.Details) {
+            if (onDetails) {
             // Web CreateChannelDialog: the archived-name warning sits above the name it is about.
             archivedCollision?.let { collision ->
                 item(key = "archived-name-collision") {
@@ -425,7 +423,7 @@ internal fun SharedCreateChannelDialog(
                 )
             }
             }
-            if (twoStep && step == SharedCreateChannelStep.People && external) {
+            if (!onDetails && external) {
                 val invite = externalState?.invite ?: ExternalInviteDialogState()
                 item(key = "external-emails") {
                     ExternalInviteEmailsField(
@@ -450,7 +448,7 @@ internal fun SharedCreateChannelDialog(
                     item(key = "external-error") { ExternalInviteFailureBanner(failure.copy(upgrade = false), onUpgrade = {}) }
                 }
             }
-            if (!twoStep || step == SharedCreateChannelStep.People) item {
+            if (!onDetails) item {
                 SharedCreateChannelMemberPicker(
                     label =
                         if (external) stringResource(Res.string.channel_create_external_members_label, serverName) else null,

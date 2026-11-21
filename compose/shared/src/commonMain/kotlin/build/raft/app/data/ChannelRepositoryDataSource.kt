@@ -504,9 +504,7 @@ data class CreateChannelRequestBody(
     val description: String? = null,
     val visibility: String = "public",
     val agentIds: List<String> = emptyList(),
-    val userIds: List<String> = emptyList(),
-    val targetServerSlug: String? = null,
-    val invitedPeople: List<String> = emptyList()
+    val userIds: List<String> = emptyList()
 )
 
 private fun buildCreateChannelBody(request: CreateChannelRequest): String =
@@ -516,9 +514,7 @@ private fun buildCreateChannelBody(request: CreateChannelRequest): String =
             description = request.description?.trim()?.takeIf { it.isNotBlank() },
             visibility = request.visibility.trim().ifBlank { "public" },
             agentIds = request.agentMemberIds.cleanCreateChannelIds(),
-            userIds = request.userMemberIds.cleanCreateChannelIds(),
-            targetServerSlug = request.targetServerSlug?.trim()?.takeIf { it.isNotBlank() },
-            invitedPeople = request.invitedPeople.cleanCreateChannelIds()
+            userIds = request.userMemberIds.cleanCreateChannelIds()
         )
     )
 

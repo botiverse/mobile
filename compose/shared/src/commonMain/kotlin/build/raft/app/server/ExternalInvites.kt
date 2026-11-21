@@ -64,20 +64,16 @@ internal fun isExternallyInvitableChannel(channel: ExternalInviteChannel?): Bool
 }
 
 /**
- * Web `useExternalInviteAccess`: invite people outside the server and resend: `external_channels_v1`
- * on for the host server, the viewer its owner or admin (channel admins are not), an invitable
- * channel. The server checks the same.
+ * Web `useExternalInviteAccess`: invite people outside the server and resend: the viewer an owner
+ * or admin of the host server (channel admins are not), an invitable channel. The server checks
+ * the same.
  */
-internal fun externalInviteAccess(flagOn: Boolean, serverRole: String?, channel: ExternalInviteChannel?): Boolean =
-    flagOn && serverRole.isServerOwnerOrAdmin() && isExternallyInvitableChannel(channel)
+internal fun externalInviteAccess(serverRole: String?, channel: ExternalInviteChannel?): Boolean =
+    serverRole.isServerOwnerOrAdmin() && isExternallyInvitableChannel(channel)
 
-/**
- * Web `useExternalInviteManagement`: see and withdraw the open invites: as [externalInviteAccess],
- * or with the flag off while the channel is still external, so turning the flag off never strands
- * an invite (the server lists and revokes without the flag).
- */
-internal fun externalInviteManagement(flagOn: Boolean, serverRole: String?, channel: ExternalInviteChannel?): Boolean =
-    (flagOn || channel?.hasExternalRelation == true) && serverRole.isServerOwnerOrAdmin() && isExternallyInvitableChannel(channel)
+/** Web `useExternalInviteManagement`: see and withdraw the open invites, as [externalInviteAccess]. */
+internal fun externalInviteManagement(serverRole: String?, channel: ExternalInviteChannel?): Boolean =
+    externalInviteAccess(serverRole, channel)
 
 private fun String?.isServerOwnerOrAdmin(): Boolean = this == "owner" || this == "admin"
 
@@ -410,10 +406,7 @@ internal sealed interface ExternalInviteServerRefusal {
 
 /** Web `toastServerOutcomes`' reason for one refused server. */
 internal fun externalInviteServerRefusal(outcome: ServerConnectOutcome.Refused): ExternalInviteServerRefusal {
-    val hostLimit =
-        outcome.limitSide == "host" ||
-            outcome.code == "joint_channel_free_limit_reached" ||
-            outcome.code == "joint_channel_plan_limit_reached"
+    val hostLimit = outcome.limitSide == "host" || outcome.code == "joint_channel_plan_limit_reached"
     return when {
         hostLimit -> ExternalInviteServerRefusal.HostFreeLimit
         outcome.code == "joint_party_limit" -> ExternalInviteServerRefusal.PartyLimit

@@ -11,38 +11,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.JOINT_CHANNEL_FREE_LIMIT_REACHED
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
+import build.raft.app.data.JOINT_CHANNEL_PLAN_LIMIT_REACHED
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
-import build.raft.app.data.JOINT_INVITEE_NOT_ADMIN
-import build.raft.app.data.JOINT_INVITEE_NOT_FOUND
-import build.raft.app.data.JOINT_INVITE_RATE_LIMITED
-import build.raft.app.data.jointInviteRateLimitMinutes
-import build.raft.app.data.JOINT_INVITE_LIMIT_EXCEEDED
-import build.raft.app.data.JOINT_INVITE_REQUIRED
 import build.raft.app.data.JOINT_SERVER_LIMIT
-import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelServer
-import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.jointSameAdminContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
-import build.raft.designsystem.components.RaftBanner
-import build.raft.designsystem.components.RaftBannerSize
-import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -50,11 +35,8 @@ import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
-import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
-import build.raft.designsystem.components.RaftTextField
-import build.raft.designsystem.components.RaftTextarea
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -74,57 +56,21 @@ import build.raft.designsystem.theme.RaftTheme
  * the announcement, never a page of its own. The heading (server icon, "Connected servers", an
  * ⓘ whose tooltip is the 30-server rule, the ⋮ with Connect your servers), then one plain row per
  * server: its name with the Host badge beside it, the slug in mono, "This server" and "Connected
- * by you"; at the end the plan and pending badges and the host's Disconnect
- * (JointServerDisconnectAction) with its confirm. With `external_channels_v1` off: plan chips,
- * Active / pending badges, Resend Invite and the "Channel connection invitation" form, as the web.
+ * by you"; at the end the pending badge and the host's Disconnect (JointServerDisconnectAction)
+ * with its confirm. Another server joins through the external channel flow only: there is no
+ * server invite form or Resend (botiverse/slock #15939).
  *
- * [JointConnectedServersHolder] keeps the store and the invite draft on the details page, outside
- * its lazy list, so scrolling the section away loses neither; the page draws the section with
+ * [JointConnectedServersHolder] keeps the store on the details page, outside its lazy list, so
+ * scrolling the section away loses nothing; the page draws the section with
  * [JointConnectedServersSection] and the confirm and the sheet with [JointConnectedServersOverlays].
  */
 @Stable
-internal class JointConnectedServersHolder(val store: JointChannelConnectionsStore) {
-    var slug by mutableStateOf("")
-    var people by mutableStateOf("")
-    var sameAdminConfirmed by mutableStateOf(false)
-
-    /** The last finished action's receipt (web: the role="status" line under the form). */
-    var statusMessage by mutableStateOf<JointChannelConnectionsEffect?>(null)
-
-    fun changeSlug(value: String) {
-        slug = value
-        sameAdminConfirmed = false
-        statusMessage = null
-        store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
-    }
-
-    fun changePeople(value: String) {
-        people = value
-        sameAdminConfirmed = false
-        statusMessage = null
-        store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
-    }
-
-    fun changeSameAdminConfirmed(value: Boolean) {
-        sameAdminConfirmed = value
-        store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
-    }
-
-    fun sendInvite() {
-        statusMessage = null
-        store.dispatch(JointChannelConnectionsIntent.Invite(slug, people, sameAdminConfirmed))
-    }
-
-    fun resend() {
-        statusMessage = null
-        store.dispatch(JointChannelConnectionsIntent.Resend)
-    }
-}
+internal class JointConnectedServersHolder(val store: JointChannelConnectionsStore)
 
 /**
  * The section's store for the open channel, loaded while [active] (a joint channel, or a private
  * one offering Connect your servers) and the route's account is the live one. Its effects become
- * the web's toasts and receipt.
+ * the web's toasts.
  */
 @Composable
 internal fun rememberJointConnectedServers(
@@ -134,7 +80,6 @@ internal fun rememberJointConnectedServers(
     sharedStores: RaftSharedStoreProvider,
     storeScope: RaftShellStoreScope,
     bridge: BridgeModule,
-    externalChannels: Boolean,
     active: Boolean,
 ): JointConnectedServersHolder {
     val scope = rememberCoroutineScope()
@@ -165,16 +110,10 @@ internal fun rememberJointConnectedServers(
     val store = holder.store
     val state by store.state.collectAsState()
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    // Web `findSameAdminJointTarget` inputs: the account and its role on each of its servers.
+    // Connect your servers: the account's servers and its role on each, as `GET /api/servers` sent them.
     LaunchedEffect(store, authStore, liveOwner) {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
-        store.dispatch(JointChannelConnectionsIntent.SetSameAdminContext(session?.jointSameAdminContext(route.serverId.value)))
-        // Connect your servers: the account's servers and its role on each, as `GET /api/servers` sent them.
         store.dispatch(JointChannelConnectionsIntent.SetMemberConnectAccount(session?.memberConnectAccount(route.serverId.value)))
-    }
-    // Web reads external_channels_v1 for the current server: the one whose copy is open.
-    LaunchedEffect(store, externalChannels) {
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
     }
     LaunchedEffect(store, liveOwner, routeOwner, active) {
         if (active && liveOwner == routeOwner) store.dispatch(JointChannelConnectionsIntent.Refresh)
@@ -182,13 +121,6 @@ internal fun rememberJointConnectedServers(
     val memberConnectToasts = jointMemberConnectToasts(state.effect as? JointChannelConnectionsEffect.MemberConnectFinished)
     LaunchedEffect(state.effect) {
         when (val effect = state.effect) {
-            is JointChannelConnectionsEffect.InviteSent -> {
-                holder.slug = ""
-                holder.people = ""
-                holder.sameAdminConfirmed = false
-                holder.statusMessage = effect
-            }
-            is JointChannelConnectionsEffect.Resent -> holder.statusMessage = effect
             is JointChannelConnectionsEffect.ServerDisconnected ->
                 bridge.toast(Res.string.joint_server_disconnected_toast.format(effect.serverName, effect.channelName).resolve())
             is JointChannelConnectionsEffect.MemberConnectFinished -> memberConnectToasts.forEach { bridge.toast(it) }
@@ -222,22 +154,13 @@ internal fun JointConnectedServersOverlays(holder: JointConnectedServersHolder) 
     )
 }
 
-/** [JointConnectedServersSection] wired to [holder]'s store and draft. */
+/** [JointConnectedServersSection] wired to [holder]'s store. */
 @Composable
 internal fun JointConnectedServersSection(holder: JointConnectedServersHolder, modifier: Modifier = Modifier) {
     val store = holder.store
     val state by store.state.collectAsState()
     JointConnectedServersSection(
         state = state,
-        slug = holder.slug,
-        people = holder.people,
-        sameAdminConfirmed = holder.sameAdminConfirmed,
-        statusMessage = holder.statusMessage,
-        onSlugChange = holder::changeSlug,
-        onPeopleChange = holder::changePeople,
-        onSameAdminConfirmedChange = holder::changeSameAdminConfirmed,
-        onSendInvite = holder::sendInvite,
-        onResend = holder::resend,
         onDisconnectServer = { serverId -> store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(serverId)) },
         onConnectYourServers = { store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect) },
         onRetry = { store.dispatch(JointChannelConnectionsIntent.Refresh) },
@@ -245,19 +168,10 @@ internal fun JointConnectedServersSection(holder: JointConnectedServersHolder, m
     )
 }
 
-/** Web `serversSection`: `stack-y-3`, the heading, the rows (or why there are none), then Resend and the invite form. */
+/** Web `serversSection`: `stack-y-3`, the heading, then the rows (or why there are none). */
 @Composable
 internal fun JointConnectedServersSection(
     state: JointChannelConnectionsState,
-    slug: String,
-    people: String,
-    sameAdminConfirmed: Boolean,
-    statusMessage: JointChannelConnectionsEffect?,
-    onSlugChange: (String) -> Unit,
-    onPeopleChange: (String) -> Unit,
-    onSameAdminConfirmedChange: (Boolean) -> Unit,
-    onSendInvite: () -> Unit,
-    onResend: () -> Unit,
     onDisconnectServer: (serverId: String) -> Unit = {},
     onConnectYourServers: () -> Unit = {},
     onRetry: () -> Unit = {},
@@ -296,50 +210,6 @@ internal fun JointConnectedServersSection(
                         )
                     }
                 }
-        }
-        if (connections == null) return@Column
-        if (state.canResend) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth().testTag(JointConnectionsResendTag)) {
-                    RaftButton(
-                        text = stringResource(Res.string.joint_connections_resend),
-                        onClick = onResend,
-                        variant = RaftButtonVariant.Default,
-                        size = RaftButtonSize.Md,
-                        enabled = state.actionInFlight == null,
-                        loading = state.actionInFlight == JointChannelConnectionsAction.Resend,
-                        loadingLabel = stringResource(Res.string.joint_connections_resending),
-                        leadingIcon = { RaftComputersIcon(RaftLucideIconName.Mail) },
-                    )
-                }
-                state.resendFailure?.let { failure ->
-                    RaftText(
-                        jointChannelFailureMessage(failure, stringResource(Res.string.joint_connections_resend_failed)),
-                        style = RaftTheme.typography.caption,
-                        color = RaftTheme.colors.dangerStrong,
-                    )
-                }
-            }
-        }
-        if (state.canManageConnections) {
-            JointInviteSection(
-                state = state,
-                slug = slug,
-                people = people,
-                sameAdminConfirmed = sameAdminConfirmed,
-                onSlugChange = onSlugChange,
-                onPeopleChange = onPeopleChange,
-                onSameAdminConfirmedChange = onSameAdminConfirmedChange,
-                onSendInvite = onSendInvite,
-            )
-        }
-        statusMessage?.let { receipt ->
-            RaftBanner(
-                description = jointConnectionsReceiptText(receipt),
-                status = RaftBannerStatus.Success,
-                size = RaftBannerSize.Sm,
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
@@ -399,49 +269,19 @@ internal fun jointMemberConnectToasts(effect: JointChannelConnectionsEffect.Memb
     )
 }
 
-@Composable
-private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect): String =
-    when (receipt) {
-        is JointChannelConnectionsEffect.InviteSent -> {
-            // Web: "Connected X directly." first, then the emails sent to anyone else on the list.
-            val connected = receipt.connectedServerName?.let { stringResource(Res.string.joint_same_admin_connected, it) }
-            val emailed =
-                when {
-                    receipt.emailedCount <= 0 && connected != null -> null
-                    receipt.emailedCount == 1 -> stringResource(Res.string.joint_connections_invite_sent_one)
-                    else -> stringResource(Res.string.joint_connections_invite_sent_many, receipt.emailedCount)
-                }
-            listOfNotNull(connected, emailed).joinToString(" ")
-        }
-        is JointChannelConnectionsEffect.Resent ->
-            if (receipt.resentCount == 1) {
-                stringResource(Res.string.joint_connections_resent_one)
-            } else {
-                stringResource(Res.string.joint_connections_resent_many, receipt.resentCount)
-            }
-        // A toast, not the status line (never kept as [statusMessage]).
-        is JointChannelConnectionsEffect.ServerDisconnected ->
-            stringResource(Res.string.joint_server_disconnected_toast, receipt.serverName, receipt.channelName)
-        // Toasts too (never kept as [statusMessage]).
-        is JointChannelConnectionsEffect.MemberConnectFinished -> jointMemberConnectToasts(receipt).joinToString(" ")
-    }
-
 internal const val JointConnectionsSectionTag = "joint-connections-section"
 internal const val JointConnectionsServerListTag = "joint-connections-servers"
 internal const val JointConnectionsRuleTag = "joint-connections-rule"
 internal const val JointConnectionsHostBadgeTag = "joint-connections-host-badge"
 internal const val JointConnectionsStatusBadgeTag = "joint-connections-status-badge"
-internal const val JointConnectionsPlanBadgeTag = "joint-connections-plan-badge"
 internal const val JointConnectionsDisconnectTag = "joint-connections-disconnect"
-internal const val JointConnectionsInviteTag = "joint-connections-invite"
-internal const val JointConnectionsResendTag = "joint-connections-resend"
 internal const val JointConnectionsDisconnectConfirmTag = "joint-connections-disconnect-confirm"
 
 /**
  * Web's server row (`ListRow variant="plain"`, not a target): `ListRowTop` the name with the Host
  * badge right after it; `ListRowDescription` the slug in mono (an id), then " · This server" and
- * " · Connected by you" in words. At the end the plan chip (flag off), the pending badge and the
- * host's Disconnect, always visible on touch (no hover there).
+ * " · Connected by you" in words. At the end the pending badge and the host's Disconnect, always
+ * visible on touch (no hover there).
  */
 @Composable
 private fun JointConnectedServerRow(
@@ -483,20 +323,6 @@ private fun JointConnectedServerRow(
                 null
             },
         trailing = {
-            server.plan?.takeIf { state.showsPlanBadge(server) }?.let { plan ->
-                RaftBadge(
-                    text =
-                        stringResource(
-                            if (plan == JointChannelServerPlan.Paid) {
-                                Res.string.joint_connections_plan_paid
-                            } else {
-                                Res.string.joint_connections_plan_free
-                            }
-                        ),
-                    appearance = RaftBadgeAppearance.Outline,
-                    modifier = Modifier.testTag(JointConnectionsPlanBadgeTag),
-                )
-            }
             if (state.showsStatusBadge(server)) {
                 RaftBadge(
                     text = stringResource(Res.string.joint_connections_status_pending),
@@ -585,146 +411,18 @@ private val JointChannelFailure.traceId: String?
             is JointChannelFailure.Blocked -> blocker.traceId
         }
 
-@Composable
-private fun JointInviteSection(
-    state: JointChannelConnectionsState,
-    slug: String,
-    people: String,
-    sameAdminConfirmed: Boolean,
-    onSlugChange: (String) -> Unit,
-    onPeopleChange: (String) -> Unit,
-    onSameAdminConfirmedChange: (Boolean) -> Unit,
-    onSendInvite: () -> Unit,
-) {
-    val connections = state.connections ?: return
-    val sameAdminTarget = state.sameAdminTarget(slug, people)
-    val inviting = state.actionInFlight == JointChannelConnectionsAction.Invite
-    val failure = state.inviteFailure
-    val failureField = failure?.let { jointInviteFailureField(it.code) }
-    val failureText = failure?.let { jointChannelFailureMessage(it, stringResource(Res.string.joint_connections_invite_failed)) }
-    val slugError =
-        when {
-            JointInviteValidation.SlugRequired in state.inviteValidation -> stringResource(Res.string.joint_connections_slug_required)
-            JointInviteValidation.SlugPattern in state.inviteValidation -> stringResource(Res.string.joint_connections_slug_pattern)
-            failureField == JointInviteField.Slug -> failureText
-            else -> null
-        }
-    val peopleError =
-        when {
-            JointInviteValidation.PeopleRequired in state.inviteValidation -> stringResource(Res.string.joint_connections_people_required)
-            failureField == JointInviteField.People -> failureText
-            else -> null
-        }
-    val formError =
-        when {
-            JointInviteValidation.ServerLimitReached in state.inviteValidation ->
-                stringResource(Res.string.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS)
-            JointInviteValidation.SameAdminConfirmRequired in state.inviteValidation ->
-                stringResource(Res.string.joint_same_admin_confirm_required)
-            failureField == JointInviteField.Form -> failureText
-            else -> null
-        }
-    // Web `channel-settings-joint-invite`: its eyebrow, then 12 under it the form (or the limit).
-    Column(Modifier.fillMaxWidth().testTag(JointConnectionsInviteTag), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RaftSectionEyebrow(text = stringResource(Res.string.joint_connections_invite_section))
-        if (connections.serverLimitReached) {
-            RaftText(
-                stringResource(Res.string.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS),
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundHint,
-            )
-            return@Column
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftField(
-                label = stringResource(Res.string.joint_connections_slug_label),
-                required = true,
-                error = slugError,
-                enabled = !inviting,
-            ) {
-                RaftTextField(
-                    value = slug,
-                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                    onValueChange = onSlugChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(Res.string.joint_connections_slug_placeholder),
-                )
-            }
-            RaftField(
-                label = stringResource(Res.string.joint_connections_people_label),
-                required = true,
-                description = stringResource(Res.string.joint_connections_people_hint),
-                error = peopleError,
-                enabled = !inviting,
-            ) {
-                RaftTextarea(
-                    value = people,
-                    onValueChange = onPeopleChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(Res.string.joint_connections_people_placeholder),
-                )
-            }
-            sameAdminTarget?.let { target ->
-                JointSameAdminNotice(
-                    sourceServerName = state.sameAdminContext?.currentServerName.orEmpty(),
-                    targetServerName = target.name,
-                    confirmed = sameAdminConfirmed,
-                    onConfirmedChange = onSameAdminConfirmedChange,
-                    enabled = !inviting,
-                )
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                RaftButton(
-                    text = stringResource(Res.string.joint_connections_send_invite),
-                    onClick = onSendInvite,
-                    enabled = state.actionInFlight == null && slug.isNotBlank() && people.isNotBlank(),
-                    loading = inviting,
-                    loadingLabel = stringResource(Res.string.joint_connections_inviting),
-                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Mail) },
-                )
-            }
-            formError?.let { message ->
-                RaftBanner(description = message, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
-            }
-        }
-    }
-}
-
-/**
- * Web `channel.jointInvite.error.rateLimited`: "Too many invites in a short time. Try again in X
- * minutes." with X from [jointInviteRateLimitMinutes]; "later" when the response named no wait.
- */
-@Composable
-internal fun jointInviteRateLimitedMessage(retryAfterSeconds: Long?): String =
-    when (val minutes = jointInviteRateLimitMinutes(retryAfterSeconds)) {
-        null -> stringResource(Res.string.joint_invite_rate_limited_later)
-        1 -> stringResource(Res.string.joint_invite_rate_limited_one)
-        else -> stringResource(Res.string.joint_invite_rate_limited_other, minutes)
-    }
-
 /** Localized copy for each joint failure, with the web's precedence. */
 internal data class JointFailureCopy(
     val freeServerLimit: String,
     val serverLimit: String,
-    val hostFreeLimit: String,
+    /** The host is at its plan's hosted-joint limit (web `channel.joint.inviteHostFreeLimit`). */
+    val hostLimit: String,
     val fallback: String,
-    /** `joint_invite_rate_limited`: the wait in minutes, or null for "try again later". */
-    val inviteRateLimited: (minutes: Int?) -> String,
 )
 
-private val JOINT_VALIDATION_CODES =
-    setOf(
-        JOINT_TARGET_SERVER_INVALID,
-        JOINT_INVITEE_NOT_FOUND,
-        JOINT_INVITEE_NOT_ADMIN,
-        JOINT_INVITE_REQUIRED,
-        JOINT_INVITE_LIMIT_EXCEEDED,
-    )
-
 /**
- * Web `jointInviteAcceptErrorMessage` / EditChannelDialog invite errors: limit codes get their
- * localized copy (the Pro upgrade guidance lives in the free-server copy), invite validation codes
- * show the server's own sentence, anything else goes through the app's error pipeline.
+ * Web `jointInviteAcceptErrorMessage`: limit codes get their localized copy (the Pro upgrade
+ * guidance lives in the free-server copy), anything else goes through the app's error pipeline.
  */
 internal fun jointChannelFailureText(
     failure: JointChannelFailure,
@@ -734,30 +432,19 @@ internal fun jointChannelFailureText(
     when (failure.code) {
         JOINT_FREE_SERVER_LIMIT -> copy.freeServerLimit
         JOINT_SERVER_LIMIT -> copy.serverLimit
-        JOINT_CHANNEL_FREE_LIMIT_REACHED -> copy.hostFreeLimit
-        JOINT_INVITE_RATE_LIMITED ->
-            copy.inviteRateLimited(jointInviteRateLimitMinutes((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds))
-        in JOINT_VALIDATION_CODES -> failure.serverMessage()?.takeIf(String::isNotBlank) ?: copy.fallback
+        JOINT_CHANNEL_PLAN_LIMIT_REACHED -> copy.hostLimit
         else -> pipeline(failure).takeIf(String::isNotBlank) ?: copy.fallback
-    }
-
-private fun JointChannelFailure.serverMessage(): String? =
-    when (this) {
-        is JointChannelFailure.Error -> error.serverMessage
-        is JointChannelFailure.Blocked -> blocker.serverMessage
     }
 
 @Composable
 internal fun jointChannelFailureMessage(failure: JointChannelFailure, fallback: String): String {
     val strings = localizedErrorPresentationStrings()
-    val rateLimited = jointInviteRateLimitedMessage((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds)
     val copy =
         JointFailureCopy(
             freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
-            hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
+            hostLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = fallback,
-            inviteRateLimited = { rateLimited },
         )
     return jointChannelFailureText(failure, copy) { value ->
         when (value) {

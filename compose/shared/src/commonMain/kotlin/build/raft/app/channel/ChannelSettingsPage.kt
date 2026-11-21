@@ -13,8 +13,6 @@ import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ARCHIVED_NAME_COLLISION
 import build.raft.app.data.ArchivedNameCollision
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ScreenError
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -279,19 +277,18 @@ internal fun channelSettingsCanDisconnect(channel: HomeChannelRow): Boolean =
     channelSettingsIsJoint(channel) && !channel.archived
 
 /**
- * Web EditChannelDialog `hostCannotDisconnect`: with `external_channels_v1` on, the host's copy of a
- * joint channel (the server's `jointRole`) offers no Disconnect (the server refuses it,
- * `host_cannot_disconnect`) and no Delete; Archive is what it has, and its confirm says it reaches
- * every server.
+ * Web EditChannelDialog `hostCannotDisconnect`: the host's copy of a joint channel (the server's
+ * `jointRole`) offers no Disconnect (the server refuses it, `host_cannot_disconnect`) and no
+ * Delete; Archive is what it has, and its confirm says it reaches every server.
  */
-internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow, externalChannelsEnabled: Boolean): Boolean =
-    externalChannelsEnabled && channelSettingsIsJoint(channel) && channel.jointRole == "host"
+internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow): Boolean =
+    channelSettingsIsJoint(channel) && channel.jointRole == "host"
 
 /**
- * Web EditChannelDialog `showPrivateConnectSection` (cindyz 38086073): with `external_channels_v1`
- * on, a private channel (never #all) the viewer is in shows Connected servers, with this server
- * as the host, when they have a server to connect to it (web `useMemberConnectRows`). The servers
- * and roles are the account's from `GET /api/servers`; the route decides.
+ * Web EditChannelDialog `showPrivateConnectSection` (cindyz 38086073): a private channel (never
+ * #all) the viewer is in shows Connected servers, with this server as the host, when they have a
+ * server to connect to it (web `useMemberConnectRows`). The servers and roles are the account's
+ * from `GET /api/servers`; the route decides.
  *
  * The web also hides it while a conversion to joint is in progress (`!conversionInProgress`: its
  * own Convert action, or the conversion receipt). The app has neither: it cannot start a
@@ -300,10 +297,9 @@ internal fun channelSettingsHostCannotDisconnect(channel: HomeChannelRow, extern
  */
 internal fun channelSettingsOffersPrivateMemberConnect(
     channel: HomeChannelRow,
-    externalChannelsEnabled: Boolean,
     account: MemberConnectAccount?,
 ): Boolean {
-    if (!externalChannelsEnabled || channelSettingsIsJoint(channel) || !channel.channelType.equals("private", ignoreCase = true)) {
+    if (channelSettingsIsJoint(channel) || !channel.channelType.equals("private", ignoreCase = true)) {
         return false
     }
     val memberChannel =
@@ -590,14 +586,11 @@ private fun ChannelSettingsPageScreen() {
         viewerServerLoaded = true
         memberConnectAccount = session?.memberConnectAccount(route.serverId.value)
     }
-    // Web reads external_channels_v1 for the current server: the one whose copy is open.
-    val externalChannels =
-        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
     // Connected servers, a section of the details (web `serversSection`): its store lives here,
-    // outside the lazy list, so the draft and an open confirm survive scrolling it away.
+    // outside the lazy list, so an open confirm survives scrolling it away.
     val showsServers =
         channel != null &&
-            (channelSettingsIsJoint(channel) || channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount))
+            (channelSettingsIsJoint(channel) || channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount))
     val connectedServers =
         rememberJointConnectedServers(
             route = route,
@@ -606,7 +599,6 @@ private fun ChannelSettingsPageScreen() {
             sharedStores = sharedStores,
             storeScope = storeScope,
             bridge = bridge,
-            externalChannels = externalChannels,
             active = showsServers,
         )
     var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
@@ -666,7 +658,7 @@ private fun ChannelSettingsPageScreen() {
                 if (settingsState.closedWithAccessLost) {
                     sharedStores.publishChannelAccessLost(storeScope, route.channelId)
                 }
-                if (externalChannels && settingsState.closedBy == ChannelSettingsAction.Disconnect) {
+                if (settingsState.closedBy == ChannelSettingsAction.Disconnect) {
                     channelSettingsDisconnectedToast(
                         serverName = viewerServerName ?: (homeState?.content as? SharedHomeContentState.Content)?.snapshot?.server?.name,
                         channelName = settingsState.channel?.name,
@@ -743,9 +735,7 @@ private fun ChannelSettingsPageScreen() {
                                 profileCollision = settingsState.archivedCollisionFor(settingsStore),
                                 slackBridge = settingsState.slackBridge,
                                 section = section,
-                                externalChannelsEnabled = externalChannels,
-                                privateMemberConnect =
-                                    channelSettingsOffersPrivateMemberConnect(channel, externalChannels, memberConnectAccount),
+                                privateMemberConnect = channelSettingsOffersPrivateMemberConnect(channel, memberConnectAccount),
                                 serverName = viewerServerName ?: homeServer?.name,
                                 serverPublicPageLive = serverPublicPageLive,
                                 visitorVisible = settingsState.displayVisitorVisible,
@@ -857,7 +847,7 @@ private fun ChannelSettingsPageScreen() {
                 confirm = activeConfirm,
                 channelName = channel.name.removePrefix("#"),
                 leaveVariant = leaveChannelConfirmVariant(channel, memberSlice),
-                hostArchiveHint = channelSettingsHostCannotDisconnect(channel, externalChannels),
+                hostArchiveHint = channelSettingsHostCannotDisconnect(channel),
                 busy = settingsState.actionInFlight == activeConfirm.action,
                 onDismiss = { if (settingsState.actionInFlight != activeConfirm.action) confirm = null },
                 onConfirm = { settingsStore.dispatch(activeConfirm.intent) },
@@ -918,8 +908,6 @@ internal data class ChannelSettingsUiModel(
     val slackBridge: ChannelSlackBridgeState? = null,
     /** Move to section (web ChannelSectionSelect, Pinned included); null keeps the Pin switch. */
     val section: ChannelSectionPlacement? = null,
-    /** `external_channels_v1` for this server: the host's joint copy then has no Disconnect. */
-    val externalChannelsEnabled: Boolean = false,
     /**
      * A private channel the viewer can connect one of their servers to
      * ([channelSettingsOffersPrivateMemberConnect]): it then lists Connected servers too.
@@ -1203,7 +1191,7 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
         if (model.canStopAllAgents) add(ChannelSettingsActionRow.StopAllAgents)
         if (
             channelSettingsShowsDeleteAction(channel, permissions) &&
-            !channelSettingsHostCannotDisconnect(channel, model.externalChannelsEnabled)
+            !channelSettingsHostCannotDisconnect(channel)
         ) {
             when {
                 channelSettingsCanDisconnect(channel) -> add(ChannelSettingsActionRow.Disconnect)

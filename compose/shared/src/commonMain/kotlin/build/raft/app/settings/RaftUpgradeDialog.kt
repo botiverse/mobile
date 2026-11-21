@@ -111,16 +111,13 @@ internal enum class RaftUpgradeGate(val wire: String) {
 
 /**
  * The server answered with a plan limit: which gate it is (null: not a plan limit). Web
- * `MessageInput` (`FILE_UPLOAD_QUOTA_EXCEEDED`), `CreateJointChannelDialog`
- * (`joint_channel_free_limit_reached` → host limit, `joint_free_server_limit` → free cap),
- * `AgentMigrationSection` (`MIGRATION_PRO_PLAN_REQUIRED`), the seat limits of an invite or a
- * created agent (server `CapacityLimitError`).
+ * `MessageInput` (`FILE_UPLOAD_QUOTA_EXCEEDED`), `AgentMigrationSection`
+ * (`MIGRATION_PRO_PLAN_REQUIRED`), the seat limits of an invite or a created agent (server
+ * `CapacityLimitError`).
  */
 internal fun raftUpgradeGateForErrorCode(code: String?): RaftUpgradeGate? =
     when (code?.trim()) {
         "FILE_UPLOAD_QUOTA_EXCEEDED" -> RaftUpgradeGate.UploadMonthlyQuota
-        "joint_channel_free_limit_reached" -> RaftUpgradeGate.JointChannelHostLimit
-        "joint_free_server_limit" -> RaftUpgradeGate.JointChannelFreeCap
         // server externalChannelLimitService ExternalChannelLimitError (paywallHit.ts → this gate).
         "free_external_limit" -> RaftUpgradeGate.ExternalChannelFreeLimit
         "MIGRATION_PRO_PLAN_REQUIRED" -> RaftUpgradeGate.AgentMigration

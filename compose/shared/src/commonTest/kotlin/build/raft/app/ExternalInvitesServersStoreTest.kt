@@ -179,7 +179,6 @@ class ExternalInvitesServersStoreTest {
         fun refused(code: String?, side: String? = null, limitServerId: String? = null, status: Int = 409) =
             externalInviteServerRefusal(ServerConnectOutcome.Refused("s2", status, code, "x", limitSide = side, limitServerId = limitServerId))
         assertEquals(ExternalInviteServerRefusal.HostFreeLimit, refused("free_external_limit", side = "host"))
-        assertEquals(ExternalInviteServerRefusal.HostFreeLimit, refused("joint_channel_free_limit_reached"))
         assertEquals(ExternalInviteServerRefusal.HostFreeLimit, refused("joint_channel_plan_limit_reached"))
         assertEquals(ExternalInviteServerRefusal.PartyLimit, refused("joint_party_limit"))
         assertEquals(

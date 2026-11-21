@@ -85,7 +85,7 @@ class SharedJointInviteStoreTest {
     fun acceptFailureKeepsCodeAndReloadsTheList() = runTest {
         listOf(
             DataResult.NoPermission(PermissionBlocker(code = JOINT_FREE_SERVER_LIMIT, serverMessage = "free cap")) to JOINT_FREE_SERVER_LIMIT,
-            DataResult.NoPermission(PermissionBlocker(code = JOINT_CHANNEL_FREE_LIMIT_REACHED)) to JOINT_CHANNEL_FREE_LIMIT_REACHED,
+            DataResult.NoPermission(PermissionBlocker(code = JOINT_CHANNEL_PLAN_LIMIT_REACHED)) to JOINT_CHANNEL_PLAN_LIMIT_REACHED,
             DataResult.Error(ScreenError(code = "joint_http_409", retryable = false, serverMessage = "Joint channel invite expired")) to "joint_http_409",
         ).forEach { (result, code) ->
             val dataSource = FakeJointInviteDataSource(acceptResult = result)

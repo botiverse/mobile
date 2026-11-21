@@ -86,12 +86,9 @@ import build.raft.app.data.appShellConversationForwardGestureArmed
 import build.raft.app.data.toConversationForwardEntry
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.SharedHomeContentState
-import build.raft.app.data.jointSameAdminContext
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
-import build.raft.app.data.rememberServerFeatureLatched
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.DRAFTS_SECTION_FEATURE_FLAG_KEY
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
@@ -128,8 +125,6 @@ import build.raft.app.data.parseRaftHome
 import build.raft.app.data.CreateChannelRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
-import build.raft.app.data.ExternalInvitesApi
-import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
@@ -209,6 +204,7 @@ import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -1284,7 +1280,6 @@ private fun RaftAppShellReadyContent(
     var createChannelExternalChosen by remember { mutableStateOf(false) }
     // Each opening of Create Channel: its External store lives for that whole opening.
     var createChannelSession by remember { mutableStateOf(0) }
-    var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
     // dismiss is server-persisted per user); the shell fetches the latest active
@@ -1442,9 +1437,6 @@ private fun RaftAppShellReadyContent(
                 ?.takeIf { authGateState == SharedAuthGateState.Restoring }
                 ?.let { SharedAuthReadyPhase.CachedRestorePending }
     val readyServerId = selectedServerId?.trim()?.takeIf(String::isNotBlank) ?: readySession?.currentServerId
-    // Web Create Channel `twoStep` and the External section's entries: external_channels_v1 for this server.
-    val externalChannelsOn =
-        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, readyServerId?.let(::ServerId), EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
     val serverLastConversationRepository = ServerLastConversationRepository.App
     val serverLastConversationOwnerKey =
         messageBodyFontSizeOwnerKey(sharedStores.apiEnvironmentStore.current().apiBaseUrl, readySession?.user?.id.orEmpty())
@@ -3418,12 +3410,6 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    fun openCreateJointChannelDialog() {
-        createJointChannelDialogOpen = true
-        createChannelMembers = emptyList()
-        loadCreateChannelMembers()
-    }
-
     fun openCreateChannelDialog(external: Boolean = false) {
         createChannelExternalChosen = external
         createChannelSession += 1
@@ -3435,33 +3421,30 @@ private fun RaftAppShellReadyContent(
         loadCreateChannelMembers()
     }
 
-    // Web useExternalLimitGate (surface sidebar): on a Free server whose one external channel is
-    // taken, the External section's "+" opens the upgrade dialog instead of Create Channel. Not
-    // Free (or not known), or a failed read: Create Channel with External chosen.
+    // The External section's "+" ([externalCreateEntry], web useExternalLimitGate surface sidebar):
+    // Create Channel with External chosen; on a Free server whose one external channel is taken,
+    // the upgrade dialog instead.
     var externalCreateGateReading by remember { mutableStateOf(false) }
     fun openExternalCreateChannelGated() {
-        val plan = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.plan
-        if (plan != "free") {
-            openCreateChannelDialog(external = true)
-            return
-        }
         if (externalCreateGateReading) return
+        val plan = (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.plan
         externalCreateGateReading = true
-        appShellCoroutineScope.launch {
-            val reached =
+        // Undispatched: a server that is not Free reads nothing, so Create Channel opens in this tap.
+        appShellCoroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val entry =
                 try {
-                    ((ExternalInvitesApi(appShellNetworkClient).externalAvailability() as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)
-                        ?.value
-                        ?.freeLimitReached == true
+                    externalCreateEntry(plan, RealCreateExternalChannelDataSource(appShellNetworkClient, channelRepository))
                 } finally {
                     externalCreateGateReading = false
                 }
-            if (!reached) {
-                openCreateChannelDialog(external = true)
-            } else if (settingsBillingOffersUpgrade()) {
-                pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
-            } else {
-                pager.openSettingsBillingPage(storeScope)
+            when (entry) {
+                ExternalCreateEntry.CreateChannel -> openCreateChannelDialog(external = true)
+                ExternalCreateEntry.FreeLimit ->
+                    if (settingsBillingOffersUpgrade()) {
+                        pager.openRaftUpgradeDialog(RaftUpgradeGate.ExternalChannelFreeLimit, storeScope)
+                    } else {
+                        pager.openSettingsBillingPage(storeScope)
+                    }
             }
         }
     }
@@ -6228,12 +6211,8 @@ private fun RaftAppShellReadyContent(
                                 },
                                 onInviteHuman = { serverId -> serverSwitcherInviteServerId = serverId },
                                 onCreateChannel = { openCreateChannelDialog() },
-                                // Web SidebarDialogs: with external_channels_v1 on, Create Channel with External
-                                // chosen (the Free limit gate inside it); off, the Joint Channel dialog.
-                                onCreateJointChannel = {
-                                    if (externalChannelsOn) openExternalCreateChannelGated() else openCreateJointChannelDialog()
-                                },
-                                externalChannelsOn = externalChannelsOn,
+                                // Web SidebarDialogs: Create Channel with External chosen (the Free limit gate inside it).
+                                onCreateJointChannel = { openExternalCreateChannelGated() },
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
                                 },
@@ -6805,59 +6784,6 @@ private fun RaftAppShellReadyContent(
                     }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
-                if (createJointChannelDialogOpen) {
-                    val jointHomeSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
-                    CreateJointChannelDialogHost(
-                        networkClient = appShellNetworkClient,
-                        // Web `freeAllowance`: the current server's plan is "free".
-                        freePlan = (jointHomeSnapshot?.server?.plan ?: "free") == "free",
-                        currentServerSlug = jointHomeSnapshot?.server?.slug,
-                        currentMemberId = jointHomeSnapshot?.currentMember?.id?.value,
-                        members = createChannelMembers,
-                        membersLoading = createChannelMembersLoading,
-                        logger = raftLogger("SlockCreateJointChannel", "create_joint_channel", RaftLogLevel.Warn),
-                        agentStatusResolver = createChannelAgentStatusResolver,
-                        // Web `findSameAdminJointTarget` inputs: the account and its server roles.
-                        sameAdminContext =
-                            remember(readySession, jointHomeSnapshot?.server?.id) {
-                                readySession?.jointSameAdminContext(jointHomeSnapshot?.server?.id?.value)
-                            },
-                        onDismiss = { createJointChannelDialogOpen = false },
-                        onOpenArchivedChannel = { channelId ->
-                            createJointChannelDialogOpen = false
-                            openHomeConversation(
-                                buildThreadLaunchConversationIdentity(
-                                    kind = ConversationKind.Joint,
-                                    channelId = channelId,
-                                    channelType = "joint",
-                                ),
-                                "create_joint_channel_archived_open",
-                            )
-                        },
-                        onOpenChannel = { channel ->
-                            createJointChannelDialogOpen = false
-                            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
-                            openHomeConversation(
-                                buildThreadLaunchConversationIdentity(
-                                    kind = ConversationKind.Joint,
-                                    channelId = channel.channelId,
-                                    channelType = "joint",
-                                ),
-                                "create_joint_channel",
-                            )
-                        },
-                        onOpenBilling = { gate ->
-                            createJointChannelDialogOpen = false
-                            // The upgrade dialog for the limit hit (web `paywallUpgrade(billingError)`);
-                            // iOS view-only Billing: "View your plan", the view-only page.
-                            if (settingsBillingOffersUpgrade()) {
-                                pager.openRaftUpgradeDialog(gate, storeScope)
-                            } else {
-                                pager.openSettingsBillingPage(storeScope)
-                            }
-                        },
-                    )
-                }
                 if (createChannelDialogOpen) {
                     // The server as Home last had it: a moment without Home content (a refresh)
                     // neither drops the External store nor takes External away.
@@ -6884,7 +6810,7 @@ private fun RaftAppShellReadyContent(
                     // Offered while the viewer may create external channels; once the channel exists,
                     // its invite steps go on whatever happens to the role.
                     val createExternalAccess =
-                        externalChannelCreateAccess(externalChannelsOn, createServer?.role) || createExternalStoreState.created != null
+                        externalChannelCreateAccess(createServer?.role) || createExternalStoreState.created != null
                     val createExternalStore = createExternalStoreForOpening.takeIf { createExternalAccess }
                     val createExternalState = createExternalStore?.let { createExternalStoreState }
                     val createServerName = createServer?.name.orEmpty()
@@ -6918,7 +6844,6 @@ private fun RaftAppShellReadyContent(
                         }
                     }
                     SharedCreateChannelDialog(
-                        twoStep = externalChannelsOn,
                         externalStore = createExternalStore,
                         serverName = createServerName,
                         initialVisibility =

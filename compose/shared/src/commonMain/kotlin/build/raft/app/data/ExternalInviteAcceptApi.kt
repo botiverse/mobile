@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  *  - `GET external-invites/:token` → `ExternalInviteForInvitee`, or for an account the invite was
  *    not sent to `{ addressedToYou: false, invitedEmailMasked }` only. 404
  *    `{ error: "This invite link is not valid" }` for every invite the caller may not use
- *    (unknown, expired, withdrawn, used, `external_channels_v1` off for the host).
+ *    (unknown, expired, withdrawn, used).
  *  - `POST external-invites/:token/accept-as-guest` → `{ serverId, channelId }`.
  *  - `POST external-invites/:token/connect-servers` `{ servers: [{ serverId, approverUserId? }] }`
  *    → `{ servers: ServerConnectOutcome[] }` (each decided on its own: connected, connecting,

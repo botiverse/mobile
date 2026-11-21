@@ -107,8 +107,8 @@ internal fun raftMemberPickerToggle(
     }
 
 /**
- * The shared member / agent picker (web `CreateChannelDialog` / `CreateJointChannelDialog`
- * member field, `memberPickerClasses.ts`): a search field over a card list grouped into
+ * The shared member / agent picker (web `CreateChannelDialog` member field,
+ * `memberPickerClasses.ts`): a search field over a card list grouped into
  * Agents and Humans, each row an avatar with the agent status dot, the name, and a check box
  * ([RaftMemberPickerMode.Multiple]) or a picked highlight ([RaftMemberPickerMode.Single]).
  * The list scrolls inside the card up to [listMaxHeight] (web `max-h-48`).
@@ -221,7 +221,7 @@ private fun RaftMemberPickerRow(
     fixtureStatusFallbackEnabled: Boolean,
     onClick: () -> Unit,
 ) {
-    // web `CreateChannelDialog` / `CreateJointChannelDialog`: an App Bot's name carries the Bot
+    // web `CreateChannelDialog`: an App Bot's name carries the Bot
     // badge, and it has no presence to show.
     val appBot = remember(member) { member.appBotIdentityOrNull() }
     // Dot-facing resolution: the OrNull variant, so an agent whose status is not known yet

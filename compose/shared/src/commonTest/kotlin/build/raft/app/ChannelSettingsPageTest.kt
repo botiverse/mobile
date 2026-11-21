@@ -242,7 +242,6 @@ class ChannelSettingsPageTest {
         channel: HomeChannelRow,
         canManage: Boolean = true,
         stopAgents: Boolean = false,
-        externalChannels: Boolean = false,
     ) =
         channelSettingsActionRows(
             ChannelSettingsUiModel(
@@ -253,43 +252,38 @@ class ChannelSettingsPageTest {
                 permissions = channelSettingsPermissions(channel, canManage),
                 writeActionsEnabled = true,
                 canStopAllAgents = stopAgents,
-                externalChannelsEnabled = externalChannels,
             )
         )
 
     @Test
-    fun privateMemberConnectNeedsTheFlagAPrivateChannelTheViewerIsInAndAServerToConnect() {
+    fun privateMemberConnectNeedsAPrivateChannelTheViewerIsInAndAServerToConnect() {
         // Web EditChannelDialog showPrivateConnectSection: private, not archived, memberConnect.available.
         val account = memberTestAccount()
         val private = row(name = "partners", type = "private")
-        assertTrue(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = account))
-        // The flag gates it: off, the page is as before.
-        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = false, account = account))
+        assertTrue(channelSettingsOffersPrivateMemberConnect(private, account = account))
         // Only a private channel: not a public one, not a joint one (its own Connected servers section).
-        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners"), externalChannelsEnabled = true, account = account))
-        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "joint"), externalChannelsEnabled = true, account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners"), account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "joint"), account = account))
         // Never archived, never #all, only for a viewer in the channel.
-        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", archived = true), externalChannelsEnabled = true, account = account))
-        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "all", type = "private"), externalChannelsEnabled = true, account = account))
-        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", joined = false), externalChannelsEnabled = true, account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", archived = true), account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "all", type = "private"), account = account))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(row(name = "partners", type = "private", joined = false), account = account))
         // A server to connect: none known yet, or none the viewer owns or administers.
-        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = null))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, account = null))
         val memberOnly = account.copy(servers = account.servers.filter { it.role != "owner" && it.role != "admin" || it.slug == "community" || it.id == account.currentServerId })
-        assertFalse(channelSettingsOffersPrivateMemberConnect(private, externalChannelsEnabled = true, account = memberOnly))
+        assertFalse(channelSettingsOffersPrivateMemberConnect(private, account = memberOnly))
     }
 
     @Test
-    fun hostsJointCopyOffersArchiveOnlyWithExternalChannels() {
+    fun hostsJointCopyOffersArchiveOnly() {
         val archiveLeave = listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave)
         val withDisconnect = archiveLeave + ChannelSettingsActionRow.Disconnect
-        // Web hostCannotDisconnect: the server's jointRole, and the flag; off, as today.
-        assertEquals(archiveLeave, actions(row(type = "joint", jointRole = "host"), externalChannels = true))
-        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "host"), externalChannels = false))
-        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "participant"), externalChannels = true))
-        assertEquals(withDisconnect, actions(row(type = "joint"), externalChannels = true))
-        assertTrue(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host"), externalChannelsEnabled = true))
-        assertFalse(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host"), externalChannelsEnabled = false))
-        assertFalse(channelSettingsHostCannotDisconnect(row(jointRole = "host"), externalChannelsEnabled = true))
+        // Web hostCannotDisconnect: the server's jointRole decides.
+        assertEquals(archiveLeave, actions(row(type = "joint", jointRole = "host")))
+        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "participant")))
+        assertEquals(withDisconnect, actions(row(type = "joint")))
+        assertTrue(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host")))
+        assertFalse(channelSettingsHostCannotDisconnect(row(jointRole = "host")))
     }
 
     @Test

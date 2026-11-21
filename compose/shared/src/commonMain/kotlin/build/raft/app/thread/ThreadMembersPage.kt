@@ -22,13 +22,11 @@ import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.base.Utils
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ChangeChannelMemberRoleRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersEntry
@@ -529,10 +527,8 @@ private fun ThreadMembersPageScreen() {
             ?.ifBlank { null }
             ?: route.channelId.value.trim().removePrefix("#")
     val authorityRejected = liveOwner != routeOwner
-    // Web useExternalInviteAccess / useExternalInviteManagement: external_channels_v1 for this server,
-    // its owner or admin, an invitable channel (the directory row: type, jointRole, archived).
-    val externalChannelsOn =
-        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
+    // Web useExternalInviteAccess / useExternalInviteManagement: this server's owner or admin, an
+    // invitable channel (the directory row: type, jointRole, archived).
     val externalInviteChannel =
         channelProjections[route.channelId.value]?.let { projection ->
             ExternalInviteChannel(
@@ -543,9 +539,8 @@ private fun ThreadMembersPageScreen() {
                 hasExternalRelation = projection.hasExternalRelation,
             )
         }
-    val externalInviteAccessOn = !authorityRejected && externalInviteAccess(externalChannelsOn, viewerServerRole, externalInviteChannel)
-    val externalInviteManagementOn =
-        !authorityRejected && externalInviteManagement(externalChannelsOn, viewerServerRole, externalInviteChannel)
+    val externalInviteAccessOn = !authorityRejected && externalInviteAccess(viewerServerRole, externalInviteChannel)
+    val externalInviteManagementOn = !authorityRejected && externalInviteManagement(viewerServerRole, externalInviteChannel)
     val externalInvitesStore =
         remember(routeOwner, route.channelId) {
             ExternalInvitesStore(memberScope, RealExternalInvitesDataSource(route.channelId, routeOwner, authorityGateway, bridge::log))
