@@ -27,7 +27,7 @@ internal data class RuntimeRaftCapabilities(
  * (contract-cases-drift.yml) fails when slock's table moves on. Update both together.
  */
 internal object RuntimeRaftCapabilityTable {
-    const val SLOCK_SHA = "e053e8f202ede6acb8e6f65364380c34520e11f1"
+    const val SLOCK_SHA = "c0f6195c6efacc2d906c69e28f130f097e12ba05"
 
     val recommendedRuntimeIds: List<String> = listOf("claude", "codex")
 
@@ -47,7 +47,7 @@ internal object RuntimeRaftCapabilityTable {
             "pi" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = false, compactionReported = true),
             "qwen" to RuntimeRaftCapabilities(midTurnSteering = false, subagents = true, compactionReported = false),
             "qoder" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = true, compactionReported = false),
-            "dsh" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = false, compactionReported = false)
+            "dsh" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = true, compactionReported = true)
         )
 }
 
