@@ -495,7 +495,14 @@ internal data class RaftThreadMemberItem(
      * server they take part through, in roster order. Their row reads "Also in Raft, Acme Corp"
      * after the name in quiet text (web #14731). Empty for anyone else.
      */
-    val alsoInServerLabels: List<String> = emptyList()
+    val alsoInServerLabels: List<String> = emptyList(),
+    /**
+     * A computed joint roster row's `inViewerServer` (web `ChannelHuman` / `ChannelAgent`): whether
+     * it is one of the viewed server's members (any role, guests too; an agent whose one server is
+     * the viewed one). A joint channel's members page groups by it ([threadMembersRosterSections],
+     * web `jointMemberGroups`). Null on every other roster and from older servers.
+     */
+    val inViewerServer: Boolean? = null
 )
 
 @Serializable

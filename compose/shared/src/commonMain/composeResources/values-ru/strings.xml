@@ -3564,6 +3564,9 @@
     <string name="auth_web_login_stale_callback">Эта ссылка для входа осталась от предыдущей попытки. Завершите вход на последней открытой странице или войдите заново.</string>
     <string name="channel_member_role_guest">Гость</string>
     <string name="channel_members_also_in">Также в %1$s</string>
+    <string name="channel_members_also_in_sentence">%1$s — также участник сервера %2$s</string>
+    <string name="channel_members_group_viewer_server">Участники сервера %1$s</string>
+    <string name="channel_members_group_other_servers">Другие серверы</string>
     <string name="channel_members_make_admin">Назначить участника %1$s администратором канала</string>
     <string name="channel_members_remove_admin">Снять с участника %1$s роль администратора канала</string>
     <string name="channel_members_make_admin_short">Сделать администратором</string>

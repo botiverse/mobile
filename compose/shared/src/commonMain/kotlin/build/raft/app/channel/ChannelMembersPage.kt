@@ -17,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
@@ -211,12 +213,20 @@ internal fun ChannelMembersRow(
  * Lumen Labs"), and web `JointServerBadges`' "Also in Raft, Acme Corp" for a member of the viewed
  * server who is also in another (#14731, it was a blue chip): caption, regular, `foreground-hint`,
  * one line, truncated; capped so the name keeps its room (the web lets the text give way first).
+ * [spokenText], when given, is what a screen reader says in place of [names] (web #12853: "{name}
+ * is also a member of {servers}" for a person in a computed joint roster).
  */
 @Composable
-internal fun ChannelMemberOriginServerNames(names: String, testTag: String = ChannelMemberOriginServersTestTag) {
+internal fun ChannelMemberOriginServerNames(
+    names: String,
+    testTag: String = ChannelMemberOriginServersTestTag,
+    spokenText: String? = null,
+) {
     RaftText(
         names,
-        modifier = Modifier.widthIn(max = 140.dp).testTag(testTag),
+        modifier =
+            Modifier.widthIn(max = 140.dp).testTag(testTag)
+                .then(spokenText?.let { spoken -> Modifier.semantics { contentDescription = spoken } } ?: Modifier),
         style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.Normal),
         color = RaftTheme.colors.foregroundHint,
         maxLines = 1,

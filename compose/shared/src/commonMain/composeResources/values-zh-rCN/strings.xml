@@ -3743,6 +3743,9 @@
     <string name="auth_web_login_stale_callback">这个登录链接来自之前的一次尝试。请在最新打开的页面完成登录，或重新登录。</string>
     <string name="channel_member_role_guest">访客</string>
     <string name="channel_members_also_in">也在 %1$s</string>
+    <string name="channel_members_also_in_sentence">%1$s 也是 %2$s 的成员</string>
+    <string name="channel_members_group_viewer_server">%1$s 的成员</string>
+    <string name="channel_members_group_other_servers">其他服务器</string>
     <string name="channel_members_make_admin">将 %1$s 设为频道管理员</string>
     <string name="channel_members_remove_admin">撤销 %1$s 的频道管理员</string>
     <string name="channel_members_make_admin_short">设为管理员</string>
