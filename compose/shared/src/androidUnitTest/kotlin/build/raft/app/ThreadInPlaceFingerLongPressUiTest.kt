@@ -43,6 +43,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ChatLayoutPreferenceSnapshot
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RealtimeSubscription
@@ -475,13 +476,23 @@ class ThreadInPlaceFingerLongPressUiTest {
             assertEquals(false, observed)
 
             runOnIdle {
-                events.postPreferenceChanged(ChatLayoutPreferenceSnapshot(newMessageMenuEnabled = true))
+                events.postPreferenceChanged(
+                    ChatLayoutPreferenceSnapshot(
+                        myMessageAlignment = MyMessageAlignmentPreference.Default,
+                        newMessageMenuEnabled = true,
+                    )
+                )
             }
             waitForIdle()
             assertEquals(true, observed, "enabling New message menu updates mounted ThreadPage live")
 
             runOnIdle {
-                events.postPreferenceChanged(ChatLayoutPreferenceSnapshot(newMessageMenuEnabled = false))
+                events.postPreferenceChanged(
+                    ChatLayoutPreferenceSnapshot(
+                        myMessageAlignment = MyMessageAlignmentPreference.Default,
+                        newMessageMenuEnabled = false,
+                    )
+                )
             }
             waitForIdle()
             assertEquals(false, observed, "disabling New message menu updates mounted ThreadPage live")
