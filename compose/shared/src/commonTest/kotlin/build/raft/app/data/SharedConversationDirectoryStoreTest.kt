@@ -406,4 +406,51 @@ class SharedConversationDirectoryStoreTest {
         assertEquals(ConversationKind.DirectMessage, direct?.conversationKind)
         assertEquals(ConversationKind.Thread, thread?.conversationKind)
     }
+
+    @Test
+    fun mergedDirectoryPreservesJointServersAcrossHomeAndInboxOverlap() {
+        val peer = MemberServerRef(id = "server-peer", name = "Peer Labs", slug = "peer-labs", avatarUrl = "/peer-logo.webp")
+        val homeState =
+            HomeSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                currentMember =
+                    MemberProfile(
+                        id = MemberId("user-1"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    ),
+                channels =
+                    listOf(
+                        HomeChannelRow(
+                            threadId = ThreadId("joint-1"),
+                            channelId = ChannelId("joint-1"),
+                            kind = ConversationKind.Joint,
+                            name = "partner-sync",
+                            jointServers = listOf(peer)
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            ).toSharedConversationDirectoryState()
+        val inboxState =
+            InboxSnapshot(
+                server = ServerSummary(ServerId("server-1"), "Raft"),
+                items =
+                    listOf(
+                        InboxItem(
+                            key = "channel:joint-1",
+                            kind = InboxItemKind.Channel,
+                            channelId = ChannelId("joint-1"),
+                            channelName = "partner-sync",
+                            latestActivityMessageId = MessageId("msg-1")
+                        )
+                    )
+            ).toSharedConversationDirectoryState()
+
+        val homeThenInbox = homeState.merge(inboxState)
+        val inboxThenHome = inboxState.merge(homeState)
+        assertEquals(listOf(peer), homeThenInbox.resolve("joint-1")?.jointServers)
+        assertEquals(listOf(peer), inboxThenHome.resolve("joint-1")?.jointServers)
+    }
 }

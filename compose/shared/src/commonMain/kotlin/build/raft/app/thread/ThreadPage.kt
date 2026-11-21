@@ -6067,9 +6067,10 @@ private fun SharedThreadRouteContentContent(
                 lookupIds = conversationDirectoryLookupIds,
                 parentChannelId = renderedThread.parentChannelId,
                 taskParentChannelId = taskConversation.parentChannelId?.value,
-                serverId = currentServerId,
+                serverId = headerProjectionServerId?.value,
                 projections = billingDirectoryProjections,
                 conversationIdentityProvider = conversationIdentityProvider,
+                homeContentRevision = sharedHomeState.content,
             )
         val memberModelLabelResolver =
             remember(serverMembersStore, headerProjectionServerId, channelJointServers) {
@@ -6131,6 +6132,7 @@ private fun SharedThreadRouteContentContent(
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalRaftViewerServerLogos provides viewerServerLogos,
+                LocalRaftChannelJointServers provides channelJointServers,
                 // One channel-kind glyph per channel (forward targets, composer suggestions). Read
                 // from values this lambda already captures (see the JVM-limit note below).
                 LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
@@ -7441,8 +7443,9 @@ private fun rememberThreadChannelJointServers(
     serverId: String?,
     projections: Map<String, SharedConversationDirectoryProjection>,
     conversationIdentityProvider: SharedConversationIdentityProvider?,
+    homeContentRevision: Any? = null,
 ): List<build.raft.app.model.MemberServerRef> =
-    remember(lookupIds, parentChannelId, taskParentChannelId, serverId, projections) {
+    remember(lookupIds, parentChannelId, taskParentChannelId, serverId, projections, conversationIdentityProvider, homeContentRevision) {
         threadChannelJointServers(
             lookupIds = lookupIds,
             parentChannelId = parentChannelId,

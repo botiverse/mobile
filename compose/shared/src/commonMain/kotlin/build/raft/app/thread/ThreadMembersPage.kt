@@ -39,6 +39,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
@@ -422,7 +423,12 @@ private fun ThreadMembersPageScreen() {
     val canChangeMemberRoles =
         liveOwner == routeOwner && channelMembersSlice.canChangeMemberRoles && !channelMembersSlice.storedStandIn
     val addChannelProjection = channelProjections[route.channelId.value]
-    val channelJointServers = addChannelProjection?.jointServers.orEmpty()
+    val channelJointServers =
+        addChannelProjection?.jointServers?.takeIf { it.isNotEmpty() }
+            ?: addChannelProjection?.parentChannelId?.let { parentId ->
+                channelProjections[parentId]?.jointServers?.takeIf { it.isNotEmpty() }
+                    ?: conversationIdentityProvider?.resolveProjection(route.serverId, parentId)?.jointServers
+            }.orEmpty()
     val members = remember(
         channelMembersSlice.members, channelMembersSlice.canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId, channelJointServers
     ) {

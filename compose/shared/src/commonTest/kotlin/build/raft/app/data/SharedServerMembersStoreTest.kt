@@ -3408,6 +3408,66 @@ class SharedServerMembersStoreTest {
         )
     }
 
+    @Test
+    fun authoritativeChannelMemberMergePreservesAndUpgradesOriginServerLogos() = runBlocking {
+        val repository = FakeMemberRepository()
+        val serverId = ServerId("server-1")
+        val channelId = ChannelId("joint-1")
+        val serverAWithoutLogo = MemberServerRef(id = "server-a", name = "Alpha", slug = "alpha", avatarUrl = null)
+        val serverAWithLogo = MemberServerRef(id = "server-a", name = "Alpha", slug = "alpha", avatarUrl = "/alpha.webp")
+        val serverBWithLogo = MemberServerRef(id = "server-b", name = "Beta", slug = "beta", avatarUrl = "/beta.webp")
+
+        // Seed a sparse author profile first (no servers, no inViewerServer).
+        val store = SharedServerMembersStore(repository)
+        store.seedThreadAuthorProfiles(
+            serverId,
+            listOf(
+                RaftThreadMessageItem(
+                    id = "msg-1",
+                    authorId = "ext-user-1",
+                    authorName = "Alice",
+                    authorKind = "user",
+                    avatarWireValue = null,
+                )
+            ),
+            source = "history",
+        )
+        assertNull(store.state.value.memberProfile(serverId, "ext-user-1")?.servers)
+
+        // First authoritative channel member load gives ServerA (no logo) + ServerB (logo).
+        repository.channelMembersByChannel[channelId.value] =
+            listOf(
+                member("ext-user-1", "Alice").copy(
+                    serverId = ServerId("server-a"),
+                    inViewerServer = false,
+                    servers = listOf(serverAWithoutLogo, serverBWithLogo),
+                )
+            )
+        store.loadChannelMembers(serverId, channelId, force = true)
+        val cachedFirst = assertNotNull(store.state.value.memberProfile(serverId, "ext-user-1"))
+        assertEquals(false, cachedFirst.inViewerServer)
+        assertEquals(listOf(serverAWithoutLogo, serverBWithLogo), cachedFirst.servers)
+
+        // Second authoritative channel load upgrades ServerA with its avatarUrl while ServerB already had one.
+        repository.channelMembersByChannel[channelId.value] =
+            listOf(
+                member("ext-user-1", "Alice").copy(
+                    serverId = ServerId("server-a"),
+                    inViewerServer = false,
+                    servers = listOf(serverAWithLogo, serverBWithLogo),
+                )
+            )
+        store.loadChannelMembers(serverId, channelId, force = true)
+        val cachedSecond = assertNotNull(store.state.value.memberProfile(serverId, "ext-user-1"))
+        assertEquals(listOf(serverAWithLogo, serverBWithLogo), cachedSecond.servers)
+        val suggestion =
+            store.state.value
+                .memberSuggestionSlice(serverId = serverId, mentionChannelId = channelId.value)
+                .suggestions
+                .first { it.memberId == "ext-user-1" }
+        assertEquals(listOf(serverAWithLogo, serverBWithLogo), suggestion.originServers)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()

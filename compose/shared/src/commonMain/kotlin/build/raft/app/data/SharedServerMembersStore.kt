@@ -4530,8 +4530,41 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
         serverName = serverName ?: seed.serverName,
-        serverSlug = serverSlug ?: seed.serverSlug
+        serverSlug = serverSlug ?: seed.serverSlug,
+        servers = servers.mergeSeedServerRefs(seed.servers),
+        inViewerServer = inViewerServer ?: seed.inViewerServer,
     )
+}
+
+private fun List<MemberServerRef>?.mergeSeedServerRefs(
+    seed: List<MemberServerRef>?,
+): List<MemberServerRef>? {
+    if (this.isNullOrEmpty()) return seed ?: this
+    if (seed.isNullOrEmpty()) return this
+    return mergeOriginServerRefs(seed)
+}
+
+private fun List<MemberServerRef>.mergeOriginServerRefs(
+    fallback: List<MemberServerRef>,
+): List<MemberServerRef> {
+    if (isEmpty()) return fallback
+    if (fallback.isEmpty()) return this
+    val fallbackById =
+        buildMap {
+            for (server in fallback) {
+                val id = server.id.trim().takeIf { it.isNotEmpty() } ?: continue
+                if (!containsKey(id)) put(id, server)
+            }
+        }
+    return map { server ->
+        val id = server.id.trim()
+        val other = fallbackById[id] ?: return@map server
+        server.copy(
+            name = server.name.ifBlank { other.name },
+            slug = server.slug.ifBlank { other.slug },
+            avatarUrl = server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() } ?: other.avatarUrl,
+        )
+    }
 }
 
 /** Agents of a roster read that its server/deleted filters kept out of [kept] (diagnostics only). */
@@ -4565,7 +4598,14 @@ private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
  * merge; they remain fill-only through [MemberProfile.mergeSeedProfile].
  */
 private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
-    val merged = mergeSeedProfile(incoming)
+    val merged =
+        mergeSeedProfile(incoming).copy(
+            // Authoritative hydration may advance/replace `servers` (including `avatarUrl`) and
+            // `inViewerServer`, while a sparse incoming profile (`servers == null`) preserves what
+            // the cache already learned.
+            servers = incoming.servers ?: servers,
+            inViewerServer = incoming.inViewerServer ?: inViewerServer,
+        )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {
             merged.copy(presence = incoming.presence, agentStatus = incoming.agentStatus)
@@ -4765,13 +4805,7 @@ private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
         avatarWireValue = avatarWireValue.preferServerMembersConcreteSuggestionAvatar(patch.avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { patch.avatarLabel },
         memberId = memberId ?: patch.memberId,
-        originServers =
-            when {
-                originServers.isEmpty() -> patch.originServers
-                patch.originServers.any { !it.avatarUrl.isNullOrBlank() } &&
-                    originServers.none { !it.avatarUrl.isNullOrBlank() } -> patch.originServers
-                else -> originServers
-            },
+        originServers = originServers.mergeOriginServerRefs(patch.originServers),
     )
 
 private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: String?): String? =

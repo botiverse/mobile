@@ -66,6 +66,13 @@ import build.raft.designsystem.tokens.RaftUiPalette
  */
 internal val LocalRaftViewerServerLogos = compositionLocalOf<Map<String, String>> { emptyMap() }
 
+/**
+ * Connected servers (`jointServers[]`) of the active external channel (or parent channel for a
+ * reply thread / task conversation), used to resolve bare-`serverId` external members in `@`
+ * mention suggestions alongside [LocalRaftViewerServerLogos] (slock #15817).
+ */
+internal val LocalRaftChannelJointServers = compositionLocalOf<List<MemberServerRef>> { emptyList() }
+
 /** [LocalRaftViewerServerLogos]'s value from the session's servers. */
 internal fun raftViewerServerLogos(servers: List<Pair<String, String?>>): Map<String, String> =
     buildMap {

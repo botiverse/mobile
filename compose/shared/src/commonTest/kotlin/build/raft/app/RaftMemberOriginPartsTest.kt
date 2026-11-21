@@ -2,6 +2,9 @@ package build.raft.app
 
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedMembersMemberSuggestion
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -150,5 +153,120 @@ class RaftMemberOriginPartsTest {
         assertEquals(emptyList(), unnamed.originServers)
         // Without a viewed server nothing is decided.
         assertFalse(raftProfilePreviewCardModel(person).external)
+
+        // slock #15817: bare-serverId external agent resolves name + logo from channel jointServers.
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-joint-logo.webp")
+        val bareAgent =
+            MemberProfile(
+                id = MemberId("a-ext-bare"),
+                displayName = "Volta",
+                handle = "volta",
+                kind = MemberKind.Agent,
+                serverId = ServerId(peer.id),
+            )
+        val resolvedBare =
+            raftProfilePreviewCardModel(
+                bareAgent,
+                viewerServerId = viewer,
+                knownServers = listOf(peerWithLogo),
+            )
+        assertTrue(resolvedBare.external)
+        assertEquals(listOf(peerWithLogo), resolvedBare.originServers)
+    }
+
+    @Test
+    fun mentionSuggestionResolvesBareExternalAgentFromChannelJointServers() {
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-joint-logo.webp")
+        val bareSuggestion =
+            SharedMembersMemberSuggestion(
+                displayName = "Volta",
+                handle = "volta",
+                inMentionChannel = true,
+                sourceServerId = peer.id,
+                isLocalServer = false,
+                sourceServerLabel = null,
+                kind = MemberKind.Agent,
+                memberId = "agent-volta",
+                originServers = emptyList(),
+            )
+        val item = bareSuggestion.toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
+        assertEquals("Peer Labs", item.sourceServerLabel)
+        assertEquals(listOf(peerWithLogo), item.mentionOriginServers())
+
+        // Row's own servers[].avatarUrl wins over channel jointServers[].serverAvatarUrl.
+        val rowLogoPeer = peer.copy(avatarUrl = "/peer-row-logo.webp")
+        val richSuggestion = bareSuggestion.copy(originServers = listOf(rowLogoPeer), sourceServerLabel = "Peer Labs")
+        val richItem = richSuggestion.toRaftComposerMemberItem(inThread = true, knownServers = listOf(peerWithLogo))
+        assertEquals(listOf(rowLogoPeer), richItem.mentionOriginServers())
+
+        // Local member never receives an external badge even if jointServers has entries.
+        val localItem =
+            bareSuggestion
+                .copy(sourceServerId = viewer, isLocalServer = true, originServers = listOf(rowLogoPeer))
+                .toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
+        assertNull(localItem.sourceServerLabel)
+        assertEquals(emptyList(), localItem.mentionOriginServers())
+    }
+
+    @Test
+    fun threadChannelJointServersResolvesDirectAndParentChannelFallback() {
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
+        val jointProjection =
+            SharedConversationDirectoryProjection(
+                canonicalChannelId = "joint-ch",
+                aliases = listOf("joint-ch"),
+                conversationKind = ConversationKind.Joint,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                title = "partner-sync",
+                jointServers = listOf(peerWithLogo),
+            )
+        val threadProjection =
+            SharedConversationDirectoryProjection(
+                canonicalChannelId = "reply-stream",
+                aliases = listOf("reply-stream"),
+                conversationKind = ConversationKind.Thread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                title = "Reply",
+                parentChannelId = "joint-ch",
+                jointServers = emptyList(),
+            )
+        val projections = mapOf("joint-ch" to jointProjection, "reply-stream" to threadProjection)
+
+        // Direct channel lookup
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("joint-ch"),
+                parentChannelId = null,
+                taskParentChannelId = null,
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
+        // Reply thread resolves through parentChannelId
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("reply-stream"),
+                parentChannelId = "joint-ch",
+                taskParentChannelId = null,
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
+        // Task conversation resolves through taskParentChannelId
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("task-conv-1"),
+                parentChannelId = null,
+                taskParentChannelId = "joint-ch",
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
     }
 }
