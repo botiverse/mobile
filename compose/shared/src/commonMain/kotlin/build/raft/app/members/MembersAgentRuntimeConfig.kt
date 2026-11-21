@@ -639,13 +639,15 @@ internal fun MembersAgentRuntimeConfigRows(
         )
         return
     }
+    build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     val runtimeId = runtimeConfig.runtime
     val modelLabel =
         membersAgentRuntimeModelDisplayLabel(
             runtimeId = runtimeId,
             modelId = runtimeConfig.toMembersRuntimeModelValue(),
             runtimeModelsCatalog = runtimeModelsCatalog,
-            serverId = serverId
+            serverId = serverId,
+            machineId = machineId
         )
     // Web: the same stacked DescriptionList as Info -- one row per property, label above value.
     Column(
@@ -775,8 +777,10 @@ internal fun membersAgentRuntimeModelDisplayLabel(
     runtimeId: String,
     modelId: String,
     runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
-    /** The agent's server: its catalog's models, else the bundled list. */
-    serverId: String? = null
+    /** The agent's server: its catalogs' models, else the bundled list. */
+    serverId: String? = null,
+    /** The agent's computer: for looking up daemon-reported labels in the server model-label catalog. */
+    machineId: String? = null
 ): String? {
     val normalizedRuntimeId = runtimeId.trim()
     val normalizedModelId = modelId.trim()
@@ -784,11 +788,17 @@ internal fun membersAgentRuntimeModelDisplayLabel(
     fun String?.verifiedDisplayLabel(): String? =
         this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
 
-    return runtimeModelsCatalog
-        ?.models
-        ?.firstOrNull { it.id.trim() == normalizedModelId }
-        ?.label
-        .verifiedDisplayLabel()
+    // Server model-label catalog first (web `projectRuntimeModelLabelPresentation`, slock #15780):
+    // always read during composition so Compose tracks catalog refreshes (including after live detect)
+    // instead of letting a stale per-runtime `runtimeModelsCatalog` mask updated labels.
+    return build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, normalizedRuntimeId, normalizedModelId)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: runtimeModelsCatalog
+            ?.models
+            ?.firstOrNull { it.id.trim() == normalizedModelId }
+            ?.label
+            .verifiedDisplayLabel()
         // The server catalog's models for this runtime, else the bundled list.
         ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId, serverId)
             ?.models

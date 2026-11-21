@@ -511,12 +511,23 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
     val status = rememberRaftAgentStatusIndicatorState(source.agentStatusResolver, agent.id.value)
     val state = rememberRaftPreviewCardState()
     val name = agent.agentMigrationName()
+    val catalogServerId = agent.serverId?.value ?: source.serverId
+    build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
+    val modelLabelCatalog = build.raft.app.data.RaftModelLabelCatalogs.catalog(catalogServerId)
     RaftPreviewCard(
         state = state,
         pinOnClick = true,
         card = {
             RaftProfilePreviewCardContent(
-                model = remember(agent, status, source.serverId) { raftProfilePreviewCardModel(agent, status, viewerServerId = source.serverId) },
+                model =
+                    remember(agent, status, source.serverId, modelLabelCatalog) {
+                        raftProfilePreviewCardModel(
+                            agent,
+                            status,
+                            viewerServerId = source.serverId,
+                            modelLabelCatalog = modelLabelCatalog,
+                        )
+                    },
                 onViewProfile = {
                     state.dismiss()
                     source.onOpenProfile(agent)

@@ -124,6 +124,7 @@ internal fun raftProfilePreviewCardModel(
     viewerServerId: String? = null,
     /** Connected servers of the active joint channel (`jointServers[]`, slock #15809/#15817). */
     knownServers: List<MemberServerRef> = emptyList(),
+    modelLabelCatalog: build.raft.app.data.ServerModelLabelCatalog? = null,
 ): RaftProfilePreviewCardModel {
     val appBot = profile.appBotIdentityOrNull()
     val isAgent = profile.kind == MemberKind.Agent
@@ -132,6 +133,7 @@ internal fun raftProfilePreviewCardModel(
     val agentFacts = isAgent && appBot == null && !origin.external
     val runtimeId = (status?.runtime ?: profile.roleDescription)?.trim()?.takeIf { it.isNotBlank() }
     val displayName = appBot?.appName ?: profile.displayName.ifBlank { profile.handle }
+    val resolvedServerId = profile.serverId?.value ?: viewerServerId
     return RaftProfilePreviewCardModel(
         memberId = profile.id.value,
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
@@ -144,9 +146,9 @@ internal fun raftProfilePreviewCardModel(
         description = if (appBot != null) null else profile.description?.trim()?.takeIf { it.isNotBlank() },
         appBot = appBot,
         status = if (isAgent && appBot == null) status else null,
-        runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, profile.serverId?.value ?: viewerServerId) } else null,
+        runtimeLabel = if (agentFacts) runtimeId?.let { runtimeIdentityDisplayName(it, resolvedServerId) } else null,
         runtimeId = if (agentFacts) runtimeId else null,
-        modelLabel = if (agentFacts) profile.modelLabel() else null,
+        modelLabel = if (agentFacts) profile.modelLabel(viewerServerId = resolvedServerId, catalog = modelLabelCatalog) else null,
         computer =
             when {
                 !agentFacts -> null
@@ -199,11 +201,14 @@ internal fun rememberRaftProfilePreviewCardModel(
     val status = rememberRaftAgentStatusIndicatorState(agentStatusResolver, memberId.takeIf { kind == MemberKind.Agent })
     val avatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     val current = profile
-    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers) {
+    val catalogServerId = current?.serverId?.value ?: cleanServerId?.value ?: viewerServerId
+    if (kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
+    val modelLabelCatalog = if (kind == MemberKind.Agent) build.raft.app.data.RaftModelLabelCatalogs.catalog(catalogServerId) else null
+    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers, modelLabelCatalog) {
         if (current == null) {
             RaftProfilePreviewCardModel.unavailable(memberId, kind, fallbackHandle)
         } else {
-            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId, knownServers)
+            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId, knownServers, modelLabelCatalog)
         }
     }
 }
