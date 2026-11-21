@@ -2,12 +2,14 @@ package build.raft.app.data
 
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.*
+import build.raft.app.ThreadHiddenHistoryGlimpseAlpha
 import build.raft.app.ThreadHistoryPaywallScope
 import build.raft.app.ThreadHistoryPaywallTitle
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.threadHistoryPaywallCount
 import build.raft.app.threadHistoryPaywallScope
 import build.raft.app.threadHistoryPaywallTitle
+import build.raft.designsystem.tokens.RaftOpacity
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -131,5 +133,8 @@ class HiddenHistoryTest {
         assertEquals("6", threadHistoryPaywallCount(6))
         assertEquals("1,000", threadHistoryPaywallCount(1000))
         assertEquals("12,345", threadHistoryPaywallCount(12345))
+        // slock #15936: hidden-history preview rows use raft-ui opacity-dimmed (60%), not 70%.
+        assertEquals(RaftOpacity.Dimmed, ThreadHiddenHistoryGlimpseAlpha)
+        assertEquals(0.6f, ThreadHiddenHistoryGlimpseAlpha)
     }
 }
