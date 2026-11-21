@@ -517,8 +517,8 @@ internal fun StandaloneSettingsWebViewContent(
         }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
     val injectedJavaScript =
-        remember(spec.surface, session, hostAuthBinding) {
-            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface)
+        remember(spec.surface, session, hostAuthBinding, webUrl) {
+            standaloneSettingsWebViewInjectedJavaScript(session, hostAuthBinding, spec.surface, webOrigin = webUrl)
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
@@ -558,6 +558,7 @@ internal fun StandaloneSettingsWebViewContent(
         logger = accessTokenSyncLogger,
         refresher = accessTokenRefresher,
         visible = accessTokenRefreshVisible,
+        webOrigin = webUrl,
     )
 }
 
@@ -847,17 +848,12 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
     session: StoredAuthSession?,
     hostBinding: SettingsWebViewHostAuthBinding?,
     surface: SettingsWebViewSurface,
+    webOrigin: String,
 ): String {
     val writes = settingsWebViewAuthStorageJavaScript(session, hostBinding)
-    val clientKind = ""
-    return """
-        (function() {
-          try {
-            $writes;
-            $clientKind
-          } catch (error) {
-            console.error("slock_mobile_${surface.diagnosticsName}_injected_js_error", error && (error.stack || error.message || error));
-          }
-        })();
-    """.trimIndent()
+    return settingsWebViewGuardedAuthJavaScript(
+        webOrigin = webOrigin,
+        body = "$writes;",
+        errorTag = "slock_mobile_${surface.diagnosticsName}_injected_js_error",
+    )
 }
