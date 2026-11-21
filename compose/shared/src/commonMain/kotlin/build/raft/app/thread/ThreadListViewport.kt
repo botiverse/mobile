@@ -71,6 +71,19 @@ internal class ThreadListViewport(
     var lastScrollOwnerAttempt: Int = 0
         private set
 
+    /**
+     * Explicit non-drag user navigation count (e.g. Back to bottom pill, header scroll-to-top,
+     * outline jump, local send, row expand/collapse). Observe-only: [ThreadOpenShiftRecorderEffect]
+     * treats an increment as [ThreadOpenEnd.UserTookOver] so deliberate user jumps are never
+     * misattributed as open-path jitter (#proj-mobile:#258).
+     */
+    var userNavigationCount: Int = 0
+        private set
+
+    fun noteUserNavigation() {
+        userNavigationCount += 1
+    }
+
     /** A writer that dispatches a controller event names itself; the command executor picks it up. */
     fun noteDispatchOwner(tag: String, attempt: Int = 0) {
         pendingDispatchOwner = tag
@@ -163,6 +176,7 @@ internal class ThreadListViewport(
             raw.scrollToItem(index, scrollOffset)
             return
         }
+        currentCoroutineContext().ensureActive()
         val count = raw.layoutInfo.totalItemsCount
         if (index !in 0 until count) return
         if (layoutInfo.visibleItemsInfo.none { it.index == index }) {
@@ -170,10 +184,15 @@ internal class ThreadListViewport(
             raw.scrollToItem(reversedThreadListIndex(index, count))
             awaitVisible(index)
         }
+        currentCoroutineContext().ensureActive()
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
         val delta = forwardScrollToItemDelta(itemOffset = item.offset, scrollOffset = scrollOffset)
         // scrollBy admits again: awaitVisible suspended since the first scroll.
-        if (delta != 0) scrollBy(delta.toFloat())
+        // Skip a delta into an already-clamped edge so a focused row near the tail doesn't emit a
+        // zero-movement scrollBy or bump ownedScrollCount.
+        if (delta != 0 && ((delta > 0 && canScrollForward) || (delta < 0 && canScrollBackward))) {
+            scrollBy(delta.toFloat())
+        }
     }
 
     /**
