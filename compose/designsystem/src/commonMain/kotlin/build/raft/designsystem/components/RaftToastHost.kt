@@ -133,11 +133,10 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val safeDrawing = WindowInsets.safeDrawing
     val horizontalInsets = rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
-    // `onPlaced` runs during the parent Box's placement pass, AFTER sibling content's `onPlaced`
-    // (`raftToastAvoid`) and BEFORE this Box places its Column child. Resolving vertical placement
-    // inside `layout { ... }` therefore sees frame-N avoidances, frame-N `hostBottomPx`, and
-    // frame-N IME insets in the same frame (no 1-frame lag, no Frame-1 NaN flash, and zero
-    // recompositions during 120Hz keyboard slides).
+    // `onPlaced` runs during the parent Box's placement pass, so `hostBottomPx` and any avoided bar's
+    // `topPx` are ready before the Column lays out — and `TopEdge.liveKeyboardPx` lets this layout
+    // pass track live keyboard motion in the very same frame even when a deeply nested composer runs
+    // its `onPlaced` after this overlay Column.
     Box(
         modifier.fillMaxSize().onPlaced { coordinates ->
             if (coordinates.size.height > 0) {
@@ -289,12 +288,20 @@ fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = {
             Modifier
         } else {
             val currentKeyboardPx by rememberUpdatedState(keyboardPx)
+            val liveKeyboardReader = remember { { currentKeyboardPx() } }
             Modifier.onPlaced { coordinates ->
                 val size = coordinates.size
                 if (size.width <= 0 || size.height <= 0) {
                     state.removeAvoidance(key)
                 } else {
-                    state.putAvoidance(key, RaftToastAvoidance.TopEdge(coordinates.positionInRoot().y, currentKeyboardPx()))
+                    state.putAvoidance(
+                        key,
+                        RaftToastAvoidance.TopEdge(
+                            topPx = coordinates.positionInRoot().y,
+                            keyboardPx = currentKeyboardPx(),
+                            liveKeyboardPx = liveKeyboardReader,
+                        ),
+                    )
                 }
             }
         }
