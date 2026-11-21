@@ -13,6 +13,7 @@ import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelVisibility
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.RealChannelRepository
