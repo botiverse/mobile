@@ -183,8 +183,8 @@ internal fun RuntimeAccountUsageProvider.quotaBrand(): String =
 /** "Claude Max" from the provider and its plan ("max" reads "Max"); the brand alone with no plan. */
 internal fun runtimeQuotaPlanName(provider: RuntimeAccountUsageProvider, planLabel: String?): String {
     val brand = provider.quotaBrand()
-    val plan = planLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return brand
-    val shown = if (plan.all { !it.isLetter() || it.isLowerCase() }) plan.replaceFirstChar { it.uppercaseChar() } else plan
+    // Web `formatRuntimePlanName` (slock #15557): known lowercase codes capitalised, any other name as sent.
+    val shown = formatRuntimePlanName(planLabel) ?: return brand
     return if (shown.startsWith(brand, ignoreCase = true)) shown else "$brand $shown"
 }
 

@@ -319,22 +319,22 @@ private fun AgentMigrationTargetDetailsContent(
                 style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.foregroundMuted
             )
-            ComputerRuntimeUsageContents(usage, timeContext)
             val available = (usage.load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
-            if (computer.offline && available != null) {
-                val reported =
-                    available.snapshot.collectedAt
-                        ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
-                RaftText(
-                    stringResource(Res.string.agent_migration_target_last_reported, reported),
-                    style = typography.caption,
-                    color = colors.foregroundHint
-                )
-            }
-            // The usage card closes a snapshot with its own separator.
-            if (available == null) RaftSeparator()
+            // Web `RuntimeUsageContents metadata`: an offline computer's usage says when it last reported,
+            // in place of "Updated …".
+            val lastReported =
+                if (computer.offline && available != null) {
+                    val reported =
+                        available.snapshot.collectedAt
+                            ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
+                    stringResource(Res.string.agent_migration_target_last_reported, reported)
+                } else {
+                    null
+                }
+            Column(Modifier.fillMaxWidth()) { ComputerRuntimeUsageContents(usage, timeContext, metadata = lastReported) }
+            RaftSeparator()
         }
         val offlineFor =
             if (computer.offline) {

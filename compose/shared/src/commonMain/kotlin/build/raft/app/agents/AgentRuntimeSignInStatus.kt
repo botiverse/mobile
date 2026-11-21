@@ -56,7 +56,7 @@ internal fun signInRuntimeFor(raftRuntimeId: String?): RuntimeAuthRuntime? {
 internal fun runtimeSignInOffered(view: RuntimeAuthView?, runtime: RuntimeAuthRuntime): Boolean =
     view?.canAct == true &&
         view.availability == RuntimeAuthAvailability.Ok &&
-        view.statusOf(runtime) == RuntimeAuthStatus.LoggedOut
+        view.statusOf(runtime) is RuntimeAuthStatus.LoggedOut
 
 /**
  * What the agent status surfaces (sidebar, member list, DM header, profile badge) show while an

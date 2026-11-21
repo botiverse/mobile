@@ -26,7 +26,8 @@ import build.raft.app.data.RuntimeLimitResetIdempotencyKey
 import build.raft.app.data.RuntimeLimitResetRefusal
 import build.raft.app.data.RuntimeLimitResetResult
 import build.raft.app.data.authRuntime
-import build.raft.app.data.carriedByCredits
+import build.raft.app.data.allModels
+import build.raft.app.data.usageOnCredits
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -45,8 +46,13 @@ import build.raft.designsystem.theme.RaftTheme
 
 /** The card's limit-reset action (web `SurfaceLimitReset`). */
 internal data class ComputerRuntimeLimitResetOffer(
-    /** The account is rate-limited right now (not running on credits): the reset is the card's main action then. */
+    /** The account is limited right now (on the all-models basis): the reset is the card's main action then. */
     val primary: Boolean,
+    /**
+     * The account keeps running on credits past its used-up window (slock #15374): its agents are not
+     * waiting, the reset saves credits. With [primary], the card says so in a callout (web #15482).
+     */
+    val onCredits: Boolean = false,
 )
 
 /** The account whose reset the button spends (web `resetAccount`: the first holding one; Codex reports one account). */
@@ -56,10 +62,32 @@ internal fun RuntimeAccountUsageLoad?.limitResetAccount(): RuntimeAccountUsageAc
     return read.snapshot.accounts.firstOrNull { it.isDefaultAccount && (it.limitResetsAvailable ?: 0) > 0 }
 }
 
+/** Web `LIMIT_RESET_OFFER_RATIO`: a reset is offered from this share of any window used (the meter turns orange there). */
+internal const val COMPUTER_RUNTIME_LIMIT_RESET_OFFER_RATIO: Double = 0.8
+
 /**
- * Web `surfaceLimitReset`: offered only while the account holds a reset, to a person who may act
- * on the Computer's runtimes (`canAct`, the human who attached it or a server owner/admin) while
- * the Computer can be reached (`availability` ok), and not while the runtime is signed out.
+ * Web `limitResetOffer` (slock #15482, #15483): a reset is spent once used, so it is offered only once a
+ * window is nearly used up (a quiet button), and as the card's main action once the account is limited on
+ * the all-models basis (also on credits past a full window: a reset then saves the credits). A model's own
+ * window used up alone is a quiet button. Null: no button; how many resets are left is still shown.
+ * The value is whether it is the main action.
+ */
+internal fun RuntimeAccountUsageAccount.limitResetPrimary(): Boolean? {
+    val basis = allModels().account
+    val primary =
+        basis.health == RuntimeAccountUsageHealth.RateLimited ||
+            basis.windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached }
+    if (primary) return true
+    val nearlyUsedUp =
+        windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached || (it.usedRatio ?: 0.0) >= COMPUTER_RUNTIME_LIMIT_RESET_OFFER_RATIO }
+    return if (nearlyUsedUp) false else null
+}
+
+/**
+ * Web `surfaceLimitReset`: offered only while the account holds a reset and [limitResetPrimary] offers
+ * it, to a person who may act on the Computer's runtimes (`canAct`, the human who attached it or a
+ * server owner/admin) while the Computer can be reached (`availability` ok), and not while the runtime
+ * is signed out.
  */
 internal fun computerRuntimeLimitResetOffer(
     load: RuntimeAccountUsageLoad?,
@@ -68,13 +96,11 @@ internal fun computerRuntimeLimitResetOffer(
 ): ComputerRuntimeLimitResetOffer? {
     val account = load.limitResetAccount() ?: return null
     if (authView == null || !authView.canAct || authView.availability != RuntimeAuthAvailability.Ok) return null
-    if (authView.statusOf(provider.authRuntime) == RuntimeAuthStatus.LoggedOut) return null
+    if (authView.statusOf(provider.authRuntime) is RuntimeAuthStatus.LoggedOut) return null
+    val primary = account.limitResetPrimary() ?: return null
     return ComputerRuntimeLimitResetOffer(
-        // A full window the account's credits carry (slock #15374) does not make the reset the
-        // main action: the account still runs. It stays offered.
-        primary =
-            account.health == RuntimeAccountUsageHealth.RateLimited ||
-                account.windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached && !account.carriedByCredits(it) },
+        primary = primary,
+        onCredits = account.usageOnCredits && account.windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached },
     )
 }
 

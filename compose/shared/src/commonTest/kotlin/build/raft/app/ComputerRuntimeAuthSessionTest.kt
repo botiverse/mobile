@@ -243,7 +243,7 @@ class ComputerRuntimeAuthSessionTest {
             ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.NotInstalled),
             action(RuntimeAuthRuntime.Claude, RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)),
         )
-        assertEquals(ComputerRuntimeAuthAction.AddProvider(primary = true), action(RuntimeAuthRuntime.Pi, RuntimeAuthStatus.LoggedOut))
+        assertEquals(ComputerRuntimeAuthAction.AddProvider(primary = true), action(RuntimeAuthRuntime.Pi, RuntimeAuthStatus.LoggedOut()))
         assertEquals(ComputerRuntimeAuthAction.AddProvider(primary = false), action(RuntimeAuthRuntime.Pi, RuntimeAuthStatus.LoggedIn()))
         assertEquals(ComputerRuntimeAuthAction.Caption(notAttached = false), action(RuntimeAuthRuntime.Kimi, null), "a Computer that predates Kimi's sign-in")
         assertEquals(
@@ -251,10 +251,10 @@ class ComputerRuntimeAuthSessionTest {
             action(RuntimeAuthRuntime.Codex, null, VIEW.copy(availability = RuntimeAuthAvailability.ComputerNotAttached)),
         )
         assertNull(action(RuntimeAuthRuntime.Codex, null, VIEW.copy(availability = RuntimeAuthAvailability.ComputerOffline)))
-        assertNull(action(RuntimeAuthRuntime.Codex, RuntimeAuthStatus.LoggedOut, VIEW.copy(canAct = false)), "a viewer who may not act")
+        assertNull(action(RuntimeAuthRuntime.Codex, RuntimeAuthStatus.LoggedOut(), VIEW.copy(canAct = false)), "a viewer who may not act")
         // Signed out turns the chip orange; Pi with no stored sign-in does not (a key may still serve it).
-        assertTrue(ComputerRuntimeAuthCardState("codex", RuntimeAuthRuntime.Codex, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut))).signedOut)
-        assertTrue(!ComputerRuntimeAuthCardState("pi", RuntimeAuthRuntime.Pi, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Pi to RuntimeAuthStatus.LoggedOut))).signedOut)
+        assertTrue(ComputerRuntimeAuthCardState("codex", RuntimeAuthRuntime.Codex, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut()))).signedOut)
+        assertTrue(!ComputerRuntimeAuthCardState("pi", RuntimeAuthRuntime.Pi, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Pi to RuntimeAuthStatus.LoggedOut()))).signedOut)
     }
 
     @Test
@@ -292,6 +292,27 @@ class ComputerRuntimeAuthSessionTest {
     }
 
     @Test
+    fun aSignInThatSucceedsAsksTheCardToReadItsUsageAgain() = runTest {
+        // Web `RuntimeSignInDialog onSignedIn` (slock #15786): only a login that ended signed in.
+        val ops = FakeAuthOps()
+        val controller = controller(RuntimeAuthRuntime.Codex, ops)
+        var reads = 0
+        controller.onSignedIn = { reads++ }
+        controller.openSignIn()
+        ops.start.complete(RuntimeAuthCall.Done(LOGIN))
+        runCurrent()
+        controller.onRealtime(result(LOGIN, RuntimeAuthLoginOutcome.Failed("timed_out")))
+        runCurrent()
+        assertEquals(0, reads, "a failed sign-in leaves the usage as it is")
+        assertIs<ComputerRuntimeAuthDialog.SignIn>(controller.dialog).session.retry()
+        runCurrent()
+        controller.onRealtime(result(LOGIN, RuntimeAuthLoginOutcome.LoggedIn()))
+        runCurrent()
+        assertEquals(1, reads)
+        controller.onSignedIn = null
+    }
+
+    @Test
     fun anUpdateForThisComputerReadsTheStatusAgain() = runTest {
         val ops = FakeAuthOps()
         val controller = controller(RuntimeAuthRuntime.Codex, ops)
@@ -301,7 +322,7 @@ class ComputerRuntimeAuthSessionTest {
         controller.onRealtime(RuntimeAuthUpdated("m1"))
         runCurrent()
         assertEquals(listOf("invalidate", "view"), ops.calls)
-        assertEquals(RuntimeAuthStatus.LoggedOut, controller.status)
+        assertEquals(RuntimeAuthStatus.LoggedOut(), controller.status)
         assertTrue(controller.signedOut)
     }
 
@@ -409,7 +430,7 @@ class ComputerRuntimeAuthSessionTest {
 
         override suspend fun view(force: Boolean): RuntimeAuthView {
             calls += "view"
-            return VIEW.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut))
+            return VIEW.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut()))
         }
 
         override suspend fun invalidate() {

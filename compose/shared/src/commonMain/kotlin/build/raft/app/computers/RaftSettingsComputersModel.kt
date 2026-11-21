@@ -620,7 +620,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
         if (current == null || used > current || (used == current && limitWins)) {
             tightestUsed = used
             tightestLimit = limit
-            tightestPlan = account.planLabel?.takeIf { it.isNotBlank() }
+            tightestPlan = build.raft.app.data.formatRuntimePlanName(account.planLabel)
             tightestAccount = account
         }
     }

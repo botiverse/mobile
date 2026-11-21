@@ -236,11 +236,26 @@ class ComputerRuntimeOperationsTest {
             ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported, upgradeOffered = false),
             ComputerRuntimeAuthCardState("claude", RuntimeAuthRuntime.Claude, view).action(),
         )
-        // Signed in with no sign-out (Qoder): the card still has Upgrade to show.
+        // Signed in with no sign-out (Qoder): no action row; Upgrade is the version line's link (slock #15482).
         val qoder = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qoder to RuntimeAuthStatus.LoggedIn()), upgradableRuntimes = listOf(RuntimeAuthRuntime.Qoder))
         assertNull(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder).action())
-        assertTrue(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = offer).hasActions)
-        assertFalse(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder).hasActions)
+        assertFalse(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = offer).hasActions)
+    }
+
+    @Test
+    fun upgradeIsOfferedAgainOnlyAfterAFailureAnotherPressMayFix() {
+        // Web `upgradeAgainAfter` (slock #15482): an outcome takes the version line; the link comes back
+        // only where a second press may help.
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.Failed)))
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerOffline)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerTimeout)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.RateLimited)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerUpgradeRequired)))
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.Internal))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.InProgress))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Upgraded(from = "1.0.0", to = "1.1.0"))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Idle))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Running))
     }
 
     /**
@@ -349,12 +364,12 @@ class ComputerRuntimeOperationsTest {
         assertFalse(card(null).copy(upgrade = null).upgradeButtonShown)
         assertFalse(card(null).copy(view = UPGRADE_VIEW.copy(canAct = false)).upgradeButtonShown)
 
-        // Qoder has no sign-out: signed in and already the latest, its card has no action row at all; an outcome still shows.
+        // Qoder has no sign-out: no action row either way; Upgrade and its outcome are the version line's (slock #15482).
         val qoder = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qoder to RuntimeAuthStatus.LoggedIn()), upgradableRuntimes = listOf(RuntimeAuthRuntime.Qoder))
         fun qoderCard(state: ComputerRuntimeUpgradeState) =
             ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = ComputerRuntimeUpgradeOffer(state) {}, update = latest)
         assertFalse(qoderCard(ComputerRuntimeUpgradeState.Idle).hasActions)
-        assertTrue(qoderCard(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Current("1.5.11"))).hasActions)
+        assertFalse(qoderCard(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Current("1.5.11"))).hasActions)
     }
 
     /**

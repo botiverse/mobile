@@ -47,9 +47,12 @@ data class RuntimeAuthAccountLabel(
     val planLabel: String? = null,
     val methodLabel: String? = null,
 ) {
-    /** Web `accountText`: "masked email · plan", or null when neither is known. */
+    /** Web `accountText`: "masked email · plan" (a known lowercase plan capitalised, slock #15557), or null when neither is known. */
     val text: String?
-        get() = listOfNotNull(maskedLabel, planLabel).filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        get() =
+            listOfNotNull(maskedLabel?.takeIf { it.isNotEmpty() }, build.raft.app.data.formatRuntimePlanName(planLabel))
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString(" · ")
 }
 
 /** slock `runtimeAuthLoginEventSchema`. */

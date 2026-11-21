@@ -55,7 +55,7 @@ class RuntimeAuthContractTest {
         )
         assertEquals("a***@example.com · Max", (view.statusOf(RuntimeAuthRuntime.Claude) as RuntimeAuthStatus.LoggedIn).account?.text)
         assertEquals(RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled), view.statusOf(RuntimeAuthRuntime.Codex))
-        assertEquals(RuntimeAuthStatus.LoggedOut, view.statusOf(RuntimeAuthRuntime.Antigravity))
+        assertEquals(RuntimeAuthStatus.LoggedOut(), view.statusOf(RuntimeAuthRuntime.Antigravity))
         assertEquals(
             listOf(
                 RuntimeAuthSignedInProvider("anthropic", "Anthropic", apiKey = false, subscription = true),

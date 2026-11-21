@@ -1895,13 +1895,16 @@ internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
  * - `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605, #14667): the server sends a usage
  *   window's `scope` (every kind, `models` too) only to a request that declares it reads it.
  * - `RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY` (#15374): likewise an account's `credits`.
- * This app's parser reads both; a server that predates a token ignores it.
+ * - `RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY` (#15395): likewise an unsupported account's `unsupportedReason`.
+ * This app's parser reads them all; a server that predates a token ignores it.
  */
 internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
 internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
 internal const val RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY = "runtime-usage-credits@1"
 /** slock `RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY` (#15348): this build reads an account's `agentIds`. */
 internal const val RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY = "runtime-usage-account-folders@1"
+/** slock `RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY` (#15395): this build reads an account's `unsupportedReason`. */
+internal const val RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY = "runtime-usage-unsupported-reason@1"
 internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
     mapOf(
         RAFT_CLIENT_CAPABILITIES_HEADER to
@@ -1909,6 +1912,7 @@ internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
                 RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY,
                 RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY,
                 RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY,
+                RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY,
             ).joinToString(", ")
     )
 

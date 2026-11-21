@@ -50,7 +50,7 @@ class ComputerRuntimeLimitResetTest {
             computerRuntimeLimitResetOffer(withReset, actor.copy(availability = RuntimeAuthAvailability.ComputerNotAttached), RuntimeAccountUsageProvider.Codex),
         )
         assertNull(
-            computerRuntimeLimitResetOffer(withReset, actor.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut)), RuntimeAccountUsageProvider.Codex),
+            computerRuntimeLimitResetOffer(withReset, actor.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut())), RuntimeAccountUsageProvider.Codex),
             "signed out",
         )
         // The reset is the main action while the account is rate-limited.

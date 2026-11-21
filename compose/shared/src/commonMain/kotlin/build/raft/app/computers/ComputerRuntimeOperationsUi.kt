@@ -41,66 +41,11 @@ import build.raft.designsystem.theme.RaftTheme
  */
 
 /**
- * Web `RuntimeUpgradeButton`: runs the runtime's own updater on the Computer. `Default` (never pink:
- * not the screen's main action), busy ("Upgrading…") while the Computer runs it.
- */
-@Composable
-internal fun ComputerRuntimeUpgradeButton(offer: ComputerRuntimeUpgradeOffer, fullWidth: Boolean = false) {
-    val running = offer.state == ComputerRuntimeUpgradeState.Running
-    val runningLabel = stringResource(Res.string.settings_computers_runtime_upgrade_running)
-    RaftButton(
-        text = if (running) runningLabel else stringResource(Res.string.settings_computers_runtime_upgrade_action),
-        onClick = offer.onUpgrade,
-        modifier = (if (fullWidth) Modifier.fillMaxWidth() else Modifier).testTag(COMPUTER_RUNTIME_UPGRADE_TAG),
-        variant = RaftButtonVariant.Default,
-        size = if (fullWidth) RaftButtonSize.Lg else RaftButtonSize.Md,
-        loading = running,
-        loadingLabel = runningLabel,
-        leadingIcon = if (running) null else ({ RaftComputersIcon(RaftLucideIconName.CircleArrowUp) }),
-    )
-}
-
-/**
- * The version line of a runtime's card or sheet (web `RuntimeUsageSurface` header): where Upgrade is
- * offered and the Computer checked for updates, that check in its place ([updateCheck], slock #15429:
- * "1.5.10 → 1.5.11 available", "1.5.11 · Latest", …) in caption with the versions in the version
- * line's mono (web `monoValues`); otherwise "Version …" as before.
- */
-@Composable
-internal fun ComputerRuntimeVersionLine(runtimeVersion: String?, updateCheck: ComputerRuntimeUpdateCheckCopy?) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    if (updateCheck != null) {
-        RaftText(
-            computerRuntimeUpdateCheckText(updateCheck),
-            modifier = Modifier.testTag(COMPUTER_RUNTIME_UPDATE_CHECK_TAG),
-            style = typography.caption,
-            color = colors.foregroundHint,
-        )
-        return
-    }
-    val version = runtimeVersion?.trim()?.takeIf { it.isNotEmpty() }
-    RaftText(
-        if (version != null) {
-            stringResource(Res.string.settings_computers_runtime_usage_version, version)
-        } else {
-            stringResource(Res.string.settings_computers_runtime_usage_version_unavailable)
-        },
-        style = typography.monoMeta,
-        color = colors.foregroundHint,
-    )
-}
-
-/** [copy] as one string, for a place that takes plain text (a sheet's description). */
-@Composable
-internal fun computerRuntimeUpdateCheckPlainText(copy: ComputerRuntimeUpdateCheckCopy): String = stringResource(copy.message, *copy.args.toTypedArray())
-
-/**
  * [copy] with each version in mono. Each version stands in as its own private-use character while the
  * sentence is formatted, so a translation may place them in any order.
  */
 @Composable
-private fun computerRuntimeUpdateCheckText(copy: ComputerRuntimeUpdateCheckCopy): AnnotatedString {
+internal fun computerRuntimeUpdateCheckText(copy: ComputerRuntimeUpdateCheckCopy): AnnotatedString {
     val slots = copy.args.indices.map { (ComputerRuntimeVersionSlot + it).toString() }
     val sentence = stringResource(copy.message, *slots.toTypedArray())
     val mono = RaftTheme.typography.monoMeta.toSpanStyle()

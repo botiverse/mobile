@@ -130,6 +130,21 @@ internal fun computerRuntimeUpgradeCopy(state: ComputerRuntimeUpgradeState): Com
             }
     }
 
+/**
+ * Web `upgradeAgainAfter` (slock #15482, RuntimeVersionLine.tsx): Upgrade is offered again after an
+ * outcome only after a failure a second press may fix (the request failed, the Computer was offline,
+ * an error other than one already running); never after it upgraded or found the latest, nor where
+ * pressing again would not help (a timeout, too many upgrades, a Computer too old for it, an
+ * installation it can't upgrade, a run that failed or left the version unchanged).
+ */
+internal fun computerRuntimeUpgradeAgainAfter(state: ComputerRuntimeUpgradeState): Boolean =
+    when (state) {
+        is ComputerRuntimeUpgradeState.Refused ->
+            state.reason == ComputerRuntimeOperationRefusal.Failed || state.reason == ComputerRuntimeOperationRefusal.ComputerOffline
+        is ComputerRuntimeUpgradeState.Done -> (state.result as? RuntimeUpgradeResult.Error)?.let { it.code != RuntimeOperationErrorCode.InProgress } == true
+        else -> false
+    }
+
 /** Upgrade on a runtime's card, where the server offers it (web `SurfaceAuth.upgrade`): the last press's state and the press. */
 internal data class ComputerRuntimeUpgradeOffer(
     val state: ComputerRuntimeUpgradeState,

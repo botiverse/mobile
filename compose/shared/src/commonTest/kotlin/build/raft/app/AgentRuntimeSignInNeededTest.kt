@@ -88,11 +88,11 @@ class AgentRuntimeSignInNeededTest {
             logoutRuntimes = listOf(RuntimeAuthRuntime.Kimi),
         )
 
-        assertTrue(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut), RuntimeAuthRuntime.Kimi))
-        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, canAct = false), RuntimeAuthRuntime.Kimi))
-        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerOffline), RuntimeAuthRuntime.Kimi))
-        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerUpgradeRequired), RuntimeAuthRuntime.Kimi))
-        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut, availability = RuntimeAuthAvailability.ComputerNotAttached), RuntimeAuthRuntime.Kimi))
+        assertTrue(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut()), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut(), canAct = false), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut(), availability = RuntimeAuthAvailability.ComputerOffline), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut(), availability = RuntimeAuthAvailability.ComputerUpgradeRequired), RuntimeAuthRuntime.Kimi))
+        assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedOut(), availability = RuntimeAuthAvailability.ComputerNotAttached), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.LoggedIn()), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.Unknown), RuntimeAuthRuntime.Kimi))
         assertFalse(runtimeSignInOffered(view(RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)), RuntimeAuthRuntime.Kimi))

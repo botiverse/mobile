@@ -33,6 +33,10 @@ import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageRead
+import build.raft.app.data.RuntimeAuthAvailability
+import build.raft.app.data.RuntimeAuthRuntime
+import build.raft.app.data.RuntimeAuthStatus
+import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
@@ -118,6 +122,17 @@ class ComputerRuntimeUsageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
     fun previewCardStaleLight() =
         capture("settings.computer.runtime_usage.preview_card.stale", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(KIMI_USAGE, label = "Kimi") }
+
+    // Web parity (slock #15482, #15483, #15557, #15395, #15787): a titled plan with resets and credits on
+    // one line, the account's "…" menu and the on-credits callout; some model groups used up; the
+    // provider wanting a sign-in again (Sign in under the account, no meters); why an account is unsupported.
+    @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h1500dp-xxhdpi")
+    fun previewCardStatesLight() = capture("settings.computer.runtime_usage.preview_card.states", RaftAppAppearance.Light) { RuntimeUsagePreviewCardStates() }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w520dp-h1500dp-xxhdpi")
+    fun previewCardStatesDark() = capture("settings.computer.runtime_usage.preview_card.states.dark", RaftAppAppearance.Dark) { RuntimeUsagePreviewCardStates() }
 
     // The agent profile's usage card says what is used, like the sheet above (web #11855).
     @Test
@@ -323,5 +338,76 @@ private fun RuntimeUsagePreviewCardContent(usage: String, label: String = "Claud
                 onClose = {},
             )
         }
+    }
+}
+
+private val statesAuthView =
+    RuntimeAuthView(
+        canAct = true,
+        availability = RuntimeAuthAvailability.Ok,
+        status =
+            mapOf(
+                RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedIn(),
+                RuntimeAuthRuntime.Claude to RuntimeAuthStatus.LoggedIn(),
+                RuntimeAuthRuntime.Antigravity to RuntimeAuthStatus.LoggedIn(),
+            ),
+        runtimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Antigravity),
+        logoutRuntimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Antigravity),
+    )
+
+// A Codex team plan past its weekly window on credits, with resets left (slock #15374, #15482, #15557).
+private const val CODEX_TEAM_USAGE =
+    """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"codex","collectedAt":"2026-10-22T02:04:00.000Z","accounts":[{"accountKey":"acct-t","maskedLabel":"te***@example.com","planLabel":"team","health":"ok","limitResetsAvailable":2,"credits":{"available":true,"balance":"30784"},"windows":[{"id":"w5","label":"Codex · 5 hours","status":"ok","usedRatio":0.42,"resetsAt":"2026-10-22T05:10:00.000Z"},{"id":"wk","label":"Codex · 1 week","status":"limit_reached","usedRatio":1,"resetsAt":"2026-10-24T04:10:00.000Z"}]}]}}"""
+
+// Antigravity with one of its two model groups used up (slock #15483).
+private const val ANTIGRAVITY_GROUPS_USAGE =
+    """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"antigravity","collectedAt":"2026-10-22T02:04:00.000Z","accounts":[{"accountKey":"acct-g","maskedLabel":"ag***@example.com","planLabel":"Google AI Pro","health":"ok","windows":[{"id":"g","label":"Gemini Models","status":"limit_reached","usedRatio":1,"resetsAt":"2026-10-22T06:10:00.000Z","scope":{"kind":"models","name":"Gemini Models"}},{"id":"c","label":"Claude and GPT models","status":"ok","usedRatio":0.35,"resetsAt":"2026-10-22T06:10:00.000Z","scope":{"kind":"models","name":"Claude and GPT models"}}]}]}}"""
+
+// Claude's provider wants the Computer's own account signed in again (slock #15787).
+private const val CLAUDE_REAUTH_USAGE =
+    """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-22T02:04:00.000Z","accounts":[{"accountKey":"acct-r","maskedLabel":"ar***@example.com","planLabel":"max","health":"reauth_required","windows":[{"id":"s","label":"Current session","status":"ok","usedRatio":0.62}]}]}}"""
+
+// Kimi reads no usage for this sign-in method (slock #15395).
+private const val KIMI_UNSUPPORTED_USAGE =
+    """{"state":"stale","snapshot":{"protocolVersion":2,"provider":"kimi","collectedAt":"2026-10-22T01:40:00.000Z","accounts":[{"accountKey":"acct-k","health":"unsupported","unsupportedReason":"unsupported_auth_mode","windows":[]}]}}"""
+
+@Composable
+private fun RuntimeUsagePreviewCardStates() {
+    Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        StatesCard("Codex CLI", CODEX_TEAM_USAGE, "codex", RuntimeAuthRuntime.Codex, limitReset = ComputerRuntimeLimitResetOffer(primary = true, onCredits = true))
+        StatesCard("Antigravity", ANTIGRAVITY_GROUPS_USAGE, "antigravity", RuntimeAuthRuntime.Antigravity)
+        StatesCard("Claude Code", CLAUDE_REAUTH_USAGE, "claude", RuntimeAuthRuntime.Claude)
+        StatesCard("Kimi Code", KIMI_UNSUPPORTED_USAGE, null, null)
+    }
+}
+
+@Composable
+private fun StatesCard(
+    label: String,
+    usage: String,
+    raftRuntimeId: String?,
+    runtime: RuntimeAuthRuntime?,
+    limitReset: ComputerRuntimeLimitResetOffer? = null,
+) {
+    val read = remember(usage) { Json.parseToJsonElement(usage).toRuntimeAccountUsageRead()!! }
+    val auth = if (raftRuntimeId != null && runtime != null) ComputerRuntimeAuthCardState(raftRuntimeId, runtime, statesAuthView) else null
+    RaftPreviewCardSurface(width = RaftPreviewCardDefaults.WideWidth) {
+        ComputerRuntimeUsageCard(
+            runtimeLabel = label,
+            state =
+                ComputerRuntimeUsageSheetState(
+                    load = RuntimeAccountUsageLoad.Loaded(read),
+                    loading = false,
+                    refresh = ComputerRuntimeUsageRefreshStatus.Idle,
+                    cooldownLeftMillis = 0L,
+                    runtimeVersion = "0.98.0",
+                    limitReset = limitReset,
+                ),
+            timeContext = usageTimeContext,
+            onRefresh = {},
+            onClose = {},
+            auth = auth,
+            authRuntimeName = label,
+        )
     }
 }
