@@ -1,11 +1,15 @@
 package build.raft.app.data
 
+import build.raft.app.model.TaskStatus
 import build.raft.app.raftPlatformComposerEnterSendsByDefault
 import build.raft.app.resources.raftSystemResourceLocale
 import build.raft.app.resources.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 internal const val DEFAULT_SERVER_DRAWER_ENABLED = false
 
@@ -811,6 +815,47 @@ class KeyValueTasksPageQueryPreferenceRepository(
     private companion object {
         const val KEY_TASKS_PAGE_SCOPE = "tasks:pageScope"
         const val KEY_TASKS_PAGE_SORT = "tasks:pageSort"
+    }
+}
+
+/**
+ * The Tasks page's folds, per server on this device (web tasksPageStore `collapsed`, kept in
+ * localStorage under `raft.tasksPage.folds.<serverId>`; botiverse/slock eb63aec86e, #15507): the
+ * statuses folded or opened by hand, so a column folded once stays folded after a server switch
+ * or a restart. A status never set by hand is not kept; the page's default decides it.
+ */
+interface TasksPageFoldPreferenceRepository {
+    /** [serverId]'s folds set by hand, status to folded; none when nothing is kept or it can't be read. */
+    fun folds(serverId: String): Map<TaskStatus, Boolean>
+    fun saveFolds(serverId: String, folds: Map<TaskStatus, Boolean>)
+}
+
+class KeyValueTasksPageFoldPreferenceRepository(
+    private val store: SharedPreferenceStore
+) : TasksPageFoldPreferenceRepository {
+    // A JSON object of status wire values (web readStoredFolds): unreadable reads as none, and an
+    // entry that is not a known status set to true or false is skipped.
+    override fun folds(serverId: String): Map<TaskStatus, Boolean> {
+        val raw = store.getString(key(serverId)) ?: return emptyMap()
+        val stored = runCatching { Json.parseToJsonElement(raw) }.getOrNull() as? JsonObject ?: return emptyMap()
+        return stored.entries
+            .mapNotNull { (name, value) ->
+                val status = TaskStatus.fromWireValue(name) ?: return@mapNotNull null
+                val folded = (value as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull ?: return@mapNotNull null
+                status to folded
+            }
+            .toMap()
+    }
+
+    override fun saveFolds(serverId: String, folds: Map<TaskStatus, Boolean>) {
+        val stored = folds.filterKeys { it.isKnown }.entries.associate { (status, folded) -> status.toWireValue() to JsonPrimitive(folded) }
+        store.putString(key(serverId), JsonObject(stored).toString())
+    }
+
+    private fun key(serverId: String): String = "$KEY_PREFIX${serverId.trim()}"
+
+    private companion object {
+        const val KEY_PREFIX = "tasks:pageFolds:"
     }
 }
 

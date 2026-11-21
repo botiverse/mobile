@@ -45,6 +45,7 @@ import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.currentTaskSummary
 import build.raft.app.data.DefaultTaskCreateStatus
 import build.raft.app.data.TasksContent
+import build.raft.app.data.TasksPageFolds
 import build.raft.app.data.TasksPresentationIntent
 import build.raft.app.data.TasksPresentationState
 import build.raft.app.data.TasksUiState
@@ -166,6 +167,8 @@ internal fun SharedTasksScreen(
     taskV2Enabled: Boolean = false,
     /** The Tasks page's server query (Mine / All, search, status, sort); null: the projection's list. */
     query: SharedTasksQueryBinding? = null,
+    /** Where the page keeps its folds for its server ([TasksPageFolds]); null keeps them for the page only. */
+    folds: TasksPageFolds? = null,
     /** The task open beside the list on the wide layout (RaftTasksTaskColumn.kt): its card shows it. */
     openTaskId: String? = null,
     /** Whether the reader may write a channel's tasks ([LocalTaskChannelWriteCheck]); unknown: yes. */
@@ -190,7 +193,8 @@ internal fun SharedTasksScreen(
         onListPositionSnapshot = onListPositionSnapshot,
         identityOptions = identityOptions,
         timeContext = timeContext,
-        taskV2Enabled = taskV2Enabled
+        taskV2Enabled = taskV2Enabled,
+        folds = folds
     )
     }
 }
@@ -229,7 +233,7 @@ internal fun SharedTasksPanel(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     /** Fixture hook (same pattern as SharedHomeSearchPanel.initialOpenFilterId): when
      *  non-null, the loaded body starts from this presentation state instead of
-     *  [TasksPresentationState.Default] + the persisted view-mode preference. The
+     *  [TasksPresentationState.Default] + the persisted view-mode preference and [folds]. The
      *  components.tasks.panel.states visual case starts in List mode with Done expanded,
      *  mirroring the React capture's "Show Done" click (task #330/#353). */
     initialPresentationOverride: TasksPresentationState? = null,
@@ -237,7 +241,9 @@ internal fun SharedTasksPanel(
     timeContext: RaftTimeContext? = null,
     /** The server's `task_v2_conversations_v0`: In Review is retired for its v2 tasks (web slock #12884). */
     taskV2Enabled: Boolean = false,
-    query: SharedTasksQueryBinding? = null
+    query: SharedTasksQueryBinding? = null,
+    /** The Tasks page's folds on its server; null (a channel's tasks, fixtures): for the page only. */
+    folds: TasksPageFolds? = null
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -275,7 +281,8 @@ internal fun SharedTasksPanel(
                 identityOptions = identityOptions,
                 timeContext = timeContext,
                 taskV2Enabled = taskV2Enabled,
-                query = query
+                query = query,
+                folds = folds
             )
         } else when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
@@ -305,7 +312,8 @@ internal fun SharedTasksPanel(
                     initialPresentationOverride = initialPresentationOverride,
                     identityOptions = identityOptions,
                     timeContext = timeContext,
-                    taskV2Enabled = taskV2Enabled
+                    taskV2Enabled = taskV2Enabled,
+                    folds = folds
                 )
             is ScreenLoadState.Empty -> {
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
@@ -331,7 +339,8 @@ internal fun SharedTasksPanel(
                                 ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
                         identityOptions = identityOptions,
                         timeContext = timeContext,
-                        taskV2Enabled = taskV2Enabled
+                        taskV2Enabled = taskV2Enabled,
+                        folds = folds
                     )
                 } else {
                     if (showHeader) {
@@ -468,7 +477,8 @@ private fun SharedTasksLoadedBody(
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
     taskV2Enabled: Boolean,
-    query: SharedTasksQueryBinding? = null
+    query: SharedTasksQueryBinding? = null,
+    folds: TasksPageFolds? = null
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -489,7 +499,8 @@ private fun SharedTasksLoadedBody(
             identityOptions = identityOptions,
             timeContext = timeContext,
             taskV2Enabled = taskV2Enabled,
-            query = query
+            query = query,
+            folds = folds
         )
     }
 }
@@ -535,7 +546,8 @@ private fun SharedTasksLoadedBodyContent(
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
     taskV2Enabled: Boolean,
-    query: SharedTasksQueryBinding?
+    query: SharedTasksQueryBinding?,
+    folds: TasksPageFolds?
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -543,13 +555,16 @@ private fun SharedTasksLoadedBodyContent(
             KeyValueTasksViewPreferenceRepository(raftSharedPreferenceStore())
         }
     val initialPresentationState =
-        remember(viewModeRepository, defaultViewMode) {
+        remember(viewModeRepository, defaultViewMode, folds) {
             initialPresentationOverride
                 ?: TasksPresentationState.Default.copy(
-                    selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode)
+                    selectedMode = viewModeRepository.getTasksViewModeSync(defaultViewMode),
+                    // The folds kept for the page's server come back (web tasksPageStore, slock eb63aec86e).
+                    collapsedStatuses = folds?.collapsedStatuses() ?: TasksPresentationState.Default.collapsedStatuses
                 )
         }
-    var presentationState by remember(viewModeRepository) { mutableStateOf(initialPresentationState) }
+    // Another server's folds (its own route) start the page from them.
+    var presentationState by remember(viewModeRepository, folds) { mutableStateOf(initialPresentationState) }
     // Web canWriteTasksInChannel (slock #15155): task writes only where the reader may write the channel.
     val canWriteTaskChannel = LocalTaskChannelWriteCheck.current
     val sortedContent = remember(content) {
@@ -611,6 +626,13 @@ private fun SharedTasksLoadedBodyContent(
             boardColumns.filter { it.totalCount > 0 }.let { columns -> if (showHeader) columns else columns.inConversationSectionOrder() }
         }
     val collapsedStatuses = presentationState.collapsedStatuses
+    // A column or section folded or opened by hand stays so on the page's server (web
+    // tasksPageStore `setCollapsed`, slock eb63aec86e).
+    val toggleCollapsed: (TaskStatus) -> Unit = { status ->
+        val next = presentationState.reduce(TasksPresentationIntent.ToggleStatusCollapsed(status))
+        presentationState = next
+        folds?.setCollapsed(status, status in next.collapsedStatuses)
+    }
 
     // The status chip provides a root-space BottomEnd anchor. Keep that exact trigger
     // coordinate after a LazyColumn scroll; reconstructing it from item layout offsets
@@ -920,12 +942,7 @@ private fun SharedTasksLoadedBodyContent(
                                     totalCount = column.totalCount,
                                     tasks = column.tasks,
                                     collapsed = column.status in collapsedStatuses,
-                                    onToggleCollapsed = {
-                                        presentationState =
-                                            presentationState.reduce(
-                                                TasksPresentationIntent.ToggleStatusCollapsed(column.status)
-                                            )
-                                    },
+                                    onToggleCollapsed = { toggleCollapsed(column.status) },
                                     onOpenTask = onOpenTask,
                                     timeContext = timeContext,
                                     onStatusBadgeClick = { task, anchor ->
@@ -1024,12 +1041,7 @@ private fun SharedTasksLoadedBodyContent(
                                             status = column.status,
                                             count = column.totalCount,
                                             collapsed = column.status in collapsedStatuses,
-                                            onClick = {
-                                                presentationState =
-                                                    presentationState.reduce(
-                                                        TasksPresentationIntent.ToggleStatusCollapsed(column.status)
-                                                    )
-                                            }
+                                            onClick = { toggleCollapsed(column.status) }
                                         )
                                     }
                                     if (column.status !in collapsedStatuses) {

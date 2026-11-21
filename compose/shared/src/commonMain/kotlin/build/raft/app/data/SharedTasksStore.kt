@@ -120,9 +120,10 @@ enum class TasksViewMode {
 
 /**
  * UI-only state for the Tasks screen. Lives next to [TasksUiState] but holds purely
- * presentational concerns that don't survive process death and don't round-trip to the
- * API: which chip popover is open, what's typed into a popover search box, what columns
- * the user collapsed, which assignee chips are checked.
+ * presentational concerns that don't round-trip to the API: which chip popover is open, what's
+ * typed into a popover search box, what columns the user collapsed, which assignee chips are
+ * checked. None of it survives process death except the Tasks page's folds, which it keeps per
+ * server ([TasksPageFolds]).
  *
  * The collapsed-by-default for `backlog` / `done` / `closed` (raft-design tasks.md: Backlog is work
  * not planned now, Done and Closed only grow) mirrors the React panel — visual focus
@@ -143,6 +144,34 @@ data class TasksPresentationState(
 ) {
     companion object {
         val Default = TasksPresentationState()
+    }
+}
+
+/**
+ * The Tasks page's folds on one server (web tasksPageStore `collapsed` / `setCollapsed`,
+ * botiverse/slock eb63aec86e, #15507): what is folded or opened by hand is kept for [serverId] in
+ * [preferences] and comes back when the page opens on that server again, after a server switch or
+ * a restart. Each Tasks route has one for its server ([SharedTasksRouteSession.folds]). Without a
+ * server or a store the folds hold for the page only, as a channel's Tasks panel's always do (web
+ * ChannelTasksPanel).
+ */
+internal class TasksPageFolds(
+    serverId: String?,
+    private val preferences: TasksPageFoldPreferenceRepository?,
+) {
+    private val serverId: String? = serverId?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** The folded statuses: as folded or opened by hand, else as by default (web tasksPageModel `boardColumnFolded`). */
+    fun collapsedStatuses(defaults: Set<TaskStatus> = TasksPresentationState.Default.collapsedStatuses): Set<TaskStatus> {
+        val byHand = serverId?.let { preferences?.folds(it) }.orEmpty()
+        return TaskStatus.entries.filterTo(mutableSetOf()) { status -> byHand[status] ?: (status in defaults) }
+    }
+
+    /** [status] folded ([collapsed]) or opened by hand, kept for this server. */
+    fun setCollapsed(status: TaskStatus, collapsed: Boolean) {
+        val server = serverId ?: return
+        val store = preferences ?: return
+        store.saveFolds(server, store.folds(server) + (status to collapsed))
     }
 }
 

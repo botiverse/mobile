@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.model.TaskStatus
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -391,6 +392,26 @@ class LocalPreferencesTest {
 
         assertEquals(TasksViewMode.Board, selected)
         assertEquals(TasksViewMode.Board, restored)
+    }
+
+    @Test
+    fun tasksPageFoldsAreKeptPerServerAndUnreadableOnesReadAsNone() {
+        val backing = InMemoryRaftKeyValueStore()
+        val repository = KeyValueTasksPageFoldPreferenceRepository(backing)
+        assertEquals(emptyMap(), repository.folds("server-a"))
+
+        repository.saveFolds("server-a", mapOf(TaskStatus.Done to false, TaskStatus.Todo to true))
+        // A new repository over the same device store (the app opened again) reads them; another server has none.
+        assertEquals(mapOf(TaskStatus.Done to false, TaskStatus.Todo to true), KeyValueTasksPageFoldPreferenceRepository(backing).folds("server-a"))
+        assertEquals(emptyMap(), repository.folds("server-b"))
+
+        // Web readStoredFolds (botiverse/slock eb63aec86e): unreadable folds read as none, and an entry that is
+        // not a known status set to true or false is skipped.
+        fun stored(raw: String) =
+            KeyValueTasksPageFoldPreferenceRepository(InMemoryRaftKeyValueStore(mapOf("tasks:pageFolds:server-a" to raw))).folds("server-a")
+        assertEquals(emptyMap(), stored("not json"))
+        assertEquals(emptyMap(), stored("""["done"]"""))
+        assertEquals(mapOf(TaskStatus.Done to true), stored("""{"done":true,"bogus":true,"closed":"yes","todo":"true","backlog":null}"""))
     }
 
     @Test
