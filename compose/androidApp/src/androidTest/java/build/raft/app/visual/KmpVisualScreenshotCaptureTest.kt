@@ -3608,8 +3608,8 @@ class KmpVisualScreenshotCaptureTest {
      * [runtimeFormVisualPicker]) as a person does: a tap (accessibility click) on the trigger
      * announced as "<label>[, Required], <value>" (RaftSelectTrigger), then waits for the window the
      * list opens in (RaftCombobox: over ten options, a sheet with a search row) to take input focus.
-     * A query is set on that window's editable search row (accessibility SetText, as
-     * clearEditableTextField does). Web's capture does the same (slock react-provider.spec.ts
+     * A query is typed into that window's search row (a tap, then `input text`). Web's capture
+     * does the same (slock react-provider.spec.ts
      * openRuntimeFormPicker: a click, then the query typed into the combobox).
      */
     private fun openRuntimeFormPicker(caseId: String) {
@@ -3685,14 +3685,24 @@ class KmpVisualScreenshotCaptureTest {
                 requireNotNull(descendants(listRoot).firstOrNull { it.isEditable }) {
                     "$caseId: the ${picker.fieldLabel} list has no search row to type \"$query\" into"
                 }
-            val typed =
-                search.performAction(
-                    android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
-                    android.os.Bundle().apply {
-                        putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
-                    }
-                )
-            require(typed) { "$caseId: SetText(\"$query\") was rejected by the ${picker.fieldLabel} search row" }
+            // A tap on the search row (it takes focus), then the text as key events, as a person types it.
+            // (Accessibility SetText on the sheet's row stopped the instrumentation in CI.)
+            val bounds = android.graphics.Rect()
+            search.getBoundsInScreen(bounds)
+            require(!bounds.isEmpty) { "$caseId: the ${picker.fieldLabel} search row has empty bounds" }
+            val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+            tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
+            Thread.sleep(300)
+            require(query.all { it.isLetterOrDigit() || it == '-' }) { "$caseId: query \"$query\" needs escaping for input text" }
+            runShellCommand("input text $query")
+            var shown: String? = null
+            while (SystemClock.uptimeMillis() < deadline + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS) {
+                val root = uiAutomation.rootInActiveWindow ?: listRoot
+                shown = descendants(root).firstOrNull { it.isEditable }?.text?.toString()
+                if (shown == query) break
+                Thread.sleep(250)
+            }
+            require(shown == query) { "$caseId: the ${picker.fieldLabel} search row shows \"$shown\" after typing \"$query\"" }
         }
         // The sheet slides in (RaftSheetWindow); the stable-frame capture waits for the rest.
         Thread.sleep(800)
