@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">%1$s 연결 해제</string>
     <string name="settings_account_disconnect_message">이 Raft 계정에서 %1$s 연결을 해제할까요? 나중에 다시 연결할 수 있어요.</string>
     <string name="settings_account_disconnecting">연결 해제 중…</string>
+    <string name="settings_account_password_required_title">먼저 비밀번호를 설정하세요</string>
+    <string name="settings_account_password_required_message">%1$s 계정이 유일한 로그인 수단이에요. 로그인할 수 없게 되지 않도록 연결을 해제하기 전에 비밀번호를 설정해 주세요.</string>
+    <string name="settings_account_send_setup_email">설정 이메일 보내기</string>
+    <string name="settings_account_password_setup_sent_for_provider">비밀번호 설정 이메일을 보냈어요. 메일의 링크에서 비밀번호를 설정한 뒤 여기로 돌아와 %1$s 연결을 해제하세요.</string>
     <string name="settings_account_unverified">미확인</string>
     <string name="settings_account_no_connected_accounts">연결된 계정이 없어요</string>
     <string name="settings_account_no_connected_accounts_detail">외부 로그인 제공업체가 여기에 표시돼요.</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">업데이트 중</string>
     <string name="settings_account_password_updated">비밀번호를 변경했어요.</string>
     <string name="settings_account_password_update_failed">비밀번호를 업데이트하지 못했어요: %1$s</string>
+    <string name="settings_account_set_password">비밀번호 설정</string>
+    <string name="settings_account_set_password_description">하나 남은 연결된 계정을 제거하기 전에 이메일과 비밀번호로 로그인하는 방법을 추가해 주세요.</string>
+    <string name="settings_account_set_password_by_email">이메일로 비밀번호 설정</string>
+    <string name="settings_account_sending_setup_email">설정 이메일 보내는 중…</string>
+    <string name="settings_account_password_setup_email_sent">비밀번호 설정 이메일을 보냈어요. 메일의 링크에서 비밀번호를 설정하세요.</string>
+    <string name="settings_account_password_setup_failed">비밀번호 설정 이메일을 보내지 못했어요</string>
     <string name="settings_account_session">세션</string>
     <string name="settings_account_logout">로그아웃</string>
     <string name="settings_account_logout_action">로그아웃</string>

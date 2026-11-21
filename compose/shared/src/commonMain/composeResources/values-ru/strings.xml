@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">Отключить %1$s</string>
     <string name="settings_account_disconnect_message">Отключить %1$s от этого аккаунта Raft? Позже его можно будет подключить снова.</string>
     <string name="settings_account_disconnecting">Отключение…</string>
+    <string name="settings_account_password_required_title">Сначала задайте пароль</string>
+    <string name="settings_account_password_required_message">Аккаунт %1$s — ваш единственный способ входа. Чтобы не потерять доступ, задайте пароль, прежде чем отключать его.</string>
+    <string name="settings_account_send_setup_email">Отправить письмо для настройки</string>
+    <string name="settings_account_password_setup_sent_for_provider">Письмо для настройки пароля отправлено. Перейдите по ссылке, а затем вернитесь сюда, чтобы отключить %1$s.</string>
     <string name="settings_account_unverified">Не подтверждена</string>
     <string name="settings_account_no_connected_accounts">Нет подключённых аккаунтов</string>
     <string name="settings_account_no_connected_accounts_detail">Здесь появятся внешние сервисы входа.</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">Обновление</string>
     <string name="settings_account_password_updated">Пароль изменён</string>
     <string name="settings_account_password_update_failed">Не удалось изменить пароль: %1$s</string>
+    <string name="settings_account_set_password">Задать пароль</string>
+    <string name="settings_account_set_password_description">Прежде чем удалить последний подключённый аккаунт, добавьте вход по электронной почте и паролю.</string>
+    <string name="settings_account_set_password_by_email">Задать пароль через письмо</string>
+    <string name="settings_account_sending_setup_email">Отправка письма…</string>
+    <string name="settings_account_password_setup_email_sent">Письмо для настройки пароля отправлено. Задайте пароль по ссылке из письма.</string>
+    <string name="settings_account_password_setup_failed">Не удалось отправить письмо для настройки пароля</string>
     <string name="settings_account_session">Сеанс</string>
     <string name="settings_account_logout">Выйти из аккаунта</string>
     <string name="settings_account_logout_action">Выйти</string>

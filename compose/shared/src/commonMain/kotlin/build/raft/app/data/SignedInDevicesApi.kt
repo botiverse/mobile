@@ -348,6 +348,32 @@ internal class NetworkSignedInDevicesDataSource(private val networkClient: RaftN
         }
 }
 
+/**
+ * Settings › Account's "Set password by email" and "Set a password first" (web AccountSection
+ * `handleSendPasswordSetup`, botiverse/slock staging 4be606f7fd789488e69df1095d4af028cc21ee49,
+ * server `routes/auth.ts` `POST /forgot-password`): `{ email }` mails the link that sets a first
+ * password. The server answers `{ ok: true, message }` for any address; a refusal keeps its own
+ * words (`error`: 400 "Email is required", the limiter's 429 "Too many password reset requests.
+ * Please try again later.") and the request's trace ID, which the page shows (web
+ * `err.response.data.error`). [SignedInDevicesDataSource.requestPasswordEmail] ("Verify it's
+ * you" › Can't verify?) only tells sent, too many and failed apart.
+ */
+internal suspend fun RaftNetworkClient.sendSharedPasswordSetupEmail(email: String): DataResult<Unit> =
+    try {
+        val response =
+            request(
+                priority = DataRequestPriority.Foreground,
+                path = FORGOT_PASSWORD_PATH,
+                method = "POST",
+                bodyText = signedInDevicesJson.encodeToString(SignedInDevicesEmailBody.serializer(), SignedInDevicesEmailBody(email.trim())),
+            )
+        if (response.isSuccessful) DataResult.Content(Unit) else response.signedInDevicesError<Unit>("account_password_setup")
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        DataResult.Error(ScreenError(code = "network_unavailable", retryable = true, traceId = null))
+    }
+
 /** A sign-in id in a path (web `encodeURIComponent`): ids are UUIDs, but anything else is escaped. */
 internal fun encodeSignedInDevicePathSegment(id: String): String =
     buildString {

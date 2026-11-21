@@ -165,10 +165,11 @@ internal data class RaftSettingsAccountPayload(
     val providerConnectingId: String? = null,
     val providerErrorId: String? = null,
     val providerErrorCode: String? = null,
-    /** The provider whose Disconnect is running, and the provider / message of a failed one. */
+    /** The provider whose Disconnect is running, and the provider / message / trace ID of a failed one. */
     val providerDisconnectingId: String? = null,
     val providerDisconnectErrorId: String? = null,
     val providerDisconnectError: String? = null,
+    val providerDisconnectErrorTraceId: String? = null,
     val canEditProfile: Boolean = true,
     val canUploadAvatar: Boolean = true,
     val canChangePassword: Boolean = true,
@@ -308,12 +309,24 @@ private fun SettingsAccountScreen() {
     val signedInDevicesState by signedInDevicesStore.state.collectAsState()
     val appLoginsStore = rememberSettingsAppLoginsStore(loginSecurityNetworkClient)
     val appLoginsState by appLoginsStore.state.collectAsState()
+    val passwordSetupStore = rememberSettingsAccountPasswordSetupStore(loginSecurityNetworkClient)
+    val passwordSetupState by passwordSetupStore.state.collectAsState()
     // The proof dialogs need the account's password state (GET /auth/identities) and its address.
     val accountSnapshot = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
     val accountPasswordConfigured = accountSnapshot?.passwordConfigured
     val accountEmail = accountSnapshot?.profile?.email ?: session.value?.user?.email
     LaunchedEffect(signedInDevicesStore, accountPasswordConfigured, accountEmail) {
         signedInDevicesStore.dispatch(SharedSignedInDevicesIntent.AccountKnown(accountPasswordConfigured, accountEmail))
+    }
+    // Web AccountSection `handleDisconnectProvider`: Disconnect refused for the last sign-in of an
+    // account without a password reads the sign-in methods again, so the confirm turns into
+    // "Set a password first".
+    val disconnectRefusedForPassword = settingsAccountDisconnectRefusedForPassword(settingsState.actionState)
+    LaunchedEffect(disconnectRefusedForPassword) {
+        if (disconnectRefusedForPassword) {
+            bridge.log("settings_account_disconnect_refused reason=password_credential_required reload=account")
+            settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
+        }
     }
     // A Settings search result opened this page at a setting: its row is brought into view and located.
     ProvideSettingsSearchLocator(pager.pageData.params) {
@@ -379,6 +392,12 @@ private fun SettingsAccountScreen() {
                     onOpenComputers = { pager.openSettingsComputersPage(environment.storeScope) },
                 ),
             appLogins = SettingsAppLoginsUi(state = appLoginsState, dispatch = appLoginsStore::dispatch),
+            passwordSetup =
+                SettingsAccountPasswordSetupUi(
+                    passwordConfigured = accountPasswordConfigured,
+                    state = passwordSetupState,
+                    dispatch = passwordSetupStore::dispatch,
+                ),
             onEvent = { action, value ->
                 handleStandaloneAccountAction(
                     action = action,
@@ -476,6 +495,11 @@ internal fun SettingsAccountContent(
     signedInDevices: SettingsSignedInDevicesUi? = null,
     /** Apps you signed in to with Raft (web AppLoginsSection); null hides it. */
     appLogins: SettingsAppLoginsUi? = null,
+    /**
+     * An account without a password: "Set a password" and "Set a password first" (web
+     * AccountSection); null (visual fixtures): Change password and the plain Disconnect confirm.
+     */
+    passwordSetup: SettingsAccountPasswordSetupUi? = null,
     onEvent: (String, String?) -> Unit
 ) {
     val localizedPayload = payload.localizedPresentationCopy()
@@ -484,6 +508,8 @@ internal fun SettingsAccountContent(
     // Web SettingsPanel `pendingDisconnectProvider`: the provider whose confirm dialog is open.
     val pendingDisconnect = remember { mutableStateOf<String?>(null) }
     val disconnectSubmitted = remember { mutableStateOf(false) }
+    // "Set a password first"'s Send setup email was pressed since the dialog opened.
+    val passwordSetupSubmitted = remember { mutableStateOf(false) }
     RaftDesignSystemTheme {
         LazyColumn(
             state = rememberSettingsSearchListState(),
@@ -506,8 +532,12 @@ internal fun SettingsAccountContent(
                         avatarCacheIdentity,
                         onEvent,
                         onPasswordChange,
+                        passwordSetup,
                         onRequestDisconnect = { providerId ->
+                            // Web `handleRequestDisconnectProvider`: the last setup failure and the provider's success line go.
+                            passwordSetup?.dispatch(SettingsAccountPasswordSetupIntent.DisconnectRequested)
                             disconnectSubmitted.value = false
+                            passwordSetupSubmitted.value = false
                             pendingDisconnect.value = providerId
                         }
                     )
@@ -561,18 +591,52 @@ internal fun SettingsAccountContent(
         LaunchedEffect(pendingDisconnect.value, pendingAccount == null) {
             if (pendingDisconnect.value != null && pendingAccount == null) pendingDisconnect.value = null
         }
+        // "Set a password first" closes once its email went out (web: `setPendingDisconnectProvider(null)`).
+        val passwordSetupSentFor = passwordSetup?.state?.sentForProvider?.id
+        LaunchedEffect(passwordSetupSentFor) {
+            if (passwordSetupSentFor != null && passwordSetupSubmitted.value && pendingDisconnect.value == passwordSetupSentFor) {
+                pendingDisconnect.value = null
+            }
+        }
         if (pendingAccount != null) {
             val providerId = pendingAccount.resolvedProviderId()
-            val busy = localizedPayload.providerDisconnectingId == providerId
+            val label = pendingAccount.provider.ifBlank { providerId }
+            // Web `pendingDisconnectRequiresPassword`: the one linked sign-in, and no password.
+            val setup = passwordSetup?.takeIf { settingsAccountDisconnectRequiresPassword(visibleConnectedAccounts, it.passwordConfigured) }
+            val disconnecting = localizedPayload.providerDisconnectingId == providerId
+            val sending = setup?.state?.sending == true
+            val busy = disconnecting || sending
+            // The last confirm's failure, of this dialog only (web ConfirmDialog `error`): the send's once
+            // one was tried here, else the Disconnect's (a refused one turns the dialog into this one).
+            val sendError = setup?.state?.error?.takeIf { passwordSetupSubmitted.value && !sending }
+            val disconnectFailed =
+                !passwordSetupSubmitted.value && disconnectSubmitted.value && !disconnecting &&
+                    localizedPayload.providerDisconnectErrorId == providerId
+            val sendFailedFallback = stringResource(Res.string.settings_account_password_setup_failed)
             SettingsDisconnectProviderDialog(
-                label = pendingAccount.provider.ifBlank { providerId },
+                label = label,
+                requiresPassword = setup != null,
                 busy = busy,
                 error =
-                    localizedPayload.providerDisconnectError
-                        .takeIf { disconnectSubmitted.value && !busy && localizedPayload.providerDisconnectErrorId == providerId },
+                    if (sendError != null) {
+                        settingsAccountPasswordSetupErrorText(sendError, sendFailedFallback)
+                    } else {
+                        localizedPayload.providerDisconnectError.takeIf { disconnectFailed }
+                    },
+                errorTraceId = if (sendError != null) sendError.traceId else localizedPayload.providerDisconnectErrorTraceId.takeIf { disconnectFailed },
                 onConfirm = {
-                    disconnectSubmitted.value = true
-                    onEvent(SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER, providerId)
+                    if (setup != null) {
+                        passwordSetupSubmitted.value = true
+                        setup.dispatch(
+                            SettingsAccountPasswordSetupIntent.Send(
+                                email = localizedPayload.profile.email,
+                                provider = SettingsAccountPasswordSetupProvider(id = providerId, label = label)
+                            )
+                        )
+                    } else {
+                        disconnectSubmitted.value = true
+                        onEvent(SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER, providerId)
+                    }
                 },
                 onDismiss = { if (!busy) pendingDisconnect.value = null }
             )
@@ -677,6 +741,7 @@ private fun SettingsAccountProfileCard(
     avatarCacheIdentity: RaftMemberAvatarCacheIdentity?,
     onEvent: (String, String?) -> Unit,
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit,
+    passwordSetup: SettingsAccountPasswordSetupUi?,
     onRequestDisconnect: (providerId: String) -> Unit
 ) {
     val profile = payload.profile
@@ -750,20 +815,38 @@ private fun SettingsAccountProfileCard(
         )
         RaftSeparator()
         if (connectedAccounts.isNotEmpty()) {
-            SettingsConnectedAccounts(payload, connectedAccounts, onEvent, onRequestDisconnect)
+            SettingsConnectedAccounts(
+                payload,
+                connectedAccounts,
+                onEvent,
+                onRequestDisconnect,
+                passwordSetupSentFor = passwordSetup?.state?.sentForProvider
+            )
             RaftSeparator()
         }
-        Box(Modifier.fillMaxWidth().settingsSearchAnchor("password")) {
-            SettingsPasswordDisclosure(
-                title = payload.changePasswordTitle,
-                expanded = passwordExpandedState.value,
-                enabled = payload.canChangePassword && !payload.passwordInProgress
-            ) {
-                passwordExpandedState.value = !passwordExpandedState.value
-                passwordDraftError.value = null
+        // Web AccountSection: an account without a password has none to change, so "Set a password"
+        // stands in for Change password and its form.
+        val setPasswordUi =
+            passwordSetup?.takeIf { settingsAccountPasswordRow(it.passwordConfigured) == SettingsAccountPasswordRow.SetPassword }
+        if (setPasswordUi != null) {
+            SettingsAccountSetPasswordRow(
+                state = setPasswordUi.state,
+                onSend = { setPasswordUi.dispatch(SettingsAccountPasswordSetupIntent.Send(email = profile.email)) },
+                modifier = Modifier.settingsSearchAnchor("password")
+            )
+        } else {
+            Box(Modifier.fillMaxWidth().settingsSearchAnchor("password")) {
+                SettingsPasswordDisclosure(
+                    title = payload.changePasswordTitle,
+                    expanded = passwordExpandedState.value,
+                    enabled = payload.canChangePassword && !payload.passwordInProgress
+                ) {
+                    passwordExpandedState.value = !passwordExpandedState.value
+                    passwordDraftError.value = null
+                }
             }
         }
-        if (passwordExpandedState.value) {
+        if (setPasswordUi == null && passwordExpandedState.value) {
             SettingsPasswordForm(
                 payload = payload,
                 currentPassword = currentPasswordState.value,
@@ -1031,7 +1114,9 @@ private fun SettingsConnectedAccounts(
     payload: RaftSettingsAccountPayload,
     accounts: List<RaftSettingsConnectedAccount>,
     onEvent: (String, String?) -> Unit,
-    onRequestDisconnect: (providerId: String) -> Unit
+    onRequestDisconnect: (providerId: String) -> Unit,
+    /** "Set a password first" sent the setup email for this provider (web `passwordSetupSentForProvider`). */
+    passwordSetupSentFor: SettingsAccountPasswordSetupProvider? = null
 ) {
     // Web: the title (`text-subhead font-semibold`, mb-2) over the rows, 8dp apart.
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1052,6 +1137,7 @@ private fun SettingsConnectedAccounts(
                 SettingsConnectedAccountRow(account, index, payload, onEvent, onRequestDisconnect)
             }
         }
+        passwordSetupSentFor?.let { SettingsAccountPasswordSetupSentForProvider(it) }
     }
 }
 
@@ -1149,22 +1235,36 @@ private fun SettingsConnectedAccountRow(
     }
 }
 
+internal const val SettingsDisconnectProviderDialogTag = "settings-account-disconnect-dialog"
+internal const val SettingsDisconnectProviderConfirmTag = "settings-account-disconnect-confirm"
+
 /**
  * Web ConfirmDialog for Disconnect: "Disconnect {label}", the explanation in the destructive
- * banner, a failure in a warning banner under it, ghost Cancel and the red Disconnect
- * ("Disconnecting…" while it runs). A scrim tap does not close it (web `disablePointerDismissal`).
+ * banner, a failure in a warning banner under it (with its trace ID), ghost Cancel and the red
+ * Disconnect ("Disconnecting…" while it runs). For the one linked sign-in of an account without a
+ * password ([requiresPassword], web `pendingDisconnectRequiresPassword`) it is "Set a password
+ * first": the sentence as plain text (an accent confirm has no danger banner) and the accent Send
+ * setup email ("Sending setup email…"). A scrim tap does not close it (web `disablePointerDismissal`).
  */
 @Composable
 private fun SettingsDisconnectProviderDialog(
     label: String,
+    requiresPassword: Boolean,
     busy: Boolean,
     error: String?,
+    errorTraceId: String?,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
     RaftDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.settings_account_disconnect_title, label),
+        title =
+            if (requiresPassword) {
+                stringResource(Res.string.settings_account_password_required_title)
+            } else {
+                stringResource(Res.string.settings_account_disconnect_title, label)
+            },
+        modifier = Modifier.testTag(SettingsDisconnectProviderDialogTag),
         size = RaftDialogSize.Sm,
         dismissOnClickOutside = false,
         closeLabel = stringResource(Res.string.common_close),
@@ -1176,23 +1276,44 @@ private fun SettingsDisconnectProviderDialog(
                 size = RaftButtonSize.Lg,
                 enabled = !busy
             )
-            RaftButton(
-                text = stringResource(Res.string.settings_account_disconnect),
-                onClick = onConfirm,
-                variant = RaftButtonVariant.Danger,
-                size = RaftButtonSize.Lg,
-                loading = busy,
-                loadingLabel = stringResource(Res.string.settings_account_disconnecting)
-            )
+            if (requiresPassword) {
+                RaftButton(
+                    text = stringResource(Res.string.settings_account_send_setup_email),
+                    onClick = onConfirm,
+                    modifier = Modifier.testTag(SettingsDisconnectProviderConfirmTag),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    loading = busy,
+                    loadingLabel = stringResource(Res.string.settings_account_sending_setup_email)
+                )
+            } else {
+                RaftButton(
+                    text = stringResource(Res.string.settings_account_disconnect),
+                    onClick = onConfirm,
+                    modifier = Modifier.testTag(SettingsDisconnectProviderConfirmTag),
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                    loading = busy,
+                    loadingLabel = stringResource(Res.string.settings_account_disconnecting)
+                )
+            }
         }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            RaftBanner(
-                description = stringResource(Res.string.settings_account_disconnect_message, label),
-                status = RaftBannerStatus.Destructive
-            )
+            if (requiresPassword) {
+                RaftText(
+                    stringResource(Res.string.settings_account_password_required_message, label),
+                    style = RaftTheme.typography.subhead,
+                    color = RaftTheme.colors.foregroundMuted
+                )
+            } else {
+                RaftBanner(
+                    description = stringResource(Res.string.settings_account_disconnect_message, label),
+                    status = RaftBannerStatus.Destructive
+                )
+            }
             error?.takeIf { it.isNotBlank() }?.let {
-                RaftBanner(description = it, status = RaftBannerStatus.Warning)
+                SettingsAccountFailureBanner(message = it, traceId = errorTraceId, size = RaftBannerSize.Md)
             }
         }
     }

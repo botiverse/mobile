@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">Desconectar %1$s</string>
     <string name="settings_account_disconnect_message">Desconectar %1$s desta conta Raft? Você poderá conectar novamente depois.</string>
     <string name="settings_account_disconnecting">Desconectando…</string>
+    <string name="settings_account_password_required_title">Defina uma senha primeiro</string>
+    <string name="settings_account_password_required_message">A conta %1$s é sua única forma de entrar. Defina uma senha antes de desconectá-la para não perder o acesso.</string>
+    <string name="settings_account_send_setup_email">Enviar e-mail de configuração</string>
+    <string name="settings_account_password_setup_sent_for_provider">Enviamos um e-mail para definir a senha. Use o link e depois volte aqui para desconectar %1$s.</string>
     <string name="settings_account_unverified">Não verificado</string>
     <string name="settings_account_no_connected_accounts">Nenhuma conta conectada</string>
     <string name="settings_account_no_connected_accounts_detail">Os provedores de login externos aparecerão aqui.</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">Atualizando</string>
     <string name="settings_account_password_updated">Senha atualizada!</string>
     <string name="settings_account_password_update_failed">Não foi possível atualizar a senha: %1$s</string>
+    <string name="settings_account_set_password">Definir senha</string>
+    <string name="settings_account_set_password_description">Adicione o login com e-mail e senha antes de remover sua última conta conectada.</string>
+    <string name="settings_account_set_password_by_email">Definir senha por e-mail</string>
+    <string name="settings_account_sending_setup_email">Enviando e-mail de configuração…</string>
+    <string name="settings_account_password_setup_email_sent">Enviamos um e-mail para definir a senha. Use o link para criar sua senha.</string>
+    <string name="settings_account_password_setup_failed">Não foi possível enviar o e-mail para definir a senha</string>
     <string name="settings_account_session">Sessão</string>
     <string name="settings_account_logout">Sair</string>
     <string name="settings_account_logout_action">Sair</string>

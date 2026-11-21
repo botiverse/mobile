@@ -153,6 +153,10 @@
     <string name="settings_account_disconnect_title">Desconectar %1$s</string>
     <string name="settings_account_disconnect_message">¿Desconectar %1$s de esta cuenta de Raft? Puedes volver a conectarla más tarde.</string>
     <string name="settings_account_disconnecting">Desconectando…</string>
+    <string name="settings_account_password_required_title">Primero establece una contraseña</string>
+    <string name="settings_account_password_required_message">%1$s es la única cuenta con la que inicias sesión. Establece una contraseña antes de desconectarla para no perder el acceso.</string>
+    <string name="settings_account_send_setup_email">Enviar correo de configuración</string>
+    <string name="settings_account_password_setup_sent_for_provider">Te enviamos un correo para establecer tu contraseña. Usa el enlace y luego vuelve aquí para desconectar %1$s.</string>
     <string name="settings_account_unverified">Sin verificar</string>
     <string name="settings_account_no_connected_accounts">No hay cuentas conectadas</string>
     <string name="settings_account_no_connected_accounts_detail">Los proveedores de inicio de sesión externos aparecerán aquí.</string>
@@ -171,6 +175,12 @@
     <string name="settings_account_updating">Actualizando</string>
     <string name="settings_account_password_updated">Contraseña actualizada</string>
     <string name="settings_account_password_update_failed">No se pudo actualizar la contraseña: %1$s</string>
+    <string name="settings_account_set_password">Establecer contraseña</string>
+    <string name="settings_account_set_password_description">Agrega un correo electrónico y una contraseña como método de inicio de sesión antes de quitar tu última cuenta conectada.</string>
+    <string name="settings_account_set_password_by_email">Establecer contraseña por correo</string>
+    <string name="settings_account_sending_setup_email">Enviando correo de configuración…</string>
+    <string name="settings_account_password_setup_email_sent">Te enviamos un correo para establecer tu contraseña. Usa el enlace que incluye para crearla.</string>
+    <string name="settings_account_password_setup_failed">No se pudo enviar el correo para establecer la contraseña</string>
     <string name="settings_account_session">Sesión</string>
     <string name="settings_account_logout">Cerrar sesión</string>
     <string name="settings_account_logout_action">Cerrar sesión</string>

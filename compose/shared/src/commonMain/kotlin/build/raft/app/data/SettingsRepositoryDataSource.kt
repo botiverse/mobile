@@ -471,7 +471,9 @@ class RealSettingsRepository(
     /**
      * Web SettingsPanel `handleDisconnectProvider`: `DELETE /api/auth/identities/:provider`, then the
      * account is read again so the row shows "Not connected". A 409 `PASSWORD_CREDENTIAL_REQUIRED`
-     * (the last sign-in and no password) comes back as an error carrying the server's sentence.
+     * (the last sign-in and no password) comes back as an error carrying the server's sentence and
+     * that code ([ScreenError.serverCode]): the page then reads the sign-in methods again, as the
+     * web does, so its confirm turns into "Set a password first".
      */
     override suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> {
         sessionStore.readSession() ?: return authRequired()
@@ -482,6 +484,7 @@ class RealSettingsRepository(
                 emptyReason = EmptyReason.NoSettingsAvailable,
                 block = { networkClient.disconnectSettingsAccountProvider(DataRequestPriority.Foreground, id) },
                 errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+                errorCodeDecoder = HomeNetworkResponse::settingsAccountRouteErrorCodeOrNull,
                 mapper = { bodyText ->
                     parseSharedAccountProviderUnlinkResult(bodyText)
                         ?: throw IllegalStateException("Account provider unlink response missing identities")
