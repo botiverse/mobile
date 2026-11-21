@@ -262,8 +262,9 @@ internal fun rememberThreadAgentTyping(
     val inChannel =
         server != null && conversation != null &&
             payload.showsChannelWorkingLine(isLounge = lounges[server]?.containsKey(conversation.first) == true)
+    val showLiveAgentActivity = RaftDisplayPreferenceRuntime.observeShowLiveAgentActivity()
     val workingSource =
-        if (inChannel && server != null && RaftDisplayPreferenceRuntime.showLiveAgentActivity) {
+        if (inChannel && server != null && showLiveAgentActivity) {
             remember(sharedStores, storeScope, server) { sharedStores.liveAgentActivity(storeScope).itemsFlow(server) }
         } else {
             null

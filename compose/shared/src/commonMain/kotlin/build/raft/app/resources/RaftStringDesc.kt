@@ -3,9 +3,10 @@
 package build.raft.app.resources
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.intl.Locale
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.DensityQualifier
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -45,17 +46,22 @@ sealed interface StringDesc {
     }
 
     companion object {
-        private val localeTypeState = mutableStateOf<LocaleType>(LocaleType.System)
+        private val localeTypeFlow = MutableStateFlow<LocaleType>(LocaleType.System)
 
         /**
-         * Process-wide app language for string lookups. Compose snapshot state: every composable
-         * that resolved a string with it recomposes when it changes (equal writes are no-ops).
+         * Process-wide app language for string lookups. Backed by [MutableStateFlow] rather than
+         * Compose snapshot state so background-thread string resolution ([resolve],
+         * [raftCurrentUiLocaleTag]) never initializes a snapshot state object off the main thread.
+         * Composables subscribe via [observeLocaleType].
          */
         var localeType: LocaleType
-            get() = localeTypeState.value
+            get() = localeTypeFlow.value
             set(value) {
-                localeTypeState.value = value
+                localeTypeFlow.value = value
             }
+
+        @Composable
+        fun observeLocaleType(): LocaleType = localeTypeFlow.collectAsState().value
     }
 }
 
@@ -88,7 +94,7 @@ fun StringResource.format(args: List<Any>): ResourceFormattedStringDesc = Resour
 fun StringResource.format(vararg args: Any): ResourceFormattedStringDesc = ResourceFormattedStringDesc(this, args.toList())
 
 /** [this] in the app language, outside composition (host strings, toasts, logs shown to users). */
-fun StringDesc.resolve(): String = resolveIn(raftResourceEnvironment(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()))
+fun StringDesc.resolve(): String = resolveIn(raftResolvedResourceEnvironment(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()))
 
 /** [this] in the app language; recomposes when the app language changes. */
 @Composable
@@ -112,18 +118,23 @@ fun stringResource(resource: StringResource, vararg args: Any): String {
     return remember(resource, argList, environment) { ResourceFormattedStringDesc(resource, argList).resolveIn(environment) }
 }
 
+private data class RaftResolvedResourceEnvironment(
+    val environment: ResourceEnvironment,
+    val language: String,
+)
+
 /**
- * The lookup environment for the current [StringDesc.localeType]. The read subscribes the caller
- * (snapshot state), and the environment is keyed by the value itself, so a language switch always
- * recomposes into the new catalog. Locale.current keys system language changes; the lookup walks
- * the whole preferred-language list.
+ * The lookup environment for the current [StringDesc.localeType]. Subscribes the caller via
+ * [StringDesc.observeLocaleType], and keys the environment by the value itself, so a language
+ * switch always recomposes into the new catalog. Locale.current keys system language changes; the
+ * lookup walks the whole preferred-language list.
  */
 @Composable
-private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
-    val localeType = StringDesc.localeType
+private fun rememberRaftResourceEnvironment(): RaftResolvedResourceEnvironment {
+    val localeType = StringDesc.observeLocaleType()
     val systemLocale = Locale.current
     return remember(localeType, systemLocale) {
-        raftResourceEnvironment(localeType, raftSystemPreferredLanguageTagsOrEmpty())
+        raftResolvedResourceEnvironment(localeType, raftSystemPreferredLanguageTagsOrEmpty())
     }
 }
 
@@ -132,24 +143,25 @@ private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
  * synchronously (composition and host callbacks), as Compose's own `stringResource` does on
  * Android and iOS. Catalogs are cached after the first read.
  */
-private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
-    when (this) {
+private fun StringDesc.resolveIn(resolved: RaftResolvedResourceEnvironment): String {
+    val environment = resolved.environment
+    return when (this) {
         is RawStringDesc -> string
         is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }
         is ResourceFormattedStringDesc -> {
             // kmmresource resolved StringDesc arguments before formatting; keep that.
-            val resolvedArgs = args.map { arg -> (arg as? StringDesc)?.resolveIn(environment) ?: arg }
-            raftLanguagePluralForm(stringRes.key, resolvedArgs)
+            val resolvedArgs = args.map { arg -> (arg as? StringDesc)?.resolveIn(resolved) ?: arg }
+            raftLanguagePluralForm(stringRes.key, resolvedArgs, resolved.language)
                 ?: runBlocking { getString(environment, stringRes, *resolvedArgs.toTypedArray()) }
         }
     }
+}
 
 /**
  * The count string [resourceKey] in the app language's own plural form (few / many for Russian), or
  * null to show the catalog string the caller chose. See RaftPlurals.kt.
  */
-private fun raftLanguagePluralForm(resourceKey: String, args: List<Any>): String? {
-    val language = raftResourceLocale(StringDesc.localeType, raftSystemPreferredLanguageTagsOrEmpty()).language
+private fun raftLanguagePluralForm(resourceKey: String, args: List<Any>, language: String): String? {
     val forms = raftPluralFormsFor(language)
     return if (forms.isEmpty()) null else raftPluralFormFor(forms, language, resourceKey, args)
 }
@@ -256,14 +268,21 @@ private fun raftSupportedResourceLocale(tag: String): RaftResourceLocale? {
  * TODO(compose-resources): switch to a public API once Compose resources offers a locale override.
  */
 @Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
-private fun raftResourceEnvironment(localeType: StringDesc.LocaleType, systemLanguageTags: List<String>): ResourceEnvironment {
+private fun raftResolvedResourceEnvironment(
+    localeType: StringDesc.LocaleType,
+    systemLanguageTags: List<String>,
+): RaftResolvedResourceEnvironment {
     val locale = raftResourceLocale(localeType, systemLanguageTags)
     // Strings carry no theme or density qualifiers; these two only satisfy the constructor.
-    return ResourceEnvironment(
-        LanguageQualifier(locale.language),
-        ScriptQualifier(""),
-        RegionQualifier(locale.region),
-        ThemeQualifier.LIGHT,
-        DensityQualifier.MDPI,
+    return RaftResolvedResourceEnvironment(
+        environment =
+            ResourceEnvironment(
+                LanguageQualifier(locale.language),
+                ScriptQualifier(""),
+                RegionQualifier(locale.region),
+                ThemeQualifier.LIGHT,
+                DensityQualifier.MDPI,
+            ),
+        language = locale.language,
     )
 }

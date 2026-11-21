@@ -1,10 +1,10 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.ClipEntry
@@ -103,9 +103,14 @@ internal object ThreadComposerImagePasteLog {
  * prompt) and hands them over here; the focused composer opens them in the image editor.
  */
 internal object ThreadComposerImagePasteRequests {
-    /** Bumped for each delivered paste; the focused composer reacts to it. */
-    var count by mutableIntStateOf(0)
-        private set
+    private val countFlow = MutableStateFlow(0)
+
+    /** Bumped for each delivered paste; the focused composer reacts to it via [observeCount]. */
+    val count: Int
+        get() = countFlow.value
+
+    @Composable
+    fun observeCount(): Int = countFlow.collectAsState().value
 
     private var pending: List<PlatformFile>? = null
     private var lastClaim: TimeSource.Monotonic.ValueTimeMark? = null
@@ -154,7 +159,7 @@ internal object ThreadComposerImagePasteRequests {
         }
         discardPending()
         pending = files
-        count++
+        countFlow.update { it + 1 }
     }
 
     private fun discardPending() {

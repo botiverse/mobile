@@ -1,8 +1,11 @@
 package build.raft.app.data
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** The Web's `SHOW_AGENT_MODEL_NAME_STORAGE_KEY` (appearanceStore), kept as the stored key. */
 internal const val RaftShowAgentModelNameStorageKey = "slock_show_agent_model_name"
@@ -23,6 +26,151 @@ internal const val RaftShowLiveAgentActivityStorageKey = "slock_show_live_agent_
 const val RaftShowLiveAgentActivityDefault: Boolean = true
 
 /**
+ * Snapshot-free, thread-safe backing store for [RaftDisplayPreferenceRuntime].
+ *
+ * Uses per-preference [MutableStateFlow]s rather than Compose `mutableStateOf` so first
+ * initialization or reads from background flows never allocate Compose snapshot state records off
+ * the main thread (`SnapshotKt.readError`, Hands `25b91174` follow-up `#proj-mobile:#264`), while
+ * keeping `@Composable observe*()` allocation-free in hot message lists.
+ */
+internal class RaftDisplayPreferenceStore(
+    private val defaultStoreProvider: () -> SharedPreferenceStore = ::raftSharedPreferenceStore,
+) {
+    private val lock = SynchronizedObject()
+
+    @Volatile
+    private var loaded = false
+
+    @Volatile
+    private var storeOverride: SharedPreferenceStore? = null
+
+    private val showLiveAgentActivityFlow = MutableStateFlow(RaftShowLiveAgentActivityDefault)
+    private val showAgentModelNameFlow = MutableStateFlow(RaftShowAgentModelNameDefault)
+    private val showSenderDescriptionFlow = MutableStateFlow(RaftShowSenderDescriptionDefault)
+    private val hideEmptySidebarSectionsFlow = MutableStateFlow(RaftSidebarHideEmptySectionsDefault)
+
+    private fun store(): SharedPreferenceStore = storeOverride ?: defaultStoreProvider()
+
+    private fun ensureLoaded() {
+        if (loaded) return
+        synchronized(lock) {
+            if (loaded) return
+            // An unreadable store (not installed yet, or a screenshot host) keeps the defaults.
+            val store = runCatching { store() }.getOrNull() ?: return
+            // Web: anything but "false" is on.
+            showLiveAgentActivityFlow.value =
+                runCatching { store.getString(RaftShowLiveAgentActivityStorageKey) }.getOrNull() != "false"
+            showAgentModelNameFlow.value =
+                when (runCatching { store.getString(RaftShowAgentModelNameStorageKey) }.getOrNull()) {
+                    "true" -> true
+                    "false" -> false
+                    else -> RaftShowAgentModelNameDefault
+                }
+            showSenderDescriptionFlow.value =
+                when (runCatching { store.getString(RaftShowSenderDescriptionStorageKey) }.getOrNull()) {
+                    "true" -> true
+                    "false" -> false
+                    else -> RaftShowSenderDescriptionDefault
+                }
+            hideEmptySidebarSectionsFlow.value = KeyValueRaftSidebarHideEmptySectionsStore(store).read()
+            loaded = true
+        }
+    }
+
+    val showLiveAgentActivity: Boolean
+        get() {
+            ensureLoaded()
+            return showLiveAgentActivityFlow.value
+        }
+
+    val showAgentModelName: Boolean
+        get() {
+            ensureLoaded()
+            return showAgentModelNameFlow.value
+        }
+
+    val showSenderDescription: Boolean
+        get() {
+            ensureLoaded()
+            return showSenderDescriptionFlow.value
+        }
+
+    val hideEmptySidebarSections: Boolean
+        get() {
+            ensureLoaded()
+            return hideEmptySidebarSectionsFlow.value
+        }
+
+    @Composable
+    fun observeShowLiveAgentActivity(): Boolean {
+        ensureLoaded()
+        return showLiveAgentActivityFlow.collectAsState().value
+    }
+
+    @Composable
+    fun observeShowAgentModelName(): Boolean {
+        ensureLoaded()
+        return showAgentModelNameFlow.collectAsState().value
+    }
+
+    @Composable
+    fun observeShowSenderDescription(): Boolean {
+        ensureLoaded()
+        return showSenderDescriptionFlow.collectAsState().value
+    }
+
+    @Composable
+    fun observeHideEmptySidebarSections(): Boolean {
+        ensureLoaded()
+        return hideEmptySidebarSectionsFlow.collectAsState().value
+    }
+
+    fun setShowLiveAgentActivity(show: Boolean) {
+        synchronized(lock) {
+            ensureLoaded()
+            showLiveAgentActivityFlow.value = show
+            runCatching { store().putString(RaftShowLiveAgentActivityStorageKey, show.toString()) }
+        }
+    }
+
+    fun setShowAgentModelName(show: Boolean) {
+        synchronized(lock) {
+            ensureLoaded()
+            showAgentModelNameFlow.value = show
+            runCatching { store().putString(RaftShowAgentModelNameStorageKey, show.toString()) }
+        }
+    }
+
+    fun setShowSenderDescription(show: Boolean) {
+        synchronized(lock) {
+            ensureLoaded()
+            showSenderDescriptionFlow.value = show
+            runCatching { store().putString(RaftShowSenderDescriptionStorageKey, show.toString()) }
+        }
+    }
+
+    fun setHideEmptySidebarSections(hide: Boolean) {
+        synchronized(lock) {
+            ensureLoaded()
+            hideEmptySidebarSectionsFlow.value = hide
+            runCatching { KeyValueRaftSidebarHideEmptySectionsStore(store()).write(hide) }
+        }
+    }
+
+    /** Tests: a fresh store, read again on next access. */
+    internal fun resetForTest(store: SharedPreferenceStore?) {
+        synchronized(lock) {
+            loaded = false
+            storeOverride = store
+            showLiveAgentActivityFlow.value = RaftShowLiveAgentActivityDefault
+            showAgentModelNameFlow.value = RaftShowAgentModelNameDefault
+            showSenderDescriptionFlow.value = RaftShowSenderDescriptionDefault
+            hideEmptySidebarSectionsFlow.value = RaftSidebarHideEmptySectionsDefault
+        }
+    }
+}
+
+/**
  * Settings > Appearance display choices that are saved on this device, like the Web's
  * appearanceStore (localStorage, not the account):
  * - "Live agent activity": who is working, at the top of the window (the wide top bar) and on
@@ -35,101 +183,44 @@ const val RaftShowLiveAgentActivityDefault: Boolean = true
  *   same value as the Home section menu's "Hide empty sections"
  *   ([RaftSidebarHideEmptySectionsStore]).
  *
- * Compose state, so the Settings switch and every mounted screen stay in step.
+ * Backed by [MutableStateFlow] so the Settings switch and every mounted screen stay in step
+ * via `@Composable observe*()` without creating process-wide Compose snapshot state.
  */
 object RaftDisplayPreferenceRuntime {
-    private var loaded = false
-
-    private var storeOverride: SharedPreferenceStore? = null
-
-    private var showLiveAgentActivityState by mutableStateOf(RaftShowLiveAgentActivityDefault)
-
-    private var showAgentModelNameState by mutableStateOf(RaftShowAgentModelNameDefault)
-
-    private var showSenderDescriptionState by mutableStateOf(RaftShowSenderDescriptionDefault)
-
-    private var hideEmptySidebarSectionsState by mutableStateOf(RaftSidebarHideEmptySectionsDefault)
-
-    private fun store(): SharedPreferenceStore = storeOverride ?: raftSharedPreferenceStore()
-
-    private fun ensureLoaded() {
-        if (loaded) return
-        // An unreadable store (not installed yet, or a screenshot host) keeps the defaults.
-        val store = runCatching { store() }.getOrNull() ?: return
-        loaded = true
-        // Web: anything but "false" is on.
-        showLiveAgentActivityState =
-            runCatching { store.getString(RaftShowLiveAgentActivityStorageKey) }.getOrNull() != "false"
-        showAgentModelNameState =
-            when (runCatching { store.getString(RaftShowAgentModelNameStorageKey) }.getOrNull()) {
-                "true" -> true
-                "false" -> false
-                else -> RaftShowAgentModelNameDefault
-            }
-        showSenderDescriptionState =
-            when (runCatching { store.getString(RaftShowSenderDescriptionStorageKey) }.getOrNull()) {
-                "true" -> true
-                "false" -> false
-                else -> RaftShowSenderDescriptionDefault
-            }
-        hideEmptySidebarSectionsState = KeyValueRaftSidebarHideEmptySectionsStore(store).read()
-    }
+    private val backing = RaftDisplayPreferenceStore()
 
     val showLiveAgentActivity: Boolean
-        get() {
-            ensureLoaded()
-            return showLiveAgentActivityState
-        }
+        get() = backing.showLiveAgentActivity
 
     val showAgentModelName: Boolean
-        get() {
-            ensureLoaded()
-            return showAgentModelNameState
-        }
+        get() = backing.showAgentModelName
 
     val showSenderDescription: Boolean
-        get() {
-            ensureLoaded()
-            return showSenderDescriptionState
-        }
+        get() = backing.showSenderDescription
 
     val hideEmptySidebarSections: Boolean
-        get() {
-            ensureLoaded()
-            return hideEmptySidebarSectionsState
-        }
+        get() = backing.hideEmptySidebarSections
 
-    fun setShowLiveAgentActivity(show: Boolean) {
-        ensureLoaded()
-        showLiveAgentActivityState = show
-        runCatching { store().putString(RaftShowLiveAgentActivityStorageKey, show.toString()) }
-    }
+    @Composable
+    fun observeShowLiveAgentActivity(): Boolean = backing.observeShowLiveAgentActivity()
 
-    fun setShowAgentModelName(show: Boolean) {
-        ensureLoaded()
-        showAgentModelNameState = show
-        runCatching { store().putString(RaftShowAgentModelNameStorageKey, show.toString()) }
-    }
+    @Composable
+    fun observeShowAgentModelName(): Boolean = backing.observeShowAgentModelName()
 
-    fun setShowSenderDescription(show: Boolean) {
-        ensureLoaded()
-        showSenderDescriptionState = show
-        runCatching { store().putString(RaftShowSenderDescriptionStorageKey, show.toString()) }
-    }
+    @Composable
+    fun observeShowSenderDescription(): Boolean = backing.observeShowSenderDescription()
 
-    fun setHideEmptySidebarSections(hide: Boolean) {
-        ensureLoaded()
-        hideEmptySidebarSectionsState = hide
-        runCatching { KeyValueRaftSidebarHideEmptySectionsStore(store()).write(hide) }
-    }
+    @Composable
+    fun observeHideEmptySidebarSections(): Boolean = backing.observeHideEmptySidebarSections()
+
+    fun setShowLiveAgentActivity(show: Boolean) = backing.setShowLiveAgentActivity(show)
+
+    fun setShowAgentModelName(show: Boolean) = backing.setShowAgentModelName(show)
+
+    fun setShowSenderDescription(show: Boolean) = backing.setShowSenderDescription(show)
+
+    fun setHideEmptySidebarSections(hide: Boolean) = backing.setHideEmptySidebarSections(hide)
 
     /** Tests: a fresh store, read again on next access. */
-    internal fun resetForTest(store: SharedPreferenceStore?) {
-        storeOverride = store
-        loaded = false
-        showLiveAgentActivityState = RaftShowLiveAgentActivityDefault
-        showAgentModelNameState = RaftShowAgentModelNameDefault
-        showSenderDescriptionState = RaftShowSenderDescriptionDefault
-        hideEmptySidebarSectionsState = RaftSidebarHideEmptySectionsDefault
-    }
+    internal fun resetForTest(store: SharedPreferenceStore?) = backing.resetForTest(store)
 }

@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -207,7 +206,15 @@ internal data class RaftChannelKinds(
  */
 internal val LocalRaftChannelKinds = staticCompositionLocalOf<State<RaftChannelKinds>> { EmptyRaftChannelKindsState }
 
-private val EmptyRaftChannelKindsState: State<RaftChannelKinds> = mutableStateOf(RaftChannelKinds.Empty)
+/**
+ * Constant non-snapshot [State] default for [LocalRaftChannelKinds]: top-level helpers in this file
+ * (such as [raftChannelKindGlyph]) are called from background data projections, so initializing a
+ * top-level `mutableStateOf` in `RaftChannelKindKt.<clinit>` off the main thread would risk
+ * `SnapshotKt.readError`.
+ */
+private object EmptyRaftChannelKindsState : State<RaftChannelKinds> {
+    override val value: RaftChannelKinds = RaftChannelKinds.Empty
+}
 
 @Composable
 internal fun currentRaftChannelKinds(): RaftChannelKinds = LocalRaftChannelKinds.current.value
