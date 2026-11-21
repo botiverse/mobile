@@ -32,8 +32,11 @@ internal enum class ThreadUserFacingErrorReason {
     ServerUnavailable,
     ItemNotFound,
     AttachmentTooLarge,
+    AttachmentMonthlyQuotaExceeded,
     AttachmentImageCompressionFailed,
     AttachmentNeedsReupload,
+    ChannelReadOnly,
+    ChannelArchived,
     RateLimited,
     ResponseUnreadable,
     RequestCancelled,
@@ -131,6 +134,15 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
             normalized.endsWith("_503") -> ThreadUserFacingErrorReason.ServerUnavailable
         "not_found" in normalized ||
             "http_404" in normalized -> ThreadUserFacingErrorReason.ItemNotFound
+        normalized == "file_upload_quota_exceeded" ||
+            normalized == "upload_quota_exceeded" ->
+            ThreadUserFacingErrorReason.AttachmentMonthlyQuotaExceeded
+        normalized == "external_limit_frozen" ||
+            normalized == "channel_read_only" ||
+            normalized == "quota_read_only" ->
+            ThreadUserFacingErrorReason.ChannelReadOnly
+        normalized == "channel_archived" ->
+            ThreadUserFacingErrorReason.ChannelArchived
         "permission" in normalized ||
             "forbidden" in normalized ||
             "admin_required" in normalized ||
@@ -158,10 +170,13 @@ internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
         ThreadUserFacingErrorReason.ServerUnavailable -> Res.string.thread_error_reason_server_unavailable.desc()
         ThreadUserFacingErrorReason.ItemNotFound -> Res.string.thread_error_reason_not_found.desc()
         ThreadUserFacingErrorReason.AttachmentTooLarge -> Res.string.thread_error_reason_attachment_too_large.desc()
+        ThreadUserFacingErrorReason.AttachmentMonthlyQuotaExceeded -> Res.string.upgrade_dialog_upload_quota_title.desc()
         ThreadUserFacingErrorReason.AttachmentImageCompressionFailed ->
             Res.string.thread_error_reason_attachment_image_compression_failed.desc()
         ThreadUserFacingErrorReason.AttachmentNeedsReupload ->
             Res.string.thread_error_reason_attachment_needs_reupload.desc()
+        ThreadUserFacingErrorReason.ChannelReadOnly -> Res.string.thread_error_reason_channel_read_only.desc()
+        ThreadUserFacingErrorReason.ChannelArchived -> Res.string.thread_archived_notice.desc()
         ThreadUserFacingErrorReason.RateLimited -> Res.string.thread_error_reason_rate_limited.desc()
         ThreadUserFacingErrorReason.ResponseUnreadable -> Res.string.thread_error_reason_response_unreadable.desc()
         ThreadUserFacingErrorReason.RequestCancelled -> Res.string.thread_error_reason_cancelled.desc()
@@ -203,10 +218,16 @@ internal fun threadUserFacingErrorLabels(): ThreadUserFacingErrorLabels =
                 ThreadUserFacingErrorReason.ItemNotFound.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentTooLarge to
                 ThreadUserFacingErrorReason.AttachmentTooLarge.stringDesc().localized(),
+            ThreadUserFacingErrorReason.AttachmentMonthlyQuotaExceeded to
+                ThreadUserFacingErrorReason.AttachmentMonthlyQuotaExceeded.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentImageCompressionFailed to
                 ThreadUserFacingErrorReason.AttachmentImageCompressionFailed.stringDesc().localized(),
             ThreadUserFacingErrorReason.AttachmentNeedsReupload to
                 ThreadUserFacingErrorReason.AttachmentNeedsReupload.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ChannelReadOnly to
+                ThreadUserFacingErrorReason.ChannelReadOnly.stringDesc().localized(),
+            ThreadUserFacingErrorReason.ChannelArchived to
+                ThreadUserFacingErrorReason.ChannelArchived.stringDesc().localized(),
             ThreadUserFacingErrorReason.RateLimited to
                 ThreadUserFacingErrorReason.RateLimited.stringDesc().localized(),
             ThreadUserFacingErrorReason.ResponseUnreadable to

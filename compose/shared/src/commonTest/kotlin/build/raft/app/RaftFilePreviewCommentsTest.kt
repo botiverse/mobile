@@ -67,10 +67,19 @@ class RaftFilePreviewCommentsTest {
         assertEquals("channel_archived", failedState.errorCode)
         assertEquals("This channel is archived", failedState.errorServerMessage)
         assertEquals(
-            "This channel is archived",
+            "localized:ChannelArchived",
             attachmentCommentsVisibleErrorMessage(
                 errorCode = failedState.errorCode,
                 serverMessage = failedState.errorServerMessage,
+                labels = errorLabels,
+                genericMessage = "generic"
+            )
+        )
+        assertEquals(
+            "Attachment comments are temporarily locked.",
+            attachmentCommentsVisibleErrorMessage(
+                errorCode = "attachment_comments_locked",
+                serverMessage = "Attachment comments are temporarily locked.",
                 labels = errorLabels,
                 genericMessage = "generic"
             )

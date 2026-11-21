@@ -636,6 +636,7 @@
     <string name="thread_error_no_permission">У вас нет прав на просмотр этой ветки.</string>
     <string name="thread_error_reason_auth">Чтобы продолжить, войдите снова.</string>
     <string name="thread_error_reason_permission">У вас нет прав на это действие.</string>
+    <string name="thread_error_reason_channel_read_only">Этот канал доступен только для чтения.</string>
     <string name="thread_error_reason_server_unreachable">Не удалось связаться с сервером. Проверьте подключение и попробуйте ещё раз.</string>
     <string name="thread_error_reason_timeout">Сервер не ответил вовремя. Попробуйте ещё раз.</string>
     <string name="thread_error_reason_network">Не удалось установить сетевое соединение. Проверьте подключение и попробуйте ещё раз.</string>

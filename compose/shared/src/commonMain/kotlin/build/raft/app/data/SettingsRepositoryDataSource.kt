@@ -2611,14 +2611,25 @@ private fun <T> HomeNetworkResponse.toSettingsDataError(
     return when (code) {
         401 -> authRequired(serverMessage)
         403 ->
-            DataResult.NoPermission(
-                PermissionBlocker(
-                    code = "server_forbidden",
-                    requiredCapability = "server_access",
-                    serverMessage = serverMessage,
-                    serverCode = serverCode
+            if (serverCode != null && isNonPermissionPlanOrQuota403Code(serverCode)) {
+                DataResult.Error(
+                    ScreenError(
+                        code = serverCode,
+                        retryable = false,
+                        serverMessage = serverMessage,
+                        serverCode = serverCode
+                    )
                 )
-            )
+            } else {
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "server_forbidden",
+                        requiredCapability = "server_access",
+                        serverMessage = serverMessage,
+                        serverCode = serverCode
+                    )
+                )
+            }
         in 500..599 ->
             DataResult.Error(
                 ScreenError(

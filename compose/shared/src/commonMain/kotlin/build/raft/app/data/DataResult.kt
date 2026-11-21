@@ -121,6 +121,9 @@ enum class ErrorPresentationKey {
     PermissionDenied,
     EdgeBlocked,
     AttachmentTooLarge,
+    AttachmentMonthlyQuotaExceeded,
+    ChannelReadOnly,
+    ChannelArchived,
     TooManyAttempts,
     ResponseUnreadable,
     ServerVersionIncompatible,
@@ -159,6 +162,29 @@ fun ScreenError.isAuthSessionError(): Boolean =
 
 fun String?.isAuthSessionErrorCode(): Boolean =
     this == "auth_required" || this == "auth_session" || this == "unauthenticated"
+
+/**
+ * Server HTTP 403 refusal codes that represent plan, quota, capacity, or channel read-only
+ * limits rather than missing role/channel access permissions. Classifying these as
+ * [DataResult.Error] (non-retryable) preserves their contract code end-to-end and prevents
+ * callers from treating them as permission denial or channel access loss.
+ */
+internal fun isNonPermissionPlanOrQuota403Code(serverCode: String?): Boolean =
+    when (serverCode?.trim()?.lowercase()) {
+        "file_upload_quota_exceeded",
+        "upload_quota_exceeded",
+        "external_limit_frozen",
+        "channel_read_only",
+        "quota_read_only",
+        "attachment_upload_disabled",
+        "migration_pro_plan_required",
+        "free_external_limit",
+        "joint_channel_free_limit_reached",
+        "joint_free_server_limit",
+        "agent_limit_reached",
+        "human_seat_limit_reached" -> true
+        else -> false
+    }
 
 /**
  * Machine-readable marker the network executor substitutes for edge/CDN
@@ -269,6 +295,12 @@ internal fun String?.errorPresentationKeyOrNull(): ErrorPresentationKey? {
             "admin_required" in lower || "no_permission" in lower -> ErrorPresentationKey.PermissionDenied
         lower == "attachment_too_large" || lower == "upload_too_large" ->
             ErrorPresentationKey.AttachmentTooLarge
+        lower == "file_upload_quota_exceeded" || lower == "upload_quota_exceeded" ->
+            ErrorPresentationKey.AttachmentMonthlyQuotaExceeded
+        lower == "external_limit_frozen" || lower == "channel_read_only" || lower == "quota_read_only" ->
+            ErrorPresentationKey.ChannelReadOnly
+        lower == "channel_archived" ->
+            ErrorPresentationKey.ChannelArchived
         "rate" in lower || "too_many" in lower ->
             ErrorPresentationKey.TooManyAttempts
         "contract" in lower || "parse" in lower || "mismatch" in lower ->

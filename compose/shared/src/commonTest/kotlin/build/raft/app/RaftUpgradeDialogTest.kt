@@ -93,6 +93,9 @@ class RaftUpgradeDialogTest {
     @Test
     fun serverErrorCodesMapToTheirGates() {
         assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("FILE_UPLOAD_QUOTA_EXCEEDED"))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("file_upload_quota_exceeded"))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("UPLOAD_QUOTA_EXCEEDED"))
+        assertEquals(RaftUpgradeGate.ExternalChannelFrozen, raftUpgradeGateForErrorCode("external_limit_frozen"))
         assertEquals(RaftUpgradeGate.AgentMigration, raftUpgradeGateForErrorCode("MIGRATION_PRO_PLAN_REQUIRED"))
         assertEquals(RaftUpgradeGate.SeatLimitAgentCreate, raftUpgradeGateForErrorCode("agent_limit_reached"))
         assertEquals(RaftUpgradeGate.SeatLimitInvite, raftUpgradeGateForErrorCode("human_seat_limit_reached"))
@@ -100,6 +103,9 @@ class RaftUpgradeDialogTest {
         assertEquals(RaftUpgradeGate.ExternalChannelFreeLimit, raftUpgradeGateForErrorCode("free_external_limit"))
         assertNull(raftUpgradeGateForErrorCode("UPLOAD_RATE_LIMITED"))
         assertNull(raftUpgradeGateForErrorCode(null))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, threadAttachmentUploadFailureUpgradeGate("FILE_UPLOAD_QUOTA_EXCEEDED"))
+        assertEquals(RaftUpgradeGate.ExternalChannelFrozen, threadAttachmentUploadFailureUpgradeGate("external_limit_frozen"))
+        assertNull(threadAttachmentUploadFailureUpgradeGate("UPLOAD_FORBIDDEN"))
     }
 
     @Test

@@ -636,6 +636,7 @@
     <string name="thread_error_no_permission">이 스레드를 볼 권한이 없어요.</string>
     <string name="thread_error_reason_auth">계속하려면 다시 로그인해 주세요.</string>
     <string name="thread_error_reason_permission">이 작업을 수행할 권한이 없어요.</string>
+    <string name="thread_error_reason_channel_read_only">이 채널은 읽기 전용이에요.</string>
     <string name="thread_error_reason_server_unreachable">서버에 연결하지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.</string>
     <string name="thread_error_reason_timeout">서버가 제시간에 응답하지 않았어요. 다시 시도해 주세요.</string>
     <string name="thread_error_reason_network">네트워크 연결에 실패했어요. 연결 상태를 확인하고 다시 시도해 주세요.</string>
