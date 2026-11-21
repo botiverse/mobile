@@ -2915,7 +2915,7 @@ private fun SharedThreadRouteContentContent(
             conversationId = payload.longMessageCollapseConversationId()
         )
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
-    val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
+    val newMessageMenuEnabled = rememberNewMessageMenuEnabled(chatLayoutPreferenceStore, eventBus)
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
     val genericThreadErrorLabel = labels.genericThreadErrorLabel
@@ -5930,10 +5930,11 @@ private fun SharedThreadRouteContentContent(
         // provider scope is unchanged by P1.
         // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
         // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
+        val inPlaceSelectionEnabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable()
         val inPlaceTextSelectionHost =
-            remember(newMessageMenuEnabled, bridge, copiedLabel) {
+            remember(inPlaceSelectionEnabled, bridge, copiedLabel) {
                 ThreadInPlaceTextSelectionHost(
-                    enabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable(),
+                    enabled = inPlaceSelectionEnabled,
                     // Web: copying a selection shows nothing (artin 2026-11-02).
                     copyText = { text -> bridge.copyToPasteboard(text) }
                 )

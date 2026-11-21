@@ -11,6 +11,7 @@ import build.raft.app.markdown.RaftTextDirection
 import build.raft.app.markdown.raftMarkdownBlockDirection
 import build.raft.app.markdown.toComposeLayoutDirection
 import build.raft.app.markdown.withRaftTextDirection
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
@@ -23,9 +24,11 @@ fun MarkdownHeader(
     modifier: Modifier = Modifier,
     contentChildType: IElementType = MarkdownTokenTypes.ATX_CONTENT,
 ) {
+    val paragraphFillWidth = LocalRaftMarkdownParagraphFillWidth.current
     val blockDirection = remember(content, node) { raftMarkdownBlockDirection(content, node) }
     val resolvedLayoutDirection = blockDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
-    val resolvedModifier = if (blockDirection == RaftTextDirection.Rtl) modifier.fillMaxWidth() else modifier
+    val resolvedModifier =
+        if (paragraphFillWidth || blockDirection == RaftTextDirection.Rtl) modifier.fillMaxWidth() else modifier
     CompositionLocalProvider(LocalLayoutDirection provides resolvedLayoutDirection) {
         MarkdownText(
             modifier = resolvedModifier,
