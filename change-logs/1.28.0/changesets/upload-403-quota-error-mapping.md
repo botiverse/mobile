@@ -1,0 +1,2 @@
+### Fixed
+- Preserve structured HTTP 403 plan, monthly upload quota, and read-only refusal codes (`FILE_UPLOAD_QUOTA_EXCEEDED`, `UPLOAD_QUOTA_EXCEEDED`, `external_limit_frozen`, `channel_read_only`) across conversation, thread, and settings repositories and attachment upload failure handling instead of collapsing them into generic permission denied errors, and show localized quota/read-only feedback plus the corresponding upgrade or limit notice.

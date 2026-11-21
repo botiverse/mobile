@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
+import build.raft.app.data.isNonPermissionPlanOrQuota403Code
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.defaultNowMillis
@@ -5015,15 +5016,28 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                         serverMessage = projection.serverMessage
                     )
                 )
-            403 ->
-                DataResult.NoPermission(
-                    PermissionBlocker(
-                        code = contractCode ?: "thread_forbidden",
-                        requiredCapability = "thread_access",
-                        serverMessage = projection.serverMessage,
-                        serverCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
+            403 -> {
+                val resolvedServerCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
+                if (resolvedServerCode != null && isNonPermissionPlanOrQuota403Code(resolvedServerCode)) {
+                    DataResult.Error(
+                        ScreenError(
+                            code = resolvedServerCode,
+                            retryable = false,
+                            serverMessage = projection.serverMessage,
+                            serverCode = resolvedServerCode
+                        )
                     )
-                )
+                } else {
+                    DataResult.NoPermission(
+                        PermissionBlocker(
+                            code = contractCode ?: "thread_forbidden",
+                            requiredCapability = "thread_access",
+                            serverMessage = projection.serverMessage,
+                            serverCode = resolvedServerCode
+                        )
+                    )
+                }
+            }
             else ->
                 DataResult.Error(
                     ScreenError(

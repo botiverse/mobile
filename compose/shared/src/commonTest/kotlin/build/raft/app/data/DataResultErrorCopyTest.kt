@@ -142,4 +142,33 @@ class DataResultErrorCopyTest {
             ).userFacingMessage(errorStrings)
         )
     }
+
+    @Test
+    fun monthlyUploadQuotaAndChannelReadOnlyCodesMapToLocalizedPresentationKeys() {
+        assertEquals(
+            "This month's uploads are used up",
+            ScreenError(
+                code = "FILE_UPLOAD_QUOTA_EXCEEDED",
+                retryable = false,
+                serverMessage = "Monthly file upload quota exceeded.",
+                serverCode = "FILE_UPLOAD_QUOTA_EXCEEDED"
+            ).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This month's uploads are used up",
+            ScreenError("UPLOAD_QUOTA_EXCEEDED", retryable = false).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This channel is read-only.",
+            ScreenError("external_limit_frozen", retryable = false).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "This channel is read-only.",
+            ScreenError("channel_read_only", retryable = false).userFacingMessage(errorStrings)
+        )
+        assertEquals(
+            "Channel archived",
+            ScreenError("channel_archived", retryable = false).userFacingMessage(errorStrings)
+        )
+    }
 }

@@ -636,6 +636,7 @@
     <string name="thread_error_no_permission">No tienes permiso para ver este hilo.</string>
     <string name="thread_error_reason_auth">Vuelve a iniciar sesión para continuar.</string>
     <string name="thread_error_reason_permission">No tienes permiso para realizar esta acción.</string>
+    <string name="thread_error_reason_channel_read_only">Este canal es de solo lectura.</string>
     <string name="thread_error_reason_server_unreachable">No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.</string>
     <string name="thread_error_reason_timeout">El servidor no respondió a tiempo. Inténtalo de nuevo.</string>
     <string name="thread_error_reason_network">Falló la conexión de red. Revisa tu conexión e inténtalo de nuevo.</string>

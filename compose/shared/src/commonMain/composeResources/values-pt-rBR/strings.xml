@@ -636,6 +636,7 @@
     <string name="thread_error_no_permission">Você não tem permissão para ver esta thread.</string>
     <string name="thread_error_reason_auth">Entre novamente para continuar.</string>
     <string name="thread_error_reason_permission">Você não tem permissão para realizar esta ação.</string>
+    <string name="thread_error_reason_channel_read_only">Este canal é somente leitura.</string>
     <string name="thread_error_reason_server_unreachable">Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.</string>
     <string name="thread_error_reason_timeout">O servidor não respondeu a tempo. Tente novamente.</string>
     <string name="thread_error_reason_network">A conexão de rede falhou. Verifique sua conexão e tente novamente.</string>

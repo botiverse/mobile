@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.isConversationAccessLost
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
 import build.raft.app.network.MultipartFile
@@ -740,6 +741,132 @@ class DirectAttachmentUploadNetworkContractTest {
         assertIs<IllegalStateException>(failure)
         assertEquals(listOf(FileRef to 3L), resolver.openCalls)
         assertEquals(1, source.closeCount)
+    }
+
+    @Test
+    fun legacyMultipart403MonthlyQuotaExceedReturnsTypedErrorInsteadOfPermissionDenied() = runBlocking {
+        val executor =
+            RecordingExecutor(
+                respond = { method, url ->
+                    assertEquals("POST", method)
+                    assertTrue(url.endsWith("/attachments/upload"), url)
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"error":"Monthly file upload quota exceeded. Free includes 100 MB of file uploads per month; Pro has no monthly upload limit.","errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED","requestedBytes":524288}""",
+                    )
+                },
+            )
+        val repository =
+            RealConversationRepository(
+                sessionStore = authenticatedSessionStore(),
+                networkClient = client(executor = executor),
+                routeEnvironmentIdProvider = { ApiBaseUrl },
+            )
+
+        val result =
+            repository.uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(file(sizeBytes = 3L, bytes = byteArrayOf(1, 2, 3))),
+                )
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", error.code)
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", error.serverCode)
+        assertFalse(error.retryable)
+        assertContains(error.serverMessage.orEmpty(), "Monthly file upload quota exceeded")
+        assertFalse(result.isConversationAccessLost())
+    }
+
+    @Test
+    fun directSessionCreate403MonthlyQuotaExceedParsesCodeAndMessageAsTypedError() = runBlocking {
+        val executor =
+            RecordingExecutor(
+                respond = { method, url ->
+                    assertEquals("POST", method)
+                    assertTrue(url.endsWith("/attachments/upload-sessions"), url)
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"code":"FILE_UPLOAD_QUOTA_EXCEEDED","message":"Monthly file upload quota exceeded for this server.","retryable":false}""",
+                    )
+                },
+            )
+
+        val result =
+            composerUpload(executor).uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111111",
+            )
+
+        val error = assertIs<DataResult.Error>(result).error
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", error.code)
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", error.serverCode)
+        assertEquals("Monthly file upload quota exceeded for this server.", error.serverMessage)
+        assertFalse(error.retryable)
+        assertFalse(result.isConversationAccessLost())
+    }
+
+    @Test
+    fun legacyMultipart403BillingFrozenAndReadOnlyReturnTypedErrorsWhileTrueForbiddenStaysNoPermission() = runBlocking {
+        suspend fun uploadWith403(body: String): DataResult<AttachmentUploadResult> {
+            val executor =
+                RecordingExecutor(
+                    respond = { _, _ ->
+                        RaftHttpExecutorResponse(code = 403, bodyText = null, errorBodyText = body)
+                    },
+                )
+            val repository =
+                RealConversationRepository(
+                    sessionStore = authenticatedSessionStore(),
+                    networkClient = client(executor = executor),
+                    routeEnvironmentIdProvider = { ApiBaseUrl },
+                )
+            return repository.uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(file(sizeBytes = 3L, bytes = byteArrayOf(1, 2, 3))),
+                )
+            )
+        }
+
+        val frozen =
+            uploadWith403(
+                """{"error":"This external channel is read-only on the Free plan.","code":"external_limit_frozen","externalFreezeAt":"2026-11-20T00:00:00.000Z"}"""
+            )
+        val frozenError = assertIs<DataResult.Error>(frozen).error
+        assertEquals("external_limit_frozen", frozenError.code)
+        assertEquals("external_limit_frozen", frozenError.serverCode)
+        assertFalse(frozenError.retryable)
+
+        val readOnly =
+            uploadWith403(
+                """{"error":"This channel is read-only because its quota was exceeded","code":"channel_read_only"}"""
+            )
+        val readOnlyError = assertIs<DataResult.Error>(readOnly).error
+        assertEquals("channel_read_only", readOnlyError.code)
+        assertEquals("channel_read_only", readOnlyError.serverCode)
+        assertFalse(readOnlyError.retryable)
+
+        val uploadForbidden =
+            uploadWith403(
+                """{"code":"UPLOAD_FORBIDDEN","message":"You do not have permission to upload to this channel"}"""
+            )
+        val uploadForbiddenBlocker = assertIs<DataResult.NoPermission>(uploadForbidden).blocker
+        assertEquals("server_forbidden", uploadForbiddenBlocker.code)
+        assertEquals("UPLOAD_FORBIDDEN", uploadForbiddenBlocker.serverCode)
+        assertEquals("You do not have permission to upload to this channel", uploadForbiddenBlocker.serverMessage)
+
+        val uncodedForbidden = uploadWith403("""{"error":"You do not have access to this channel"}""")
+        val uncodedBlocker = assertIs<DataResult.NoPermission>(uncodedForbidden).blocker
+        assertEquals("server_forbidden", uncodedBlocker.code)
+        assertNull(uncodedBlocker.serverCode)
+        assertEquals("You do not have access to this channel", uncodedBlocker.serverMessage)
     }
 
     private fun client(

@@ -9,6 +9,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
+import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.ThreadComposerDirectUploadPhase
 import build.raft.app.data.resolveThreadComposerDirectUpload
@@ -79,11 +80,12 @@ internal class ThreadRouteAttachmentUploader(
     /**
      * A draft-owned upload failed and its row now offers Retry: the upgrade dialog when the month's
      * uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`, web MessageInput `upload_monthly_quota`;
-     * nothing opens on a paid plan), and the failure toast.
+     * nothing opens on a paid plan) or the external channel is frozen (`external_limit_frozen`),
+     * and the failure toast.
      */
     fun showAttachmentUploadFailure(errorCode: String) {
-        if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
-            pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
+        threadAttachmentUploadFailureUpgradeGate(errorCode)?.let { gate ->
+            pager.openRaftUpgradeDialog(gate, storeScope)
         }
         bridge.toast(
             localizedAttachmentUploadFailedDetail(
@@ -435,11 +437,7 @@ internal class ThreadRouteAttachmentUploader(
                             "draftKey=$draftKey"
                     )
                 }
-                bridge.toast(
-                    localizedAttachmentUploadFailedDetail(
-                        userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                    )
-                )
+                showAttachmentUploadFailure(errorCode)
                 return accepted
             }
 
@@ -503,11 +501,21 @@ internal class ThreadRouteAttachmentUploader(
                     is DataResult.Content -> batchResult.data
                     is DataResult.NoPermission -> {
                         routeAuthRequired(batchResult)
-                        markGalleryBatchFailed(batchResult.blocker.code)
+                        markGalleryBatchFailed(
+                            resolveThreadAttachmentUploadFailureCode(
+                                batchResult,
+                                emptyCode = "attachment_upload_batch_empty",
+                            )
+                        )
                         return false
                     }
                     is DataResult.Error -> {
-                        markGalleryBatchFailed(batchResult.error.code)
+                        markGalleryBatchFailed(
+                            resolveThreadAttachmentUploadFailureCode(
+                                batchResult,
+                                emptyCode = "attachment_upload_batch_empty",
+                            )
+                        )
                         return false
                     }
                     is DataResult.Empty -> {
@@ -883,10 +891,10 @@ internal class ThreadRouteAttachmentUploader(
                                         }
                                     }
                                     is DataResult.Error ->
-                                        publishTerminalFailure(uploadResult.error.code)
+                                        publishTerminalFailure(resolveThreadAttachmentUploadFailureCode(uploadResult))
                                     is DataResult.NoPermission -> {
                                         routeAuthRequired(uploadResult)
-                                        publishTerminalFailure(uploadResult.blocker.code)
+                                        publishTerminalFailure(resolveThreadAttachmentUploadFailureCode(uploadResult))
                                     }
                                     is DataResult.Empty ->
                                         publishTerminalFailure("empty_upload_result")
@@ -924,3 +932,35 @@ internal class ThreadRouteAttachmentUploader(
         return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
     }
 }
+
+/**
+ * Extracts the most specific machine-readable failure code from an upload [DataResult] so
+ * downstream presentation and upgrade gates preserve structured server codes (e.g.
+ * `FILE_UPLOAD_QUOTA_EXCEEDED`, `external_limit_frozen`, `channel_read_only`) instead of
+ * collapsing them into generic transport wrappers like `server_forbidden` or `http_403`.
+ * Auth-session blockers (401) keep their canonical auth blocker code.
+ */
+internal fun resolveThreadAttachmentUploadFailureCode(
+    result: DataResult<*>,
+    emptyCode: String = "empty_upload_result",
+): String =
+    when (result) {
+        is DataResult.Error ->
+            result.error.serverCode?.trim()?.takeIf { it.isNotBlank() } ?: result.error.code
+        is DataResult.NoPermission ->
+            if (result.blocker.isAuthSessionBlocker()) {
+                result.blocker.code
+            } else {
+                result.blocker.serverCode?.trim()?.takeIf { it.isNotBlank() } ?: result.blocker.code
+            }
+        is DataResult.Empty,
+        is DataResult.Content -> emptyCode
+    }
+
+/** Upgrade gate opened automatically when an attachment upload fails on a plan limit. */
+internal fun threadAttachmentUploadFailureUpgradeGate(errorCode: String?): RaftUpgradeGate? =
+    when (raftUpgradeGateForErrorCode(errorCode)) {
+        RaftUpgradeGate.UploadMonthlyQuota -> RaftUpgradeGate.UploadMonthlyQuota
+        RaftUpgradeGate.ExternalChannelFrozen -> RaftUpgradeGate.ExternalChannelFrozen
+        else -> null
+    }

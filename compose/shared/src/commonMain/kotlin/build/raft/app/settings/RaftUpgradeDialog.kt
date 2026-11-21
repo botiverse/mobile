@@ -116,11 +116,13 @@ internal enum class RaftUpgradeGate(val wire: String) {
  * `CapacityLimitError`).
  */
 internal fun raftUpgradeGateForErrorCode(code: String?): RaftUpgradeGate? =
-    when (code?.trim()) {
-        "FILE_UPLOAD_QUOTA_EXCEEDED" -> RaftUpgradeGate.UploadMonthlyQuota
+    when (code?.trim()?.lowercase()) {
+        "file_upload_quota_exceeded",
+        "upload_quota_exceeded" -> RaftUpgradeGate.UploadMonthlyQuota
+        "external_limit_frozen" -> RaftUpgradeGate.ExternalChannelFrozen
         // server externalChannelLimitService ExternalChannelLimitError (paywallHit.ts → this gate).
         "free_external_limit" -> RaftUpgradeGate.ExternalChannelFreeLimit
-        "MIGRATION_PRO_PLAN_REQUIRED" -> RaftUpgradeGate.AgentMigration
+        "migration_pro_plan_required" -> RaftUpgradeGate.AgentMigration
         // shared AGENT_LIMIT_REACHED_CODE / HUMAN_SEAT_LIMIT_REACHED_CODE (planService CapacityLimitError).
         "agent_limit_reached" -> RaftUpgradeGate.SeatLimitAgentCreate
         "human_seat_limit_reached" -> RaftUpgradeGate.SeatLimitInvite

@@ -636,6 +636,7 @@
     <string name="thread_error_no_permission">你沒有檢視此討論串的權限。</string>
     <string name="thread_error_reason_auth">請重新登入後繼續。</string>
     <string name="thread_error_reason_permission">你沒有執行此操作的權限。</string>
+    <string name="thread_error_reason_channel_read_only">此頻道目前為唯讀狀態。</string>
     <string name="thread_error_reason_server_unreachable">無法連線到伺服器，請檢查網路連線後再試一次。</string>
     <string name="thread_error_reason_timeout">伺服器回應逾時，請再試一次。</string>
     <string name="thread_error_reason_network">網路連線失敗，請檢查網路連線後再試一次。</string>
