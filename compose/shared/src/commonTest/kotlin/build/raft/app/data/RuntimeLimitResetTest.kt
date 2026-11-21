@@ -264,8 +264,9 @@ class RuntimeLimitResetTest {
         fun ok(body: String) = HomeNetworkResponse(code = 200, bodyText = body)
 
         /** slock runtimeLimitReset.api.test.ts `snapshot(resets)`. */
+        /** A window 85% used: past the 80% a reset is offered from (web `LIMIT_RESET_OFFER_RATIO`). */
         fun snapshot(resets: Int): String =
-            """{"protocolVersion":2,"provider":"codex","collectedAt":"2026-11-07T10:00:00.000Z","staleAfter":"2026-11-07T10:30:00.000Z","collectorVersion":"test","accounts":[{"accountKey":"${"a".repeat(64)}","maskedLabel":"tea****r@example.com","health":"ok","limitResetsAvailable":$resets,"windows":[]}]}"""
+            """{"protocolVersion":2,"provider":"codex","collectedAt":"2026-11-07T10:00:00.000Z","staleAfter":"2026-11-07T10:30:00.000Z","collectorVersion":"test","accounts":[{"accountKey":"${"a".repeat(64)}","maskedLabel":"tea****r@example.com","health":"ok","limitResetsAvailable":$resets,"windows":[{"id":"five_hour","label":"5-hour limit","status":"ok","usedRatio":0.85}]}]}"""
 
         fun usageBody(resets: String, health: String = "ok", windowStatus: String = "ok"): String =
             """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"codex","collectedAt":"2026-11-07T10:00:00.000Z","staleAfter":"2026-11-07T10:30:00.000Z","accounts":[{"accountKey":"acct-1","maskedLabel":"tea****r@example.com","planLabel":"Pro","health":"$health","limitResetsAvailable":$resets,"windows":[{"id":"five_hour","label":"5-hour limit","status":"$windowStatus","usedRatio":${if (windowStatus == "limit_reached") "1" else "0.85"},"resetsAt":"2026-11-07T12:00:00.000Z"}]}]}}"""
