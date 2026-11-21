@@ -180,7 +180,7 @@ class RaftDesktopWebViewPolicy(
     /**
      * JS condition for "this is the document the scripts are for". [sameOriginAsUrl]: the host
      * channel and runtime scripts (iOS: the message frame / active URL is on [url]'s origin).
-     * Otherwise the injected script: the origin lock, else [url]'s origin when navigation is fenced.
+     * Otherwise the injected script: the origin lock, else [url]'s origin (never unconstrained).
      */
     private fun documentCondition(sameOriginAsUrl: Boolean = false): String {
         val origin =
@@ -188,7 +188,8 @@ class RaftDesktopWebViewPolicy(
                 if (srcOrigin == null || (mainFrameOrigin != null && mainFrameOrigin != srcOrigin)) return "false"
                 srcOrigin
             } else {
-                mainFrameOrigin ?: srcOrigin.takeIf { !allowNavigation }
+                if (mainFrameOrigin != null && srcOrigin != null && mainFrameOrigin != srcOrigin) return "false"
+                mainFrameOrigin ?: srcOrigin
             }
         val parts = mutableListOf<String>()
         if (origin != null) parts += "window.location.origin === ${js(origin)}"

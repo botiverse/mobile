@@ -244,15 +244,8 @@ internal fun rememberServerSetupAdmissionHost(
                     } else {
                         var documentReady by remember(identity) { mutableStateOf(false) }
                         var currentDocumentUrl by remember(identity) { mutableStateOf(url) }
-                        val injectedJavaScript = remember(session, binding) {
-                            """
-                                (function() {
-                                  try {
-                                    ${settingsWebViewAuthStorageJavaScript(session, binding)};
-                                    ${serverSetupHostBridgeJavaScript(identity)}
-                                  } catch (_) {}
-                                })();
-                            """.trimIndent()
+                        val injectedJavaScript = remember(session, binding, identity, url) {
+                            serverSetupInjectedJavaScript(session, binding, identity, webOrigin = url)
                         }
                         val density = LocalDensity.current
                         val topInset = serverSetupWebViewTopInset(
@@ -352,6 +345,7 @@ internal fun rememberServerSetupAdmissionHost(
                                 logger = bridge::log,
                                 refresher = accessTokenRefresher,
                                 visible = accessTokenRefreshVisible,
+                                webOrigin = url,
                             )
                         }
                     }
@@ -360,5 +354,16 @@ internal fun rememberServerSetupAdmissionHost(
         },
     )
 }
+
+internal fun serverSetupInjectedJavaScript(
+    session: StoredAuthSession,
+    binding: SettingsWebViewHostAuthBinding,
+    identity: ServerSetupAdmissionIdentity,
+    webOrigin: String,
+): String =
+    settingsWebViewGuardedAuthJavaScript(
+        webOrigin = webOrigin,
+        body = "${settingsWebViewAuthStorageJavaScript(session, binding)};\n${serverSetupHostBridgeJavaScript(identity)}",
+    )
 
 private val nextServerSetupGeneration = atomic(0L)

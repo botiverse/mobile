@@ -226,8 +226,8 @@ internal class RaftIosSandboxWebView(
                 hostEventsEnabled != config.hostEventsEnabled ||
                 mainFrameOrigin != config.mainFrameOrigin?.let(::raftWebOriginOf)
         allowScripts = config.allowScripts
-        // The auth user-script's main-frame scope is selected from this policy at configuration
-        // time, so a policy change rebuilds (a broad script must not survive into a fenced document).
+        // Injected user scripts always run main-frame-only; navigation policy changes still
+        // rebuild the WebView so fencing takes effect on a clean configuration.
         allowNavigation = config.allowNavigation
         domStorageEnabled = config.domStorageEnabled
         cacheEnabled = config.cacheEnabled
@@ -320,9 +320,9 @@ internal class RaftIosSandboxWebView(
                 WKUserScript(
                     source = injectedJavaScript,
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
-                    // Under an origin lock the script (a session) never enters a sub-frame: the content
-                    // frame of another origin must not see it (Tenny's WebView rule 1).
-                    forMainFrameOnly = mainFrameOrigin != null || !allowNavigation
+                    // Document-start scripts (including session auth scripts) target only the
+                    // top-level document and never run inside subframes (Tenny's WebView rule 1).
+                    forMainFrameOnly = true
                 )
             )
         }
@@ -541,11 +541,39 @@ internal class RaftIosSandboxWebView(
         if (events.onDownloadRequested != null && action.shouldPerformDownload && raftIsSameObjCObject(source, webView)) {
             return RaftIosNavigationDecision.Download
         }
-        return if (decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)) {
+        val targetFrame = action.targetFrame
+        return if (
+            decideNavigationAction(
+                source = source,
+                targetURL = action.request.URL,
+                isNewWindow = targetFrame == null,
+                isMainFrame = targetFrame?.mainFrame ?: false,
+            )
+        ) {
             RaftIosNavigationDecision.Allow
         } else {
             RaftIosNavigationDecision.Cancel
         }
+    }
+
+    /**
+     * Policy gate for [decidePolicy] that distinguishes new-window actions (`targetFrame == null`,
+     * e.g. `target="_blank"`) from in-place main-frame/subframe navigations. New-window actions
+     * are cancelled directly and reported via [notifyNavigationBlocked] without mutating
+     * [currentURL] or emitting [RaftWebViewEvents.onUrlChange].
+     */
+    internal fun decideNavigationAction(
+        source: WKWebView,
+        targetURL: NSURL?,
+        isNewWindow: Boolean,
+        isMainFrame: Boolean,
+    ): Boolean {
+        if (!raftIsSameObjCObject(source, webView)) return false
+        if (isNewWindow) {
+            notifyNavigationBlocked(targetURL?.absoluteString ?: "")
+            return false
+        }
+        return decideNavigationPolicy(source, targetURL, isMainFrame = isMainFrame)
     }
 
     /**
