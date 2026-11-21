@@ -103,25 +103,21 @@ class RaftAndroidWebViewProviderCacheTest {
     }
 
     @Test
-    fun prewarmPopulatesCacheAsynchronously() {
+    fun transientLoaderFailureIsNotCached() {
         val app = RuntimeEnvironment.getApplication()
         var loaderCalls = 0
         RaftAndroidWebViewProvider.packageLoader = {
             loaderCalls += 1
+            if (loaderCalls == 1) error("transient binder failure")
             "com.android.webview" to "128.0"
         }
 
-        RaftAndroidWebViewProvider.prewarm(app)
-        assertEquals(0, loaderCalls)
-        assertEquals(1, queuedTasks.size)
-
-        queuedTasks.removeAt(0).invoke()
+        assertEquals("unavailable", RaftAndroidWebViewProvider.label(app))
         assertEquals(1, loaderCalls)
+
+        // Next read retries and caches the successful lookup.
         assertEquals("com.android.webview 128.0", RaftAndroidWebViewProvider.label(app))
-        assertEquals(1, loaderCalls)
-
-        // Already cached: another prewarm is a no-op.
-        RaftAndroidWebViewProvider.prewarm(app)
-        assertEquals(0, queuedTasks.size)
+        assertEquals("com.android.webview 128.0", RaftAndroidWebViewProvider.label(app))
+        assertEquals(2, loaderCalls)
     }
 }

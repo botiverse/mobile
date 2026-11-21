@@ -299,16 +299,22 @@ class RaftUnreadNotificationDismissReceiver : BroadcastReceiver() {
         // Offload groupingLock acquisition and NotificationManager.activeNotifications IPC off
         // the main thread while keeping the broadcast alive via goAsync().
         val pendingResult = goAsync()
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finishOnce() {
+            if (finished.compareAndSet(false, true)) {
+                runCatching { pendingResult?.finish() }
+            }
+        }
         try {
             AndroidUnreadNotificationPoster.backgroundRunner {
                 try {
                     AndroidUnreadNotificationPoster.onConversationDismissed(appContext, notificationId)
                 } finally {
-                    pendingResult?.finish()
+                    finishOnce()
                 }
             }
         } catch (throwable: Throwable) {
-            pendingResult?.finish()
+            finishOnce()
             throw throwable
         }
     }

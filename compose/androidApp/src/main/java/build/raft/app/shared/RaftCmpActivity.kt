@@ -5068,6 +5068,10 @@ internal class RaftBridgeModule(
                         }
                 framedBitmap = null
                 onResult(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                onResult(mapOf("status" to "failed", "message" to "Unable to write image"))
             } finally {
                 decodedRows?.forEach { if (!it.isRecycled) it.recycle() }
                 framedBitmap?.let { if (!it.isRecycled) it.recycle() }
@@ -5160,6 +5164,10 @@ internal class RaftBridgeModule(
                             writeThreadShareBitmap(exportBitmap, shareImage = frame)
                         }
                 onResult(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                onResult(mapOf("status" to "failed", "message" to "Unable to write image"))
             } finally {
                 if (!exportBitmap.isRecycled) exportBitmap.recycle()
             }
@@ -6580,8 +6588,14 @@ internal class RaftBridgeModule(
                         if (!handled.compareAndSet(false, true)) return
                         val self = this
                         val pendingResult = goAsync()
+                        val finished = AtomicBoolean(false)
+                        fun finishOnce() {
+                            if (finished.compareAndSet(false, true)) {
+                                runCatching { pendingResult?.finish() }
+                            }
+                        }
                         try {
-                            handsDownloadCompleteScope.launch(Dispatchers.IO) {
+                            handsDownloadCompleteScope.launch {
                                 try {
                                     runCatching { appContext.unregisterReceiver(self) }
                                     val status = handsDownloadStatus(downloadManager, completedId)
@@ -6606,12 +6620,21 @@ internal class RaftBridgeModule(
                                         )
                                     }
                                     emitHandsUpdateStatusEvent()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (throwable: Throwable) {
+                                    handsUpdateDownloads[key]?.failed = true
+                                    RaftAppLog.record(
+                                            "SlockHandsUpdate",
+                                            "download_complete_failed downloadId=$completedId error=${throwable.javaClass.simpleName}"
+                                    )
+                                    runCatching { emitHandsUpdateStatusEvent() }
                                 } finally {
-                                    pendingResult?.finish()
+                                    finishOnce()
                                 }
                             }
                         } catch (throwable: Throwable) {
-                            pendingResult?.finish()
+                            finishOnce()
                             throw throwable
                         }
                     }
@@ -6624,18 +6647,21 @@ internal class RaftBridgeModule(
         )
         try {
             val enqueuedId = downloadManager.enqueue(request)
+            val download =
+                    HandsUpdateDownload(
+                            key = key,
+                            versionCode = latest.version_code,
+                            downloadId = enqueuedId,
+                            fileName = fileName,
+                            downloadUrl = downloadUrl,
+                            arch = arch.orEmpty(),
+                            downloadManager = downloadManager
+                    )
+            // Register before publishing downloadId so an immediate ACTION_DOWNLOAD_COMPLETE broadcast
+            // always finds the tracked entry.
+            handsUpdateDownloads[key] = download
             downloadId.set(enqueuedId)
-            return HandsUpdateDownload(
-                    key = key,
-                    versionCode = latest.version_code,
-                    downloadId = enqueuedId,
-                    fileName = fileName,
-                    downloadUrl = downloadUrl,
-                    arch = arch.orEmpty(),
-                    downloadManager = downloadManager
-            ).also { download ->
-                handsUpdateDownloads[key] = download
-            }
+            return download
         } catch (error: Throwable) {
             runCatching { appContext.unregisterReceiver(receiver) }
             throw error
@@ -9361,7 +9387,18 @@ internal class RaftBridgeModule(
                 source: String
         ): String {
             if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) return HANDS_INSTALL_FAILED
-            val canInstall = withContext(Dispatchers.IO) { canRequestPackageInstalls(context) }
+            val canInstall =
+                    try {
+                        withContext(Dispatchers.IO) { canRequestPackageInstalls(context) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        RaftAppLog.record(
+                                "SlockHandsUpdate",
+                                "install_permission_check_failed downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
+                        )
+                        return HANDS_INSTALL_FAILED
+                    }
             if (!canInstall) {
                 pendingHandsAutoInstallKey = download.key
                 withContext(Dispatchers.Main) {

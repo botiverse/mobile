@@ -4187,7 +4187,6 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         NSDictionary *aboutSnapshot = needsAbout ? [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}] : nil;
         __weak typeof(self) weakSelf = self;
         dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
             if ([actionCopy isEqualToString:@"loadDiagnostics"]) {
                 NSDictionary *result = RaftDiagnosticsLoadResult();
                 RaftBridgeRunOnMain(^{ callback(result); });
@@ -4212,6 +4211,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
                 NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
                 RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
                 RaftBridgeRunOnMain(^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
                     if (strongSelf) {
                         [strongSelf raft_shareItems:@[ exportText ]];
                     }
@@ -6567,23 +6567,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     if ([action isEqualToString:@"loadDeveloper"]) {
         return [self raft_developerCapabilityResultWithFeedback:nil];
     }
-    if ([action isEqualToString:@"loadDiagnostics"]) {
-        return RaftDiagnosticsLoadResult();
-    }
-    if ([action isEqualToString:@"copyDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
-        RaftBridgeRunOnMain(^{
-            UIPasteboard.generalPasteboard.string = exportText;
-        });
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
-        return @{ @"status" : @"ok" };
-    }
-    if ([action isEqualToString:@"shareDiagnostics"]) {
-        NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
-        [self raft_shareItems:@[ exportText ]];
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
-        return @{ @"status" : @"ok" };
-    }
     if ([action isEqualToString:@"shareText"]) {
         // A message link's Share (the thread's link menu): the share sheet with the address, as a
         // URL when it parses as one (so targets offer it as a link), else as text.
@@ -6593,11 +6576,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }
         NSURL *url = [NSURL URLWithString:text];
         [self raft_shareItems:@[ (url.scheme.length > 0 ? (id)url : (id)text) ]];
-        return @{ @"status" : @"ok" };
-    }
-    if ([action isEqualToString:@"clearDiagnostics"]) {
-        RaftDiagnosticsClear();
-        RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
         return @{ @"status" : @"ok" };
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
@@ -6622,9 +6600,6 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             @"code" : @"notification_unsupported",
             @"message" : @"Notifications are out of scope for iOS P0 host bridge"
         };
-    }
-    if ([action isEqualToString:@"prepareDiagnosticsFeedback"]) {
-        return [self raft_prepareDiagnosticsFeedbackDraft];
     }
     if ([action isEqualToString:@"sendFeedback"]) {
         [self raft_promptAndSubmitHandsFeedback];

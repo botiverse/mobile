@@ -2,6 +2,7 @@ package build.raft.app.widget
 
 import android.content.BroadcastReceiver
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,12 @@ internal class RaftWidgetBroadcastRunner(
         finish: (() -> Unit)?,
         block: suspend () -> Unit,
     ): Job {
+        val finished = AtomicBoolean(false)
+        fun finishOnce() {
+            if (finish != null && finished.compareAndSet(false, true)) {
+                runCatching { finish() }
+            }
+        }
         val workJob =
             try {
                 workScope.launch {
@@ -46,7 +53,7 @@ internal class RaftWidgetBroadcastRunner(
                     }
                 }
             } catch (throwable: Throwable) {
-                runCatching { finish?.invoke() }
+                finishOnce()
                 throw throwable
             }
         if (finish == null) return workJob
@@ -57,11 +64,11 @@ internal class RaftWidgetBroadcastRunner(
                         workJob.join()
                     }
                 } finally {
-                    runCatching { finish() }
+                    finishOnce()
                 }
             }
         } catch (throwable: Throwable) {
-            runCatching { finish() }
+            finishOnce()
             throw throwable
         }
         return workJob
@@ -80,7 +87,7 @@ internal object RaftWidgetBroadcastAsync {
     @OptIn(ExperimentalCoroutinesApi::class)
     private val defaultRunner =
         RaftWidgetBroadcastRunner(
-            workDispatcher = Dispatchers.IO.limitedParallelism(2),
+            workDispatcher = Dispatchers.IO.limitedParallelism(4),
         )
 
     @Volatile

@@ -332,11 +332,15 @@ enum RaftIosImagePaste {
         case image(UIImage)
     }
 
+    fileprivate enum ClipboardTypeCapture {
+        case data(type: String, data: Data)
+        case missing(type: String)
+    }
+
     fileprivate struct ClipboardItemCandidates {
         let index: Int
         let hasImageType: Bool
-        let candidates: [(type: String, data: Data)]
-        let missingTypes: [String]
+        let captures: [ClipboardTypeCapture]
     }
 
     fileprivate struct ClipboardSnapshot {
@@ -349,32 +353,34 @@ enum RaftIosImagePaste {
 
     /// Reads raw pasteboard payloads without running ImageIO (`CGImageSourceCreateWithData`) on the
     /// main thread. Each item's image types are queried in `imageTypesInReadOrder` (encoded public
-    /// formats first, UIKit's in-process `com.apple.uikit.image` last); once an item yields bytes
-    /// with a recognized encoded image header we stop reading redundant types for that item.
+    /// formats first, UIKit's in-process `com.apple.uikit.image` last); once an item yields plausible
+    /// encoded image bytes we stop reading redundant types for that item.
     /// Authoritative ImageIO validation happens in `resolveClipboardImages(_:)` off the main thread.
     fileprivate static func captureClipboardSnapshot() -> ClipboardSnapshot {
-        let board = UIPasteboard.general
         let limit = max(0, Int(RaftIosComposerImagePasteKt.raftIosPasteMaxImages()))
+        guard limit > 0 else {
+            return ClipboardSnapshot(limit: 0, itemTypes: [], items: [], wholeCandidates: [], fallbackImages: [])
+        }
+        let board = UIPasteboard.general
         let itemTypes = board.types(forItemSet: nil) ?? []
         var items: [ClipboardItemCandidates] = []
         var itemsWithRecognizedHeader = 0
         for (index, types) in itemTypes.enumerated() {
-            if itemsWithRecognizedHeader >= limit { break }
+            if items.count >= limit { break }
             let orderedTypes = imageTypesInReadOrder(types)
             guard !orderedTypes.isEmpty else { continue }
             let set = IndexSet(integer: index)
-            var candidates: [(type: String, data: Data)] = []
-            var missingTypes: [String] = []
+            var captures: [ClipboardTypeCapture] = []
             var recognized = false
             for type in orderedTypes {
                 if let data = board.data(forPasteboardType: type, inItemSet: set)?.first, !data.isEmpty {
-                    candidates.append((type: type, data: data))
+                    captures.append(.data(type: type, data: data))
                     if looksLikeEncodedImageHeader(data) {
                         recognized = true
                         break
                     }
                 } else {
-                    missingTypes.append(type)
+                    captures.append(.missing(type: type))
                 }
             }
             if recognized { itemsWithRecognizedHeader += 1 }
@@ -382,15 +388,15 @@ enum RaftIosImagePaste {
                 ClipboardItemCandidates(
                     index: index,
                     hasImageType: true,
-                    candidates: candidates,
-                    missingTypes: missingTypes
+                    captures: captures
                 )
             )
         }
         var wholeCandidates: [(type: String, data: Data)] = []
         var fallbackImages: [UIImage] = []
         // Only query whole-pasteboard and UIImage fallbacks when per-item reads did not already
-        // find a recognized encoded image header.
+        // find a recognized encoded image header (for example, `com.apple.uikit.image` payloads
+        // that ImageIO cannot decode directly).
         if itemsWithRecognizedHeader == 0 {
             let types = imageTypesInReadOrder(Array(Set(itemTypes.flatMap { $0 }))) +
                 [UTType.png.identifier, UTType.jpeg.identifier, UTType.heic.identifier]
@@ -430,15 +436,20 @@ enum RaftIosImagePaste {
         for item in snapshot.items {
             if sources.count >= snapshot.limit { break }
             var found = false
-            misses.append(contentsOf: item.missingTypes)
-            for candidate in item.candidates {
-                if isDecodableImage(candidate.data) {
-                    sources.append(.data(candidate.data))
-                    perItem += 1
-                    found = true
-                    break
+            for capture in item.captures {
+                switch capture {
+                case .missing(let type):
+                    misses.append(type)
+                case .data(let type, let data):
+                    if isDecodableImage(data) {
+                        sources.append(.data(data))
+                        perItem += 1
+                        found = true
+                    } else {
+                        misses.append(type)
+                    }
                 }
-                misses.append(candidate.type)
+                if found { break }
             }
             if !found, item.hasImageType { misses.append("item\(item.index)") }
         }
@@ -469,11 +480,12 @@ enum RaftIosImagePaste {
     /// Cheap O(1) magic-byte check used only to avoid reading redundant pasteboard representations
     /// on the main thread; authoritative validation runs off the main thread via ImageIO.
     static func looksLikeEncodedImageHeader(_ data: Data) -> Bool {
+        // Require a minimal body past the header so truncated magic-byte-only stubs still fall
+        // through to secondary representations or UIImage fallback.
+        guard data.count >= 24 else { return false }
         let header = Array(data.prefix(12))
-        guard header.count >= 4 else { return false }
         // PNG: 89 50 4E 47 0D 0A 1A 0A
-        if header.count >= 8,
-           header[0] == 0x89, header[1] == 0x50, header[2] == 0x4E, header[3] == 0x47,
+        if header[0] == 0x89, header[1] == 0x50, header[2] == 0x4E, header[3] == 0x47,
            header[4] == 0x0D, header[5] == 0x0A, header[6] == 0x1A, header[7] == 0x0A {
             return true
         }
@@ -486,14 +498,18 @@ enum RaftIosImagePaste {
             return true
         }
         // WebP: "RIFF" .... "WEBP"
-        if header.count >= 12,
-           header[0] == 0x52, header[1] == 0x49, header[2] == 0x46, header[3] == 0x46,
+        if header[0] == 0x52, header[1] == 0x49, header[2] == 0x46, header[3] == 0x46,
            header[8] == 0x57, header[9] == 0x45, header[10] == 0x42, header[11] == 0x50 {
             return true
         }
         // HEIC / HEIF / AVIF (ISO Base Media File Format): .... "ftyp"
-        if header.count >= 12,
-           header[4] == 0x66, header[5] == 0x74, header[6] == 0x79, header[7] == 0x70 {
+        if header[4] == 0x66, header[5] == 0x74, header[6] == 0x79, header[7] == 0x70 {
+            return true
+        }
+        // JPEG 2000 JP2 box (00 00 00 0C "jP  ") or codestream (FF 4F FF 51)
+        if (header[0] == 0x00 && header[1] == 0x00 && header[2] == 0x00 && header[3] == 0x0C &&
+            header[4] == 0x6A && header[5] == 0x50 && header[6] == 0x20 && header[7] == 0x20) ||
+           (header[0] == 0xFF && header[1] == 0x4F && header[2] == 0xFF && header[3] == 0x51) {
             return true
         }
         // TIFF: "II*\0" or "MM\0*"
@@ -501,8 +517,10 @@ enum RaftIosImagePaste {
            (header[0] == 0x4D && header[1] == 0x4D && header[2] == 0x00 && header[3] == 0x2A) {
             return true
         }
-        // BMP: "BM"
-        if header[0] == 0x42, header[1] == 0x4D {
+        // BMP: "BM", ICO: 00 00 01 00, ICNS: "icns"
+        if (header[0] == 0x42 && header[1] == 0x4D) ||
+           (header[0] == 0x00 && header[1] == 0x00 && header[2] == 0x01 && header[3] == 0x00) ||
+           (header[0] == 0x69 && header[1] == 0x63 && header[2] == 0x6E && header[3] == 0x73) {
             return true
         }
         return false

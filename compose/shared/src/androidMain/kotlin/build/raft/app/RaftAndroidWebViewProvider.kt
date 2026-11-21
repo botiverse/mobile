@@ -21,15 +21,20 @@ object RaftAndroidWebViewProvider {
         val versionName: String?,
     )
 
+    private class CachedProvider(
+        val appContext: Context,
+        val info: ProviderInfo,
+    )
+
     private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val logged = AtomicBoolean(false)
-    private val cachedInfo = AtomicReference<ProviderInfo?>(null)
+    private val cachedProvider = AtomicReference<CachedProvider?>(null)
 
     /** Test seam: loads `(packageName, versionName)` for the current WebView package. */
     @Volatile
     internal var packageLoader: (Context) -> Pair<String?, String?> = ::defaultPackageLoader
 
-    /** Test seam: executes the off-main WebView package lookup for [logOnce] and [prewarm]. */
+    /** Test seam: executes the off-main WebView package lookup for [logOnce]. */
     @Volatile
     internal var backgroundRunner: (task: () -> Unit) -> Unit = { task ->
         backgroundScope.launch { runCatching(task) }
@@ -43,38 +48,35 @@ object RaftAndroidWebViewProvider {
 
     /** `<package> <version>` of the current WebView implementation, or `unavailable`. */
     fun label(context: Context): String {
-        val info = cachedInfo.get() ?: resolveAndCache(context)
-        return raftWebViewProviderLabel(info.packageName, info.versionName)
-    }
-
-    /** Populates the in-memory WebView package cache off the calling thread if not already cached. */
-    fun prewarm(context: Context) {
-        if (cachedInfo.get() != null) return
         val appContext = context.applicationContext ?: context
-        backgroundRunner { resolveAndCache(appContext) }
+        val info = cachedFor(appContext) ?: resolveAndCache(appContext)
+        return raftWebViewProviderLabel(info.packageName, info.versionName)
     }
 
     /** Logs [label] once per process, when the first WebView is created, without blocking main. */
     internal fun logOnce(context: Context) {
         if (!logged.compareAndSet(false, true)) return
-        val cached = cachedInfo.get()
+        val appContext = context.applicationContext ?: context
+        val cached = cachedFor(appContext)
         if (cached != null) {
             infoLogger(raftWebViewProviderLogLine(cached.packageName, cached.versionName))
             return
         }
-        val appContext = context.applicationContext ?: context
         backgroundRunner {
             val info = resolveAndCache(appContext)
             infoLogger(raftWebViewProviderLogLine(info.packageName, info.versionName))
         }
     }
 
-    private fun resolveAndCache(context: Context): ProviderInfo {
-        val appContext = context.applicationContext ?: context
-        val (packageName, versionName) = runCatching { packageLoader(appContext) }.getOrDefault(null to null)
-        val resolved = ProviderInfo(packageName = packageName, versionName = versionName)
-        cachedInfo.compareAndSet(null, resolved)
-        return cachedInfo.get() ?: resolved
+    private fun cachedFor(appContext: Context): ProviderInfo? =
+        cachedProvider.get()?.takeIf { it.appContext === appContext }?.info
+
+    private fun resolveAndCache(appContext: Context): ProviderInfo {
+        val loaded = runCatching { packageLoader(appContext) }.getOrNull()
+            ?: return ProviderInfo(packageName = null, versionName = null)
+        val resolved = ProviderInfo(packageName = loaded.first, versionName = loaded.second)
+        cachedProvider.set(CachedProvider(appContext = appContext, info = resolved))
+        return resolved
     }
 
     private fun defaultPackageLoader(context: Context): Pair<String?, String?> {
@@ -84,7 +86,7 @@ object RaftAndroidWebViewProvider {
 
     internal fun resetForTest() {
         logged.set(false)
-        cachedInfo.set(null)
+        cachedProvider.set(null)
         packageLoader = ::defaultPackageLoader
         backgroundRunner = { task -> backgroundScope.launch { runCatching(task) } }
         infoLogger = { message -> raftLogInfo(RAFT_WEBVIEW_DIAGNOSTICS_TAG, message) }

@@ -3,6 +3,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -53,6 +54,9 @@ internal actual fun RaftPdfDocumentView(
     val errorCallback by rememberUpdatedState(onError)
     key(path) {
         val host = remember { RaftIosPdfViewHost { current, count -> pageCallback(current, count) } }
+        DisposableEffect(host) {
+            onDispose { host.dispose() }
+        }
         LaunchedEffect(host, path) {
             when (val outcome = withContext(Dispatchers.IO) { raftIosOpenPdfDocument(path) }) {
                 is RaftIosPdfOpenResult.Opened -> host.attach(outcome.document)

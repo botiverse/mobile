@@ -181,8 +181,33 @@ internal object AndroidAppScopeMMKV {
         keepAliveScope.launch { runCatching(task) }
     }
 
+    /** Test seam: receives the keep-alive action (`refresh`, `start`, `stop`) on the serial worker. */
+    @Volatile
+    internal var keepAliveActionExecutor: (Context, String) -> Unit = { appContext, action ->
+        when (action) {
+            "refresh" ->
+                AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
+                    appContext,
+                    source = "message_notifications_preference"
+                )
+            "start" -> AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
+            "stop" -> AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
+        }
+    }
+
     internal fun resetKeepAliveRunnerForTest() {
         keepAliveRunner = { task -> keepAliveScope.launch { runCatching(task) } }
+        keepAliveActionExecutor = { appContext, action ->
+            when (action) {
+                "refresh" ->
+                    AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
+                        appContext,
+                        source = "message_notifications_preference"
+                    )
+                "start" -> AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
+                "stop" -> AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
+            }
+        }
     }
 
     internal fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
@@ -194,12 +219,7 @@ internal object AndroidAppScopeMMKV {
             // The no-Play-services background connection only runs while message notifications are on.
             // Dispatch serially off the caller (often main) thread so PackageManager / NotificationManager /
             // startForegroundService IPCs never run synchronously inside MMKV.encodeString.
-            keepAliveRunner {
-                AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
-                    appContext,
-                    source = "message_notifications_preference"
-                )
-            }
+            keepAliveRunner { keepAliveActionExecutor(appContext, "refresh") }
             return
         }
         if (mmapID != RaftLocalPreferenceStore.KuiklyNamespace ||
@@ -210,13 +230,8 @@ internal object AndroidAppScopeMMKV {
         ) {
             return
         }
-        keepAliveRunner {
-            if (value == "true") {
-                AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
-            } else {
-                AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
-            }
-        }
+        val action = if (value == "true") "start" else "stop"
+        keepAliveRunner { keepAliveActionExecutor(appContext, action) }
     }
 }
 
