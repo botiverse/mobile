@@ -208,15 +208,20 @@ internal fun appShellPageDataForServerSelection(
     routeOwner: AuthenticatedRouteOwner? = null,
     // The chooser page replaces itself with the shell; a shell that opens another server's window
     // stays where it is (replacing it would close the source window).
-    replaceCurrent: Boolean = true
+    replaceCurrent: Boolean = true,
+    // Post-login workspace selection (`fromShell = false`) opens the default launcher shell rather
+    // than spawning a document task and finishing the launcher task.
+    fromShell: Boolean = true,
+    windowShowingPickedServer: String? = null,
 ): JSONObject {
     val normalizedServerId = selectedServerId?.trim()?.takeIf { it.isNotBlank() }
     val opensDocumentShell =
-        isMultiShellCrossServerSelection(
-            sourceStoreScope = sourceStoreScope,
-            selectedServerId = normalizedServerId,
-            multiShellHostEnabled = multiShellHostEnabled
-        )
+        fromShell &&
+            isMultiShellCrossServerSelection(
+                sourceStoreScope = sourceStoreScope,
+                selectedServerId = normalizedServerId,
+                multiShellHostEnabled = multiShellHostEnabled
+            )
     return appShellPageData(
         replaceCurrent = replaceCurrent,
         suppressRestoreLanding = suppressRestoreLanding
@@ -227,7 +232,17 @@ internal fun appShellPageDataForServerSelection(
             withAuthenticatedRouteOwner(routeOwner)
         } else {
             put(RAFT_SHELL_INSTANCE_ID, sourceStoreScope.shellInstanceId)
-            put(RAFT_DOCUMENT_SHELL, sourceDocumentShell && multiShellHostEnabled)
+            put(RAFT_DOCUMENT_SHELL, fromShell && sourceDocumentShell && multiShellHostEnabled)
+        }
+        val window =
+            if (fromShell && multiShellHostEnabled) {
+                windowShowingPickedServer?.trim()?.takeIf { it.isNotEmpty() && it != sourceStoreScope.shellInstanceId }
+            } else {
+                null
+            }
+        if (window != null) {
+            put(RAFT_SERVER_SWITCH_WINDOW_ID, window)
+            if (!has(AppShellInitialTabKey)) put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
         }
     }
 }
@@ -368,6 +383,7 @@ internal fun AppShellServerGateContent(
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
     skipInitialLoad: Boolean = false,
+    selectServerInCurrentShell: Boolean = true,
     onReady: (StoredAuthSession) -> Unit,
     onSignOut: () -> Unit,
     onSessionCleared: (StoredAuthSession) -> Unit = {},
@@ -626,7 +642,14 @@ internal fun AppShellServerGateContent(
         }
         val result =
             if (target == "__create__") {
-                authDataSource.createServer(createName.text, slug = createSlug.text)
+                authDataSource.createServer(
+                    createName.text,
+                    slug = createSlug.text,
+                    selectCreatedServer = selectServerInCurrentShell,
+                )
+            } else if (!selectServerInCurrentShell) {
+                latestSession.withAppShellSelectedServer(target)?.let { SharedAuthResult.Success(it) }
+                    ?: authDataSource.selectServer(target)
             } else {
                 authDataSource.selectServer(target)
             }

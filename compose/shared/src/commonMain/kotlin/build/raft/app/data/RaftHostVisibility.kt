@@ -57,7 +57,7 @@ fun updateRaftHostVisibility(shellInstanceId: String, visible: Boolean) {
  * visibility. Both the shell reconcile and the process reconcile read it, so with multi-session realtime
  * on they send the same set.
  */
-internal val raftProcessRealtimeSessionDemand: RaftRealtimeSessionDemand = RaftRealtimeSessionDemand()
+internal val raftProcessRealtimeSessionDemand: RaftRealtimeSessionDemand = RaftRealtimeSessionDemand(notifyHost = true)
 
 fun isRaftHostVisible(shellInstanceId: String): Boolean =
     RaftHostVisibilityRegistry.isVisible(shellInstanceId)

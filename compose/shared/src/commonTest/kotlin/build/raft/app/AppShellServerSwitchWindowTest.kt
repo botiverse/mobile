@@ -268,4 +268,73 @@ class AppShellServerSwitchWindowTest {
     fun keptTabDoesNotTurnAnInPlaceSwitchIntoANewWindow() {
         assertNull(switchOnTab("activity", multiShellHostEnabled = false))
     }
+
+    @Test
+    fun postLoginChooserStaysInDefaultLauncherShellEvenWithSeparateWindowsEnabled() {
+        val pageData =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = RaftShellStoreScope.Legacy,
+                sourceDocumentShell = false,
+                selectedServerId = "server-a",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-a"),
+                fromShell = false,
+            )
+
+        assertEquals("server-a", pageData.optString(RAFT_SHELL_SERVER_ID))
+        assertFalse(pageData.optBoolean("slockDocumentShell", false))
+        assertEquals(RaftShellStoreScope.Legacy.shellInstanceId, pageData.optString("slockShellInstanceId"))
+        assertFalse(pageData.has(RAFT_SERVER_SWITCH_WINDOW_ID))
+    }
+
+    @Test
+    fun chooserFromShellReusesExistingLauncherOrDocumentWindowWithKeepWindow() {
+        val serverBScope = RaftShellStoreScope.create("slock://shell/env/user-1/server-b", "server-b")
+        val toLauncher =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = serverBScope,
+                sourceDocumentShell = true,
+                selectedServerId = "server-a",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-a"),
+                fromShell = true,
+                windowShowingPickedServer = "android-default-app-shell",
+            )
+
+        assertTrue(toLauncher.optBoolean("slockReplaceCurrentPage", false))
+        assertEquals("android-default-app-shell", toLauncher.optString(RAFT_SERVER_SWITCH_WINDOW_ID))
+        assertTrue(toLauncher.optBoolean(RAFT_SERVER_SWITCH_KEEP_WINDOW, false))
+        assertEquals("server-a", toLauncher.optString(RAFT_ROUTE_SERVER_ID))
+
+        // A window showing the source itself must not set RAFT_SERVER_SWITCH_WINDOW_ID.
+        val selfIgnored =
+            appShellPageDataForServerSelection(
+                sourceStoreScope = serverBScope,
+                sourceDocumentShell = true,
+                selectedServerId = "server-c",
+                multiShellHostEnabled = true,
+                suppressRestoreLanding = true,
+                routeOwner = owner("server-c"),
+                fromShell = true,
+                windowShowingPickedServer = serverBScope.shellInstanceId,
+            )
+        assertFalse(selfIgnored.has(RAFT_SERVER_SWITCH_WINDOW_ID))
+        assertFalse(selfIgnored.has(RAFT_SERVER_SWITCH_KEEP_WINDOW))
+    }
+
+    @Test
+    fun documentShellStoreScopeFallsBackToRouteServerIdWhenShellServerIdIsBlank() {
+        val raw =
+            build.raft.app.compat.json.JSONObject()
+                .put(RAFT_SHELL_INSTANCE_ID, "slock://shell/env/user-1/server-b")
+                .put(RAFT_DOCUMENT_SHELL, true)
+                .put(RAFT_SHELL_SERVER_ID, "")
+                .put(RAFT_ROUTE_SERVER_ID, "server-b")
+
+        val scope = raw.raftShellStoreScopeOrNull()
+        assertNotNull(scope)
+        assertEquals("server-b", scope.initialServerId)
+    }
 }

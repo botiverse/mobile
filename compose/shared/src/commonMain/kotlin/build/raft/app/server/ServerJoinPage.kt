@@ -171,17 +171,46 @@ private fun ServerJoinScreen() {
             when (val answer = (result as? DataResult.Content)?.data) {
                 is ServerJoinAnswer.Ok -> {
                     val joined = answer.value
+                    // Capture the originating shell's actual workspace BEFORE reloading servers so a
+                    // user with zero servers does not treat loadServers()'s implicit first-server
+                    // fallback as the originating shell's current workspace.
+                    val currentSourceServerId =
+                        storeScope.initialServerId?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: sharedStores.selectedServerStore(storeScope).selectedServerId.value?.trim()?.takeIf { it.isNotEmpty() }
                     // Into the server joined, with the server list reloaded (web loadServers + /s/{slug}).
-                    runCatchingPreservingCancellation { authDataSource.loadServers() }
-                    val selected = runCatchingPreservingCancellation { authDataSource.selectServer(joined.serverId) }.getOrNull()
+                    val loaded = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()
+                    val effectiveSourceScope =
+                        if (currentSourceServerId != null) {
+                            RaftShellStoreScope.create(storeScope.shellInstanceId, currentSourceServerId)
+                        } else {
+                            storeScope
+                        }
+                    val multiShell = raftMultiShellHostEnabled()
+                    val joinedId = joined.serverId.trim()
+                    if (multiShell && currentSourceServerId != null && joinedId == currentSourceServerId) {
+                        bridge.log("server_join_accept result=joined select=same_window")
+                        router.closePage()
+                        return@launch
+                    }
+                    val selected =
+                        if (multiShell && currentSourceServerId != null) {
+                            (loaded as? SharedAuthResult.Success)?.data?.withAppShellSelectedServer(joinedId)
+                                ?.let { SharedAuthResult.Success(it) }
+                                ?: runCatchingPreservingCancellation { authDataSource.selectServer(joinedId) }.getOrNull()
+                        } else {
+                            runCatchingPreservingCancellation { authDataSource.selectServer(joinedId) }.getOrNull()
+                        }
                     bridge.log("server_join_accept result=joined select=${selected is SharedAuthResult.Success}")
                     if (selected is SharedAuthResult.Success) {
                         pager.openAppShellForSelectedServer(
                             readySession = selected.data,
-                            sourceStoreScope = storeScope,
+                            sourceStoreScope = effectiveSourceScope,
                             sourceDocumentShell = documentShell,
                             environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
                             bridge = bridge,
+                            fromShell = currentSourceServerId != null,
+                            onSameServerInShell = router::closePage,
+                            noteServerSelected = sharedStores::noteServerSwitchedToWindow,
                         )
                     } else {
                         view = ServerJoinView.Joined(joined.serverName.ifBlank { info.serverName })

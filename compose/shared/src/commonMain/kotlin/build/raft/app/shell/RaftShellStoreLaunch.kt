@@ -10,7 +10,7 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 
 internal const val RAFT_SHELL_INSTANCE_ID = "slockShellInstanceId"
-internal const val RAFT_SHELL_SERVER_ID = "slockShellServerId"
+const val RAFT_SHELL_SERVER_ID = "slockShellServerId"
 private const val LEGACY_RAFT_SHELL_SERVER_ID = "serverId"
 internal const val RAFT_DOCUMENT_SHELL = "slockDocumentShell"
 const val RAFT_ROUTE_ENVIRONMENT_ID = "slockRouteEnvironmentId"
@@ -75,15 +75,25 @@ internal fun JSONObject.raftShellStoreScopeOrNull(): RaftShellStoreScope? {
     )
 }
 
-private fun JSONObject.raftShellServerIdOrNull(): String? =
-    if (has(RAFT_SHELL_SERVER_ID)) {
-        // Presence is significant: a serialized null means the live shell has
-        // no selected server and must not fall back to a feature route's
-        // legacy `serverId` field.
-        optString(RAFT_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+private fun JSONObject.raftShellServerIdOrNull(): String? {
+    val explicit =
+        if (has(RAFT_SHELL_SERVER_ID)) {
+            // Presence is significant: a serialized null means the live shell has
+            // no selected server and must not fall back to a feature route's
+            // legacy `serverId` field.
+            optString(RAFT_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+        } else {
+            optString(LEGACY_RAFT_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+        }
+    if (explicit != null) return explicit
+    // A document window is always bound to its route owner's server; never let a blank/missing
+    // `slockShellServerId` fall back to the process-global last-selected server on cold start.
+    return if (optBoolean(RAFT_DOCUMENT_SHELL, false)) {
+        optString(RAFT_ROUTE_SERVER_ID).trim().takeIf { it.isNotBlank() }
     } else {
-        optString(LEGACY_RAFT_SHELL_SERVER_ID).trim().takeIf { it.isNotBlank() }
+        null
     }
+}
 
 internal fun JSONObject.withRaftShellStoreScope(storeScope: RaftShellStoreScope): JSONObject =
     put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)

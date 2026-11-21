@@ -6,12 +6,16 @@ import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.core.data.auth.AndroidMobileOAuthPendingStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.shared.AndroidPendingLauncherTaskLaunchStore
 import build.raft.app.shared.AndroidShellRouteOwner
 import build.raft.app.shared.AndroidShellWindowRegistry
+import build.raft.app.shared.AndroidShellWindowStore
+import build.raft.app.shared.ANDROID_SHELL_SERVER_ID_KEY
 import build.raft.app.shared.AndroidLoginTransitionRouting
 import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.shared.RaftRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
+import build.raft.app.shared.optNonNullString
 import build.raft.app.shared.withAndroidShellRouteOwner
 import build.raft.app.data.RaftAppLoginBridge
 import build.raft.app.RaftMessageLinkIngress
@@ -239,6 +243,37 @@ class MainActivity : ComponentActivity() {
 
     private fun openSharedShell(launchIntent: Intent? = intent) {
         val pageData = RaftCmpActivity.appShellPageDataFromIntent(launchIntent)
+        val pendingLauncherLaunch = AndroidPendingLauncherTaskLaunchStore.consume(taskId)
+        if (pendingLauncherLaunch != null) {
+            pendingLauncherLaunch.serverId?.let {
+                pageData.put(ANDROID_SHELL_SERVER_ID_KEY, it)
+                pageData.put(RAFT_SHELL_SERVER_ID, it)
+            }
+            pendingLauncherLaunch.initialTab?.let {
+                pageData.put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, it)
+            }
+            if (pendingLauncherLaunch.tapEpochMillis > 0L) {
+                pageData.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, pendingLauncherLaunch.tapEpochMillis)
+            }
+        } else {
+            val hasExplicitServer =
+                pageData.optNonNullString(RAFT_SHELL_SERVER_ID).isNotEmpty() ||
+                    pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).isNotEmpty() ||
+                    pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).isNotEmpty()
+            val multiShellHostEnabled =
+                runCatching {
+                    build.raft.app.data.KeyValueChatLayoutPreferenceStore(build.raft.app.data.raftSharedPreferenceStore())
+                        .readMultiShellHostEnabledSync()
+                }.getOrDefault(false)
+            if (multiShellHostEnabled && !hasExplicitServer) {
+                currentAndroidShellRouteOwner(this)?.let { owner ->
+                    AndroidShellWindowStore.persistedLauncherServerId(owner.environmentId, owner.accountId)?.let { serverId ->
+                        pageData.put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                        pageData.put(RAFT_SHELL_SERVER_ID, serverId)
+                    }
+                }
+            }
+        }
         openSharedShellPageData(pageData, launchIntent)
     }
 
