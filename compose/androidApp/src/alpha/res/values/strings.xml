@@ -12,7 +12,6 @@
     <string name="push_preview_hidden_title" translatable="false">Raft Alpha</string>
     <string name="settings_notification_test_title">Raft Alpha notification test</string>
     <string name="notification_unread_general_channel_description">General unread Raft Alpha message notifications.</string>
-    <string name="inbox_notification_channel_description">Unread activity updates from Raft Alpha.</string>
     <string name="slock_activity_widget_name">Raft Alpha Activity</string>
     <string name="slock_agent_status_widget_name">Raft Alpha Live Agents</string>
     <string name="raft_download_notification_tap_retry">Open Raft Alpha to try again</string>

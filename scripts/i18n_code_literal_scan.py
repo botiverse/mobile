@@ -435,6 +435,9 @@ def resolve_allowlist_occurrences(
             and finding.literal == entry.literal
             and (entry.context is None or finding.context == entry.context)
         ]
+        if not matches:
+            # The reviewed code changed or was removed; stale_allowlist_entries reports it.
+            continue
         if len(matches) != 1:
             raise ValueError(
                 "allowlist entry must resolve to exactly one occurrence: "
@@ -443,6 +446,24 @@ def resolve_allowlist_occurrences(
         finding = matches[0]
         resolved.add((finding.path, finding.line, finding.column, finding.literal))
     return resolved
+
+
+def stale_allowlist_entries(
+    findings: list[Finding],
+    allowlist: dict[tuple[str, str, str | None], ReviewedException],
+) -> list[ReviewedException]:
+    """Reviewed exceptions that no longer match any occurrence; remove them from the allowlist."""
+    stale = [
+        entry
+        for entry in allowlist.values()
+        if not any(
+            finding.path == entry.path
+            and finding.literal == entry.literal
+            and (entry.context is None or finding.context == entry.context)
+            for finding in findings
+        )
+    ]
+    return sorted(stale, key=lambda entry: (entry.path, entry.literal, entry.context or ""))
 
 
 def parse_mr_value_index(path: Path) -> dict[str, tuple[str, ...]]:
@@ -458,7 +479,12 @@ def parse_mr_value_index(path: Path) -> dict[str, tuple[str, ...]]:
     return {value: tuple(sorted(keys)) for value, keys in values.items()}
 
 
-def markdown_report(findings: list[Finding], scanned_files: int, suppressed_count: int) -> str:
+def markdown_report(
+    findings: list[Finding],
+    scanned_files: int,
+    suppressed_count: int,
+    stale: list[ReviewedException] | None = None,
+) -> str:
     lines = [
         "# Kotlin user-visible English literal scan",
         "",
@@ -480,6 +506,15 @@ def markdown_report(findings: list[Finding], scanned_files: int, suppressed_coun
         ]
         escaped = [value.replace("|", "\\|").replace("\n", r"\n") for value in values]
         lines.append("| " + " | ".join(escaped) + " |")
+    if stale:
+        lines += [
+            "",
+            f"## Stale allowlist entries: {len(stale)}",
+            "",
+            "These reviewed exceptions match nothing any more; remove them from the allowlist.",
+            "",
+        ]
+        lines += [f"- `{entry.path}` / `{entry.literal}`" + (f" / `{entry.context}`" if entry.context else "") for entry in stale]
     return "\n".join(lines) + "\n"
 
 
@@ -502,6 +537,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Only report literals that exactly match an existing MR/base value.",
     )
     parser.add_argument("--fail-on-findings", action="store_true")
+    parser.add_argument(
+        "--fail-on-stale",
+        action="store_true",
+        help="Exit 1 when an allowlist entry no longer matches any occurrence.",
+    )
     return parser
 
 
@@ -526,6 +566,7 @@ def main(argv: list[str] | None = None) -> int:
     allowlist_path = args.allowlist if args.allowlist.is_absolute() else repo_root / args.allowlist
     allowlist = parse_allowlist(allowlist_path)
     reviewed_occurrences = resolve_allowlist_occurrences(findings, allowlist)
+    stale = stale_allowlist_entries(findings, allowlist)
     if args.direct_only:
         findings = [item for item in findings if is_direct_sink(item.sink)]
     if args.catalog_backed_only:
@@ -545,19 +586,22 @@ def main(argv: list[str] | None = None) -> int:
                 "scannedFileCount": len(source_files),
                 "findingCount": len(findings),
                 "reviewedExceptionCount": suppressed_count,
+                "staleAllowlistEntries": [asdict(entry) for entry in stale],
                 "findings": [asdict(item) for item in findings],
             },
             ensure_ascii=False,
             indent=2,
         ) + "\n"
     else:
-        output = markdown_report(findings, len(source_files), suppressed_count)
+        output = markdown_report(findings, len(source_files), suppressed_count, stale)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(output, encoding="utf-8")
     else:
         sys.stdout.write(output)
-    return 1 if args.fail_on_findings and findings else 0
+    if args.fail_on_findings and findings:
+        return 1
+    return 1 if args.fail_on_stale and stale else 0
 
 
 if __name__ == "__main__":

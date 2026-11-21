@@ -11,7 +11,6 @@
     <string name="raft_background_connection_channel_description">在没有 Google Play 服务的设备上，Raft Alpha 在后台保持连接以发送消息通知时显示。</string>
     <string name="settings_notification_test_title">Raft Alpha 通知测试</string>
     <string name="notification_unread_general_channel_description">Raft Alpha 的一般未读消息通知。</string>
-    <string name="inbox_notification_channel_description">来自 Raft Alpha 的未读 Activity 更新。</string>
     <string name="slock_activity_widget_name">Raft Alpha 动态</string>
     <string name="slock_agent_status_widget_name">Raft Alpha 实时 Agent</string>
     <string name="raft_download_notification_tap_retry">打开 Raft Alpha 重试</string>
