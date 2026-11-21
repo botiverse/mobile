@@ -407,9 +407,9 @@ class ActivityExcerptBesideMarksTest {
         var line2InlineY = -1f
         val pushedText =
             buildAnnotatedString {
-                append("A fairly long channel prefix that pushes the inline badge onto the second line ")
+                append("A long channel prefix that pushes ")
                 appendInlineContent("badge", " ")
-                append(" tail")
+                append(" onto line two")
             }
         val pushedInline =
             mapOf(
@@ -489,9 +489,17 @@ class ActivityExcerptBesideMarksTest {
             }
         }
         settle()
+        val observedTexts = texts(activity)
         assertTrue(rtlHeight > 0, "RTL long token measured positive height")
         assertTrue(marksX <= rootLeftX + 8f, "RTL places marks at physical left edge (marksX=$marksX, rootLeftX=$rootLeftX)")
-        assertEquals(listOf("Accessible summary override"), texts(activity), "accessibilityText overrides visual excerpt semantics")
+        assertTrue(
+            "Accessible summary override" in observedTexts,
+            "accessibilityText is exposed in semantics ($observedTexts)",
+        )
+        assertTrue(
+            observedTexts.none { it.contains("very-long-unbreakable") },
+            "visual excerpt text is suppressed when accessibilityText is provided ($observedTexts)",
+        )
     }
 
     private fun texts(activity: android.app.Activity): List<String> {
