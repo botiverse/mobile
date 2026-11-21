@@ -94,7 +94,9 @@ internal fun authenticatedProductPageView(
 ): RaftProductPageView? =
     when (route) {
         AuthenticatedProductRoute.Thread -> threadProductPageView(params, consumeTaskThread)
-        AuthenticatedProductRoute.TaskPending -> RaftProductPageView(RaftPageRoute.Task)
+        // Pending preview swaps into THREAD_PAGE (marked via markTaskThreadOpening) on first send;
+        // returning null avoids logging a duplicate `page_viewed route=task` pair on first send.
+        AuthenticatedProductRoute.TaskPending -> null
         AuthenticatedProductRoute.HomeSearch ->
             if (params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).isNotBlank()) {
                 RaftProductPageView(RaftPageRoute.ConversationSearch)

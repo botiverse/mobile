@@ -73,14 +73,20 @@ static BOOL RaftRouterBool(id value) {
     }
     if (navigationController) {
         if (replaceCurrent && navigationController.viewControllers.count > 0) {
-            UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
             NSMutableArray<UIViewController *> *viewControllers = [navigationController.viewControllers mutableCopy];
-            if ([pageName isEqualToString:@"compose_login"]) {
+            BOOL isLogin = [pageName isEqualToString:@"compose_login"];
+            NSUInteger targetIndex = [viewControllers indexOfObjectIdenticalTo:controller];
+            if (isLogin) {
+                // Auth-loss replacement from an underlying shell retires and replaces the top page.
+                targetIndex = viewControllers.count - 1;
                 objc_setAssociatedObject(viewControllers.lastObject, &RaftRouterRetiredByLoginKey,
                                          @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            } else if (targetIndex == NSNotFound) {
+                // Source controller was already popped/removed; never clobber an unrelated top page.
+                return;
             }
-            [viewControllers removeLastObject];
-            [viewControllers addObject:renderViewController];
+            UIViewController *renderViewController = [RaftPageControllerFactory controllerForPageName:pageName pageData:sanitizedPageData];
+            [viewControllers replaceObjectAtIndex:targetIndex withObject:renderViewController];
             BOOL animated = !RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
             [navigationController setViewControllers:viewControllers animated:animated];
         } else {

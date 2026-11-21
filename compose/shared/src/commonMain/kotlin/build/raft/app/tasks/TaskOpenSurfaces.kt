@@ -144,6 +144,17 @@ internal suspend fun startTaskConversation(
 }
 
 /**
+ * In-memory first-frame seed for a pushed [TASK_PENDING_CONVERSATION_PAGE] route (identity-only
+ * `pageData` never carries product objects). Holds the [task] tapped on the opener and optional
+ * channel access hints until the live store / conversation directory hydrates.
+ */
+internal data class TaskPendingSeed(
+    val task: TaskSummary,
+    val channelJoined: Boolean? = null,
+    val canWriteChannel: Boolean? = null,
+)
+
+/**
  * The first message typed into a task that has no conversation yet ([TaskOpenSurface.Pending]),
  * per server and task, for one window's signed-in session. The conversation composer's drafts are
  * keyed by a conversation channel, which such a task does not have, so they live here instead: the
@@ -155,17 +166,6 @@ internal suspend fun startTaskConversation(
  * message twice. Cleared for a task when its first send created the conversation, and as a whole
  * on sign-out or another account ([followSession]), which also drops servers the account left.
  */
-/**
- * In-memory first-frame seed for a pushed [TASK_PENDING_CONVERSATION_PAGE] route (identity-only
- * `pageData` never carries product objects). Holds the [task] tapped on the opener and optional
- * channel access hints until the live store / conversation directory hydrates.
- */
-internal data class TaskPendingSeed(
-    val task: TaskSummary,
-    val channelJoined: Boolean? = null,
-    val canWriteChannel: Boolean? = null,
-)
-
 internal class TaskPendingDraftStore {
     private data class Key(val serverId: String, val taskId: String)
 

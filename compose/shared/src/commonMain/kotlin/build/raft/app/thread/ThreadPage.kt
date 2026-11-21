@@ -1047,34 +1047,39 @@ private fun ThreadPageScreen(
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
-        onOpenPendingTask = { pendingTask, serverId, channelJoined, canWriteChannel ->
-            val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: storeScope.initialServerId
-            val targetStoreScope =
-                RaftShellStoreScope.create(
-                    shellInstanceId = storeScope.shellInstanceId,
-                    initialServerId = resolvedServerId,
-                )
-            val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
-            val desktopModeEnabled =
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
-            if (workspaceStore.snapshot().routeThreadOpen(adaptiveCloseRequest, desktopModeEnabled, targetStoreScope.initialServerId) ==
-                AdaptiveThreadOpenRoute.Ignored
-            ) {
-                bridge.logWarn("task_pending_open_skip reason=stale_adaptive_source")
+        onOpenPendingTask =
+            if (adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane) {
+                null
             } else {
-                pager.openTaskPendingPage(
-                    task = pendingTask,
-                    serverId = resolvedServerId,
-                    storeScope = targetStoreScope,
-                    foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
-                    timeContext = liveTimeContextProvider.current ?: payload.toRaftTimeCapabilities().staticContext(),
-                    alignOwnMessagesRight = payload.alignOwnMessagesRight,
-                    compactConsecutiveMessages = payload.compactConsecutiveMessages,
-                    channelJoined = channelJoined,
-                    canWriteChannel = canWriteChannel,
-                )
-            }
-        },
+                { pendingTask, serverId, channelJoined, canWriteChannel ->
+                    val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: storeScope.initialServerId
+                    val targetStoreScope =
+                        RaftShellStoreScope.create(
+                            shellInstanceId = storeScope.shellInstanceId,
+                            initialServerId = resolvedServerId,
+                        )
+                    val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+                    val desktopModeEnabled =
+                        KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+                    if (workspaceStore.snapshot().routeThreadOpen(adaptiveCloseRequest, desktopModeEnabled, targetStoreScope.initialServerId) ==
+                        AdaptiveThreadOpenRoute.Ignored
+                    ) {
+                        bridge.logWarn("task_pending_open_skip reason=stale_adaptive_source")
+                    } else {
+                        pager.openTaskPendingPage(
+                            task = pendingTask,
+                            serverId = resolvedServerId,
+                            storeScope = targetStoreScope,
+                            foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
+                            timeContext = liveTimeContextProvider.current ?: payload.toRaftTimeCapabilities().staticContext(),
+                            alignOwnMessagesRight = payload.alignOwnMessagesRight,
+                            compactConsecutiveMessages = payload.compactConsecutiveMessages,
+                            channelJoined = channelJoined,
+                            canWriteChannel = canWriteChannel,
+                        )
+                    }
+                }
+            },
         onOpenParentThread = { currentPayload, currentSessionServerId ->
             val parentServerId = threadParentNavigationServerId(currentSessionServerId)
                 ?: return@SharedThreadRouteContent false

@@ -333,4 +333,33 @@
                   @"Replacement without slockOpenWithoutAnimation keeps animated=YES");
 }
 
+- (void)testReplaceCurrentReplacesSourceControllerIndexNotUnrelatedTop {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftPageViewController *coveringPage = [self renderPage:@"compose_thread"];
+    RaftRouterRecordingNavigationController *navigation =
+        [self navigationWithPages:@[shell, pendingTask, coveringPage]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertEqual(navigation.viewControllers[0], shell);
+    XCTAssertNotEqual(navigation.viewControllers[1], pendingTask,
+                      @"Source controller at index 1 must be replaced in place");
+    XCTAssertEqual(navigation.viewControllers[2], coveringPage,
+                   @"Covering page above the source controller must stay untouched");
+
+    // Replacing again from the already-removed pendingTask is a safe no-op.
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u,
+                   @"Detached non-login source must not replace another controller on the stack");
+}
+
 @end

@@ -5912,21 +5912,30 @@ private fun RaftAppShellReadyContent(
                                     readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
                                         sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
                                     } == true
-                                // A task without a conversation pushes its own page (#proj-mobile:#161); a legacy
-                                // orphan opens the read-only panel sheet. Opening never creates a conversation.
+                                // On compact/single-pane layouts a task without a conversation pushes its own
+                                // page (#proj-mobile:#161); wide dual-pane keeps the existing overlay so first
+                                // send opens beside the list in the adaptive detail column. Legacy orphans keep
+                                // their read-only panel sheet. Opening never creates a conversation.
                                 when (val surface = task.taskOpenSurface(taskV2Enabled)) {
                                     is TaskOpenSurface.Pending -> {
-                                        bridge.log("tasks_open_pending_page task=${task.id.value}")
-                                        pager.openTaskPendingPage(
-                                            task = surface.task,
-                                            serverId = readyServerId,
-                                            storeScope = navigationStoreScope,
-                                            foregroundBannerStore = foregroundBannerStore,
-                                            timeContext = threadTimeContext,
-                                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                            compactConsecutiveMessages = compactConsecutiveMessages,
-                                            canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
-                                        )
+                                        val useAdaptiveDetail =
+                                            desktopModeOnLargeScreen && adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
+                                        if (useAdaptiveDetail) {
+                                            bridge.log("tasks_open_surface kind=Pending task=${task.id.value} layout=dual_pane")
+                                            tasksOpenSurfaceFlow.open(surface)
+                                        } else {
+                                            bridge.log("tasks_open_pending_page task=${task.id.value}")
+                                            pager.openTaskPendingPage(
+                                                task = surface.task,
+                                                serverId = readyServerId,
+                                                storeScope = navigationStoreScope,
+                                                foregroundBannerStore = foregroundBannerStore,
+                                                timeContext = threadTimeContext,
+                                                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                                compactConsecutiveMessages = compactConsecutiveMessages,
+                                                canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
+                                            )
+                                        }
                                         return@open
                                     }
                                     is TaskOpenSurface.Legacy -> {

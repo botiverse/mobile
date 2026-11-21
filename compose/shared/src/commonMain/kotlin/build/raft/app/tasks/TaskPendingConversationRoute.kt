@@ -531,6 +531,8 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
 
     val controller = remember(foregroundBannerStore) { TaskPendingPageController(foregroundBannerStore.taskPendingDrafts) }
     var joinedLocally by remember(resolvedChannelId) { mutableStateOf(false) }
+    var pendingSentConversationId by remember(route.taskId) { mutableStateOf<ChannelId?>(null) }
+    var pendingSentTask by remember(route.taskId) { mutableStateOf<TaskSummary?>(null) }
 
     val sendFailedLabel = stringResource(Res.string.task_conversation_send_failed)
     val updateTaskFailedLabel = stringResource(Res.string.thread_error_update_task)
@@ -603,6 +605,27 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
             pageData = taskPendingReplaceConversationPageData(launchPayload),
             storeScopeOverride = targetStoreScope,
         )
+    }
+
+    // If a first send succeeded while this page was covered by another pushed page (e.g. a
+    // notification or deep link arrived mid-send), finish replacing this page once it returns to
+    // the top of the stack rather than touching the covering page.
+    LaunchedEffect(pendingSentConversationId, pageVisible, resolvedServerId, liveSessionServerId) {
+        val deferredId = pendingSentConversationId ?: return@LaunchedEffect
+        val serverId = resolvedServerId?.takeIf { it.isNotBlank() }
+        if (serverId == null || liveSessionServerId != serverId) {
+            pendingSentConversationId = null
+            pendingSentTask = null
+            controller.resetHandOff()
+            return@LaunchedEffect
+        }
+        if (!pageVisible) return@LaunchedEffect
+        val targetTask = liveTask ?: pendingSentTask
+        pendingSentConversationId = null
+        pendingSentTask = null
+        if (targetTask == null || !openConversationReplacingCurrentPage(targetTask, deferredId, source = "task_first_send_resumed")) {
+            controller.resetHandOff()
+        }
     }
 
     // If someone else writes first (`task:updated` delivers a conversation), seamlessly replace this
@@ -802,8 +825,16 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
                         )
                     bridge.log("task_pending_first_send taskId=${liveTask.id.value} opened=${conversationId != null}")
                     conversationId?.let { resolvedId ->
-                        if (!openConversationReplacingCurrentPage(liveTask, resolvedId, source = "task_first_send")) {
+                        if (latestServerId != serverId) {
                             controller.resetHandOff()
+                        } else if (latestPageVisible) {
+                            if (!openConversationReplacingCurrentPage(liveTask, resolvedId, source = "task_first_send")) {
+                                controller.resetHandOff()
+                            }
+                        } else {
+                            // Covered by another pushed page while sending: defer replacement until visible again.
+                            pendingSentTask = liveTask
+                            pendingSentConversationId = resolvedId
                         }
                     }
                 }
