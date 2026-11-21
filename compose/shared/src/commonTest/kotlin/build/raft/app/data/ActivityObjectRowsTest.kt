@@ -32,13 +32,14 @@ class ActivityObjectRowsTest {
         hasMention: Boolean = false,
         targetVersion: Int = 3,
         summary: String = card(),
+        target: String = """{"version":$targetVersion,"comment":"cm_1"}""",
     ) =
         """
         {"kind":"object","objectKind":"artifact","objectId":"$objectId","summary":$summary,
          "home":{"kind":"channel","label":"proj-workspace","channelId":"c1"},
          "latestEvent":{"eventKind":"$eventKind","reason":"$reason","actor":{"type":"user","id":"u2","name":"kirby"},"at":"2026-10-26T10:00:00.000Z"},
          "preview":{"text":"Looks good","truncated":false,"author":{"type":"user","id":"u2","name":"kirby"},"at":"2026-10-26T10:00:00.000Z"},
-         "target":{"version":$targetVersion,"comment":"cm_1"},
+         "target":$target,
          "unreadCount":$unreadCount,"hasMention":$hasMention,"isFollowing":true,
          "lastActivityAt":"2026-10-26T10:00:00.000Z","doneFrontierSeq":"1842"}
         """.trimIndent()
@@ -97,8 +98,8 @@ class ActivityObjectRowsTest {
 
     @Test
     fun theVerbComesFromEventKindAndReason() {
-        fun verb(eventKind: String, reason: String, version: Int?) =
-            ActivityObjectRow(eventKind = eventKind, reason = reason, targetVersion = version, latestVersion = 5).eventVerb()
+        fun verb(eventKind: String, reason: String, version: Int?, wasSettled: Int? = null) =
+            ActivityObjectRow(eventKind = eventKind, reason = reason, targetVersion = version, latestVersion = 5, targetWasSettled = wasSettled).eventVerb()
         assertEquals(ActivityObjectEventVerb.MentionedYou to null, verb("comment", "mentioned", 3))
         assertEquals(ActivityObjectEventVerb.MentionedYou to null, verb("comment_edited", "mentioned", 3))
         assertEquals(ActivityObjectEventVerb.Commented to null, verb("comment", "following", 3))
@@ -107,6 +108,41 @@ class ActivityObjectRowsTest {
         assertEquals(ActivityObjectEventVerb.PublishedVersion to 5, verb("version", "following", null))
         assertEquals(ActivityObjectEventVerb.Published to null, ActivityObjectRow(eventKind = "version").eventVerb())
         assertEquals(ActivityObjectEventVerb.Updated to null, verb("renamed", "following", 3))
+        // Settled (#334, web artifactHomeGroups.behavior.test "Activity: a settle, an unsettle, and a new version since it was settled").
+        assertEquals(ActivityObjectEventVerb.Settled to null, verb("settled", "following", 3))
+        assertEquals(ActivityObjectEventVerb.Unsettled to null, verb("unsettled", "following", 3))
+        assertEquals(ActivityObjectEventVerb.PublishedVersionSinceSettled to 4, verb("version", "following", 4, wasSettled = 3))
+        assertEquals(ActivityObjectEventVerb.PublishedVersionSinceSettled to 5, verb("version", "owner", null, wasSettled = 3))
+        assertEquals(ActivityObjectEventVerb.Published to null, ActivityObjectRow(eventKind = "version", targetWasSettled = 3).eventVerb(), "no version to name")
+        // The web's order: a mention first, whatever the event (but a version).
+        assertEquals(ActivityObjectEventVerb.MentionedYou to null, verb("settled", "mentioned", 3))
+    }
+
+    @Test
+    fun settledRowsAndANewVersionSinceTheSettleAreReadFromTheServersTarget() {
+        // web `artifactHomeGroups.behavior.test.tsx` `activityItem`: the row of a settle, and of the version that ended it.
+        val settled = parseActivityObjectInboxItem(Json.parseToJsonElement(objectRow(eventKind = "settled", unreadCount = 0, target = """{"version":3}""")))!!
+        assertEquals(ActivityObjectEventVerb.Settled to null, settled.activityObject!!.eventVerb())
+        assertEquals(0, settled.unreadCount, "a settle is recorded read")
+        val version = parseActivityObjectInboxItem(Json.parseToJsonElement(objectRow(eventKind = "version", target = """{"version":4,"wasSettled":3}""")))!!
+        assertEquals(3, version.activityObject!!.targetWasSettled)
+        assertEquals(ActivityObjectEventVerb.PublishedVersionSinceSettled to 4, version.activityObject!!.eventVerb())
+        // With Settled off (or an older server) the target has no `wasSettled`: the plain line.
+        val plain = parseActivityObjectInboxItem(Json.parseToJsonElement(objectRow(eventKind = "version", target = """{"version":4}""")))!!
+        assertNull(plain.activityObject!!.targetWasSettled)
+        assertEquals(ActivityObjectEventVerb.PublishedVersion to 4, plain.activityObject!!.eventVerb())
+    }
+
+    @Test
+    fun anEventKindFromANewerServerReadsUpdatedAndIsLogged() {
+        val logs = mutableListOf<String>()
+        fun parse(eventKind: String) = parseActivityObjectInboxItem(Json.parseToJsonElement(objectRow(eventKind = eventKind))) { logs += it }!!
+        // Every kind the server records (kinds.ts ARTIFACT_OBJECT_EVENTS): no surprise, nothing logged.
+        for (kind in ArtifactObjectEventKinds) parse(kind)
+        assertEquals(emptyList(), logs)
+        val row = parse("archived")
+        assertEquals(ActivityObjectEventVerb.Updated to null, row.activityObject!!.eventVerb(), "the row still shows, its line generic")
+        assertTrue(logs.single().startsWith("projection_value_unknown source=activity_object field=event_kind value=archived"), "$logs")
     }
 
     @Test

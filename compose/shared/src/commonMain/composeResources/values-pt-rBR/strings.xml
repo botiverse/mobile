@@ -4257,6 +4257,12 @@
     <string name="artifacts_activity_published_version">%1$s publicou a v%2$d</string>
     <string name="artifacts_activity_published">%1$s publicou uma versão nova</string>
     <string name="artifacts_activity_updated">%1$s atualizou</string>
+    <string name="artifacts_activity_settled">%1$s marcou como definitivo</string>
+    <string name="artifacts_activity_unsettled">%1$s desmarcou como definitivo</string>
+    <string name="artifacts_activity_published_version_since_settled">%1$s publicou a v%2$d, uma versão nova desde que foi marcado como definitivo</string>
+    <string name="artifacts_settled_tag">Definitivo</string>
+    <string name="artifacts_settled_tag_detail">: %1$s</string>
+    <string name="artifacts_settled_line">%1$s marcou como definitivo em %2$s (v%3$d)</string>
     <string name="artifacts_activity_someone">Alguém</string>
     <string name="artifacts_activity_untitled">Artifact sem título</string>
     <string name="artifacts_viewer_more">Mais ações</string>

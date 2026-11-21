@@ -2,10 +2,12 @@ package build.raft.app.data
 
 import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.reportProjectionRowDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -121,6 +123,40 @@ data class ArtifactCardWireDto(
     val facts: ArtifactFactsWireDto? = null,
     /** Another server's public Artifact read as an outsider (absent otherwise and from older servers). */
     val fromAnotherServer: Boolean? = null,
+    /**
+     * Settled (botiverse/slock #15649 / #15654, behind `artifact_settled_v0`; `workspaceArtifacts.ts`
+     * `ArtifactCard.settled`): someone who may comment on it marked it done, an [ArtifactSettledWireDto].
+     * The Artifact's current state, whichever version the card shows. `null` while it is Working; absent
+     * where its server has the flag off, for a reader outside its server and from older servers. Kept raw
+     * and read by [settledOrNull], so a value this client can't read never fails the card (or a page of
+     * the home list).
+     */
+    val settled: JsonElement? = null,
+    /**
+     * Working again (#334, `ArtifactCard.reopened`): the version that took a settled Artifact back to
+     * Working and the settle it ended, an [ArtifactReopenedWireDto]; `null` otherwise, absent exactly
+     * when [settled] is. Nothing in the App draws it yet (the web says it in a desktop viewer's details).
+     */
+    val reopened: JsonElement? = null,
+)
+
+/**
+ * `ArtifactSettled` (botiverse/slock #15649, `packages/shared/src/workspaceArtifacts.ts`): who settled
+ * it (an `ArtifactShownActor`), when (ISO 8601) and the version that was current then. Also the web
+ * settle answer's `settled` (`webArtifactsContract.ts` `ArtifactWebSettlement`).
+ */
+@Serializable
+data class ArtifactSettledWireDto(
+    val by: ArtifactActorWireDto,
+    val at: String,
+    val version: Int,
+)
+
+/** `ArtifactReopened` (#334): the version that took a settled Artifact back to Working, and the settle it ended. */
+@Serializable
+data class ArtifactReopenedWireDto(
+    val version: Int,
+    val was: ArtifactSettledWireDto,
 )
 
 /**
@@ -256,6 +292,20 @@ data class ArtifactSummary(
      * a screenshot goes, as rich text from its blocks or its plain text (web #13445, #13472).
      */
     val excerpt: ArtifactExcerpt? = null,
+    /**
+     * Settled (#334): who settled it, when and at which version, while it is settled now (an older
+     * message's card follows it). Null while it is Working and wherever the card says nothing of
+     * Settled (`artifact_settled_v0` off, a reader outside its server, older servers): then nothing of
+     * it is drawn (web `card.settled ? <ArtifactSettledTag/> : null`).
+     */
+    val settled: ArtifactSettled? = null,
+)
+
+/** web `ArtifactSettled` as this client shows it: who settled it, when (ISO 8601) and at which version. */
+data class ArtifactSettled(
+    val by: ArtifactsHomeActor,
+    val at: String,
+    val version: Int,
 )
 
 /**
@@ -415,7 +465,26 @@ internal fun ArtifactCardWireDto.toArtifactSummaryOrNull(): ArtifactSummary? {
             ),
         screenshot = card.preview?.screenshotOrNull(),
         excerpt = card.preview?.excerptOrNull(),
+        settled = card.settledOrNull(),
     )
+}
+
+/**
+ * The card's `settled` ([ArtifactCardWireDto.settled]) as this client shows it; null while it is
+ * Working, where the card says nothing of Settled, and for a value this client can't read, which is
+ * logged and drawn as no tag (the card itself still shows).
+ */
+internal fun ArtifactCardWireDto.settledOrNull(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): ArtifactSettled? {
+    val value = settled?.takeUnless { it is JsonNull } ?: return null
+    val wire =
+        runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactSettledWireDto.serializer(), value) }.getOrNull()
+            ?: run {
+                reportUnknownTypeDropped("artifact_summary", "settled", "unreadable", fallback = "no_settled_tag", diagnostics = diagnostics)
+                return null
+            }
+    return ArtifactSettled(by = wire.by.toArtifactsHomeActor(), at = wire.at, version = wire.version)
 }
 
 internal interface RaftArtifactSummariesApi {

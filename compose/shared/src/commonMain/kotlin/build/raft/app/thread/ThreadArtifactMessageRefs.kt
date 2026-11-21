@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -24,11 +25,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -40,11 +44,16 @@ import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactScreenshotReader
+import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.artifactScreenshotFile
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerMinute
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAppLinkCardDefaults
 import build.raft.designsystem.components.RaftBadge
@@ -62,8 +71,10 @@ import build.raft.designsystem.components.RaftMessageEmbedFooter
 import build.raft.designsystem.components.RaftMessageEmbedHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
+import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.raftGrayscale
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftStroke
@@ -258,12 +269,13 @@ internal fun ThreadArtifactMessageRefs(
                 },
                 onOpenInNewPage = { summary -> openArtifactWebPage(artifactWebUrl(webBaseUrl, summary.openTarget())) },
                 modifier = modifier,
+                readerId = artifacts.readerId,
             )
         }
     }
 }
 
-/** The cards (web `mt-2 flex flex-col gap-2`): 8dp under the body, 8dp apart. */
+/** The cards (web `mt-2 flex flex-col gap-2`): 8dp under the body, 8dp apart. [readerId]: the signed-in person. */
 @Composable
 internal fun ThreadArtifactMessageRefsContent(
     view: ThreadArtifactMessageRefsView,
@@ -271,6 +283,7 @@ internal fun ThreadArtifactMessageRefsContent(
     onOpenInNewPage: (ArtifactSummary) -> Unit,
     modifier: Modifier = Modifier,
     skeletonAnimated: Boolean = true,
+    readerId: String? = null,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (view) {
@@ -281,7 +294,12 @@ internal fun ThreadArtifactMessageRefsContent(
                     key(ref.key) {
                         when (ref) {
                             is ThreadArtifactMessageRef.Card ->
-                                ArtifactMessageCard(ref.summary, onOpen = { onOpen(ref.summary) }, onOpenInNewPage = { onOpenInNewPage(ref.summary) })
+                                ArtifactMessageCard(
+                                    ref.summary,
+                                    onOpen = { onOpen(ref.summary) },
+                                    onOpenInNewPage = { onOpenInNewPage(ref.summary) },
+                                    readerId = readerId,
+                                )
                             is ThreadArtifactMessageRef.Deleted -> ArtifactDeletedCard(ref.deleted)
                         }
                     }
@@ -409,6 +427,11 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
  * check's screenshot when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
  * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
  * description; no publisher cover yet.
+ *
+ * Settled (botiverse/slock #15654, `artifact_settled_v0`): while the Artifact is settled now, the
+ * Settled tag after the version tag ([ArtifactSettledTag]; [readerId] names the reader's own settle
+ * "You"), the two going under the title rather than leave it under 128dp ([ArtifactCardTitleLine]).
+ * Nothing where the card says nothing of it ([ArtifactSummary.settled] null: Working, or the flag off).
  */
 @Composable
 internal fun ArtifactMessageCard(
@@ -416,6 +439,7 @@ internal fun ArtifactMessageCard(
     onOpen: () -> Unit,
     onOpenInNewPage: () -> Unit,
     modifier: Modifier = Modifier,
+    readerId: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -440,20 +464,40 @@ internal fun ArtifactMessageCard(
         RaftMessageEmbedHeader {
             RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                val title: @Composable (Modifier) -> Unit = { titleModifier ->
                     RaftText(
                         summary.title,
-                        modifier = Modifier.weight(1f, fill = false),
+                        modifier = titleModifier,
                         style = typography.subhead.copy(fontWeight = FontWeight.Bold),
                         color = colors.foreground,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                val version: @Composable (Modifier) -> Unit = { versionModifier ->
                     RaftBadge(
                         text = stringResource(Res.string.artifacts_card_version, summary.version),
-                        modifier = Modifier.padding(top = 1.dp),
+                        modifier = versionModifier,
                         appearance = RaftBadgeAppearance.Outline,
                         variant = RaftBadgeVariant.Muted,
+                    )
+                }
+                val settled = summary.settled
+                if (settled == null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                        title(Modifier.weight(1f, fill = false))
+                        version(Modifier.padding(top = 1.dp))
+                    }
+                } else {
+                    ArtifactCardTitleLine(
+                        title = { title(Modifier) },
+                        // web: the version tag, then the Settled tag (`gap-1 pt-px`).
+                        tags = {
+                            Row(Modifier.padding(top = 1.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                version(Modifier)
+                                ArtifactSettledTag(settled, readerId)
+                            }
+                        },
                     )
                 }
                 facts?.let {
@@ -510,6 +554,88 @@ internal fun ArtifactMessageCard(
             }
         }
     }
+}
+
+/** web's `artifact-settled-tag`: the Settled tag's test tag. */
+internal const val ArtifactSettledTagTestTag = "artifact-settled-tag"
+
+/** web `flex-[1_1_8rem]`: the room a card's title keeps before its tags go under it (Kirby, #12873). */
+private val ArtifactCardTitleMinWidth: Dp = 128.dp
+
+/**
+ * web `ArtifactMessageCard`'s title line (`flex flex-wrap gap-x-1.5 gap-y-1`): [title], then [tags]
+ * right after it (6dp), or, where that would leave the title under [ArtifactCardTitleMinWidth], the
+ * tags on their own line 4dp under it. Beside the title it lays out as the card's plain row does.
+ */
+@Composable
+private fun ArtifactCardTitleLine(title: @Composable () -> Unit, tags: @Composable () -> Unit) {
+    Layout(contents = listOf(title, tags)) { (titleMeasurables, tagsMeasurables), constraints ->
+        val gapX = 6.dp.roundToPx()
+        val gapY = 4.dp.roundToPx()
+        val maxWidth = constraints.maxWidth
+        val tagsPlaceable = tagsMeasurables.first().measure(Constraints(maxWidth = maxWidth, maxHeight = constraints.maxHeight))
+        val beside = maxWidth == Constraints.Infinity || maxWidth - tagsPlaceable.width - gapX >= ArtifactCardTitleMinWidth.roundToPx()
+        if (beside) {
+            val titleRoom = if (maxWidth == Constraints.Infinity) Constraints.Infinity else maxWidth - tagsPlaceable.width - gapX
+            val titlePlaceable = titleMeasurables.first().measure(Constraints(maxWidth = titleRoom, maxHeight = constraints.maxHeight))
+            layout(titlePlaceable.width + gapX + tagsPlaceable.width, maxOf(titlePlaceable.height, tagsPlaceable.height)) {
+                titlePlaceable.placeRelative(0, 0)
+                tagsPlaceable.placeRelative(titlePlaceable.width + gapX, 0)
+            }
+        } else {
+            val titlePlaceable = titleMeasurables.first().measure(Constraints(maxWidth = maxWidth, maxHeight = constraints.maxHeight))
+            layout(maxOf(titlePlaceable.width, tagsPlaceable.width), titlePlaceable.height + gapY + tagsPlaceable.height) {
+                titlePlaceable.placeRelative(0, 0)
+                tagsPlaceable.placeRelative(0, titlePlaceable.height + gapY)
+            }
+        }
+    }
+}
+
+/**
+ * web `ArtifactSettledTag` (botiverse/slock #15654): Badge soft `success` with a check, "Settled". A
+ * long press, or a pointer over it, shows who settled it, when and at which version
+ * (`artifacts.settled.line`: "Remy settled it on 11-19 14:02 (v3)", the reader's own as "You"), as the
+ * app's other tags with a detail do ([RaftTooltip], the Computers rack's Low disk chip); a screen
+ * reader reads those words with the tag (`artifacts.settled.tagDetail`). Without a readable time the
+ * tag says only "Settled".
+ */
+@Composable
+internal fun ArtifactSettledTag(settled: ArtifactSettled, readerId: String?, modifier: Modifier = Modifier) {
+    val label = stringResource(Res.string.artifacts_settled_tag)
+    val time = artifactSettledTimeLabel(settled.at, currentRaftTimeContext(null))
+    val line = time?.let { stringResource(Res.string.artifacts_settled_line, artifactsHomeAuthorText(settled.by, readerId).first, it, settled.version) }
+    val description = line?.let { label + stringResource(Res.string.artifacts_settled_tag_detail, it) } ?: label
+    val tagModifier =
+        modifier.clearAndSetSemantics {
+            contentDescription = description
+            testTag = ArtifactSettledTagTestTag
+        }
+    val badge: @Composable () -> Unit = {
+        RaftBadge(
+            text = label,
+            appearance = RaftBadgeAppearance.Soft,
+            variant = RaftBadgeVariant.Success,
+            icon = { RaftLucideIcon(RaftLucideIconName.Check, Modifier.fillMaxSize(), color = raftArgbHex(LocalRaftContentColor.current)) },
+        )
+    }
+    if (line == null) Box(tagModifier) { badge() } else RaftTooltip(line, modifier = tagModifier) { badge() }
+}
+
+/**
+ * When it was settled, for the Settled line (web `shortDateTime`, "Nov 19, 14:02"): the app's absolute
+ * time in the reader's 12- or 24-hour setting ("11-19 14:02", "2025-11-19 14:02" for another year),
+ * always with its date: a settle of today is told as of the day before, as the app's label would say
+ * the time alone and "settled it on 14:02" reads as a date. Null without a time context or a readable
+ * time.
+ */
+internal fun artifactSettledTimeLabel(at: String, context: RaftTimeContext?): String? {
+    val time = context ?: return null
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(at, time.localOffsetMinutes) ?: return null
+    val offsetMillis = time.localOffsetMinutes * MillisPerMinute
+    val day = (epochMillis + offsetMillis).floorDiv(MillisPerDay)
+    val today = time.todayEpochDay ?: time.nowEpochMillis?.let { (it + offsetMillis).floorDiv(MillisPerDay) } ?: return null
+    return formatRaftTimestampEpochMillis(epochMillis, time.localOffsetMinutes, if (day == today) day - 1 else today, time.timeFormat)
 }
 
 /**

@@ -4450,6 +4450,12 @@
     <string name="artifacts_activity_published_version">%1$s 发布了 v%2$d</string>
     <string name="artifacts_activity_published">%1$s 发布了新版本</string>
     <string name="artifacts_activity_updated">%1$s 有更新</string>
+    <string name="artifacts_activity_settled">%1$s 标为定稿</string>
+    <string name="artifacts_activity_unsettled">%1$s 取消定稿</string>
+    <string name="artifacts_activity_published_version_since_settled">%1$s 发布了 v%2$d，定稿后又有新版本</string>
+    <string name="artifacts_settled_tag">已定稿</string>
+    <string name="artifacts_settled_tag_detail">：%1$s</string>
+    <string name="artifacts_settled_line">%1$s 在 %2$s 标为定稿（v%3$d）</string>
     <string name="artifacts_activity_someone">有人</string>
     <string name="artifacts_activity_untitled">未命名的 Artifact</string>
     <string name="artifacts_viewer_more">更多操作</string>

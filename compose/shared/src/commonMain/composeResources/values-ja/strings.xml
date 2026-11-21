@@ -4450,6 +4450,12 @@
     <string name="artifacts_activity_published_version">%1$s が v%2$d を公開しました</string>
     <string name="artifacts_activity_published">%1$s が新しいバージョンを公開しました</string>
     <string name="artifacts_activity_updated">%1$s が更新しました</string>
+    <string name="artifacts_activity_settled">%1$s が確定しました</string>
+    <string name="artifacts_activity_unsettled">%1$s が確定を取り消しました</string>
+    <string name="artifacts_activity_published_version_since_settled">%1$s が確定後の新しいバージョン v%2$d を公開しました</string>
+    <string name="artifacts_settled_tag">確定済み</string>
+    <string name="artifacts_settled_tag_detail">：%1$s</string>
+    <string name="artifacts_settled_line">%1$s が %2$s に確定しました（v%3$d）</string>
     <string name="artifacts_activity_someone">誰か</string>
     <string name="artifacts_activity_untitled">無題の Artifact</string>
     <string name="artifacts_viewer_more">その他の操作</string>
