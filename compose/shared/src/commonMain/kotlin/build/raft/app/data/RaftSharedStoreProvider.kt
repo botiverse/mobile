@@ -107,6 +107,7 @@ import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
 import kotlin.concurrent.Volatile
 import kotlin.random.Random
+import kotlin.time.Duration
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -942,6 +943,13 @@ internal class RaftSharedStoreProvider private constructor(
         if (!requested) fallback?.invoke()
     }
 
+    private val machinesSyncRefreshCoalescer: RaftRecentServerRefreshCoalescer by lazy {
+        RaftRecentServerRefreshCoalescer(
+            scope = threadSendScope,
+            logger = sharedInfoLogger("SlockSync", "sync_changes"),
+        )
+    }
+
     /**
      * Incremental sync on: machine online status (`machine:status`) is not in the change log
      * (Scout 10-27), so a reconnect (after the jitter) and a foreground return read the machine
@@ -949,13 +957,29 @@ internal class RaftSharedStoreProvider private constructor(
      * (offline-computer alerts; read only for users who manage machines). Home reloads reuse what
      * this read ([SharedHomeDataSource.loadNotificationsAfterHomeLoad]).
      */
-    internal suspend fun refreshMachinesForSync(serverId: String, reason: String) {
-        val stores = syncComputersStores(serverId)
-        stores.forEach { store -> runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) } }
-        refreshHomeMachineNotifications(serverId, reason)
-        sharedInfoLogger("SlockSync", "sync_changes")(
-            "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
-        )
+    internal suspend fun refreshMachinesForSync(
+        serverId: String,
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+    ) {
+        val outcome =
+            machinesSyncRefreshCoalescer.runOrCoalesce(
+                serverId = serverId,
+                reason = reason,
+                coalesceFreshWithin = coalesceFreshWithin,
+            ) {
+                val stores = syncComputersStores(serverId)
+                stores.forEach { store -> runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) } }
+                refreshHomeMachineNotifications(serverId, reason)
+                sharedInfoLogger("SlockSync", "sync_changes")(
+                    "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
+                )
+            }
+        if (outcome != RaftRecentServerRefreshCoalescer.Outcome.Executed) {
+            sharedInfoLogger("SlockSync", "sync_changes")(
+                "sync_machines_refresh serverId=$serverId outcome=${outcome.name.lowercase()} reason=$reason"
+            )
+        }
     }
 
     /**
@@ -1388,11 +1412,21 @@ internal class RaftSharedStoreProvider private constructor(
      * does ([PresenceTransportRosterRefetch]): agent presence and machine status are not in the
      * change log. A read this store started repairs a status a missed push left stale.
      */
-    private suspend fun refreshServerLiveStatus(serverId: String, reason: String) {
+    private suspend fun refreshServerLiveStatus(
+        serverId: String,
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+    ) {
         coroutineScope {
-            launch { refreshMachinesForSync(serverId, reason = reason) }
+            launch { refreshMachinesForSync(serverId, reason = reason, coalesceFreshWithin = coalesceFreshWithin) }
             serverMembersStoresShowing(serverId).forEach { store ->
-                launch { store.refreshAgents(serverId = ServerId(serverId), reason = reason) }
+                launch {
+                    store.refreshAgents(
+                        serverId = ServerId(serverId),
+                        reason = reason,
+                        coalesceFreshWithin = coalesceFreshWithin,
+                    )
+                }
             }
         }
     }
@@ -1413,7 +1447,13 @@ internal class RaftSharedStoreProvider private constructor(
                     .distinct()
                     .filter(reconnectRefetchJitter::hasConnected)
             },
-            reconcile = { serverId -> refreshServerLiveStatus(serverId, reason = AgentStatusReconcileReason) },
+            reconcile = { serverId ->
+                refreshServerLiveStatus(
+                    serverId = serverId,
+                    reason = AgentStatusReconcileReason,
+                    coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                )
+            },
             logger = sharedInfoLogger("SlockRealtime", "agent_status_reconcile"),
         )
     }
@@ -1438,6 +1478,13 @@ internal class RaftSharedStoreProvider private constructor(
             storesForServer = ::serverMembersStoresShowing,
             isCurrentOwner = { owner -> replyCacheAuthContext.value?.ownerFor(owner.serverId) == owner },
             refreshMachines = { serverId -> refreshMachinesForSync(serverId, reason = PresenceTransportRosterRefetch.REASON) },
+            refreshMachinesWithCoalesce = { serverId, coalesceFreshWithin ->
+                refreshMachinesForSync(
+                    serverId = serverId,
+                    reason = PresenceTransportRosterRefetch.REASON,
+                    coalesceFreshWithin = coalesceFreshWithin,
+                )
+            },
             logger = sharedInfoLogger("SlockPresence", "presence_transport_rebaseline"),
             warnLogger = sharedWarnLogger("SlockPresence", "presence_transport_rebaseline"),
             retryScope = threadSendScope,
@@ -1489,6 +1536,7 @@ internal class RaftSharedStoreProvider private constructor(
                     // Sign-out, account or environment switch: nothing waiting may run for the old
                     // binding, and the successor's first connects fetch at once.
                     reconnectRefetchJitter.reset(reason = if (context == null) "signed_out" else "binding_changed")
+                    machinesSyncRefreshCoalescer.invalidateAll()
                     syncTransientRetry.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRetryAfter.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
                     syncRealtimePull.cancelAll(reason = if (context == null) "signed_out" else "binding_changed")
@@ -1815,6 +1863,7 @@ internal class RaftSharedStoreProvider private constructor(
             // accepted under the then-current grant (the grant itself is revoked by that mutation).
             onServerAccessLost = { grant ->
                 reconnectRefetchJitter.dropServer(grant.serverId, reason = "server_access_lost")
+                machinesSyncRefreshCoalescer.invalidate(grant.serverId)
                 // Minimum supported build: that server's gate reading no longer counts.
                 RaftMinBuildGate.onServerLeft(ServerId(grant.serverId))
                 threadPayloadStore.dropServer(grant.serverId)
@@ -3942,10 +3991,24 @@ internal class RaftSharedStoreProvider private constructor(
                                 },
                             )
                         if (pulled) {
-                            // Agent presence and machine status are not in the change log (no jitter here).
+                            // Agent presence and machine status are not in the change log (no jitter here);
+                            // share the 25 s coalesce window with reconnect refetch so both do not pull
+                            // /agents and /machines back-to-back on the same foreground return.
                             coroutineScope {
-                                launch { targetStore.refreshAgents(serverId = serverId, reason = "foreground_reconcile") }
-                                launch { provider.refreshMachinesForSync(serverId.value, reason = "foreground_reconcile") }
+                                launch {
+                                    targetStore.refreshAgents(
+                                        serverId = serverId,
+                                        reason = "foreground_reconcile",
+                                        coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                                    )
+                                }
+                                launch {
+                                    provider.refreshMachinesForSync(
+                                        serverId = serverId.value,
+                                        reason = "foreground_reconcile",
+                                        coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
+                                    )
+                                }
                             }
                         } else {
                             fullRefresh()

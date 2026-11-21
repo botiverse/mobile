@@ -93,13 +93,25 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
 
         fun refreshAllWidgets(context: Context) {
             val appContext = context.applicationContext
-            val appWidgetManager = AppWidgetManager.getInstance(appContext)
-            val appWidgetIds =
-                appWidgetManager.getAppWidgetIds(
-                    ComponentName(appContext, SlockActivityWidgetProvider::class.java)
-                )
-            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
-            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+            scope.launch {
+                val appWidgetManager = AppWidgetManager.getInstance(appContext)
+                val appWidgetIds =
+                    appWidgetManager.getAppWidgetIds(
+                        ComponentName(appContext, SlockActivityWidgetProvider::class.java)
+                    )
+                if (appWidgetIds.isEmpty()) return@launch
+                val cache = RaftWidgetCache(appContext)
+                val cachedViews =
+                    appWidgetIds.map { widgetId ->
+                        widgetId to buildRemoteViews(appContext, widgetId, cache.read(widgetId, refreshing = true))
+                    }
+                withContext(Dispatchers.Main) {
+                    cachedViews.forEach { (widgetId, views) ->
+                        appWidgetManager.updateAppWidget(widgetId, views)
+                    }
+                }
+                refreshWidgetsOnIo(appContext, appWidgetManager, appWidgetIds)
+            }
         }
 
         private fun refreshWidgets(
@@ -109,13 +121,22 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         ) {
             if (appWidgetIds.isEmpty()) return
             scope.launch {
-                val cache = RaftWidgetCache(context)
-                appWidgetIds.forEach { appWidgetId ->
-                    val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
-                    cache.write(appWidgetId, state)
-                    withContext(Dispatchers.Main) {
-                        appWidgetManager.updateAppWidget(appWidgetId, buildRemoteViews(context, appWidgetId, state))
-                    }
+                refreshWidgetsOnIo(context, appWidgetManager, appWidgetIds)
+            }
+        }
+
+        private suspend fun refreshWidgetsOnIo(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetIds: IntArray
+        ) {
+            val cache = RaftWidgetCache(context)
+            appWidgetIds.forEach { appWidgetId ->
+                val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
+                cache.write(appWidgetId, state)
+                val views = buildRemoteViews(context, appWidgetId, state)
+                withContext(Dispatchers.Main) {
+                    appWidgetManager.updateAppWidget(appWidgetId, views)
                 }
             }
         }

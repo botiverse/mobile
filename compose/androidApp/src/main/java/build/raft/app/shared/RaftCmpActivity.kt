@@ -817,6 +817,8 @@ internal open class RaftCmpActivity :
     private val adaptivePaneHost by adaptivePaneHostDelegate
     private val renderReadinessCreatedAtMillis = SystemClock.elapsedRealtime()
     @Volatile private var renderReadinessResumedAtMillis: Long? = null
+    private val postFirstFrameResumeCoordinator = RaftPostFirstFrameResumeCoordinator()
+    private var postFirstFrameResumeJob: Job? = null
     @Volatile private var renderReadinessTopPageLoad: RaftLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, RaftLoadReadiness>()
     private var pageSpec: RaftPageSpec? = null
@@ -1663,6 +1665,9 @@ internal open class RaftCmpActivity :
         removeCmpFirstFrameListener()
         whiteScreenHandler.removeCallbacks(whiteScreenWatch)
         removeDatabaseLaunchDrawListener()
+        postFirstFrameResumeCoordinator.cancel()
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob = null
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
         }
@@ -1880,6 +1885,9 @@ internal open class RaftCmpActivity :
     }
 
     override fun onPause() {
+        postFirstFrameResumeCoordinator.cancel()
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob = null
         RaftResumeFrameProbe.onActivityPaused(this)
         RaftScrollFrameProbe.onActivityPaused(this)
         if (nav3Stack != null) nav3TransitionProbe.onPaused()
@@ -1908,7 +1916,6 @@ internal open class RaftCmpActivity :
             recreate()
             return
         }
-        RaftNotificationPermissionReporter.report(applicationContext)
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         RaftResumeFrameProbe.onActivityResumed(this, pageName)
         RaftScrollFrameProbe.onActivityResumed(this, pageName)
@@ -1916,19 +1923,35 @@ internal open class RaftCmpActivity :
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
         }
+        // Defer non-first-frame Binder IPCs (Play services/battery probes, widget queries,
+        // notification permission/summary refreshes, keep-alive start) until after Frame 1 draws
+        // so returning from background paints cleanly without stalling the opening scroll.
+        postFirstFrameResumeCoordinator.scheduleAfterFirstFrame(window?.decorView) {
+            dispatchPostFirstFrameResume()
+        }
+    }
 
-        AndroidRealtimeKeepAliveController.onHostResumed(applicationContext)
-        AndroidRealtimeKeepAliveController.start(
-            context = applicationContext,
-            source = "activity_on_resume"
-        )
-        SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
-        SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
-        RaftBridgeModule.resumePendingHandsAutoInstall(applicationContext)
-        RaftBridgeModule.resumeHandsDeltaInstallAfterPermission(applicationContext, lifecycleScope)
-        // A tapped conversation notification auto-cancels and lands here; drop its server's summary
-        // if it was the last one.
-        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(applicationContext)
+    private fun dispatchPostFirstFrameResume() {
+        val appContext = applicationContext
+        RaftBridgeModule.resumePendingHandsAutoInstall(appContext)
+        RaftBridgeModule.resumeHandsDeltaInstallAfterPermission(appContext, lifecycleScope)
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                RaftNotificationPermissionReporter.report(appContext)
+                AndroidRealtimeKeepAliveController.onHostResumed(appContext)
+                // A tapped conversation notification auto-cancels and lands here; drop its server's
+                // summary if it was the last one.
+                AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(appContext)
+                SlockActivityWidgetProvider.refreshAllWidgets(appContext)
+                SlockAgentStatusWidgetProvider.refreshAllWidgets(appContext)
+                withContext(Dispatchers.Main.immediate) {
+                    AndroidRealtimeKeepAliveController.start(
+                        context = appContext,
+                        source = "activity_on_resume"
+                    )
+                }
+            }
     }
 
     private fun reportRealtimeVisibility(
