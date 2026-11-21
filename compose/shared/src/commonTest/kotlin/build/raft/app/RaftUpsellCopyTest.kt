@@ -26,8 +26,6 @@ class RaftUpsellCopyTest {
                 Res.string.agent_create_error_limit to Res.string.agent_create_error_limit_neutral,
                 Res.string.agent_create_action_upgrade_for_more to Res.string.agent_create_limit_needs_pro,
                 Res.string.joint_limit_free_servers to Res.string.joint_limit_free_servers_neutral,
-                Res.string.joint_create_free_host_limit to Res.string.joint_create_free_host_limit_neutral,
-                Res.string.joint_create_free_host_limit_unnamed to Res.string.joint_create_free_host_limit_unnamed_neutral,
                 Res.string.agent_migration_error_pro_plan_required to Res.string.agent_migration_error_pro_plan_required_neutral,
             )
         neutral.forEach { (upsell, statement) ->

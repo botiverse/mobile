@@ -316,10 +316,11 @@ internal fun SharedHomeScreen(
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
     onInviteHuman: ((serverId: String) -> Unit)? = null,
     onCreateChannel: () -> Unit,
-    /** Joint Channels section "+"; shown only with federateChannels (owner/admin), as web gates it. */
+    /**
+     * The External section's "+": Create Channel with External chosen, shown only to those Create
+     * Channel offers External to ([externalChannelCreateAccess]: owners and admins).
+     */
     onCreateJointChannel: (() -> Unit)? = null,
-    /** external_channels_v1: the "+" is for those Create Channel offers External to (owners and admins). */
-    externalChannelsOn: Boolean = false,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
@@ -817,14 +818,7 @@ internal fun SharedHomeScreen(
                     },
                 onCreateChannelClick = onCreateChannel,
                 // Web useSidebarViewState `canCreateJointChannel`.
-                onCreateJointChannelClick =
-                    onCreateJointChannel?.takeIf {
-                        if (externalChannelsOn) {
-                            externalChannelCreateAccess(true, snapshot.server.role)
-                        } else {
-                            snapshot.server.permissions.canManageSettings
-                        }
-                    },
+                onCreateJointChannelClick = onCreateJointChannel?.takeIf { externalChannelCreateAccess(snapshot.server.role) },
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
                     onOpenSearch()

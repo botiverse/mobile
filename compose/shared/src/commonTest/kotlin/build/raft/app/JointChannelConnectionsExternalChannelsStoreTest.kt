@@ -13,57 +13,27 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
- * Connected servers with `external_channels_v1` (web EditChannelDialog, botiverse/slock staging
- * f3c3905046d1: #13705 host first / Host badge / no plan chips / no invite or Resend, #13856 the
- * host's per-row Disconnect). Off, the page is as before; who may disconnect is only what the
- * server sent (`jointRole`, `jointServers[].role`, `channelCapabilities.federateChannels`).
+ * Connected servers of an external channel (web EditChannelDialog, botiverse/slock staging
+ * f3c3905046d1: #13705 host first / Host badge / no plan chips, #13856 the host's per-row
+ * Disconnect; the server invite form and Resend are gone since botiverse/slock #15939). Who may
+ * disconnect is only what the server sent (`jointRole`, `jointServers[].role`,
+ * `channelCapabilities.federateChannels`).
  */
 class JointChannelConnectionsExternalChannelsStoreTest {
     @Test
-    fun flagOffKeepsTodaysPageForTheHost() = runTest {
-        val dataSource = FakeJointConnectionsDataSource(connections = externalTestConnections(JointChannelRole.Host))
-        val store = loadedStore(dataSource, externalChannels = false)
-        val state = store.state.value
-
-        // As the web: the host first under its Host badge, only the pending row badged; off, plan
-        // chips, invite and Resend stay, and no per-row Disconnect.
-        assertEquals(listOf("srv-host", "srv-active", "srv-pending"), state.displayServers.map { it.serverId })
-        assertEquals(listOf("srv-pending"), state.displayServers.filter(state::showsStatusBadge).map { it.serverId })
-        assertTrue(state.displayServers.all(state::showsPlanBadge))
-        assertEquals(listOf("srv-host"), state.displayServers.filter(state::showsHostBadge).map { it.serverId })
-        assertTrue(state.canManageConnections)
-        assertTrue(state.canResend)
-        assertFalse(state.displayServers.any(state::canDisconnectServer))
-        store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
-        assertNull(store.state.value.disconnectConfirmServerId)
-        store.clear()
-    }
-
-    @Test
-    fun flagOnLeadsWithTheHostAndBadgesOnlyPendingRows() = runTest {
+    fun leadsWithTheHostAndBadgesOnlyPendingRows() = runTest {
         listOf(JointChannelRole.Host, JointChannelRole.Participant).forEach { role ->
             val dataSource = FakeJointConnectionsDataSource(connections = externalTestConnections(role))
-            val store = loadedStore(dataSource, externalChannels = true)
+            val store = loadedStore(dataSource)
             val state = store.state.value
 
             assertEquals(listOf("srv-host", "srv-active", "srv-pending"), state.displayServers.map { it.serverId }, "role=$role")
             assertEquals(listOf("srv-host"), state.displayServers.filter(state::showsHostBadge).map { it.serverId })
             assertEquals(listOf("srv-pending"), state.displayServers.filter(state::showsStatusBadge).map { it.serverId })
-            assertFalse(state.displayServers.any(state::showsPlanBadge))
-            // Server invitations and their resend are closed.
-            assertFalse(state.canManageConnections)
-            assertFalse(state.canResend)
-            store.dispatch(JointChannelConnectionsIntent.Invite("target-co", "@ada"))
-            store.dispatch(JointChannelConnectionsIntent.Resend)
-            runCurrent()
-            assertEquals(0, dataSource.inviteCalls)
-            assertEquals(0, dataSource.resendCalls)
             store.clear()
         }
     }
@@ -81,7 +51,7 @@ class JointChannelConnectionsExternalChannelsStoreTest {
         ).forEach { case ->
             val dataSource =
                 FakeJointConnectionsDataSource(connections = externalTestConnections(case.role, federateChannels = case.federate))
-            val store = loadedStore(dataSource, externalChannels = true)
+            val store = loadedStore(dataSource)
             val state = store.state.value
 
             assertEquals(case.expected, state.displayServers.filter(state::canDisconnectServer).map { it.serverId }, "case=$case")
@@ -101,7 +71,7 @@ class JointChannelConnectionsExternalChannelsStoreTest {
         val gate = CompletableDeferred<Unit>()
         val dataSource =
             FakeJointConnectionsDataSource(connections = externalTestConnections(JointChannelRole.Host)).apply { disconnectGate = gate }
-        val store = loadedStore(dataSource, externalChannels = true)
+        val store = loadedStore(dataSource)
 
         store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
         store.dispatch(JointChannelConnectionsIntent.DisconnectServer)
@@ -140,7 +110,7 @@ class JointChannelConnectionsExternalChannelsStoreTest {
             FakeJointConnectionsDataSource(connections = externalTestConnections(JointChannelRole.Host)).apply {
                 disconnectResult = DataResult.Error(ScreenError(code = "guests_present", traceId = "0123456789abcdef0123456789abcdef"))
             }
-        val store = loadedStore(dataSource, externalChannels = true)
+        val store = loadedStore(dataSource)
 
         store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
         store.dispatch(JointChannelConnectionsIntent.DisconnectServer)
@@ -162,28 +132,14 @@ class JointChannelConnectionsExternalChannelsStoreTest {
     }
 
     @Test
-    fun flagTurningOffClosesAnOpenConfirm() = runTest {
-        val store = loadedStore(FakeJointConnectionsDataSource(connections = externalTestConnections(JointChannelRole.Host)), externalChannels = true)
-        store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
-        assertEquals("srv-active", store.state.value.disconnectConfirmServerId)
-
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(false))
-
-        assertNull(store.state.value.disconnectConfirmServerId)
-        assertTrue(store.state.value.canManageConnections)
-        store.clear()
-    }
-
-    @Test
     fun durableRecordKeepsRolesAndTheChannelCapability() {
         val snapshot = JointChannelConnectionsSnapshot(externalTestConnections(JointChannelRole.Host), canFederate = true)
 
         assertEquals(snapshot, snapshot.toJointConnectionsDurableRecord().toJointConnectionsSnapshot())
     }
 
-    private fun TestScope.loadedStore(dataSource: FakeJointConnectionsDataSource, externalChannels: Boolean): JointChannelConnectionsStore {
+    private fun TestScope.loadedStore(dataSource: FakeJointConnectionsDataSource): JointChannelConnectionsStore {
         val store = JointChannelConnectionsStore(dataSource, this)
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
         store.dispatch(JointChannelConnectionsIntent.Load)
         runCurrent()
         return store

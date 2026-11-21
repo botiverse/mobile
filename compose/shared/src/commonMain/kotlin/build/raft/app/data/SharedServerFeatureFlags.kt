@@ -66,6 +66,8 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 // Gogo removes the server flag row after old clients are checked.
 // mobile_thread_reverse_layout_v0 is no longer read (artin 2026-11-14): the thread list is always
 // bottom-up and its Settings > Mobile switch is gone; the flag row can go once older app versions are.
+// external_channels_v1 is no longer read (retired on the server, botiverse/slock #15939): external
+// channels are always on, and every surface that read it takes its former "on" path.
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -203,18 +205,6 @@ const val SERVER_SSO_FEATURE_FLAG_KEY: String = "server_sso_v1"
 const val CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY: String = "channel_announcement_v0"
 
 /**
- * External channels (botiverse/slock `packages/shared/src/featureFlags.ts`
- * `EXTERNAL_CHANNELS_FEATURE_FLAG_KEY`, web `serverFeatureFlags.ts` `externalChannels`): per server, default
- * off, read for the server whose copy of the channel is open (web reads the current server). On, a joint
- * channel's Connected servers drop the plan chips, the Active badge, the server-invite form and Resend,
- * lead with the host under a Host badge and let the host's admins disconnect another server; the host's
- * own copy offers Archive only (no Disconnect). Who may do either comes from the server
- * (`jointRole`, `jointServers[].role`, `channelCapabilities.federateChannels`). Off (or unresolved),
- * every joint surface is as before.
- */
-const val EXTERNAL_CHANNELS_FEATURE_FLAG_KEY: String = "external_channels_v1"
-
-/**
  * Server Labs UI (botiverse/slock `packages/shared/src/featureFlags.ts` `SERVER_LABS_UI_FEATURE_FLAG_KEY`,
  * drizzle 0192): per server, default off. On, Settings shows Labs (web `labsUiEnabled`); the Labs
  * routes stay the authority on who may change what.
@@ -267,7 +257,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PUBLIC_SERVER_FEATURE_FLAG_KEY,
     SERVER_SSO_FEATURE_FLAG_KEY,
     CHANNEL_ANNOUNCEMENT_FEATURE_FLAG_KEY,
-    EXTERNAL_CHANNELS_FEATURE_FLAG_KEY,
     // The Computer usage card's "Use a limit reset" for Claude Code.
     CLAUDE_LIMIT_RESET_FEATURE_FLAG_KEY,
     // Agent profile Usage tab (slock `agent_usage_v0`).

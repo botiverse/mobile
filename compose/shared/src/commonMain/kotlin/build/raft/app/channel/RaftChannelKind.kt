@@ -89,10 +89,8 @@ internal fun raftChannelKindGlyph(
  * The one chooser for a channel whose record is known (web components/channel/channelKind.ts
  * `channelKindIconProps`), so the sidebar, the header, Activity, search, pickers and composer
  * suggestions draw the same channel the same way: External when the channel is external
- * ([isRaftExternalSectionChannel]: a joint channel, or one with `hasExternalRelation`). Not gated
- * by `external_channels_v1`, like the web (sidebarChannelVisibility.ts
- * `isSidebarExternalOnlyChannel`, plan §2a): a channel that is already external keeps its icon
- * when the flag is off. Otherwise [raftChannelKindGlyph].
+ * ([isRaftExternalSectionChannel]: a joint channel, or one with `hasExternalRelation`), like the
+ * web (sidebarChannelVisibility.ts `isSidebarExternalOnlyChannel`). Otherwise [raftChannelKindGlyph].
  */
 internal fun raftChannelRecordKindGlyph(
     channelType: String?,

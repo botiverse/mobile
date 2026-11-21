@@ -90,7 +90,6 @@ class JointConnectedServersScreenshotTest {
                                 permissions = channelSettingsPermissions(wgDeck, canManage = true),
                                 writeActionsEnabled = true,
                                 canStopAllAgents = false,
-                                externalChannelsEnabled = true,
                                 section = ChannelSectionPlacement(customSections = emptyList(), pinned = false, placementSectionId = null),
                                 serverName = "Botiverse",
                             ),
@@ -109,19 +108,7 @@ class JointConnectedServersScreenshotTest {
 }
 
 @Composable
-private fun hostSection() =
-    JointConnectedServersSection(
-        state = connectedServersHostState(),
-        slug = "",
-        people = "",
-        sameAdminConfirmed = false,
-        statusMessage = null,
-        onSlugChange = {},
-        onPeopleChange = {},
-        onSameAdminConfirmedChange = {},
-        onSendInvite = {},
-        onResend = {},
-    )
+private fun hostSection() = JointConnectedServersSection(state = connectedServersHostState())
 
 private val wgDeck =
     HomeChannelRow(
@@ -155,7 +142,6 @@ internal fun connectedServersHostState(): JointChannelConnectionsState =
                 joined = true,
             ),
         canFederate = true,
-        externalChannelsEnabled = true,
         memberConnectAccount =
             MemberConnectAccount(
                 currentServerId = "srv-botiverse",

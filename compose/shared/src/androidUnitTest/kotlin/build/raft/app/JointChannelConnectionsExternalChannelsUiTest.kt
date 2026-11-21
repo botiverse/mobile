@@ -22,10 +22,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Connected servers on a real composition, wired as the page wires it (the store's state into
- * [JointConnectedServersSection], its confirm into [JointServerDisconnectConfirmDialog]): with
- * `external_channels_v1` on, no plan chips / invite form / Resend, and the host's per-row
- * Disconnect asking first; off, plan chips, the invite form and Resend. The Host badge and the
- * pending badge either way (web).
+ * [JointConnectedServersSection], its confirm into [JointServerDisconnectConfirmDialog]): the Host
+ * badge, the pending badge, and the host's per-row Disconnect asking first (web).
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -34,25 +32,15 @@ class JointChannelConnectionsExternalChannelsUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    private fun ComposeUiTest.show(externalChannels: Boolean, role: JointChannelRole = JointChannelRole.Host): FakeJointConnectionsDataSource {
+    private fun ComposeUiTest.show(role: JointChannelRole = JointChannelRole.Host): FakeJointConnectionsDataSource {
         val dataSource = FakeJointConnectionsDataSource(connections = externalTestConnections(role))
         val store = JointChannelConnectionsStore(dataSource, CoroutineScope(Dispatchers.Main.immediate))
-        store.dispatch(JointChannelConnectionsIntent.SetExternalChannelsEnabled(externalChannels))
         store.dispatch(JointChannelConnectionsIntent.Load)
         setContent {
             val state by store.state.collectAsState()
             RaftDesignSystemTheme {
                 JointConnectedServersSection(
                     state = state,
-                    slug = "",
-                    people = "",
-                    sameAdminConfirmed = false,
-                    statusMessage = null,
-                    onSlugChange = {},
-                    onPeopleChange = {},
-                    onSameAdminConfirmedChange = {},
-                    onSendInvite = {},
-                    onResend = {},
                     onDisconnectServer = { store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer(it)) },
                 )
                 state.disconnectConfirmServer?.let { server ->
@@ -77,35 +65,19 @@ class JointChannelConnectionsExternalChannelsUiTest {
         onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     @Test
-    fun hostSeesTheHostBadgeOnlyPendingBadgedAndNoInviteOrResend() = runRobolectricComposeUiTest {
-        show(externalChannels = true)
+    fun hostSeesTheHostBadgeAndOnlyThePendingRowBadged() = runRobolectricComposeUiTest {
+        show()
 
         assertEquals(1, count(JointConnectionsHostBadgeTag))
-        assertEquals(0, count(JointConnectionsPlanBadgeTag))
         // Only the pending row says so; a connected server needs no badge.
         assertEquals(1, count(JointConnectionsStatusBadgeTag))
-        assertEquals(0, count(JointConnectionsInviteTag))
-        assertEquals(0, count(JointConnectionsResendTag))
         // Disconnect on the other active server only: not the host's row, not the pending one.
         assertEquals(1, count(JointConnectionsDisconnectTag))
     }
 
     @Test
-    fun flagOffKeepsPlanChipsInviteAndResend() = runRobolectricComposeUiTest {
-        show(externalChannels = false)
-
-        // The host's Host badge and the pending row's badge, as the web; the plan chips stay.
-        assertEquals(1, count(JointConnectionsHostBadgeTag))
-        assertEquals(3, count(JointConnectionsPlanBadgeTag))
-        assertEquals(1, count(JointConnectionsStatusBadgeTag))
-        assertEquals(1, count(JointConnectionsInviteTag))
-        assertEquals(1, count(JointConnectionsResendTag))
-        assertEquals(0, count(JointConnectionsDisconnectTag))
-    }
-
-    @Test
     fun participantGetsNoPerRowDisconnect() = runRobolectricComposeUiTest {
-        show(externalChannels = true, role = JointChannelRole.Participant)
+        show(role = JointChannelRole.Participant)
 
         assertEquals(1, count(JointConnectionsHostBadgeTag))
         assertEquals(0, count(JointConnectionsDisconnectTag))
@@ -113,7 +85,7 @@ class JointChannelConnectionsExternalChannelsUiTest {
 
     @Test
     fun perRowDisconnectAsksFirstThenCallsTheHostRoute() = runRobolectricComposeUiTest {
-        val dataSource = show(externalChannels = true)
+        val dataSource = show()
 
         onNodeWithTag(JointConnectionsDisconnectTag, useUnmergedTree = true).performClick()
         waitForIdle()

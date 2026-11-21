@@ -30,16 +30,15 @@ import kotlinx.serialization.json.Json
  *    the servers the host's owner/admin owns or administers that could connect to one of its
  *    channels → `{ servers: ConnectableServer[] }` (`{ id, name, slug, avatarUrl,
  *    canConnectDirectly, needsApproval, approvers, atLimit, canUpgrade }`, the invite page's shape).
- *    Not read against a channel; 404 while `external_channels_v1` is off.
+ *    Not read against a channel.
  *  - `POST channels/:id/external-connect-servers` `{ serverIds: string[], makePrivate? }` (same SHA):
  *    the host owner/admin connects those servers now, no email, no approval →
  *    `{ servers: ServerConnectOutcome[] }`, one per chosen server (see [ServerConnectOutcome]); the
  *    whole request refused is `{ error, code }` as the routes below (400 `invalid_input` for the list).
  *  - `GET channels/external-availability` (same SHA, `externalInviteService.getExternalChannelAvailability`)
  *    → `{ freeLimitReached: boolean }`: the current server's one Free external channel is taken.
- *    Host owner/admin only; 404 while `external_channels_v1` is off.
- *  - Preview, send and resend answer 404 `{ error: "Not found" }` while `external_channels_v1` is
- *    off for the host server; list and revoke are not gated. A refusal is `{ error, code }`
+ *    Host owner/admin only.
+ *  - A refusal is `{ error, code }`
  *    (`EXTERNAL_INVITE_ERROR_STATUS`: not_found 404, forbidden 403, channel_membership_required
  *    403, invalid_input 400, channel_not_invitable 400, make_private_required 400,
  *    channel_archived 409, invite_not_pending 409, connecting 409, daily_cap 429, invite_open 409)

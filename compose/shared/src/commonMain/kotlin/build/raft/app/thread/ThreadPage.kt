@@ -39,7 +39,6 @@ import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftThreadApiClient
@@ -56,7 +55,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
@@ -2277,7 +2275,7 @@ private fun SharedThreadRouteContentContent(
     }
     // Public-page globe on the channel header icon: the server's publicPageLive comes from
     // the session server list (canonical store state), never from the route payload. The External
-    // glyph needs no server fact: it is not gated by external_channels_v1 (web plan §2a).
+    // glyph needs no server fact.
     val headerServerPublicPageLive =
         currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
@@ -6350,9 +6348,6 @@ private fun SharedThreadRouteContentContent(
         val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
         val taskConversationHeadRow =
             rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
-        // Web reads external_channels_v1 for the current server: the one whose copy is open.
-        val externalChannelsEnabled =
-            rememberServerFeatureLatched(sharedStores.serverFeatureFlags, threadMembersServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
         // What the settings drawer (and the phone's settings page) do beyond the members strip and
         // the preferences: Info with the Slack pick, Guest access and every action through the
         // settings page's store, then what follows them. [onLeave] leaves the conversation after
@@ -6367,7 +6362,6 @@ private fun SharedThreadRouteContentContent(
             val homeServer = (homeContent as? SharedHomeContentState.Content)?.snapshot?.server
             val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
             return panel.copy(
-                externalChannelsEnabled = externalChannelsEnabled,
                 // The settings page's store: Info with the Slack pick, Guest access and every action.
                 storeFactory =
                     if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
@@ -6391,7 +6385,7 @@ private fun SharedThreadRouteContentContent(
                 },
                 onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
                 onChannelClosed = { action, accessLost ->
-                    if (externalChannelsEnabled && action == ChannelSettingsAction.Disconnect) {
+                    if (action == ChannelSettingsAction.Disconnect) {
                         // Web: say which server let go of which channel before moving the reader on.
                         channelSettingsDisconnectedToast(homeServer?.name, panel.channel?.name)?.let(bridge::toast)
                     }

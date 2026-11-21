@@ -6,15 +6,7 @@ import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
-import build.raft.app.data.JOINT_INVITEE_NOT_ADMIN
-import build.raft.app.data.JOINT_INVITEE_NOT_FOUND
-import build.raft.app.data.JOINT_INVITE_LIMIT_EXCEEDED
-import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelConnections
-import build.raft.app.data.JointSameAdminContext
-import build.raft.app.data.JointSameAdminServer
-import build.raft.app.data.findSameAdminJointTarget
-import build.raft.app.data.JointServerSlugIssue
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftDurableSnapshotKey
 import build.raft.app.data.RaftKeyedSnapshotCache
@@ -26,8 +18,6 @@ import build.raft.app.data.JointChannelRole
 import build.raft.app.data.MemberConnectResponse
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.isAuthSessionBlocker
-import build.raft.app.data.jointServerSlugIssue
-import build.raft.app.data.parseJointInvitedPeopleText
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -59,28 +49,9 @@ internal fun DataResult<*>.toJointChannelFailure(): JointChannelFailure? =
         is DataResult.Empty -> JointChannelFailure.Error(ScreenError(code = "joint_empty_response", retryable = true))
     }
 
-internal enum class JointInviteField { Slug, People, Form }
-
-/**
- * Which invite-form slot shows a server rejection. Web EditChannelDialog routes by message text;
- * here the server's stable `code` decides (slug → server slug field; invitee codes → people field;
- * limits and everything else → the form banner).
- */
-internal fun jointInviteFailureField(code: String): JointInviteField =
-    when (code) {
-        JOINT_TARGET_SERVER_INVALID -> JointInviteField.Slug
-        JOINT_INVITEE_NOT_FOUND,
-        JOINT_INVITEE_NOT_ADMIN,
-        JOINT_INVITE_LIMIT_EXCEEDED -> JointInviteField.People
-        else -> JointInviteField.Form
-    }
-
 internal enum class JointChannelConnectionsLoadStatus { Loading, Content, Error }
 
 internal enum class JointChannelConnectionsAction {
-    Invite,
-    Resend,
-
     /** The host's admin takes another server out (web JointServerDisconnectAction). */
     DisconnectServer,
 
@@ -88,27 +59,7 @@ internal enum class JointChannelConnectionsAction {
     MemberConnect,
 }
 
-/** Client-side invite form rejection (web parity: checked before any request). */
-internal enum class JointInviteValidation {
-    SlugRequired,
-    SlugPattern,
-    PeopleRequired,
-    ServerLimitReached,
-
-    /** Web `channel.jointInvite.sameAdmin.confirmRequired`: the direct connection is not confirmed. */
-    SameAdminConfirmRequired,
-}
-
 internal sealed interface JointChannelConnectionsEffect {
-    /**
-     * [connectedServerName] is set when the same-admin invite connected that server directly
-     * (web reads it from the returned server list: the server may fall back to the email);
-     * [emailedCount] is everyone else on the list.
-     */
-    data class InviteSent(val emailedCount: Int, val connectedServerName: String? = null) : JointChannelConnectionsEffect
-
-    data class Resent(val resentCount: Int) : JointChannelConnectionsEffect
-
     /** Web `channel.edit.disconnectedServerToast`: "Disconnected {server} from #{channel}". */
     data class ServerDisconnected(val serverName: String, val channelName: String) : JointChannelConnectionsEffect
 
@@ -126,7 +77,7 @@ internal sealed interface JointChannelConnectionsEffect {
 
 internal data class JointChannelConnectionsSnapshot(
     val connections: JointChannelConnections,
-    /** Server-level `federateChannels` (owner/admin), the gate every joint mutation route checks. */
+    /** Server-level `federateChannels` (owner/admin), as the page was told it (kept in the cached snapshot). */
     val canFederate: Boolean,
 )
 
@@ -137,18 +88,7 @@ internal data class JointChannelConnectionsState(
     val refreshing: Boolean = false,
     val loadFailure: JointChannelFailure? = null,
     val actionInFlight: JointChannelConnectionsAction? = null,
-    val inviteValidation: Set<JointInviteValidation> = emptySet(),
-    val inviteFailure: JointChannelFailure? = null,
-    val resendFailure: JointChannelFailure? = null,
     val effect: JointChannelConnectionsEffect? = null,
-    /** The inviter's account, servers and roles; null until the session is known. */
-    val sameAdminContext: JointSameAdminContext? = null,
-    /**
-     * `external_channels_v1` for this server (web `useServerFeatureFlag(EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)`).
-     * Off: the page is as before. On: host first under a Host badge, no plan chips, only pending
-     * rows badged, no server-invite form or Resend, and the host's per-row Disconnect.
-     */
-    val externalChannelsEnabled: Boolean = false,
     /** The server whose Disconnect confirm is open; null when none is. */
     val disconnectConfirmServerId: String? = null,
     /** The confirm's failure: web keeps the dialog open with one line (and here the trace ID). */
@@ -160,17 +100,6 @@ internal data class JointChannelConnectionsState(
     /** Servers the viewer connected to this channel while the app runs (web "Connected by you"). */
     val connectedByYou: Set<String> = emptySet(),
 ) {
-    /** Web EditChannelDialog `inviteSameAdminTarget` for the form's current slug and people. */
-    fun sameAdminTarget(targetServerSlug: String, invitedPeopleText: String): JointSameAdminServer? =
-        findSameAdminJointTarget(sameAdminContext, targetServerSlug, parseJointInvitedPeopleText(invitedPeopleText))
-
-    /**
-     * Web: invite / resend controls render only for `federateChannels` on a live joint channel,
-     * and (`serverInviteOfferAllowed`) only while external channels are off.
-     */
-    val canManageConnections: Boolean
-        get() = canFederate && connections?.isJoint == true && connections.archived.not() && !externalChannelsEnabled
-
     /**
      * The rows as shown (web `jointServerRows`, slock c8849c8b3cfd EditChannelDialog.tsx:445): the
      * host leads, the rest keep the server's order; a private channel offering Connect your
@@ -192,7 +121,7 @@ internal data class JointChannelConnectionsState(
         get() {
             val current = connections ?: return null
             val account = memberConnectAccount ?: return null
-            if (!externalChannelsEnabled || current.isJoint || !current.isPrivate) return null
+            if (current.isJoint || !current.isPrivate) return null
             return JointChannelServer(
                 serverId = account.currentServerId,
                 name = account.currentServerName,
@@ -204,10 +133,9 @@ internal data class JointChannelConnectionsState(
             )
         }
 
-    /** Web `useMemberConnectRows`: nothing while external channels are off. */
+    /** Web `useMemberConnectRows`: the servers the viewer could connect, and why each can or can't be. */
     val memberConnectRows: List<MemberConnectRow>
-        get() =
-            if (!externalChannelsEnabled) emptyList() else memberConnectRows(connections?.memberConnectChannel(), memberConnectAccount)
+        get() = memberConnectRows(connections?.memberConnectChannel(), memberConnectAccount)
 
     /** Web `memberConnect.available`: the ⋯ with Connect your servers, only with a server to connect. */
     val memberConnectAvailable: Boolean
@@ -242,22 +170,18 @@ internal data class JointChannelConnectionsState(
     /** The host row's Host badge (web: `server.role === "host"`). */
     fun showsHostBadge(server: JointChannelServer): Boolean = server.role == JointChannelRole.Host
 
-    /** External channels on: no Free/Paid chip (web #wg-rbac:2ee0381d). */
-    fun showsPlanBadge(server: JointChannelServer): Boolean = !externalChannelsEnabled && server.plan != null
-
     /** A connected server needs no badge; a legacy pending row still says so (web Q2, #wg-rbac:2ee0381d). */
     fun showsStatusBadge(server: JointChannelServer): Boolean = !server.active
 
     /**
-     * Web `canDisconnectJointServers` and its row check: this server hosts the joint, external
-     * channels are on, the channel's own `federateChannels` is true (the server's check, never a
-     * server-wide fallback), and the row is another server's active copy. Everything here is
-     * what the server sent; the route re-checks it.
+     * Web `canDisconnectJointServers` and its row check: this server hosts the joint, the
+     * channel's own `federateChannels` is true (the server's check, never a server-wide
+     * fallback), and the row is another server's active copy. Everything here is what the server
+     * sent; the route re-checks it.
      */
     fun canDisconnectServer(server: JointChannelServer): Boolean {
         val current = connections ?: return false
-        return externalChannelsEnabled &&
-            current.isJoint &&
+        return current.isJoint &&
             current.jointRole == JointChannelRole.Host &&
             current.federateChannels == true &&
             server.active &&
@@ -268,22 +192,11 @@ internal data class JointChannelConnectionsState(
     /** The row whose Disconnect confirm is open, while it can still be disconnected. */
     val disconnectConfirmServer: JointChannelServer?
         get() = disconnectConfirmServerId?.let { id -> connections?.servers?.firstOrNull { it.serverId == id } }
-
-    val canResend: Boolean
-        get() = canManageConnections && connections?.hasCurrentServerPendingInvites == true
 }
 
 internal sealed interface JointChannelConnectionsIntent {
     data object Load : JointChannelConnectionsIntent
     data object Refresh : JointChannelConnectionsIntent
-    data class Invite(
-        val targetServerSlug: String,
-        val invitedPeopleText: String,
-        val sameAdminConfirmed: Boolean = false,
-    ) : JointChannelConnectionsIntent
-    data class SetSameAdminContext(val context: JointSameAdminContext?) : JointChannelConnectionsIntent
-    /** `external_channels_v1` as last read for this server. */
-    data class SetExternalChannelsEnabled(val enabled: Boolean) : JointChannelConnectionsIntent
     /** The account's servers and roles, as the stored session holds them. */
     data class SetMemberConnectAccount(val account: MemberConnectAccount?) : JointChannelConnectionsIntent
     /** Connected servers ⋯ > Connect your servers. */
@@ -299,15 +212,11 @@ internal sealed interface JointChannelConnectionsIntent {
     data object DismissDisconnectServer : JointChannelConnectionsIntent
     /** The confirm's Disconnect {server}. */
     data object DisconnectServer : JointChannelConnectionsIntent
-    data object Resend : JointChannelConnectionsIntent
-    data object ClearInviteFeedback : JointChannelConnectionsIntent
     data object ConsumeEffect : JointChannelConnectionsIntent
 }
 
 internal interface JointChannelConnectionsDataSource {
     suspend fun load(): DataResult<JointChannelConnectionsSnapshot>
-    suspend fun invite(targetServerSlug: String, invitedPeople: List<String>, sameAdmin: Boolean): DataResult<JointChannelConnections>
-    suspend fun resend(): DataResult<Int>
     suspend fun disconnectServer(serverId: String): DataResult<Unit>
     suspend fun connectMyServers(serverIds: List<String>): DataResult<MemberConnectResponse>
 }
@@ -334,18 +243,6 @@ internal class RealJointChannelConnectionsDataSource(
                 is DataResult.NoPermission -> result
             }
         }
-
-    override suspend fun invite(
-        targetServerSlug: String,
-        invitedPeople: List<String>,
-        sameAdmin: Boolean,
-    ): DataResult<JointChannelConnections> =
-        runner.run { _, networkClient ->
-            repository(networkClient).inviteServer(route.channelId, targetServerSlug, invitedPeople, sameAdmin)
-        }
-
-    override suspend fun resend(): DataResult<Int> =
-        runner.run { _, networkClient -> repository(networkClient).resendInvites(route.channelId) }
 
     override suspend fun disconnectServer(serverId: String): DataResult<Unit> =
         runner.run { _, networkClient -> repository(networkClient).disconnectServer(route.channelId, serverId) }
@@ -384,9 +281,9 @@ internal fun jointChannelConnectionsCacheSlot(
 }
 
 /**
- * MVI store of a joint channel's Connected servers page: the server list, the
- * "Channel connection invitation" form and Resend Invite. One mutation runs at a time; a
- * failure keeps the loaded list and attaches the error to the action that failed.
+ * MVI store of a joint channel's Connected servers page: the server list, the host's Disconnect
+ * of another server and Connect your servers. One mutation runs at a time; a failure keeps the
+ * loaded list and attaches the error to the action that failed.
  *
  * Cache-first (data-layer plan step 5): with a [cacheSlot] the first state is the cached list
  * (memory, or the durable row on a cold start), the page refreshes once in the background and
@@ -415,20 +312,6 @@ internal class JointChannelConnectionsStore(
         when (intent) {
             JointChannelConnectionsIntent.Load -> load(force = false)
             JointChannelConnectionsIntent.Refresh -> load(force = true)
-            is JointChannelConnectionsIntent.Invite -> invite(intent)
-            JointChannelConnectionsIntent.Resend -> resend()
-            is JointChannelConnectionsIntent.SetExternalChannelsEnabled ->
-                if (mutableState.value.externalChannelsEnabled != intent.enabled) {
-                    mutableState.value =
-                        mutableState.value.copy(
-                            externalChannelsEnabled = intent.enabled,
-                            // Off again: no per-row Disconnect, so no confirm either.
-                            disconnectConfirmServerId = mutableState.value.disconnectConfirmServerId.takeIf { intent.enabled },
-                            disconnectFailure = mutableState.value.disconnectFailure.takeIf { intent.enabled },
-                            // Off again: no Connect your servers either.
-                            memberConnectSheet = mutableState.value.memberConnectSheet.takeIf { intent.enabled },
-                        )
-                }
             is JointChannelConnectionsIntent.SetMemberConnectAccount ->
                 if (mutableState.value.memberConnectAccount != intent.account) {
                     mutableState.value = mutableState.value.copy(memberConnectAccount = intent.account)
@@ -469,16 +352,6 @@ internal class JointChannelConnectionsStore(
                 }
             }
             JointChannelConnectionsIntent.DisconnectServer -> disconnectServer()
-            is JointChannelConnectionsIntent.SetSameAdminContext ->
-                if (mutableState.value.sameAdminContext != intent.context) {
-                    mutableState.value = mutableState.value.copy(sameAdminContext = intent.context)
-                }
-            JointChannelConnectionsIntent.ClearInviteFeedback -> {
-                val current = mutableState.value
-                if (current.inviteValidation.isNotEmpty() || current.inviteFailure != null) {
-                    mutableState.value = current.copy(inviteValidation = emptySet(), inviteFailure = null)
-                }
-            }
             JointChannelConnectionsIntent.ConsumeEffect ->
                 if (mutableState.value.effect != null) mutableState.value = mutableState.value.copy(effect = null)
         }
@@ -543,89 +416,6 @@ internal class JointChannelConnectionsStore(
                         }
                     }
             }
-    }
-
-    private fun invite(intent: JointChannelConnectionsIntent.Invite) {
-        val current = mutableState.value
-        if (current.status != JointChannelConnectionsLoadStatus.Content || current.actionInFlight != null) return
-        if (!current.canManageConnections) return
-        val connections = current.connections ?: return
-        val slug = intent.targetServerSlug.trim()
-        val people = parseJointInvitedPeopleText(intent.invitedPeopleText)
-        val validation =
-            buildSet {
-                when (jointServerSlugIssue(slug)) {
-                    JointServerSlugIssue.Required -> add(JointInviteValidation.SlugRequired)
-                    JointServerSlugIssue.Pattern -> add(JointInviteValidation.SlugPattern)
-                    null -> Unit
-                }
-                if (people.isEmpty()) add(JointInviteValidation.PeopleRequired)
-                if (isEmpty() && connections.serverLimitReached) add(JointInviteValidation.ServerLimitReached)
-            }
-        val sameAdminTarget = findSameAdminJointTarget(current.sameAdminContext, slug, people)
-        if (validation.isEmpty() && sameAdminTarget != null && !intent.sameAdminConfirmed) {
-            mutableState.value =
-                current.copy(inviteValidation = setOf(JointInviteValidation.SameAdminConfirmRequired), inviteFailure = null)
-            return
-        }
-        if (validation.isNotEmpty()) {
-            mutableState.value = current.copy(inviteValidation = validation, inviteFailure = null)
-            return
-        }
-        mutableState.value =
-            current.copy(
-                actionInFlight = JointChannelConnectionsAction.Invite,
-                inviteValidation = emptySet(),
-                inviteFailure = null,
-                effect = null,
-            )
-        launchAction {
-            val result = runCall { dataSource.invite(slug, people, sameAdmin = sameAdminTarget != null) }
-            val previous = mutableState.value
-            if (result is DataResult.Content && result.data.channelId == connections.channelId) {
-                cacheSlot?.let { slot ->
-                    slot.cache.write(slot.key, JointChannelConnectionsSnapshot(result.data, previous.canFederate), slot.cache.ticket())
-                }
-            }
-            mutableState.value =
-                when (result) {
-                    is DataResult.Content -> {
-                        // Web: read the outcome from the returned list, the accept may have fallen back to email.
-                        val connectedDirectly =
-                            sameAdminTarget != null &&
-                                result.data.servers.any { it.slug == sameAdminTarget.slug && it.active }
-                        previous.copy(
-                            actionInFlight = null,
-                            connections =
-                                if (result.data.channelId == connections.channelId) result.data else previous.connections,
-                            effect =
-                                JointChannelConnectionsEffect.InviteSent(
-                                    emailedCount = if (connectedDirectly) people.size - 1 else people.size,
-                                    connectedServerName = sameAdminTarget?.name?.takeIf { connectedDirectly },
-                                ),
-                        )
-                    }
-                    else -> previous.copy(actionInFlight = null, inviteFailure = result.toJointChannelFailure())
-                }
-        }
-    }
-
-    private fun resend() {
-        val current = mutableState.value
-        if (current.status != JointChannelConnectionsLoadStatus.Content || current.actionInFlight != null) return
-        if (!current.canResend) return
-        mutableState.value =
-            current.copy(actionInFlight = JointChannelConnectionsAction.Resend, resendFailure = null, effect = null)
-        launchAction {
-            val result = runCall { dataSource.resend() }
-            val previous = mutableState.value
-            mutableState.value =
-                when (result) {
-                    is DataResult.Content ->
-                        previous.copy(actionInFlight = null, effect = JointChannelConnectionsEffect.Resent(result.data))
-                    else -> previous.copy(actionInFlight = null, resendFailure = result.toJointChannelFailure())
-                }
-        }
     }
 
     private fun disconnectServer() {
@@ -807,14 +597,12 @@ internal class JointChannelConnectionsStore(
 
 /**
  * A load that ended in an error: nothing of the channel stays on screen, but what the page was
- * told about the account and this server (flag, servers and roles, connected by you) does.
+ * told about the account (its servers and roles, connected by you) does.
  */
 private fun JointChannelConnectionsState.loadErrorState(failure: JointChannelFailure?): JointChannelConnectionsState =
     JointChannelConnectionsState(
         status = JointChannelConnectionsLoadStatus.Error,
         loadFailure = failure,
-        sameAdminContext = sameAdminContext,
-        externalChannelsEnabled = externalChannelsEnabled,
         memberConnectAccount = memberConnectAccount,
         connectedByYou = connectedByYou,
     )

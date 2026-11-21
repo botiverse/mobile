@@ -23,8 +23,8 @@ import kotlinx.serialization.json.Json
  *    `already_connected`, `membership_changed`, `channel_archived`, `invalid_server`, ...; limits
  *    `free_external_limit` / `joint_free_server_limit` with `limitSide` / `limitServerId`;
  *    `joint_server_limit`, `channel_conversion_*`), `internal_error` (500) for anything else.
- *  - The whole request refused: 404 `{ error }` (external_channels_v1 off for the host, not in
- *    the channel, unknown channel), 400 `{ code: "channel_not_invitable" }` (a public channel, #all),
+ *  - The whole request refused: 404 `{ error }` (not in the channel, unknown channel), 400
+ *    `{ code: "channel_not_invitable" }` (a public channel, #all),
  *    400 `{ code: "invalid_input" }` (the list), 409 `{ code: "guest_has_computer" }`, 409
  *    `{ code }` (`ExternalInviteError`), 500.
  *

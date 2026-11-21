@@ -132,8 +132,6 @@ private val RaftUpsellNeutralCopy: Map<String, StringResource> =
         Res.string.agent_create_error_limit.key to Res.string.agent_create_error_limit_neutral,
         Res.string.agent_create_action_upgrade_for_more.key to Res.string.agent_create_limit_needs_pro,
         Res.string.joint_limit_free_servers.key to Res.string.joint_limit_free_servers_neutral,
-        Res.string.joint_create_free_host_limit.key to Res.string.joint_create_free_host_limit_neutral,
-        Res.string.joint_create_free_host_limit_unnamed.key to Res.string.joint_create_free_host_limit_unnamed_neutral,
         Res.string.agent_migration_error_pro_plan_required.key to Res.string.agent_migration_error_pro_plan_required_neutral,
     )
 
