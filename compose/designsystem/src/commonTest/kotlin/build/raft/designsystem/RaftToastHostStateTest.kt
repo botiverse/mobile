@@ -6,6 +6,7 @@ import build.raft.designsystem.components.RaftToastAvoidance
 import build.raft.designsystem.components.RaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftToastTimeoutMillis
+import build.raft.designsystem.components.raftToastSafeBottomPx
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -238,5 +239,16 @@ class RaftToastHostStateTest {
         // Composer gone and host resizes (rotation / multi-window): held height must not reset.
         state.removeAvoidance("composer")
         assertEquals(120f, state.resolveBottomClearancePx(hostBottomPx = 600f, safeBottomPx = 24f))
+    }
+
+    @Test
+    fun safeBottomNeverDropsBelowSystemSafeDrawingForHardwareKeyboard() {
+        // iPad hardware keyboard shortcut bar: host IME override reads 0 while safeDrawing reports the bar.
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = 0f, safeDrawingBottomPx = 56f))
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = 20f, safeDrawingBottomPx = 56f))
+        // Software keyboard animation: host IME override exceeds safeDrawing and leads.
+        assertEquals(300f, raftToastSafeBottomPx(overridePx = 300f, safeDrawingBottomPx = 56f))
+        // No override registered: falls back to safeDrawing.
+        assertEquals(56f, raftToastSafeBottomPx(overridePx = null, safeDrawingBottomPx = 56f))
     }
 }

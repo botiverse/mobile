@@ -66,10 +66,10 @@ val LocalRaftToastHostState = staticCompositionLocalOf<RaftToastHostState?> { nu
 val LocalRaftToastAvoidanceActive = compositionLocalOf { true }
 
 /**
- * Overrides the bottom safe-area + keyboard inset (px) read by [RaftToastHost] during layout
+ * Supplies the live bottom safe-area + keyboard inset (px) read by [RaftToastHost] during layout
  * placement, so toasts follow the exact same IME source as the host/page (Android's dispatched
- * `RaftHostImeInsets`, iOS's curve-matched keyboard slide tracker) instead of fighting CMP's
- * raw `WindowInsets.safeDrawing`.
+ * `RaftHostImeInsets`, iOS's curve-matched keyboard slide tracker) while still flooring at
+ * `WindowInsets.safeDrawing` (e.g. for an iPad hardware keyboard shortcut bar).
  */
 @Composable
 fun RaftToastBottomInsetProvider(bottomInsetPx: Density.() -> Float) {
@@ -96,6 +96,14 @@ val RaftToastGap: Dp = 8.dp
 internal val RaftToastSwipeThreshold: Dp = 40.dp
 
 /**
+ * Effective bottom safe-area + keyboard inset for [RaftToastHost]: [overridePx] tracks live host
+ * keyboard motion, but never drops below [safeDrawingBottomPx] (such as an iPad hardware keyboard
+ * shortcut bar when the host's software keyboard height is 0).
+ */
+internal fun raftToastSafeBottomPx(overridePx: Float?, safeDrawingBottomPx: Float): Float =
+    maxOf(overridePx ?: 0f, safeDrawingBottomPx)
+
+/**
  * raft-ui `ToastViewport` (`bottom-center`) for [state]: draws its toasts over everything before
  * it in the same parent (the page, its dialogs and their scrims; raft-ui: "toasts already draw
  * above dialogs"), and passes every touch elsewhere through. Fill the window with it.
@@ -106,7 +114,7 @@ internal val RaftToastSwipeThreshold: Dp = 40.dp
  *   conversation beside a thread clears both), or the bottom of the window where nothing does
  *   (raft-design #1217: on a wide window too, not only on a phone). While a toast shows it only
  *   moves up, for something taller, never down when the page changes; never lower than 16dp above
- *   the system bars and the keyboard ([RaftToastBottomInsetProvider] or `WindowInsets.safeDrawing`),
+ *   the system bars and the keyboard (`maxOf(RaftToastBottomInsetProvider, WindowInsets.safeDrawing)`),
  *   which it still follows.
  * - Several toasts ([RaftToastHostState.limit] > 1) stack newest at the bottom, [RaftToastGap]
  *   apart (raft-ui's expanded stack).
@@ -148,8 +156,10 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
                     val layoutHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
                     layout(layoutWidth, layoutHeight) {
                         val safeBottomPx =
-                            state.bottomInsetOverrideOrNull()?.invoke(this@layout)
-                                ?: safeDrawing.getBottom(this@layout).toFloat()
+                            raftToastSafeBottomPx(
+                                overridePx = state.bottomInsetOverrideOrNull()?.invoke(this@layout),
+                                safeDrawingBottomPx = safeDrawing.getBottom(this@layout).toFloat(),
+                            )
                         val clearancePx = state.resolveBottomClearancePx(hostBottomPx, safeBottomPx)
                         val bottomPx = (clearancePx + RaftToastViewportOffset.toPx()).roundToInt()
                         val x =
@@ -157,7 +167,7 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
                                 .align(placeable.width, layoutWidth, layoutDirection)
                                 .coerceAtLeast(0)
                         val y = (layoutHeight - placeable.height - bottomPx).coerceAtLeast(0)
-                        placeable.placeRelative(x, y)
+                        placeable.place(x, y)
                     }
                 }
                 .windowInsetsPadding(horizontalInsets)

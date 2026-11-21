@@ -39,10 +39,11 @@ class RaftStackScene<T : Any>(override val entries: List<NavEntry<T>>) : Scene<T
 
     override val content: @Composable () -> Unit = {
         val topKey = entries.last().contentKey
+        val parentAvoidanceActive = LocalRaftToastAvoidanceActive.current
         entries.forEach { entry ->
             val isTop = entry.contentKey == topKey
             key(entry.contentKey) {
-                CompositionLocalProvider(LocalRaftToastAvoidanceActive provides isTop) {
+                CompositionLocalProvider(LocalRaftToastAvoidanceActive provides (parentAvoidanceActive && isTop)) {
                     Box(if (isTop) Modifier.fillMaxSize() else Modifier.size(0.dp)) {
                         entry.Content()
                     }

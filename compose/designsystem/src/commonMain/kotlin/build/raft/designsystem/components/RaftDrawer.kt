@@ -25,11 +25,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -47,6 +49,8 @@ import build.raft.designsystem.tokens.RaftRadius
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * raft-ui Drawer (bottom sheet) holding a panel of the caller's own: web `<DrawerContent>` with
@@ -78,6 +82,11 @@ import kotlin.math.roundToInt
  * conversation whose composer already pads for both); true pads the surface for them.
  * [overlay] is drawn over the whole window, above the scrim and the surface (a notification
  * banner that must stay on top while the drawer is open).
+ *
+ * When accepting a drag-to-dismiss in [onDismissRequest], flip [visible] to `false` synchronously
+ * inside the callback so the drawer finishes closing immediately without waiting for the 180ms exit
+ * transition; leaving [visible] `true` treats the dismiss as rejected and slides the sheet back to
+ * its snap point.
  */
 @Composable
 fun RaftDrawer(
@@ -91,9 +100,24 @@ fun RaftDrawer(
     fill: RaftDrawerFill = RaftDrawerFill.Popover,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Launch recovery on a scope independent of the LaunchedEffect key: animateTo clears
+    // dismissedByDrag on its first line, which changes the LaunchedEffect key and would cancel an
+    // animation launched directly inside the effect.
+    val recoverScope = rememberCoroutineScope()
+    val recoverJobHolder = remember { arrayOfNulls<Job>(1) }
+    DisposableEffect(state) {
+        onDispose {
+            recoverJobHolder[0]?.cancel()
+            recoverJobHolder[0] = null
+        }
+    }
     LaunchedEffect(visible, state, state?.dismissedByDrag) {
-        if (visible && state?.dismissedByDrag == true) {
-            state.clearDismissedByDrag()
+        if (!visible) {
+            recoverJobHolder[0]?.cancel()
+            recoverJobHolder[0] = null
+        } else if (state?.dismissedByDrag == true) {
+            recoverJobHolder[0]?.cancel()
+            recoverJobHolder[0] = recoverScope.launch { state.animateTo(state.snapPoint) }
         }
     }
     RaftSheetWindow(
@@ -161,11 +185,6 @@ class RaftDrawerState(initialSnapPoint: RaftDrawerSnapPoint = RaftDrawerSnapPoin
     /** True once [settle] finished animating the sheet completely off-screen to 0px. */
     internal var dismissedByDrag: Boolean by mutableStateOf(false)
         private set
-
-    internal fun clearDismissedByDrag() {
-        dismissedByDrag = false
-        heldExtent = null
-    }
 
     internal val draggable = DraggableState { deltaDown -> moveBy(deltaDown) }
 
