@@ -44,7 +44,9 @@ internal class AttachmentUploadCapabilitiesCache(
         freshEntry(key)?.let { return DataResult.Content(it.capabilities) }
         return fetchLock.withLock {
             freshEntry(key)?.let { return@withLock DataResult.Content(it.capabilities) }
-            val result = fetch()
+            // A composer upload's capability probe (`control_ms`): only a real fetch counts, never a
+            // cache hit or the wait for another caller's fetch.
+            val result = raftUploadControlCall { fetch() }
             if (result is DataResult.Content) {
                 entry = Entry(key, result.data, nowMillis())
             }
