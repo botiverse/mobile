@@ -71,6 +71,11 @@ data class HomeChannelWireDto(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    /**
+     * Free plan external channel freeze deadline (ISO, botiverse/slock #15653): read-only from
+     * this time on any channel type, an upcoming notice before it; null otherwise.
+     */
+    val externalFreezeAt: String? = null,
     val bridge: HomeChannelBridgeWireDto? = null,
     /**
      * Full `channels` db row column (botiverse/slock@9df0d1b3f packages/server/src/db/schema.ts:1801,
@@ -167,6 +172,11 @@ private data class HomeChannelDetailWireDto(
     val jointPeerStatus: String? = null,
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
+    /**
+     * Free plan external channel freeze deadline (ISO, botiverse/slock #15653): read-only from
+     * this time on any channel type, an upcoming notice before it; null otherwise.
+     */
+    val externalFreezeAt: String? = null,
     val bridge: HomeChannelBridgeWireDto? = null,
     /** See [HomeChannelWireDto.guestVisible]. */
     val guestVisible: Boolean = false,
@@ -270,6 +280,7 @@ internal fun parseRaftChannelDetail(
             jointPeerStatus = wire.jointPeerStatus,
             jointBillingLocked = wire.jointBillingLocked,
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
+            externalFreezeAt = wire.externalFreezeAt,
             bridge = wire.bridge,
             guestVisible = wire.guestVisible,
             visitorVisible = wire.visitorVisible,
@@ -495,6 +506,7 @@ internal fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
+        externalFreezeAt = externalFreezeAt?.takeIf { it.isNotBlank() },
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         guestVisible = visitorVisible ?: guestVisible,
         hasExternalRelation = hasExternalRelation,

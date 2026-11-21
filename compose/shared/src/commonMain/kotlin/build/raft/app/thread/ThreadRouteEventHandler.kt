@@ -114,6 +114,7 @@ internal class ThreadRouteEventHandler(
     val sendPendingLocalMessageFn: (localMessageId: String, context: RaftThreadPendingSendContext, startedFromComposer: Boolean, authority: ThreadLocalSendAuthority) -> Unit,
     val openCanonicalTask: (TaskSummary, String) -> Unit,
     val settingsPageLinkKey: String,
+    val threadLimitLocked: Boolean = false,
 ) {
     val renderSlice by renderSliceState
     var pendingReactionKeys by pendingReactionKeysState
@@ -289,17 +290,23 @@ internal class ThreadRouteEventHandler(
                     return@ThreadPageContent
                 }
                 if (action == ThreadOpenUpgradeEvent) {
-                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire name.
+                    // A banner's Upgrade (web ChannelLimitBanners): [itemId] is the gate's wire
+                    // name, and [attachmentId] carries the optional ISO freeze deadline for
+                    // `ExternalFreezeNotice` (`FreezeUpcoming`).
                     RaftUpgradeGate.entries.firstOrNull { it.wire == itemId }?.let { gate ->
-                        pager.openRaftUpgradeDialog(gate, storeScope)
+                        val externalContext =
+                            attachmentId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(RaftUpgradeExternalContext::FreezeUpcoming)
+                        pager.openRaftUpgradeDialog(gate, storeScope, externalContext)
                     }
                     return@ThreadPageContent
                 }
                 if (handleThreadStoreRetryEvent(action, threadViewModel::dispatch)) {
                     return@ThreadPageContent
                 }
-                if (!threadEventAllowed(renderSlice.writeActionsEnabled, action)) {
-                    bridge.log("thread_write_action_blocked action=$action reason=read_only_access_fallback")
+                if (!threadEventAllowed(renderSlice.writeActionsEnabled, action, limitLocked = threadLimitLocked)) {
+                    bridge.log("thread_write_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
                     return@ThreadPageContent
                 }
                 when {

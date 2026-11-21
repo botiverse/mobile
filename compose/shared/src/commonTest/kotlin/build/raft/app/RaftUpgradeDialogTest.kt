@@ -213,4 +213,49 @@ class RaftUpgradeDialogTest {
             assertEquals(RaftUpgradeBenefit.Joint, raftUpgradeBenefits(raftUpgradeGateCopy(gate).first).first(), gate.wire)
         }
     }
+
+    @Test
+    fun legacyJointGatesUseExternalChannelCopy() {
+        // botiverse/slock #15686: legacy joint_channel_* gates map to externalLimit / externalFrozen copy.
+        val limitCopy = raftUpgradeGateCopy(RaftUpgradeGate.ExternalChannelFreeLimit)
+        val frozenCopy = raftUpgradeGateCopy(RaftUpgradeGate.ExternalChannelFrozen)
+        assertEquals(limitCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelFreeCap))
+        assertEquals(limitCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelHostLimit))
+        assertEquals(frozenCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelOverLimit))
+        assertEquals(frozenCopy, raftUpgradeGateCopy(RaftUpgradeGate.JointChannelReadOnly))
+    }
+
+    @Test
+    fun freezeUpcomingContextPairsOnlyWithExternalChannelFrozenAndEncodesInWebUrl() {
+        val deadline = "2026-12-01T14:30:00Z"
+        val context = RaftUpgradeExternalContext.FreezeUpcoming(deadline)
+        assertEquals(context, externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, context))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFreeLimit, context))
+        assertNull(externalContextForGate(RaftUpgradeGate.History30d, context))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("   ")))
+        assertNull(externalContextForGate(RaftUpgradeGate.ExternalChannelFrozen, RaftUpgradeExternalContext.FreezeUpcoming("not-a-timestamp")))
+        assertEquals(
+            "https://raft.build/s/acme/settings/billing?upgrade=external_channel_frozen&upgradeCanceled=1&upgradeFreezeAt=2026-12-01T14%3A30%3A00Z&lang=en",
+            raftUpgradeWebUrl(
+                "https://raft.build",
+                "acme",
+                RaftUpgradeGate.ExternalChannelFrozen,
+                RaftUpgradeMode.Upgrade,
+                "en",
+                context,
+            ),
+        )
+        // Mismatched gate omits upgradeFreezeAt.
+        assertEquals(
+            "https://raft.build/s/acme/settings/billing?upgrade=external_channel_free_limit&upgradeCanceled=1&lang=en",
+            raftUpgradeWebUrl(
+                "https://raft.build",
+                "acme",
+                RaftUpgradeGate.ExternalChannelFreeLimit,
+                RaftUpgradeMode.Upgrade,
+                "en",
+                context,
+            ),
+        )
+    }
 }
