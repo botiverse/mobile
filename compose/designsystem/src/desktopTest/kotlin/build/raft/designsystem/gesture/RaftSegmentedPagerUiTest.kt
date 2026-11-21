@@ -236,6 +236,24 @@ class RaftSegmentedPagerUiTest {
     }
 
     @Test
+    fun aShortSlowSwipeOnTheSwitchStillTurnsTheSegmentAsItAlwaysDid() = runComposeUiTest {
+        show()
+        val switch = onNodeWithTag(SwitchTag).getBoundsInRoot()
+        val y = (switch.top + switch.bottom).value / 2f
+        // 80px of a 300px page, slowly: on the content it would spring back.
+        onNodeWithTag(HostTag).performTouchInput {
+            down(Offset(200f, y))
+            repeat(8) { moveBy(Offset(-10f, 0f), delayMillis = 60) }
+            moveBy(Offset(0f, 0f), delayMillis = 200)
+            up()
+        }
+        waitForIdle()
+        assertEquals(1, state.currentIndex)
+        assertEquals(1f, state.position)
+        assertEquals(1, selected)
+    }
+
+    @Test
     fun segmentsTurnFirstAndOnlyTheLastHandsAForwardDragToTheOuterPager() = runComposeUiTest {
         show(outerPager = true, initial = 1)
         onNodeWithTag(HostTag).performTouchInput { swipeLeft(startX = 280f, endX = 20f, durationMillis = 150) }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import build.raft.designsystem.gesture.raftSegmentedPagerSwipe
 import build.raft.designsystem.motion.RaftMotion
@@ -102,7 +103,9 @@ internal fun raftSegmentedPagerPosition(page: Int, offsetFraction: Float, pageCo
  *   comes to a segment reports it through [onSelectedIndexChange], once the content is nearer to it
  *   (halfway through a drag), so the label and the content always agree.
  * - A sideways drag moves the content with the finger and settles with the tab pager's snap fling
- *   (by velocity, or past halfway). The segments come first; only at the first or last does the
+ *   (by velocity, or past halfway). A swipe that starts on the switch itself (the [header]) turns
+ *   to the next segment once it has moved 2x the slop, as the sub-tab swipe always did: the switch
+ *   is too narrow to carry the content past halfway. The segments come first; only at the first or last does the
  *   drag reach an enclosing tab pager. On iOS a back drag from the leading 40dp strip goes back
  *   instead ([build.raft.designsystem.gesture.raftSegmentedPagerSwipe]).
  * - Only the visible segments are composed (one at rest, two mid-drag), as a tab pager's pages.
@@ -150,8 +153,11 @@ fun RaftSegmentedPager(
         if (pager.layoutInfo.pageSize <= 0) return@LaunchedEffect
         if (currentPage != currentSelected && currentPage in 0 until pager.pageCount) report(currentPage)
     }
-    Column(modifier.raftSegmentedPagerSwipe(pager, PagerDefaults.flingBehavior(pager))) {
-        header()
+    // The switch's height: a swipe that starts on it turns a segment once it is decided, as the
+    // narrow switch could never carry the content past halfway (raftSegmentSwitchSwipeVelocity).
+    val headerHeight = remember { IntArray(1) }
+    Column(modifier.raftSegmentedPagerSwipe(pager, PagerDefaults.flingBehavior(pager)) { headerHeight[0] }) {
+        Column(Modifier.onSizeChanged { headerHeight[0] = it.height }) { header() }
         HorizontalPager(
             state = pager,
             modifier = Modifier.fillMaxWidth().weight(1f),
