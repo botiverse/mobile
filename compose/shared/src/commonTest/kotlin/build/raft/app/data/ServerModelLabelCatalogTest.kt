@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.SharedCreateAgentRuntimeModelCatalog
+import build.raft.app.SharedCreateAgentRuntimeModelOption
 import build.raft.app.authorRowModelLabel
 import build.raft.app.membersAgentRuntimeModelDisplayLabel
 import build.raft.app.model.MemberKind
@@ -12,11 +14,13 @@ import build.raft.app.raftProfilePreviewCardModel
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Source
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SourceKind
 import build.raft.app.data.runtimeform.v2.answeredLiveModels
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -153,15 +157,19 @@ class ServerModelLabelCatalogTest {
 
     @Test
     fun repositoryDeduplicatesInFlightAndAllowsImmediateForceReloadAfterCompletion() = runPortableCoroutineTest {
-        var calls = 0
+        val calls = atomic(0)
+        val entered = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
-        var version = 1
+        val version = atomic(1)
         val api =
             object : RaftServerModelLabelCatalogApi {
                 override suspend fun modelLabelCatalog(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
-                    calls += 1
-                    val current = version
-                    if (current == 1) gate.await()
+                    calls.incrementAndGet()
+                    val current = version.value
+                    if (current == 1) {
+                        entered.complete(Unit)
+                        gate.await()
+                    }
                     return HomeNetworkResponse(
                         code = 200,
                         bodyText = """{"machines":{"m-1":{"runtimes":{"claude":{"models":[{"id":"fable","label":"Fable 5.$current"}],"updatedAt":"2026-11-21T00:00:00Z"}}}}}"""
@@ -169,25 +177,26 @@ class ServerModelLabelCatalogTest {
                 }
             }
         val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val registry = RaftModelLabelCatalogRegistry()
-        val repo = SharedServerModelLabelCatalogRepository(api = api, scope = repoScope, registry = registry)
+        try {
+            val registry = RaftModelLabelCatalogRegistry()
+            val repo = SharedServerModelLabelCatalogRepository(api = api, scope = repoScope, registry = registry)
 
-        val d1 = repoScope.async { repo.load("srv-1") }
-        val d2 = repoScope.async { repo.load("srv-1") }
-        // Let both reach the API / in-flight map, then release the gate.
-        while (calls == 0) {
-            kotlinx.coroutines.yield()
+            val d1 = repoScope.async { repo.load("srv-1") }
+            val d2 = repoScope.async { repo.load("srv-1") }
+            entered.await()
+            gate.complete(Unit)
+            assertEquals("Fable 5.1", d1.await()?.label("m-1", "claude", "fable"))
+            assertEquals("Fable 5.1", d2.await()?.label("m-1", "claude", "fable"))
+            assertEquals(1, calls.value)
+
+            // Immediately after completion on a multi-threaded dispatcher, force=true must fetch a fresh catalog.
+            version.value = 2
+            val refreshed = repo.load("srv-1", force = true)
+            assertEquals("Fable 5.2", refreshed?.label("m-1", "claude", "fable"))
+            assertEquals(2, calls.value)
+        } finally {
+            repoScope.cancel()
         }
-        gate.complete(Unit)
-        assertEquals("Fable 5.1", d1.await()?.label("m-1", "claude", "fable"))
-        assertEquals("Fable 5.1", d2.await()?.label("m-1", "claude", "fable"))
-        assertEquals(1, calls)
-
-        // Immediately after completion on a multi-threaded dispatcher, force=true must fetch a fresh catalog.
-        version = 2
-        val refreshed = repo.load("srv-1", force = true)
-        assertEquals("Fable 5.2", refreshed?.label("m-1", "claude", "fable"))
-        assertEquals(2, calls)
     }
 
     @Test
@@ -233,10 +242,8 @@ class ServerModelLabelCatalogTest {
         assertEquals("Fable 5.2", raftProfilePreviewCardModel(agent, viewerServerId = "srv-1").modelLabel)
         val staleRuntimeCatalog =
             SharedCreateAgentRuntimeModelCatalog(
-                runtimeId = "claude",
-                models = listOf(SharedCreateAgentModelOption(id = "fable", label = "Fable 5.1")),
+                models = listOf(SharedCreateAgentRuntimeModelOption(id = "fable", label = "Fable 5.1")),
                 defaultModel = "fable",
-                source = "live",
             )
         assertEquals(
             "Fable 5.2",
