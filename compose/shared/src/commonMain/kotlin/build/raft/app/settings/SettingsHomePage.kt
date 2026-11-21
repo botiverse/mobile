@@ -4000,6 +4000,7 @@ private fun RaftAppShellReadyContent(
                                             selectedConversationId = latestSelectedHomeConversationId
                                         ),
                                     visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
+                                    visibleRouteIdentities = foregroundBannerStore.visibleRouteIdentities(),
                                     conversationDirectory = latestAppShellConversationDirectory,
                                     onSuppressed = { reason ->
                                         bridge.log(

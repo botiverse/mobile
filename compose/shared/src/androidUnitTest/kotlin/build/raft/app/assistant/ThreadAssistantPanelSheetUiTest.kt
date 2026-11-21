@@ -29,6 +29,7 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.LocalRaftForegroundBannerHandoff
 import build.raft.app.RaftForegroundBannerHost
 import build.raft.app.RaftForegroundMessageBanner
 import build.raft.app.RaftForegroundMessageBannerIconKind
@@ -347,6 +348,197 @@ class ThreadAssistantPanelSheetUiTest {
                 org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             }
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+        }
+
+    @Test
+    fun nestedAppShellAndEmbeddedThreadHostsDrawOnlyOneBannerAndHandOffAcrossOpenAndCloseSlides() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(false)
+            show {
+                // Simulates SettingsHomePage hosting an embedded ThreadPage + side thread + Ottie drawer.
+                RaftForegroundBannerHost(
+                    banner = banner,
+                    topSafeArea = 0.dp,
+                    onBannerClick = {},
+                ) {
+                    RaftForegroundBannerHost(
+                        banner = banner,
+                        topSafeArea = 0.dp,
+                        onBannerClick = {},
+                    ) {
+                        val handoff = LocalRaftForegroundBannerHandoff.current
+                        val coverOwner = remember { Any() }
+                        Box(Modifier.fillMaxSize().testTag(PAGE)) {
+                            RaftText("Embedded channel")
+                            RaftForegroundBannerHost(
+                                banner = banner,
+                                topSafeArea = 0.dp,
+                                onBannerClick = {},
+                            ) {
+                                RaftText("Side thread")
+                            }
+                        }
+                        ThreadAssistantPanelSheet(
+                            otter(open) { open = it },
+                            onCoversPageChange = { covers -> handoff?.setWindowCover(coverOwner, covers) },
+                            windowOverlay = {
+                                handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { handedBanner ->
+                                    RaftForegroundMessageBannerView(
+                                        banner = handedBanner,
+                                        topSafeArea = handoff.topSafeArea,
+                                        onClick = {},
+                                    )
+                                }
+                            },
+                        ) {
+                            RaftForegroundBannerHost(
+                                banner = banner,
+                                topSafeArea = 0.dp,
+                                onBannerClick = {},
+                            ) {
+                                RaftText("Ottie DM", Modifier.testTag(PANEL_DM))
+                            }
+                        }
+                    }
+                }
+            }
+            val bannerText = hasText("#raft-antiproton")
+            // Closed: 3 nested hosts still draw exactly 1 banner.
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
+
+            // Open Ottie frame-by-frame: never 0 or 2 banners on any frame (including Frame 1).
+            mainClock.autoAdvance = false
+            runOnIdle { open = true }
+            repeat(25) {
+                mainClock.advanceTimeByFrame()
+                onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
+            }
+            onNode(hasTestTag(PANEL_DM)).assertExists()
+            val sheetTop = onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).getBoundsInRoot().top
+            val bannerTop = onNode(bannerText, useUnmergedTree = true).getBoundsInRoot().top
+            assertTrue(bannerTop < sheetTop, "banner stays above the drawer ($bannerTop < $sheetTop)")
+
+            // Closing frame-by-frame: stays single across the entire 180ms slide-down and on the
+            // exact frame the drawer unmounts (zero double-draw, zero blank-frame gap).
+            runOnIdle { open = false }
+            var frames = 0
+            while (onAllNodes(hasTestTag(ThreadAssistantPanelSheetTestTag)).fetchSemanticsNodes().isNotEmpty()) {
+                assertTrue(++frames < 40, "drawer never closed")
+                onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
+                mainClock.advanceTimeByFrame()
+            }
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
+        }
+
+    @Test
+    fun siblingRetainedTabsDoNotClobberOpenAssistantDrawerBannerHandoff() =
+        runRobolectricComposeUiTest {
+            var tabBOpen by mutableStateOf(true)
+            var tabAPresent by mutableStateOf(true)
+            var activeBanner by mutableStateOf(banner)
+            show {
+                RaftForegroundBannerHost(
+                    banner = activeBanner,
+                    topSafeArea = 0.dp,
+                    onBannerClick = {},
+                ) {
+                    val handoff = LocalRaftForegroundBannerHandoff.current
+                    Box(Modifier.fillMaxSize().testTag(PAGE)) {
+                        RaftText("Shell tabs")
+                    }
+                    if (tabAPresent) {
+                        val ownerA = remember { Any() }
+                        ThreadAssistantPanelSheet(
+                            otter(open = false) {},
+                            onCoversPageChange = { covers -> handoff?.setWindowCover(ownerA, covers) },
+                            windowOverlay = {
+                                handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { handedBanner ->
+                                    RaftForegroundMessageBannerView(
+                                        banner = handedBanner,
+                                        topSafeArea = handoff.topSafeArea,
+                                        onClick = {},
+                                    )
+                                }
+                            },
+                        ) {
+                            RaftText("Tab A Ottie")
+                        }
+                    }
+                    val ownerB = remember { Any() }
+                    ThreadAssistantPanelSheet(
+                        otter(open = tabBOpen) { tabBOpen = it },
+                        onCoversPageChange = { covers -> handoff?.setWindowCover(ownerB, covers) },
+                        windowOverlay = {
+                            handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { handedBanner ->
+                                RaftForegroundMessageBannerView(
+                                    banner = handedBanner,
+                                    topSafeArea = handoff.topSafeArea,
+                                    onClick = {},
+                                )
+                            }
+                        },
+                    ) {
+                        RaftText("Tab B Ottie", Modifier.testTag(PANEL_DM))
+                    }
+                }
+            }
+            mainClock.advanceTimeBy(400)
+            onAllNodes(hasText("#raft-antiproton"), useUnmergedTree = true).assertCountEquals(1)
+
+            // Updating the banner triggers recomposition across retained tabs: Tab A must not clear Tab B's cover.
+            runOnIdle { activeBanner = banner.copy(id = "banner-2", title = "#second-channel") }
+            mainClock.advanceTimeBy(100)
+            onAllNodes(hasText("#second-channel"), useUnmergedTree = true).assertCountEquals(1)
+
+            // Unmounting retained Tab A must not clear Tab B's cover either.
+            runOnIdle { tabAPresent = false }
+            mainClock.advanceTimeBy(100)
+            onAllNodes(hasText("#second-channel"), useUnmergedTree = true).assertCountEquals(1)
+        }
+
+    @Test
+    fun disposingAssistantPanelWhileOpenRestoresRootBannerHost() =
+        runRobolectricComposeUiTest {
+            var panelPresent by mutableStateOf(true)
+            show {
+                RaftForegroundBannerHost(
+                    banner = banner,
+                    topSafeArea = 0.dp,
+                    onBannerClick = {},
+                ) {
+                    val handoff = LocalRaftForegroundBannerHandoff.current
+                    val coverOwner = remember { Any() }
+                    Box(Modifier.fillMaxSize().testTag(PAGE)) {
+                        RaftText("Channel")
+                    }
+                    if (panelPresent) {
+                        ThreadAssistantPanelSheet(
+                            otter(open = true) {},
+                            onCoversPageChange = { covers -> handoff?.setWindowCover(coverOwner, covers) },
+                            windowOverlay = {
+                                handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { handedBanner ->
+                                    RaftForegroundMessageBannerView(
+                                        banner = handedBanner,
+                                        topSafeArea = handoff.topSafeArea,
+                                        onClick = {},
+                                    )
+                                }
+                            },
+                        ) {
+                            RaftText("Ottie DM", Modifier.testTag(PANEL_DM))
+                        }
+                    }
+                }
+            }
+            val bannerText = hasText("#raft-antiproton")
+            mainClock.advanceTimeBy(400)
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
+
+            // Unmount panel directly (e.g. assistant feature turned off): root banner must not stay hidden.
+            runOnIdle { panelPresent = false }
+            mainClock.advanceTimeBy(200)
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
+            onAllNodes(bannerText, useUnmergedTree = true).assertCountEquals(1)
         }
 
     private fun assertClose(expected: Float, actual: Float, message: String) =

@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
@@ -49,15 +50,20 @@ internal fun ThreadRouteAssistantPanel(
     bridge: BridgeModule,
     storeScope: RaftShellStoreScope,
 ) {
+    val coverOwner = remember { Any() }
+    DisposableEffect(bannerHandoff, coverOwner) {
+        onDispose { bannerHandoff?.setWindowCover(coverOwner, false) }
+    }
     ThreadAssistantPanelSheet(
         otter,
         // A phone's drawer covers the page: its banner goes over the drawer instead.
-        onCoversPageChange = { covers -> bannerHandoff?.coveredByWindow?.value = covers },
-        // The page's banner goes over the panel while it is open (threadForegroundBannerOnPage);
-        // once it is closing, the page shows it again.
+        onCoversPageChange = { covers -> bannerHandoff?.setWindowCover(coverOwner, covers) },
+        // The page's banner stays over the drawer window for the full time the drawer owns
+        // coverage (including its closing slide), avoiding both Frame-1 double-draw and
+        // close-frame blank gaps.
         windowOverlay = {
             val handoff = bannerHandoff
-            handoff?.banner?.takeIf { otter.panelShown }?.let { banner ->
+            handoff?.banner?.takeIf { handoff.isCoveredByWindow }?.let { banner ->
                 RaftForegroundMessageBannerView(
                     banner = banner,
                     topSafeArea = handoff.topSafeArea,
