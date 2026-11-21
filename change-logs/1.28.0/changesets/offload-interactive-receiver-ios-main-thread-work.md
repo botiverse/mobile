@@ -2,7 +2,7 @@
 type: improved
 area: performance
 platforms: [android, ios]
-pull_request: 0
+pull_request: 5256
 rollout: full
 ---
 
