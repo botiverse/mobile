@@ -64,7 +64,8 @@ class SettingsThemePageTest {
         val keys = settingsHomeRowKeys(hasThemeServer = true)
         val theme = keys.indexOf(SettingsNativeDetailPage.Theme.key)
         assertTrue(theme > keys.indexOf(SettingsNativeDetailPage.Appearance.key))
-        assertTrue(theme > keys.indexOf(SettingsNativeDetailPage.Notifications.key))
+        // One Notifications row: with a server it is On {server}'s, not Personal's.
+        assertFalse(SettingsNativeDetailPage.Notifications.key in keys)
         // web "On {server}": Theme, then the server's Notifications; Server Profile opens the
         // workspace right after them.
         assertEquals(SettingsNativeDetailPage.ServerNotifications.key, keys[theme + 1])
@@ -78,9 +79,14 @@ class SettingsThemePageTest {
         val withoutServer = settingsHomeRowKeys(hasThemeServer = false)
         assertFalse(SettingsNativeDetailPage.Theme.key in withoutServer)
         assertFalse(SettingsNativeDetailPage.ServerNotifications.key in withoutServer)
+        // Without a server, the one Notifications row is Personal's, after Appearance.
+        assertEquals(
+            SettingsNativeDetailPage.Notifications.key,
+            withoutServer[withoutServer.indexOf(SettingsNativeDetailPage.Appearance.key) + 1],
+        )
         assertEquals(
             withServer - SettingsNativeDetailPage.Theme.key - SettingsNativeDetailPage.ServerNotifications.key,
-            withoutServer,
+            withoutServer - SettingsNativeDetailPage.Notifications.key,
         )
     }
 

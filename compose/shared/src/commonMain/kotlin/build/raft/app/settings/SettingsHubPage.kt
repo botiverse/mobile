@@ -124,12 +124,15 @@ internal fun SettingsAppShellHomeContent(
 /**
  * The Settings home rows top to bottom, the web's settings groups (botiverse/slock
  * packages/web/src/components/layout/Sidebar.tsx:2257-2328, settingsNavigation.ts:29-45):
- * Personal; "On {server}", the member's own settings in the current server: Theme and the server's
- * Notifications (its level alone; the personal Notifications page shows it too); Workspace;
+ * Personal; "On {server}", the member's own settings in the current server: Theme and
+ * Notifications; Workspace;
  * Resources, with Documentation leaving Raft for the docs site. The "On {server}" group is there
  * only with a current server ([hasThemeServer]), as is the web's. The app's own row stays:
  * Storage (this device's storage, which the web has not). The app's own preferences (the former
  * Mobile page) are part of Appearance, as on the web (1.27.0).
+ * Notifications is one row (mockup awaiting design approval): with a current server it is the
+ * On {server} row, whose page holds "All servers" (this device and the account's settings) and
+ * "This server" (the server's level); with none it stays in Personal, with only "All servers".
  * On the phone ([serverPanelPages]) the list is the web phone's (artin 2026-11-05, dm task #17):
  * Computers is not a row, it is a page on the server panel (web MobileServerTab), and Applications
  * is a row only for a guest ([guest]; web useSidebarRoute `currentRole === "guest"`): a guest has
@@ -159,7 +162,7 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationAccount,
         SettingsNativeDetailPage.LanguageRegion.key,
         SettingsNativeDetailPage.Appearance.key,
-        SettingsNativeDetailPage.Notifications.key,
+        SettingsNativeDetailPage.Notifications.key.takeUnless { hasThemeServer },
         SettingsDestinationStorage.takeIf { storage },
         SettingsNativeDetailPage.Theme.key.takeIf { hasThemeServer },
         SettingsNativeDetailPage.ServerNotifications.key.takeIf { hasThemeServer },

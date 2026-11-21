@@ -4417,6 +4417,8 @@
     <string name="settings_notifications_content_section">內容</string>
     <string name="settings_notifications_mobile_delay_detail">電腦端活躍時，延遲手機上的通知提醒</string>
     <string name="settings_notifications_servers_section">伺服器</string>
+    <string name="settings_notifications_group_all_servers">所有伺服器</string>
+    <string name="settings_notifications_group_this_server">此伺服器</string>
     <string name="settings_notifications_servers_current">%1$s（目前）</string>
     <string name="settings_notifications_servers_customized_one">%1$d 個頻道有自訂設定</string>
     <string name="settings_notifications_servers_customized_other">%1$d 個頻道有自訂設定</string>

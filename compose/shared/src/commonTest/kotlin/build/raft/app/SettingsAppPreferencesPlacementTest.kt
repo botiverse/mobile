@@ -24,7 +24,7 @@ class SettingsAppPreferencesPlacementTest {
             val rows = settingsHomeRowKeys(hasThemeServer = true, serverPanelPages = serverPanelPages)
             assertFalse("mobile" in rows, rows.toString())
             assertTrue(SettingsNativeDetailPage.Appearance.key in rows)
-            assertEquals(rows.indexOf(SettingsNativeDetailPage.Notifications.key) + 1, rows.indexOf(SettingsDestinationStorage))
+            assertEquals(rows.indexOf(SettingsNativeDetailPage.Appearance.key) + 1, rows.indexOf(SettingsDestinationStorage))
         }
     }
 

@@ -58,6 +58,7 @@ import build.raft.app.data.raftNowEpochMillis
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowValue
@@ -77,11 +78,6 @@ import build.raft.designsystem.components.RaftHoverTier
 @Composable
 internal fun SettingsNotificationsContent(
     state: ScreenLoadState<SettingsMobileSnapshot>,
-    /**
-     * The On {server} > Notifications page (web `CurrentServerNotificationsCard`): only how the
-     * current server notifies, without this device's and the account's settings.
-     */
-    serverOnly: Boolean = false,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp,
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
@@ -123,8 +119,8 @@ internal fun SettingsNotificationsContent(
     val now = nowEpochMillis ?: raftNowEpochMillis()
     val zone = timeZoneId ?: raftCurrentTimeZoneId()
     // Web NotificationSettingsSection: what the assistant did here as the viewer (muted a
-    // conversation, set a level). Not on the On {server} page, as on the web.
-    val assistantChangesSource = LocalAssistantSettingChangesSource.current.takeIf { !serverOnly }
+    // conversation, set a level).
+    val assistantChangesSource = LocalAssistantSettingChangesSource.current
     val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_NOTIFICATION_SETTINGS, assistantChangesSource)
     LazyColumn(
         state = rememberSettingsSearchListState(),
@@ -182,106 +178,95 @@ internal fun SettingsNotificationsContent(
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
                 val currentServer = servers.firstOrNull { it.current }
-                if (serverOnly) {
-                    item {
-                        // The web's CurrentServerNotificationsCard; an older server without the
-                        // unified settings keeps the previous workspace card.
-                        val currentServerCard = accountSettings != null && currentServer != null
-                        // The previous card starts with its section's label: the highlight reaches around it.
-                        val shape = if (currentServerCard) SettingsSearchCardShape else SettingsSearchSectionShape
-                        Box(Modifier.fillMaxWidth().settingsSearchAnchor("mute-server", shape)) {
-                            if (currentServerCard && currentServer != null) {
-                                SettingsNotificationCurrentServerCard(currentServer)
-                            } else {
-                                SettingsServerNotificationModeCard(
-                                    snapshot = snapshot,
-                                    actionState = actionState,
-                                    onServerNotificationModeChange = onServerNotificationModeChange
-                                )
-                            }
-                        }
-                    }
-                    item { Spacer(Modifier.height(bottomContentPadding)) }
-                    return@LazyColumn
-                }
-                // Web order (NotificationSettingsSection): this device, pause and schedule, content,
-                // servers.
+                // One Notifications page (mockup awaiting design approval): "All servers", what the
+                // account and this device do everywhere, then "This server", the current server's
+                // own level. Without a current server only the first group is there.
                 item {
-                    SettingsPushStatusCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        notificationPreferenceSnapshot = notificationPreferenceSnapshot,
-                        preferenceBusy = preferenceBusy,
-                        foregroundKeepAliveBusy = foregroundKeepAliveBusy,
-                        foregroundMessageBannersBusy = foregroundMessageBannersBusy,
-                        onNotificationPreferenceChange = onNotificationPreferenceChange,
-                        onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
-                        onForegroundMessageBannersChange = onForegroundMessageBannersChange,
-                        onPermission = onPermission,
-                        onSettings = onSettings,
-                        onTest = onTest
-                    )
-                }
-                if (accountSettings != null) {
-                    item {
-                        SettingsNotificationPauseSection(
-                            settings = accountSettings,
-                            saving = accountState.saving,
-                            saveFailed = failedSection == SettingsNotificationsSaveSection.Schedule,
-                            saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Schedule },
-                            nowEpochMillis = now,
-                            timeZoneId = zone,
-                            onSave = { patch, onDone -> save(SettingsNotificationsSaveSection.Schedule, patch, onDone) }
-                        )
-                    }
-                    item {
-                        // The phone keeps a device copy of the preview for the text it builds itself:
-                        // it saves through the settings store, which writes the account too.
-                        val devicePreview = raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available
-                        SettingsNotificationContentSection(
-                            settings = accountSettings,
-                            previewMode = accountSettings.preview,
-                            saving = accountState.saving || actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress,
-                            saveFailed =
-                                failedSection == SettingsNotificationsSaveSection.Content ||
-                                    actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null,
-                            saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Content },
-                            onPreviewChange = { mode ->
-                                if (devicePreview) {
-                                    onPushPreviewModeChange(mode.wireName)
-                                } else {
-                                    save(SettingsNotificationsSaveSection.Content, RaftNotificationAccountSettingsPatch(previewMode = mode))
-                                }
-                            },
-                            onSave = { patch -> save(SettingsNotificationsSaveSection.Content, patch) }
-                        )
-                    }
-                    if (servers.isNotEmpty()) {
-                        item { SettingsNotificationServersSection(servers) }
-                    }
-                } else {
-                    item {
-                        SettingsServerNotificationModeCard(
-                            snapshot = snapshot,
-                            actionState = actionState,
-                            onServerNotificationModeChange = onServerNotificationModeChange
-                        )
-                    }
-                    if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
-                        item {
-                            Box(Modifier.fillMaxWidth().settingsSearchAnchor("notification-preview", SettingsSearchCardShape)) {
-                                SettingsPushPreviewModeCard(
-                                    snapshot = snapshot,
-                                    actionState = actionState,
-                                    onPushPreviewModeChange = onPushPreviewModeChange
+                    RaftFormSection(title = stringResource(Res.string.settings_notifications_group_all_servers)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                            // Web order (NotificationSettingsSection): this device, pause and schedule,
+                            // content, servers.
+                            SettingsPushStatusCard(
+                                snapshot = snapshot,
+                                actionState = actionState,
+                                notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+                                preferenceBusy = preferenceBusy,
+                                foregroundKeepAliveBusy = foregroundKeepAliveBusy,
+                                foregroundMessageBannersBusy = foregroundMessageBannersBusy,
+                                onNotificationPreferenceChange = onNotificationPreferenceChange,
+                                onForegroundKeepAlivePreferenceChange = onForegroundKeepAlivePreferenceChange,
+                                onForegroundMessageBannersChange = onForegroundMessageBannersChange,
+                                onPermission = onPermission,
+                                onSettings = onSettings,
+                                onTest = onTest
+                            )
+                            if (accountSettings != null) {
+                                SettingsNotificationPauseSection(
+                                    settings = accountSettings,
+                                    saving = accountState.saving,
+                                    saveFailed = failedSection == SettingsNotificationsSaveSection.Schedule,
+                                    saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Schedule },
+                                    nowEpochMillis = now,
+                                    timeZoneId = zone,
+                                    onSave = { patch, onDone -> save(SettingsNotificationsSaveSection.Schedule, patch, onDone) }
                                 )
+                                // The phone keeps a device copy of the preview for the text it builds itself:
+                                // it saves through the settings store, which writes the account too.
+                                val devicePreview = raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available
+                                SettingsNotificationContentSection(
+                                    settings = accountSettings,
+                                    previewMode = accountSettings.preview,
+                                    saving = accountState.saving || actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress,
+                                    saveFailed =
+                                        failedSection == SettingsNotificationsSaveSection.Content ||
+                                            actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.errorCode != null,
+                                    saveFailedTraceId = accountState.errorTraceId.takeIf { failedSection == SettingsNotificationsSaveSection.Content },
+                                    onPreviewChange = { mode ->
+                                        if (devicePreview) {
+                                            onPushPreviewModeChange(mode.wireName)
+                                        } else {
+                                            save(SettingsNotificationsSaveSection.Content, RaftNotificationAccountSettingsPatch(previewMode = mode))
+                                        }
+                                    },
+                                    onSave = { patch -> save(SettingsNotificationsSaveSection.Content, patch) }
+                                )
+                                if (servers.isNotEmpty()) SettingsNotificationServersSection(servers)
+                            } else if (raftPlatformSupportsPushPreviewPrivacySetting() && snapshot.pushPreviewMode.available) {
+                                // An older server without the unified settings: the previous preview card.
+                                Box(Modifier.fillMaxWidth().settingsSearchAnchor("notification-preview", SettingsSearchCardShape)) {
+                                    SettingsPushPreviewModeCard(
+                                        snapshot = snapshot,
+                                        actionState = actionState,
+                                        onPushPreviewModeChange = onPushPreviewModeChange
+                                    )
+                                }
+                            }
+                            if (assistantChanges.isNotEmpty()) {
+                                AssistantSettingChangesSection(assistantChanges, currentServerId = assistantChangesSource?.serverId)
                             }
                         }
                     }
                 }
-                if (assistantChanges.isNotEmpty()) {
+                if (currentServer != null) {
                     item {
-                        AssistantSettingChangesSection(assistantChanges, currentServerId = assistantChangesSource?.serverId)
+                        RaftFormSection(title = stringResource(Res.string.settings_notifications_group_this_server), separator = true) {
+                            // The web's CurrentServerNotificationsCard; an older server without the
+                            // unified settings keeps the previous workspace card.
+                            val currentServerCard = accountSettings != null
+                            // The previous card starts with its section's label: the highlight reaches around it.
+                            val shape = if (currentServerCard) SettingsSearchCardShape else SettingsSearchSectionShape
+                            Box(Modifier.fillMaxWidth().settingsSearchAnchor("mute-server", shape)) {
+                                if (currentServerCard) {
+                                    SettingsNotificationCurrentServerCard(currentServer)
+                                } else {
+                                    SettingsServerNotificationModeCard(
+                                        snapshot = snapshot,
+                                        actionState = actionState,
+                                        onServerNotificationModeChange = onServerNotificationModeChange
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

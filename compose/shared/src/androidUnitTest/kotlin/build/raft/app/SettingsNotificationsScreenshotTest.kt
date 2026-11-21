@@ -41,12 +41,12 @@ import org.robolectric.annotation.GraphicsMode
  * Settings › Notifications in the web's order and copy (botiverse/slock
  * packages/web/src/components/settings/notifications): This device, Pause and schedule (quiet
  * hours on, saved for another zone), Content (preview, the phone delay set to Always with its
- * note, sound, replies in threads I follow), Servers (the current server first, one channel customized) and the link to the
- * current server's own page, which is also shown on its own. Phone light and dark; verify / record as [RaftRobolectricScreenshot].
+ * note, sound, replies in threads I follow), Servers (the current server first, one channel customized) under
+ * All servers, then the current server's level under This server. Phone light and dark; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h2150dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h2500dp-xxhdpi")
 class SettingsNotificationsScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -62,16 +62,24 @@ class SettingsNotificationsScreenshotTest {
     fun notificationsPageDark() =
         captureNotifications("settings.notifications.dark", RaftAppAppearance.Dark, activities) { NotificationsFixture() }
 
-    /** Settings › On {server} › Notifications: the current server's card alone (web CurrentServerNotificationsCard). */
+    /**
+     * Settings › On {server} › Notifications, the one Notifications page: All servers (this device,
+     * pause and schedule, content, servers), then This server (web CurrentServerNotificationsCard).
+     */
     @Test
     fun serverNotificationsPageLight() =
-        captureNotifications("settings.server-notifications", RaftAppAppearance.Light, activities) { NotificationsFixture(serverOnly = true) }
+        captureNotifications("settings.server-notifications", RaftAppAppearance.Light, activities) { NotificationsFixture() }
+
+    /** Without a current server: All servers alone. */
+    @Test
+    fun notificationsPageWithoutAServer() =
+        captureNotifications("settings.notifications.no-server", RaftAppAppearance.Light, activities) { NotificationsFixture(currentServer = false) }
 }
 
 /** The longer zh-CN titles: each setting's title wraps to a second line instead of truncating. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h2150dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h2500dp-xxhdpi")
 class SettingsNotificationsChineseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -84,10 +92,13 @@ class SettingsNotificationsChineseScreenshotTest {
         captureNotifications("settings.notifications.zh-CN", RaftAppAppearance.Light, activities) { NotificationsFixture() }
 }
 
-/** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
+/**
+ * The longer ja titles: each setting's title wraps to a second line instead of truncating. At xhdpi:
+ * the page is too tall for an xxhdpi bitmap plus Roborazzi's comparison canvas in the test heap.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h2400dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "ja-w390dp-h2800dp-xhdpi")
 class SettingsNotificationsJapaneseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -106,7 +117,7 @@ class SettingsNotificationsJapaneseScreenshotTest {
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w1024dp-h1750dp-mdpi")
+@Config(sdk = [34], qualifiers = "w1024dp-h2000dp-mdpi")
 class SettingsNotificationsWideScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -144,7 +155,7 @@ private fun captureNotifications(
 private const val FIXTURE_NOW_MILLIS = 1_793_692_800_000L
 
 @Composable
-private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolean = false) {
+private fun NotificationsFixture(pausedUntil: String? = null, currentServer: Boolean = true) {
     remember {
         RaftNotificationLevelStore.clear()
         RaftNotificationLevelStore.applyServerLevels(mapOf("s1" to RaftNotificationLevel.All, "s2" to RaftNotificationLevel.None))
@@ -154,7 +165,6 @@ private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolea
     }
     SettingsNotificationsContent(
         state = ScreenLoadState.Content(notificationsMobileFixture),
-        serverOnly = serverOnly,
         actionState = null,
         bottomContentPadding = 16.dp,
         notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
@@ -172,7 +182,7 @@ private fun NotificationsFixture(pausedUntil: String? = null, serverOnly: Boolea
         onRetry = {},
         servers =
             listOf(
-                SettingsNotificationServer(id = "s1", name = "Botiverse", current = true),
+                SettingsNotificationServer(id = "s1", name = "Botiverse", current = currentServer),
                 SettingsNotificationServer(id = "s2", name = "Raft HQ", current = false)
             ),
         nowEpochMillis = FIXTURE_NOW_MILLIS,

@@ -694,7 +694,6 @@ internal fun SettingsNativeDetailPageContent(
             SettingsNativeDetailPage.Notifications,
             SettingsNativeDetailPage.ServerNotifications ->
                 SettingsNotificationsContent(
-                    serverOnly = route.page == SettingsNativeDetailPage.ServerNotifications,
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
