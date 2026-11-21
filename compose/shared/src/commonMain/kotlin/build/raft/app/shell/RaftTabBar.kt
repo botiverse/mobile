@@ -47,8 +47,6 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.RaftToastAvoidBottom
-import build.raft.designsystem.components.raftToastAvoid
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.designsystem.components.RaftMobileNavDefaults
 import build.raft.designsystem.components.RaftMobileNavItem
 import build.raft.designsystem.components.RaftAppRailDefaults
@@ -445,11 +443,14 @@ internal fun RaftAppBottomTabBarHost(
         return
     }
     if (raftAppTabBarRenderer() == RaftAppTabBarRenderer.NativeHost) return
+    // raft-ui: on a top-level page the window's toasts sit just above the tab bar. Report the bar's
+    // fixed resting band height rather than measuring the bar while AnimatedVisibility slides it
+    // back in after the keyboard closes (which would push a visible toast up mid-slide).
+    RaftToastAvoidBottom(height = raftSharedBottomTabBarHostHeight(bottomSafeArea))
     RaftSharedBottomTabBarBand(
         items = items,
         onSelect = onSelect,
-        // raft-ui: on a top-level page the window's toasts sit just above the tab bar.
-        modifier = hostModifier.raftToastAvoid(enabled = LocalRaftPageActive.current),
+        modifier = hostModifier,
         bottomSafeArea = bottomSafeArea,
         serverTab = serverTab,
     )
@@ -463,7 +464,7 @@ private fun RaftNativeTabBarToastAvoidance(bridge: RaftNativeTabBarBridge) {
     val bottomBand = band?.takeIf { it.edge == RaftNativeTabBarEdge.Bottom && state.visible }
     RaftToastAvoidBottom(
         height = (bottomBand?.points ?: 0.0).toFloat().dp,
-        enabled = bottomBand != null && LocalRaftPageActive.current,
+        enabled = bottomBand != null,
     )
 }
 

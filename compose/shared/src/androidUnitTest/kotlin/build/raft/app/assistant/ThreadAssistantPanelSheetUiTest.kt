@@ -351,6 +351,56 @@ class ThreadAssistantPanelSheetUiTest {
         }
 
     @Test
+    fun declinedDragToDismissClearsFlagSoDrawerRestoresAndLaterCloseStillSlidesOut() =
+        runRobolectricComposeUiTest {
+            var open by mutableStateOf(true)
+            var allowDismiss by mutableStateOf(false)
+            var dismissRequests = 0
+            show {
+                Page(
+                    open = open,
+                    setOpen = { next ->
+                        if (!next) dismissRequests++
+                        if (next || allowDismiss) open = next
+                    },
+                    banner = null,
+                )
+            }
+            mainClock.advanceTimeBy(600)
+            val panel = onNode(hasTestTag(ThreadAssistantPanelTestTag))
+            val head = onNode(hasTestTag(ThreadAssistantPanelHeaderTestTag))
+            val seated = panel.getBoundsInRoot()
+
+            // Drag to dismiss while caller refuses dismissal: drawer must stay open and restore.
+            head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 560.dp.toPx(), durationMillis = 400) }
+            mainClock.advanceTimeBy(1_000)
+            runOnIdle {
+                assertTrue(dismissRequests >= 1, "drag requested dismissal")
+                assertTrue(open, "caller kept the drawer open")
+            }
+            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertExists()
+            assertBoundsClose(seated, panel.getBoundsInRoot(), "refused drag clears heldExtent and restores default height")
+
+            // A subsequent programmatic/scrim close must still play its slide-down instead of snapping out.
+            mainClock.autoAdvance = false
+            runOnIdle {
+                allowDismiss = true
+                open = false
+            }
+            val tops = mutableListOf<Float>()
+            while (onAllNodes(hasTestTag(ThreadAssistantPanelTestTag)).fetchSemanticsNodes().isNotEmpty()) {
+                assertTrue(tops.size < 40, "the drawer never closed: $tops")
+                tops += panel.getBoundsInRoot().top.value
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            assertTrue(
+                tops.count { it > seated.top.value + 1f } >= 3,
+                "later close still slid down over several frames: $tops",
+            )
+        }
+
+    @Test
     fun nestedAppShellAndEmbeddedThreadHostsDrawOnlyOneBannerAndHandOffAcrossOpenAndCloseSlides() =
         runRobolectricComposeUiTest {
             var open by mutableStateOf(false)

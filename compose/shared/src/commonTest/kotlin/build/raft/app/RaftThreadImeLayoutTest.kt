@@ -1,5 +1,6 @@
 package build.raft.app
 
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -230,6 +231,68 @@ class RaftThreadImeLayoutTest {
         assertEquals(
             threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 0.dp),
             threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 34.dp, minimumBottomPadding = 16.dp),
+        )
+    }
+
+    @Test
+    fun composerKeyboardLiftReturnsIncrementalLiftAboveRestingSafeArea() {
+        val density = Density(density = 2f)
+        // Android: ime excludes navigationBars, composer adds safeArea back -> lift = (ime - navBar).coerceAtLeast(0).
+        assertEquals(
+            0f,
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = 30,
+                navigationBottomPx = 48,
+                excludesNavigationBars = true,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = true,
+                density = density,
+            ),
+        )
+        assertEquals(
+            552f,
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = 600,
+                navigationBottomPx = 48,
+                excludesNavigationBars = true,
+                bottomSafeArea = 24.dp,
+                keyboardInsetExcludesBottomSafeArea = true,
+                density = density,
+            ),
+        )
+        // iOS: ime includes home indicator safeArea (34dp = 68px at 2x) -> zero lift until ime > safeArea, then ime - safeArea.
+        assertEquals(
+            0f,
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = 40,
+                navigationBottomPx = 68,
+                excludesNavigationBars = false,
+                bottomSafeArea = 34.dp,
+                keyboardInsetExcludesBottomSafeArea = false,
+                density = density,
+            ),
+        )
+        assertEquals(
+            0f,
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = 68,
+                navigationBottomPx = 68,
+                excludesNavigationBars = false,
+                bottomSafeArea = 34.dp,
+                keyboardInsetExcludesBottomSafeArea = false,
+                density = density,
+            ),
+        )
+        assertEquals(
+            532f,
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = 600,
+                navigationBottomPx = 68,
+                excludesNavigationBars = false,
+                bottomSafeArea = 34.dp,
+                keyboardInsetExcludesBottomSafeArea = false,
+                density = density,
+            ),
         )
     }
 }

@@ -5,7 +5,6 @@ import build.raft.app.assistant.ThreadAssistantContextChip
 import build.raft.app.assistant.ThreadAssistantOtterFrameEdge
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftToastAvoid
-import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -39,12 +38,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.WindowInsets
-import build.raft.app.compat.ui.LocalRaftHostImeInsets
-import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONArray
@@ -970,10 +966,9 @@ private fun String?.threadParticipantHandleKey(): String? =
 internal fun ThreadComposerDock(
     composerModifier: Modifier = Modifier,
     edgePadding: Dp = RaftAppSpacing.Sm,
+    keyboardLiftPx: Density.() -> Float = { 0f },
     composer: @Composable () -> Unit,
 ) {
-    val ime = WindowInsets.ime
-    val hostIme = LocalRaftHostImeInsets.current
     val density = LocalDensity.current
     Column(
         modifier =
@@ -994,9 +989,10 @@ internal fun ThreadComposerDock(
                     .padding(start = edgePadding, top = 12.dp, end = edgePadding)
                     .then(composerModifier)
                     // raft-ui: on a conversation page the window's toasts sit just above the composer.
+                    // Gated by LocalRaftToastAvoidanceActive (immediately active on the top stack
+                    // page, false on covered pages and inside RaftWindowDialog).
                     .raftToastAvoid(
-                        enabled = LocalRaftPageActive.current,
-                        keyboardPx = { raftImeBottomPx(ime, hostIme, density).toFloat() },
+                        keyboardPx = { with(density) { keyboardLiftPx() } },
                     )
         ) { composer() }
     }

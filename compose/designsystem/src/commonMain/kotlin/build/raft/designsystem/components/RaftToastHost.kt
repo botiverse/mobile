@@ -18,13 +18,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -35,15 +36,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 /**
@@ -52,6 +56,32 @@ import kotlinx.coroutines.launch
  * `LocalRaftToastHostState.current?.show("Saved.")`.
  */
 val LocalRaftToastHostState = staticCompositionLocalOf<RaftToastHostState?> { null }
+
+/**
+ * Whether [raftToastAvoid] and [RaftToastAvoidBottom] in this subtree report into
+ * [LocalRaftToastHostState]. False on inactive kept-alive pages (provided by shared's
+ * `RaftProvidePageActive`) and inside separate OS windows ([RaftWindowDialog]), where
+ * `positionInRoot()` is in the dialog's own coordinate space rather than the host window's.
+ */
+val LocalRaftToastAvoidanceActive = compositionLocalOf { true }
+
+/**
+ * Overrides the bottom safe-area + keyboard inset (px) read by [RaftToastHost] during layout
+ * placement, so toasts follow the exact same IME source as the host/page (Android's dispatched
+ * `RaftHostImeInsets`, iOS's curve-matched keyboard slide tracker) instead of fighting CMP's
+ * raw `WindowInsets.safeDrawing`.
+ */
+@Composable
+fun RaftToastBottomInsetProvider(bottomInsetPx: Density.() -> Float) {
+    val state = LocalRaftToastHostState.current ?: return
+    val key = remember { Any() }
+    val currentProvider by rememberUpdatedState(bottomInsetPx)
+    DisposableEffect(state, key) {
+        val reader: Density.() -> Float = { currentProvider() }
+        state.putBottomInsetOverride(key, reader)
+        onDispose { state.removeBottomInsetOverride(key) }
+    }
+}
 
 /** raft-ui viewport: the toast's bottom edge sits 1rem above what holds the bottom of the page. */
 val RaftToastViewportOffset: Dp = 16.dp
@@ -76,7 +106,8 @@ internal val RaftToastSwipeThreshold: Dp = 40.dp
  *   conversation beside a thread clears both), or the bottom of the window where nothing does
  *   (raft-design #1217: on a wide window too, not only on a phone). While a toast shows it only
  *   moves up, for something taller, never down when the page changes; never lower than 16dp above
- *   the system bars and the keyboard (`WindowInsets.safeDrawing`), which it still follows.
+ *   the system bars and the keyboard ([RaftToastBottomInsetProvider] or `WindowInsets.safeDrawing`),
+ *   which it still follows.
  * - Several toasts ([RaftToastHostState.limit] > 1) stack newest at the bottom, [RaftToastGap]
  *   apart (raft-ui's expanded stack).
  * - A toast slides up as it opens (none with reduced motion), swipes away down or right, and
@@ -92,36 +123,55 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     // slide in again.
     val presentAtStart = remember(state) { state.visible.map { it.id }.toSet() }
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
-    val density = LocalDensity.current
-    // While a stack shows, the page's height only rises: pages change under a toast (composer, tab
-    // bar, none while one loads) and it must not jump down with them (artin 2026-11-07), but something
-    // taller that appears must not end up covered (Kirby). What the keyboard adds is not held, or a
-    // toast would hang there after the keyboard closes (Jasper).
-    val liveAvoidedPx = if (!hostBottomPx.isNaN()) state.avoidedHeightPx(hostBottomPx) else 0f
-    val pageAvoidedPx = if (!hostBottomPx.isNaN()) state.pageAvoidedHeightPx(hostBottomPx) else 0f
-    val heldPagePx = remember(state, toasts.isEmpty(), hostBottomPx) { mutableFloatStateOf(pageAvoidedPx) }
-    SideEffect { if (pageAvoidedPx > heldPagePx.floatValue) heldPagePx.floatValue = pageAvoidedPx }
-    val avoidedPx = maxOf(heldPagePx.floatValue, liveAvoidedPx)
-    val safeBottomPx = WindowInsets.safeDrawing.getBottom(density).toFloat()
-    val bottom = with(density) { maxOf(avoidedPx, safeBottomPx).toDp() } + RaftToastViewportOffset
+    val safeDrawing = WindowInsets.safeDrawing
+    val horizontalInsets = rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
+    // `onPlaced` runs during the parent Box's placement pass, AFTER sibling content's `onPlaced`
+    // (`raftToastAvoid`) and BEFORE this Box places its Column child. Resolving vertical placement
+    // inside `layout { ... }` therefore sees frame-N avoidances, frame-N `hostBottomPx`, and
+    // frame-N IME insets in the same frame (no 1-frame lag, no Frame-1 NaN flash, and zero
+    // recompositions during 120Hz keyboard slides).
     Box(
-        modifier.fillMaxSize().onGloballyPositioned { hostBottomPx = it.boundsInRoot().bottom },
-        contentAlignment = Alignment.BottomCenter,
+        modifier.fillMaxSize().onPlaced { coordinates ->
+            if (coordinates.size.height > 0) {
+                hostBottomPx = coordinates.positionInRoot().y + coordinates.size.height
+            }
+        },
     ) {
         if (toasts.isEmpty()) return@Box
         // The stack leaving (its last toast gone) must not leave the timers paused.
         DisposableEffect(state) { onDispose { state.setPaused(false) } }
         Column(
             Modifier
-                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)))
-                .padding(start = RaftToastViewportSideMargin, end = RaftToastViewportSideMargin, bottom = bottom)
+                .layout { measurable, constraints ->
+                    val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val layoutWidth = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width
+                    val layoutHeight = if (constraints.hasBoundedHeight) constraints.maxHeight else placeable.height
+                    layout(layoutWidth, layoutHeight) {
+                        val safeBottomPx =
+                            state.bottomInsetOverrideOrNull()?.invoke(this@layout)
+                                ?: safeDrawing.getBottom(this@layout).toFloat()
+                        val clearancePx = state.resolveBottomClearancePx(hostBottomPx, safeBottomPx)
+                        val bottomPx = (clearancePx + RaftToastViewportOffset.toPx()).roundToInt()
+                        val x = ((layoutWidth - placeable.width) / 2).coerceAtLeast(0)
+                        val y = (layoutHeight - placeable.height - bottomPx).coerceAtLeast(0)
+                        placeable.placeRelative(x, y)
+                    }
+                }
+                .windowInsetsPadding(horizontalInsets)
+                .padding(horizontal = RaftToastViewportSideMargin)
                 .widthIn(max = 384.dp)
                 .raftToastPausesTimers(state),
             verticalArrangement = Arrangement.spacedBy(RaftToastGap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             toasts.forEach { toast ->
-                key(toast.id) { RaftToastHostItem(state, toast, appearAtOnce = toast.id in presentAtStart) }
+                key(toast.id) {
+                    RaftToastHostItem(
+                        state,
+                        toast,
+                        appearAtOnce = toast.appearAtOnce || toast.id in presentAtStart,
+                    )
+                }
             }
         }
     }
@@ -148,7 +198,11 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
     val reducedMotion = rememberRaftReducedMotion()
     // raft-ui `data-starting-style`: translateY(120%) scale(0.98), on ease-slide.
     val entry = remember { Animatable(if (appearAtOnce || reducedMotion) 1f else 0f) }
-    LaunchedEffect(Unit) { entry.animateTo(1f, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide)) }
+    LaunchedEffect(Unit) {
+        if (entry.value < 1f) {
+            entry.animateTo(1f, tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide))
+        }
+    }
     val swipe = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     val scope = rememberCoroutineScope()
     val thresholdPx = with(LocalDensity.current) { RaftToastSwipeThreshold.toPx() }
@@ -204,24 +258,31 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
 /**
  * Marks what holds the bottom of the page (raft-ui `--toast-viewport-bottom`: the composer, the
  * tab bar): the window's toasts sit 16dp above this element's top edge while it is
- * laid out and [enabled]. Pass `enabled = false` from a page that is composed but not shown
- * (a page under the top one in a stack). [keyboardPx]: the keyboard under an element that rides on it
- * (a composer), read when it is laid out, so a toast does not stay up after the keyboard closes.
- * A no-op outside a [LocalRaftToastHostState].
+ * laid out, [enabled], and [LocalRaftToastAvoidanceActive] is true. Pass `enabled = false` from a
+ * page that is composed but not shown (a page under the top one in a stack). [keyboardPx]: the
+ * keyboard under an element that rides on it (a composer), read when it is laid out, so a toast
+ * does not stay up after the keyboard closes. A no-op outside a [LocalRaftToastHostState].
  */
 fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = { 0f }): Modifier =
     composed {
         val state = LocalRaftToastHostState.current
+        val active = enabled && LocalRaftToastAvoidanceActive.current
         val key = remember { Any() }
-        DisposableEffect(state, key, enabled) {
-            if (!enabled) state?.removeAvoidance(key)
+        DisposableEffect(state, key, active) {
+            if (!active) state?.removeAvoidance(key)
             onDispose { state?.removeAvoidance(key) }
         }
-        if (state == null || !enabled) {
+        if (state == null || !active) {
             Modifier
         } else {
-            Modifier.onGloballyPositioned {
-                state.putAvoidance(key, RaftToastAvoidance.TopEdge(it.boundsInRoot().top, keyboardPx()))
+            val currentKeyboardPx by rememberUpdatedState(keyboardPx)
+            Modifier.onPlaced { coordinates ->
+                val size = coordinates.size
+                if (size.width <= 0 || size.height <= 0) {
+                    state.removeAvoidance(key)
+                } else {
+                    state.putAvoidance(key, RaftToastAvoidance.TopEdge(coordinates.positionInRoot().y, currentKeyboardPx()))
+                }
             }
         }
     }
@@ -233,10 +294,11 @@ fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = {
 @Composable
 fun RaftToastAvoidBottom(height: Dp, enabled: Boolean = true) {
     val state = LocalRaftToastHostState.current ?: return
+    val active = enabled && LocalRaftToastAvoidanceActive.current
     val key = remember { Any() }
     val heightPx = with(LocalDensity.current) { height.toPx() }
-    DisposableEffect(state, key, enabled, heightPx) {
-        if (enabled) state.putAvoidance(key, RaftToastAvoidance.BottomBand(heightPx)) else state.removeAvoidance(key)
+    DisposableEffect(state, key, active, heightPx) {
+        if (active) state.putAvoidance(key, RaftToastAvoidance.BottomBand(heightPx)) else state.removeAvoidance(key)
         onDispose { state.removeAvoidance(key) }
     }
 }

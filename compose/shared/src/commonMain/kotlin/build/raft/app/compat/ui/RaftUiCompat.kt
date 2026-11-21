@@ -1,5 +1,6 @@
 package build.raft.app.compat.ui
 
+import build.raft.designsystem.components.LocalRaftToastAvoidanceActive
 import build.raft.designsystem.gesture.LocalRaftBackSwipeActive
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
@@ -70,13 +71,22 @@ val LocalRaftPageActive = compositionLocalOf { true }
 
 /** Provides [LocalRaftPageActive] for [content]: active only if [active] and every ancestor page is. */
 @Composable
-fun RaftProvidePageActive(active: Boolean, content: @Composable () -> Unit) {
+fun RaftProvidePageActive(
+    active: Boolean,
+    toastAvoidActive: Boolean = active,
+    content: @Composable () -> Unit,
+) {
     val parentActive = LocalRaftPageActive.current
     val pageActive = parentActive && active
+    val parentToastAvoidActive = LocalRaftToastAvoidanceActive.current
+    val effectiveToastAvoidActive = parentToastAvoidActive && toastAvoidActive
     CompositionLocalProvider(
         LocalRaftPageActive provides pageActive,
         // Inactive kept-alive content may keep stale bounds: its back-swipe regions never report.
         LocalRaftBackSwipeActive provides pageActive,
+        // Top stack pages report toast avoidances immediately (even while sliding in) so a toast
+        // triggered right after a push or pop never hits a 300ms empty-avoidance dead zone.
+        LocalRaftToastAvoidanceActive provides effectiveToastAvoidActive,
         content = content,
     )
 }

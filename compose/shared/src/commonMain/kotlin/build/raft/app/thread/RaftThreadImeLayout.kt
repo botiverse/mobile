@@ -10,6 +10,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.offset
@@ -92,6 +93,66 @@ internal fun Modifier.raftThreadComposerLiveKeyboardPadding(
             }
         }
     return this.then(padding)
+}
+
+/**
+ * How many pixels the live software keyboard lifts the composer above its resting height
+ * ([threadComposerBottomPadding] with keyboard vs without), for [raftToastAvoid].
+ *
+ * Subtracting the raw `imeBottomPx` instead of the incremental lift over-subtracts the resting
+ * bottom safe area (navigation bar on Android, home indicator on iOS) and lets `heldPagePx` drop
+ * below the composer's true resting height.
+ */
+internal fun raftThreadComposerKeyboardLiftPx(
+    imeBottomPx: Int,
+    navigationBottomPx: Int,
+    excludesNavigationBars: Boolean,
+    bottomSafeArea: Dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean,
+    density: Density,
+): Float =
+    with(density) {
+        val keyboardPx =
+            raftThreadKeyboardInsetPx(
+                imeBottomPx = imeBottomPx,
+                navigationBottomPx = navigationBottomPx,
+                excludesNavigationBars = excludesNavigationBars,
+            )
+        val livePadding =
+            threadComposerBottomPadding(
+                keyboardInsetDp = keyboardPx.toDp().value,
+                bottomSafeArea = bottomSafeArea,
+                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+            )
+        val restingPadding =
+            threadComposerBottomPadding(
+                keyboardInsetDp = 0f,
+                bottomSafeArea = bottomSafeArea,
+                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+            )
+        (livePadding - restingPadding).toPx().coerceAtLeast(0f)
+    }
+
+@Composable
+internal fun rememberThreadComposerKeyboardLiftPx(
+    bottomSafeArea: Dp,
+    keyboardInsetExcludesBottomSafeArea: Boolean,
+): Density.() -> Float {
+    val ime = WindowInsets.ime
+    val navigationBars = WindowInsets.navigationBars
+    val hostIme = LocalRaftHostImeInsets.current
+    return remember(ime, navigationBars, hostIme, bottomSafeArea, keyboardInsetExcludesBottomSafeArea) {
+        {
+            raftThreadComposerKeyboardLiftPx(
+                imeBottomPx = raftImeBottomPx(ime, hostIme, this),
+                navigationBottomPx = navigationBars.getBottom(this),
+                excludesNavigationBars = raftKeyboardHeightExcludesNavigationBars,
+                bottomSafeArea = bottomSafeArea,
+                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                density = this,
+            )
+        }
+    }
 }
 
 /** What the forward thread list does in the measure pass that sees a new viewport or tail. */

@@ -120,6 +120,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
+import build.raft.app.compat.ui.RaftToastHostImeBottomInset
 import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.components.applyRaftSystemBarsAppearance
 import build.raft.designsystem.components.applyRaftTransparentSystemBars
@@ -1173,8 +1174,9 @@ internal open class RaftCmpActivity :
                     // This window's own focus bookkeeping: another app window's dialog or focused
                     // field never decides this window's composer focus (RaftWindowFocusScope).
                     RaftWindowFocusScope {
-                        RaftCmpToastLayer {
-                            CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                            RaftCmpToastLayer {
+                                RaftToastHostImeBottomInset()
                                 if (stack == null) {
                                     RaftCmpRoot(
                                         args,
