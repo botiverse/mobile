@@ -287,7 +287,15 @@ class RaftDiagnosticsVolumePolicy(
         /** Info lines that read like a failure but carry no trace / request id: per key and window. */
         const val FailureBudget = 5
         private val FailureRule = Rule(budget = FailureBudget)
-        private val FrameMetrics = listOf("durationMs", "jankFrames", "longestFrameMs")
+        private val FrameMetrics =
+            listOf(
+                "firstFrameMs",
+                "durationMs",
+                "jankFrames",
+                "longestFrameMs",
+                "skippedJankFrames",
+                "skippedLongestFrameMs",
+            )
         private const val MaxDistinctIds = 32
         private const val MaxSummaryChars = 1_700
 
