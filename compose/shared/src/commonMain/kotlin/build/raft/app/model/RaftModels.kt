@@ -484,6 +484,13 @@ data class MemberProfile(
      */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
     /**
+     * `GET /agents` server-composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts` /
+     * `packages/shared/src/readiness.ts`), already trimmed per viewer. Carries holding states such
+     * as `quota_exhausted`, `rate_limited`, `verification_required`, `computer_restarting`, etc.
+     * Cleared by `withoutVolatileStatus()` so disk caches never flash stale holds on cold start.
+     */
+    val agentReadiness: AgentReadiness? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via

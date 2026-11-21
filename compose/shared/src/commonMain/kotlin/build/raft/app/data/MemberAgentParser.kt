@@ -5,6 +5,9 @@ import build.raft.app.strictProjectionDiagnosticsLogger
 import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.isExternalAgent
 import build.raft.app.model.AgentActivitySubagentLineage
+import build.raft.app.model.AgentReadiness
+import build.raft.app.model.AgentReadinessFact
+import build.raft.app.model.AgentReadinessResource
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -27,6 +30,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
 private val memberAgentJson = Json {
@@ -200,6 +204,12 @@ private data class WireAgent(
     val profileProjection: String? = null,
     /** `GET /agents` `lastRuntimeError` (slock #15273/#15282): carries `spawnFailureReason` for sign-in status. */
     val lastRuntimeError: WireAgentLastRuntimeError? = null,
+    /**
+     * `GET /agents` composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts`): kept raw
+     * as [JsonElement] and parsed defensively in [parseWireAgentReadiness] so additive fields or
+     * unexpected shapes never fail decoding the agent roster.
+     */
+    val readiness: JsonElement? = null,
 )
 
 @Serializable
@@ -767,7 +777,52 @@ private fun JsonElement?.toWorkspaceSnapshot(): SettingsComputerWorkspaceSnapsho
     }
 
 private fun JsonObject.stringValue(key: String): String? =
-    (this[key] as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+    (this[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonObject.longValue(key: String): Long? {
+    val raw = (this[key] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.contentOrNull?.trim() ?: return null
+    return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.takeIf { it.isFinite() }?.toLong()
+}
+
+private fun parseWireAgentReadiness(element: JsonElement?): AgentReadiness? {
+    val obj = element as? JsonObject ?: return null
+    val state = obj.stringValue("state")?.lowercase() ?: return null
+    val primaryObj = obj["primary"] as? JsonObject
+    val primary =
+        primaryObj?.let { fact ->
+            val code = fact.stringValue("code") ?: return@let null
+            val resourceObj = fact["resource"] as? JsonObject
+            val resource =
+                resourceObj?.stringValue("kind")?.let { kind ->
+                    AgentReadinessResource(
+                        kind = kind,
+                        runtime = resourceObj.stringValue("runtime"),
+                        key = resourceObj.stringValue("key"),
+                        window = resourceObj.stringValue("window"),
+                        model = resourceObj.stringValue("model"),
+                        agentId = resourceObj.stringValue("agentId"),
+                    )
+                }
+            val paramsObj = fact["params"] as? JsonObject
+            val managedByDesktop = (paramsObj?.get("managedByDesktop") as? JsonPrimitive)?.booleanOrNull
+            AgentReadinessFact(
+                resource = resource,
+                code = code,
+                behaviour = fact.stringValue("behaviour")?.lowercase(),
+                since = fact.longValue("since"),
+                until = fact.longValue("until"),
+                managedByDesktop = managedByDesktop,
+            )
+        }
+    return AgentReadiness(
+        state = state,
+        primary = primary,
+        scope = obj.stringValue("scope")?.lowercase(),
+        actor = obj.stringValue("actor")?.lowercase(),
+        actorName = obj.stringValue("actorName"),
+        action = obj.stringValue("action")?.lowercase(),
+    )
+}
 
 @Serializable
 private data class WireAgentSkillsResponse(
@@ -1038,6 +1093,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
         agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        agentReadiness = parseWireAgentReadiness(readiness),
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },

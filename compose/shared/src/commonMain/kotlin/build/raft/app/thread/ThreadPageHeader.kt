@@ -939,6 +939,35 @@ private fun ThreadDmAgentActivity(
     // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" below 768dp) on the
     // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
+    val readinessCopy = if (toolStuck == null) rememberAgentReadinessDisplayCopy(state) else null
+    if (readinessCopy != null) {
+        Row(
+            modifier =
+                modifier
+                    .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
+                    .semantics { contentDescription = readinessCopy.fullDetail },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+        ) {
+            RaftStatusIndicator(
+                color = readinessCopy.light.dotColor(),
+                size = ThreadHeaderDmAgentActivityDotSize,
+            )
+            Text(
+                text = readinessCopy.title,
+                style =
+                    RaftType.Caption.copy(
+                        color = RaftColor.ForegroundHint,
+                        fontFamily = RaftMonoFamily
+                    ),
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.testTag(AgentReadinessTestTags.DmHeaderStatus)
+            )
+        }
+        return
+    }
     val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state, fallbackName = agentName) else null
     if (signIn != null) {
         val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= 768.dp

@@ -12,6 +12,7 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
+import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
@@ -398,7 +399,9 @@ data class SharedServerMemberStatus(
     /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
     val machineId: String? = null,
     /** The agent's Computer display name from the roster (`computer:` badge), for sign-in detail copy. */
-    val machineName: String? = null
+    val machineName: String? = null,
+    /** Server-composed agent readiness from `GET /api/agents` (already trimmed per viewer). */
+    val readiness: AgentReadiness? = null,
 )
 
 /**
@@ -434,7 +437,8 @@ internal fun MemberProfile?.likelyOnlineMemberStatusOrNull(): SharedServerMember
         statusLabel = LikelyOnlineAgentStatusLabel,
         runtime = member.agentRuntimeOrNull(),
         external = false,
-        likelyOnline = true
+        likelyOnline = true,
+        readiness = member.agentReadiness,
     )
 }
 
@@ -543,7 +547,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
             paused = memberPaused,
             machineId = memberMachineId,
-            machineName = memberMachineName
+            machineName = memberMachineName,
+            readiness = this?.agentReadiness,
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -556,7 +561,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
         paused = memberPaused,
         machineId = memberMachineId,
-        machineName = memberMachineName
+        machineName = memberMachineName,
+        readiness = agentReadiness,
     )
 }
 
@@ -1391,7 +1397,8 @@ class SharedServerMembersStore internal constructor(
                 // An external agent's presence is its credential's last use, a timestamp rather
                 // than a pre-connect status, so it survives the rebaseline (web never resets it).
                 // A joint channel's peer external agent may have no live-activity fact to wait for.
-                lastSeenAt = member?.lastSeenAt?.takeIf { member.isExternal && it.isNotBlank() }
+                lastSeenAt = member?.lastSeenAt?.takeIf { member.isExternal && it.isNotBlank() },
+                readiness = if (resolution.authoritative) member?.agentReadiness else null,
             )
         } else {
             applySeedOnlyOfflinePolicy(
@@ -4588,7 +4595,7 @@ private fun List<String>.rosterPresenceSample(): String =
 
 private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
     if (kind == MemberKind.Agent) {
-        copy(presence = Presence.Offline, agentStatus = null)
+        copy(presence = Presence.Offline, agentStatus = null, agentReadiness = null)
     } else {
         this
     }
@@ -4609,6 +4616,7 @@ private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): Me
             serverSlug = incoming.serverSlug ?: serverSlug,
             servers = incoming.servers ?: servers,
             inViewerServer = incoming.inViewerServer ?: inViewerServer,
+            agentReadiness = incoming.agentReadiness ?: agentReadiness,
         )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {

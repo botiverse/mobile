@@ -1347,8 +1347,14 @@ internal fun ThreadMembersPagerRow(
     // "Offline" forever); the Bot badge follows its name instead.
     val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
     val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
-    val signIn =
+    val readinessCopy =
         if (appBot == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentReadinessDisplayCopy(status)
+        } else {
+            null
+        }
+    val signIn =
+        if (appBot == null && readinessCopy == null && member.kind.equals("agent", ignoreCase = true)) {
             rememberAgentRuntimeSignInState(status, fallbackName = member.displayName)
         } else {
             null
@@ -1382,29 +1388,47 @@ internal fun ThreadMembersPagerRow(
     val alsoIn = alsoInNames?.let { stringResource(Res.string.channel_members_also_in, it) }
     ChannelMembersRow(
         title = member.displayName,
-        subtitle = subtitle,
+        subtitle = readinessCopy?.title ?: subtitle,
         subtitleContent =
-            signIn?.let { s ->
-                {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            when {
+                readinessCopy != null -> {
+                    {
                         RaftText(
-                            text = s.fullText,
-                            style = RaftTheme.typography.caption,
-                            color = RaftTheme.colors.foregroundMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowStatus),
-                        )
-                        RaftText(
-                            text = s.detail,
+                            text = readinessCopy.title,
                             style = RaftTheme.typography.caption,
                             color = RaftTheme.colors.foregroundHint,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowDetail),
+                            modifier =
+                                Modifier
+                                    .testTag(AgentReadinessTestTags.MemberRowStatus)
+                                    .semantics { contentDescription = readinessCopy.fullDetail },
                         )
                     }
                 }
+                signIn != null -> {
+                    {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            RaftText(
+                                text = signIn.fullText,
+                                style = RaftTheme.typography.caption,
+                                color = RaftTheme.colors.foregroundMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowStatus),
+                            )
+                            RaftText(
+                                text = signIn.detail,
+                                style = RaftTheme.typography.caption,
+                                color = RaftTheme.colors.foregroundHint,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag(AgentRuntimeSignInTestTags.MemberRowDetail),
+                            )
+                        }
+                    }
+                }
+                else -> null
             },
         trailingAction =
             signIn?.takeIf { it.offered }?.let { s ->
@@ -1420,7 +1444,7 @@ internal fun ThreadMembersPagerRow(
         avatarKind = raftAvatarKind(member.kind.parsedMemberKindOrNull()),
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
-        statusColor = if (signIn != null) RaftColor.AccentOrange else status?.color,
+        statusColor = readinessCopy?.light?.dotColor() ?: if (signIn != null) RaftColor.AccentOrange else status?.color,
         badges = listOfNotNull(roleBadge),
         titleBadge =
             if (appBot == null && originNames.isEmpty() && alsoIn == null) {

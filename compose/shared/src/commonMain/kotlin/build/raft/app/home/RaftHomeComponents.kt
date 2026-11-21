@@ -8289,14 +8289,20 @@ private fun DirectMessageAvatar(
     kind: RaftAvatarKind
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val holdingReadiness = effectiveHoldingReadiness(status)
     val signIn =
-        if (agentMemberId != null) {
+        if (agentMemberId != null && holdingReadiness == null) {
             rememberAgentRuntimeSignInState(status, fallbackName = avatarLabel)
         } else {
             null
         }
     RaftAvatarWithStatus(
-        statusColor = if (signIn != null && status?.external != true) RaftColor.AccentOrange else status?.color,
+        statusColor =
+            when {
+                holdingReadiness != null -> holdingReadiness.dotColor()
+                signIn != null && status?.external != true -> RaftColor.AccentOrange
+                else -> status?.color
+            },
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -8325,6 +8331,26 @@ private fun DirectMessageAgentMeta(
     modifier: Modifier = Modifier
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
+    val readinessCopy =
+        if (agentMemberId != null && status?.external != true) {
+            rememberAgentReadinessDisplayCopy(status)
+        } else {
+            null
+        }
+    if (readinessCopy != null) {
+        Text(
+            readinessCopy.title,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentReadinessTestTags.SidebarShort)
+                    .semantics { contentDescription = readinessCopy.fullDetail },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val signIn =
         if (agentMemberId != null && status?.external != true) {
             rememberAgentRuntimeSignInState(status, fallbackName = agentName)
