@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -342,8 +341,7 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     webBaseUrl: String,
     scope: RaftArtifactViewerScope?,
     conversationId: String? = null,
-    desktopMode: Boolean =
-        raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true },
+    desktopModeOverride: Boolean? = null,
     keptDocumentPresent: (String) -> Boolean = { key -> raftWebViewKeptDocument(key) != null },
     prewarmEffect: @Composable (RaftWebViewConfig?) -> Unit = { config -> RaftWebViewPrewarmEffect(config) },
 ) {
@@ -363,6 +361,9 @@ internal fun RaftArtifactViewerPrewarmRuntime(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     if (!pagerAppeared || !foreground) return
+    val desktopMode =
+        desktopModeOverride
+            ?: (raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true })
     val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, processAuthEvents)
     val controller = rememberRaftWebViewController()
     val binding = rememberSettingsWebViewHostAuthBinding(snapshot, controller)

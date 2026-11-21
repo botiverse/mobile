@@ -653,6 +653,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
+        prewarmActive = active,
         externalSelectedThreadId = externalSelectedThreadId,
         externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
@@ -1004,7 +1005,8 @@ private fun SharedActivityPanelContent(
     channelMute: ActivityChannelMuteControl? = null,
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
     conversationListPending: Boolean = false,
-    scrollToTopRequest: Int = 0
+    scrollToTopRequest: Int = 0,
+    prewarmActive: Boolean = true,
 ) {
     val refreshPresentation = activityRefreshPresentation(state.headerRefreshing, state.pullRefreshing)
     // Delayed and held so a quick reload never flashes; a pull hides it at once.
@@ -1088,6 +1090,7 @@ private fun SharedActivityPanelContent(
                 if (state.snapshot != null && !conversationListPending) {
                     SharedActivityBodyContent(
                         active = true,
+                        prewarmActive = prewarmActive,
                         state = state,
                         onOpenItem = onOpenItem,
                         onIntent = onIntent,
@@ -1157,6 +1160,7 @@ private fun SharedActivityBodyContent(
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
+    prewarmActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -1220,6 +1224,7 @@ private fun SharedActivityBodyContent(
             else ->
                 SharedActivityList(
                     active = active,
+                    prewarmActive = prewarmActive,
                     snapshot = remember(snapshot, draftProjection) {
                         snapshot.withComposerDraftProjection(draftProjection)
                     },
@@ -1487,7 +1492,8 @@ internal fun SharedActivityList(
      */
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
-    channelMute: ActivityChannelMuteControl? = null
+    channelMute: ActivityChannelMuteControl? = null,
+    prewarmActive: Boolean = true,
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1902,7 +1908,7 @@ internal fun SharedActivityList(
     // Activity itself is active, so a token refresh while covered by a Thread does not construct
     // and load a hidden WebView on the main thread (#wg-mobile-feedback:#257, Hands 45eccbd9).
     RaftArtifactViewerPrewarm(
-        enabled = sharedInboxShouldPrewarmArtifactViewer(active = active, items = presentedItemsState.value),
+        enabled = sharedInboxShouldPrewarmArtifactViewer(active = active && prewarmActive, items = presentedItemsState.value),
         conversationId = null,
     )
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }

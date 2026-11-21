@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -12,15 +13,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AuthSessionEvent
-import build.raft.app.data.ChannelId
-import build.raft.app.data.InboxItem
-import build.raft.app.data.InboxItemKind
 import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,23 +54,15 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
         override val lifecycle: Lifecycle get() = registry
     }
 
-    private class RefreshableAuthStore(initialSession: StoredAuthSession) :
-        RaftAuthSessionStore,
+    private class RefreshableAuthStore(
+        initialSession: StoredAuthSession,
+        private val inner: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(initialSession),
+    ) : RaftAuthSessionStore by inner,
         RaftAuthSessionEventSource {
-        private val inner = InMemoryRaftAuthSessionStore(initialSession)
         private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
         private var generation = 1L
 
         override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
-
-        override suspend fun readSession(): StoredAuthSession? = inner.readSession()
-
-        override suspend fun readOrCreateAuthInstallationId(candidate: String): String =
-            inner.readOrCreateAuthInstallationId(candidate)
-
-        override suspend fun saveSession(session: StoredAuthSession) = inner.saveSession(session)
-
-        override suspend fun clearSession() = inner.clearSession()
 
         suspend fun rotateAccessToken(nextAccessToken: String) {
             val current = checkNotNull(inner.readSession())
@@ -110,7 +103,7 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                 )
 
             var active by mutableStateOf(false)
-            var keptWebView by mutableStateOf(false)
+            var keptWebView = false
             val prewarmedConfigs = mutableListOf<RaftWebViewConfig>()
 
             setContent {
@@ -123,12 +116,14 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                         webBaseUrl = "https://app.raft.build",
                         scope = scope,
                         conversationId = null,
-                        desktopMode = false,
+                        desktopModeOverride = false,
                         keptDocumentPresent = { keptWebView },
                         prewarmEffect = { config ->
-                            if (config != null) {
-                                prewarmedConfigs += config
-                                keptWebView = true
+                            LaunchedEffect(config) {
+                                if (config != null) {
+                                    prewarmedConfigs += config
+                                    keptWebView = true
+                                }
                             }
                         },
                     )
@@ -178,12 +173,13 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
         }
 
     @Test
-    fun coveredPagerOrBackgroundLifecycleBlocksPrewarmOnTokenRefresh() =
+    fun coveredPagerOrBackgroundLifecycleBlocksPrewarmAcrossFullLifecycleTransitions() =
         runRobolectricComposeUiTest {
             mainClock.autoAdvance = false
             val owner = Owner().apply { registry.currentState = Lifecycle.State.CREATED }
             val pager = object : Pager() {}
-            // Pager not appeared yet AND app in background.
+            // Pager appeared while app is still in background (CREATED) -> foreground gate blocks prewarm.
+            pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject())
             val authStore = RefreshableAuthStore(testSession("tok-a"))
             val scope =
                 RaftArtifactViewerScope(
@@ -192,6 +188,7 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                     accountId = "user-1",
                     serverId = "server-1",
                 )
+            var keptWebView = false
             val prewarmedConfigs = mutableListOf<RaftWebViewConfig>()
 
             setContent {
@@ -203,31 +200,52 @@ class RaftArtifactViewerPrewarmVisibilityUiTest {
                         processAuthEvents = authStore,
                         webBaseUrl = "https://app.raft.build",
                         scope = scope,
-                        desktopMode = false,
-                        keptDocumentPresent = { false },
-                        prewarmEffect = { config -> if (config != null) prewarmedConfigs += config },
+                        desktopModeOverride = false,
+                        keptDocumentPresent = { keptWebView },
+                        prewarmEffect = { config ->
+                            LaunchedEffect(config) {
+                                if (config != null) {
+                                    prewarmedConfigs += config
+                                    keptWebView = true
+                                }
+                            }
+                        },
                     )
                 }
             }
 
-            // Backgrounded + not appeared -> token refresh does nothing.
+            // 1. Pager appeared, but lifecycle is CREATED (background) -> token refresh does nothing.
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-b") }
             mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             waitForIdle()
-            assertEquals(0, prewarmedConfigs.size)
+            assertEquals(0, prewarmedConfigs.size, "background lifecycle must block prewarm even when pager is appeared")
 
-            // Foregrounded, but pager still covered (DID_DISAPPEAR) -> token refresh still does nothing.
+            // 2. App returns to foreground (RESUMED) while pager is appeared -> prewarms #1.
+            runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            waitForIdle()
+            assertEquals(1, prewarmedConfigs.size)
+
+            // 3. Another page covers this pager (DID_DISAPPEAR), app backgrounds (CREATED) and kept WebView expires,
+            //    then app resumes (RESUMED) while still covered and rotates access token -> blocked!
+            runOnIdle {
+                pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_DISAPPEAR, JSONObject())
+                owner.registry.currentState = Lifecycle.State.CREATED
+                keptWebView = false
+                RaftArtifactViewerMemory.clear()
+            }
+            waitForIdle()
             runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
             kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-c") }
             mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             waitForIdle()
-            assertEquals(0, prewarmedConfigs.size)
+            assertEquals(1, prewarmedConfigs.size, "covered pager must block prewarm on foreground token refresh")
 
-            // Pager appears while foregrounded -> prewarms after settle delay.
+            // 4. Pager re-appears while foregrounded -> prewarms #2 with tok-c.
             runOnIdle { pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject()) }
             mainClock.advanceTimeBy(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
             waitForIdle()
-            assertEquals(1, prewarmedConfigs.size)
+            assertEquals(2, prewarmedConfigs.size)
         }
 
     @Test
