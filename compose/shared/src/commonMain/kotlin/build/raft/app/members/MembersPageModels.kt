@@ -712,6 +712,26 @@ internal fun membersAgentDetailTabsForAccess(
 internal fun membersAgentProfileIsRemote(accessMode: MemberDetailAccessMode): Boolean =
     accessMode == MemberDetailAccessMode.RemoteProfileOnly
 
+/**
+ * Web AgentProfileInfo (`isBoundedPublicProjection`): a profile from another server of a joint
+ * channel ([MemberDetailAccessMode.RemoteProfileOnly]) or a bounded channel-summary projection
+ * (`profileProjection == "channel_summary"`). When empty on such a profile, the whole Description
+ * section is omitted rather than showing "No description".
+ */
+internal fun membersAgentIsBoundedPublicProjection(
+    accessMode: MemberDetailAccessMode,
+    profileProjection: String?
+): Boolean =
+    membersAgentProfileIsRemote(accessMode) ||
+        profileProjection?.trim()?.equals("channel_summary", ignoreCase = true) == true
+
+internal fun membersShouldShowAgentDescriptionSection(
+    accessMode: MemberDetailAccessMode,
+    profileProjection: String?,
+    description: String?
+): Boolean =
+    !membersAgentIsBoundedPublicProjection(accessMode, profileProjection) || !description.isNullOrBlank()
+
 /** pageData key of [RaftMemberDetailPayload.profileChannelId]. */
 internal const val MemberDetailProfileChannelIdKey = "profileChannelId"
 
@@ -1352,9 +1372,12 @@ internal fun unknownMembersAgentStatusIndicatorState(): RaftAgentStatusIndicator
 internal fun resolveMembersAgentStatusIndicatorStateOrNull(
     canonicalState: RaftAgentStatusIndicatorState?,
     fixtureFallback: RaftAgentStatusIndicatorState?,
-    fixtureStatusFallbackEnabled: Boolean
+    fixtureStatusFallbackEnabled: Boolean,
+    remoteProfileFallback: RaftAgentStatusIndicatorState? = null
 ): RaftAgentStatusIndicatorState? =
-    canonicalState ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
+    canonicalState
+        ?: remoteProfileFallback
+        ?: fixtureFallback.takeIf { fixtureStatusFallbackEnabled }
 
 /**
  * Label-facing resolution: never null, because an explicit unknown must outrank a stale
@@ -1364,12 +1387,14 @@ internal fun resolveMembersAgentStatusIndicatorStateOrNull(
 internal fun resolveMembersAgentStatusIndicatorState(
     canonicalState: RaftAgentStatusIndicatorState?,
     fixtureFallback: RaftAgentStatusIndicatorState?,
-    fixtureStatusFallbackEnabled: Boolean
+    fixtureStatusFallbackEnabled: Boolean,
+    remoteProfileFallback: RaftAgentStatusIndicatorState? = null
 ): RaftAgentStatusIndicatorState =
     resolveMembersAgentStatusIndicatorStateOrNull(
         canonicalState = canonicalState,
         fixtureFallback = fixtureFallback,
-        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
+        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+        remoteProfileFallback = remoteProfileFallback
     ) ?: unknownMembersAgentStatusIndicatorState()
 
 internal fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): MembersAgentStatusDisplayState =

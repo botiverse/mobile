@@ -3,9 +3,11 @@ package build.raft.app
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.ResolvedActor
+import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -114,5 +116,81 @@ class MembersRemoteAgentProfileTest {
         assertEquals("partner", membersRemoteAgentSourceServerName(member.copy(serverId = ServerId("s1"), serverSlug = "partner")))
         assertNull(membersRemoteAgentSourceServerName(member.copy(serverId = ServerId("s1"), serverName = "s1")))
         assertNull(membersRemoteAgentSourceServerName(member))
+    }
+
+    @Test
+    fun remoteProfileStatusFallbackDerivesFromSummaryAndLiveWins() {
+        val online = membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = "active", summaryActivity = "online")
+        assertEquals(AgentStatus.Online, online?.status)
+        assertEquals(RaftColor.AccentLime, online?.color)
+        assertEquals("Online", online?.label)
+
+        val working = membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = "active", summaryActivity = "working")
+        assertEquals(AgentStatus.Working, working?.status)
+        assertEquals(RaftColor.BrandYellow, working?.color)
+
+        val stoppedWithActivity =
+            membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = "stopped", summaryActivity = "offline")
+        assertEquals(AgentStatus.Offline, stoppedWithActivity?.status)
+        assertEquals(RaftColor.PresenceOffline, stoppedWithActivity?.color)
+        assertEquals("Offline", stoppedWithActivity?.label)
+
+        val stoppedWithoutActivity =
+            membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = "stopped", summaryActivity = null)
+        assertEquals(AgentStatus.Offline, stoppedWithoutActivity?.status)
+        assertEquals(RaftColor.PresenceOffline, stoppedWithoutActivity?.color)
+
+        // Lifecycle "active" alone is not runtime liveness; missing fields stay null (no chip).
+        assertNull(membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = "active", summaryActivity = null))
+        assertNull(membersRemoteProfileAgentStatusIndicatorStateOrNull(summaryStatus = null, summaryActivity = null))
+
+        // Live canonical status still beats the remote summary fallback when bound.
+        val liveWorking = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
+        assertSame(
+            liveWorking,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = liveWorking,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false,
+                remoteProfileFallback = online
+            )
+        )
+        assertSame(
+            online,
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = null,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false,
+                remoteProfileFallback = online
+            )
+        )
+        // Local profiles pass no remoteProfileFallback and keep returning null when canonical is absent.
+        assertNull(
+            resolveMembersAgentStatusIndicatorStateOrNull(
+                canonicalState = null,
+                fixtureFallback = null,
+                fixtureStatusFallbackEnabled = false
+            )
+        )
+    }
+
+    @Test
+    fun boundedPublicProjectionHidesEmptyDescriptionSection() {
+        assertTrue(membersAgentIsBoundedPublicProjection(MemberDetailAccessMode.RemoteProfileOnly, null))
+        assertTrue(membersAgentIsBoundedPublicProjection(MemberDetailAccessMode.LocalFull, "channel_summary"))
+        assertTrue(membersAgentIsBoundedPublicProjection(MemberDetailAccessMode.LocalFull, " CHANNEL_SUMMARY "))
+        assertFalse(membersAgentIsBoundedPublicProjection(MemberDetailAccessMode.LocalFull, null))
+
+        assertFalse(membersShouldShowAgentDescriptionSection(MemberDetailAccessMode.RemoteProfileOnly, null, null))
+        assertFalse(membersShouldShowAgentDescriptionSection(MemberDetailAccessMode.RemoteProfileOnly, null, "   "))
+        assertFalse(membersShouldShowAgentDescriptionSection(MemberDetailAccessMode.LocalFull, "channel_summary", null))
+        assertTrue(
+            membersShouldShowAgentDescriptionSection(
+                MemberDetailAccessMode.RemoteProfileOnly,
+                null,
+                "Triages partner bug reports."
+            )
+        )
+        assertTrue(membersShouldShowAgentDescriptionSection(MemberDetailAccessMode.LocalFull, null, null))
     }
 }

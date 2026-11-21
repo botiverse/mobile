@@ -404,11 +404,26 @@ internal fun MembersDetailContent(
     val issueReportTitle = stringResource(Res.string.member_report_issue_title_for_agent, member.displayName)
     val issueTicketRetryFailed = stringResource(Res.string.member_report_issue_retry_ticket_failed)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
+    val remoteProfile = membersAgentProfileIsRemote(accessMode)
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
+    // task #258: cross-server joint-channel agents (RemoteProfileOnly) have no live status
+    // resolver bound, so fall back to the status/activity returned by GET /api/agents/:id when
+    // no live canonical state exists; live status still wins if bound, and absent status stays
+    // null so no chip is rendered.
     val managedAgentStatusObservedState =
         if (member.kind == MemberKind.Agent) {
             val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
+            val remoteProfileFallback =
+                if (remoteProfile) {
+                    membersRemoteProfileAgentStatusIndicatorStateOrNull(
+                        summaryStatus = detail?.summary?.status,
+                        summaryActivity = detail?.summary?.activity,
+                        external = false
+                    )
+                } else {
+                    null
+                }
             resolveMembersAgentStatusIndicatorStateOrNull(
                 canonicalState = canonicalState,
                 fixtureFallback =
@@ -420,7 +435,8 @@ internal fun MembersDetailContent(
                     } else {
                         null
                     },
-                fixtureStatusFallbackEnabled = stableVisualCapture
+                fixtureStatusFallbackEnabled = stableVisualCapture,
+                remoteProfileFallback = remoteProfileFallback
             )
         } else {
             null
