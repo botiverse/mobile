@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.RaftMessageContextPageRequest
+import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedWindowNavigationCoordinator
 import build.raft.app.data.StoredAuthServer
@@ -9,6 +11,7 @@ import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,11 +42,22 @@ class RaftMessageLinkResolverTest {
             StoredAuthServer(id = serverId, name = "Lagoon Push Test", slug = slug),
         )
 
-    private fun channelBody(type: String = "channel") =
-        """{"id":"$cid","name":"release-notes","type":"$type","serverId":"$serverId","joined":true}"""
+    private fun channelBody(
+        type: String = "channel",
+        id: String = cid,
+        parentChannelId: String? = null,
+        parentMessageId: String? = null,
+    ): String {
+        val parentFields =
+            buildString {
+                if (parentChannelId != null) append(""","parentChannelId":"$parentChannelId"""")
+                if (parentMessageId != null) append(""","parentMessageId":"$parentMessageId"""")
+            }
+        return """{"id":"$id","name":"release-notes","type":"$type","serverId":"$serverId","joined":true$parentFields}"""
+    }
 
-    private fun contextBody(target: String, canonicalTarget: String? = null) =
-        """{"channelId":"$cid","targetMessageId":"$target","hasOlder":false,"hasNewer":false,"messages":[],""" +
+    private fun contextBody(target: String, canonicalTarget: String? = null, channelId: String = cid) =
+        """{"channelId":"$channelId","targetMessageId":"$target","hasOlder":false,"hasNewer":false,"messages":[],""" +
             (canonicalTarget?.let { "\"canonicalTarget\":$it," } ?: "") +
             """"threadSummariesByParentMessageId":{},"historyLimited":false,"channelArchived":false}"""
 
@@ -285,6 +299,194 @@ class RaftMessageLinkResolverTest {
     }
 
     @Test
+    fun linkToAThreadByItsOwnChannelIdOpensTheParentChannelsThread() = runTest {
+        // slock #15879: `/channel/<threadChannelId>[?msg=…]` redirects to the parent conversation
+        // with the thread open at `msg` (or its parent message when `msg` is omitted).
+        val threadRow = channelBody(type = "thread", id = threadChannelId, parentChannelId = cid, parentMessageId = pid)
+
+        // With full reply id (plain thread-channel context without canonicalTarget, as local threads answer).
+        val offered = mutableListOf<Pair<String?, String?>>()
+        val sink =
+            object : RaftMessageContextPageSink {
+                override suspend fun beginRequest(serverId: String?) =
+                    object : RaftMessageContextPageRequest {
+                        override val serverId: String = serverId.orEmpty()
+                        override fun offer(bodyText: String, channelId: String?, channelType: String?) {
+                            offered += channelId to channelType
+                        }
+                    }
+            }
+        val replyNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, threadRow),
+                context = HomeNetworkResponse(200, contextBody(mid, channelId = threadChannelId)),
+            )
+        val replyOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(replyNetwork, contextPageSink = sink).resolve(
+                    link(channelId = threadChannelId, msg = mid),
+                    servers,
+                )
+            )
+        assertEquals(threadChannelId, replyOpen.sourceIdentity.threadChannelId)
+        assertNull(replyOpen.sourceIdentity.parentConversationKind)
+        assertEquals(listOf(threadChannelId to "thread"), offered)
+        val replyRequest = openThroughCoordinator(replyOpen)
+        assertEquals(ConversationKind.Thread, replyRequest.conversationIdentity.kind)
+        assertEquals(cid, replyRequest.conversationIdentity.threadParentChannelId())
+        assertEquals(pid, replyRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(threadChannelId, replyRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(mid, replyRequest.anchorMessageId)
+
+        // With 8-hex short reply id: expands to the full id from context lookup.
+        val shortMid = mid.take(8)
+        val shortNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, threadRow),
+                context = HomeNetworkResponse(200, contextBody(mid, channelId = threadChannelId)),
+            )
+        val shortRequest =
+            openThroughCoordinator(
+                assertIs<RaftMessageLinkResolution.Open>(
+                    RaftMessageLinkResolver(shortNetwork).resolve(link(channelId = threadChannelId, msg = shortMid), servers)
+                )
+            )
+        assertEquals(cid, shortRequest.conversationIdentity.threadParentChannelId())
+        assertEquals(pid, shortRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(mid, shortRequest.anchorMessageId)
+
+        // Without `?msg=`: opens the thread anchored on its parent message.
+        val bareNetwork = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, threadRow))
+        val bareOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(bareNetwork).resolve(link(channelId = threadChannelId), servers)
+            )
+        assertEquals(listOf("channels/$threadChannelId"), bareNetwork.requests.map { it.path })
+        val bareRequest = openThroughCoordinator(bareOpen)
+        assertEquals(ConversationKind.Thread, bareRequest.conversationIdentity.kind)
+        assertEquals(cid, bareRequest.conversationIdentity.threadParentChannelId())
+        assertEquals(pid, bareRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(threadChannelId, bareRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(pid, bareRequest.anchorMessageId)
+
+        // When the parent is a DM in the conversation directory, the opened thread keeps DM parent surface kind.
+        val dmDirectory =
+            listOf(
+                SharedConversationDirectoryProjection(
+                    serverId = serverId,
+                    canonicalChannelId = cid,
+                    aliases = setOf(cid),
+                    conversationKind = ConversationKind.DirectMessage,
+                    surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                    channelKind = "dm",
+                    title = "Alice",
+                    permissions = ConversationPermissions(),
+                )
+            ).toSharedConversationDirectoryState()
+        val dmParentRequest = openThroughCoordinator(bareOpen, conversationDirectory = dmDirectory)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+    }
+
+    @Test
+    fun threadChannelLinkEdgeCasesFollowWebAndResolverRules() = runTest {
+        val threadRow = channelBody(type = "thread", id = threadChannelId, parentChannelId = cid, parentMessageId = pid)
+
+        // `?msg=` naming the thread's own parent message (full or 8-hex short): `messages/context`
+        // scoped to threadChannelId 404s because the parent lives in parentChannelId, yet the
+        // thread probe already confirmed it.
+        for (parentQuery in listOf(pid, pid.take(8))) {
+            val parentMsgNetwork =
+                FakeMessageLinkNetwork(
+                    channel = HomeNetworkResponse(200, threadRow),
+                    context = HomeNetworkResponse(404, """{"error":"Message not found"}"""),
+                )
+            val request =
+                openThroughCoordinator(
+                    assertIs<RaftMessageLinkResolution.Open>(
+                        RaftMessageLinkResolver(parentMsgNetwork).resolve(
+                            link(channelId = threadChannelId, msg = parentQuery),
+                            servers,
+                        )
+                    )
+                )
+            assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
+            assertEquals(cid, request.conversationIdentity.threadParentChannelId())
+            assertEquals(pid, request.conversationIdentity.threadParentMessageId())
+            assertEquals(pid, request.anchorMessageId)
+        }
+
+        // Deleted / unrelated message in a readable thread stays NotFound.
+        val missingMsgNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, threadRow),
+                context = HomeNetworkResponse(404, """{"error":"Message not found"}"""),
+            )
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("message_404"),
+            RaftMessageLinkResolver(missingMsgNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers),
+        )
+
+        // Reply behind the plan's history window still opens the thread on its paywall.
+        val historyLimitedNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, threadRow),
+                context =
+                    HomeNetworkResponse(
+                        404,
+                        """{"error":"history_limited","channelId":"$threadChannelId","targetMessageId":"$mid","hiddenTarget":{"target":{"id":"$mid","seq":3}}}"""
+                    ),
+            )
+        val paywallRequest =
+            openThroughCoordinator(
+                assertIs<RaftMessageLinkResolution.Open>(
+                    RaftMessageLinkResolver(historyLimitedNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers)
+                )
+            )
+        assertEquals(ConversationKind.Thread, paywallRequest.conversationIdentity.kind)
+        assertEquals(cid, paywallRequest.conversationIdentity.threadParentChannelId())
+        assertEquals(pid, paywallRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(mid, paywallRequest.anchorMessageId)
+
+        // Transient context failure still opens the thread (never NotFound).
+        val unavailableNetwork =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, threadRow),
+                context = HomeNetworkResponse(503, null),
+            )
+        val unavailableRequest =
+            openThroughCoordinator(
+                assertIs<RaftMessageLinkResolution.Open>(
+                    RaftMessageLinkResolver(unavailableNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers)
+                )
+            )
+        assertEquals(ConversationKind.Thread, unavailableRequest.conversationIdentity.kind)
+        assertEquals(cid, unavailableRequest.conversationIdentity.threadParentChannelId())
+        assertEquals(pid, unavailableRequest.conversationIdentity.threadParentMessageId())
+        assertEquals(mid, unavailableRequest.anchorMessageId)
+
+        // `/dm/<threadId>`, nested `?thread=` on a thread channel id, and a thread row missing
+        // parent ids (e.g. unprojected joint thread) all stay NotFound.
+        val underDm = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, threadRow))
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("route_kind_mismatch"),
+            RaftMessageLinkResolver(underDm).resolve(link(kind = ConversationKind.DirectMessage, channelId = threadChannelId), servers),
+        )
+        val nestedThread = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, threadRow))
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("route_kind_mismatch"),
+            RaftMessageLinkResolver(nestedThread).resolve(link(channelId = threadChannelId, threadParent = pid), servers),
+        )
+        val missingParent =
+            FakeMessageLinkNetwork(
+                channel = HomeNetworkResponse(200, channelBody(type = "thread", id = threadChannelId))
+            )
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("route_kind_mismatch"),
+            RaftMessageLinkResolver(missingParent).resolve(link(channelId = threadChannelId), servers),
+        )
+    }
+
+    @Test
     fun linkSlugMatchesCaseInsensitively() = runTest {
         val open = assertIs<RaftMessageLinkResolution.Open>(
             RaftMessageLinkResolver(FakeMessageLinkNetwork()).resolve(link(slug = "Lagoon-Push-Test"), servers)
@@ -295,12 +497,16 @@ class RaftMessageLinkResolverTest {
     private fun link(
         slug: String = this.slug,
         kind: ConversationKind = ConversationKind.Channel,
+        channelId: String = cid,
         msg: String? = null,
         threadParent: String? = null,
-    ) = RaftMessageLink(slug, kind, cid, messageId = msg, threadParentMessageId = threadParent)
+    ) = RaftMessageLink(slug, kind, channelId, messageId = msg, threadParentMessageId = threadParent)
 
     /** The resolved link through the coordinator a notification tap uses, on a ready Home. */
-    private fun openThroughCoordinator(open: RaftMessageLinkResolution.Open): HomeMessageOpenRequest {
+    private fun openThroughCoordinator(
+        open: RaftMessageLinkResolution.Open,
+        conversationDirectory: SharedConversationDirectoryState = SharedConversationDirectoryState(),
+    ): HomeMessageOpenRequest {
         val coordinator = SharedWindowNavigationCoordinator()
         val intent =
             WindowNavigationIntent(
@@ -317,6 +523,7 @@ class RaftMessageLinkResolverTest {
                     canonicalServerId = open.serverId,
                     homeSnapshotServerId = open.serverId,
                     homeSessionServerId = open.serverId,
+                    conversationDirectory = conversationDirectory,
                 )
             )
         return assertIs<WindowNavigationAction.OpenConversation>(action).request
