@@ -411,6 +411,23 @@ internal fun Modifier.raftSticker(
         .border(RaftStroke.Control, look.edge, shape)
 }
 
+/** The look with no sticker of its own (fill, edge, die-cut): something under it draws the sticker. */
+internal fun RaftStickerLook.withoutSticker(): RaftStickerLook =
+    copy(fill = Color.Transparent, edge = Color.Transparent, dieCut = Color.Transparent)
+
+/**
+ * [raftSticker]'s sticker (die-cut edge, fill, 1.5dp edge inside) drawn round [box] (px, in the
+ * draw scope's coordinates) rather than the element: a segmented track's selection sticker that
+ * slides between its segments.
+ */
+internal fun DrawScope.drawRaftSticker(box: Rect, look: RaftStickerLook, radius: Dp) {
+    val r = radius.toPx()
+    val stroke = RaftStroke.Control.toPx()
+    if (look.dieCut.alpha > 0f) drawBandAround(box, raftOuterBand(0f, stroke, r), look.dieCut)
+    if (look.fill.alpha > 0f) drawRoundRect(look.fill, box.topLeft, box.size, CornerRadius(r))
+    if (look.edge.alpha > 0f) drawBandAround(box, raftInsetBand(stroke, r), look.edge)
+}
+
 /** One hard (blur 0, spread 0) shadow layer, e.g. `--elevation-sticker`, behind a rounded box. */
 internal fun Modifier.raftHardShadow(layer: RaftShadowLayer, radius: Dp): Modifier =
     drawBehind {
