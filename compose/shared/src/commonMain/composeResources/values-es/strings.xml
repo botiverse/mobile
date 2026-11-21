@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">Fundadores</string>
     <string name="settings_billing_vo_plan_partner">Partner</string>
     <string name="settings_billing_vo_plan_appsumo">AppSumo Pro de por vida · Nivel %1$d</string>
-    <string name="settings_billing_vo_free_summary">Mensajes de los últimos %1$d días · %2$s de archivos subidos al mes</string>
+    <string name="settings_billing_vo_free_summary">Mensajes de los últimos %1$d días · %2$s de archivos subidos al mes, %3$s por archivo · 1 canal externo</string>
     <string name="settings_billing_vo_pro_description">Para creadores y equipos que amplían la colaboración con agentes.</string>
     <string name="settings_billing_vo_founder_description">Acceso ilimitado heredado.</string>
     <string name="settings_billing_vo_partner_description">Acceso para partners con fines de prueba y uso patrocinado.</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">Archivos subidos este mes</string>
     <string name="settings_billing_vo_uploads_used">%1$s de %2$s usados · se reinicia el %3$s</string>
     <string name="settings_billing_vo_uploads_used_up">Agotado · se restablece %1$s</string>
+    <string name="settings_billing_vo_uploads_includes">Cuenta los archivos que suben las personas y los agentes, Artifacts incluidos.</string>
     <string name="settings_billing_vo_history">Historial de mensajes</string>
     <string name="settings_billing_vo_history_value">Últimos %1$d días. Los mensajes más antiguos están ocultos.</string>
     <string name="settings_billing_vo_members">Miembros</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">Solo los propietarios del servidor pueden cambiar la facturación o ver las facturas.</string>
     <string name="settings_billing_vo_past_due_body">Stripe no pudo cobrar la tarjeta de esta suscripción.</string>
     <string name="settings_billing_vo_ending_title">Pro termina el %1$s</string>
-    <string name="settings_billing_vo_ending_body">Después, este servidor pasa a Free: los mensajes de más de %1$d días quedan ocultos y la subida de archivos se limita a %2$s al mes.</string>
+    <string name="settings_billing_vo_ending_body">Después, este servidor pasa a Free: los mensajes de más de %1$d días quedan ocultos, la subida de archivos se limita a %2$s al mes y %3$s por archivo, y no se pueden mover agentes entre computadoras.</string>
     <string name="settings_billing_vo_downgraded_title">Plan degradado</string>
     <string name="settings_billing_vo_grace_expired_title">Periodo de gracia vencido</string>
     <string name="settings_billing_vo_grace_remaining_one">Queda %1$d día del periodo de gracia. Todos los recursos están dentro de los límites gratuitos.</string>
@@ -4493,7 +4494,7 @@
     <string name="upgrade_dialog_pro_theme_title">Gris aburrido es un tema Pro</string>
     <string name="upgrade_dialog_pro_theme_hint">Mejora %1$s a Pro y todos sus miembros podrán usar Gris aburrido.</string>
     <string name="upgrade_dialog_general_title">Mejorar %1$s a Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro elimina los límites del plan Free en el historial de chat, la subida de archivos y los canales externos.</string>
+    <string name="upgrade_dialog_general_hint">Pro quita los límites de Free en mensajes, archivos y canales externos.</string>
     <string name="upgrade_dialog_external_limit_title">Compartir más canales fuera de %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">El plan Free incluye 1 canal externo, y %1$s ya tiene uno. Con Pro, %1$s puede compartir todos los que necesite.</string>
     <string name="upgrade_dialog_external_frozen_title">Volver a publicar en tus canales externos</string>
@@ -4514,7 +4515,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">El plan Free permite 1 canal externo. A partir del %1$s, %2$s no podrá publicar en sus canales externos.</string>
     <string name="upgrade_dialog_benefit_history_pro">Historial de mensajes ilimitado</string>
     <string name="upgrade_dialog_benefit_history_free">Free: últimos 30 días</string>
-    <string name="upgrade_dialog_benefit_files_pro">Sin límite mensual, 200 MB por archivo</string>
+    <string name="upgrade_dialog_benefit_files_pro">Sin límite mensual de subida, 200 MB por archivo</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB al mes, 50 MB por archivo</string>
     <string name="upgrade_dialog_benefit_joint_pro">Canales externos ilimitados</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 canal externo</string>

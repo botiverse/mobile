@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">창립 멤버</string>
     <string name="settings_billing_vo_plan_partner">파트너</string>
     <string name="settings_billing_vo_plan_appsumo">AppSumo 평생 Pro · 티어 %1$d</string>
-    <string name="settings_billing_vo_free_summary">최근 %1$d일 메시지 · 매월 %2$s 파일 업로드</string>
+    <string name="settings_billing_vo_free_summary">최근 %1$d일 메시지 · 매월 %2$s 파일 업로드, 파일당 %3$s · 외부 채널 1개</string>
     <string name="settings_billing_vo_pro_description">에이전트 협업 규모를 키우는 빌더와 팀에게 적합해요.</string>
     <string name="settings_billing_vo_founder_description">기존 가입자 혜택으로 무제한 이용할 수 있어요.</string>
     <string name="settings_billing_vo_partner_description">테스트 및 후원 용도의 파트너 이용 권한이에요.</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">이번 달 파일 업로드</string>
     <string name="settings_billing_vo_uploads_used">%2$s 중 %1$s 사용 · %3$s에 초기화</string>
     <string name="settings_billing_vo_uploads_used_up">모두 사용 · %1$s 초기화</string>
+    <string name="settings_billing_vo_uploads_includes">멤버와 에이전트가 올린 파일이 모두 포함되며, Artifact도 포함돼요.</string>
     <string name="settings_billing_vo_history">메시지 기록</string>
     <string name="settings_billing_vo_history_value">최근 %1$d일. 이전 메시지는 숨겨져요.</string>
     <string name="settings_billing_vo_members">멤버</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">결제를 변경하거나 인보이스를 볼 수 있는 사람은 서버 소유자뿐이에요.</string>
     <string name="settings_billing_vo_past_due_body">Stripe에서 이 구독에 등록된 카드로 결제하지 못했어요.</string>
     <string name="settings_billing_vo_ending_title">Pro가 %1$s에 종료돼요</string>
-    <string name="settings_billing_vo_ending_body">그 후 이 서버는 Free로 바뀌어 %1$d일보다 오래된 메시지는 숨겨지고, 파일 업로드는 매월 %2$s로 제한돼요.</string>
+    <string name="settings_billing_vo_ending_body">그 후 이 서버는 Free로 바뀌어 %1$d일보다 오래된 메시지는 숨겨지고, 파일 업로드는 매월 %2$s, 파일당 %3$s로 제한되며, 컴퓨터 간에 에이전트를 옮길 수 없어요.</string>
     <string name="settings_billing_vo_downgraded_title">요금제가 다운그레이드됐어요</string>
     <string name="settings_billing_vo_grace_expired_title">유예 기간 종료</string>
     <string name="settings_billing_vo_grace_remaining_one">유예 기간이 %1$d일 남았어요. 모든 리소스가 무료 한도 안에 있어요.</string>
@@ -4493,7 +4494,7 @@
     <string name="upgrade_dialog_pro_theme_title">심심한 회색은 Pro 테마예요</string>
     <string name="upgrade_dialog_pro_theme_hint">%1$s을(를) Pro로 업그레이드하면 모든 멤버가 심심한 회색을 쓸 수 있어요.</string>
     <string name="upgrade_dialog_general_title">%1$s 서버를 Pro로 업그레이드</string>
-    <string name="upgrade_dialog_general_hint">Pro로 업그레이드하면 대화 기록, 파일 업로드, 외부 채널에 대한 무료 요금제 제한이 풀려요.</string>
+    <string name="upgrade_dialog_general_hint">Pro로 업그레이드하면 메시지 기록, 파일 업로드, 외부 채널에 대한 무료 요금제 제한이 풀려요.</string>
     <string name="upgrade_dialog_external_limit_title">%1$s 서버 외부 사람과 채널 더 공유하기</string>
     <string name="upgrade_dialog_external_limit_hint">무료 요금제에는 외부 채널이 1개 포함되는데, %1$s 서버는 이미 1개를 쓰고 있어요. Pro에서는 %1$s 서버가 필요한 만큼 채널을 공유할 수 있어요.</string>
     <string name="upgrade_dialog_external_frozen_title">외부 채널에서 다시 글 쓰기</string>
@@ -4514,7 +4515,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">무료 요금제에서는 외부 채널을 1개만 쓸 수 있어요. %1$s부터 %2$s 서버는 외부 채널에 글을 쓸 수 없어요.</string>
     <string name="upgrade_dialog_benefit_history_pro">메시지 기록 무제한</string>
     <string name="upgrade_dialog_benefit_history_free">Free: 최근 30일</string>
-    <string name="upgrade_dialog_benefit_files_pro">월 한도 없음, 파일당 200 MB</string>
+    <string name="upgrade_dialog_benefit_files_pro">월 업로드 한도 없음, 파일당 200 MB</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 월 100 MB, 파일당 50 MB</string>
     <string name="upgrade_dialog_benefit_joint_pro">외부 채널 무제한</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 외부 채널 1개</string>

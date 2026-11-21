@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">Основатели</string>
     <string name="settings_billing_vo_plan_partner">Партнёры</string>
     <string name="settings_billing_vo_plan_appsumo">Бессрочный AppSumo Pro · уровень %1$d</string>
-    <string name="settings_billing_vo_free_summary">Сообщения за последние %1$d дн. · загрузка файлов до %2$s в месяц</string>
+    <string name="settings_billing_vo_free_summary">Сообщения за последние %1$d дн. · загрузка файлов до %2$s в месяц, до %3$s на файл · 1 внешний канал</string>
     <string name="settings_billing_vo_pro_description">Для разработчиков и команд, которые масштабируют работу с агентами.</string>
     <string name="settings_billing_vo_founder_description">Неограниченный доступ на прежних условиях.</string>
     <string name="settings_billing_vo_partner_description">Партнёрский доступ для тестирования и спонсируемого использования.</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">Загрузка файлов в этом месяце</string>
     <string name="settings_billing_vo_uploads_used">Использовано %1$s из %2$s · сброс %3$s</string>
     <string name="settings_billing_vo_uploads_used_up">Лимит исчерпан · сброс %1$s</string>
+    <string name="settings_billing_vo_uploads_includes">Учитываются файлы, которые загружают люди и агенты, включая Artifacts.</string>
     <string name="settings_billing_vo_history">История сообщений</string>
     <string name="settings_billing_vo_history_value">Последние %1$d дн. Более ранние сообщения скрыты.</string>
     <string name="settings_billing_vo_members">Участники</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">Менять оплату и смотреть счета могут только владельцы сервера.</string>
     <string name="settings_billing_vo_past_due_body">Stripe не удалось списать оплату с карты этой подписки.</string>
     <string name="settings_billing_vo_ending_title">Pro действует до %1$s</string>
-    <string name="settings_billing_vo_ending_body">Затем сервер перейдёт на Free: сообщения старше %1$d дн. будут скрыты, а загружать файлы можно будет не больше %2$s в месяц.</string>
+    <string name="settings_billing_vo_ending_body">Затем сервер перейдёт на Free: сообщения старше %1$d дн. будут скрыты, загружать файлы можно будет не больше %2$s в месяц и до %3$s на файл, а переносить агентов между компьютерами будет нельзя.</string>
     <string name="settings_billing_vo_downgraded_title">Тариф понижен</string>
     <string name="settings_billing_vo_grace_expired_title">Льготный период истёк</string>
     <string name="settings_billing_vo_grace_remaining_one">До конца льготного периода остался %1$d день. Все ресурсы в пределах лимитов Free.</string>
@@ -4469,7 +4470,7 @@
     <string name="upgrade_dialog_pro_theme_title">Тема «Скучный серый» доступна в Pro</string>
     <string name="upgrade_dialog_pro_theme_hint">Переведите сервер %1$s на Pro, и тема «Скучный серый» станет доступна всем его участникам.</string>
     <string name="upgrade_dialog_general_title">Перевести сервер %1$s на Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю чата, загрузку файлов и внешние каналы.</string>
+    <string name="upgrade_dialog_general_hint">Pro снимает ограничения тарифа Free на историю сообщений, загрузку файлов и внешние каналы.</string>
     <string name="upgrade_dialog_external_limit_title">Больше каналов для людей вне сервера %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">Тариф Free включает 1 внешний канал, и у сервера %1$s он уже есть. На Pro сервер %1$s может открыть для людей извне столько каналов, сколько нужно.</string>
     <string name="upgrade_dialog_external_frozen_title">Вернуть возможность писать во внешних каналах</string>
@@ -4490,7 +4491,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">На тарифе Free может быть только 1 внешний канал. С %1$s сервер %2$s не сможет писать во внешних каналах.</string>
     <string name="upgrade_dialog_benefit_history_pro">Неограниченная история сообщений</string>
     <string name="upgrade_dialog_benefit_history_free">Free: последние 30 дней</string>
-    <string name="upgrade_dialog_benefit_files_pro">Без месячного лимита, до 200 МБ на файл</string>
+    <string name="upgrade_dialog_benefit_files_pro">Без месячного лимита загрузки, до 200 МБ на файл</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 МБ в месяц, до 50 МБ на файл</string>
     <string name="upgrade_dialog_benefit_joint_pro">Неограниченное число внешних каналов</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 внешний канал</string>

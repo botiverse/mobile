@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">創始成員版</string>
     <string name="settings_billing_vo_plan_partner">合作夥伴版</string>
     <string name="settings_billing_vo_plan_appsumo">AppSumo 終身 Pro · 第 %1$d 級</string>
-    <string name="settings_billing_vo_free_summary">可查看最近 %1$d 天的訊息 · 每月可上傳 %2$s 檔案</string>
+    <string name="settings_billing_vo_free_summary">可查看最近 %1$d 天的訊息 · 每月可上傳 %2$s 檔案，單一檔案 %3$s · 1 個外部頻道</string>
     <string name="settings_billing_vo_pro_description">適合擴大 Agent 協作規模的開發者與團隊。</string>
     <string name="settings_billing_vo_founder_description">沿用舊制的無限制使用權。</string>
     <string name="settings_billing_vo_partner_description">合作夥伴存取權限，供測試與贊助使用。</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">本月檔案上傳</string>
     <string name="settings_billing_vo_uploads_used">已用 %1$s / %2$s · %3$s 重設</string>
     <string name="settings_billing_vo_uploads_used_up">已用完 · %1$s重設</string>
+    <string name="settings_billing_vo_uploads_includes">成員和 Agent 上傳的檔案都會計入，包括 Artifact。</string>
     <string name="settings_billing_vo_history">訊息歷史記錄</string>
     <string name="settings_billing_vo_history_value">最近 %1$d 天。更早的訊息會被隱藏。</string>
     <string name="settings_billing_vo_members">成員</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">只有伺服器擁有者可以變更帳單或查看發票。</string>
     <string name="settings_billing_vo_past_due_body">Stripe 無法從此訂閱綁定的卡片扣款。</string>
     <string name="settings_billing_vo_ending_title">Pro 將於 %1$s 結束</string>
-    <string name="settings_billing_vo_ending_body">之後這個伺服器改為 Free：超過 %1$d 天的訊息會被隱藏，檔案上傳限制為每月 %2$s。</string>
+    <string name="settings_billing_vo_ending_body">之後這個伺服器改為免費版：超過 %1$d 天的訊息會被隱藏，檔案上傳限制為每月 %2$s、單一檔案 %3$s，也無法在電腦之間遷移 Agent。</string>
     <string name="settings_billing_vo_downgraded_title">方案已降級</string>
     <string name="settings_billing_vo_grace_expired_title">寬限期已結束</string>
     <string name="settings_billing_vo_grace_remaining_one">寬限期還剩 %1$d 天。所有資源都在免費額度內。</string>
@@ -4493,7 +4494,7 @@
     <string name="upgrade_dialog_pro_theme_title">無聊灰是 Pro 主題</string>
     <string name="upgrade_dialog_pro_theme_hint">升級 %1$s 後，所有成員都可以使用無聊灰主題。</string>
     <string name="upgrade_dialog_general_title">將 %1$s 升級到 Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro 會解除免費版在聊天記錄、檔案上傳和外部頻道上的限制。</string>
+    <string name="upgrade_dialog_general_hint">Pro 會解除免費版在訊息歷史記錄、檔案上傳和外部頻道上的限制。</string>
     <string name="upgrade_dialog_external_limit_title">與 %1$s 以外的人共享更多頻道</string>
     <string name="upgrade_dialog_external_limit_hint">免費版包含 1 個外部頻道，%1$s 已經有一個了。升級到 Pro 後，%1$s 需要多少就能共享多少。</string>
     <string name="upgrade_dialog_external_frozen_title">恢復在外部頻道中發言</string>

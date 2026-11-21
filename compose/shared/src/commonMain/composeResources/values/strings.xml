@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">Founder</string>
     <string name="settings_billing_vo_plan_partner">Partner</string>
     <string name="settings_billing_vo_plan_appsumo">AppSumo Lifetime Pro · Tier %1$d</string>
-    <string name="settings_billing_vo_free_summary">Messages from the last %1$d days · %2$s of file uploads a month</string>
+    <string name="settings_billing_vo_free_summary">Messages from the last %1$d days · %2$s of file uploads a month, %3$s per file · 1 external channel</string>
     <string name="settings_billing_vo_pro_description">For builders and teams scaling agent collaboration.</string>
     <string name="settings_billing_vo_founder_description">Grandfathered unlimited access.</string>
     <string name="settings_billing_vo_partner_description">Partner access for testing and sponsored use.</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">File uploads this month</string>
     <string name="settings_billing_vo_uploads_used">%1$s of %2$s used · resets %3$s</string>
     <string name="settings_billing_vo_uploads_used_up">Used up · resets %1$s</string>
+    <string name="settings_billing_vo_uploads_includes">Counts files people and agents upload, Artifacts included.</string>
     <string name="settings_billing_vo_history">Message history</string>
     <string name="settings_billing_vo_history_value">Last %1$d days. Older messages are hidden.</string>
     <string name="settings_billing_vo_members">Members</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">Only server owners can change billing or see invoices.</string>
     <string name="settings_billing_vo_past_due_body">Stripe couldn't charge the card on this subscription.</string>
     <string name="settings_billing_vo_ending_title">Pro ends on %1$s</string>
-    <string name="settings_billing_vo_ending_body">After that, this server moves to Free: messages older than %1$d days are hidden and file uploads are limited to %2$s a month.</string>
+    <string name="settings_billing_vo_ending_body">After that, this server moves to Free: messages older than %1$d days are hidden, file uploads are limited to %2$s a month and %3$s per file, and agents can't move between computers.</string>
     <string name="settings_billing_vo_downgraded_title">Plan Downgraded</string>
     <string name="settings_billing_vo_grace_expired_title">Grace Period Expired</string>
     <string name="settings_billing_vo_grace_remaining_one">%1$d day remaining in grace period. All resources are within free limits.</string>
@@ -4680,7 +4681,7 @@
     <string name="upgrade_dialog_pro_theme_title">Boring Gray is a Pro theme</string>
     <string name="upgrade_dialog_pro_theme_hint">Upgrade %1$s to Pro and everyone in it can use Boring Gray.</string>
     <string name="upgrade_dialog_general_title">Upgrade %1$s to Pro</string>
-    <string name="upgrade_dialog_general_hint">Pro lifts the Free limits on chat history, file uploads and external channels.</string>
+    <string name="upgrade_dialog_general_hint">Pro lifts the Free limits on message history, file uploads and external channels.</string>
     <string name="upgrade_dialog_external_limit_title">Share more channels outside %1$s</string>
     <string name="upgrade_dialog_external_limit_hint">Free includes 1 external channel, and %1$s already has one. On Pro, %1$s can share as many as it needs.</string>
     <string name="upgrade_dialog_external_frozen_title">Post in your external channels again</string>
@@ -4701,7 +4702,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">Free allows 1 external channel. From %1$s, %2$s can't post in its external channels.</string>
     <string name="upgrade_dialog_benefit_history_pro">Unlimited message history</string>
     <string name="upgrade_dialog_benefit_history_free">Free: Last 30 days</string>
-    <string name="upgrade_dialog_benefit_files_pro">No monthly limit, 200 MB per file</string>
+    <string name="upgrade_dialog_benefit_files_pro">No monthly upload limit, 200 MB per file</string>
     <string name="upgrade_dialog_benefit_files_free">Free: 100 MB a month, 50 MB per file</string>
     <string name="upgrade_dialog_benefit_joint_pro">Unlimited external channels</string>
     <string name="upgrade_dialog_benefit_joint_free">Free: 1 external channel</string>
