@@ -545,7 +545,7 @@ internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, Str
     val symbol = raftChannelKindGlyph(wireType).symbol
     return when {
         homeSymbol == RaftChannelKindGlyph.External.symbol -> homeSymbol
-        RaftChannelKindGlyph.fromSymbol(homeSymbol)?.isSlack == true -> homeSymbol
+        homeSymbol != null && RaftChannelKindGlyph.fromSymbol(homeSymbol)?.isSlack == true -> homeSymbol
         symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe -> homeSymbol
         else -> symbol
     }
