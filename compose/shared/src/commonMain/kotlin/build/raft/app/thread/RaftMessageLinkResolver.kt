@@ -112,11 +112,29 @@ internal class RaftMessageLinkResolver(
                             }
                             val parentChannelId = channelProbe.parentChannelId ?: return notFound("route_kind_mismatch")
                             val parentMessageId = channelProbe.parentMessageId ?: return notFound("route_kind_mismatch")
+                            // Probe the parent channel so `parentConversationKind` is server-confirmed
+                            // even when the parent is absent from Home's directory (archived channels,
+                            // Agent Lounges, or cold server switches).
+                            val parentResponse = request(serverId, path = "channels/$parentChannelId")
+                            val parentConversationKind =
+                                when (parentResponse.linkOutcome()) {
+                                    RaftLinkProbeOutcome.Found -> {
+                                        val parentProbe = parseRaftMessageLinkChannelProbe(parentResponse?.bodyText)
+                                        when {
+                                            parentProbe == null -> null
+                                            parentProbe.id != parentChannelId -> return notFound("channel_identity_mismatch")
+                                            else -> parentProbe.type.toParentConversationKind() ?: return notFound("route_kind_mismatch")
+                                        }
+                                    }
+                                    RaftLinkProbeOutcome.NotFound -> return notFound("parent_channel_${parentResponse?.code}")
+                                    RaftLinkProbeOutcome.Unavailable -> null
+                                }
                             threadRedirect =
                                 ThreadChannelRedirect(
                                     threadChannelId = channelProbe.id,
                                     parentChannelId = parentChannelId,
                                     parentMessageId = parentMessageId,
+                                    parentConversationKind = parentConversationKind,
                                 )
                             ConversationKind.Thread
                         }
@@ -134,7 +152,7 @@ internal class RaftMessageLinkResolver(
                     serverId = server.id,
                     link = link.redirectedToThread(redirect, messageId = null),
                     conversationKind = ConversationKind.Thread,
-                    parentConversationKind = null,
+                    parentConversationKind = redirect.parentConversationKind,
                     threadChannelId = redirect.threadChannelId,
                 )
             } else {
@@ -156,14 +174,20 @@ internal class RaftMessageLinkResolver(
                     // slock #15879: `/channel/<threadChannelId>?msg=<reply>` opens the thread on its
                     // parent conversation focused at the resolved reply.
                     redirect != null ->
-                        if (target != null && targetParentId != null && !raftMessageIdMatches(redirect.parentMessageId, targetParentId)) {
+                        if (
+                            target != null && (
+                                targetParentId == null ||
+                                    !raftMessageIdMatches(redirect.parentMessageId, targetParentId) ||
+                                    (target.channelId != null && target.channelId.value != redirect.parentChannelId)
+                                )
+                        ) {
                             notFound("thread_reply_mismatch")
                         } else {
                             open(
                                 serverId = server.id,
                                 link = link.redirectedToThread(redirect, messageId = lookedUp),
                                 conversationKind = ConversationKind.Thread,
-                                parentConversationKind = null,
+                                parentConversationKind = redirect.parentConversationKind,
                                 threadChannelId = target?.threadChannelId?.value?.takeIf(String::isNotBlank) ?: redirect.threadChannelId,
                             )
                         }
@@ -213,7 +237,7 @@ internal class RaftMessageLinkResolver(
                                 serverId = server.id,
                                 link = link.redirectedToThread(redirect, messageId = focusMessageId),
                                 conversationKind = ConversationKind.Thread,
-                                parentConversationKind = null,
+                                parentConversationKind = redirect.parentConversationKind,
                                 threadChannelId = redirect.threadChannelId,
                             )
                         } else {
@@ -227,7 +251,7 @@ internal class RaftMessageLinkResolver(
                             serverId = server.id,
                             link = link.redirectedToThread(redirect, messageId = redirect.parentMessageId),
                             conversationKind = ConversationKind.Thread,
-                            parentConversationKind = null,
+                            parentConversationKind = redirect.parentConversationKind,
                             threadChannelId = redirect.threadChannelId,
                         )
                     else -> notFound("message_${contextResponse?.code}")
@@ -240,7 +264,7 @@ internal class RaftMessageLinkResolver(
                         serverId = server.id,
                         link = link.redirectedToThread(redirect, messageId = focusMessageId),
                         conversationKind = ConversationKind.Thread,
-                        parentConversationKind = null,
+                        parentConversationKind = redirect.parentConversationKind,
                         threadChannelId = redirect.threadChannelId,
                     )
                 } else {
@@ -363,7 +387,16 @@ private data class ThreadChannelRedirect(
     val threadChannelId: String,
     val parentChannelId: String,
     val parentMessageId: String,
+    val parentConversationKind: ConversationKind?,
 )
+
+private fun String.toParentConversationKind(): ConversationKind? =
+    when (this) {
+        "dm" -> ConversationKind.DirectMessage
+        "joint" -> ConversationKind.Joint
+        "thread", RaftTaskConversationChannelKind -> null
+        else -> ConversationKind.Channel
+    }
 
 private fun RaftMessageLink.redirectedToThread(
     redirect: ThreadChannelRedirect,

@@ -5,11 +5,14 @@ import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftMessageContextPageRequest
 import build.raft.app.data.RaftMessageContextPageSink
 import build.raft.app.data.RaftNetworkClient
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedWindowNavigationCoordinator
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.WindowNavigationAction
 import build.raft.app.data.WindowNavigationIntent
 import build.raft.app.data.WindowNavigationReadiness
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ServerId
@@ -318,7 +321,11 @@ class RaftMessageLinkResolverTest {
             }
         val replyNetwork =
             FakeMessageLinkNetwork(
-                channel = HomeNetworkResponse(200, threadRow),
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                    ),
                 context = HomeNetworkResponse(200, contextBody(mid, channelId = threadChannelId)),
             )
         val replyOpen =
@@ -329,20 +336,25 @@ class RaftMessageLinkResolverTest {
                 )
             )
         assertEquals(threadChannelId, replyOpen.sourceIdentity.threadChannelId)
-        assertNull(replyOpen.sourceIdentity.parentConversationKind)
-        assertEquals(listOf(threadChannelId to "thread"), offered)
+        assertEquals(ConversationKind.Channel, replyOpen.sourceIdentity.parentConversationKind)
+        assertEquals(listOf<Pair<String?, String?>>(threadChannelId to "thread"), offered)
         val replyRequest = openThroughCoordinator(replyOpen)
         assertEquals(ConversationKind.Thread, replyRequest.conversationIdentity.kind)
         assertEquals(cid, replyRequest.conversationIdentity.threadParentChannelId())
         assertEquals(pid, replyRequest.conversationIdentity.threadParentMessageId())
         assertEquals(threadChannelId, replyRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(RaftThreadSurfaceKind.Channel, replyRequest.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(mid, replyRequest.anchorMessageId)
 
         // With 8-hex short reply id: expands to the full id from context lookup.
         val shortMid = mid.take(8)
         val shortNetwork =
             FakeMessageLinkNetwork(
-                channel = HomeNetworkResponse(200, threadRow),
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                    ),
                 context = HomeNetworkResponse(200, contextBody(mid, channelId = threadChannelId)),
             )
         val shortRequest =
@@ -355,21 +367,78 @@ class RaftMessageLinkResolverTest {
         assertEquals(pid, shortRequest.conversationIdentity.threadParentMessageId())
         assertEquals(mid, shortRequest.anchorMessageId)
 
-        // Without `?msg=`: opens the thread anchored on its parent message.
-        val bareNetwork = FakeMessageLinkNetwork(channel = HomeNetworkResponse(200, threadRow))
+        // Without `?msg=`: probes the thread and its parent channel, then opens anchored on parentMessageId.
+        val bareNetwork =
+            FakeMessageLinkNetwork(
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+                    )
+            )
         val bareOpen =
             assertIs<RaftMessageLinkResolution.Open>(
                 RaftMessageLinkResolver(bareNetwork).resolve(link(channelId = threadChannelId), servers)
             )
-        assertEquals(listOf("channels/$threadChannelId"), bareNetwork.requests.map { it.path })
+        assertEquals(listOf("channels/$threadChannelId", "channels/$cid"), bareNetwork.requests.map { it.path })
         val bareRequest = openThroughCoordinator(bareOpen)
         assertEquals(ConversationKind.Thread, bareRequest.conversationIdentity.kind)
         assertEquals(cid, bareRequest.conversationIdentity.threadParentChannelId())
         assertEquals(pid, bareRequest.conversationIdentity.threadParentMessageId())
         assertEquals(threadChannelId, bareRequest.conversationIdentity.thread?.streamChannelId?.value)
+        assertEquals(RaftThreadSurfaceKind.Channel, bareRequest.conversationIdentity.thread?.parentSurfaceKind)
         assertEquals(pid, bareRequest.anchorMessageId)
 
-        // When the parent is a DM in the conversation directory, the opened thread keeps DM parent surface kind.
+        // Parent probe confirms DM and Joint parent kinds even with an empty conversation directory
+        // (archived channels, Agent Lounges, or cold server switches).
+        val dmParentNetwork =
+            FakeMessageLinkNetwork(
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(200, channelBody(type = "dm", id = cid)),
+                    )
+            )
+        val dmParentOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(dmParentNetwork).resolve(link(channelId = threadChannelId), servers)
+            )
+        assertEquals(ConversationKind.DirectMessage, dmParentOpen.sourceIdentity.parentConversationKind)
+        val dmParentRequest = openThroughCoordinator(dmParentOpen)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+
+        val jointParentNetwork =
+            FakeMessageLinkNetwork(
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(200, channelBody(type = "joint", id = cid)),
+                    ),
+                context = HomeNetworkResponse(200, contextBody(mid, canonicalTarget = replyTarget(pid), channelId = threadChannelId)),
+            )
+        val jointParentOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(jointParentNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers)
+            )
+        assertEquals(ConversationKind.Joint, jointParentOpen.sourceIdentity.parentConversationKind)
+        val jointParentRequest = openThroughCoordinator(jointParentOpen)
+        assertEquals(RaftThreadSurfaceKind.Joint, jointParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+
+        // Transient parent-probe failure keeps `parentConversationKind = null` (never NotFound)
+        // and falls back to the Home conversation directory.
+        val transientParentNetwork =
+            FakeMessageLinkNetwork(
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(503, null),
+                    )
+            )
+        val transientParentOpen =
+            assertIs<RaftMessageLinkResolution.Open>(
+                RaftMessageLinkResolver(transientParentNetwork).resolve(link(channelId = threadChannelId), servers)
+            )
+        assertNull(transientParentOpen.sourceIdentity.parentConversationKind)
         val dmDirectory =
             listOf(
                 SharedConversationDirectoryProjection(
@@ -383,13 +452,18 @@ class RaftMessageLinkResolverTest {
                     permissions = ConversationPermissions(),
                 )
             ).toSharedConversationDirectoryState()
-        val dmParentRequest = openThroughCoordinator(bareOpen, conversationDirectory = dmDirectory)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, dmParentRequest.conversationIdentity.thread?.parentSurfaceKind)
+        val directoryFallbackRequest = openThroughCoordinator(transientParentOpen, conversationDirectory = dmDirectory)
+        assertEquals(RaftThreadSurfaceKind.DirectMessage, directoryFallbackRequest.conversationIdentity.thread?.parentSurfaceKind)
     }
 
     @Test
     fun threadChannelLinkEdgeCasesFollowWebAndResolverRules() = runTest {
         val threadRow = channelBody(type = "thread", id = threadChannelId, parentChannelId = cid, parentMessageId = pid)
+        val validChannels =
+            mapOf(
+                threadChannelId to HomeNetworkResponse(200, threadRow),
+                cid to HomeNetworkResponse(200, channelBody(type = "channel", id = cid)),
+            )
 
         // `?msg=` naming the thread's own parent message (full or 8-hex short): `messages/context`
         // scoped to threadChannelId 404s because the parent lives in parentChannelId, yet the
@@ -397,7 +471,7 @@ class RaftMessageLinkResolverTest {
         for (parentQuery in listOf(pid, pid.take(8))) {
             val parentMsgNetwork =
                 FakeMessageLinkNetwork(
-                    channel = HomeNetworkResponse(200, threadRow),
+                    channelsById = validChannels,
                     context = HomeNetworkResponse(404, """{"error":"Message not found"}"""),
                 )
             val request =
@@ -418,7 +492,7 @@ class RaftMessageLinkResolverTest {
         // Deleted / unrelated message in a readable thread stays NotFound.
         val missingMsgNetwork =
             FakeMessageLinkNetwork(
-                channel = HomeNetworkResponse(200, threadRow),
+                channelsById = validChannels,
                 context = HomeNetworkResponse(404, """{"error":"Message not found"}"""),
             )
         assertEquals(
@@ -426,10 +500,39 @@ class RaftMessageLinkResolverTest {
             RaftMessageLinkResolver(missingMsgNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers),
         )
 
+        // Mismatched canonicalTarget (different parentMessageId or parentChannelId) stays NotFound.
+        val wrongParentMsgNetwork =
+            FakeMessageLinkNetwork(
+                channelsById = validChannels,
+                context = HomeNetworkResponse(200, contextBody(mid, canonicalTarget = replyTarget("other-parent"), channelId = threadChannelId)),
+            )
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("thread_reply_mismatch"),
+            RaftMessageLinkResolver(wrongParentMsgNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers),
+        )
+        val wrongChannelMsgNetwork =
+            FakeMessageLinkNetwork(
+                channelsById = validChannels,
+                context =
+                    HomeNetworkResponse(
+                        200,
+                        contextBody(
+                            mid,
+                            canonicalTarget =
+                                """{"kind":"thread","channelId":"other-channel","messageId":"$mid","threadParentMessageId":"$pid","threadChannelId":"$threadChannelId"}""",
+                            channelId = threadChannelId,
+                        ),
+                    ),
+            )
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("thread_reply_mismatch"),
+            RaftMessageLinkResolver(wrongChannelMsgNetwork).resolve(link(channelId = threadChannelId, msg = mid), servers),
+        )
+
         // Reply behind the plan's history window still opens the thread on its paywall.
         val historyLimitedNetwork =
             FakeMessageLinkNetwork(
-                channel = HomeNetworkResponse(200, threadRow),
+                channelsById = validChannels,
                 context =
                     HomeNetworkResponse(
                         404,
@@ -450,7 +553,7 @@ class RaftMessageLinkResolverTest {
         // Transient context failure still opens the thread (never NotFound).
         val unavailableNetwork =
             FakeMessageLinkNetwork(
-                channel = HomeNetworkResponse(200, threadRow),
+                channelsById = validChannels,
                 context = HomeNetworkResponse(503, null),
             )
         val unavailableRequest =
@@ -463,6 +566,34 @@ class RaftMessageLinkResolverTest {
         assertEquals(cid, unavailableRequest.conversationIdentity.threadParentChannelId())
         assertEquals(pid, unavailableRequest.conversationIdentity.threadParentMessageId())
         assertEquals(mid, unavailableRequest.anchorMessageId)
+
+        // Parent channel that is another sub-conversation (`thread` / `task`) or 404 stays NotFound.
+        for (badParentType in listOf("thread", "task")) {
+            val nestedParentNetwork =
+                FakeMessageLinkNetwork(
+                    channelsById =
+                        mapOf(
+                            threadChannelId to HomeNetworkResponse(200, threadRow),
+                            cid to HomeNetworkResponse(200, channelBody(type = badParentType, id = cid)),
+                        )
+                )
+            assertEquals(
+                RaftMessageLinkResolution.NotFound("route_kind_mismatch"),
+                RaftMessageLinkResolver(nestedParentNetwork).resolve(link(channelId = threadChannelId), servers),
+            )
+        }
+        val missingParentChannel =
+            FakeMessageLinkNetwork(
+                channelsById =
+                    mapOf(
+                        threadChannelId to HomeNetworkResponse(200, threadRow),
+                        cid to HomeNetworkResponse(404, """{"error":"Channel not found"}"""),
+                    )
+            )
+        assertEquals(
+            RaftMessageLinkResolution.NotFound("parent_channel_404"),
+            RaftMessageLinkResolver(missingParentChannel).resolve(link(channelId = threadChannelId), servers),
+        )
 
         // `/dm/<threadId>`, nested `?thread=` on a thread channel id, and a thread row missing
         // parent ids (e.g. unprojected joint thread) all stay NotFound.
@@ -539,6 +670,7 @@ private data class RecordedMessageLinkRequest(
 
 private class FakeMessageLinkNetwork(
     private val channel: HomeNetworkResponse? = null,
+    private val channelsById: Map<String, HomeNetworkResponse> = emptyMap(),
     private val context: HomeNetworkResponse? = null,
     private val throwOnContext: Boolean = false,
     private val throwOnChannel: Boolean = false,
@@ -555,8 +687,13 @@ private class FakeMessageLinkNetwork(
     ): HomeNetworkResponse {
         requests += RecordedMessageLinkRequest(path, query, serverIdOverride, priority)
         return when {
-            path.startsWith("channels/") ->
-                if (throwOnChannel) error("timeout") else channel ?: HomeNetworkResponse(200, """{"id":"${path.removePrefix("channels/")}","name":"release-notes","type":"channel"}""")
+            path.startsWith("channels/") -> {
+                if (throwOnChannel) error("timeout")
+                val id = path.removePrefix("channels/")
+                channelsById[id]
+                    ?: channel
+                    ?: HomeNetworkResponse(200, """{"id":"$id","name":"release-notes","type":"channel"}""")
+            }
             path.startsWith("messages/context/") -> {
                 if (throwOnContext) error("socket closed")
                 context ?: HomeNetworkResponse(200, """{"channelId":null,"messages":[]}""")

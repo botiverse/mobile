@@ -4277,6 +4277,15 @@ internal class SharedThreadDataSource(
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
     ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
+        val replyParentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+        if (basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && focusedMessageId == replyParentMessageId) {
+            // The parent message lives in the parent channel, not the thread stream: requesting
+            // `messages/context/<parentMessageId>?channelId=<threadChannelId>` always 404s. Fall
+            // through to `resolveReplyParentMessageFromStore` + `getThread` while keeping focus.
+            return null
+        }
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(replyResolutionScope.provenance)
