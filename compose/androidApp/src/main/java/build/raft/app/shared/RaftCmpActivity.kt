@@ -224,6 +224,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import okhttp3.OkHttpClient
 import kotlin.math.max
@@ -237,6 +238,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -1902,8 +1904,12 @@ internal open class RaftCmpActivity :
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // The notification permission rides the push registration (osPermission): report the
-        // answer now, not at the next app start.
-        RaftNotificationPermissionReporter.report(applicationContext)
+        // answer now, not at the next app start, without running NotificationManager/SharedPrefs
+        // IPC on the main thread.
+        val appContext = applicationContext
+        lifecycleScope.launch(Dispatchers.IO) {
+            RaftNotificationPermissionReporter.report(appContext)
+        }
     }
 
     override fun onResume() {
@@ -4899,7 +4905,7 @@ internal class RaftBridgeModule(
         }
         val fragmentGroups = threadShareFragmentGroups(request.optString("fragments"))
         if (fragmentGroups.isNotEmpty()) {
-            onResult(stitchThreadShareFragments(fragmentGroups))
+            stitchAndSaveThreadShareFragmentsAsync(hostActivity, fragmentGroups, onResult)
             return
         }
         val requestedX = request.optDouble("x", 0.0).roundToInt()
@@ -4957,7 +4963,12 @@ internal class RaftBridgeModule(
                                 bitmap,
                                 { copyResult ->
                                     if (copyResult == PixelCopy.SUCCESS) {
-                                        onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+                                        saveThreadShareBitmapAsync(
+                                                hostActivity = hostActivity,
+                                                bitmap = bitmap,
+                                                frame = request.optBoolean("frame", true),
+                                                onResult = onResult
+                                        )
                                     } else {
                                         bitmap.recycle()
                                         onResult(
@@ -4985,7 +4996,12 @@ internal class RaftBridgeModule(
             canvas.translate(-left.toFloat(), -top.toFloat())
             container.draw(canvas)
         }.onSuccess {
-            onResult(saveThreadShareBitmap(bitmap, frame = request.optBoolean("frame", true)))
+            saveThreadShareBitmapAsync(
+                    hostActivity = hostActivity,
+                    bitmap = bitmap,
+                    frame = request.optBoolean("frame", true),
+                    onResult = onResult
+            )
         }.onFailure {
             bitmap.recycle()
             onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
@@ -4993,20 +5009,76 @@ internal class RaftBridgeModule(
     }
 
     /**
-     * One bitmap per selected message, its capture slices stacked in order; the share image frames
-     * each message on its own (see renderThreadShareImageBitmap).
+     * Decodes and stacks capture slices off the main thread, frames the message rows on the main
+     * thread (`renderThreadShareImageBitmap` uses Compose `TextMeasurer` / CMP-10613), then writes
+     * the PNG and cleans expired cache files off the main thread.
      */
-    private fun stitchThreadShareFragments(fragmentGroups: List<List<String>>): Map<String, Any> {
+    private fun stitchAndSaveThreadShareFragmentsAsync(
+            hostActivity: Activity,
+            fragmentGroups: List<List<String>>,
+            onResult: (Map<String, Any>) -> Unit
+    ) {
+        val scope = (hostActivity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+        if (!scope.isActive) {
+            onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+            return
+        }
+        scope.launch {
+            var decodedRows: List<Bitmap>? = null
+            var framedBitmap: Bitmap? = null
+            try {
+                withContext(Dispatchers.IO) {
+                    decodedRows = decodeAndStitchThreadShareRows(fragmentGroups)
+                }
+                val rows = decodedRows
+                if (rows == null) {
+                    onResult(mapOf("status" to "failed", "message" to "Unable to capture image"))
+                    return@launch
+                }
+                framedBitmap =
+                        try {
+                            runCatching { renderThreadShareImageBitmap(appContext, rows) }.getOrNull()
+                        } finally {
+                            rows.forEach { if (!it.isRecycled) it.recycle() }
+                            decodedRows = null
+                        }
+                val exportBitmap = framedBitmap
+                if (exportBitmap == null) {
+                    onResult(mapOf("status" to "failed", "message" to "Unable to frame image"))
+                    return@launch
+                }
+                val result =
+                        withContext(Dispatchers.IO) {
+                            writeThreadShareBitmap(exportBitmap, shareImage = true)
+                        }
+                framedBitmap = null
+                onResult(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                onResult(mapOf("status" to "failed", "message" to "Unable to write image"))
+            } finally {
+                decodedRows?.forEach { if (!it.isRecycled) it.recycle() }
+                framedBitmap?.let { if (!it.isRecycled) it.recycle() }
+            }
+        }
+    }
+
+    /**
+     * One bitmap per selected message, its capture slices stacked in order; the share image frames
+     * each message on its own (see renderThreadShareImageBitmap). Runs on `Dispatchers.IO`.
+     */
+    private fun decodeAndStitchThreadShareRows(fragmentGroups: List<List<String>>): List<Bitmap>? {
         val rows = mutableListOf<Bitmap>()
-        fun recycleRows() = rows.forEach { it.recycle() }
+        fun recycleRows() = rows.forEach { if (!it.isRecycled) it.recycle() }
         for (group in fragmentGroups) {
             val fragments = mutableListOf<Bitmap>()
             for (path in group) {
                 val fragment = runCatching { BitmapFactory.decodeFile(path) }.getOrNull()
                 if (fragment == null) {
-                    fragments.forEach { it.recycle() }
+                    fragments.forEach { if (!it.isRecycled) it.recycle() }
                     recycleRows()
-                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                    return null
                 }
                 fragments += fragment
             }
@@ -5025,58 +5097,92 @@ internal class RaftBridgeModule(
                                     top += fragment.height
                                 }
                             }
-                        }.also { fragments.forEach { it.recycle() } }
+                        }.also { fragments.forEach { if (!it.isRecycled) it.recycle() } }
                                 .getOrElse {
                                     recycleRows()
-                                    return mapOf("status" to "failed", "message" to "Unable to capture image")
+                                    return null
                                 }
                     }
             rows += row
         }
-        if (rows.isEmpty()) {
-            return mapOf("status" to "failed", "message" to "Unable to capture image")
-        }
-        return saveThreadShareRows(rows)
+        return rows.takeIf { it.isNotEmpty() }
     }
 
-    /** Frames [rows] (one per message) as the share image and saves it; recycles [rows]. */
-    private fun saveThreadShareRows(rows: List<Bitmap>): Map<String, Any> {
-        val framed = runCatching { renderThreadShareImageBitmap(appContext, rows) }.getOrNull()
-        rows.forEach { it.recycle() }
-        if (framed == null) {
-            return mapOf("status" to "failed", "message" to "Unable to frame image")
+    /**
+     * Frames [bitmap] on the main thread when [frame] is true (`renderThreadShareImageBitmap` uses
+     * Compose `TextMeasurer` / CMP-10613), then encodes PNG-100 and writes to disk on
+     * `Dispatchers.IO`. Always recycles [bitmap] and any intermediate framed bitmap.
+     */
+    private fun saveThreadShareBitmapAsync(
+            hostActivity: Activity,
+            bitmap: Bitmap,
+            frame: Boolean,
+            onResult: (Map<String, Any>) -> Unit
+    ) {
+        val exportBitmap =
+                if (frame) {
+                    // One capture of the whole selection: it is the share image's only row.
+                    val framed =
+                            try {
+                                runCatching { renderThreadShareImageBitmap(appContext, listOf(bitmap)) }.getOrNull()
+                            } finally {
+                                if (!bitmap.isRecycled) bitmap.recycle()
+                            }
+                    if (framed == null) {
+                        onResult(mapOf("status" to "failed", "message" to "Unable to frame image"))
+                        return
+                    }
+                    framed
+                } else {
+                    bitmap
+                }
+        val scope = (hostActivity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+        if (!scope.isActive) {
+            if (!exportBitmap.isRecycled) exportBitmap.recycle()
+            onResult(mapOf("status" to "failed", "message" to "Thread view is not ready"))
+            return
         }
-        return writeThreadShareBitmap(framed, shareImage = true)
-    }
-
-    private fun saveThreadShareBitmap(bitmap: Bitmap, frame: Boolean): Map<String, Any> =
-            if (frame) {
-                // One capture of the whole selection: it is the share image's only row.
-                saveThreadShareRows(listOf(bitmap))
-            } else {
-                writeThreadShareBitmap(bitmap, shareImage = false)
+        scope.launch {
+            try {
+                val result =
+                        withContext(Dispatchers.IO) {
+                            writeThreadShareBitmap(exportBitmap, shareImage = frame)
+                        }
+                onResult(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                onResult(mapOf("status" to "failed", "message" to "Unable to write image"))
+            } finally {
+                if (!exportBitmap.isRecycled) exportBitmap.recycle()
             }
+        }
+    }
 
     /** Writes [exportBitmap] (recycled) to the share cache: a capture slice, or the [shareImage] itself. */
     private fun writeThreadShareBitmap(exportBitmap: Bitmap, shareImage: Boolean): Map<String, Any> {
-        val exportDir = threadShareImageCacheDir()
-        if (!exportDir.exists() && !exportDir.mkdirs()) {
-            exportBitmap.recycle()
-            return mapOf("status" to "failed", "message" to "Storage unavailable")
-        }
-        if (shareImage) {
-            cleanupThreadShareImageCache(exportDir)
-        }
-        val file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}-${System.nanoTime()}.png")
-        val saved =
-                runCatching {
-                    file.outputStream().use { output ->
-                        exportBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-                    }
-                }.getOrDefault(false)
         val exportWidth = exportBitmap.width
         val exportHeight = exportBitmap.height
-        exportBitmap.recycle()
+        val file: File
+        val saved: Boolean
+        try {
+            val exportDir = threadShareImageCacheDir()
+            if (!exportDir.exists() && !exportDir.mkdirs()) {
+                return mapOf("status" to "failed", "message" to "Storage unavailable")
+            }
+            if (shareImage) {
+                cleanupThreadShareImageCache(exportDir)
+            }
+            file = File(exportDir, "raft-message-share-${System.currentTimeMillis()}-${System.nanoTime()}.png")
+            saved =
+                    runCatching {
+                        file.outputStream().use { output ->
+                            exportBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                        }
+                    }.getOrDefault(false)
+        } finally {
+            if (!exportBitmap.isRecycled) exportBitmap.recycle()
+        }
         if (!saved || !file.exists() || file.length() <= 0L) {
             return mapOf("status" to "failed", "message" to "Unable to write image")
         }
@@ -5376,30 +5482,104 @@ internal class RaftBridgeModule(
             callback?.invoke(mapOf("status" to "started"))
             return
         }
+        val scope = (activity as? ComponentActivity)?.lifecycleScope ?: CoroutineScope(Dispatchers.Main)
+        when (action) {
+            "loadStorage" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { loadSettingsStorage() }
+                }
+                return
+            }
+            "clearStorage" -> {
+                val target = request.optString("target")
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { clearSettingsStorage(target) }
+                }
+                return
+            }
+            "loadAbout" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { loadSettingsAbout() }
+                }
+                return
+            }
+            "loadOpenSourceLicenses" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { loadOpenSourceLicenses() }
+                }
+                return
+            }
+            "loadDeveloper" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { loadSettingsDeveloper() }
+                }
+                return
+            }
+            "loadDiagnostics" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { loadSettingsDiagnostics() }
+                }
+                return
+            }
+            "copyDiagnostics" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    val summaryText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsSummaryText() }
+                    copyText("Raft diagnostics", summaryText)
+                    RaftAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
+                    mapOf("status" to "ok")
+                }
+                return
+            }
+            "shareDiagnostics" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    val summaryText = withContext(Dispatchers.IO) { buildSettingsDiagnosticsSummaryText() }
+                    shareText(subject = "Raft diagnostics", text = summaryText)
+                    RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
+                    mapOf("status" to "ok")
+                }
+                return
+            }
+            "clearDiagnostics" -> {
+                // clearLocalDiagnosticsFiles flushes 3 queues serially (up to 6 s) and deletes files.
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) {
+                        RaftAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
+                    }
+                    RaftAppLog.record("SlockDiagnostics", "shared_logs_cleared")
+                    mapOf("status" to "ok")
+                }
+                return
+            }
+            "getNotificationPermissionStatus" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { getNotificationPermissionStatusCapability() }
+                }
+                return
+            }
+            "requestNotificationPermission" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    requestNotificationPermissionCapability()
+                }
+                return
+            }
+            "sendTestNotification" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    sendTestNotificationCapability()
+                }
+                return
+            }
+            "postUnreadNotification" -> {
+                scope.launchSettingsBridgeAction(callback) {
+                    withContext(Dispatchers.IO) { postUnreadNotificationCapability(request) }
+                }
+                return
+            }
+        }
         val result =
                 runCatching {
-                    when (request.optString("action")) {
-                        "loadStorage" -> loadSettingsStorage()
-                        "clearStorage" -> clearSettingsStorage(request.optString("target"))
-                        "loadAbout" -> loadSettingsAbout()
-                        "loadOpenSourceLicenses" -> loadOpenSourceLicenses()
-                        "loadDeveloper" -> loadSettingsDeveloper()
+                    when (action) {
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
-                        "loadDiagnostics" -> loadSettingsDiagnostics()
                         "setDiagnosticFeatureFlagOverride" -> setDiagnosticFeatureFlagOverride(request)
-                        "copyDiagnostics" -> {
-                            copyText("Raft diagnostics", buildSettingsDiagnosticsSummaryText())
-                            RaftAppLog.record("SlockDiagnostics", "shared_copy_diagnostics")
-                            mapOf("status" to "ok")
-                        }
-                        "shareDiagnostics" -> {
-                            shareText(
-                                    subject = "Raft diagnostics",
-                                    text = buildSettingsDiagnosticsSummaryText()
-                            )
-                            RaftAppLog.record("SlockDiagnostics", "shared_share_diagnostics")
-                            mapOf("status" to "ok")
-                        }
                         // A message link's Share (the thread's link menu): the system share sheet with the address.
                         "shareText" -> {
                             val text = request.optString("text")
@@ -5410,25 +5590,16 @@ internal class RaftBridgeModule(
                                 mapOf("status" to "ok")
                             }
                         }
-                        "clearDiagnostics" -> {
-                            RaftAndroidLocalDiagnostics.clearLocalDiagnosticsFiles(appContext)
-                            RaftAppLog.record("SlockDiagnostics", "shared_logs_cleared")
-                            mapOf("status" to "ok")
-                        }
                         "prepareDiagnosticsFeedback" -> {
                             // Raft-channel upload flow retired: feedback goes to
                             // Hands via sendFeedback. A non-draft response skips
                             // the channel picker in the shared settings UI.
                             mapOf("status" to "unsupported")
                         }
-                        "getNotificationPermissionStatus" -> getNotificationPermissionStatusCapability()
-                        "requestNotificationPermission" -> requestNotificationPermissionCapability()
                         "openNotificationSettings" -> {
                             openNotificationSettingsCapability()
                             mapOf("status" to "ok")
                         }
-                        "sendTestNotification" -> sendTestNotificationCapability()
-                        "postUnreadNotification" -> postUnreadNotificationCapability(request)
                         "mobileOAuthLink" -> return startMobileOAuthLink(request, callback)
                         "appLoginPrepare" -> prepareAppLoginCapability()
                         "appLoginOpen" -> openAppLoginCapability(request)
@@ -5692,10 +5863,16 @@ internal class RaftBridgeModule(
     private fun Long.hostSizeLabel(): String =
             RaftFormat.bytes(this, RaftFormatLocale.forLanguageTag(RaftHostStrings.appLocaleLanguageTag()))
 
-    private fun requestNotificationPermissionCapability(): Map<String, Any> {
-        AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
-        if (hasNotificationPermission()) {
-            return if (NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+    private suspend fun requestNotificationPermissionCapability(): Map<String, Any> {
+        val (runtimeGranted, notificationsEnabled) =
+                withContext(Dispatchers.IO) {
+                    AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
+                    val granted = hasNotificationPermission()
+                    val enabled = if (granted) NotificationManagerCompat.from(appContext).areNotificationsEnabled() else false
+                    granted to enabled
+                }
+        if (runtimeGranted) {
+            return if (notificationsEnabled) {
                 mapOf("status" to "ok", "code" to "permission_granted")
             } else {
                 openNotificationSettingsCapability()
@@ -5739,66 +5916,69 @@ internal class RaftBridgeModule(
         return mapOf("status" to "ok", "code" to code, "message" to message)
     }
 
-    private fun sendTestNotificationCapability(): Map<String, Any> {
-        if (!hasNotificationPermission()) {
+    private suspend fun sendTestNotificationCapability(): Map<String, Any> {
+        val granted = withContext(Dispatchers.IO) { hasNotificationPermission() }
+        if (!granted) {
             return requestNotificationPermissionCapability()
         }
-        AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
-        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
-            return mapOf("status" to "error", "code" to "notifications_disabled")
+        return withContext(Dispatchers.IO) {
+            AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
+            if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+                return@withContext mapOf("status" to "error", "code" to "notifications_disabled")
+            }
+            if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)) {
+                return@withContext mapOf("status" to "error", "code" to "channel_blocked")
+            }
+            val notificationId = ((System.currentTimeMillis() % Int.MAX_VALUE).toInt()).coerceAtLeast(1)
+            val contentIntent =
+                    appContext.packageManager
+                            .getLaunchIntentForPackage(appContext.packageName)
+                            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            ?.putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
+                            ?.let { intent ->
+                                PendingIntent.getActivity(
+                                        appContext,
+                                        notificationId,
+                                        intent,
+                                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                                )
+                            }
+            runCatching {
+                        NotificationManagerCompat.from(appContext)
+                                .notify(
+                                        notificationId,
+                                        // The HIGH-importance mention channel is the one that
+                                        // heads-up pops on real devices; a test that lands
+                                        // silently in the shade reads as "nothing happened".
+                                        // It also makes channel_blocked feedback meaningful for
+                                        // the channel users actually care about.
+                                        NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
+                                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                                .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
+                                                .setContentText(appContext.getString(R.string.settings_notification_test_text))
+                                                .setStyle(
+                                                        NotificationCompat.BigTextStyle()
+                                                                .bigText(appContext.getString(R.string.settings_notification_test_text))
+                                                )
+                                                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                                                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                                                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                                                .setWhen(System.currentTimeMillis())
+                                                .setShowWhen(true)
+                                                .setContentIntent(contentIntent)
+                                                .setAutoCancel(true)
+                                                .build()
+                                )
+                        mapOf("status" to "ok", "code" to "posted", "notificationId" to notificationId)
+                    }
+                    .getOrElse { error ->
+                        mapOf(
+                                "status" to "error",
+                                "code" to "post_failed",
+                                "message" to (error.message ?: error.javaClass.simpleName)
+                        )
+                    }
         }
-        if (AndroidUnreadNotificationPoster.isNotificationChannelBlocked(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)) {
-            return mapOf("status" to "error", "code" to "channel_blocked")
-        }
-        val notificationId = ((System.currentTimeMillis() % Int.MAX_VALUE).toInt()).coerceAtLeast(1)
-        val contentIntent =
-                appContext.packageManager
-                        .getLaunchIntentForPackage(appContext.packageName)
-                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        ?.putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
-                        ?.let { intent ->
-                            PendingIntent.getActivity(
-                                    appContext,
-                                    notificationId,
-                                    intent,
-                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-                        }
-        return runCatching {
-                    NotificationManagerCompat.from(appContext)
-                            .notify(
-                                    notificationId,
-                                    // The HIGH-importance mention channel is the one that
-                                    // heads-up pops on real devices; a test that lands
-                                    // silently in the shade reads as "nothing happened".
-                                    // It also makes channel_blocked feedback meaningful for
-                                    // the channel users actually care about.
-                                    NotificationCompat.Builder(appContext, AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID)
-                                            .setSmallIcon(android.R.drawable.ic_dialog_info)
-                                            .setContentTitle(appContext.getString(R.string.settings_notification_test_title))
-                                            .setContentText(appContext.getString(R.string.settings_notification_test_text))
-                                            .setStyle(
-                                                    NotificationCompat.BigTextStyle()
-                                                            .bigText(appContext.getString(R.string.settings_notification_test_text))
-                                            )
-                                            .setPriority(NotificationCompat.PRIORITY_HIGH)
-                                            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-                                            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                                            .setWhen(System.currentTimeMillis())
-                                            .setShowWhen(true)
-                                            .setContentIntent(contentIntent)
-                                            .setAutoCancel(true)
-                                            .build()
-                            )
-                    mapOf("status" to "ok", "code" to "posted", "notificationId" to notificationId)
-                }
-                .getOrElse { error ->
-                    mapOf(
-                            "status" to "error",
-                            "code" to "post_failed",
-                            "message" to (error.message ?: error.javaClass.simpleName)
-                    )
-                }
     }
 
     private fun postUnreadNotificationCapability(request: JSONObject): Map<String, Any> =
@@ -5807,16 +5987,17 @@ internal class RaftBridgeModule(
     private fun hasNotificationPermission(): Boolean =
             AndroidUnreadNotificationPoster.hasNotificationPermission(appContext)
 
-    private fun requestPostNotificationsPermission(): Boolean {
+    private suspend fun requestPostNotificationsPermission(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         val hostActivity = activity ?: appContext as? Activity ?: return false
-        RaftNotificationPermissionReporter.markRequested(hostActivity)
-        hostActivity.runOnUiThread {
-            hostActivity.requestPermissions(
-                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                    REQUEST_NOTIFICATIONS_CODE
-            )
+        withContext(Dispatchers.IO) {
+            RaftNotificationPermissionReporter.markRequested(appContext)
         }
+        if (hostActivity.isFinishing || hostActivity.isDestroyed) return false
+        hostActivity.requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_NOTIFICATIONS_CODE
+        )
         RaftAppLog.record("SlockSettingsNotification", "permission_request_dialog_opened")
         return true
     }
@@ -6381,35 +6562,66 @@ internal class RaftBridgeModule(
                         .setAllowedOverRoaming(true)
                         .setMimeType(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
                         .setDestinationInExternalFilesDir(appContext, Environment.DIRECTORY_DOWNLOADS, fileName)
-        var downloadId = -1L
+        val downloadId = AtomicLong(-1L)
+        val handled = AtomicBoolean(false)
         val receiver =
                 object : BroadcastReceiver() {
                     override fun onReceive(context: Context, intent: Intent) {
                         val completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                        if (completedId != downloadId) return
-                        runCatching { appContext.unregisterReceiver(this) }
-                        val status = handsDownloadStatus(downloadManager, completedId)
-                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                            handsUpdateDownloads[key]?.completed = true
-                            RaftAppLog.record(
-                                    "SlockHandsUpdate",
-                                    "download_ready downloadId=$completedId latest=${latest.version_code}"
-                            )
-                            handsUpdateDownloads[key]?.let { download ->
-                                openHandsDownloadedApkOrRequestPermission(
-                                        context = appContext,
-                                        download = download,
-                                        source = "download_complete"
-                                )
+                        val expectedId = downloadId.get()
+                        if (expectedId < 0L || completedId != expectedId) return
+                        if (!handled.compareAndSet(false, true)) return
+                        val self = this
+                        val pendingResult = goAsync()
+                        val finished = AtomicBoolean(false)
+                        fun finishOnce() {
+                            if (finished.compareAndSet(false, true)) {
+                                runCatching { pendingResult?.finish() }
                             }
-                        } else {
-                            handsUpdateDownloads[key]?.failed = true
-                            RaftAppLog.record(
-                                    "SlockHandsUpdate",
-                                    "download_failed downloadId=$completedId status=$status"
-                            )
                         }
-                        emitHandsUpdateStatusEvent()
+                        try {
+                            handsDownloadCompleteScope.launch {
+                                try {
+                                    runCatching { appContext.unregisterReceiver(self) }
+                                    val status = handsDownloadStatus(downloadManager, completedId)
+                                    if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                                        handsUpdateDownloads[key]?.completed = true
+                                        RaftAppLog.record(
+                                                "SlockHandsUpdate",
+                                                "download_ready downloadId=$completedId latest=${latest.version_code}"
+                                        )
+                                        handsUpdateDownloads[key]?.let { download ->
+                                            openHandsDownloadedApkOrRequestPermissionAsync(
+                                                    context = appContext,
+                                                    download = download,
+                                                    source = "download_complete"
+                                            )
+                                        }
+                                    } else {
+                                        handsUpdateDownloads[key]?.failed = true
+                                        RaftAppLog.record(
+                                                "SlockHandsUpdate",
+                                                "download_failed downloadId=$completedId status=$status"
+                                        )
+                                    }
+                                    emitHandsUpdateStatusEvent()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (throwable: Throwable) {
+                                    handsUpdateDownloads[key]?.failed = true
+                                    RaftAppLog.record(
+                                            "SlockHandsUpdate",
+                                            "download_complete_failed downloadId=$completedId error=${throwable.javaClass.simpleName}"
+                                    )
+                                    runCatching { emitHandsUpdateStatusEvent() }
+                                } finally {
+                                    finishOnce()
+                                }
+                            }
+                        } catch (throwable: Throwable) {
+                            finishOnce()
+                            throw throwable
+                        }
                     }
                 }
         ContextCompat.registerReceiver(
@@ -6419,18 +6631,22 @@ internal class RaftBridgeModule(
                 ContextCompat.RECEIVER_EXPORTED
         )
         try {
-            downloadId = downloadManager.enqueue(request)
-            return HandsUpdateDownload(
-                    key = key,
-                    versionCode = latest.version_code,
-                    downloadId = downloadId,
-                    fileName = fileName,
-                    downloadUrl = downloadUrl,
-                    arch = arch.orEmpty(),
-                    downloadManager = downloadManager
-            ).also { download ->
-                handsUpdateDownloads[key] = download
-            }
+            val enqueuedId = downloadManager.enqueue(request)
+            val download =
+                    HandsUpdateDownload(
+                            key = key,
+                            versionCode = latest.version_code,
+                            downloadId = enqueuedId,
+                            fileName = fileName,
+                            downloadUrl = downloadUrl,
+                            arch = arch.orEmpty(),
+                            downloadManager = downloadManager
+                    )
+            // Register before publishing downloadId so an immediate ACTION_DOWNLOAD_COMPLETE broadcast
+            // always finds the tracked entry.
+            handsUpdateDownloads[key] = download
+            downloadId.set(enqueuedId)
+            return download
         } catch (error: Throwable) {
             runCatching { appContext.unregisterReceiver(receiver) }
             throw error
@@ -8957,6 +9173,7 @@ internal class RaftBridgeModule(
         internal fun isSynchronousMethod(method: String): Boolean = method in synchronousMethods
         private val handsUpdateDownloads = ConcurrentHashMap<String, HandsUpdateDownload>()
         private val handsUpdateDownloadLock = Any()
+        private val handsDownloadCompleteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val alphaHandsUpdateCallOwner = HandsDeltaUpdateCallOwner()
         @Volatile private var pendingHandsAutoInstallKey: String? = null
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
@@ -9144,30 +9361,103 @@ internal class RaftBridgeModule(
                     }
         }
 
-        private fun openDownloadedHandsApk(
+        /**
+         * Runs `canRequestPackageInstalls` and DownloadManager/FileProvider URI resolution on
+         * `Dispatchers.IO`, then starts the installer or unknown-sources settings Activity on
+         * `Dispatchers.Main`.
+         */
+        private suspend fun openHandsDownloadedApkOrRequestPermissionAsync(
+                context: Context,
+                download: HandsUpdateDownload,
+                source: String
+        ): String {
+            if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) return HANDS_INSTALL_FAILED
+            val canInstall =
+                    try {
+                        withContext(Dispatchers.IO) { canRequestPackageInstalls(context) }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Throwable) {
+                        RaftAppLog.record(
+                                "SlockHandsUpdate",
+                                "install_permission_check_failed downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
+                        )
+                        return HANDS_INSTALL_FAILED
+                    }
+            if (!canInstall) {
+                pendingHandsAutoInstallKey = download.key
+                withContext(Dispatchers.Main) {
+                    openUnknownAppSourcesSettings(context)
+                }
+                RaftAppLog.record(
+                        "SlockHandsUpdate",
+                        "install_permission_required source=$source key=${download.key} downloadId=${download.downloadId}"
+                )
+                return HANDS_INSTALL_PERMISSION_REQUIRED
+            }
+            pendingHandsAutoInstallKey = download.key
+            return try {
+                val installIntent =
+                        withContext(Dispatchers.IO) {
+                            buildDownloadedHandsApkInstallIntent(
+                                    context = context,
+                                    downloadManager = download.downloadManager,
+                                    downloadId = download.downloadId,
+                                    fileName = download.fileName
+                            )
+                        }
+                withContext(Dispatchers.Main) {
+                    context.startActivity(installIntent)
+                }
+                RaftAppLog.record(
+                        "SlockHandsUpdate",
+                        "install_intent_opened downloadId=${download.downloadId} uriScheme=${installIntent.data?.scheme.orEmpty()}"
+                )
+                pendingHandsAutoInstallKey = null
+                HANDS_INSTALL_OPENED
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                RaftAppLog.record(
+                        "SlockHandsUpdate",
+                        "install_intent_failed source=$source key=${download.key} downloadId=${download.downloadId} error=${error.javaClass.simpleName}"
+                )
+                HANDS_INSTALL_FAILED
+            }
+        }
+
+        private fun buildDownloadedHandsApkInstallIntent(
                 context: Context,
                 downloadManager: DownloadManager,
                 downloadId: Long,
                 fileName: String
-        ) {
+        ): Intent {
             val downloadedUri =
                     downloadManager.getUriForDownloadedFile(downloadId)
                             ?: queryDownloadedHandsApkFile(downloadManager, downloadId)?.let { file ->
                                 FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                             }
                             ?: error("Downloaded APK URI unavailable")
-            val installIntent =
-                    Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                        setDataAndType(downloadedUri, ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
-                        clipData = ClipData.newUri(context.contentResolver, fileName, downloadedUri)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-                        putExtra(Intent.EXTRA_RETURN_RESULT, false)
-                    }
+            return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                setDataAndType(downloadedUri, ANDROID_PACKAGE_ARCHIVE_MIME_TYPE)
+                clipData = ClipData.newUri(context.contentResolver, fileName, downloadedUri)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                putExtra(Intent.EXTRA_RETURN_RESULT, false)
+            }
+        }
+
+        private fun openDownloadedHandsApk(
+                context: Context,
+                downloadManager: DownloadManager,
+                downloadId: Long,
+                fileName: String
+        ) {
+            val installIntent = buildDownloadedHandsApkInstallIntent(context, downloadManager, downloadId, fileName)
             context.startActivity(installIntent)
             RaftAppLog.record(
                     "SlockHandsUpdate",
-                    "install_intent_opened downloadId=$downloadId uriScheme=${downloadedUri.scheme.orEmpty()}"
+                    "install_intent_opened downloadId=$downloadId uriScheme=${installIntent.data?.scheme.orEmpty()}"
             )
         }
 

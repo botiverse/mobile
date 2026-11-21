@@ -47,32 +47,49 @@ import java.util.Date
 
 class SlockActivityWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        renderWidgetsFromCache(context, appWidgetManager, appWidgetIds)
-        refreshWidgets(context.applicationContext, appWidgetManager, appWidgetIds)
+        if (appWidgetIds.isEmpty()) return
+        val appContext = context.applicationContext
+        val widgetIds = appWidgetIds.copyOf()
+        RaftWidgetBroadcastAsync.launch(goAsync()) {
+            renderWidgetsFromCache(appContext, appWidgetManager, widgetIds)
+            refreshWidgetsOnIo(appContext, appWidgetManager, widgetIds)
+        }
     }
 
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        val cache = RaftWidgetCache(context)
-        val config = RaftWidgetServerConfigStore(context)
-        appWidgetIds.forEach { appWidgetId ->
-            cache.clear(appWidgetId)
-            config.clear(appWidgetId)
-        }
         super.onDeleted(context, appWidgetIds)
+        if (appWidgetIds.isEmpty()) return
+        val appContext = context.applicationContext
+        val deletedIds = appWidgetIds.copyOf()
+        RaftWidgetBroadcastAsync.launch(goAsync()) {
+            val cache = RaftWidgetCache(appContext)
+            val config = RaftWidgetServerConfigStore(appContext)
+            deletedIds.forEach { appWidgetId ->
+                cache.clear(appWidgetId)
+                config.clear(appWidgetId)
+            }
+        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_REFRESH) {
             val appContext = context.applicationContext
-            val appWidgetManager = AppWidgetManager.getInstance(appContext)
-            val appWidgetIds = intent.requestedWidgetIds(
-                appContext,
-                appWidgetManager,
-                SlockActivityWidgetProvider::class.java
-            )
-            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
-            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+            val requestedId =
+                intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            RaftWidgetBroadcastAsync.launch(goAsync()) {
+                val appWidgetManager = AppWidgetManager.getInstance(appContext)
+                val appWidgetIds =
+                    resolveWidgetIds(
+                        requestedId = requestedId,
+                        context = appContext,
+                        appWidgetManager = appWidgetManager,
+                        providerClass = SlockActivityWidgetProvider::class.java
+                    )
+                if (appWidgetIds.isEmpty()) return@launch
+                renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
+                refreshWidgetsOnIo(appContext, appWidgetManager, appWidgetIds)
+            }
         }
     }
 
@@ -84,10 +101,12 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
 
         fun refreshWidget(context: Context, appWidgetId: Int) {
             val appContext = context.applicationContext
-            val appWidgetManager = AppWidgetManager.getInstance(appContext)
             val appWidgetIds = intArrayOf(appWidgetId)
-            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
-            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+            scope.launch {
+                val appWidgetManager = AppWidgetManager.getInstance(appContext)
+                renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
+                refreshWidgetsOnIo(appContext, appWidgetManager, appWidgetIds)
+            }
         }
 
         fun refreshAllWidgets(context: Context) {
@@ -105,17 +124,6 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
                     appWidgetManager.updateAppWidget(widgetId, views)
                 }
                 refreshWidgetsOnIo(appContext, appWidgetManager, appWidgetIds)
-            }
-        }
-
-        private fun refreshWidgets(
-            context: Context,
-            appWidgetManager: AppWidgetManager,
-            appWidgetIds: IntArray
-        ) {
-            if (appWidgetIds.isEmpty()) return
-            scope.launch {
-                refreshWidgetsOnIo(context, appWidgetManager, appWidgetIds)
             }
         }
 
@@ -339,18 +347,17 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun Intent.requestedWidgetIds(
+        private fun resolveWidgetIds(
+            requestedId: Int,
             context: Context,
             appWidgetManager: AppWidgetManager,
             providerClass: Class<out AppWidgetProvider>
-        ): IntArray {
-            val requestedId = getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-            return if (requestedId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+        ): IntArray =
+            if (requestedId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                 intArrayOf(requestedId)
             } else {
                 appWidgetManager.getAppWidgetIds(ComponentName(context, providerClass))
             }
-        }
 
         private fun Int.displayCount(): String =
             if (this > 99) "99+" else this.coerceAtLeast(0).toString()

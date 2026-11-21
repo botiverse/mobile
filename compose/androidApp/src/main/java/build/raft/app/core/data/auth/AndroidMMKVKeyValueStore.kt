@@ -18,6 +18,11 @@ import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import com.tencent.mmkv.MMKV
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 
 class AndroidMMKVKeyValueStore(
@@ -169,16 +174,55 @@ internal object AndroidAppScopeMMKV {
         )
     }
 
-    private fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val keepAliveScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
+
+    /** Test seam: executes keep-alive service updates off the caller thread in serial order. */
+    @Volatile
+    internal var keepAliveRunner: (task: () -> Unit) -> Unit = { task ->
+        keepAliveScope.launch { runCatching(task) }
+    }
+
+    /** Test seam: receives the keep-alive action (`refresh`, `start`, `stop`) on the serial worker. */
+    @Volatile
+    internal var keepAliveActionExecutor: (Context, String) -> Unit = { appContext, action ->
+        when (action) {
+            "refresh" ->
+                AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
+                    appContext,
+                    source = "message_notifications_preference"
+                )
+            "start" -> AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
+            "stop" -> AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
+        }
+    }
+
+    internal fun resetKeepAliveRunnerForTest() {
+        keepAliveRunner = { task -> keepAliveScope.launch { runCatching(task) } }
+        keepAliveActionExecutor = { appContext, action ->
+            when (action) {
+                "refresh" ->
+                    AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
+                        appContext,
+                        source = "message_notifications_preference"
+                    )
+                "start" -> AndroidRealtimeKeepAliveController.start(appContext, source = "preference_enabled")
+                "stop" -> AndroidRealtimeKeepAliveController.stop(appContext, reason = "preference_disabled")
+            }
+        }
+    }
+
+    internal fun maybeUpdateForegroundKeepAlive(context: Context, mmapID: String?, key: String, value: String?) {
+        val appContext = context.applicationContext
         if (mmapID == RaftLocalPreferenceStore.KuiklyNamespace &&
             (key == NOTIFICATION_ENABLED_PREFERENCE_KEY ||
                 key == AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY))
         ) {
             // The no-Play-services background connection only runs while message notifications are on.
-            AndroidRealtimeKeepAliveController.refreshBackgroundConnectionService(
-                context.applicationContext,
-                source = "message_notifications_preference"
-            )
+            // Dispatch serially off the caller (often main) thread so PackageManager / NotificationManager /
+            // startForegroundService IPCs never run synchronously inside MMKV.encodeString.
+            keepAliveRunner { keepAliveActionExecutor(appContext, "refresh") }
             return
         }
         if (mmapID != RaftLocalPreferenceStore.KuiklyNamespace ||
@@ -189,11 +233,8 @@ internal object AndroidAppScopeMMKV {
         ) {
             return
         }
-        if (value == "true") {
-            AndroidRealtimeKeepAliveController.start(context.applicationContext, source = "preference_enabled")
-        } else {
-            AndroidRealtimeKeepAliveController.stop(context.applicationContext, reason = "preference_disabled")
-        }
+        val action = if (value == "true") "start" else "stop"
+        keepAliveRunner { keepAliveActionExecutor(appContext, action) }
     }
 }
 
