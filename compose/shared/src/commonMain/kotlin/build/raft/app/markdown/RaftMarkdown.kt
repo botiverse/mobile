@@ -563,59 +563,6 @@ private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTok
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
     }
 
-data class RaftMarkdownPreviewSample(
-    val title: String,
-    val body: String,
-    val description: String
-)
-
-object RaftMarkdownPreviewSamples {
-    val inlineTags =
-        RaftMarkdownPreviewSample(
-            title = "Inline tags",
-            description = "Channels, task references, and user mentions should render as clickable inline refs.",
-            body = "Please review #22 with @alice in #android-dev, then compare #382-#383."
-        )
-
-    val markdownBlocks =
-        RaftMarkdownPreviewSample(
-            title = "Markdown blocks",
-            description = "Lists, quotes, paragraphs, and inline code should keep normal markdown behavior.",
-            body =
-                """
-                **Markdown** body under the sender:
-
-                - lists stay left aligned
-                - `inline code #999` stays code, not a task chip
-                - tags like #283 and #android-dev become clickable inline refs
-
-                > quoted text remains inside the message column
-                """.trimIndent()
-        )
-
-    val codeFence =
-        RaftMarkdownPreviewSample(
-            title = "Code fence",
-            description = "Code fences should keep syntax highlighting and avoid inline tag replacement.",
-            body =
-                """
-                ```kotlin
-                val task = "#123 should stay code"
-                println(task)
-                ```
-                """.trimIndent()
-        )
-
-    val image =
-        RaftMarkdownPreviewSample(
-            title = "Image",
-            description = "Remote markdown images should render through the platform image pipeline.",
-            body = "![Raft preview](https://picsum.photos/seed/raft-markdown/480/240)"
-        )
-
-    val all = listOf(inlineTags, markdownBlocks, codeFence, image)
-}
-
 fun String.normalizeThreadMarkdownBody(): String {
     if (!contains("\\n") && !contains("\\r")) return this
 

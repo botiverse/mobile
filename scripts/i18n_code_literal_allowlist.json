@@ -455,46 +455,6 @@
       "reason": "home visual-fixture screen data; the enclosing *VisualScreen is called only from src/visualFixtures VisualFixturePages.kt and androidUnitTest screenshot tests"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Inline tags",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Channels, task references, and user mentions should render as clickable inline refs.",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Markdown blocks",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Lists, quotes, paragraphs, and inline code should keep normal markdown behavior.",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Code fence",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Code fences should keep syntax highlighting and avoid inline tag replacement.",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Image",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt",
-      "literal": "Remote markdown images should render through the platform image pipeline.",
-      "reason": "unreferenced markdown preview sample (RaftMarkdownPreviewSamples has no callers in app, tests or iOS)"
-    },
-    {
       "path": "compose/shared/src/commonMain/kotlin/build/raft/app/members/MembersAgentTabs.kt",
       "literal": "Inbox",
       "reason": "dead English fallback: agent permission scope table rendered via localizedLabel()/localizedDescription(), which map every entry of this private list to member_permission_* strings"
@@ -810,26 +770,6 @@
       "reason": "section title used as a skip sentinel: SharedSettingsServerContent drops sections titled \"Profile\" and renders its own localized profile card"
     },
     {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
-      "literal": "Local database",
-      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
-      "literal": "Image cache",
-      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
-      "literal": "Attachment staging",
-      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsStoragePage.kt",
-      "literal": "Temporary files and logs",
-      "reason": "settingsStorageSmokePayload is never referenced (dead smoke payload)"
-    },
-    {
       "path": "compose/shared/src/commonMain/kotlin/build/raft/app/shell/RaftChildPage.kt",
       "literal": "Child Page Host Smoke",
       "reason": "internal child-host smoke page, not a product surface"
@@ -858,12 +798,6 @@
       "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/SharedThreadMessageMapping.kt",
       "literal": "Task #$it",
       "reason": "model-only TaskSummary.title fallback for a projected reply parent; Message.task.title is never rendered (Message->RaftThreadMessageItem copies only task id/number/status/assignee)"
-    },
-    {
-      "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadComposerRoute.kt",
-      "literal": "Attachment",
-      "count": 2,
-      "reason": "dead code: private toThreadAttachmentPreviewPayload has no callers"
     },
     {
       "path": "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadMessageTranslation.kt",

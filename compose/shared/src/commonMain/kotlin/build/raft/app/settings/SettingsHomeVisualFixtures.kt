@@ -274,35 +274,6 @@ internal object SettingsVisualFixtureBridge {
 internal val settingsVisualFixtureValues: SettingsVisualFixtureValues
     get() = SettingsVisualFixtureBridge.values
 
-private val settingsPageVisualPayload: RaftSharedSettingsPayload
-    get() {
-        val fixture = settingsVisualFixtureValues
-        return RaftSharedSettingsPayload(
-            instanceId = "visual-settings-page",
-            title = "Account",
-            detail = "Profile, email, password, connected accounts",
-            heroIconName = RaftLucideIconName.User,
-            heroLabel = fixture.ownerDisplayName,
-            sections = listOf(
-                RaftSharedSettingsSection(
-                    title = "Profile",
-                    rows = listOf(
-                        RaftSharedSettingsRow("displayName", RaftLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = fixture.ownerDisplayName),
-                        RaftSharedSettingsRow("email", RaftLucideIconName.Mail, "Email", fixture.ownerEmail, status = "Verified"),
-                        RaftSharedSettingsRow("avatar", RaftLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
-                    )
-                ),
-                RaftSharedSettingsSection(
-                    title = "Session",
-                    rows = listOf(
-                        RaftSharedSettingsRow("password", RaftLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
-                        RaftSharedSettingsRow("logout", RaftLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
-                    )
-                )
-            )
-        )
-    }
-
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
     RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity),
