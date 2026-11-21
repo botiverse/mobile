@@ -4977,7 +4977,7 @@
     <string name="external_frozen_title">%1$s can't post in external channels right now</string>
     <string name="external_frozen_body_manager">Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.</string>
     <string name="external_frozen_body_member">Free allows 1 external channel. Ask an owner to upgrade.</string>
-    <string name="external_freeze_notice_ios">This server is on the Free plan and shares more than one channel outside it. From %1$s, it won\'t be able to post in them. Leave all but one of those channels to keep posting.</string>
+    <string name="external_freeze_notice_ios">This server is on the Free plan and shares more than one channel outside it. From %1$s, it won't be able to post in them. Leave all but one of those channels to keep posting.</string>
     <string name="external_frozen_body_ios_manager">Free allows 1 external channel. Leave the extra channels to post again.</string>
     <string name="external_frozen_body_ios_member">Free allows 1 external channel.</string>
     <string name="external_freeze_action_view_billing">View billing</string>
