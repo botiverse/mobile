@@ -911,6 +911,40 @@ test("#216 a later invalidation keeps the run binding and makes the verdict unkn
   }
 });
 
+test("#216 readRecordAcceptance: any record's acceptance, completed only where readRecord accepts a completed login; isLoginAcceptancePair: listed pairs only", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "acceptance-read-"));
+  const stamp = "11-21 10:00:00.000";
+  const pass = { ...BINDING, verdict: "pass", reason: "signed_in_as_expected" };
+  const write = (fields) => phase.writeRecord(dir, { mode: "password", status: "complete", login_end: stamp, reason: "x", ...fields }, RUN);
+  try {
+    assert.equal(phase.readRecordAcceptance(dir, RUN), null, "no record");
+    write({ acceptance: pass });
+    assert.deepEqual(phase.readRecordAcceptance(dir, RUN), { run: "4242:1", acceptance: pass, completed: true });
+    assert.equal(phase.readRecordAcceptance(dir, { ...RUN, GITHUB_RUN_ATTEMPT: "2" }).completed, false, "readRecord refuses another run's record");
+    phase.markUnknown(dir, "login-like surface on screen", RUN);
+    assert.deepEqual(phase.readRecordAcceptance(dir, RUN), { run: "4242:1", acceptance: { ...BINDING, verdict: "unknown", reason: "record_invalidated" }, completed: false });
+    // readRecord accepts a no-login record whatever it carries: that is no completed login.
+    write({ mode: "none", status: "no-login", login_end: null, acceptance: pass });
+    assert.deepEqual([phase.readRecord(dir, RUN).ok, phase.readRecordAcceptance(dir, RUN).completed], [true, false]);
+    for (const acceptance of [undefined, null, "pass", [pass]]) {
+      write({ acceptance });
+      assert.equal(phase.readRecordAcceptance(dir, RUN), null, JSON.stringify(acceptance));
+    }
+    fs.writeFileSync(path.join(dir, "login-record.json"), JSON.stringify({ contract: "qa-login-record/v0", run: "4242:1", acceptance: pass }));
+    assert.equal(phase.readRecordAcceptance(dir, RUN), null, "another contract");
+    // The one allowlist of the pairs a record can hold: every listed pair, nothing else.
+    for (const [verdict, reasons] of Object.entries(phase.LOGIN_ACCEPTANCE_REASONS)) {
+      for (const reason of reasons) assert.equal(phase.isLoginAcceptancePair(verdict, reason), true, `${verdict}/${reason}`);
+    }
+    for (const pair of [["pass", "user_mismatch"], ["fail", "signed_in_as_expected"], ["unknown", "record_missing"], [["pass"], "signed_in_as_expected"],
+      ["pass", ["signed_in_as_expected"]], ["constructor", "constructor"], ["__proto__", "user_mismatch"], [undefined, undefined]]) {
+      assert.equal(phase.isLoginAcceptancePair(...pair), false, JSON.stringify(pair));
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // ---- #216 --require-acceptance: the claimed case login-email-password makes the acceptance mandatory ----
 
 test("#216 --require-acceptance: no usable input ends unknown before any device call; without it the same input selects nothing", async () => {
