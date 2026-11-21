@@ -12,6 +12,14 @@
         "w": 1200,
         "h": 2400,
         "density": 2.0
+      },
+      {
+        "name": "wide",
+        "w": 1200,
+        "h": 2400,
+        "density": 2.0,
+        "optIn": true,
+        "sizeClass": "wide"
       }
     ],
     "locale": [
@@ -22,6 +30,136 @@
     ]
   },
   "cases": [
+    {
+      "id": "ds.app-rail.compact",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/AppRailCases.kt:141",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.app-rail.footer-toggle",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/AppRailCases.kt:91",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.app-rail.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/AppRailCases.kt:44",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.app-rail.tooltip",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/AppRailCases.kt:59",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
+      "id": "ds.choice-list.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:43",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1600
+      }
+    },
+    {
+      "id": "ds.choice-list.grouped",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:67",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1600
+      }
+    },
+    {
+      "id": "ds.choice-list.multiple",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoiceListCases.kt:95",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1600
+      }
+    },
+    {
+      "id": "ds.choice-picker.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoicePickerCases.kt:31",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1400
+      }
+    },
+    {
+      "id": "ds.choice-picker.grouped",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ChoicePickerCases.kt:76",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1400
+      }
+    },
+    {
+      "id": "ds.combobox.list",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ComboboxCases.kt:172",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.combobox.sheet",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ComboboxCases.kt:96",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1600
+      }
+    },
+    {
+      "id": "ds.combobox.trigger",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ComboboxCases.kt:61",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
     {
       "id": "ds.composer-drop-overlay.default",
       "kind": "component",
@@ -41,6 +179,23 @@
       "divergences": []
     },
     {
+      "id": "ds.desktop-scale.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/DesktopScaleCases.kt:44",
+      "fixture": null,
+      "axes": {
+        "viewport": [
+          "wide"
+        ],
+        "pointer": [
+          "fine",
+          "touch"
+        ]
+      },
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.empty-state.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/EmptyStateCases.kt:23",
@@ -48,6 +203,62 @@
       "axes": {},
       "parity": [],
       "divergences": []
+    },
+    {
+      "id": "ds.fit-toolbar.filters",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FitToolbarCases.kt:57",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.fit-toolbar.filters-end-view",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FitToolbarCases.kt:69",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.fit-toolbar.members",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FitToolbarCases.kt:40",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.fit-toolbar.members-fine",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FitToolbarCases.kt:47",
+      "fixture": null,
+      "axes": {
+        "viewport": [
+          "wide"
+        ],
+        "pointer": [
+          "fine"
+        ]
+      },
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.frame-insets.tooltip",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FrameInsetsCases.kt:30",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
     },
     {
       "id": "ds.message-attachment-card.gallery",
@@ -68,6 +279,37 @@
       "divergences": []
     },
     {
+      "id": "ds.message-reaction.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MessageReactionCases.kt:49",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.message-reaction.tooltip",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MessageReactionCases.kt:84",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
+      "id": "ds.message-replies.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MessageReactionCases.kt:109",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.mode-bar.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ModeBarCases.kt:36",
@@ -75,6 +317,84 @@
       "axes": {},
       "parity": [],
       "divergences": []
+    },
+    {
+      "id": "ds.pointer-density.controls",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:67",
+      "fixture": null,
+      "axes": {
+        "viewport": [
+          "wide"
+        ],
+        "pointer": [
+          "fine"
+        ]
+      },
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.pointer-density.heads",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:119",
+      "fixture": null,
+      "axes": {
+        "viewport": [
+          "wide"
+        ],
+        "pointer": [
+          "fine"
+        ]
+      },
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
+      "id": "ds.pointer-density.rail",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PointerDensityCases.kt:181",
+      "fixture": null,
+      "axes": {
+        "viewport": [
+          "wide"
+        ],
+        "pointer": [
+          "fine"
+        ]
+      },
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.preview-card.item",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PreviewCardCases.kt:84",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
+      "id": "ds.preview-card.open",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/PreviewCardCases.kt:60",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
     },
     {
       "id": "ds.pull-down-panel.default",
@@ -122,6 +442,23 @@
       "divergences": []
     },
     {
+      "id": "ds.sidebar-section.mouse",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/SidebarSectionMouseCases.kt:29",
+      "fixture": null,
+      "axes": {
+        "pointer": [
+          "fine"
+        ]
+      },
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
       "id": "ds.task-compact-list.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/TaskCompactListCases.kt:30",
@@ -140,6 +477,38 @@
       "divergences": []
     },
     {
+      "id": "ds.theme-decor.rail",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ThemeDecorCases.kt:106",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.theme-decor.top",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ThemeDecorCases.kt:60",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.theme-decor.top-actions",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ThemeDecorCases.kt:86",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "maxWidth": 1340,
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
+    },
+    {
       "id": "ds.timeline.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/TaskHeadComponentsCases.kt:89",
@@ -147,6 +516,19 @@
       "axes": {},
       "parity": [],
       "divergences": []
+    },
+    {
+      "id": "ds.toast-host.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/ToastHostCases.kt:36",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 2,
+        "frameIntervalMs": 0
+      }
     }
   ]
 }
