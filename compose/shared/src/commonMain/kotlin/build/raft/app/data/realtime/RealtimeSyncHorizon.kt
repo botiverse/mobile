@@ -43,6 +43,9 @@ object RealtimeSyncHorizon {
     const val SinceHorizonKey = "sinceHorizon"
     const val HorizonKey = "horizon"
 
+    /** `sync:resume:response` key: true when the late messages were too many to send (refetch instead). */
+    const val HorizonResetKey = "horizonReset"
+
     private const val Xid8Max = "18446744073709551615"
 
     /**

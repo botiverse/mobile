@@ -31,6 +31,7 @@ import build.raft.app.data.realtime.MessageSeqRecoveryPolicy
 import build.raft.app.data.realtime.MessageSeqRecoveryState
 import build.raft.app.data.realtime.MessageSeqRepairBatch
 import build.raft.app.data.realtime.PerReceiverStateVersionStore
+import build.raft.app.data.realtime.RaftRealtimeSessionHealth
 import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.refreshPixelAvatarsFromWeb
@@ -1973,6 +1974,8 @@ internal class RaftSharedStoreProvider private constructor(
             }
             processReadReceiptCoordinator().replayPendingReads()
         }
+        // #proj-mobile:#172: time the OS reports no network is offline_ms, not disconnected_ms.
+        RaftHostNetworkEvents(eventBus).addListener { signal -> RaftRealtimeSessionHealth.onHostNetwork(signal.online) }
         // Reads a previous process could not send. A session not restored yet keeps them for the
         // first realtime connect.
         threadSendScope.launch { processReadReceiptCoordinator().replayPendingReads() }
