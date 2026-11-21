@@ -1,5 +1,6 @@
 package build.raft.app
 
+import android.view.View
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
@@ -15,10 +16,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import build.raft.app.compat.json.JSONObject
@@ -65,10 +68,15 @@ class RaftTextFieldCaretStackMoveUiTest {
     private var attempt by mutableIntStateOf(0)
     private val requester = FocusRequester()
 
+    /** Fields that gained focus (the requests land: a failure then says what did not happen). */
+    private var focusGains = 0
+
     private fun ComposeUiTest.showChat(field: @Composable (FocusRequester) -> Unit): RaftPageStack {
         RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         val stack = RaftPageStack()
+        var composeView: View? = null
         setContent {
+            composeView = LocalView.current
             RaftMobilePageStackDisplay(stack) { page ->
                 if (page.args.pageName == CHAT) {
                     val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
@@ -82,6 +90,10 @@ class RaftTextFieldCaretStackMoveUiTest {
                 }
             }
         }
+        // A field shows its caret only in a focused window (BasicTextField: focused && window
+        // focused), and Robolectric's activity window never gains focus on its own
+        // (ThreadComposerImeCompositionTest).
+        runOnIdle { checkNotNull(composeView).rootView.dispatchWindowFocusChanged(true) }
         runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
         waitForIdle()
         return stack
@@ -91,7 +103,13 @@ class RaftTextFieldCaretStackMoveUiTest {
     @Composable
     private fun AppField(requester: FocusRequester) {
         CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
-            TextField(value = "", autoFocus = false, onValueChange = {}, focusRequester = requester)
+            TextField(
+                modifier = Modifier.onFocusChanged { if (it.isFocused) focusGains++ },
+                value = "",
+                autoFocus = false,
+                onValueChange = {},
+                focusRequester = requester,
+            )
         }
     }
 
@@ -101,7 +119,7 @@ class RaftTextFieldCaretStackMoveUiTest {
         BasicTextField(
             state = rememberTextFieldState(),
             cursorBrush = SolidColor(Color.Black),
-            modifier = Modifier.focusRequester(requester),
+            modifier = Modifier.focusRequester(requester).onFocusChanged { if (it.isFocused) focusGains++ },
         )
     }
 
@@ -146,12 +164,14 @@ class RaftTextFieldCaretStackMoveUiTest {
     fun aComposerFocusedAsItsPageIsCoveredDoesNotCrash() =
         runRobolectricComposeUiTest {
             focusDuringPush(showChat { AppField(it) })
+            assertTrue(focusGains > 0, "the field never took focus: the scan proved nothing")
         }
 
     @Test
     fun aComposerFocusedAsItsPageIsRevealedDoesNotCrash() =
         runRobolectricComposeUiTest {
             focusDuringPop(showChat { AppField(it) })
+            assertTrue(focusGains > 0, "the field never took focus: the scan proved nothing")
         }
 
     /**
@@ -168,6 +188,7 @@ class RaftTextFieldCaretStackMoveUiTest {
                 crash = runCatching { focusDuringPush(stack) }.exceptionOrNull()
             }
         }
+        assertTrue(focusGains > 0, "no field ever took focus: the scan cannot have shown a caret")
         val thrown = assertIs<IllegalStateException>(crash)
         assertEquals(
             "Cannot read CompositionLocal because the Modifier node is not currently attached.",
