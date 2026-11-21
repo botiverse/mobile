@@ -12,8 +12,11 @@ import build.raft.designsystem.theme.RaftTheme
 // Gallery helpers the screenshot tests each kept privately.
 
 @Composable
-internal fun Caption(text: String) {
-    RaftText(text = text, style = RaftTheme.typography.monoMeta, color = RaftTheme.colors.foregroundHint)
+internal fun Caption(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    RaftText(text = text, modifier = modifier, style = RaftTheme.typography.monoMeta, color = RaftTheme.colors.foregroundHint)
 }
 
 @Composable
