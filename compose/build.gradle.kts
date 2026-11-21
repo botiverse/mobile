@@ -222,6 +222,172 @@ if (raftComposeUiPatchOn) {
     }
 }
 
+// Detached-node crash on Android ("Cannot read CompositionLocal because the Modifier node is not
+// currently attached"): every configuration of every project that resolves
+// androidx.compose.foundation:foundation-android at the patch base version gets the patched AAR
+// instead (third_party/compose-foundation-1.12.1/README.md). Compose Multiplatform reaches it through
+// the root androidx.compose.foundation:foundation module's `available-at` redirect, and the androidx
+// Compose BOM constrains it; like a direct dependency, both are edges this rule rewrites. iOS and
+// desktop use the JetBrains foundation and never request this module. The versions and the AAR's
+// SHA-256 live in gradle.properties (raft.composeFoundationPatch.*);
+// scripts/ci/check_compose_foundation_patch_pin.py fails CI once composePlugin moves off the Compose
+// Multiplatform version the patch is for. `:verifyComposeFoundationPatch` (below) proves the rule
+// took effect and fails the build once foundation-android resolves to anything else.
+val raftComposeFoundationPatchReadme = "third_party/compose-foundation-1.12.1/README.md"
+val raftComposeFoundationPatchBase = providers.gradleProperty("raft.composeFoundationPatch.base").orNull
+val raftComposeFoundationPatchVersion = providers.gradleProperty("raft.composeFoundationPatch.version").orNull
+val raftComposeFoundationPatchOn = raftComposeFoundationPatchBase != null && raftComposeFoundationPatchVersion != null
+val raftComposeFoundationPatchGroup = "androidx.compose.foundation"
+val raftComposeFoundationPatchModule = "foundation-android"
+if (raftComposeFoundationPatchOn) {
+    allprojects {
+        configurations.configureEach {
+            resolutionStrategy.eachDependency {
+                if (requested.group == raftComposeFoundationPatchGroup &&
+                    requested.name == raftComposeFoundationPatchModule &&
+                    requested.version == raftComposeFoundationPatchBase
+                ) {
+                    useVersion(raftComposeFoundationPatchVersion!!)
+                    because("detached-node crash fix, see $raftComposeFoundationPatchReadme")
+                }
+            }
+        }
+    }
+}
+
+// Fails the build unless the Android runtime classpaths resolve the patched foundation AAR, byte for
+// byte. In :androidApp (each build type's runtime classpath: it holds every module's dependencies,
+// so it is what the APK and bundle contain; the connected tests' and the debug unit tests') and
+// :shared (debug, release, and its debug unit and connected tests', the Robolectric suite among them),
+// a `verifyComposeFoundationPatch` task resolves those classpaths and fails when:
+// - androidx.compose.foundation:foundation-android resolves at any version but
+//   raft.composeFoundationPatch.version: the patch is built from raft.composeFoundationPatch.base
+//   only, so a Compose upgrade has left it behind (re-make it for the new version, or remove the pin);
+// - debugRuntimeClasspath, releaseRuntimeClasspath or debugUnitTestRuntimeClasspath is missing or
+//   has no foundation-android at all;
+// - the AAR is not raft.composeFoundationPatch.sha256.foundation-android.
+// Every Android build of those projects runs it first (`preBuild` depends on it), so no APK, bundle
+// or unit test runs without the check. With the pin properties absent it only logs "pin off". CI
+// also runs `:verifyComposeFoundationPatch` explicitly in test.yml (Android gate),
+// android-release.yml and android-alpha.yml.
+tasks.register("verifyComposeFoundationPatch") {
+    group = "verification"
+    description = "Checks that Android builds resolve the patched Compose foundation AAR ($raftComposeFoundationPatchReadme)."
+    val pinOn = raftComposeFoundationPatchOn
+    doLast {
+        if (!pinOn) logger.lifecycle("verifyComposeFoundationPatch: pin off (no raft.composeFoundationPatch.* in gradle.properties)")
+    }
+}
+if (raftComposeFoundationPatchOn) {
+    val patchedVersion = raftComposeFoundationPatchVersion!!
+    val baseVersion = raftComposeFoundationPatchBase!!
+    val readme = raftComposeFoundationPatchReadme
+    val foundationGroup = raftComposeFoundationPatchGroup
+    val foundationModule = raftComposeFoundationPatchModule
+    val shaKey = "raft.composeFoundationPatch.sha256.$foundationModule"
+    val expectedSha256: String =
+        providers.gradleProperty(shaKey).orNull?.trim()?.lowercase()
+            ?.takeIf { Regex("[0-9a-f]{64}").matches(it) }
+            ?: throw GradleException(
+                "gradle.properties: $shaKey must be the 64-hex SHA-256 of $foundationModule-$patchedVersion.aar ($readme)"
+            )
+    // The Android runtime classpaths each project checks: every build type's (what the APKs and
+    // bundles contain), the connected tests', and the debug unit tests' (CI's Robolectric suite).
+    val androidClasspaths = mapOf(
+        ":androidApp" to Regex("(?!.*UnitTest).+RuntimeClasspath|debugUnitTestRuntimeClasspath"),
+        ":shared" to Regex("(debug|release)RuntimeClasspath|debug(UnitTest|AndroidTest)RuntimeClasspath"),
+    )
+    // Present in both projects; they must hold foundation-android (the app builds, the unit tests).
+    val requiredClasspaths = listOf("debugRuntimeClasspath", "releaseRuntimeClasspath", "debugUnitTestRuntimeClasspath")
+    fun aarSha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+    allprojects {
+        val projectPath = path
+        val classpathPattern = androidClasspaths[projectPath] ?: return@allprojects
+        val task = tasks.register("verifyComposeFoundationPatch") {
+            group = "verification"
+            description = "Checks this project's Android classpaths use the patched Compose foundation AAR ($readme)."
+            // Listed when the task runs: the Android plugin adds the variants' configurations after
+            // the build scripts are evaluated, and a script may realize this task before that.
+            val projectConfigurations = project.configurations
+            doLast {
+                val errors = mutableListOf<String>()
+                val classpaths = projectConfigurations.filter { it.isCanBeResolved && classpathPattern.matches(it.name) }
+                requiredClasspaths.filter { name -> classpaths.none { it.name == name } }.forEach { name ->
+                    errors += "$projectPath:$name not found among ${classpaths.map { it.name }}: the Android " +
+                        "plugin's configuration names changed; update this check."
+                }
+                classpaths.forEach { configuration ->
+                    val label = "$projectPath:${configuration.name}"
+                    val resolved = configuration.incoming.resolutionResult.allComponents
+                        .mapNotNull { it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+                        .filter { it.group == foundationGroup && it.module == foundationModule }
+                    resolved.filter { it.version != patchedVersion }.forEach {
+                        val why =
+                            if (it.version == baseVersion) {
+                                "The pin did not apply: a request or constraint for $baseVersion was not rewritten."
+                            } else {
+                                "The patch is built from $foundationModule $baseVersion only, so a Compose upgrade " +
+                                    "left it behind: re-make it for ${it.version} (a new third_party entry and -raft.N " +
+                                    "build) or remove the pin (raft.composeFoundationPatch.* and its wiring, 'When to " +
+                                    "remove' in $readme)."
+                            }
+                        errors += "$label resolved ${it.displayName}, not $patchedVersion. $why"
+                    }
+                    if (configuration.name in requiredClasspaths && resolved.isEmpty()) {
+                        errors += "$label has no $foundationGroup:$foundationModule at all."
+                    }
+                    // Only foundation-android's own files: nothing else is downloaded, and project
+                    // artifacts (task outputs not built yet) are never touched.
+                    var aars = 0
+                    configuration.incoming.artifactView {
+                        componentFilter {
+                            it is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                                it.group == foundationGroup && it.module == foundationModule
+                        }
+                    }.artifacts.artifacts.forEach { artifact ->
+                        val id = artifact.id.componentIdentifier as org.gradle.api.artifacts.component.ModuleComponentIdentifier
+                        if (id.version == patchedVersion && artifact.file.name.endsWith(".aar")) {
+                            aars++
+                            val actual = aarSha256(artifact.file)
+                            if (actual != expectedSha256) {
+                                errors += "$label: ${artifact.file.name} ($foundationModule $patchedVersion) has SHA-256 " +
+                                    "$actual, expected $expectedSha256 ($shaKey). The artifact repository served " +
+                                    "different bytes than the published patched build."
+                            }
+                        }
+                    }
+                    if (resolved.any { it.version == patchedVersion } && aars == 0) {
+                        errors += "$label resolved $foundationModule $patchedVersion but no .aar file for it."
+                    }
+                }
+                if (errors.isNotEmpty()) {
+                    throw GradleException(
+                        "Compose foundation patch check failed ($readme):\n" + errors.joinToString("\n") { "  - $it" }
+                    )
+                }
+                logger.lifecycle(
+                    "verifyComposeFoundationPatch $projectPath: ${classpaths.size} Android runtime classpaths use " +
+                        "$foundationModule $patchedVersion (AAR SHA-256 $expectedSha256)"
+                )
+            }
+        }
+        rootProject.tasks.named("verifyComposeFoundationPatch") { dependsOn(task) }
+        // Every Android build of this project (assemble, bundle, unit tests) runs the check first.
+        tasks.configureEach { if (name == "preBuild") dependsOn(task) }
+    }
+}
+
 // Task #32: per-test hang watchdog for JVM unit tests. A hung test must fail
 // loud and named (HANG DETECTED + thread dump + fork exit 73) instead of
 // burning the job timeout in silence. Config via Gradle JVM -D properties:

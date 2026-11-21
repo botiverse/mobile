@@ -154,7 +154,9 @@ jobs:
           if [ "${ALPHA_OPTIMIZED}" = "true" ]; then
             OPTIMIZED_ARGS=(-PraftAlphaOptimized=true)
           fi
+          # :verifyComposeFoundationPatch: the patched foundation AAR, byte for byte (compose/build.gradle.kts).
           ./gradlew \
+            :verifyComposeFoundationPatch \
             :shared:generateSqlDelightInterface \
             :androidApp:assembleAlpha \
             :androidApp:copyHandsNativeSymbols \
