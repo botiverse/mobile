@@ -74,7 +74,7 @@ class SharedTasksSummaryFactTest {
     @Test
     fun v2SummaryRowAndFullRowAtSameRevisionNeverConflictAndHydrateConversation() {
         val store = SharedTasksDataStore()
-        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(summaryV2Conversation)))
+        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(summaryV2Conversation), summaryCounts = emptyMap()))
         assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask(ServerA, fullV2Conversation))
 
         val hydrated = store.projection(ServerA, SharedTasksScope.Server).tasks.single()
@@ -90,7 +90,7 @@ class SharedTasksSummaryFactTest {
     @Test
     fun v2SummaryRowAtSameOrNewerRevisionPreservesAlreadyKnownConversation() {
         val store = SharedTasksDataStore()
-        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(fullV2Conversation)))
+        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(fullV2Conversation), summaryCounts = emptyMap()))
         assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask(ServerA, summaryV2Conversation))
         val afterSameRev = store.projection(ServerA, SharedTasksScope.Server).tasks.single()
         assertEquals(ChannelId("conv-22"), afterSameRev.conversationChannelId)
@@ -118,7 +118,7 @@ class SharedTasksSummaryFactTest {
                 conversationAnchored = false,
                 conversationDetailsLoaded = true,
             )
-        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(preV2Full)))
+        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(preV2Full), summaryCounts = emptyMap()))
         val newerPreV2Summary =
             task("t-prev2", revision = 5, status = TaskStatus.InProgress, creator = creatorAda).copy(
                 messageId = MessageId("t-prev2"),
@@ -143,7 +143,7 @@ class SharedTasksSummaryFactTest {
                 conversationAnchored = true,
                 conversationDetailsLoaded = true,
             )
-        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(v2PendingFull)))
+        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(v2PendingFull), summaryCounts = emptyMap()))
         val newerV2Summary =
             task("t-v2pend", revision = 5, status = TaskStatus.InProgress, creator = creatorAda).copy(
                 messageId = MessageId("t-v2pend"),
@@ -163,8 +163,8 @@ class SharedTasksSummaryFactTest {
     @Test
     fun taskReferenceResolverFetchesFullRowWhenServerOrChannelCacheOnlyHoldsSummaryRow() = runTest {
         val store = SharedTasksDataStore(currentServerIdProvider = { ServerA })
-        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(summaryV2Conversation)))
-        store.publishSnapshot(ServerA, SharedTasksScope.Channel(ChannelId("c1")), TaskSnapshot(tasks = listOf(summaryV2Conversation)))
+        store.publishSnapshot(ServerA, SharedTasksScope.Server, TaskSnapshot(tasks = listOf(summaryV2Conversation), summaryCounts = emptyMap()))
+        store.publishSnapshot(ServerA, SharedTasksScope.Channel(ChannelId("c1")), TaskSnapshot(tasks = listOf(summaryV2Conversation), summaryCounts = emptyMap()))
         var fetches = 0
         val api =
             object : RaftTasksApi {
