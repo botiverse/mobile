@@ -590,6 +590,8 @@ class SocketIoRealtimeClient(
     private fun requestCatchUp(capturedContext: RealtimeSocketConnectionContext, reason: String) {
         val serverId = capturedContext.serverId
         logger("realtime_catch_up_request serverId=${serverId.value} reason=$reason")
+        // mobile.realtime.session_health: a reconnect that could not replay its gap fell back to a refetch.
+        RaftRealtimeSessionHealth.onResumeOutcome(serverId.value, ok = false)
         dispatch(
             RealtimeRefreshRequired(
                 scope = RealtimeRefreshScope.Home,

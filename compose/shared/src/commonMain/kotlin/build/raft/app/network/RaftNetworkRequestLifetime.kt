@@ -331,6 +331,8 @@ internal object RaftProcessNetworkRequestLifetime {
 fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int {
     // Task #164: stale unread / Activity reads recover only in the foreground, and at once on return.
     build.raft.app.data.RaftStaleReadRecoverySignals.onProcessVisibility(foreground)
+    // #proj-mobile:#172: mobile.realtime.session_health measures foreground time only.
+    build.raft.app.data.realtime.RaftRealtimeSessionHealth.onProcessVisibility(foreground)
     return RaftProcessNetworkRequestLifetime.coordinator
         .onProcessVisibilityChanged(foreground)
         .retiredRequestCount

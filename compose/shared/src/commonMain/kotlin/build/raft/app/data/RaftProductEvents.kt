@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RaftRealtimeSessionHealth
 import build.raft.app.model.ServerId
 import build.raft.app.network.platformRaftUserAgentDevice
 import kotlin.uuid.ExperimentalUuidApi
@@ -65,6 +66,8 @@ object RaftProductEvents {
     fun setSignedIn(serverId: String, userId: String? = null) {
         val normalized = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         recorder.client.setSignedIn(ServerId(normalized))
+        // Before the trace account moves: the last realtime health window is queued under its own account.
+        RaftRealtimeSessionHealth.onSignedIn(normalized, userId)
         RaftClientTraceEvents.onSignedIn(userId)
         RaftInstallSourceReport.onSignedIn(userId)
         RaftAppSettingsSnapshotReport.onSignedIn()
@@ -74,6 +77,7 @@ object RaftProductEvents {
         RaftInstallSourceReport.onSignedOut()
         RaftAppSettingsSnapshotReport.onSignedOut()
         recorder.client.setSignedOut()
+        RaftRealtimeSessionHealth.onSignedOut()
         RaftClientTraceEvents.onSignedOut()
     }
 

@@ -63,6 +63,7 @@ interface RaftKmpRealtimeAckCallback {
  *   [RaftKmpRealtimeSocketListener.onConnectError]).
  * - Events outside [allowedEvents] are logged and counted by the client, never delivered silently.
  * - Reconnects itself (backoff with jitter); [kick] retries now (foreground, network back).
+ * - Its connection health feeds `mobile.realtime.session_health` ([RaftRealtimeSocketHealthProbe]).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftKmpRealtimeSocket internal constructor(
@@ -77,6 +78,7 @@ class RaftKmpRealtimeSocket internal constructor(
     parentScope: CoroutineScope,
     dispatcher: CoroutineDispatcher,
     private val refreshWaitMillis: Long,
+    health: RaftRealtimeSocketHealthSink = RaftRealtimeSessionHealth,
 ) {
     /** Host constructor: production connector (Darwin on iOS, OkHttp on JVM) on its own serial thread. */
     constructor(
@@ -104,11 +106,12 @@ class RaftKmpRealtimeSocket internal constructor(
     @Volatile private var token: String = token
     @Volatile private var tokenUpdate: CompletableDeferred<String>? = null
     private val pendingIncomingAcks = linkedMapOf<Long, RaftSocketIncomingAck>()
+    private val healthProbe = RaftRealtimeSocketHealthProbe(serverId, health)
 
     private val client =
         RaftSocketIoClient(
             config = RaftSocketIoConfig(baseUrl = socketUrl),
-            connector = connector,
+            connector = healthProbe.connector(connector),
             parentScope = parentScope,
             dispatcher = dispatcher,
             logger = { listener.onLog(it) },
@@ -129,7 +132,7 @@ class RaftKmpRealtimeSocket internal constructor(
                     tokenUpdate = null
                     current.takeIf { it.isNotBlank() }?.let { raftHandshakeAuth(it, serverId, clientKind, capabilities) }
                 },
-                listener = Listener(),
+                listener = healthProbe.listener(Listener()),
                 allowedEvents = allowedEvents.toSet(),
             ),
         )

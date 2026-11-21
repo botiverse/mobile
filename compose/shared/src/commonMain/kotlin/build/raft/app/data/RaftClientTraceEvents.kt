@@ -743,7 +743,10 @@ object RaftClientTraceEvents {
         sender.emit(serverId, RaftStateTransitionTraceName, check.stateTransitionTraceAttrs())
     }
 
-    /** One sampled unit of work: its span and its events (`mobile.thread_open`, ThreadOpenTrace.kt). */
+    /**
+     * One unit of work: its span and its events (`mobile.thread_open`, ThreadOpenTrace.kt, sampled;
+     * `mobile.realtime.session_health`, RaftRealtimeSessionHealth.kt, every window).
+     */
     internal fun emitSpan(serverId: String, span: RaftWebSpanRecord, events: List<RaftWebEventRecord>) {
         sender.emitSpan(serverId, span, events)
     }
