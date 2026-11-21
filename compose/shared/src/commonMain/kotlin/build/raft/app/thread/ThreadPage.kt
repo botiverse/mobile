@@ -16,6 +16,7 @@ import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftRatingPrompt
+import build.raft.app.data.RaftAttachmentUploadAttempt
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
@@ -234,6 +235,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -5382,6 +5385,11 @@ private fun SharedThreadRouteContentContent(
         requireAllFiles: Boolean = false,
         replaceAttachmentIdsByLocalId: Map<String, String> = emptyMap()
     ): Boolean {
+        // slock.attachment.upload_finished: the clock of each upload starts as the picked files arrive.
+        val uploadPickedAt = TimeSource.Monotonic.markNow()
+        // ... and the event is filed under the server the upload started on, whatever the session
+        // says by the time it ends.
+        val uploadSessionServerId = latestCurrentSession?.currentServerId
         // Upload callbacks must retain the store-owned draft identity they were admitted under.
         // A route can remain mounted while the composer store transitions to another key; using
         // the key captured here makes every progress/success/failure publication fail closed.
@@ -5401,6 +5409,8 @@ private fun SharedThreadRouteContentContent(
             bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
             return false
         }
+        val uploadServerId =
+            directUploadOperation?.authority?.serverId?.takeIf { it.isNotBlank() } ?: uploadSessionServerId
         // Never await the capabilities request on the per-file pick path: on a weak network it
         // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
         // otherwise the background upload task resolves it after the chip is admitted.  The
@@ -5931,6 +5941,8 @@ private fun SharedThreadRouteContentContent(
                 } else {
                     newAttachmentUploadClientRequestId()
                 }
+            // 1 for the first upload of this picked file, 2 for its first Retry, ...
+            val uploadAttemptNumber = identity?.let { threadDirectUploadClientRequestIds.nextAttempt(it) } ?: 1
             val attemptToken =
                 draftUploads.launch(
                     draftKey = draftKey,
@@ -5941,6 +5953,16 @@ private fun SharedThreadRouteContentContent(
                     fun publishTerminalFailure(errorCode: String) {
                         draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode)
                     }
+                    // Where this attempt's time goes (RaftAttachmentUploadTelemetry.kt); the network
+                    // layer fills its recorder in through the coroutine context. Reported once.
+                    val uploadAttempt =
+                        RaftAttachmentUploadAttempt(
+                            serverId = uploadServerId,
+                            attempt = uploadAttemptNumber,
+                            pickedSizeBytes = file.sizeBytes,
+                            elapsedMs = { uploadPickedAt.elapsedNow().inWholeMilliseconds },
+                            log = { line -> bridge.log(line) },
+                        )
                     try {
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
@@ -5957,7 +5979,7 @@ private fun SharedThreadRouteContentContent(
                             }
                         }
                         val uploadResult =
-                            withContext(Dispatchers.Default) {
+                            withContext(Dispatchers.Default + uploadAttempt.recorder) {
                                 attachmentUploadSemaphore.withPermit {
                                     val resolvedUpload =
                                         when (
@@ -6058,8 +6080,13 @@ private fun SharedThreadRouteContentContent(
                                             )
                                         }
                                     }
+                                }.also { settled ->
+                                    // Inside the context: a scope cancelled as this returns cannot
+                                    // turn a finished upload into a cancelled one.
+                                    uploadAttempt.settle(settled)
                                 }
                             }
+                        uploadAttempt.report()
                         val published =
                             draftUploads.orchestrator.publishIfAccepted(
                                 localAttachmentId,
@@ -6128,12 +6155,16 @@ private fun SharedThreadRouteContentContent(
                         // The user removed this uploading tile; RemoveAttachment already hid it.
                         // A gallery caller still receives a false completion below, so its
                         // session cannot be committed as if cancellation were a transfer.
+                        // The event says `cancelled` only when this upload's own job was cancelled
+                        // (remove, draft sent or cleared, sign-out), not for a cancellation from below.
+                        uploadAttempt.reportCancellation(taskCancelled = !currentCoroutineContext().isActive)
                     } catch (error: Throwable) {
                         bridge.logWarn(
                             "thread_composer_attachment_upload_exception " +
                                 "attachmentId=$localAttachmentId " +
                                 "error=${error::class.simpleName.orEmpty()}"
                         )
+                        uploadAttempt.report(failureCode = "attachment_upload_failed")
                         publishTerminalFailure("attachment_upload_failed")
                     }
                 }

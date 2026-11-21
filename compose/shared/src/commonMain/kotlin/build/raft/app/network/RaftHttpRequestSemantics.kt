@@ -107,6 +107,15 @@ internal fun withRaftApiClientHeaders(headers: Map<String, String>): Map<String,
     withRaftClientVersion(withRaftClientPlatform(withRaftNetworkUserAgent(headers)))
 private const val RAFT_TRACEPARENT_HEADER = "traceparent"
 
+/** A W3C trace id (32 hex digits) and span id (16), neither all zero. */
+internal class RaftTraceIds(val traceId: String, val spanId: String) {
+    /** `traceparent` with the sampled flag, as every app API request sends it. */
+    val traceparent: String get() = "00-$traceId-$spanId-01"
+}
+
+internal fun newRaftTraceIds(randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }): RaftTraceIds =
+    RaftTraceIds(traceId = randomBytes(16).toNonZeroLowerHex(), spanId = randomBytes(8).toNonZeroLowerHex())
+
 internal fun raftTraceHeaders(
     headers: Map<String, String>,
     randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
@@ -115,13 +124,36 @@ internal fun raftTraceHeaders(
     val traceparentEntry = headers.entries.firstOrNull { it.key.equals(RAFT_TRACEPARENT_HEADER, true) }
     if (requestIdEntry != null && traceparentEntry != null) return headers
 
-    val traceId = randomBytes(16).toNonZeroLowerHex()
-    val spanId = randomBytes(8).toNonZeroLowerHex()
+    val ids = newRaftTraceIds(randomBytes)
     return buildMap {
         putAll(headers)
-        if (requestIdEntry == null) put(RAFT_REQUEST_ID_HEADER, "mobile-$traceId")
-        if (traceparentEntry == null) put(RAFT_TRACEPARENT_HEADER, "00-$traceId-$spanId-01")
+        if (requestIdEntry == null) put(RAFT_REQUEST_ID_HEADER, "mobile-${ids.traceId}")
+        if (traceparentEntry == null) put(RAFT_TRACEPARENT_HEADER, ids.traceparent)
     }
+}
+
+/**
+ * Headers of a presigned object-store PUT: the `x-request-id` the engine keys its connection facts
+ * by, and no `traceparent`. The storage host is a third party and no server span of ours answers it;
+ * the web's direct PUT sends none either (botiverse/slock `directAttachmentUpload.ts`).
+ */
+/** The trace id of a W3C `traceparent` header among [headers], for the request's log line. */
+internal fun Map<String, String>.raftSentTraceIdOrNull(): String? =
+    entries.firstOrNull { it.key.equals(RAFT_TRACEPARENT_HEADER, true) }
+        ?.value
+        ?.split('-')
+        ?.getOrNull(1)
+        ?.takeIf { id -> id.length == 32 && id.all { it in '0'..'9' || it in 'a'..'f' } }
+
+internal fun raftRequestIdHeaders(
+    headers: Map<String, String>,
+    randomBytes: (Int) -> ByteArray = { size -> Random.nextBytes(size) }
+): Map<String, String> {
+    // The session's PUT headers are Content-Type and If-None-Match only
+    // (requireValidAttachmentUploadPutHeaders); a traceparent from any other caller is dropped here.
+    val kept = headers.filterKeys { !it.equals(RAFT_TRACEPARENT_HEADER, true) }
+    if (kept.keys.any { it.equals(RAFT_REQUEST_ID_HEADER, true) }) return kept
+    return kept + (RAFT_REQUEST_ID_HEADER to "mobile-${randomBytes(16).toNonZeroLowerHex()}")
 }
 
 private fun ByteArray.toLowerHex(): String = joinToString(separator = "") { byte ->

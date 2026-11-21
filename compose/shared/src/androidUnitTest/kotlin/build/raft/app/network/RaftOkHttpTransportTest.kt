@@ -234,11 +234,12 @@ class RaftOkHttpTransportTest {
         assertEquals("image/jpeg", recorded.headers["Content-Type"])
         assertEquals(null, recorded.headers["Authorization"])
         // Nothing beyond what OkHttp / Ktor always send (Accept */*, Accept-Encoding, User-Agent, Connection)
-        // and the trace ids: no Authorization or other header that would break a SigV4 signature.
+        // and the request id: no Authorization or other header that would break a SigV4 signature, and
+        // no traceparent to the storage host (the web's direct PUT sends none).
         assertEquals(
             setOf(
                 "content-length", "content-type", "host", "connection", "accept", "accept-encoding", "user-agent",
-                "x-request-id", "traceparent",
+                "x-request-id",
             ),
             recorded.headers.names().map { it.lowercase() }.toSet()
         )
@@ -287,6 +288,192 @@ class RaftOkHttpTransportTest {
         assertTrue("name=\"channelId\"\r\n\r\nc1\r\n" in text)
         assertTrue("name=\"files\"; filename=\"85734.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n" in text)
         assertTrue(text.endsWith("--\r\n"))
+    }
+
+    /**
+     * `slock.attachment.upload_finished`: the real OkHttp EventListener times the body's send and the
+     * wait after its last byte, and the executor hands them up with the body size and the edge location.
+     */
+    @Test
+    fun uploadsReportBodySendTimeResponseWaitSizeAndEdgeLocation() = runBlocking {
+        val executor =
+            KtorRaftHttpExecutor(
+                clients = RaftOkHttpLanes(buildRaftBaseOkHttpClient()).ktorProvider(),
+                requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+                engineLabel = "ktor_okhttp",
+            )
+        val fileBytes = ByteArray(150 * 1024) { 9 }
+        server.enqueue(
+            MockResponse.Builder().code(200).addHeader("X-Amz-Cf-Pop", "NRT57-P2").body("""{"attachments":[{"id":"a1"}]}""").build()
+        )
+        server.enqueue(MockResponse.Builder().code(200).body("").build())
+
+        val legacy =
+            executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/api/attachments/upload").toString(),
+                fields = mapOf("channelId" to "c1"),
+                files = listOf(MultipartFile(name = "files", fileName = "85734.jpg", mimeType = "image/jpeg", bytes = fileBytes)),
+                headers = mapOf("Authorization" to "Bearer access-1"),
+            )
+        val direct =
+            executor.executeBytes(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/bucket/obj?X-Amz-Signature=ab").toString(),
+                method = "PUT",
+                headers = mapOf("Content-Type" to "image/jpeg"),
+                bodyBytes = fileBytes,
+            )
+
+        assertEquals(200, legacy.code, legacy.transportDiagnostics)
+        assertEquals(200, direct.code, direct.transportDiagnostics)
+        val post = server.takeRequest()
+        val put = server.takeRequest()
+        val legacyFacts = requireNotNull(legacy.uploadFacts) { "multipart upload facts" }
+        // The file's bytes; the body on the wire is longer by the multipart framing.
+        assertEquals(fileBytes.size.toLong(), legacyFacts.requestBytes)
+        assertTrue(post.headers["Content-Length"]!!.toLong() > fileBytes.size.toLong())
+        assertTrue(legacyFacts.requestBodyMs != null && legacyFacts.responseWaitMs != null, legacy.transportDiagnostics)
+        // The first call opened the connection: DNS + TCP (+ TLS) is reported, and it is not a failure.
+        assertTrue(legacyFacts.connectMs != null, legacy.transportDiagnostics)
+        assertEquals(null, legacyFacts.failureKind)
+        assertEquals(1, legacyFacts.sends)
+        assertEquals("NRT57-P2", legacyFacts.edgePop)
+        assertTrue(post.headers["traceparent"].orEmpty().startsWith("00-"))
+        val directFacts = requireNotNull(direct.uploadFacts) { "presigned PUT facts" }
+        assertEquals(fileBytes.size.toLong(), directFacts.requestBytes)
+        assertTrue(directFacts.requestBodyMs != null && directFacts.responseWaitMs != null, direct.transportDiagnostics)
+        assertEquals(null, directFacts.edgePop, "this answer did not pass CloudFront")
+        assertEquals(null, put.headers["traceparent"])
+    }
+
+    @Test
+    fun aMultipartBodySentAgainAfterAResetReportsTheLastSendAndCountsBoth() = runBlocking {
+        val executor =
+            KtorRaftHttpExecutor(
+                clients = RaftOkHttpLanes(buildRaftBaseOkHttpClient()).ktorProvider(),
+                requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+                engineLabel = "ktor_okhttp",
+            )
+        // The server takes the body, then drops the connection without answering; the next send is answered.
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
+        server.enqueue(MockResponse.Builder().code(200).body("""{"attachments":[{"id":"a1"}]}""").build())
+
+        val response =
+            executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/api/attachments/upload").toString(),
+                fields = mapOf("channelId" to "c1"),
+                files = listOf(MultipartFile(name = "files", fileName = "85734.jpg", mimeType = "image/jpeg", bytes = ByteArray(32 * 1024) { 7 })),
+                headers = emptyMap(),
+            )
+
+        assertEquals(200, response.code, response.transportDiagnostics)
+        assertEquals(2, server.requestCount)
+        val facts = requireNotNull(response.uploadFacts) { "facts of the second send" }
+        assertEquals(2, facts.sends)
+        assertEquals(null, facts.failureKind)
+        assertTrue(facts.requestBodyMs != null && facts.responseWaitMs != null, response.transportDiagnostics)
+    }
+
+    @Test
+    fun aPutTheServerNeverAnswersReportsItsBodyTimeAndABoundedErrorName() = runBlocking {
+        val executor =
+            KtorRaftHttpExecutor(
+                clients = RaftOkHttpLanes(buildRaftBaseOkHttpClient()).ktorProvider(),
+                requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+                engineLabel = "ktor_okhttp",
+            )
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
+        val url = server.url("/bucket/IMG_0042.jpg?X-Amz-Signature=ab").toString()
+
+        val response = executor.executeBytes(RaftRequestPriority.Foreground, url, "PUT", emptyMap(), ByteArray(32 * 1024))
+
+        assertEquals(0, response.code)
+        val facts = requireNotNull(response.uploadFacts) { "facts of a failed PUT" }
+        assertEquals(null, facts.responseWaitMs, "no answer, so no wait is reported")
+        assertTrue(facts.requestBodyMs != null || facts.requestBodyPartialMs != null, response.transportDiagnostics)
+        assertTrue(facts.failureKind != null)
+        // The exception's class from a fixed list; its message (which names the host and path) is not in it.
+        assertTrue(Regex("""^okhttp:[A-Za-z]+$""").matches(facts.transportError.orEmpty()), facts.transportError)
+        assertFalse("IMG_0042" in facts.toString() || "Signature" in facts.toString(), facts.toString())
+    }
+
+    /** The listener itself, event by event: what a call that ends mid-body or sends its body twice publishes. */
+    @Test
+    fun listenerPublishesConnectSetupAPartialBodyAndOnlyTheLastSend() {
+        fun listenerFor(requestId: String): Pair<okhttp3.Call, okhttp3.EventListener> {
+            val call =
+                OkHttpClient().newCall(
+                    okhttp3.Request.Builder().url("http://127.0.0.1:9/upload").header("x-request-id", requestId).build()
+                )
+            return call to RaftOkHttpTransportFacts.create(call)
+        }
+        val address = java.net.InetSocketAddress(InetAddress.getByName("127.0.0.1"), 9)
+
+        // A new connection, then the call is cancelled while the body is going out.
+        val (cancelledCall, cancelled) = listenerFor("mobile-test-cancelled")
+        cancelled.dnsStart(cancelledCall, "127.0.0.1")
+        cancelled.dnsEnd(cancelledCall, "127.0.0.1", listOf(address.address))
+        cancelled.connectStart(cancelledCall, address, java.net.Proxy.NO_PROXY)
+        cancelled.connectEnd(cancelledCall, address, java.net.Proxy.NO_PROXY, Protocol.HTTP_1_1)
+        cancelled.requestBodyStart(cancelledCall)
+        cancelled.canceled(cancelledCall)
+        val cancelledFacts = raftUploadWireFacts(10L, RaftOkHttpTransportFacts.take("mobile-test-cancelled"), edgePop = null)
+        assertTrue(cancelledFacts.connectMs != null, cancelledFacts.toString())
+        assertTrue(cancelledFacts.requestBodyPartialMs != null, cancelledFacts.toString())
+        assertEquals(null, cancelledFacts.requestBodyMs)
+        assertEquals(null, cancelledFacts.responseWaitMs)
+
+        // A reused connection whose body fails while being written.
+        val (failedCall, failed) = listenerFor("mobile-test-failed")
+        failed.requestBodyStart(failedCall)
+        failed.callFailed(failedCall, java.io.IOException("Broken pipe"))
+        val failedFacts = raftUploadWireFacts(10L, RaftOkHttpTransportFacts.take("mobile-test-failed"), edgePop = null)
+        assertEquals(null, failedFacts.connectMs, "a reused connection has no setup time")
+        assertTrue(failedFacts.requestBodyPartialMs != null, failedFacts.toString())
+        assertEquals(null, failedFacts.requestBodyMs)
+
+        // The body is sent, answered, then sent again on the same call (a follow-up) and that send dies:
+        // the first send's times are gone, the second's partial time stands.
+        val (resentCall, resent) = listenerFor("mobile-test-resent")
+        resent.requestBodyStart(resentCall)
+        resent.requestBodyEnd(resentCall, 10L)
+        resent.responseHeadersStart(resentCall)
+        resent.requestBodyStart(resentCall)
+        resent.callFailed(resentCall, java.io.IOException("stream was reset"))
+        val resentFacts = raftUploadWireFacts(10L, RaftOkHttpTransportFacts.take("mobile-test-resent"), edgePop = null)
+        assertEquals(null, resentFacts.requestBodyMs)
+        assertEquals(null, resentFacts.responseWaitMs)
+        assertTrue(resentFacts.requestBodyPartialMs != null, resentFacts.toString())
+
+        // A whole exchange: both times, no partial.
+        val (doneCall, done) = listenerFor("mobile-test-done")
+        done.requestBodyStart(doneCall)
+        done.requestBodyEnd(doneCall, 10L)
+        done.responseHeadersStart(doneCall)
+        done.callEnd(doneCall)
+        val doneFacts = raftUploadWireFacts(10L, RaftOkHttpTransportFacts.take("mobile-test-done"), edgePop = null)
+        assertTrue(doneFacts.requestBodyMs != null && doneFacts.responseWaitMs != null, doneFacts.toString())
+        assertEquals(null, doneFacts.requestBodyPartialMs)
+    }
+
+    @Test
+    fun platformErrorNamesComeFromAFixedListOfClasses() {
+        val secret = "https://bucket.r2.test/obj/key?X-Amz-Signature=abc /sdcard/DCIM/IMG_0042.jpg"
+        val cases =
+            listOf(
+                java.net.SocketTimeoutException(secret) to "okhttp:SocketTimeoutException",
+                java.net.UnknownHostException(secret) to "okhttp:UnknownHostException",
+                javax.net.ssl.SSLHandshakeException(secret) to "okhttp:SSLHandshakeException",
+                java.io.IOException(secret) to "okhttp:IOException",
+                // A wrapper the list does not name: the cause is.
+                RuntimeException(secret, java.net.ConnectException(secret)) to "okhttp:ConnectException",
+                // Nothing listed anywhere in the chain.
+                IllegalStateException(secret) to "other",
+            )
+
+        cases.forEach { (error, expected) -> assertEquals(expected, raftTransportErrorToken(error), error::class.simpleName) }
     }
 
     /**

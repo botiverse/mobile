@@ -51,9 +51,20 @@ internal class ThreadComposerDirectUploadClientRequestIds {
     private val mutex = Mutex()
     private val ids = mutableMapOf<ThreadAttachmentUploadAttemptIdentity, String>()
 
+    private val attempts = mutableMapOf<ThreadAttachmentUploadAttemptIdentity, Int>()
+
     suspend fun idFor(identity: ThreadAttachmentUploadAttemptIdentity): String =
         mutex.withLock {
             ids.getOrPut(identity) { newAttachmentUploadClientRequestId() }
+        }
+
+    /**
+     * Which upload attempt of this picked file starts now: 1, then 2 for its first Retry, ... The
+     * `attempt` of `slock.attachment.upload_finished`; counted for as long as this owner lives.
+     */
+    suspend fun nextAttempt(identity: ThreadAttachmentUploadAttemptIdentity): Int =
+        mutex.withLock {
+            ((attempts[identity] ?: 0) + 1).also { attempts[identity] = it }
         }
 }
 

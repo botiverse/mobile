@@ -9,7 +9,9 @@ internal data class RaftHttpExecutorResponse(
     val bodyText: String?,
     val errorBodyText: String?,
     val transportDiagnostics: String? = null,
-    val responseHeaders: Map<String, List<String>> = emptyMap()
+    val responseHeaders: Map<String, List<String>> = emptyMap(),
+    /** Upload requests only (multipart POST, presigned PUT): what the transport measured. */
+    val uploadFacts: RaftUploadWireFacts? = null,
 ) {
     val isSuccessful: Boolean get() = code in 200..299
 }

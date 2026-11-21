@@ -147,7 +147,8 @@ internal class KtorRaftHttpExecutor(
             "slock_http_multipart_retry path=${raftRedactSensitivePath(spec.path)} reason=connection_reset " +
                 "firstError=${first.errorBodyText?.take(80)?.toSafeHeaderValue()}"
         )
-        return perform(spec)
+        val second = perform(spec)
+        return second.copy(uploadFacts = second.uploadFacts?.copy(sends = 2))
     }
 
     override suspend fun executeBytes(
@@ -158,7 +159,8 @@ internal class KtorRaftHttpExecutor(
         bodyBytes: ByteArray,
         onUploadProgress: ((RaftWireTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
-        val traceHeaders = raftTraceHeaders(headers)
+        // No traceparent to the storage host (raftRequestIdHeaders).
+        val traceHeaders = raftRequestIdHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
         val progress = uploadProgress.route(onUploadProgress)
         return perform(
@@ -191,7 +193,8 @@ internal class KtorRaftHttpExecutor(
         body: RaftHttpFileBody,
         onUploadProgress: ((RaftWireTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
-        val traceHeaders = raftTraceHeaders(headers)
+        // No traceparent to the storage host (raftRequestIdHeaders).
+        val traceHeaders = raftRequestIdHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
         val progress = uploadProgress.route(onUploadProgress)
         return perform(
@@ -276,6 +279,8 @@ internal class KtorRaftHttpExecutor(
             "${spec.logPrefix}_start $common " +
                 "configTotalTimeoutMillis=${spec.totalTimeoutMillis} " +
                 "configConnectTimeoutMillis=${spec.connectTimeoutMillis} " +
+                // The trace this request joins (an upload's API calls share one), beside its own request id.
+                "sentTraceId=${spec.headers.raftSentTraceIdOrNull() ?: "none"} " +
                 "clientRequestId=$clientRequestId headers=${spec.headers.toSafeKtorHeaderDiagnostics()}"
         )
         return try {
@@ -363,8 +368,11 @@ internal class KtorRaftHttpExecutor(
         clientRequestId: String,
         startedAt: TimeSource.Monotonic.ValueTimeMark,
         socketTimeoutOverrideMillis: Long?,
-    ): KtorAttempt =
-        try {
+    ): KtorAttempt {
+        val upload = spec.kind == RaftKtorCallKind.MultipartUpload || spec.kind == RaftKtorCallKind.PresignedUpload
+        // The file bytes of the body: a multipart POST's framing (which holds the file name) is not counted.
+        val requestBodyBytes: Long? = spec.requestBytes.takeIf { it > 0L }
+        return try {
             val content = spec.content()
             // Ktor 3 reads the whole body inside request(), so the response is consumed within this
             // call's scope (no channel outlives it).
@@ -394,6 +402,11 @@ internal class KtorRaftHttpExecutor(
             val status = outcome.status
             val text = if (spec.redactSensitive) null else outcome.bodyText
             val responseHeaders = if (spec.redactSensitive) emptyMap() else outcome.headers
+            val facts = transportFacts(clientRequestId)
+            // Read before the headers are dropped for a presigned PUT: only the edge location's
+            // short code is kept, never another header of the storage answer.
+            val uploadFacts =
+                if (upload) raftUploadWireFacts(requestBodyBytes, facts, raftEdgePopOrNull(outcome.headers)) else null
             val diagnostics =
                 ktorDiagnostics(
                     status = status,
@@ -402,7 +415,7 @@ internal class KtorRaftHttpExecutor(
                     protocol = outcome.protocol,
                     bodyBytes = text?.encodeToByteArray()?.size ?: 0,
                     totalMs = startedAt.elapsedNow().inWholeMilliseconds,
-                    facts = transportFacts(clientRequestId),
+                    facts = facts,
                 )
             val result = when {
                 status in 200..299 ->
@@ -411,7 +424,8 @@ internal class KtorRaftHttpExecutor(
                         bodyText = text,
                         errorBodyText = null,
                         transportDiagnostics = diagnostics,
-                        responseHeaders = responseHeaders
+                        responseHeaders = responseHeaders,
+                        uploadFacts = uploadFacts,
                     )
                 spec.redactSensitive ->
                     RaftHttpExecutorResponse(
@@ -419,7 +433,8 @@ internal class KtorRaftHttpExecutor(
                         bodyText = null,
                         errorBodyText = "attachment_presigned_upload_http_$status",
                         transportDiagnostics = diagnostics,
-                        responseHeaders = responseHeaders
+                        responseHeaders = responseHeaders,
+                        uploadFacts = uploadFacts,
                     )
                 else ->
                     RaftHttpExecutorResponse(
@@ -432,7 +447,8 @@ internal class KtorRaftHttpExecutor(
                                 text?.redactNetworkErrorText()
                             },
                         transportDiagnostics = diagnostics,
-                        responseHeaders = responseHeaders
+                        responseHeaders = responseHeaders,
+                        uploadFacts = uploadFacts,
                     )
             }
             KtorAttempt(result, timedOut = false)
@@ -441,6 +457,7 @@ internal class KtorRaftHttpExecutor(
             // A Ktor request timeout is a CancellationException subtype on some paths; only a real
             // cancellation of this attempt's job (caller gone or lifecycle retirement) is rethrown.
             if (kind == RaftTransportFailureKind.CANCELLED && error is CancellationException) throw error
+            val facts = transportFacts(clientRequestId)
             val response = RaftHttpExecutorResponse(
                 code = 0,
                 bodyText = null,
@@ -455,13 +472,26 @@ internal class KtorRaftHttpExecutor(
                         protocol = null,
                         bodyBytes = 0,
                         totalMs = startedAt.elapsedNow().inWholeMilliseconds,
-                        facts = transportFacts(clientRequestId),
-                    )
+                        facts = facts,
+                    ),
+                uploadFacts =
+                    if (upload) {
+                        raftUploadWireFacts(
+                            requestBytes = requestBodyBytes,
+                            facts = facts,
+                            edgePop = null,
+                            failureKind = kind,
+                            transportError = raftTransportErrorToken(error),
+                        )
+                    } else {
+                        null
+                    },
             )
             // A socket / connect timeout says the connection gave nothing; the call's own total budget
             // running out (HttpRequestTimeoutException) does not, and leaves nothing to retry with.
             KtorAttempt(response, timedOut = kind == RaftTransportFailureKind.TIMEOUT && error !is HttpRequestTimeoutException)
         }
+    }
 
     private fun ktorDiagnostics(
         status: Int?,

@@ -185,8 +185,11 @@ internal class RaftClientTraceEventSender(
             }
     }
 
-    /** Queues one event for [serverId]; sent with the next flush. Never throws. */
-    fun emit(serverId: String, name: String, attrs: JsonObject) {
+    /**
+     * Queues one event for [serverId]; sent with the next flush. Never throws. [traceId] / [spanId]:
+     * the trace the event belongs to, when its requests sent that `traceparent`.
+     */
+    fun emit(serverId: String, name: String, attrs: JsonObject, traceId: String? = null, spanId: String? = null) {
         val server = serverId.trim().takeIf { it.isNotEmpty() } ?: return
         try {
             val now = nowEpochMillis()
@@ -194,6 +197,8 @@ internal class RaftClientTraceEventSender(
                 RaftWebEventRecord(
                     name = name,
                     time = raftEpochMillisUtcIso(now),
+                    traceId = traceId,
+                    spanId = spanId,
                     attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
                 )
             enqueue(listOf(Queued(ServerId(server), record = record)))
@@ -307,6 +312,14 @@ object RaftClientTraceEvents {
     /** One sampled unit of work: its span and its events (`mobile.thread_open`, ThreadOpenTrace.kt). */
     internal fun emitSpan(serverId: String, span: RaftWebSpanRecord, events: List<RaftWebEventRecord>) {
         sender.emitSpan(serverId, span, events)
+    }
+
+    /**
+     * `slock.attachment.upload_finished` (RaftAttachmentUploadTelemetry.kt): one composer upload
+     * attempt, under the trace id its API requests sent.
+     */
+    internal fun emitAttachmentUploadFinished(serverId: String, attrs: JsonObject, traceId: String, spanId: String) {
+        sender.emit(serverId, RaftAttachmentUploadFinishedTraceName, attrs, traceId = traceId, spanId = spanId)
     }
 
     /** `inbox_row_position_v1`: one `activity:list_row_lowered` or `activity:list_row_corrected` (web `reportListRowsLowered`). */

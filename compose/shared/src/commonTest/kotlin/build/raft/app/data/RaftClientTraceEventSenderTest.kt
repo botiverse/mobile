@@ -86,6 +86,40 @@ class RaftClientTraceEventSenderTest {
         assertEquals(listOf(ServerId("server-1"), ServerId("server-1")), transport.attested)
     }
 
+    /** `slock.attachment.upload_finished` joins the trace its upload requests sent as `traceparent`. */
+    @Test
+    fun anEventCanCarryTheTraceItBelongsTo() = runTest {
+        val transport = RecordingTransport()
+        val sender =
+            RaftClientTraceEventSender(
+                scope = backgroundScope,
+                nowEpochMillis = { 1_794_391_200_000L },
+                defaultAttrs = { mapOf("clientPlatform" to "ios") },
+                privacyMode = MutableStateFlow(RaftPrivacyMode.Off),
+            )
+        sender.bindTransport(transport)
+
+        sender.emit(
+            "server-1",
+            RaftAttachmentUploadFinishedTraceName,
+            buildJsonObject { put("route", "legacy") },
+            traceId = "0af7651916cd43dd8448eb211c80319c",
+            spanId = "b7ad6b7169203331",
+        )
+        sender.emit("server-1", RaftStateTransitionTraceName, attrs)
+        advanceTimeBy(RaftClientTraceFlushDelayMillis + 1L)
+        runCurrent()
+
+        val (upload, other) = transport.batches.single().events
+        assertEquals("slock.attachment.upload_finished", upload.name)
+        assertEquals("0af7651916cd43dd8448eb211c80319c", upload.traceId)
+        assertEquals("b7ad6b7169203331", upload.spanId)
+        assertEquals("legacy", upload.attrs.getValue("route").jsonPrimitive.content)
+        assertEquals("ios", upload.attrs.getValue("clientPlatform").jsonPrimitive.content)
+        assertEquals(null, other.traceId)
+        assertEquals(null, other.spanId)
+    }
+
     /** RAFT_PRIVACY_MODE (slock docs/observability/privacy-mode.md, web webTelemetryPrivacyHold.ts). */
     @Test
     fun eventsAreHeldUntilPrivacyModeIsKnownThenSentWhenOffAndDroppedWhenOn() = runTest {

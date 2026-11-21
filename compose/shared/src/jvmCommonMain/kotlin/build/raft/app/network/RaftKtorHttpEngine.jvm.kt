@@ -166,6 +166,32 @@ internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTran
 
 internal actual fun takeRaftKtorTransportFacts(requestId: String): String? = RaftOkHttpTransportFacts.take(requestId)
 
+/** The exception classes OkHttp / the JDK report for a failed call; anything else is not named. */
+private val RaftJvmTransportErrorNames =
+    setOf(
+        "SocketTimeoutException", "ConnectTimeoutException", "HttpRequestTimeoutException", "InterruptedIOException",
+        "UnknownHostException", "ConnectException", "NoRouteToHostException", "PortUnreachableException",
+        "SocketException", "ProtocolException", "StreamResetException", "ConnectionShutdownException", "EOFException",
+        "SSLException", "SSLHandshakeException", "SSLPeerUnverifiedException", "SSLProtocolException",
+        "IOException",
+    )
+
+/** `okhttp:<exception class>`: the class's simple name from the fixed list above, never its message. */
+internal actual fun raftPlatformTransportErrorToken(error: Throwable): String? {
+    var current: Throwable? = error
+    var depth = 0
+    var ioFailure = false
+    while (current != null && depth < 6) {
+        val name = current.javaClass.simpleName
+        if (name in RaftJvmTransportErrorNames) return "okhttp:$name"
+        if (current is IOException) ioFailure = true
+        current = current.cause.takeIf { it !== current }
+        depth += 1
+    }
+    // An I/O failure of a class the list does not name.
+    return if (ioFailure) "okhttp:IOException" else null
+}
+
 /**
  * Per-call connection facts for diagnostics, keyed by the request's `x-request-id`: whether a pooled
  * connection was reused, DNS / connect / TLS time, connect attempts, protocol and route. Bounded; an
@@ -204,10 +230,17 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
         private var protocol: String? = null
         private var addressFamily: String? = null
         private var tlsVersion: String? = null
+        private var setupStartNs = 0L
+        private var setupMs = -1L
+        private var requestBodyStartNs = 0L
+        private var requestBodyEndNs = 0L
+        private var requestBodyMs = -1L
+        private var responseWaitMs = -1L
 
         @Synchronized
         override fun dnsStart(call: Call, domainName: String) {
             dnsStartNs = System.nanoTime()
+            if (setupStartNs == 0L) setupStartNs = dnsStartNs
         }
 
         @Synchronized
@@ -220,6 +253,7 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
             reused = false
             connectAttempts += 1
             if (connectStartNs == 0L) connectStartNs = System.nanoTime()
+            if (setupStartNs == 0L) setupStartNs = connectStartNs
             addressFamily = if (inetSocketAddress.address is java.net.Inet6Address) "ipv6" else "ipv4"
         }
 
@@ -237,12 +271,37 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
         @Synchronized
         override fun connectEnd(call: Call, inetSocketAddress: InetSocketAddress, proxy: Proxy, protocol: Protocol?) {
             connectMs = elapsedMs(connectStartNs)
+            // connectEnd comes after the TLS handshake: DNS + TCP + TLS of this call's new connection.
+            if (setupStartNs != 0L) setupMs = elapsedMs(setupStartNs)
             addressFamily = if (inetSocketAddress.address is java.net.Inet6Address) "ipv6" else "ipv4"
         }
 
         @Synchronized
         override fun connectionAcquired(call: Call, connection: okhttp3.Connection) {
             protocol = connection.protocol().toString()
+        }
+
+        // The body's send time and the wait after its last byte, for uploads. A body sent again on
+        // the same call (a follow-up request) starts over, so the last send is the one reported.
+        @Synchronized
+        override fun requestBodyStart(call: Call) {
+            requestBodyStartNs = System.nanoTime()
+            requestBodyEndNs = 0L
+            requestBodyMs = -1L
+            responseWaitMs = -1L
+        }
+
+        @Synchronized
+        override fun requestBodyEnd(call: Call, byteCount: Long) {
+            if (requestBodyStartNs == 0L) return
+            requestBodyEndNs = System.nanoTime()
+            requestBodyMs = TimeUnit.NANOSECONDS.toMillis(requestBodyEndNs - requestBodyStartNs)
+        }
+
+        @Synchronized
+        override fun responseHeadersStart(call: Call) {
+            if (requestBodyEndNs == 0L || responseWaitMs >= 0L) return
+            responseWaitMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - requestBodyEndNs)
         }
 
         override fun callEnd(call: Call) = publishFacts()
@@ -257,7 +316,18 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
                 requestId,
                 "reusedConnection=$reused connectionAttempts=$connectAttempts dnsMs=$dnsMs " +
                     "connectTotalMs=$connectMs tlsMs=$tlsMs negotiatedProtocol=${protocol ?: "none"} " +
-                    "addressFamily=${addressFamily ?: "none"} tlsVersion=${tlsVersion ?: "none"}"
+                    "addressFamily=${addressFamily ?: "none"} tlsVersion=${tlsVersion ?: "none"}" +
+                    // Only when measured: a reused connection has no setup; a request without a body, or
+                    // one that got no answer, has no body time or wait.
+                    (if (!reused && setupMs >= 0L) " $RAFT_FACT_CONNECT_SETUP_MS=$setupMs" else "") +
+                    (if (requestBodyMs >= 0L) " $RAFT_FACT_REQUEST_BODY_MS=$requestBodyMs" else "") +
+                    (if (responseWaitMs >= 0L) " $RAFT_FACT_RESPONSE_WAIT_MS=$responseWaitMs" else "") +
+                    // The call ended (failed, timed out, cancelled) with its body still going out.
+                    (if (requestBodyStartNs != 0L && requestBodyEndNs == 0L) {
+                        " $RAFT_FACT_REQUEST_BODY_PARTIAL_MS=${elapsedMs(requestBodyStartNs)}"
+                    } else {
+                        ""
+                    })
             )
         }
 
