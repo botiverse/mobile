@@ -187,33 +187,51 @@ private fun ServerJoinScreen() {
                         }
                     val multiShell = raftMultiShellHostEnabled()
                     val joinedId = joined.serverId.trim()
-                    if (multiShell && currentSourceServerId != null && joinedId == currentSourceServerId) {
-                        bridge.log("server_join_accept result=joined select=same_window")
-                        router.closePage()
-                        return@launch
-                    }
-                    val selected =
-                        if (multiShell && currentSourceServerId != null) {
-                            (loaded as? SharedAuthResult.Success)?.data?.withAppShellSelectedServer(joinedId)
-                                ?.let { SharedAuthResult.Success(it) }
-                                ?: runCatchingPreservingCancellation { authDataSource.selectServer(joinedId) }.getOrNull()
-                        } else {
-                            runCatchingPreservingCancellation { authDataSource.selectServer(joinedId) }.getOrNull()
+                    when (
+                        val plan =
+                            resolveServerJoinPostAcceptPlan(
+                                joinedServerId = joinedId,
+                                currentSourceServerId = currentSourceServerId,
+                                multiShellHostEnabled = multiShell,
+                                loadedSession = (loaded as? SharedAuthResult.Success)?.data,
+                            )
+                    ) {
+                        ServerJoinPostAcceptPlan.CloseSameWindow -> {
+                            bridge.log("server_join_accept result=joined select=same_window")
+                            router.closePage()
+                            return@launch
                         }
-                    bridge.log("server_join_accept result=joined select=${selected is SharedAuthResult.Success}")
-                    if (selected is SharedAuthResult.Success) {
-                        pager.openAppShellForSelectedServer(
-                            readySession = selected.data,
-                            sourceStoreScope = effectiveSourceScope,
-                            sourceDocumentShell = documentShell,
-                            environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                            bridge = bridge,
-                            fromShell = currentSourceServerId != null,
-                            onSameServerInShell = router::closePage,
-                            noteServerSelected = sharedStores::noteServerSwitchedToWindow,
-                        )
-                    } else {
-                        view = ServerJoinView.Joined(joined.serverName.ifBlank { info.serverName })
+                        is ServerJoinPostAcceptPlan.OpenWithSession -> {
+                            bridge.log("server_join_accept result=joined select=true isolated=true")
+                            pager.openAppShellForSelectedServer(
+                                readySession = plan.readySession,
+                                sourceStoreScope = effectiveSourceScope,
+                                sourceDocumentShell = documentShell,
+                                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                                bridge = bridge,
+                                fromShell = plan.fromShell,
+                                onSameServerInShell = router::closePage,
+                                noteServerSelected = sharedStores::noteServerSwitchedToWindow,
+                            )
+                        }
+                        is ServerJoinPostAcceptPlan.SelectServerThenOpen -> {
+                            val selected = runCatchingPreservingCancellation { authDataSource.selectServer(joinedId) }.getOrNull()
+                            bridge.log("server_join_accept result=joined select=${selected is SharedAuthResult.Success}")
+                            if (selected is SharedAuthResult.Success) {
+                                pager.openAppShellForSelectedServer(
+                                    readySession = selected.data,
+                                    sourceStoreScope = effectiveSourceScope,
+                                    sourceDocumentShell = documentShell,
+                                    environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                                    bridge = bridge,
+                                    fromShell = plan.fromShell,
+                                    onSameServerInShell = router::closePage,
+                                    noteServerSelected = sharedStores::noteServerSwitchedToWindow,
+                                )
+                            } else {
+                                view = ServerJoinView.Joined(joined.serverName.ifBlank { info.serverName })
+                            }
+                        }
                     }
                 }
                 is ServerJoinAnswer.Refused -> {
@@ -245,6 +263,42 @@ private fun ServerJoinScreen() {
             ServerJoinContent(view = view, onJoin = ::join, onClose = router::closePage)
         }
     }
+}
+
+internal sealed interface ServerJoinPostAcceptPlan {
+    data object CloseSameWindow : ServerJoinPostAcceptPlan
+
+    data class OpenWithSession(
+        val readySession: build.raft.app.data.StoredAuthSession,
+        val fromShell: Boolean,
+    ) : ServerJoinPostAcceptPlan
+
+    data class SelectServerThenOpen(
+        val fromShell: Boolean,
+    ) : ServerJoinPostAcceptPlan
+}
+
+internal fun resolveServerJoinPostAcceptPlan(
+    joinedServerId: String,
+    currentSourceServerId: String?,
+    multiShellHostEnabled: Boolean,
+    loadedSession: build.raft.app.data.StoredAuthSession?,
+): ServerJoinPostAcceptPlan {
+    val normalizedJoined = joinedServerId.trim()
+    val normalizedSource = currentSourceServerId?.trim()?.takeIf { it.isNotEmpty() }
+    if (multiShellHostEnabled && normalizedSource != null && normalizedJoined == normalizedSource) {
+        return ServerJoinPostAcceptPlan.CloseSameWindow
+    }
+    if (multiShellHostEnabled && normalizedSource != null) {
+        val isolated = loadedSession?.withAppShellSelectedServer(normalizedJoined)
+        if (isolated != null) {
+            return ServerJoinPostAcceptPlan.OpenWithSession(
+                readySession = isolated,
+                fromShell = true,
+            )
+        }
+    }
+    return ServerJoinPostAcceptPlan.SelectServerThenOpen(fromShell = normalizedSource != null)
 }
 
 /** The page's content for [view] (the page and UI tests compose it the same way). */
