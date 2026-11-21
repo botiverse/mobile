@@ -2846,7 +2846,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                             agentsApiClient = agentsApi,
                             computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(client)),
                             onLiveModelDetect = { sid ->
-                                sharedStores.refreshServerModelLabelCatalogAfterLiveDetect(sid)
+                                sharedStores.serverModelLabelCatalogRepository(environment.storeScope).refreshAfterLiveDetect(sid.value)
                             },
                         ),
                     serverId = owner.serverId,
@@ -2926,7 +2926,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                         onOutcome = onOutcome,
                     )
                 },
-                serverId = currentServerId,
+                serverId = target.serverId ?: currentServerId,
             )
         }
         }

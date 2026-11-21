@@ -788,13 +788,16 @@ internal fun membersAgentRuntimeModelDisplayLabel(
     fun String?.verifiedDisplayLabel(): String? =
         this?.trim()?.takeIf { it.isNotBlank() && it != normalizedModelId }
 
-    return runtimeModelsCatalog
-        ?.models
-        ?.firstOrNull { it.id.trim() == normalizedModelId }
-        ?.label
-        .verifiedDisplayLabel()
-        // Server model-label catalog (slock #15780, daemon-reported per machine/runtime).
-        ?: build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, normalizedRuntimeId, normalizedModelId)
+    // Server model-label catalog first (web `projectRuntimeModelLabelPresentation`, slock #15780):
+    // always read during composition so Compose tracks catalog refreshes (including after live detect)
+    // instead of letting a stale per-runtime `runtimeModelsCatalog` mask updated labels.
+    return build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, normalizedRuntimeId, normalizedModelId)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: runtimeModelsCatalog
+            ?.models
+            ?.firstOrNull { it.id.trim() == normalizedModelId }
+            ?.label
             .verifiedDisplayLabel()
         // The server catalog's models for this runtime, else the bundled list.
         ?: build.raft.app.data.RaftRuntimeCatalogNames.entry(normalizedRuntimeId, serverId)

@@ -771,6 +771,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
                 // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
                 build.raft.app.RaftArtifactViewerMemory.clear()
+                RaftModelLabelCatalogs.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
         )
@@ -2632,6 +2633,7 @@ internal class RaftSharedStoreProvider private constructor(
 
     internal fun ensureServerModelLabelCatalog(serverId: String) {
         val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        if (RaftModelLabelCatalogs.currentCatalog(clean) != null) return
         val repository = serverModelLabelCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
         threadSendScope.launch { repository.load(clean, DataRequestPriority.Background) }
     }

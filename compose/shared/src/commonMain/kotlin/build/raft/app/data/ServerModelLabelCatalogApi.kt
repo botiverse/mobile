@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -219,19 +221,29 @@ internal class SharedServerModelLabelCatalogRepository(
                 if (!force && existing != null && lastFetched != null && lastFetched.elapsedNow() < CACHE_WINDOW) {
                     return existing
                 }
-                inFlight[key]?.let { return@withLock it }
+                inFlight[key]?.takeIf { it.isActive }?.let { return@withLock it }
                 val lastAttempt = lastAttemptAt[key]
-                if (!force && existing == null && lastAttempt != null && lastAttempt.elapsedNow() < RETRY_BACKOFF) {
-                    return null
+                if (!force && lastAttempt != null && lastAttempt.elapsedNow() < RETRY_BACKOFF) {
+                    return existing
                 }
                 lastAttemptAt[key] = timeSource.markNow()
-                scope.async(start = CoroutineStart.LAZY) { fetch(key, priority) }.also { started ->
-                    inFlight[key] = started
-                    started.invokeOnCompletion {
-                        scope.launch { mutex.withLock { if (inFlight[key] === started) inFlight.remove(key) } }
+                var self: Deferred<ServerModelLabelCatalog?>? = null
+                val started =
+                    scope.async(start = CoroutineStart.LAZY) {
+                        try {
+                            fetch(key, priority)
+                        } finally {
+                            withContext(NonCancellable) {
+                                mutex.withLock {
+                                    if (inFlight[key] === self) inFlight.remove(key)
+                                }
+                            }
+                        }
                     }
-                    started.start()
-                }
+                self = started
+                inFlight[key] = started
+                started.start()
+                started
             }
         return request.await()
     }
