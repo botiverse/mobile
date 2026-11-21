@@ -3,7 +3,7 @@ type: fixed
 area: diagnostics
 platforms:
   - android
-pull_request: 0
+pull_request: 5224
 rollout: full
 ---
 
