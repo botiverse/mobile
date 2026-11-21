@@ -156,11 +156,13 @@ class RaftArtifactViewerCacheTest {
                 "https://w-x.w-staging.raftusercontent.com/page" to
                     RaftArtifactViewerBlockedTarget.SystemBrowser("https://w-x.w-staging.raftusercontent.com/page"),
                 // On it (Open in new page, a link in a comment): this Artifact stays, another opens in the viewer,
-                // any other page goes to the browser.
+                // any other safe own-origin page opens in the authenticated in-app WebView.
                 "$web/artifacts/${target.id}" to RaftArtifactViewerBlockedTarget.Ignore,
                 "$web/artifacts/$other/v/2" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other, 2)),
                 "$web/s/acme/artifacts/$other" to RaftArtifactViewerBlockedTarget.OpenArtifact(ArtifactLinkTarget(other)),
-                "$web/s/acme" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme"),
+                "$web/s/acme" to RaftArtifactViewerBlockedTarget.RaftWebPage("$web/s/acme"),
+                "$web/_raft/callback" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/_raft/callback"),
+                "$web/s/acme/tasks?ticket=secret" to RaftArtifactViewerBlockedTarget.SystemBrowser("$web/s/acme/tasks?ticket=secret"),
                 // A file the page saves (Download, Download all, a Files row): the WebView can't save it.
                 "blob:$web/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" to RaftArtifactViewerBlockedTarget.Download,
                 "blob:https://w-x.w-staging.raftusercontent.com/0f1e2d3c" to RaftArtifactViewerBlockedTarget.Download,
@@ -206,12 +208,19 @@ class RaftArtifactViewerCacheTest {
             RaftArtifactViewerBlockedTarget.Ignore,
             raftArtifactViewerBlockedNavigationTarget("https://app.raft.build/artifacts/${target.id}", web, target.id, emptySet()),
         )
-        // A Raft page without a screen here, and the web's task panel: the browser (Android routes the page's
-        // load of one, under a server, instead of loading it over the Artifact).
-        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1", "https://app.raft.build/s/acme/agent/a1")) {
-            assertEquals(RaftArtifactViewerBlockedTarget.SystemBrowser(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
+        // Same-origin Raft pages without a native screen (including the web's task panel) open in
+        // the authenticated in-app WebView; cross-origin Raft pages stay in the system browser so
+        // tokens never leave the active environment.
+        for (url in listOf("$web/s/acme/tasks", "$web/s/acme/settings/theme", "$web/s/acme/channel/$cid?task=$cid%3Atask%3Ab1")) {
+            assertEquals(RaftArtifactViewerBlockedTarget.RaftWebPage(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
             assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
+        val otherOriginWebPage = "https://app.raft.build/s/acme/agent/a1"
+        assertEquals(
+            RaftArtifactViewerBlockedTarget.SystemBrowser(otherOriginWebPage),
+            raftArtifactViewerBlockedNavigationTarget(otherOriginWebPage, web, target.id, emptySet()),
+        )
+        assertTrue(raftArtifactViewerRoutesDocumentAsLink(otherOriginWebPage, web, target.id, emptySet()))
         // Full-document links to another Artifact (e.g. a bare `<a href="/artifacts/…">` in "Linked from")
         // or an un-embedded reload of this Artifact are routed instead of replacing the embedded WebView
         // document (which would latch `NOT_EMBEDDED` for the document's lifetime).

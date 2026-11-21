@@ -80,7 +80,8 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         SettingsWebViewSurface.Computers -> RaftProductPageView(RaftPageRoute.Computers)
         SettingsWebViewSurface.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         SettingsWebViewSurface.Onboarding,
-        SettingsWebViewSurface.ArtifactViewer -> null
+        SettingsWebViewSurface.ArtifactViewer,
+        SettingsWebViewSurface.WebPage -> null
     }
 
 /**

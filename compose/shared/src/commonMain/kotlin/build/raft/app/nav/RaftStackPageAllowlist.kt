@@ -80,6 +80,7 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
         build.raft.app.SettingsWebViewSurface.Administration,
         build.raft.app.SettingsWebViewSurface.ImBridges,
         build.raft.app.SettingsWebViewSurface.Marketplace,
+        build.raft.app.SettingsWebViewSurface.WebPage,
     )
 
 /**

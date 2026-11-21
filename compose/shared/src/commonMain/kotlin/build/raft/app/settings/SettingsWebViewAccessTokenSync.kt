@@ -32,6 +32,8 @@ internal enum class SettingsWebViewSurface(val diagnosticsName: String) {
     AccountDeletion("account-deletion"),
     /** The in-app Artifact viewer's web page (not a Settings route; shares the token sync). */
     ArtifactViewer("artifact-viewer"),
+    /** Authenticated in-app WebView for Raft's own web pages without a native screen (#proj-mobile:#204). */
+    WebPage("web-page"),
 }
 
 internal data class SettingsWebViewAuthSnapshot(
