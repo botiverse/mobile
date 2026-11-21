@@ -126,6 +126,7 @@ class RaftProductPageRoutesTest {
         )
         assertEquals(view(RaftPageRoute.ReleaseNotes), page(AuthenticatedProductRoute.ReleaseNotes))
         assertEquals(view(RaftPageRoute.Assistant), page(AuthenticatedProductRoute.Assistant))
+        assertEquals(view(RaftPageRoute.Task), page(AuthenticatedProductRoute.TaskPending))
         assertEquals(view(RaftPageRoute.Computers), page(AuthenticatedProductRoute.SettingsComputers))
         assertEquals(
             view(RaftPageRoute.Computer),

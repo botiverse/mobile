@@ -15,6 +15,7 @@ class AuthenticatedProductRouteTest {
                 // A phone's channel / DM settings, pushed over the conversation.
                 THREAD_SETTINGS_PAGE,
                 THREAD_FORWARD_BUNDLE_PAGE,
+                TASK_PENDING_CONVERSATION_PAGE,
                 HOME_SEARCH_PAGE,
                 HOME_SAVED_PAGE,
                 // Drafts (drafts_section_v0): the phone's pushed Drafts page.

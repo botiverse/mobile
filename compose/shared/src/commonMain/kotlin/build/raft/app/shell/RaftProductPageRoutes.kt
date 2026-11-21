@@ -94,6 +94,7 @@ internal fun authenticatedProductPageView(
 ): RaftProductPageView? =
     when (route) {
         AuthenticatedProductRoute.Thread -> threadProductPageView(params, consumeTaskThread)
+        AuthenticatedProductRoute.TaskPending -> RaftProductPageView(RaftPageRoute.Task)
         AuthenticatedProductRoute.HomeSearch ->
             if (params.optString(HOME_SEARCH_SELECTED_CHANNEL_ID).isNotBlank()) {
                 RaftProductPageView(RaftPageRoute.ConversationSearch)

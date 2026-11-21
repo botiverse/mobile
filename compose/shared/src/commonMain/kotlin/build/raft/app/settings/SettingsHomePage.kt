@@ -5912,11 +5912,29 @@ private fun RaftAppShellReadyContent(
                                     readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
                                         sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
                                     } == true
-                                // The legacy panel, or the empty conversation of a task without one (opening never creates it).
-                                task.taskOpenSurface(taskV2Enabled)?.let { surface ->
-                                    bridge.log("tasks_open_surface kind=${surface::class.simpleName} task=${task.id.value}")
-                                    tasksOpenSurfaceFlow.open(surface)
-                                    return@open
+                                // A task without a conversation pushes its own page (#proj-mobile:#161); a legacy
+                                // orphan opens the read-only panel sheet. Opening never creates a conversation.
+                                when (val surface = task.taskOpenSurface(taskV2Enabled)) {
+                                    is TaskOpenSurface.Pending -> {
+                                        bridge.log("tasks_open_pending_page task=${task.id.value}")
+                                        pager.openTaskPendingPage(
+                                            task = surface.task,
+                                            serverId = readyServerId,
+                                            storeScope = navigationStoreScope,
+                                            foregroundBannerStore = foregroundBannerStore,
+                                            timeContext = threadTimeContext,
+                                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                            compactConsecutiveMessages = compactConsecutiveMessages,
+                                            canWriteChannel = tasksChannelWriteCheck(surface.task.channelId),
+                                        )
+                                        return@open
+                                    }
+                                    is TaskOpenSurface.Legacy -> {
+                                        bridge.log("tasks_open_surface kind=Legacy task=${task.id.value}")
+                                        tasksOpenSurfaceFlow.open(surface)
+                                        return@open
+                                    }
+                                    null -> Unit
                                 }
                                 if (!tasksOpenGate.tryBegin(task.id.value)) {
                                     bridge.log("tasks_open_ignored reason=in_flight task=${task.id.value}")

@@ -81,7 +81,8 @@ static BOOL RaftRouterBool(id value) {
             }
             [viewControllers removeLastObject];
             [viewControllers addObject:renderViewController];
-            [navigationController setViewControllers:viewControllers animated:YES];
+            BOOL animated = !RaftRouterBool(sanitizedPageData[RaftRouterOpenWithoutAnimationKey]);
+            [navigationController setViewControllers:viewControllers animated:animated];
         } else {
             // task #151: not the page on top again, and not over a transition still running (a
             // different page waits for it, latest wins): RaftIosPageOpenGate.

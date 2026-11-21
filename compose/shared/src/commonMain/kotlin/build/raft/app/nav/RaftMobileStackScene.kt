@@ -137,7 +137,7 @@ class RaftMobileStackScene<T : Any>(
                                     if (slide == null) Modifier else Modifier.graphicsLayer { translationX = slide.value * size.width }
                                 Modifier.fillMaxSize().then(slideModifier).animateEnterExit(
                                     enter = EnterTransition.None,
-                                    exit = RaftMobileStackPopExit,
+                                    exit = if (motion.exitsWithoutMotion(top.contentKey)) ExitTransition.None else RaftMobileStackPopExit,
                                 )
                             }
                         coveredInPush -> Modifier.fillMaxSize()
@@ -178,6 +178,7 @@ class RaftMobileStackSceneStrategy<T : Any>(
 class RaftMobileStackMotion {
     private var current: List<Any> = emptyList()
     private var beforeLastChange: Set<Any> = emptySet()
+    private var exitingWithoutMotion: Set<Any> = emptySet()
 
     /**
      * The content key of the top page whose scene last settled (shown, no motion running). A page
@@ -197,14 +198,32 @@ class RaftMobileStackMotion {
     /** The push slide of [contentKey] (1 = off the end edge, 0 = in place), shared by its scenes. */
     fun pushSlide(contentKey: Any): Animatable<Float, AnimationVector1D> = slides.getOrPut(contentKey) { Animatable(1f) }
 
-    fun update(contentKeys: List<Any>) {
+    fun update(contentKeys: List<Any>, topOpensWithoutMotion: Boolean = false) {
         if (contentKeys == current) return
+        val previousTop = current.lastOrNull()
+        val nextTop = contentKeys.lastOrNull()
+        exitingWithoutMotion =
+            if (
+                topOpensWithoutMotion &&
+                previousTop != null &&
+                nextTop != null &&
+                previousTop != nextTop &&
+                previousTop !in contentKeys &&
+                current.size == contentKeys.size
+            ) {
+                setOf(previousTop)
+            } else {
+                emptySet()
+            }
         beforeLastChange = current.toSet()
         current = contentKeys
         slides.keys.retainAll(contentKeys.toSet())
     }
 
     fun isPushed(contentKey: Any): Boolean = contentKey !in beforeLastChange
+
+    /** True when [contentKey] was just replaced in place by a page opened with `slockOpenWithoutAnimation`. */
+    fun exitsWithoutMotion(contentKey: Any): Boolean = contentKey in exitingWithoutMotion
 }
 
 /**

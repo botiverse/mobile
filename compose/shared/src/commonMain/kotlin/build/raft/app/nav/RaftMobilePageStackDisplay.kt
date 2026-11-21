@@ -72,7 +72,9 @@ fun RaftMobilePageStackDisplay(
     // After the change is applied, before the scenes' motion reports (their effects run later).
     SideEffect { tracker.onStack(contentKeys) }
 
-    motion.update(contentKeys)
+    val topOpensWithoutMotion =
+        (stack.pages.last().key.pageData[RAFT_OPEN_WITHOUT_ANIMATION] as? JsonPrimitive)?.booleanOrNull == true
+    motion.update(contentKeys, topOpensWithoutMotion = topOpensWithoutMotion)
     // A settle that never comes (a scene left mid motion) must not leave the top page inactive.
     LaunchedEffect(contentKeys.last()) {
         delay(RaftMobileStackSettleFallbackMillis)

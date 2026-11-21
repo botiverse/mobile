@@ -305,4 +305,32 @@
     XCTAssertEqual(navigation.viewControllers.firstObject, initialLogin);
 }
 
+- (void)testReplaceCurrentHonorsOpenWithoutAnimation {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftRouterRecordingNavigationController *navigation = [self navigationWithPages:@[shell, pendingTask]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.pushCount, 0u);
+    XCTAssertFalse(navigation.lastRequestedAnimation,
+                   @"Replacing a pending task page with its conversation must honor slockOpenWithoutAnimation");
+    XCTAssertEqual(navigation.viewControllers.count, 2u);
+    XCTAssertEqual(navigation.viewControllers.firstObject, shell);
+    XCTAssertNotEqual(navigation.topViewController, pendingTask);
+
+    UIViewController *thread = navigation.topViewController;
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:thread];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation,
+                  @"Replacement without slockOpenWithoutAnimation keeps animated=YES");
+}
+
 @end

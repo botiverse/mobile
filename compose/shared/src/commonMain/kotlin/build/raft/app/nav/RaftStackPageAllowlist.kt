@@ -64,6 +64,7 @@ internal val RaftStackChatFilesBrowsePages: List<String> =
         build.raft.app.CHANNEL_SETTINGS_PAGE,
         build.raft.app.THREAD_SETTINGS_PAGE,
         build.raft.app.THREAD_FORWARD_BUNDLE_PAGE,
+        build.raft.app.TASK_PENDING_CONVERSATION_PAGE,
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
         build.raft.app.HOME_SEARCH_PAGE,

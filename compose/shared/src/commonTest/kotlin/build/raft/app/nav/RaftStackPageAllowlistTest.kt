@@ -28,6 +28,7 @@ import build.raft.app.SETTINGS_STORAGE_PAGE
 import build.raft.app.SETTINGS_WEB_VIEW_PAGE
 import build.raft.app.SettingsNativeDetailPage
 import build.raft.app.SettingsWebViewSurface
+import build.raft.app.TASK_PENDING_CONVERSATION_PAGE
 import build.raft.app.THREAD_FORWARD_BUNDLE_PAGE
 import build.raft.app.THREAD_MEMBERS_PAGE
 import build.raft.app.THREAD_PAGE
@@ -155,6 +156,7 @@ class RaftStackPageAllowlistTest {
                 CHANNEL_SETTINGS_PAGE,
                 THREAD_SETTINGS_PAGE, // a phone's channel / DM settings
                 THREAD_FORWARD_BUNDLE_PAGE,
+                TASK_PENDING_CONVERSATION_PAGE,
                 RAFT_FILE_PREVIEW_PAGE, // preview or file detail
                 RAFT_ARTIFACT_VIEWER_PAGE,
                 HOME_SEARCH_PAGE,
