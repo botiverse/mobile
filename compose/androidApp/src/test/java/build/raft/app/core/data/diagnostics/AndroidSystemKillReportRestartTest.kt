@@ -232,7 +232,7 @@ class AndroidSystemKillReportRestartTest {
         assertNull(rolledBackStart.restartDelayMs)
         assertNull(rolledBackStart.outageMs)
 
-        // Clock rolled back between sticky restart and Activity creation.
+        // Clock rolled back between sticky restart and Activity creation (without monotonic offset).
         val rolledBackActivity =
             resolveSystemKillRestart(
                 exit = kill,
@@ -244,6 +244,62 @@ class AndroidSystemKillReportRestartTest {
         assertEquals(SystemKillRestartInfo.KindStickyService, rolledBackActivity.restartKind)
         assertEquals(5_000L, rolledBackActivity.restartDelayMs)
         assertNull(rolledBackActivity.outageMs)
+    }
+
+    @Test
+    fun backwardNtpStepDuringDirectLaunchUsesMonotonicOffsetAndNeverSelfMatchesOrOverflows() {
+        val kill = exit(pid = 100, at = 1_000_000L)
+
+        // NTP stepped wall clock backward by 200ms between attachBaseContext and Activity.onCreate,
+        // while monotonic offset recorded 350ms -> must stay direct user_launch with valid outageMs.
+        val directWithBackstep =
+            resolveSystemKillRestart(
+                exit = kill,
+                startupRecords = emptyList(),
+                currentProcessStartMillis = 1_600_000L,
+                currentFirstActivityAtMillis = 1_599_800L,
+                currentFirstActivityAfterStartMs = 350L,
+                currentStickyRestart = false,
+            )
+        assertEquals(SystemKillRestartInfo.KindUserLaunch, directWithBackstep.restartKind)
+        assertFalse(directWithBackstep.restartedBySystem)
+        assertEquals(600_000L, directWithBackstep.restartDelayMs)
+        assertEquals(600_000L, directWithBackstep.outageMs)
+
+        // Exited process itself (same pid=100) whose processStartMillis > exitAt due to NTP rollback
+        // must never be selected as its own restart.
+        val selfRecordAfterRollback =
+            startupRecord(
+                pid = 100,
+                start = 1_000_500L,
+                phase = Phase.FirstFrame,
+                firstActivityAt = 1_000_800L,
+            )
+        val noSelfMatch =
+            resolveSystemKillRestart(
+                exit = kill,
+                startupRecords = listOf(selfRecordAfterRollback),
+                currentProcessStartMillis = 1_500_000L,
+                currentFirstActivityAtMillis = 1_500_300L,
+                currentFirstActivityAfterStartMs = 300L,
+                currentStickyRestart = false,
+            )
+        assertEquals(1_500_000L, noSelfMatch.restartAtMillis)
+        assertEquals(500_000L, noSelfMatch.restartDelayMs)
+
+        // Absurd forward wall-clock jump (> 30 days) produces null durations instead of bogus numbers.
+        val forwardJump =
+            resolveSystemKillRestart(
+                exit = kill,
+                startupRecords = emptyList(),
+                currentProcessStartMillis = 1_000_000L + MaxPlausibleRestartDurationMillis + 1_000L,
+                currentFirstActivityAtMillis = 1_000_000L + MaxPlausibleRestartDurationMillis + 1_300L,
+                currentFirstActivityAfterStartMs = 300L,
+                currentStickyRestart = false,
+            )
+        assertEquals(SystemKillRestartInfo.KindUserLaunch, forwardJump.restartKind)
+        assertNull(forwardJump.restartDelayMs)
+        assertNull(forwardJump.outageMs)
     }
 
     @Test

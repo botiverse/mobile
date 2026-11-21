@@ -5,6 +5,8 @@ import android.os.Process
 import android.os.SystemClock
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * How far a process got through startup, kept on disk so the next launch can say it for an exit
@@ -42,6 +44,12 @@ internal object RaftStartupPhaseMarker {
 
     @Volatile private var dir: File? = null
     @Volatile private var record: StartupPhaseRecord? = null
+
+    private val asyncWriter by lazy {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "RaftStartupPhaseWriter").apply { isDaemon = true }
+        }
+    }
 
     /** The current process's in-memory record, or null before [start] (or below API 30). */
     fun current(): StartupPhaseRecord? = record
@@ -88,6 +96,10 @@ internal object RaftStartupPhaseMarker {
         record = null
     }
 
+    internal fun flushPendingWritesForTest() {
+        runCatching { asyncWriter.submit {}.get(5, TimeUnit.SECONDS) }
+    }
+
     @Synchronized
     private fun startInternal(
         targetDir: File,
@@ -109,22 +121,49 @@ internal object RaftStartupPhaseMarker {
     }
 
     /** Records [phase] when it is further than the one already written. Never throws. */
-    fun reached(phase: Phase, nowMillis: Long = System.currentTimeMillis()) {
+    fun reached(
+        phase: Phase,
+        nowMillis: Long = System.currentTimeMillis(),
+        elapsedSinceProcessStartMillis: Long = defaultElapsedSinceProcessStartMillis(phase),
+    ) {
         runCatching {
-            updateLocked { current -> current.advanceTo(phase, nowMillis) }
+            updateLocked { current -> current.advanceTo(phase, nowMillis, elapsedSinceProcessStartMillis) }
         }
+    }
+
+    private fun defaultElapsedSinceProcessStartMillis(phase: Phase): Long {
+        if (phase != Phase.ActivityCreated) return -1L
+        return runCatching {
+            (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()).coerceAtLeast(0L)
+        }.getOrDefault(-1L)
     }
 
     /**
      * Marks this process as having entered `RaftBackgroundConnectionService`'s sticky-restart
-     * stop path (`intent == null`). Never throws.
+     * stop path (`intent == null`). Updates the in-memory record synchronously and persists the
+     * latest record on a single-thread background writer so `Service.onStartCommand` performs zero
+     * main-thread disk I/O. Never throws.
      */
     fun markStickyServiceRestart() {
         runCatching {
-            updateLocked { current ->
-                if (current.stickyServiceRestart) null else current.copy(stickyServiceRestart = true)
+            val changed = markStickyInMemoryLocked()
+            if (changed) {
+                asyncWriter.execute { runCatching { writeCurrentSynchronized() } }
             }
         }
+    }
+
+    @Synchronized
+    private fun markStickyInMemoryLocked(): Boolean {
+        val current = record ?: return false
+        if (current.stickyServiceRestart) return false
+        record = current.copy(stickyServiceRestart = true)
+        return true
+    }
+
+    @Synchronized
+    private fun writeCurrentSynchronized() {
+        writeLocked()
     }
 
     @Synchronized
@@ -176,36 +215,47 @@ internal data class StartupPhaseRecord(
     val phaseAtMillis: Long,
     /** Wall-clock time of the first [RaftStartupPhaseMarker.Phase.ActivityCreated] in this process; -1 when none. */
     val firstActivityAtMillis: Long = -1L,
+    /** Monotonic elapsed millis from process start to first [RaftStartupPhaseMarker.Phase.ActivityCreated]; -1 when unknown. */
+    val firstActivityAfterStartMs: Long = -1L,
     /** True when this process hit the sticky-service restart stop path (`intent == null`). */
     val stickyServiceRestart: Boolean = false,
 ) {
     /**
      * Advances to [nextPhase] when it is strictly further than [phase]; returns null otherwise.
-     * [firstActivityAtMillis] is captured once on the first [RaftStartupPhaseMarker.Phase.ActivityCreated]
-     * and never overwritten by later phases (including [RaftStartupPhaseMarker.Phase.FirstFrame]).
+     * [firstActivityAtMillis] and [firstActivityAfterStartMs] are captured once on the first
+     * [RaftStartupPhaseMarker.Phase.ActivityCreated] and never overwritten by later phases
+     * (including [RaftStartupPhaseMarker.Phase.FirstFrame]).
      */
-    fun advanceTo(nextPhase: RaftStartupPhaseMarker.Phase, nowMillis: Long): StartupPhaseRecord? {
+    fun advanceTo(
+        nextPhase: RaftStartupPhaseMarker.Phase,
+        nowMillis: Long,
+        elapsedSinceProcessStartMillis: Long = -1L,
+    ): StartupPhaseRecord? {
         if (nextPhase.ordinal <= phase.ordinal) return null
-        val activityAt =
-            if (nextPhase == RaftStartupPhaseMarker.Phase.ActivityCreated && firstActivityAtMillis < 0L) {
-                nowMillis
+        val capturingFirstActivity =
+            nextPhase == RaftStartupPhaseMarker.Phase.ActivityCreated && firstActivityAtMillis < 0L
+        val activityAt = if (capturingFirstActivity) nowMillis else firstActivityAtMillis
+        val activityOffset =
+            if (capturingFirstActivity && firstActivityAfterStartMs < 0L && elapsedSinceProcessStartMillis >= 0L) {
+                elapsedSinceProcessStartMillis
             } else {
-                firstActivityAtMillis
+                firstActivityAfterStartMs
             }
         return copy(
             phase = nextPhase,
             phaseAtMillis = nowMillis,
             firstActivityAtMillis = activityAt,
+            firstActivityAfterStartMs = activityOffset,
         )
     }
 
     /**
-     * `2|pid|start|phase|phaseAt|firstActivityAt|sticky|processName`
+     * `3|pid|start|phase|phaseAt|firstActivityAt|firstActivityAfterStartMs|sticky|processName`
      * (process name last: it may contain anything but a newline, including `|`).
      */
     fun encode(): String =
-        "2|$pid|$processStartMillis|${phase.label}|$phaseAtMillis|$firstActivityAtMillis|" +
-            "${if (stickyServiceRestart) 1 else 0}|${processName.replace('\n', ' ')}"
+        "3|$pid|$processStartMillis|${phase.label}|$phaseAtMillis|$firstActivityAtMillis|" +
+            "$firstActivityAfterStartMs|${if (stickyServiceRestart) 1 else 0}|${processName.replace('\n', ' ')}"
 
     companion object {
         fun decode(text: String): StartupPhaseRecord? {
@@ -241,6 +291,26 @@ internal data class StartupPhaseRecord(
                         firstActivityAtMillis = parts[5].toLongOrNull()?.takeIf { it >= -1L } ?: return null,
                         stickyServiceRestart = sticky,
                         processName = parts[7],
+                    )
+                }
+                "3" -> {
+                    val parts = trimmed.split('|', limit = 9)
+                    if (parts.size != 9) return null
+                    val sticky =
+                        when (parts[7]) {
+                            "0" -> false
+                            "1" -> true
+                            else -> return null
+                        }
+                    StartupPhaseRecord(
+                        pid = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return null,
+                        processStartMillis = parts[2].toLongOrNull() ?: return null,
+                        phase = RaftStartupPhaseMarker.Phase.fromLabel(parts[3]) ?: return null,
+                        phaseAtMillis = parts[4].toLongOrNull() ?: return null,
+                        firstActivityAtMillis = parts[5].toLongOrNull()?.takeIf { it >= -1L } ?: return null,
+                        firstActivityAfterStartMs = parts[6].toLongOrNull()?.takeIf { it >= -1L } ?: return null,
+                        stickyServiceRestart = sticky,
+                        processName = parts[8],
                     )
                 }
                 else -> null

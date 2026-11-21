@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -29,16 +30,24 @@ internal const val RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG = "raft_background_k
 
 /**
  * Pure visibility predicate: show the background-kill whitelist notice only when a notice is active,
- * the shell is online, and the minimum build gate is inactive ("at most one banner in one place").
+ * the shell is online, and no minimum-build gate banner/block is currently visible ("at most one
+ * banner in one place").
  */
 internal fun shouldShowBackgroundKillNotice(
     notice: RaftBackgroundKillNotice?,
     networkStatus: RaftAppShellNetworkStatus,
     minBuildGateDecision: RaftMinBuildGateDecision,
-): Boolean =
-    notice != null &&
-        networkStatus != RaftAppShellNetworkStatus.Offline &&
-        minBuildGateDecision is RaftMinBuildGateDecision.None
+    dismissedMinBuildBannerThreshold: Long? = null,
+): Boolean {
+    if (notice == null || networkStatus == RaftAppShellNetworkStatus.Offline) return false
+    val minBuildBannerVisible =
+        when (minBuildGateDecision) {
+            RaftMinBuildGateDecision.None -> false
+            is RaftMinBuildGateDecision.Banner -> dismissedMinBuildBannerThreshold != minBuildGateDecision.threshold
+            is RaftMinBuildGateDecision.Block -> true
+        }
+    return !minBuildBannerVisible
+}
 
 /**
  * Signed-in app-shell slot for the Android background-kill whitelist notice.
@@ -51,14 +60,17 @@ internal fun rememberRaftBackgroundKillNoticeBannerSlot(
     val host = RaftBackgroundKillNoticeHostRegistry.host ?: return null
     val notice by host.notice.collectAsState()
     val minBuildDecision by RaftMinBuildGate.decision.collectAsState()
-    if (!shouldShowBackgroundKillNotice(notice, networkStatus, minBuildDecision)) return null
+    val dismissedMinBuildBanner by RaftMinBuildGate.dismissedBanner.collectAsState()
+    if (!shouldShowBackgroundKillNotice(notice, networkStatus, minBuildDecision, dismissedMinBuildBanner)) return null
     val activeNotice = notice ?: return null
-    return {
-        RaftBackgroundKillNoticeBanner(
-            notice = activeNotice,
-            onOpenSettings = host::openVendorWhitelistSettings,
-            onDismiss = host::dismiss,
-        )
+    return remember(activeNotice, host) {
+        {
+            RaftBackgroundKillNoticeBanner(
+                notice = activeNotice,
+                onOpenSettings = { host.openVendorWhitelistSettings() },
+                onDismiss = { host.dismiss() },
+            )
+        }
     }
 }
 

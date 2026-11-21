@@ -1,6 +1,5 @@
 package build.raft.app.shared
 
-import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -31,7 +30,7 @@ internal data class VendorWhitelistTarget(
     val packageUri: Boolean = false,
     val extras: Map<String, String> = emptyMap(),
 ) {
-    fun toIntent(packageName: String): Intent =
+    fun toIntent(packageName: String, appLabel: String = "Raft"): Intent =
         Intent().apply {
             if (action != null) setAction(action)
             if (componentPackage != null && componentClass != null) {
@@ -41,13 +40,20 @@ internal data class VendorWhitelistTarget(
                 data = Uri.parse("package:$packageName")
             }
             extras.forEach { (key, value) ->
-                putExtra(key, if (value == PACKAGE_NAME_PLACEHOLDER) packageName else value)
+                val resolved =
+                    when (value) {
+                        PACKAGE_NAME_PLACEHOLDER -> packageName
+                        APP_LABEL_PLACEHOLDER -> appLabel
+                        else -> value
+                    }
+                putExtra(key, resolved)
             }
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
     companion object {
         const val PACKAGE_NAME_PLACEHOLDER = "\$PACKAGE_NAME"
+        const val APP_LABEL_PLACEHOLDER = "\$APP_LABEL"
     }
 }
 
@@ -79,6 +85,10 @@ internal object RaftAndroidVendorWhitelist {
             VendorWhitelistTarget(
                 id = "huawei_app_startup_action",
                 action = "huawei.intent.action.APP_STARTUP_SETTINGS",
+            ),
+            VendorWhitelistTarget(
+                id = "huawei_bootapp_action",
+                action = "huawei.intent.action.HSM_BOOTAPP_MANAGER",
             ),
             VendorWhitelistTarget(
                 id = "huawei_startup_control",
@@ -124,6 +134,11 @@ internal object RaftAndroidVendorWhitelist {
                 componentClass = "com.zui.safecenter.autorun.AutoRunActivity",
             ),
             VendorWhitelistTarget(
+                id = "zui_safecenter_main_tab",
+                componentPackage = "com.zui.safecenter",
+                componentClass = "com.zui.safecenter.MainTabActivity",
+            ),
+            VendorWhitelistTarget(
                 id = "zui_safecenter_main",
                 componentPackage = "com.zui.safecenter",
                 componentClass = "com.zui.safecenter.MainActivity",
@@ -151,7 +166,11 @@ internal object RaftAndroidVendorWhitelist {
                 id = "xiaomi_powerkeeper_app",
                 componentPackage = "com.miui.powerkeeper",
                 componentClass = "com.miui.powerkeeper.ui.HiddenAppsConfigActivity",
-                extras = mapOf("package_name" to VendorWhitelistTarget.PACKAGE_NAME_PLACEHOLDER),
+                extras =
+                    mapOf(
+                        "package_name" to VendorWhitelistTarget.PACKAGE_NAME_PLACEHOLDER,
+                        "package_label" to VendorWhitelistTarget.APP_LABEL_PLACEHOLDER,
+                    ),
             ),
             VendorWhitelistTarget(
                 id = "xiaomi_powerkeeper_list",
@@ -313,10 +332,13 @@ internal object RaftAndroidVendorWhitelist {
 
     /**
      * Tries each target directly without `resolveActivity()` (Android 11+ `<queries>` filters OEM
-     * packages), falling through on `ActivityNotFoundException` or `SecurityException`.
+     * packages), falling through on any [RuntimeException] (including `ActivityNotFoundException`,
+     * `SecurityException`, `IllegalArgumentException`, `IllegalStateException`, and OEM
+     * `AndroidRuntimeException`) so the `app_details` fallback is always reached.
      */
     internal fun launchFirstAvailable(
         targets: List<VendorWhitelistTarget>,
+        onFailure: (VendorWhitelistTarget, RuntimeException) -> Unit = { _, _ -> },
         launcher: (VendorWhitelistTarget) -> Unit,
     ): String? {
         for (target in targets) {
@@ -324,9 +346,8 @@ internal object RaftAndroidVendorWhitelist {
                 try {
                     launcher(target)
                     true
-                } catch (_: ActivityNotFoundException) {
-                    false
-                } catch (_: SecurityException) {
+                } catch (error: RuntimeException) {
+                    onFailure(target, error)
                     false
                 }
             if (launched) return target.id
@@ -342,9 +363,22 @@ internal object RaftAndroidVendorWhitelist {
         val appContext = context.applicationContext
         val vendor = resolveVendor(manufacturer, brand)
         val targets = targetsFor(vendor)
+        val appLabel =
+            runCatching { appContext.applicationInfo.loadLabel(appContext.packageManager).toString() }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+                ?: "Raft"
         val launched =
-            launchFirstAvailable(targets) { target ->
-                appContext.startActivity(target.toIntent(appContext.packageName))
+            launchFirstAvailable(
+                targets = targets,
+                onFailure = { target, error ->
+                    RaftAppLog.d(
+                        LOG_TAG,
+                        "vendor_whitelist_target_failed vendor=${vendor.id} target=${target.id} class=${error.javaClass.simpleName}",
+                    )
+                },
+            ) { target ->
+                appContext.startActivity(target.toIntent(appContext.packageName, appLabel))
             }
         if (launched != null) {
             RaftAppLog.i(LOG_TAG, "vendor_whitelist_opened vendor=${vendor.id} target=$launched")

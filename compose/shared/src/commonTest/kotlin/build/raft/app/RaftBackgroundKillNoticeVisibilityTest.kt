@@ -44,6 +44,22 @@ class RaftBackgroundKillNoticeVisibilityTest {
                 minBuildGateDecision = RaftMinBuildGateDecision.Banner(threshold = 12800000L, updateUrl = null),
             )
         )
+        assertTrue(
+            shouldShowBackgroundKillNotice(
+                notice = sampleNotice,
+                networkStatus = RaftAppShellNetworkStatus.Online,
+                minBuildGateDecision = RaftMinBuildGateDecision.Banner(threshold = 12800000L, updateUrl = null),
+                dismissedMinBuildBannerThreshold = 12800000L,
+            )
+        )
+        assertFalse(
+            shouldShowBackgroundKillNotice(
+                notice = sampleNotice,
+                networkStatus = RaftAppShellNetworkStatus.Online,
+                minBuildGateDecision = RaftMinBuildGateDecision.Banner(threshold = 12800001L, updateUrl = null),
+                dismissedMinBuildBannerThreshold = 12800000L,
+            )
+        )
         assertFalse(
             shouldShowBackgroundKillNotice(
                 notice = sampleNotice,
@@ -54,6 +70,7 @@ class RaftBackgroundKillNoticeVisibilityTest {
                         latestBuild = 12800001L,
                         updateUrl = "https://hands.build/apps/raft-android/latest",
                     ),
+                dismissedMinBuildBannerThreshold = 12800000L,
             )
         )
     }

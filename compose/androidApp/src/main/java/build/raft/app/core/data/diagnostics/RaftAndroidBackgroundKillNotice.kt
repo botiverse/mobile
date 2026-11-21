@@ -11,6 +11,8 @@ import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
 import build.raft.app.shared.AndroidOemVendor
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidVendorWhitelist
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,7 +69,9 @@ internal fun qualifiesForBackgroundKillNotice(
     keepAlivePreferenceEnabled: Boolean,
 ): Boolean {
     if (noPlayServicesFallbackApplies || keepAlivePreferenceEnabled) return true
-    if (exit.importance < ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED) return true
+    if (exit.importance in ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE until ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED) {
+        return true
+    }
     if (hasVendorCleanerDescription(exit.description)) return true
     if (vendor != AndroidOemVendor.Generic &&
         exit.reasonCode in OemCleanerReasonCodes &&
@@ -152,9 +156,11 @@ internal class RaftAndroidBackgroundKillNoticeController(
     private val nowMillis: () -> Long = { System.currentTimeMillis() },
     private val openWhitelist: () -> String?,
     private val log: (String) -> Unit = {},
+    private val persistAsync: (() -> Unit) -> Unit = { it() },
+    private val mutableNotice: MutableStateFlow<RaftBackgroundKillNotice?> = MutableStateFlow(null),
 ) : RaftBackgroundKillNoticeHost {
     private val lock = Any()
-    private val mutableNotice = MutableStateFlow<RaftBackgroundKillNotice?>(null)
+    private var cachedState: BackgroundKillNoticePersistenceState? = null
 
     override val notice: StateFlow<RaftBackgroundKillNotice?> = mutableNotice.asStateFlow()
 
@@ -168,17 +174,23 @@ internal class RaftAndroidBackgroundKillNoticeController(
         keepAlivePreferenceEnabled: Boolean,
     ): RaftBackgroundKillNotice? {
         val now = nowMillis()
+        // Keep SharedPreferences / disk I/O strictly outside [lock] so main-thread clicks never
+        // contend with background evaluation or baseline fsyncs.
+        val loaded = store.load()
+        val baseline =
+            resolveSystemKillBaseline(
+                storedMillis = loaded.baselineMillis,
+                packageUpdatedMillis = packageUpdatedMillis,
+                nowMillis = now,
+                persist = store::persistBaseline,
+            )
+        val loadedWithBaseline =
+            if (loaded.baselineMillis == null) loaded.copy(baselineMillis = baseline) else loaded
         val selected: SystemKillExit?
         val result: RaftBackgroundKillNotice?
         synchronized(lock) {
-            val state = store.load()
-            val baseline =
-                resolveSystemKillBaseline(
-                    storedMillis = state.baselineMillis,
-                    packageUpdatedMillis = packageUpdatedMillis,
-                    nowMillis = now,
-                    persist = store::persistBaseline,
-                )
+            val state = mergePersistenceState(cachedState, loadedWithBaseline)
+            cachedState = state
             selected =
                 selectBackgroundKillForNotice(
                     exits = exits,
@@ -213,47 +225,68 @@ internal class RaftAndroidBackgroundKillNoticeController(
     override fun dismiss() {
         val now = nowMillis()
         val dismissedExitAt: Long
-        val newDismissCount: Int
+        val updatedState: BackgroundKillNoticePersistenceState
         synchronized(lock) {
             val current = mutableNotice.value ?: return
-            val state = store.load()
-            newDismissCount = state.dismissCount + 1
+            val state = cachedState ?: BackgroundKillNoticePersistenceState()
             dismissedExitAt = current.exitTimestampMillis
-            store.save(
+            updatedState =
                 state.copy(
                     lastAcknowledgedExitTimestampMillis =
                         maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
                     lastDismissedAtMillis = now,
-                    dismissCount = newDismissCount,
+                    dismissCount = state.dismissCount + 1,
                 )
-            )
+            cachedState = updatedState
             mutableNotice.value = null
         }
-        log("background_kill_notice action=dismiss dismissCount=$newDismissCount exitTimestampMillis=$dismissedExitAt")
+        persistAsync { runCatching { store.save(updatedState) } }
+        log("background_kill_notice action=dismiss dismissCount=${updatedState.dismissCount} exitTimestampMillis=$dismissedExitAt")
     }
 
     override fun openVendorWhitelistSettings() {
+        val target = runCatching { openWhitelist() }.getOrNull()
         val now = nowMillis()
-        val acknowledgedExitAt: Long?
-        synchronized(lock) {
-            val current = mutableNotice.value
-            acknowledgedExitAt = current?.exitTimestampMillis
-            if (current != null) {
-                val state = store.load()
-                store.save(
-                    state.copy(
-                        lastAcknowledgedExitTimestampMillis =
-                            maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
-                        lastOpenedSettingsAtMillis = now,
-                    )
-                )
-                mutableNotice.value = null
+        var acknowledgedExitAt: Long? = null
+        var updatedState: BackgroundKillNoticePersistenceState? = null
+        if (target != null) {
+            synchronized(lock) {
+                val current = mutableNotice.value
+                acknowledgedExitAt = current?.exitTimestampMillis
+                if (current != null) {
+                    val state = cachedState ?: BackgroundKillNoticePersistenceState()
+                    updatedState =
+                        state.copy(
+                            lastAcknowledgedExitTimestampMillis =
+                                maxOf(state.lastAcknowledgedExitTimestampMillis, current.exitTimestampMillis),
+                            lastOpenedSettingsAtMillis = now,
+                        )
+                    cachedState = updatedState
+                    mutableNotice.value = null
+                }
+            }
+            updatedState?.let { nextState ->
+                persistAsync { runCatching { store.save(nextState) } }
             }
         }
-        val target = runCatching { openWhitelist() }.getOrNull()
         log(
             "background_kill_notice action=open_settings target=${target ?: "none"} " +
                 "exitTimestampMillis=${acknowledgedExitAt ?: -1L}"
+        )
+    }
+
+    private fun mergePersistenceState(
+        inMemory: BackgroundKillNoticePersistenceState?,
+        disk: BackgroundKillNoticePersistenceState,
+    ): BackgroundKillNoticePersistenceState {
+        if (inMemory == null) return disk
+        return BackgroundKillNoticePersistenceState(
+            baselineMillis = inMemory.baselineMillis ?: disk.baselineMillis,
+            lastAcknowledgedExitTimestampMillis =
+                maxOf(inMemory.lastAcknowledgedExitTimestampMillis, disk.lastAcknowledgedExitTimestampMillis),
+            lastDismissedAtMillis = maxOf(inMemory.lastDismissedAtMillis, disk.lastDismissedAtMillis),
+            dismissCount = maxOf(inMemory.dismissCount, disk.dismissCount),
+            lastOpenedSettingsAtMillis = maxOf(inMemory.lastOpenedSettingsAtMillis, disk.lastOpenedSettingsAtMillis),
         )
     }
 }
@@ -262,7 +295,8 @@ internal class RaftAndroidBackgroundKillNoticeController(
  * Process-scoped Android host for the local background-kill whitelist guidance banner.
  *
  * Triggered 100% locally on the memory-telemetry thread right after historical exit logging
- * (never gated on [build.raft.app.data.RaftServicesPrivacyGate]).
+ * (never gated on [build.raft.app.data.RaftServicesPrivacyGate]). [install] performs zero
+ * `SharedPreferences` or disk access on the main thread; storage is opened lazily off-main.
  */
 internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHost {
     private const val Tag = "RaftBackgroundKillNotice"
@@ -274,23 +308,31 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
     private const val LastOpenedSettingsAtKey = "last-opened-settings-at-millis"
     private const val MaxExitsQueried = 16
 
+    private val hostNotice = MutableStateFlow<RaftBackgroundKillNotice?>(null)
+
+    private val persistenceExecutor: Executor by lazy {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "RaftBgKillNoticeStore").apply { isDaemon = true }
+        }
+    }
+
+    @Volatile
+    private var appContextRef: Context? = null
+
     @Volatile
     private var controller: RaftAndroidBackgroundKillNoticeController? = null
 
-    private val emptyNotice = MutableStateFlow<RaftBackgroundKillNotice?>(null)
-
-    override val notice: StateFlow<RaftBackgroundKillNotice?>
-        get() = controller?.notice ?: emptyNotice
+    override val notice: StateFlow<RaftBackgroundKillNotice?> = hostNotice.asStateFlow()
 
     fun install(context: Context) {
-        val appContext = context.applicationContext
-        ensureController(appContext)
+        appContextRef = context.applicationContext
         RaftBackgroundKillNoticeHostRegistry.host = this
     }
 
     fun evaluate(context: Context, previousTelemetry: List<MemoryTelemetrySnapshot>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         val appContext = context.applicationContext
+        appContextRef = appContext
         runCatching {
             val activeController = ensureController(appContext)
             val activityManager = appContext.getSystemService(ActivityManager::class.java) ?: return
@@ -333,6 +375,12 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
         controller?.dismiss()
     }
 
+    internal fun resetForTests() {
+        controller = null
+        appContextRef = null
+        hostNotice.value = null
+    }
+
     @Synchronized
     private fun ensureController(appContext: Context): RaftAndroidBackgroundKillNoticeController {
         controller?.let { return it }
@@ -342,6 +390,8 @@ internal object RaftAndroidBackgroundKillNoticeHost : RaftBackgroundKillNoticeHo
                 store = SharedPreferencesStore(prefs),
                 openWhitelist = { RaftAndroidVendorWhitelist.open(appContext) },
                 log = { line -> RaftAndroidLocalDiagnostics.recordLog("info", Tag, line) },
+                persistAsync = { task -> persistenceExecutor.execute(task) },
+                mutableNotice = hostNotice,
             )
         controller = created
         return created

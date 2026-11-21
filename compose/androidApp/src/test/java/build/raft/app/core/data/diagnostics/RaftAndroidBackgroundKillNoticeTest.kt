@@ -7,11 +7,16 @@ import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_PERCEPTIBLE
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE
 import android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
 import android.app.ApplicationExitInfo
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.SharedPreferences
+import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.shared.AndroidOemVendor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RaftAndroidBackgroundKillNoticeTest {
@@ -23,9 +28,16 @@ class RaftAndroidBackgroundKillNoticeTest {
     private class InMemoryNoticeStore(
         var state: BackgroundKillNoticePersistenceState = BackgroundKillNoticePersistenceState(),
     ) : BackgroundKillNoticeStore {
-        override fun load(): BackgroundKillNoticePersistenceState = state
+        var loadCalls: Int = 0
+        var saveCalls: Int = 0
+
+        override fun load(): BackgroundKillNoticePersistenceState {
+            loadCalls += 1
+            return state
+        }
 
         override fun save(state: BackgroundKillNoticePersistenceState) {
+            saveCalls += 1
             this.state = state
         }
 
@@ -461,6 +473,82 @@ class RaftAndroidBackgroundKillNoticeTest {
                 vendor = AndroidOemVendor.Huawei,
                 noPlayServicesFallbackApplies = true,
                 keepAlivePreferenceEnabled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun installPerformsZeroSharedPreferencesAccessAndClickHandlersNeverReadOrBlockCallerThread() {
+        val noPrefsContext =
+            object : ContextWrapper(null) {
+                override fun getApplicationContext(): Context = this
+
+                override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences {
+                    throw AssertionError("getSharedPreferences must not be called during install()")
+                }
+            }
+        val previousHost = RaftBackgroundKillNoticeHostRegistry.host
+        try {
+            RaftAndroidBackgroundKillNoticeHost.resetForTests()
+            RaftAndroidBackgroundKillNoticeHost.install(noPrefsContext)
+            assertTrue(RaftBackgroundKillNoticeHostRegistry.host === RaftAndroidBackgroundKillNoticeHost)
+        } finally {
+            RaftAndroidBackgroundKillNoticeHost.resetForTests()
+            RaftBackgroundKillNoticeHostRegistry.host = previousHost
+        }
+
+        val now = installedAt + hour
+        val store = InMemoryNoticeStore()
+        val deferredSaves = mutableListOf<() -> Unit>()
+        var openerResult: String? = null
+        val controller =
+            RaftAndroidBackgroundKillNoticeController(
+                store = store,
+                nowMillis = { now },
+                openWhitelist = { openerResult },
+                persistAsync = { task -> deferredSaves += task },
+            )
+        val kill = exit(pid = 900, at = now - 5_000L, importance = IMPORTANCE_SERVICE)
+        assertNotNull(
+            controller.evaluate(
+                exits = listOf(kill),
+                snapshots = emptyList(),
+                packageUpdatedMillis = installedAt,
+                mainProcessName = mainProcess,
+                vendor = AndroidOemVendor.LenovoZui,
+                noPlayServicesFallbackApplies = false,
+                keepAlivePreferenceEnabled = true,
+            )
+        )
+        assertEquals(1, store.loadCalls)
+        assertEquals(0, store.saveCalls)
+
+        // When no whitelist activity can be opened, keep the notice visible without starting cooldown.
+        controller.openVendorWhitelistSettings()
+        assertNotNull(controller.notice.value)
+        assertEquals(1, store.loadCalls)
+        assertEquals(0, deferredSaves.size)
+
+        // When opener succeeds, clear notice in memory with zero synchronous store.load() or store.save().
+        openerResult = "zui_startup_list"
+        controller.openVendorWhitelistSettings()
+        assertNull(controller.notice.value)
+        assertEquals(1, store.loadCalls)
+        assertEquals(0, store.saveCalls)
+        assertEquals(1, deferredSaves.size)
+        deferredSaves.removeAt(0).invoke()
+        assertEquals(1, store.saveCalls)
+        assertEquals(kill.timestampMillis, store.state.lastAcknowledgedExitTimestampMillis)
+
+        // Unknown importance == 0 on generic GMS does not spuriously qualify.
+        assertEquals(
+            false,
+            qualifiesForBackgroundKillNotice(
+                exit = exit(pid = 901, at = now - 1_000L, importance = 0),
+                telemetry = null,
+                vendor = AndroidOemVendor.Generic,
+                noPlayServicesFallbackApplies = false,
+                keepAlivePreferenceEnabled = false,
             ),
         )
     }

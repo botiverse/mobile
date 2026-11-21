@@ -63,6 +63,7 @@ class RaftAndroidVendorWhitelistTest {
             listOf(
                 "huawei_startup_normal",
                 "huawei_app_startup_action",
+                "huawei_bootapp_action",
                 "huawei_startup_control",
                 "huawei_protect",
                 "app_details",
@@ -80,6 +81,7 @@ class RaftAndroidVendorWhitelistTest {
             listOf(
                 "com.zui.safecenter/com.zui.safecenter.startup.StartupAppListActivity",
                 "com.zui.safecenter/com.zui.safecenter.autorun.AutoRunActivity",
+                "com.zui.safecenter/com.zui.safecenter.MainTabActivity",
                 "com.zui.safecenter/com.zui.safecenter.MainActivity",
                 "com.lenovo.security/com.lenovo.security.purebackground.PureBackgroundActivity",
                 "com.lenovo.performancecenter/com.lenovo.performancecenter.core.ui.switches.SwitchesActivity",
@@ -90,29 +92,30 @@ class RaftAndroidVendorWhitelistTest {
     }
 
     @Test
-    fun launchFirstAvailableFallsThroughActivityNotFoundAndSecurityExceptionToAppDetails() {
+    fun launchFirstAvailableFallsThroughRuntimeExceptionsToAppDetails() {
         val targets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.LenovoZui)
         val attempted = mutableListOf<String>()
 
-        // 1st throws ActivityNotFoundException, 2nd throws SecurityException, 3rd succeeds.
-        val launchedThird =
+        // 1st throws ActivityNotFoundException, 2nd SecurityException, 3rd IllegalStateException, 4th succeeds.
+        val launchedFourth =
             RaftAndroidVendorWhitelist.launchFirstAvailable(targets) { target ->
                 attempted += target.id
                 when (attempted.size) {
                     1 -> throw ActivityNotFoundException("missing activity")
                     2 -> throw SecurityException("not exported")
+                    3 -> throw IllegalStateException("oem activity error")
                     else -> Unit
                 }
             }
-        assertEquals(targets[2].id, launchedThird)
-        assertEquals(targets.take(3).map { it.id }, attempted)
+        assertEquals(targets[3].id, launchedFourth)
+        assertEquals(targets.take(4).map { it.id }, attempted)
 
         // All OEM targets fail -> falls back to app_details.
         val fallbackAttempts = mutableListOf<String>()
         val launchedFallback =
             RaftAndroidVendorWhitelist.launchFirstAvailable(targets) { target ->
                 fallbackAttempts += target.id
-                if (target.id != "app_details") throw ActivityNotFoundException("missing")
+                if (target.id != "app_details") throw IllegalArgumentException("bad oem intent")
             }
         assertEquals("app_details", launchedFallback)
         assertEquals(targets.map { it.id }, fallbackAttempts)
@@ -137,9 +140,10 @@ class RaftAndroidVendorWhitelistTest {
         val xiaomiPowerkeeper =
             RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Xiaomi)
                 .first { it.id == "xiaomi_powerkeeper_app" }
-                .toIntent(pkg)
+                .toIntent(pkg, appLabel = "Raft")
         assertTrue((xiaomiPowerkeeper.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
         assertEquals(pkg, xiaomiPowerkeeper.getStringExtra("package_name"))
+        assertEquals("Raft", xiaomiPowerkeeper.getStringExtra("package_label"))
 
         val fallbackIntent = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Generic).single().toIntent(pkg)
         assertTrue((fallbackIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)

@@ -1307,9 +1307,13 @@ internal data class SystemKillRestartInfo(
  */
 private const val DirectUserLaunchActivityWindowMillis = 60_000L
 
+/** Upper bound on plausible restart/outage intervals; larger values indicate a wall-clock jump (e.g. NTP sync). */
+internal const val MaxPlausibleRestartDurationMillis: Long = 30L * 24 * 60 * 60 * 1000
+
 private data class RestartCandidateProcess(
     val startMillis: Long,
     val firstActivityAtMillis: Long,
+    val firstActivityAfterStartMs: Long,
     val stickyServiceRestart: Boolean,
     val reachedActivity: Boolean,
 )
@@ -1323,6 +1327,7 @@ internal fun resolveSystemKillRestart(
     startupRecords: List<StartupPhaseRecord>,
     currentProcessStartMillis: Long?,
     currentFirstActivityAtMillis: Long = -1L,
+    currentFirstActivityAfterStartMs: Long = -1L,
     currentStickyRestart: Boolean = false,
 ): SystemKillRestartInfo {
     val exitAt = exit.timestampMillis
@@ -1332,11 +1337,13 @@ internal fun resolveSystemKillRestart(
         if (exit.processName.isNotEmpty() && record.processName.isNotEmpty() && record.processName != exit.processName) {
             continue
         }
-        // Never treat the exited process itself as its own restart.
-        if (record.pid == exit.pid && record.processStartMillis <= exitAt) continue
+        // Never treat the exited process itself as its own restart, even if wall clock stepped
+        // backward between process start and exit (so record.processStartMillis > exitAt).
+        if (record.pid == exit.pid) continue
         if (record.processStartMillis < exitAt) continue
         val reachedActivity =
             record.firstActivityAtMillis >= 0L ||
+                record.firstActivityAfterStartMs >= 0L ||
                 record.phase.ordinal >= RaftStartupPhaseMarker.Phase.ActivityCreated.ordinal
         val effectiveFirstActivity =
             when {
@@ -1348,6 +1355,7 @@ internal fun resolveSystemKillRestart(
             RestartCandidateProcess(
                 startMillis = record.processStartMillis,
                 firstActivityAtMillis = effectiveFirstActivity,
+                firstActivityAfterStartMs = record.firstActivityAfterStartMs,
                 stickyServiceRestart = record.stickyServiceRestart,
                 reachedActivity = reachedActivity,
             )
@@ -1364,6 +1372,13 @@ internal fun resolveSystemKillRestart(
                             candidate.firstActivityAtMillis >= 0L -> candidate.firstActivityAtMillis
                             else -> existing.firstActivityAtMillis
                         },
+                    firstActivityAfterStartMs =
+                        when {
+                            existing.firstActivityAfterStartMs >= 0L && candidate.firstActivityAfterStartMs >= 0L ->
+                                minOf(existing.firstActivityAfterStartMs, candidate.firstActivityAfterStartMs)
+                            candidate.firstActivityAfterStartMs >= 0L -> candidate.firstActivityAfterStartMs
+                            else -> existing.firstActivityAfterStartMs
+                        },
                     stickyServiceRestart = existing.stickyServiceRestart || candidate.stickyServiceRestart,
                     reachedActivity = existing.reachedActivity || candidate.reachedActivity,
                 )
@@ -1371,13 +1386,14 @@ internal fun resolveSystemKillRestart(
     }
 
     if (currentProcessStartMillis != null && currentProcessStartMillis >= exitAt) {
-        val currentReachedActivity = currentFirstActivityAtMillis >= 0L
+        val currentReachedActivity = currentFirstActivityAtMillis >= 0L || currentFirstActivityAfterStartMs >= 0L
         val existing = candidatesByStart[currentProcessStartMillis]
         candidatesByStart[currentProcessStartMillis] =
             if (existing == null) {
                 RestartCandidateProcess(
                     startMillis = currentProcessStartMillis,
                     firstActivityAtMillis = currentFirstActivityAtMillis,
+                    firstActivityAfterStartMs = currentFirstActivityAfterStartMs,
                     stickyServiceRestart = currentStickyRestart,
                     reachedActivity = currentReachedActivity,
                 )
@@ -1385,6 +1401,12 @@ internal fun resolveSystemKillRestart(
                 existing.copy(
                     firstActivityAtMillis =
                         if (currentFirstActivityAtMillis >= 0L) currentFirstActivityAtMillis else existing.firstActivityAtMillis,
+                    firstActivityAfterStartMs =
+                        if (currentFirstActivityAfterStartMs >= 0L) {
+                            currentFirstActivityAfterStartMs
+                        } else {
+                            existing.firstActivityAfterStartMs
+                        },
                     stickyServiceRestart = existing.stickyServiceRestart || currentStickyRestart,
                     reachedActivity = existing.reachedActivity || currentReachedActivity,
                 )
@@ -1402,12 +1424,20 @@ internal fun resolveSystemKillRestart(
         )
 
     val restartAt = first.startMillis
-    val restartDelayMs = (restartAt - exitAt).takeIf { it >= 0L }
+    val restartDelayMs = (restartAt - exitAt).takeIf { it in 0L..MaxPlausibleRestartDurationMillis }
 
     val isDirectUserLaunch =
         !first.stickyServiceRestart &&
             first.reachedActivity &&
-            (first.firstActivityAtMillis < 0L || (first.firstActivityAtMillis - first.startMillis) in 0L..DirectUserLaunchActivityWindowMillis)
+            when {
+                // Prefer monotonic process-start -> first-activity offset so a backward NTP step
+                // during cold start never misclassifies a direct launch as background_process.
+                first.firstActivityAfterStartMs >= 0L ->
+                    first.firstActivityAfterStartMs <= DirectUserLaunchActivityWindowMillis
+                first.firstActivityAtMillis >= 0L ->
+                    (first.firstActivityAtMillis - first.startMillis) in 0L..DirectUserLaunchActivityWindowMillis
+                else -> true
+            }
 
     val restartKind =
         when {
@@ -1428,12 +1458,14 @@ internal fun resolveSystemKillRestart(
                     when {
                         candidate.firstActivityAtMillis >= candidate.startMillis && candidate.firstActivityAtMillis >= exitAt ->
                             candidate.firstActivityAtMillis
+                        candidate.firstActivityAfterStartMs >= 0L && candidate.startMillis >= exitAt ->
+                            candidate.startMillis + candidate.firstActivityAfterStartMs
                         candidate.firstActivityAtMillis < 0L && candidate.reachedActivity && candidate.startMillis >= exitAt ->
                             candidate.startMillis
                         else -> null
                     }
                 }
-            recoveryAt?.let { (it - exitAt).takeIf { delta -> delta >= 0L } }
+            recoveryAt?.let { (it - exitAt).takeIf { delta -> delta in 0L..MaxPlausibleRestartDurationMillis } }
         }
 
     return SystemKillRestartInfo(
@@ -1812,6 +1844,7 @@ internal object AndroidSystemKillReporter {
                         startupRecords = startupRecords,
                         currentProcessStartMillis = current?.processStartMillis ?: fallbackCurrentProcessStartMillis,
                         currentFirstActivityAtMillis = current?.firstActivityAtMillis ?: -1L,
+                        currentFirstActivityAfterStartMs = current?.firstActivityAfterStartMs ?: -1L,
                         currentStickyRestart = current?.stickyServiceRestart ?: false,
                     )
                 systemKillMessage(item.exit, item.telemetry, startup, restart) to
