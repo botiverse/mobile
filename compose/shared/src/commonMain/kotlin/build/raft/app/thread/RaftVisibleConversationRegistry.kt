@@ -14,7 +14,8 @@ internal data class RaftVisibleConversationSnapshot(
     val currentServerId: String?,
     val visibleConversationKey: String?,
     val visibleRouteIdentity: ThreadRouteIdentity?,
-    val conversationDirectory: SharedConversationDirectoryState
+    val conversationDirectory: SharedConversationDirectoryState,
+    val visibleRouteIdentities: List<ThreadRouteIdentity> = emptyList(),
 )
 
 /**
@@ -87,6 +88,7 @@ internal fun NotificationPushReceived.targetsForegroundVisibleConversation(
         currentServerId = visible.currentServerId,
         visibleConversationKey = visible.visibleConversationKey,
         visibleRouteIdentity = visible.visibleRouteIdentity,
+        visibleRouteIdentities = visible.visibleRouteIdentities,
         conversationDirectory = visible.conversationDirectory,
         onSuppressed = { reason -> suppressedReason = reason }
     )

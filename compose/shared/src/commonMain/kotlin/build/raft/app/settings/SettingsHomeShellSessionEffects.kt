@@ -812,7 +812,8 @@ internal fun AppShellTaskDraftsAndBannerEffects(
                         selectedConversationId = latestSelectedHomeConversationId
                     ),
                 visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
-                conversationDirectory = latestAppShellConversationDirectory
+                conversationDirectory = latestAppShellConversationDirectory,
+                visibleRouteIdentities = foregroundBannerStore.visibleRouteIdentities(),
             )
         }
         onDispose { RaftVisibleConversationRegistry.unregister(ownerId) }

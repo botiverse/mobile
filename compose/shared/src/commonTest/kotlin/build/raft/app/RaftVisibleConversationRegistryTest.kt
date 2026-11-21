@@ -119,6 +119,50 @@ class RaftVisibleConversationRegistryTest {
     }
 
     @Test
+    fun pushMatchingAnyActiveVisibleRouteIdentityStaysSilent() {
+        val mainRoute =
+            ThreadRouteIdentity(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                instanceKey = "channel-1",
+                timelineKey = "channel-1",
+                canRenderTimelineCandidates = true,
+            )
+        val overlayRoute =
+            ThreadRouteIdentity(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                instanceKey = "dm-ottie",
+                timelineKey = "dm-ottie",
+                canRenderTimelineCandidates = true,
+            )
+        val snapshot =
+            RaftVisibleConversationSnapshot(
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                visibleRouteIdentity = mainRoute,
+                conversationDirectory = threadDirectory,
+                visibleRouteIdentities = listOf(mainRoute, overlayRoute),
+            )
+        assertTrue(channelPush("channel-1").targetsForegroundVisibleConversation(snapshot))
+        val dmPush =
+            assertNotNull(
+                raftSystemNotificationPushEventOrNull(
+                    serverId = "server-1",
+                    kind = "dm",
+                    channelId = "dm-ottie",
+                    threadId = null,
+                    parentChannelId = null,
+                    parentMessageId = null,
+                    messageId = "message-dm-1",
+                    category = "dm",
+                )
+            )
+        assertTrue(dmPush.targetsForegroundVisibleConversation(snapshot))
+        assertFalse(channelPush("channel-2").targetsForegroundVisibleConversation(snapshot))
+    }
+
+    @Test
     fun payloadWithoutKindInfersThreadAndDirectMessage() {
         val thread =
             raftSystemNotificationPushEventOrNull(

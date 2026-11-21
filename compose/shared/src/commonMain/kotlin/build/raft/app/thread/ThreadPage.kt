@@ -2785,10 +2785,15 @@ private fun SharedThreadRouteContentContent(
             sharedStores.foregroundBannerStore(storeScope)
         }
     val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
-    val foregroundBannerRouteOwnerId = "thread:$initialThreadInstanceKey"
-    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore) {
+    val foregroundBannerRouteOwnerId = remember { nextForegroundBannerRouteOwnerId("thread") }
+    val inAssistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+    DisposableEffect(active, payloadRouteIdentity, foregroundBannerStore, inAssistantPanelEmbed, foregroundBannerRouteOwnerId) {
         if (active) {
-            foregroundBannerStore.setVisibleRoute(foregroundBannerRouteOwnerId, payloadRouteIdentity)
+            foregroundBannerStore.setVisibleRoute(
+                ownerId = foregroundBannerRouteOwnerId,
+                route = payloadRouteIdentity,
+                isOverlay = inAssistantPanelEmbed,
+            )
         }
         onDispose { foregroundBannerStore.clearVisibleRoute(foregroundBannerRouteOwnerId) }
     }
@@ -3167,7 +3172,7 @@ private fun SharedThreadRouteContentContent(
         conversationSideCardsEnabled(
             taskV2Enabled = taskV2Enabled,
             showModeTabs = payload.showModeTabs,
-            assistantPanelEmbed = LocalThreadAssistantPanelEmbed.current != null
+            assistantPanelEmbed = inAssistantPanelEmbed
         )
     val sideCardsStore = LocalConversationSideCards.current
     val sideCardsState by sideCardsStore.state.collectAsState()
@@ -5774,9 +5779,6 @@ private fun SharedThreadRouteContentContent(
         )
     }
 
-    // Whether this page's assistant panel is open (set from the content, where the otter lives):
-    // the page's own banner then gives way to the panel window's (threadForegroundBannerOnPage).
-    val assistantPanelOpenOnPage = remember { mutableStateOf(false) }
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
     val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
@@ -5903,8 +5905,8 @@ private fun SharedThreadRouteContentContent(
         banner =
             foregroundMessageBanner?.takeIf {
                 threadForegroundBannerOnPage(
-                    inAssistantPanel = LocalThreadAssistantPanelEmbed.current != null,
-                    assistantPanelOpen = assistantPanelOpenOnPage.value,
+                    inAssistantPanel = inAssistantPanelEmbed,
+                    assistantPanelOpen = false,
                 )
             },
         topSafeArea = foregroundBannerTopSafeArea,
@@ -5913,16 +5915,6 @@ private fun SharedThreadRouteContentContent(
         currentServerIdOverride = foregroundBannerServerId,
         onBannerClick = onForegroundBannerClick,
         onBannerDismiss = onForegroundBannerDismiss,
-        handoff =
-            RaftForegroundBannerHandoff(
-                banner = foregroundMessageBanner,
-                topSafeArea = foregroundBannerTopSafeArea,
-                serverMembersStore = serverMembersStore,
-                currentServerId = foregroundBannerServerId,
-                onClick = onForegroundBannerClick,
-                onDismiss = onForegroundBannerDismiss,
-                coveredByWindow = assistantPanelOpenOnPage,
-            ),
     ) {
         // OFF-zero-work provider set (task #20 P1, reviewed round 4): with
         // diagnostics OFF the census session Local is NOT part of the vararg
