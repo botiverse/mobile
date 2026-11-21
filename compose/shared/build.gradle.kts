@@ -572,3 +572,16 @@ fun getLinkerArgs(): List<String> {
 tasks.matching { it.name == "desktopTest" || it.name == "compileTestKotlinDesktop" }.configureEach {
     enabled = false
 }
+
+// iOS release framework only: Kotlin/Native smallBinary (#proj-mobile:#254). The App Store download of
+// 1.27.0 was 207.4 MB once processed, over the 200 MB cellular limit; a TestFlight probe build with this
+// option (1.27.90, run 44896007464) shipped a 177.4 MB IPA against 1.27.0's 193.9 MB (-8.5%). Debug
+// frameworks keep the default so local and CI iteration is unchanged. The link probe's
+// raft.iosLinkProbe.smallBinary (top of file) still applies to every build type it is set for.
+kotlin {
+    targets.withType<org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget>().configureEach {
+        binaries.withType<org.jetbrains.kotlin.gradle.plugin.mpp.Framework>()
+            .matching { it.buildType == org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType.RELEASE }
+            .configureEach { binaryOption("smallBinary", "true") }
+    }
+}
