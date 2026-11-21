@@ -140,7 +140,9 @@ data class AddComputerDialogState(
     val registering: Boolean = false,
     val saving: Boolean = false,
     val canManage: Boolean = true,
-    val atLimit: Boolean = false
+    val atLimit: Boolean = false,
+    /** "The terminal shows a code? Enter it here." under the command (AddComputerCode.kt). */
+    val code: AddComputerCodeState = AddComputerCodeState()
 )
 
 internal fun AddComputerDialogState.errorPresentationOrNull(): ErrorPresentation? =
@@ -539,6 +541,18 @@ sealed interface SharedSettingsIntent {
     data class PollAddComputerMachineStatus(val machineId: String) : SharedSettingsIntent
     data class SetAddComputerConfirmedMatch(val confirmed: Boolean) : SharedSettingsIntent
     data object CompleteAddComputerDialog : SharedSettingsIntent
+    /** "The terminal shows a code? Enter it here.": opens or closes the code field (web `useAddComputerCode.toggle`). */
+    data object ToggleAddComputerCode : SharedSettingsIntent
+    data class SetAddComputerCode(val code: String) : SharedSettingsIntent
+    /** Continue: check the typed code (`POST /auth/device/describe`). */
+    data object SubmitAddComputerCode : SharedSettingsIntent
+    /** Add to server (Move it over) on the code's confirm screen, with the step-up when asked. */
+    data object ApproveAddComputerCode : SharedSettingsIntent
+    data object DenyAddComputerCode : SharedSettingsIntent
+    /** Enter a different code: back to an empty, open field. */
+    data object ResetAddComputerCode : SharedSettingsIntent
+    /** A code the sheet doesn't approve: the device login page instead, never with the code in it. */
+    data object OpenAddComputerDeviceLoginPage : SharedSettingsIntent
     /**
      * #79: realtime event bridge for the Settings surface. Only used for
      * `RealtimeRefreshScope.Machines` events today. Listens to the same
@@ -658,6 +672,11 @@ sealed interface SharedSettingsEffect {
     data object CopyDiagnostics : SharedSettingsEffect
     data class CopyText(val text: String) : SharedSettingsEffect
     data class OpenComputer(val machineId: String) : SharedSettingsEffect
+    /**
+     * The web's device login page ([deviceLoginWebUrl]) in a browser: Raft's own origin, where the
+     * person's web sign-in and passkeys work (HostLinkCapability.openUrlInBrowser).
+     */
+    data class OpenDeviceLoginPage(val url: String) : SharedSettingsEffect
     data object ShareDiagnostics : SharedSettingsEffect
     data object ClearDiagnostics : SharedSettingsEffect
     data object SendFeedback : SharedSettingsEffect
@@ -1099,6 +1118,24 @@ class SharedSettingsDataSource(
     /** The context of the Add Computer dialog's `raft-computer` connect commands. */
     suspend fun addComputerCommandContext(): SettingsComputerCommandContext? =
         computerCommandContext(sessionStore.readSession())
+
+    /** The server Add Computer adds to (the one it registers in): the only one its code field approves for. */
+    suspend fun addComputerServerId(): String? = sessionStore.readSession().settingsCurrentServer()?.id
+
+    /** `POST /auth/device/describe` for a code typed into Add Computer (DeviceLoginApprovalApi.kt). */
+    suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
+        settingsRepository?.describeDeviceLogin(userCode) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    /** `POST /auth/device/approve` for [serverId] with describe's ticket. */
+    suspend fun approveDeviceLogin(request: DeviceLoginRequest, serverId: String): DataResult<Unit> =
+        settingsRepository?.approveDeviceLogin(request, serverId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    /** `POST /auth/device/approve` with `approve: false`. */
+    suspend fun denyDeviceLogin(request: DeviceLoginRequest): DataResult<Unit> =
+        settingsRepository?.denyDeviceLogin(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    /** The device login page on the selected API environment's web URL (AGENTS.md Environment Web Link URL Rule). */
+    fun deviceLoginPageUrl(): String = deviceLoginWebUrl((apiEnvironmentStore?.current() ?: SharedApiEnvironmentStore.Production).webUrl)
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2079,6 +2116,8 @@ class SharedSettingsStore(
     private var serverNotificationRealtimeDrainActive = false
     private var serverNotificationRealtimeReloadPending = false
     private var computerRestartGeneration = 0L
+    /** Numbers each Add Computer code request, so a late answer can't land on a newer one. */
+    private var addComputerCodeRequests = 0L
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
     private var authOwnerObservationJob: Job? = null
@@ -2532,6 +2571,18 @@ class SharedSettingsStore(
                 )
             SharedSettingsIntent.CompleteAddComputerDialog ->
                 scope.launch { completeAddComputerDialog() }
+            SharedSettingsIntent.ToggleAddComputerCode -> updateAddComputerCode { it.toggled() }
+            is SharedSettingsIntent.SetAddComputerCode -> updateAddComputerCode { it.typed(intent.code) }
+            SharedSettingsIntent.SubmitAddComputerCode -> describeAddComputerCode()
+            SharedSettingsIntent.ApproveAddComputerCode -> resolveAddComputerCode(approve = true)
+            SharedSettingsIntent.DenyAddComputerCode -> resolveAddComputerCode(approve = false)
+            SharedSettingsIntent.ResetAddComputerCode -> updateAddComputerCode { it.differentCode() }
+            SharedSettingsIntent.OpenAddComputerDeviceLoginPage -> {
+                // Web openDeviceLoginPage: the window closes and the page opens, the code typed there again.
+                if (_state.value.addComputerDialog == null) return
+                dismissAddComputerDialog(cleanupPendingMachine = true)
+                _state.value = _state.value.copy(effect = SharedSettingsEffect.OpenDeviceLoginPage(dataSource.deviceLoginPageUrl()))
+            }
             is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
             is SharedSettingsIntent.UpdateServerAgreement -> {
                 runAction(SERVER_ACTION_AGREEMENT_SAVE) {
@@ -3143,6 +3194,53 @@ class SharedSettingsStore(
             machineRealtimeDrainActive = false
             pendingMachineRealtimeIds.clear()
         }
+    }
+
+    private fun updateAddComputerCode(transform: (AddComputerCodeState) -> AddComputerCodeState) {
+        val dialog = _state.value.addComputerDialog ?: return
+        val next = transform(dialog.code)
+        if (next != dialog.code) _state.value = _state.value.copy(addComputerDialog = dialog.copy(code = next))
+    }
+
+    /** [transform] for the answer of request [token]; a closed sheet, or a newer request, drops it. */
+    private fun applyAddComputerCode(token: Long, transform: (AddComputerCodeState) -> AddComputerCodeState) {
+        val dialog = _state.value.addComputerDialog ?: return
+        if (dialog.code.token != token) return
+        _state.value = _state.value.copy(addComputerDialog = dialog.copy(code = transform(dialog.code)))
+    }
+
+    /** Continue: describe the typed code, in the body only (web `useAddComputerCode.submit`). */
+    private suspend fun describeAddComputerCode() {
+        val code = _state.value.addComputerDialog?.code ?: return
+        if (!code.canSubmit) return
+        val token = ++addComputerCodeRequests
+        updateAddComputerCode { it.describing(token) }
+        val serverId = dataSource.addComputerServerId()
+        val result = dataSource.describeDeviceLogin(normalizeDeviceLoginUserCode(code.code))
+        applyAddComputerCode(token) { it.described(result, serverId) }
+    }
+
+    /**
+     * Add to server or Deny on the confirm screen for the sheet's server (the screen for anything
+     * else approves nothing here). Two-step verification on and this sign-in not verified: "Verify
+     * it's you" over the sheet, then the same approve once more (web `steppedUp`); closing it
+     * leaves the confirm screen as it was.
+     */
+    private suspend fun resolveAddComputerCode(approve: Boolean) {
+        val code = _state.value.addComputerDialog?.code ?: return
+        val review = code.review ?: return
+        val target = review.target ?: return
+        if (code.submitting != null) return
+        val token = ++addComputerCodeRequests
+        updateAddComputerCode { it.resolving(token, approve) }
+        val result =
+            if (approve) {
+                withSecondFactorStepUp(COMPUTER_ACTION_APPROVE_DEVICE_CODE) { dataSource.approveDeviceLogin(review.request, target.id) }
+                    ?: return applyAddComputerCode(token) { it.stepUpClosed() }
+            } else {
+                dataSource.denyDeviceLogin(review.request)
+            }
+        applyAddComputerCode(token) { it.resolved(result, approve, review.request, target) }
     }
 
     private fun dismissAddComputerDialog(cleanupPendingMachine: Boolean) {
@@ -4325,6 +4423,13 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.PollAddComputerMachineStatus,
             is SharedSettingsIntent.SetAddComputerConfirmedMatch,
             SharedSettingsIntent.CompleteAddComputerDialog,
+            SharedSettingsIntent.ToggleAddComputerCode,
+            is SharedSettingsIntent.SetAddComputerCode,
+            SharedSettingsIntent.SubmitAddComputerCode,
+            SharedSettingsIntent.ApproveAddComputerCode,
+            SharedSettingsIntent.DenyAddComputerCode,
+            SharedSettingsIntent.ResetAddComputerCode,
+            SharedSettingsIntent.OpenAddComputerDeviceLoginPage,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.ApplyRealtimeEvent,
@@ -4558,7 +4663,10 @@ internal fun settingsSecondFactorStepUpWebTarget(action: String, itemId: String?
         ACCOUNT_ACTION_PASSWORD_CHANGE,
         ACCOUNT_ACTION_PROVIDER_CONNECT,
         ACCOUNT_ACTION_PROVIDER_DISCONNECT -> SecondFactorStepUpWebTarget.Account
-        COMPUTER_ACTION_REGISTER -> SecondFactorStepUpWebTarget.Computers
+        // Adding a computer, and approving a terminal's code from Add Computer (the web's Add
+        // Computer has the same code field).
+        COMPUTER_ACTION_REGISTER,
+        COMPUTER_ACTION_APPROVE_DEVICE_CODE -> SecondFactorStepUpWebTarget.Computers
         COMPUTER_ACTION_ROTATE_KEY ->
             itemId?.takeIf { it.isNotBlank() }?.let(SecondFactorStepUpWebTarget::Computer) ?: SecondFactorStepUpWebTarget.Computers
         else -> null
@@ -4681,6 +4789,11 @@ internal const val COMPUTER_ACTION_DESCRIPTION = "updateComputerDescription"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
 internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"
 internal const val COMPUTER_ACTION_REGISTER = "registerComputer"
+/**
+ * Approving a terminal's device code from Add Computer. Not a `StepUpAction` (the server checks an
+ * approver with approverSecondFactorCheck), so "Verify it's you" offers no Continue in browser.
+ */
+internal const val COMPUTER_ACTION_APPROVE_DEVICE_CODE = "approveComputerDeviceCode"
 internal const val COMPUTER_ACTION_SCAN_WORKSPACES = "scanComputerWorkspaces"
 internal const val COMPUTER_ACTION_AT_LIMIT = "atLimit"
 internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAutoTranslation"

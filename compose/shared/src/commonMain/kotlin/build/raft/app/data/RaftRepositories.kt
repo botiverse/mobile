@@ -66,6 +66,15 @@ interface SettingsRepository {
     suspend fun scanComputerWorkspaces(machineId: String): DataResult<List<SettingsComputerWorkspaceSnapshot>> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
+    /** `POST /api/auth/device/describe` (DeviceLoginApprovalApi.kt): a code a terminal shows, typed into Add Computer. */
+    suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/device/approve`: approve [request] for [serverId] with describe's ticket. */
+    suspend fun approveDeviceLogin(request: DeviceLoginRequest, serverId: String): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST /api/auth/device/approve` with `approve: false`. */
+    suspend fun denyDeviceLogin(request: DeviceLoginRequest): DataResult<Unit> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot>
     suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot>
     suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult>

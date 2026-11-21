@@ -123,6 +123,7 @@ import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SharedSettingsDestination
+import build.raft.app.data.AddComputerCodeSubmitting
 import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
@@ -680,8 +681,15 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     settingsState.addComputerDialog?.let { dialog ->
         AddComputerDialog(state = dialog, onIntent = settingsViewModel::dispatch, runtimeCatalog = runtimeCatalog)
     }
-    // Registering the computer with two-step verification on: "Verify it's you" over the sheet.
-    SettingsSecondFactorStepUpHost(settingsState.secondFactorStepUp, settingsViewModel::dispatch)
+    // Registering the computer, or approving a terminal's code from it, with two-step verification
+    // on: "Verify it's you" over the sheet (for a code, the device login page's notice, web
+    // `pages.deviceLogin.stepUpNotice`).
+    val approvingCode = settingsState.addComputerDialog?.code?.submitting == AddComputerCodeSubmitting.Approve
+    SettingsSecondFactorStepUpHost(
+        settingsState.secondFactorStepUp,
+        settingsViewModel::dispatch,
+        description = if (approvingCode) stringResource(Res.string.settings_computers_code_step_up_notice) else null,
+    )
     // A card's ⋯ → Delete computer (web RackRowMenu → DeleteComputerDialog): the Computer page's
     // confirm; the agents on it are the ones the cards show.
     deleteComputerId?.let { machineId ->

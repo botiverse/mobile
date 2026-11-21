@@ -104,6 +104,7 @@ new product concept gets a Japanese rendering.
 | Two-step verification | 2 段階認証 | Half-width space before 段階; web `settings.twoStep.*` |
 | Passkey | パスキー | Count: パスキー N 個 (web `settings.twoStep.passkeyCount`) |
 | Login & security | ログインとセキュリティ | Settings › Account group of the passkey and two-step rows |
+| Device login (a code a terminal shows) / Approve device login | デバイスのログイン / デバイスのログインを承認 | Add Computer's code field (`settings_computers_code_*`); copied from the web ja catalog (`machine.add.code.*`, `pages.deviceLogin.*`, botiverse/slock #15612 / #15980) |
 
 Brand names stay in Latin script: **Raft**, **Hands**, **Claude Code**,
 **Kuikly**, **Markdown**, **OAuth**, **API**.

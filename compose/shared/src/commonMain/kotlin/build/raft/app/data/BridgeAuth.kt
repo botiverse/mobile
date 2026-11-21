@@ -90,6 +90,11 @@ internal class BridgeSettingsPlatformCapabilities(
         host.openUrl(url)
     }
 
+    /** A page of Raft's own web app in a browser, never back into the app (HostLinkCapability.openUrlInBrowser). */
+    fun openUrlInBrowser(url: String) {
+        host.openUrlInBrowser(url)
+    }
+
     fun log(message: String) {
         logBridge(message)
     }

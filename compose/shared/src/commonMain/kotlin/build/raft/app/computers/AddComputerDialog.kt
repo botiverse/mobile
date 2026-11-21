@@ -73,16 +73,17 @@ import build.raft.designsystem.components.raftClickable
  * staging): on a phone the raft-ui Dialog "On a phone" sheet (`DialogCard narrow="sheet"`), × at
  * the start of its head and the step's one commit button at the end; on a tablet the centred
  * dialog. Three steps: the type, the `raft-computer` connect commands while waiting, and naming
- * the computer that connected.
+ * the computer that connected. While waiting, a code the terminal shows can be approved from the
+ * sheet (AddComputerCodeEntry.kt; web AddMachineDialog `codeEntry`, botiverse/slock #15612).
  */
 
 /** Web `WAITING_HINT_DELAY_MS`: after this long, point the user at the terminal. */
 private const val AddComputerWaitingHintDelayMs = 45_000L
 
-/** The sheet's head for the current step: its title and its one commit button. */
+/** The sheet's head for the current step: its title and its one commit button (none: nothing to commit). */
 private class AddComputerSheetHead(
     val title: String,
-    val commitLabel: String,
+    val commitLabel: String?,
     val commitEnabled: Boolean,
     /** Connected (and confirmed when asked): × finishes instead of cancelling, as on the web. */
     val canFinish: Boolean,
@@ -91,6 +92,12 @@ private class AddComputerSheetHead(
 @Composable
 private fun addComputerSheetHead(state: AddComputerDialogState): AddComputerSheetHead {
     val canFinish = state.step == AddComputerStep.Connected && (!state.requiresConfirmation || state.confirmedMatch)
+    // A typed code's confirm screen takes the sheet: its title, and Add to server as the commit.
+    val review = state.code.review?.takeIf { state.step == AddComputerStep.Waiting }
+    if (review != null) {
+        val head = addComputerCodeReviewHead(state.code, review)
+        return AddComputerSheetHead(head.title, head.commitLabel, commitEnabled = state.code.submitting == null, canFinish = false)
+    }
     return AddComputerSheetHead(
         title =
             when (state.step) {
@@ -119,7 +126,7 @@ private fun addComputerSheetHead(state: AddComputerDialogState): AddComputerShee
 private fun addComputerCommit(state: AddComputerDialogState, onIntent: (SharedSettingsIntent) -> Unit) {
     when (state.step) {
         AddComputerStep.Type -> onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
-        AddComputerStep.Waiting -> Unit
+        AddComputerStep.Waiting -> if (state.code.review?.target != null) onIntent(SharedSettingsIntent.ApproveAddComputerCode)
         AddComputerStep.Connected -> onIntent(SharedSettingsIntent.CompleteAddComputerDialog)
     }
 }
@@ -254,8 +261,16 @@ private fun AddComputerWaitingStep(
         kotlinx.coroutines.delay(AddComputerWaitingHintDelayMs)
         stalled = true
     }
+    // A typed code's confirm screen in the command's place; the computer is still watched for.
+    val review = state.code.review
+    if (review != null) {
+        AddComputerCodeReview(state.code, review, onIntent)
+        return
+    }
     if (showAccessNotice) ComputerAccessNotice()
     AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
+    // Web: "The terminal shows a code? Enter it here." under the command.
+    AddComputerCodeEntry(state.code, onIntent)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Web: an info Banner whose spinner takes the icon's place while the computer connects.
         RaftBanner(

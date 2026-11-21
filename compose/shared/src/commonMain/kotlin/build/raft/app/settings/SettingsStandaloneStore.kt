@@ -242,6 +242,12 @@ internal fun StandaloneSettingsEffectHandler(
             is SharedSettingsEffect.OpenUrl -> {
                 environment.settingsCapabilities.openExternalUrl(effect.url)
             }
+            is SharedSettingsEffect.OpenDeviceLoginPage -> {
+                // Add Computer's code for something it doesn't approve: the web's device login page,
+                // where the person's web sign-in (and a passkey step-up) work; the code is typed there.
+                environment.settingsCapabilities.log("settings_computers_code_open_device_page")
+                environment.settingsCapabilities.openUrlInBrowser(effect.url)
+            }
             is SharedSettingsEffect.CopyText -> {
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
             }

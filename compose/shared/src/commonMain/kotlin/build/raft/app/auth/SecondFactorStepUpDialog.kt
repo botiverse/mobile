@@ -642,20 +642,22 @@ private fun SecondFactorStepUpTracedBanner(description: String, traceId: String?
  * A settings store's open step-up (`SharedSettingsState.secondFactorStepUp`, any action the store
  * runs through its [build.raft.app.data.SecondFactorStepUpCoordinator]) on a page that is not
  * Account: the dialog in the design-system theme with the generic reason (web
- * SecondFactorStepUpHost `other`), its intents back to the same store. Compose it after the sheet
- * or dialog whose action asked, so it opens over it.
+ * SecondFactorStepUpHost `other`) unless the caller names what asked ([description]), its intents
+ * back to the same store. Compose it after the sheet or dialog whose action asked, so it opens
+ * over it.
  */
 @Composable
 internal fun SettingsSecondFactorStepUpHost(
     state: SecondFactorStepUpDialogState?,
     dispatch: (SharedSettingsIntent) -> Unit,
+    description: String? = null,
 ) {
     val dialog = state ?: return
     RaftDesignSystemTheme {
         SecondFactorStepUpDialog(
             state = dialog,
             onIntent = { intent -> dispatch(SharedSettingsIntent.SecondFactorStepUp(intent)) },
-            description = stringResource(Res.string.settings_step_up_generic_description),
+            description = description ?: stringResource(Res.string.settings_step_up_generic_description),
         )
     }
 }
