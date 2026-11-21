@@ -57,6 +57,40 @@ internal class KtorRaftHttpExecutor(
         headers: Map<String, String>,
         bodyText: String?,
         jsonBody: Boolean
+    ): RaftHttpExecutorResponse =
+        executeText(
+            priority, url, method, headers, bodyText, jsonBody,
+            totalTimeoutMillis = RAFT_KTOR_REQUEST_TIMEOUT_MILLIS,
+            // The lane's own read / write idle timeouts (20 s) apply.
+            socketTimeoutMillis = null,
+        )
+
+    override suspend fun executeWithTotalTimeout(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?,
+        jsonBody: Boolean,
+        totalTimeoutMillis: Long,
+    ): RaftHttpExecutorResponse =
+        executeText(
+            priority, url, method, headers, bodyText, jsonBody,
+            totalTimeoutMillis = totalTimeoutMillis,
+            // No shorter idle timeout: a server that answers only after its own storage check (the
+            // upload's complete) sends nothing until then, and the lane's 20 s would cut it off.
+            socketTimeoutMillis = totalTimeoutMillis,
+        )
+
+    private suspend fun executeText(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?,
+        jsonBody: Boolean,
+        totalTimeoutMillis: Long,
+        socketTimeoutMillis: Long?,
     ): RaftHttpExecutorResponse {
         val normalizedMethod = method.trim().uppercase()
         val traceHeaders = raftTraceHeaders(headers)
@@ -81,9 +115,9 @@ internal class KtorRaftHttpExecutor(
                 headers = requestHeaders,
                 content = { content },
                 requestBytes = bodyText?.encodeToByteArray()?.size?.toLong() ?: 0L,
-                totalTimeoutMillis = RAFT_KTOR_REQUEST_TIMEOUT_MILLIS,
+                totalTimeoutMillis = totalTimeoutMillis,
                 connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
-                socketTimeoutMillis = null,
+                socketTimeoutMillis = socketTimeoutMillis,
                 methodClass =
                     raftNetworkMethodClass(
                         method = normalizedMethod,

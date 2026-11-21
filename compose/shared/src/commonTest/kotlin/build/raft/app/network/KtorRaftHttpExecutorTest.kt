@@ -10,6 +10,7 @@ import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeoutCapability
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpHeaders
@@ -280,6 +281,34 @@ class KtorRaftHttpExecutorTest {
         val server = Harness { respond("""{"error":"too_large"}""", HttpStatusCode.PayloadTooLarge) }
         server.executor.executeMultipart(RaftRequestPriority.Foreground, "https://api.raft.test/api/attachments/upload", emptyMap(), emptyList(), emptyMap())
         assertEquals(1, server.requests.size)
+    }
+
+    /**
+     * The upload's complete call waits 45 s (web slock #15743), past the server's own 30 s storage
+     * check: the engine gets that whole budget and no shorter idle timeout, while an ordinary call keeps
+     * the 30 s budget and the lane's own idle timeouts.
+     */
+    @Test
+    fun aCallWithItsOwnBudgetGetsItOnTheEngineWithNoShorterIdleTimeout() = runBlocking {
+        val harness = Harness { respond("{}", HttpStatusCode.OK) }
+
+        harness.executor.execute(RaftRequestPriority.Foreground, "https://api.raft.test/api/messages", "POST", emptyMap(), null, false)
+        harness.executor.executeWithTotalTimeout(
+            priority = RaftRequestPriority.Foreground,
+            url = "https://api.raft.test/api/attachments/upload-sessions/u-1/complete",
+            method = "POST",
+            headers = emptyMap(),
+            bodyText = null,
+            jsonBody = false,
+            totalTimeoutMillis = RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS,
+        )
+
+        val (ordinary, complete) = harness.requests.map { request -> request.getCapabilityOrNull(HttpTimeoutCapability) }
+        assertEquals(RAFT_KTOR_REQUEST_TIMEOUT_MILLIS, ordinary?.requestTimeoutMillis)
+        assertNull(ordinary?.socketTimeoutMillis, "an ordinary call keeps the lane's idle timeouts")
+        assertEquals(RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS, complete?.requestTimeoutMillis)
+        assertEquals(RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS, complete?.socketTimeoutMillis)
+        assertEquals(RAFT_KTOR_CONNECT_TIMEOUT_MILLIS, complete?.connectTimeoutMillis)
     }
 
     @Test
