@@ -212,9 +212,34 @@ class RaftArtifactViewerCacheTest {
             assertEquals(RaftArtifactViewerBlockedTarget.SystemBrowser(url), raftArtifactViewerBlockedNavigationTarget(url, web, target.id, emptySet()), url)
             assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
-        // What the viewer's own document loads stays its own: this Artifact, another one (its viewer), the
-        // page signing itself out (`/`, `/login`), the server after a Delete, and anything off Raft.
-        for (url in listOf("$web/artifacts/${target.id}", "$web/artifacts/$other", "$web/", "$web/login", "$web/s/acme", "https://example.com/a")) {
+        // Full-document links to another Artifact (e.g. a bare `<a href="/artifacts/…">` in "Linked from")
+        // or an un-embedded reload of this Artifact are routed instead of replacing the embedded WebView
+        // document (which would latch `NOT_EMBEDDED` for the document's lifetime).
+        for (
+            url in listOf(
+                "$web/artifacts/$other",
+                "$web/artifacts/$other/v/2",
+                "$web/s/acme/artifacts/$other",
+                "$web/artifacts/$other?${raftArtifactViewerEmbedQuery()}",
+                "$web/artifacts/${target.id}",
+                "$web/artifacts/${target.id}/v/2",
+            )
+        ) {
+            assertTrue(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
+        }
+        // What the viewer's own document loads stays its own: an embedded load/reload of this Artifact,
+        // the warm route, the page signing itself out (`/`, `/login`), the server after a Delete, and
+        // anything off Raft (handled by the origin lock).
+        for (
+            url in listOf(
+                "$web/artifacts/${target.id}?${raftArtifactViewerEmbedQuery()}",
+                raftArtifactViewerWarmUrl(web),
+                "$web/",
+                "$web/login",
+                "$web/s/acme",
+                "https://example.com/a",
+            )
+        ) {
             assertFalse(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
     }
