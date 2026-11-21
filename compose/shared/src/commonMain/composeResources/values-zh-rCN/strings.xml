@@ -3384,9 +3384,9 @@
     <string name="settings_computers_up_to_date">已是最新</string>
     <string name="settings_computers_upgrade_to_version">升级到 v%1$s</string>
     <string name="settings_computers_upgrade_confirm">升级</string>
-    <string name="settings_computers_upgrade_confirm_message_none">%1$s 会重启并升级到 v%2$s，它会断开连接，直到重新连上。</string>
-    <string name="settings_computers_upgrade_confirm_message_one">%1$s 会重启并升级到 v%2$s，它和其上的 %3$d 个 Agent 会断开连接，直到重新连上。</string>
-    <string name="settings_computers_upgrade_confirm_message_many">%1$s 会重启并升级到 v%2$s，它和其上的 %3$d 个 Agent 会断开连接，直到重新连上。</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s 会重启并升级到 v%2$s，它会断开连接，直到重新连上。还在工作的 Agent 有几秒钟收尾，之后仍在进行的回合会被打断。</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s 会重启并升级到 v%2$s，它和其上的 %3$d 个 Agent 会断开连接，直到重新连上。还在工作的 Agent 有几秒钟收尾，之后仍在进行的回合会被打断。</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s 会重启并升级到 v%2$s，它和其上的 %3$d 个 Agent 会断开连接，直到重新连上。还在工作的 Agent 有几秒钟收尾，之后仍在进行的回合会被打断。</string>
     <string name="settings_computers_upgrading">更新中…</string>
     <string name="settings_computers_upgrade_status_reinstall">这个版本不能从网页升级，请用本页顶部的命令重新安装。</string>
     <string name="settings_computers_upgrade_status_reading">正在读取版本，稍后再看能否升级。</string>
@@ -4892,8 +4892,8 @@
     <string name="settings_search_invite_links">邀请链接</string>
     <string name="settings_search_single_sign_on">单点登录（SSO）</string>
     <string name="settings_search_single_sign_on_description">让公司邮箱域名下的成员用你们的身份提供方登录 Raft，也可以要求他们必须这样登录。</string>
-    <string name="settings_computers_upgrade_status_draining_one">正在等待本服务器上的 %1$d 个 Agent 完成手头的工作，之后升级到 v%2$s（最多 10 分钟）。</string>
-    <string name="settings_computers_upgrade_status_draining_other">正在等待本服务器上的 %1$d 个 Agent 完成手头的工作，之后升级到 v%2$s（最多 10 分钟）。</string>
+    <string name="settings_computers_upgrade_status_draining_one">给本服务器上的 %1$d 个 Agent 几秒钟收尾，之后升级到 v%2$s，仍在进行的回合会被打断。</string>
+    <string name="settings_computers_upgrade_status_draining_other">给本服务器上的 %1$d 个 Agent 几秒钟收尾，之后升级到 v%2$s，仍在进行的回合会被打断。</string>
     <string name="settings_computers_upgrading_draining_one">正在等待本服务器上的 %1$d 个 Agent…</string>
     <string name="settings_computers_upgrading_draining_other">正在等待本服务器上的 %1$d 个 Agent…</string>
     <string name="member_removal_impact_remove_one">移除 %1$s 会让 %2$d 台 Computer 离线：%3$s。</string>

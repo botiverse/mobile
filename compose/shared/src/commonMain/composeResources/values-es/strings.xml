@@ -3205,9 +3205,9 @@
     <string name="settings_computers_up_to_date">Al día</string>
     <string name="settings_computers_upgrade_to_version">Actualizar a la v%1$s</string>
     <string name="settings_computers_upgrade_confirm">Actualizar</string>
-    <string name="settings_computers_upgrade_confirm_message_none">%1$s se reinicia con la v%2$s, así que se desconecta hasta que se vuelva a conectar.</string>
-    <string name="settings_computers_upgrade_confirm_message_one">%1$s se reinicia con la v%2$s, así que se desconectan él y su %3$d agente hasta que se vuelva a conectar.</string>
-    <string name="settings_computers_upgrade_confirm_message_many">%1$s se reinicia con la v%2$s, así que se desconectan él y sus %3$d agentes hasta que se vuelva a conectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s se reinicia con la v%2$s, así que se desconecta hasta que se vuelva a conectar. Los agentes que sigan trabajando tienen unos segundos para terminar; los turnos que sigan en curso se interrumpen.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s se reinicia con la v%2$s, así que se desconectan él y su %3$d agente hasta que se vuelva a conectar. Los agentes que sigan trabajando tienen unos segundos para terminar; los turnos que sigan en curso se interrumpen.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s se reinicia con la v%2$s, así que se desconectan él y sus %3$d agentes hasta que se vuelva a conectar. Los agentes que sigan trabajando tienen unos segundos para terminar; los turnos que sigan en curso se interrumpen.</string>
     <string name="settings_computers_upgrading">Actualizando…</string>
     <string name="settings_computers_upgrade_status_reinstall">Esta versión no se puede actualizar desde la web. Reinstálala con el comando que aparece al principio de esta página.</string>
     <string name="settings_computers_upgrade_status_reading">Leyendo la versión; vuelve a consultar en un momento.</string>
@@ -4709,8 +4709,8 @@
     <string name="settings_search_invite_links">Enlaces de invitación</string>
     <string name="settings_search_single_sign_on">Inicio de sesión único (SSO)</string>
     <string name="settings_search_single_sign_on_description">Permite que las personas con el correo de los dominios de tu empresa inicien sesión en Raft con tu proveedor de identidad y, si quieres, exígelo.</string>
-    <string name="settings_computers_upgrade_status_draining_one">Esperando a que %1$d agente de este servidor termine su trabajo; después se actualizará a la v%2$s (hasta 10 min).</string>
-    <string name="settings_computers_upgrade_status_draining_other">Esperando a que %1$d agentes de este servidor terminen su trabajo; después se actualizará a la v%2$s (hasta 10 min).</string>
+    <string name="settings_computers_upgrade_status_draining_one">Dando unos segundos a %1$d agente de este servidor para terminar; después se actualizará a la v%2$s. Los turnos que sigan en curso se interrumpen.</string>
+    <string name="settings_computers_upgrade_status_draining_other">Dando unos segundos a %1$d agentes de este servidor para terminar; después se actualizará a la v%2$s. Los turnos que sigan en curso se interrumpen.</string>
     <string name="settings_computers_upgrading_draining_one">Esperando a %1$d agente de este servidor…</string>
     <string name="settings_computers_upgrading_draining_other">Esperando a %1$d agentes de este servidor…</string>
     <string name="member_removal_impact_remove_one">Quitar a %1$s deja sin conexión %2$d computadora: %3$s.</string>

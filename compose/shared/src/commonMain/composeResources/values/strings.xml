@@ -3385,9 +3385,9 @@
     <string name="settings_computers_up_to_date">Up to date</string>
     <string name="settings_computers_upgrade_to_version">Upgrade to v%1$s</string>
     <string name="settings_computers_upgrade_confirm">Upgrade</string>
-    <string name="settings_computers_upgrade_confirm_message_none">%1$s restarts into v%2$s, which disconnects it until it reconnects.</string>
-    <string name="settings_computers_upgrade_confirm_message_one">%1$s restarts into v%2$s, which disconnects it and its %3$d agent until it reconnects.</string>
-    <string name="settings_computers_upgrade_confirm_message_many">%1$s restarts into v%2$s, which disconnects it and its %3$d agents until it reconnects.</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s restarts into v%2$s, which disconnects it until it reconnects. Agents still working get a few seconds to finish; turns still running after that are interrupted.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s restarts into v%2$s, which disconnects it and its %3$d agent until it reconnects. Agents still working get a few seconds to finish; turns still running after that are interrupted.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s restarts into v%2$s, which disconnects it and its %3$d agents until it reconnects. Agents still working get a few seconds to finish; turns still running after that are interrupted.</string>
     <string name="settings_computers_upgrading">Updating…</string>
     <string name="settings_computers_upgrade_status_reinstall">This version can't be upgraded from the web. Reinstall it with the command at the top of this page.</string>
     <string name="settings_computers_upgrade_status_reading">Reading the version; check back shortly.</string>
@@ -4893,8 +4893,8 @@
     <string name="settings_search_invite_links">Invite links</string>
     <string name="settings_search_single_sign_on">Single sign-on (SSO)</string>
     <string name="settings_search_single_sign_on_description">Let people on your company's email domains sign in to Raft with your identity provider, and optionally require it.</string>
-    <string name="settings_computers_upgrade_status_draining_one">Waiting for %1$d agent on this server to finish its work, then upgrading to v%2$s (up to 10 min).</string>
-    <string name="settings_computers_upgrade_status_draining_other">Waiting for %1$d agents on this server to finish their work, then upgrading to v%2$s (up to 10 min).</string>
+    <string name="settings_computers_upgrade_status_draining_one">Giving %1$d agent on this server a few seconds to finish, then upgrading to v%2$s. Turns still running are interrupted.</string>
+    <string name="settings_computers_upgrade_status_draining_other">Giving %1$d agents on this server a few seconds to finish, then upgrading to v%2$s. Turns still running are interrupted.</string>
     <string name="settings_computers_upgrading_draining_one">Waiting for %1$d agent on this server…</string>
     <string name="settings_computers_upgrading_draining_other">Waiting for %1$d agents on this server…</string>
     <string name="member_removal_impact_remove_one">Removing %1$s takes %2$d Computer offline: %3$s.</string>
