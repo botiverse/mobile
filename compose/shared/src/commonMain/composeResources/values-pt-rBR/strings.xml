@@ -1057,7 +1057,7 @@
     <string name="thread_action_card_plan_trial_mobile_line">You can try Pro for free. Start it from Raft on your computer.</string>
     <string name="thread_action_card_reconfirm">Reconfirmar</string>
     <string name="thread_action_card_reconfirm_failed">Não foi possível reconfirmar</string>
-    <string name="thread_action_card_blocked_target_server">Esta ação é executada em %1$s. Mude para %1$s para executá-la.</string>
+    <string name="thread_action_card_blocked_target_server">Só membros de %1$s podem usar este cartão.</string>
     <string name="thread_action_card_runs_on_server">Será executada em %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Esta é uma cópia do histórico. Somente o espaço de trabalho de origem pode executar esta ação.</string>
     <string name="thread_action_card_field_description">Descrição</string>

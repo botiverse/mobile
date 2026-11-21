@@ -1057,7 +1057,7 @@
     <string name="thread_action_card_plan_trial_mobile_line">You can try Pro for free. Start it from Raft on your computer.</string>
     <string name="thread_action_card_reconfirm">다시 확인</string>
     <string name="thread_action_card_reconfirm_failed">다시 확인하지 못했어요</string>
-    <string name="thread_action_card_blocked_target_server">이 액션은 %1$s 서버에서 실행돼요. 실행하려면 %1$s 서버로 전환해 주세요.</string>
+    <string name="thread_action_card_blocked_target_server">%1$s 서버의 멤버만 이 카드를 사용할 수 있어요.</string>
     <string name="thread_action_card_runs_on_server">%1$s 서버에서 실행</string>
     <string name="thread_action_card_blocked_source_workspace">이 카드는 기록용 사본이에요. 원래 워크스페이스에서만 이 액션을 실행할 수 있어요.</string>
     <string name="thread_action_card_field_description">설명</string>

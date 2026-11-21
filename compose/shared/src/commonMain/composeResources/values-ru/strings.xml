@@ -1057,7 +1057,7 @@
     <string name="thread_action_card_plan_trial_mobile_line">You can try Pro for free. Start it from Raft on your computer.</string>
     <string name="thread_action_card_reconfirm">Подтвердить снова</string>
     <string name="thread_action_card_reconfirm_failed">Не удалось подтвердить повторно</string>
-    <string name="thread_action_card_blocked_target_server">Это действие выполняется на сервере %1$s. Чтобы выполнить его, переключитесь на сервер %1$s.</string>
+    <string name="thread_action_card_blocked_target_server">Этой карточкой могут пользоваться только участники сервера %1$s.</string>
     <string name="thread_action_card_runs_on_server">Выполняется на сервере %1$s</string>
     <string name="thread_action_card_blocked_source_workspace">Это копия из истории. Выполнить это действие можно только в исходном рабочем пространстве.</string>
     <string name="thread_action_card_field_description">Описание</string>
