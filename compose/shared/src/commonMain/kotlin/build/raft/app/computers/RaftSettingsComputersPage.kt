@@ -2843,10 +2843,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     agentsApi = agentsApi,
                     modelCatalog =
                         SharedCreateAgentCoordinator(
-                            agentsApi = agentsApi,
-                            computersApi = RaftComputersApiClient(RaftComputersNetworkApi(client)),
+                            agentsApiClient = agentsApi,
+                            computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(client)),
                             onLiveModelDetect = { sid ->
-                                sharedStores.refreshServerModelLabelCatalogAfterLiveDetect(environment.storeScope, sid)
+                                sharedStores.refreshServerModelLabelCatalogAfterLiveDetect(sid)
                             },
                         ),
                     serverId = owner.serverId,
