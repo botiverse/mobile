@@ -75,42 +75,101 @@ internal class FailClosedScreenCaptureRegistration<T>(
     }
 }
 
+/**
+ * Defers [FailClosedScreenCaptureRegistration.start] past first frame so `Activity.onStart()` does
+ * not incur a synchronous `registerScreenCaptureCallback` Binder IPC before Frame 1 draws.
+ *
+ * Cancels any pending registration if [stop] runs before the scheduled callback executes, and
+ * re-checks both active generation and [canRegister] right before calling into the platform.
+ */
+internal class DeferredScreenCaptureRegistration<T>(
+    private val registration: FailClosedScreenCaptureRegistration<T>,
+    private val schedule: (task: () -> Unit) -> () -> Unit,
+    private val canRegister: () -> Boolean = { true },
+    private val onRegisterResult: (Result<Boolean>) -> Unit = {},
+    private val onUnregisterResult: (Result<Boolean>) -> Unit = {},
+) {
+    private var activeGeneration: Long = 0L
+    private var isStarted: Boolean = false
+    private var cancelPending: (() -> Unit)? = null
+
+    fun start(callback: T) {
+        cancelPending?.invoke()
+        cancelPending = null
+        isStarted = true
+        val token = ++activeGeneration
+        var fired = false
+        val cancel =
+            schedule {
+                fired = true
+                if (!isStarted || activeGeneration != token) return@schedule
+                cancelPending = null
+                if (!canRegister()) return@schedule
+                onRegisterResult(registration.start(callback))
+            }
+        if (!fired && isStarted && activeGeneration == token) {
+            cancelPending = cancel
+        }
+    }
+
+    fun stop() {
+        isStarted = false
+        activeGeneration += 1L
+        cancelPending?.invoke()
+        cancelPending = null
+        onUnregisterResult(registration.stop())
+    }
+}
+
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 internal class Android14ScreenCaptureObserver(
     private val activity: Activity,
     private val executor: Executor,
     private val onScreenCaptured: (Long) -> Unit,
 ) : ScreenCaptureObserver {
+    private val firstFrameCoordinator = RaftPostFirstFrameResumeCoordinator()
     private val registration =
-        FailClosedScreenCaptureRegistration<Activity.ScreenCaptureCallback>(
-            register = { callback -> activity.registerScreenCaptureCallback(executor, callback) },
-            unregister = activity::unregisterScreenCaptureCallback,
+        DeferredScreenCaptureRegistration(
+            registration =
+                FailClosedScreenCaptureRegistration<Activity.ScreenCaptureCallback>(
+                    register = { callback -> activity.registerScreenCaptureCallback(executor, callback) },
+                    unregister = activity::unregisterScreenCaptureCallback,
+                ),
+            schedule = { onReady ->
+                firstFrameCoordinator.scheduleAfterFirstFrame(activity.window?.decorView, onReady = onReady)
+                val cancel: () -> Unit = { firstFrameCoordinator.cancel() }
+                cancel
+            },
+            canRegister = { !activity.isFinishing && !activity.isDestroyed },
+            onRegisterResult = { result ->
+                result
+                    .onSuccess { registered ->
+                        if (registered) {
+                            RaftAppLog.record("SlockScreenshotFeedback", "screen_capture_listener_started")
+                        }
+                    }.onFailure { throwable ->
+                        RaftAppLog.record(
+                            "SlockScreenshotFeedback",
+                            "screen_capture_listener_start_failed error=${throwable.javaClass.simpleName}",
+                        )
+                    }
+            },
+            onUnregisterResult = { result ->
+                result.onFailure { throwable ->
+                    RaftAppLog.record(
+                        "SlockScreenshotFeedback",
+                        "screen_capture_listener_stop_failed error=${throwable.javaClass.simpleName}",
+                    )
+                }
+            },
         )
 
     override fun start(generation: Long) {
         val callback = Activity.ScreenCaptureCallback { onScreenCaptured(generation) }
-        registration
-            .start(callback)
-            .onSuccess { registered ->
-                if (registered) {
-                    RaftAppLog.record("SlockScreenshotFeedback", "screen_capture_listener_started")
-                }
-            }.onFailure { throwable ->
-                RaftAppLog.record(
-                    "SlockScreenshotFeedback",
-                    "screen_capture_listener_start_failed error=${throwable.javaClass.simpleName}",
-                )
-            }
+        registration.start(callback)
     }
 
     override fun stop() {
-        registration
-            .stop()
-            .onFailure { throwable ->
-                RaftAppLog.record(
-                    "SlockScreenshotFeedback",
-                    "screen_capture_listener_stop_failed error=${throwable.javaClass.simpleName}",
-                )
-            }
+        registration.stop()
     }
 }

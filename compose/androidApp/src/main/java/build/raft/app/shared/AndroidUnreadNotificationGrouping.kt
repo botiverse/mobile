@@ -294,8 +294,23 @@ internal class UnreadRecentPosts(
  */
 class RaftUnreadNotificationDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        val notificationId = intent?.getIntExtra(EXTRA_NOTIFICATION_ID, 0) ?: 0
-        AndroidUnreadNotificationPoster.onConversationDismissed(context, notificationId.takeIf { it != 0 })
+        val appContext = context.applicationContext
+        val notificationId = intent?.getIntExtra(EXTRA_NOTIFICATION_ID, 0)?.takeIf { it != 0 }
+        // Offload groupingLock acquisition and NotificationManager.activeNotifications IPC off
+        // the main thread while keeping the broadcast alive via goAsync().
+        val pendingResult = goAsync()
+        try {
+            AndroidUnreadNotificationPoster.backgroundRunner {
+                try {
+                    AndroidUnreadNotificationPoster.onConversationDismissed(appContext, notificationId)
+                } finally {
+                    pendingResult?.finish()
+                }
+            }
+        } catch (throwable: Throwable) {
+            pendingResult?.finish()
+            throw throwable
+        }
     }
 
     internal companion object {

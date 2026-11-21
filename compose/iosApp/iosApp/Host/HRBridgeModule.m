@@ -2291,6 +2291,39 @@ static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, 
     return result;
 }
 
+static NSDictionary *RaftDiagnosticsLoadResult(void) {
+    NSString *recentText = RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars);
+    return @{
+        @"status" : @"ok",
+        @"entries" : @[
+            @{
+                @"timestampLabel" : @"",
+                @"tag" : @"iOS",
+                @"message" : recentText.length > 0 ? recentText : @"No local diagnostics log files are currently available."
+            }
+        ]
+    };
+}
+
+static NSDictionary *RaftDiagnosticsPrepareFeedbackDraftResult(NSDictionary *about) {
+    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
+    if (![RaftBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
+        return attachments;
+    }
+    NSString *fileName = RaftBridgeString(attachments[@"fileName"]);
+    NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
+    return @{
+        @"status" : @"ok",
+        @"message" : message,
+        @"fileName" : fileName,
+        @"mimeType" : RaftBridgeString(attachments[@"mimeType"]),
+        @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
+        @"bodyBase64" : RaftBridgeString(attachments[@"bodyBase64"]),
+        @"filePath" : RaftBridgeString(attachments[@"filePath"]),
+        @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
+    };
+}
+
 
 static NSDictionary *RaftDiagnosticsCrashAbout(long long crashAtMillis) {
     NSMutableDictionary *about = [RaftDiagnosticsCurrentEnvironmentAbout() mutableCopy];
@@ -4135,6 +4168,59 @@ NSString *const RaftBridgeCallbackKey = @"callback";
             } else {
                 RaftStorageClearTarget(target, deliver);
             }
+        });
+        return;
+    }
+    if ([action isEqualToString:@"loadDiagnostics"] ||
+        [action isEqualToString:@"copyDiagnostics"] ||
+        [action isEqualToString:@"shareDiagnostics"] ||
+        [action isEqualToString:@"clearDiagnostics"] ||
+        [action isEqualToString:@"prepareDiagnosticsFeedback"]) {
+        // Diagnostics reads, clears, and snapshot prep synchronize with RaftDiagnosticsOwnerQueue
+        // via dispatch_semaphore_wait and walk app log files; run them off the main thread and
+        // deliver UI/pasteboard/share side effects and callbacks back on main.
+        NSString *actionCopy = [action copy];
+        BOOL needsAbout =
+            [actionCopy isEqualToString:@"copyDiagnostics"] ||
+            [actionCopy isEqualToString:@"shareDiagnostics"] ||
+            [actionCopy isEqualToString:@"prepareDiagnosticsFeedback"];
+        NSDictionary *aboutSnapshot = needsAbout ? [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}] : nil;
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if ([actionCopy isEqualToString:@"loadDiagnostics"]) {
+                NSDictionary *result = RaftDiagnosticsLoadResult();
+                RaftBridgeRunOnMain(^{ callback(result); });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"clearDiagnostics"]) {
+                RaftDiagnosticsClear();
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_logs_cleared");
+                RaftBridgeRunOnMain(^{ callback(@{ @"status" : @"ok" }); });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"copyDiagnostics"]) {
+                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_copy_diagnostics");
+                RaftBridgeRunOnMain(^{
+                    UIPasteboard.generalPasteboard.string = exportText;
+                    callback(@{ @"status" : @"ok" });
+                });
+                return;
+            }
+            if ([actionCopy isEqualToString:@"shareDiagnostics"]) {
+                NSString *exportText = RaftDiagnosticsBuildSummaryText(aboutSnapshot) ?: @"";
+                RaftDiagnosticsRecord(@"info", @"SlockDiagnostics", @"shared_share_diagnostics");
+                RaftBridgeRunOnMain(^{
+                    if (strongSelf) {
+                        [strongSelf raft_shareItems:@[ exportText ]];
+                    }
+                    callback(@{ @"status" : @"ok" });
+                });
+                return;
+            }
+            NSDictionary *result = RaftDiagnosticsPrepareFeedbackDraftResult(aboutSnapshot);
+            RaftBridgeRunOnMain(^{ callback(result); });
         });
         return;
     }
@@ -6482,17 +6568,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return [self raft_developerCapabilityResultWithFeedback:nil];
     }
     if ([action isEqualToString:@"loadDiagnostics"]) {
-        NSString *recentText = RaftDiagnosticsExportRecentText(RaftDiagnosticsRecentMaxChars);
-        return @{
-            @"status" : @"ok",
-            @"entries" : @[
-                @{
-                    @"timestampLabel" : @"",
-                    @"tag" : @"iOS",
-                    @"message" : recentText.length > 0 ? recentText : @"No local diagnostics log files are currently available."
-                }
-            ]
-        };
+        return RaftDiagnosticsLoadResult();
     }
     if ([action isEqualToString:@"copyDiagnostics"]) {
         NSString *exportText = RaftDiagnosticsBuildSummaryText([self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}]);
@@ -6715,22 +6791,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 
 - (NSDictionary *)raft_prepareDiagnosticsFeedbackDraft {
     NSDictionary *about = [self raft_settingsCapabilityResultForAction:@"loadAbout" params:@{}];
-    NSDictionary *attachments = RaftDiagnosticsPrepareAttachmentFiles(about, @"settings_feedback", YES);
-    if (![RaftBridgeString(attachments[@"status"]) isEqualToString:@"ok"]) {
-        return attachments;
-    }
-    NSString *fileName = RaftBridgeString(attachments[@"fileName"]);
-    NSString *message = [NSString stringWithFormat:@"## Raft feedback\n\nDiagnostics attachment: %@\n\n<!-- Describe what happened here. -->", fileName];
-    return @{
-        @"status" : @"ok",
-        @"message" : message,
-        @"fileName" : fileName,
-        @"mimeType" : RaftBridgeString(attachments[@"mimeType"]),
-        @"sizeBytes" : attachments[@"sizeBytes"] ?: @0,
-        @"bodyBase64" : RaftBridgeString(attachments[@"bodyBase64"]),
-        @"filePath" : RaftBridgeString(attachments[@"filePath"]),
-        @"attachmentPaths" : attachments[@"attachmentPaths"] ?: @[]
-    };
+    return RaftDiagnosticsPrepareFeedbackDraftResult(about);
 }
 
 - (void)raft_shareItems:(NSArray *)items {

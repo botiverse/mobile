@@ -16,6 +16,9 @@ import platform.CoreGraphics.CGRectMake
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import platform.Foundation.NSFileHandle
 import platform.Foundation.closeFile
 import platform.Foundation.fileHandleForReadingAtPath
@@ -49,10 +52,12 @@ internal actual fun RaftPdfDocumentView(
     val pageCallback by rememberUpdatedState(onPageChanged)
     val errorCallback by rememberUpdatedState(onError)
     key(path) {
-        val host = remember { RaftIosPdfViewHost(path) { current, count -> pageCallback(current, count) } }
-        LaunchedEffect(host) {
-            val error = host.openError
-            if (error != null) errorCallback(error) else host.reportPage()
+        val host = remember { RaftIosPdfViewHost { current, count -> pageCallback(current, count) } }
+        LaunchedEffect(host, path) {
+            when (val outcome = withContext(Dispatchers.IO) { raftIosOpenPdfDocument(path) }) {
+                is RaftIosPdfOpenResult.Opened -> host.attach(outcome.document)
+                is RaftIosPdfOpenResult.Failed -> errorCallback(outcome.error)
+            }
         }
         UIKitView(
             factory = { host.view },
@@ -64,26 +69,36 @@ internal actual fun RaftPdfDocumentView(
     }
 }
 
+private sealed interface RaftIosPdfOpenResult {
+    class Opened(val document: PDFDocument) : RaftIosPdfOpenResult
+
+    class Failed(val error: RaftPdfDocumentError) : RaftIosPdfOpenResult
+}
+
+/**
+ * Validates the PDF header and constructs [PDFDocument] off the main thread so opening a large
+ * local PDF does not block UIKit / Compose frames.
+ */
+private fun raftIosOpenPdfDocument(path: String): RaftIosPdfOpenResult {
+    // Only a file that looks like a PDF reaches PDFKit; a parse failure still maps to Corrupt.
+    if (!raftIosFileHasPdfHeader(path)) {
+        return RaftIosPdfOpenResult.Failed(RaftPdfDocumentError.Corrupt)
+    }
+    val document =
+        runCatching { PDFDocument(uRL = NSURL.fileURLWithPath(path)) }.getOrNull()
+            ?: return RaftIosPdfOpenResult.Failed(RaftPdfDocumentError.Corrupt)
+    return when {
+        document.isLocked -> RaftIosPdfOpenResult.Failed(RaftPdfDocumentError.PasswordProtected)
+        document.pageCount == 0uL -> RaftIosPdfOpenResult.Failed(RaftPdfDocumentError.Corrupt)
+        else -> RaftIosPdfOpenResult.Opened(document)
+    }
+}
+
 private class RaftIosPdfViewHost(
-    path: String,
     private val onPage: (Int, Int) -> Unit,
 ) {
-    // Only a file that looks like a PDF reaches PDFKit; a parse failure still maps to Corrupt.
-    private val document: PDFDocument? =
-        if (raftIosFileHasPdfHeader(path)) {
-            runCatching { PDFDocument(uRL = NSURL.fileURLWithPath(path)) }.getOrNull()
-        } else {
-            null
-        }
-
-    /** Null when the document opened with at least one page. */
-    val openError: RaftPdfDocumentError? =
-        when {
-            document == null -> RaftPdfDocumentError.Corrupt
-            document.isLocked -> RaftPdfDocumentError.PasswordProtected
-            document.pageCount == 0uL -> RaftPdfDocumentError.Corrupt
-            else -> null
-        }
+    private var document: PDFDocument? = null
+    private var disposed: Boolean = false
 
     val view: PDFView =
         PDFView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)).also { pdfView ->
@@ -94,7 +109,6 @@ private class RaftIosPdfViewHost(
             pdfView.autoScales = true
             // Pages scrolled past the top must not paint over the page header.
             pdfView.clipsToBounds = true
-            if (openError == null) pdfView.document = document
         }
 
     private var observer: NSObjectProtocol? =
@@ -105,10 +119,18 @@ private class RaftIosPdfViewHost(
         ) { _ -> reportPage() }
     private var lastReported: Pair<Int, Int>? = null
 
+    fun attach(loadedDocument: PDFDocument) {
+        if (disposed) return
+        document = loadedDocument
+        view.document = loadedDocument
+        reportPage()
+    }
+
     fun reportPage() {
+        if (disposed) return
         val doc = document ?: return
-        if (openError != null) return
         val count = doc.pageCount.toInt()
+        if (count <= 0) return
         val current = view.currentPage?.let { doc.indexForPage(it).toInt() } ?: 0
         val next = current.coerceIn(0, (count - 1).coerceAtLeast(0)) to count
         if (next == lastReported) return
@@ -117,8 +139,10 @@ private class RaftIosPdfViewHost(
     }
 
     fun dispose() {
+        disposed = true
         observer?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         observer = null
+        document = null
         view.document = null
     }
 }
@@ -126,8 +150,12 @@ private class RaftIosPdfViewHost(
 /** Reads only the first KiB of the file; false when it cannot be read. */
 private fun raftIosFileHasPdfHeader(path: String): Boolean {
     val handle = NSFileHandle.fileHandleForReadingAtPath(path) ?: return false
-    val data = handle.readDataOfLength(1024uL)
-    handle.closeFile()
+    val data =
+        try {
+            handle.readDataOfLength(1024uL)
+        } finally {
+            handle.closeFile()
+        }
     val length = minOf(data.length.toInt(), 1024)
     if (length <= 0) return false
     val head = data.bytes?.reinterpret<ByteVar>()?.readBytes(length) ?: return false

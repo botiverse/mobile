@@ -6,6 +6,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
@@ -414,6 +415,26 @@ class AndroidUnreadNotificationGroupingTest {
         now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
         runDeferredSummaries()
         assertTrue(manager.activeNotifications.isEmpty())
+    }
+
+    @Test
+    fun dismissReceiverOffloadsTrayRecountOffCallerThread() {
+        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: hi"))
+        post(fcm(channelId = "dm-1", messageId = "m-2", body = "yo", title = "Bob"))
+        assertEquals(2, summaryOf("server-1")!!.notification.number)
+
+        val dismissed = conversations().single { titleOf(it.notification) == "Bob" }
+        manager.cancel(dismissed.tag, dismissed.id)
+        val intent =
+            Intent().putExtra(RaftUnreadNotificationDismissReceiver.EXTRA_NOTIFICATION_ID, dismissed.id)
+        RaftUnreadNotificationDismissReceiver().onReceive(context, intent)
+
+        // Not recounted synchronously on the BroadcastReceiver main thread; queued onto backgroundRunner.
+        assertEquals(1, backgroundTasks.size)
+        assertEquals(2, summaryOf("server-1")!!.notification.number)
+
+        runBackgroundTasks()
+        assertEquals(1, summaryOf("server-1")!!.notification.number)
     }
 
     private fun runBackgroundTasks() {

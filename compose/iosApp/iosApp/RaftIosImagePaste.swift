@@ -306,17 +306,20 @@ enum RaftIosImagePaste {
     }
 
     /// Inside `paste(_:)`: from ⌘V or the system's Paste (no prompt), or from the composer's own
-    /// Paste item (iOS may prompt): read now, encode off the main thread.
+    /// Paste item (iOS may prompt): capture raw pasteboard payloads synchronously inside `paste(_:)`
+    /// so iOS 16+ keeps the paste-action exemption, then validate with ImageIO and encode off the
+    /// main thread.
     private static func pasteImagesIntoComposer() {
         // Logs `composer_image_paste_claim route=system_paste granted=…` (ThreadComposerImagePaste.kt).
         guard RaftIosComposerImagePasteKt.raftComposerImagePasteClaim() else {
             RaftIosDiagnosticsRecord("info", "RaftImagePaste", "paste dropped reason=claimed_by_other_route")
             return
         }
-        let sources = captureClipboardImages()
-        RaftIosDiagnosticsRecord("info", "RaftImagePaste", "paste images=\(sources.count)")
-        guard !sources.isEmpty else { return }
+        let snapshot = captureClipboardSnapshot()
         DispatchQueue.global(qos: .userInitiated).async {
+            let sources = resolveClipboardImages(snapshot)
+            RaftIosDiagnosticsRecord("info", "RaftImagePaste", "paste images=\(sources.count)")
+            guard !sources.isEmpty else { return }
             let images = encode(sources)
             DispatchQueue.main.async {
                 RaftIosComposerImagePasteKt.raftComposerImagesPasted(images: images)
@@ -329,65 +332,180 @@ enum RaftIosImagePaste {
         case image(UIImage)
     }
 
-    /// The clipboard's images as stored (their original bytes where there are some), at most
-    /// `raftIosPasteMaxImages()`. Each item's image types are tried in turn, encoded types
-    /// (public.png, public.jpeg, public.heic …) first and UIKit's in-process `com.apple.uikit.image`
-    /// last, and only bytes ImageIO can decode count. The read up to 1.26 took each item's first
-    /// image type only and gave up on the item when it had no bytes; vphone (1.26.0-main) logged
-    /// `paste images=0` for an item typed com.apple.uikit.image, public.png, public.jpeg (an image
-    /// set by another process, whose in-process UIKit type has no bytes here). Then the
-    /// whole-pasteboard reads, then `images` / `image`. Logs the types and how many each step
-    /// found (never the content).
-    fileprivate static func captureClipboardImages() -> [Source] {
+    fileprivate struct ClipboardItemCandidates {
+        let index: Int
+        let hasImageType: Bool
+        let candidates: [(type: String, data: Data)]
+        let missingTypes: [String]
+    }
+
+    fileprivate struct ClipboardSnapshot {
+        let limit: Int
+        let itemTypes: [[String]]
+        let items: [ClipboardItemCandidates]
+        let wholeCandidates: [(type: String, data: Data)]
+        let fallbackImages: [UIImage]
+    }
+
+    /// Reads raw pasteboard payloads without running ImageIO (`CGImageSourceCreateWithData`) on the
+    /// main thread. Each item's image types are queried in `imageTypesInReadOrder` (encoded public
+    /// formats first, UIKit's in-process `com.apple.uikit.image` last); once an item yields bytes
+    /// with a recognized encoded image header we stop reading redundant types for that item.
+    /// Authoritative ImageIO validation happens in `resolveClipboardImages(_:)` off the main thread.
+    fileprivate static func captureClipboardSnapshot() -> ClipboardSnapshot {
         let board = UIPasteboard.general
-        let limit = Int(RaftIosComposerImagePasteKt.raftIosPasteMaxImages())
+        let limit = max(0, Int(RaftIosComposerImagePasteKt.raftIosPasteMaxImages()))
         let itemTypes = board.types(forItemSet: nil) ?? []
+        var items: [ClipboardItemCandidates] = []
+        var itemsWithRecognizedHeader = 0
+        for (index, types) in itemTypes.enumerated() {
+            if itemsWithRecognizedHeader >= limit { break }
+            let orderedTypes = imageTypesInReadOrder(types)
+            guard !orderedTypes.isEmpty else { continue }
+            let set = IndexSet(integer: index)
+            var candidates: [(type: String, data: Data)] = []
+            var missingTypes: [String] = []
+            var recognized = false
+            for type in orderedTypes {
+                if let data = board.data(forPasteboardType: type, inItemSet: set)?.first, !data.isEmpty {
+                    candidates.append((type: type, data: data))
+                    if looksLikeEncodedImageHeader(data) {
+                        recognized = true
+                        break
+                    }
+                } else {
+                    missingTypes.append(type)
+                }
+            }
+            if recognized { itemsWithRecognizedHeader += 1 }
+            items.append(
+                ClipboardItemCandidates(
+                    index: index,
+                    hasImageType: true,
+                    candidates: candidates,
+                    missingTypes: missingTypes
+                )
+            )
+        }
+        var wholeCandidates: [(type: String, data: Data)] = []
+        var fallbackImages: [UIImage] = []
+        // Only query whole-pasteboard and UIImage fallbacks when per-item reads did not already
+        // find a recognized encoded image header.
+        if itemsWithRecognizedHeader == 0 {
+            let types = imageTypesInReadOrder(Array(Set(itemTypes.flatMap { $0 }))) +
+                [UTType.png.identifier, UTType.jpeg.identifier, UTType.heic.identifier]
+            for type in uniqued(types) {
+                if let data = board.data(forPasteboardType: type), !data.isEmpty {
+                    wholeCandidates.append((type: type, data: data))
+                    if looksLikeEncodedImageHeader(data) {
+                        break
+                    }
+                }
+            }
+            if wholeCandidates.allSatisfy({ !looksLikeEncodedImageHeader($0.data) }) {
+                let batch = Array((board.images ?? []).prefix(limit))
+                if !batch.isEmpty {
+                    fallbackImages = batch
+                } else if let image = board.image {
+                    fallbackImages = [image]
+                }
+            }
+        }
+        return ClipboardSnapshot(
+            limit: limit,
+            itemTypes: itemTypes,
+            items: items,
+            wholeCandidates: wholeCandidates,
+            fallbackImages: fallbackImages
+        )
+    }
+
+    /// Validates captured clipboard payloads with ImageIO off the main thread, keeping the same
+    /// precedence as before (per-item encoded bytes, then whole-pasteboard bytes, then `images` /
+    /// `image`) and logging types and counts only.
+    fileprivate static func resolveClipboardImages(_ snapshot: ClipboardSnapshot) -> [Source] {
         var sources: [Source] = []
         var perItem = 0
         var misses: [String] = []
-        for (index, types) in itemTypes.enumerated() {
-            if sources.count >= limit { break }
-            let set = IndexSet(integer: index)
+        for item in snapshot.items {
+            if sources.count >= snapshot.limit { break }
             var found = false
-            for type in imageTypesInReadOrder(types) {
-                if let data = board.data(forPasteboardType: type, inItemSet: set)?.first, isDecodableImage(data) {
-                    sources.append(.data(data))
+            misses.append(contentsOf: item.missingTypes)
+            for candidate in item.candidates {
+                if isDecodableImage(candidate.data) {
+                    sources.append(.data(candidate.data))
                     perItem += 1
                     found = true
                     break
                 }
-                misses.append(type)
+                misses.append(candidate.type)
             }
-            if !found, types.contains(where: isImageType) { misses.append("item\(index)") }
+            if !found, item.hasImageType { misses.append("item\(item.index)") }
         }
         var whole = 0
         if sources.isEmpty {
-            let types = imageTypesInReadOrder(Array(Set(itemTypes.flatMap { $0 }))) +
-                [UTType.png.identifier, UTType.jpeg.identifier, UTType.heic.identifier]
-            for type in uniqued(types) {
-                if let data = board.data(forPasteboardType: type), isDecodableImage(data) {
-                    sources.append(.data(data))
+            for candidate in snapshot.wholeCandidates {
+                if isDecodableImage(candidate.data) {
+                    sources.append(.data(candidate.data))
                     whole += 1
                     break
                 }
             }
         }
         var images = 0
-        if sources.isEmpty {
-            sources = (board.images ?? []).prefix(limit).map { .image($0) }
+        if sources.isEmpty && !snapshot.fallbackImages.isEmpty {
+            sources = snapshot.fallbackImages.prefix(snapshot.limit).map { .image($0) }
             images = sources.count
         }
-        if sources.isEmpty, let image = board.image {
-            sources = [.image(image)]
-            images = 1
-        }
-        let typeList = itemTypes.map { "[" + $0.joined(separator: ",") + "]" }.joined(separator: ",")
+        let typeList = snapshot.itemTypes.map { "[" + $0.joined(separator: ",") + "]" }.joined(separator: ",")
         RaftIosDiagnosticsRecord(
             "info", "RaftImagePaste",
-            "read items=\(itemTypes.count) types=\(typeList) perItem=\(perItem) whole=\(whole) images=\(images) " +
+            "read items=\(snapshot.itemTypes.count) types=\(typeList) perItem=\(perItem) whole=\(whole) images=\(images) " +
                 "missed=\(misses.joined(separator: ","))"
         )
         return sources
+    }
+
+    /// Cheap O(1) magic-byte check used only to avoid reading redundant pasteboard representations
+    /// on the main thread; authoritative validation runs off the main thread via ImageIO.
+    static func looksLikeEncodedImageHeader(_ data: Data) -> Bool {
+        let header = Array(data.prefix(12))
+        guard header.count >= 4 else { return false }
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if header.count >= 8,
+           header[0] == 0x89, header[1] == 0x50, header[2] == 0x4E, header[3] == 0x47,
+           header[4] == 0x0D, header[5] == 0x0A, header[6] == 0x1A, header[7] == 0x0A {
+            return true
+        }
+        // JPEG: FF D8 FF
+        if header[0] == 0xFF, header[1] == 0xD8, header[2] == 0xFF {
+            return true
+        }
+        // GIF: "GIF8"
+        if header[0] == 0x47, header[1] == 0x49, header[2] == 0x46, header[3] == 0x38 {
+            return true
+        }
+        // WebP: "RIFF" .... "WEBP"
+        if header.count >= 12,
+           header[0] == 0x52, header[1] == 0x49, header[2] == 0x46, header[3] == 0x46,
+           header[8] == 0x57, header[9] == 0x45, header[10] == 0x42, header[11] == 0x50 {
+            return true
+        }
+        // HEIC / HEIF / AVIF (ISO Base Media File Format): .... "ftyp"
+        if header.count >= 12,
+           header[4] == 0x66, header[5] == 0x74, header[6] == 0x79, header[7] == 0x70 {
+            return true
+        }
+        // TIFF: "II*\0" or "MM\0*"
+        if (header[0] == 0x49 && header[1] == 0x49 && header[2] == 0x2A && header[3] == 0x00) ||
+           (header[0] == 0x4D && header[1] == 0x4D && header[2] == 0x00 && header[3] == 0x2A) {
+            return true
+        }
+        // BMP: "BM"
+        if header[0] == 0x42, header[1] == 0x4D {
+            return true
+        }
+        return false
     }
 
     private static let uikitImageType = "com.apple.uikit.image"
@@ -484,7 +602,8 @@ enum RaftIosImagePaste {
 /// e.g. the composer's attachment paste event from another path). Called off the main thread.
 private final class RaftIosPastedImageClipboardReader: NSObject, RaftIosPastedImageReader {
     func read() -> [RaftIosPastedImage] {
-        RaftIosImagePaste.encode(RaftIosImagePaste.captureClipboardImages())
+        let snapshot = RaftIosImagePaste.captureClipboardSnapshot()
+        return RaftIosImagePaste.encode(RaftIosImagePaste.resolveClipboardImages(snapshot))
     }
 }
 
