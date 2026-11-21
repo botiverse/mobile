@@ -3205,9 +3205,9 @@
     <string name="settings_computers_up_to_date">Atualizado</string>
     <string name="settings_computers_upgrade_to_version">Atualizar para a v%1$s</string>
     <string name="settings_computers_upgrade_confirm">Atualizar</string>
-    <string name="settings_computers_upgrade_confirm_message_none">%1$s reinicia na v%2$s, então ele se desconecta até se reconectar.</string>
-    <string name="settings_computers_upgrade_confirm_message_one">%1$s reinicia na v%2$s, então ele e seu %3$d agente se desconectam até se reconectar.</string>
-    <string name="settings_computers_upgrade_confirm_message_many">%1$s reinicia na v%2$s, então ele e seus %3$d agentes se desconectam até se reconectar.</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s reinicia na v%2$s, então ele se desconecta até se reconectar. Agentes ainda trabalhando têm alguns segundos para terminar; turnos ainda em andamento depois disso são interrompidos.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s reinicia na v%2$s, então ele e seu %3$d agente se desconectam até se reconectar. Agentes ainda trabalhando têm alguns segundos para terminar; turnos ainda em andamento depois disso são interrompidos.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s reinicia na v%2$s, então ele e seus %3$d agentes se desconectam até se reconectar. Agentes ainda trabalhando têm alguns segundos para terminar; turnos ainda em andamento depois disso são interrompidos.</string>
     <string name="settings_computers_upgrading">Atualizando…</string>
     <string name="settings_computers_upgrade_status_reinstall">Esta versão não pode ser atualizada pela web. Reinstale-a com o comando no topo desta página.</string>
     <string name="settings_computers_upgrade_status_reading">Lendo a versão; volte daqui a pouco.</string>
@@ -4709,8 +4709,8 @@
     <string name="settings_search_invite_links">Links de convite</string>
     <string name="settings_search_single_sign_on">Login único (SSO)</string>
     <string name="settings_search_single_sign_on_description">Permita que as pessoas com e-mail nos domínios da sua empresa entrem no Raft com o seu provedor de identidade e, se quiser, torne isso obrigatório.</string>
-    <string name="settings_computers_upgrade_status_draining_one">Aguardando %1$d agente deste servidor terminar o trabalho; depois a atualização para a v%2$s começa (até 10 min).</string>
-    <string name="settings_computers_upgrade_status_draining_other">Aguardando %1$d agentes deste servidor terminarem o trabalho; depois a atualização para a v%2$s começa (até 10 min).</string>
+    <string name="settings_computers_upgrade_status_draining_one">Dando alguns segundos para %1$d agente deste servidor terminar; depois a atualização para a v%2$s começa. Turnos ainda em andamento são interrompidos.</string>
+    <string name="settings_computers_upgrade_status_draining_other">Dando alguns segundos para %1$d agentes deste servidor terminarem; depois a atualização para a v%2$s começa. Turnos ainda em andamento são interrompidos.</string>
     <string name="settings_computers_upgrading_draining_one">Aguardando %1$d agente deste servidor…</string>
     <string name="settings_computers_upgrading_draining_other">Aguardando %1$d agentes deste servidor…</string>
     <string name="member_removal_impact_remove_one">Remover %1$s deixa %2$d computador offline: %3$s.</string>

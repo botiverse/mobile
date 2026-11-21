@@ -3205,9 +3205,9 @@
     <string name="settings_computers_up_to_date">최신 상태</string>
     <string name="settings_computers_upgrade_to_version">v%1$s 버전으로 업그레이드</string>
     <string name="settings_computers_upgrade_confirm">업그레이드</string>
-    <string name="settings_computers_upgrade_confirm_message_none">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 연결이 끊겨요.</string>
-    <string name="settings_computers_upgrade_confirm_message_one">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 해당 에이전트 %3$d개와 함께 연결이 끊겨요.</string>
-    <string name="settings_computers_upgrade_confirm_message_many">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 해당 에이전트 %3$d개와 함께 연결이 끊겨요.</string>
+    <string name="settings_computers_upgrade_confirm_message_none">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 연결이 끊겨요. 작업 중인 에이전트에게는 몇 초의 시간이 주어지고, 그 뒤에도 진행 중인 턴은 중단돼요.</string>
+    <string name="settings_computers_upgrade_confirm_message_one">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 해당 에이전트 %3$d개와 함께 연결이 끊겨요. 작업 중인 에이전트에게는 몇 초의 시간이 주어지고, 그 뒤에도 진행 중인 턴은 중단돼요.</string>
+    <string name="settings_computers_upgrade_confirm_message_many">%1$s이(가) v%2$s(으)로 재시작되며, 다시 연결될 때까지 해당 에이전트 %3$d개와 함께 연결이 끊겨요. 작업 중인 에이전트에게는 몇 초의 시간이 주어지고, 그 뒤에도 진행 중인 턴은 중단돼요.</string>
     <string name="settings_computers_upgrading">업데이트 중…</string>
     <string name="settings_computers_upgrade_status_reinstall">이 버전은 웹에서 업그레이드할 수 없어요. 이 페이지 상단의 명령으로 다시 설치하세요.</string>
     <string name="settings_computers_upgrade_status_reading">버전을 확인하는 중이에요. 잠시 후 다시 확인해 주세요.</string>
@@ -4709,8 +4709,8 @@
     <string name="settings_search_invite_links">초대 링크</string>
     <string name="settings_search_single_sign_on">싱글 사인온(SSO)</string>
     <string name="settings_search_single_sign_on_description">회사 이메일 도메인의 사용자가 회사 ID 공급자로 Raft에 로그인하도록 하고, 필요하면 이를 필수로 지정합니다.</string>
-    <string name="settings_computers_upgrade_status_draining_one">이 서버의 에이전트 %1$d개가 작업을 마칠 때까지 기다린 후 v%2$s 버전으로 업그레이드해요(최대 10분).</string>
-    <string name="settings_computers_upgrade_status_draining_other">이 서버의 에이전트 %1$d개가 작업을 마칠 때까지 기다린 후 v%2$s 버전으로 업그레이드해요(최대 10분).</string>
+    <string name="settings_computers_upgrade_status_draining_one">이 서버의 에이전트 %1$d개에게 몇 초의 마무리 시간을 준 뒤 v%2$s 버전으로 업그레이드해요. 진행 중인 턴은 중단돼요.</string>
+    <string name="settings_computers_upgrade_status_draining_other">이 서버의 에이전트 %1$d개에게 몇 초의 마무리 시간을 준 뒤 v%2$s 버전으로 업그레이드해요. 진행 중인 턴은 중단돼요.</string>
     <string name="settings_computers_upgrading_draining_one">이 서버의 에이전트 %1$d개를 기다리는 중…</string>
     <string name="settings_computers_upgrading_draining_other">이 서버의 에이전트 %1$d개를 기다리는 중…</string>
     <string name="member_removal_impact_remove_one">%1$s 님을 제거하면 컴퓨터 %2$d대가 오프라인이 돼요: %3$s.</string>
