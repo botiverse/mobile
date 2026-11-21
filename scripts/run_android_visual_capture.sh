@@ -882,6 +882,14 @@ if grep -q '[^[:space:]]' "$CRASH_LOG_FILE" && grep -vq '^--------- beginning of
   echo "android visual capture: crash buffer (shard ${SHARD_INDEX}):"
   sed 's/^/  /' "$CRASH_LOG_FILE"
 fi
+# A process the system killed ("Process crashed." with an empty crash buffer: a dependency kill,
+# lmkd) leaves its reason only in the app's exit info (VT run 44924992344: DEPENDENCY DIED on
+# Play services' FontsProvider). Keep the latest entries beside the crash buffer.
+{
+  echo "--------- app exit info (dumpsys activity exit-info build.raft.app.connectedtest)"
+  "$ADB_BIN" shell dumpsys activity exit-info build.raft.app.connectedtest 2>/dev/null \
+    | grep -E 'ApplicationExitInfo #|timestamp=|process=|description=' | head -24 || true
+} >> "$CRASH_LOG_FILE"
 
 grep -oE 'CASE_START [A-Za-z0-9_]+' "$LOG_FILE" 2>/dev/null | awk '{print $NF}' | sort -u > "$STARTED_FILE" || true
 grep -oE 'CASE_END [A-Za-z0-9_]+' "$LOG_FILE" 2>/dev/null | awk '{print $NF}' | sort -u > "$ENDED_FILE" || true

@@ -3612,6 +3612,12 @@ class KmpVisualScreenshotCaptureTest {
      * does the same (slock react-provider.spec.ts
      * openRuntimeFormPicker: a click, then the query typed into the combobox).
      */
+    /** Logs whether this app holds Play services' FontsProvider (see the connectedTest manifest). */
+    private fun logRuntimeFormPickerFontsProvider(caseId: String, step: String) {
+        val providers = readShellCommand("dumpsys activity providers com.google.android.gms/.fonts.provider.FontsProvider")
+        Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app ($step)=${"build.raft.app.connectedtest" in providers}")
+    }
+
     private fun openRuntimeFormPicker(caseId: String) {
         val picker = requireNotNull(runtimeFormVisualPicker(caseId)) { "$caseId has no picker in visual-cases.v3.json" }
         awaitFixtureIsActiveInputWindow("the ${picker.fieldLabel} field")
@@ -3669,6 +3675,7 @@ class KmpVisualScreenshotCaptureTest {
             tapDp(bounds.exactCenterX() / density, bounds.exactCenterY() / density)
         }
         Log.i(VISUAL_LOG_TAG, "$caseId picker: opened ${picker.fieldLabel}")
+        logRuntimeFormPickerFontsProvider(caseId, "opened")
         var listRoot: android.view.accessibility.AccessibilityNodeInfo? = null
         while (listRoot == null) {
             listRoot =
@@ -3708,8 +3715,7 @@ class KmpVisualScreenshotCaptureTest {
             // A text field must not bind Play services' FontsProvider: when Play services restarts
             // itself, ActivityManager kills every process holding it (run 44924992344). The
             // connectedTest manifest drops emoji2's initializer for that; this line shows it held.
-            val fontsClients = readShellCommand("dumpsys activity providers com.google.android.gms/.fonts.provider.FontsProvider")
-            Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app=${"build.raft.app.connectedtest" in fontsClients}")
+            logRuntimeFormPickerFontsProvider(caseId, "after typing")
             require(shown == query) { "$caseId: the ${picker.fieldLabel} search row shows \"$shown\" after typing \"$query\"" }
         }
         // The sheet slides in (RaftSheetWindow); the stable-frame capture waits for the rest.
