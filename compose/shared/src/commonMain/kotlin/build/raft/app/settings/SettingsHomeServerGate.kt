@@ -304,8 +304,8 @@ internal fun appShellServerSwitchNewWindowPageDataOrNull(
         replaceCurrent = false
     ).apply {
         val tab = keepTab?.let(::retainedAppShellSelectedTab)
-        val keepsTab = tab != null && tab != "home"
-        if (keepsTab) put(AppShellInitialTabKey, tab)
+        if (tab != null && tab != "home") put(AppShellInitialTabKey, tab)
+        val keepsTab = has(AppShellInitialTabKey)
         val window =
             windowShowingPickedServer?.trim()?.takeIf { it.isNotEmpty() && it != sourceStoreScope.shellInstanceId }
         if (window != null) {
