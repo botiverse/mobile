@@ -2174,7 +2174,19 @@ internal open class RaftCmpActivity :
             startDestination()
         }
         if (replaceCurrent) {
-            if (from != null && stack != null) stack.close(from) else finish()
+            if (from != null && stack != null) {
+                stack.close(from)
+            } else {
+                finish()
+                if (shouldOpenWithoutAnimation(data)) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        overridePendingTransition(0, 0)
+                    }
+                }
+            }
         }
     }
 

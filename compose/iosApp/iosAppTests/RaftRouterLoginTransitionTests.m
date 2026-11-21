@@ -305,4 +305,82 @@
     XCTAssertEqual(navigation.viewControllers.firstObject, initialLogin);
 }
 
+- (void)testReplaceCurrentHonorsOpenWithoutAnimation {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftRouterRecordingNavigationController *navigation = [self navigationWithPages:@[shell, pendingTask]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.pushCount, 0u);
+    XCTAssertFalse(navigation.lastRequestedAnimation,
+                   @"Replacing a pending task page with its conversation must honor slockOpenWithoutAnimation");
+    XCTAssertEqual(navigation.viewControllers.count, 2u);
+    XCTAssertEqual(navigation.viewControllers.firstObject, shell);
+    XCTAssertNotEqual(navigation.topViewController, pendingTask);
+
+    UIViewController *thread = navigation.topViewController;
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:thread];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation,
+                  @"Replacement without slockOpenWithoutAnimation keeps animated=YES");
+}
+
+- (void)testReplaceCurrentReplacesSourceControllerIndexNotUnrelatedTop {
+    RaftPageViewController *shell = [self renderPage:@"compose_slock_app_shell"];
+    RaftPageViewController *pendingTask = [self renderPage:@"compose_task_pending"];
+    RaftPageViewController *coveringPage = [self renderPage:@"compose_thread"];
+    RaftRouterRecordingNavigationController *navigation =
+        [self navigationWithPages:@[shell, pendingTask, coveringPage]];
+
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertEqual(navigation.viewControllers[0], shell);
+    XCTAssertNotEqual(navigation.viewControllers[1], pendingTask,
+                      @"Source controller at index 1 must be replaced in place");
+    XCTAssertEqual(navigation.viewControllers[2], coveringPage,
+                   @"Covering page above the source controller must stay untouched");
+
+    // Replacing again from the already-removed pendingTask with slockOpenWithoutAnimation is a safe no-op.
+    [self.router openPageWithName:@"compose_thread"
+                         pageData:@{
+                             @"slockReplaceCurrentPage": @YES,
+                             @"slockOpenWithoutAnimation": @YES,
+                         }
+                       controller:pendingTask];
+    XCTAssertEqual(navigation.replacementCount, 1u,
+                   @"Detached source with slockOpenWithoutAnimation must not replace another controller on the stack");
+
+    // Ordinary slockReplaceCurrentPage (without slockOpenWithoutAnimation) from an embedded child
+    // controller keeps replacing the top stack entry so container-hosted flows (auth/OAuth/gates) stay intact.
+    UIViewController *embeddedChild = [UIViewController new];
+    [coveringPage addChildViewController:embeddedChild];
+    [embeddedChild didMoveToParentViewController:coveringPage];
+    XCTAssertEqual(embeddedChild.navigationController, navigation);
+    XCTAssertEqual([navigation.viewControllers indexOfObjectIdenticalTo:embeddedChild], NSNotFound);
+
+    [self.router openPageWithName:@"compose_slock_app_shell"
+                         pageData:@{@"slockReplaceCurrentPage": @YES}
+                       controller:embeddedChild];
+    XCTAssertEqual(navigation.replacementCount, 2u);
+    XCTAssertTrue(navigation.lastRequestedAnimation);
+    XCTAssertEqual(navigation.viewControllers.count, 3u);
+    XCTAssertNotEqual(navigation.topViewController, coveringPage,
+                      @"Ordinary replaceCurrent from an embedded child controller must still replace the top entry");
+    XCTAssertTrue(((RaftPageViewController *)navigation.topViewController).raftIsAppShellPage);
+}
+
 @end

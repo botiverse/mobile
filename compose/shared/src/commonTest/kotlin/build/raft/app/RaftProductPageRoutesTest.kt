@@ -142,6 +142,7 @@ class RaftProductPageRoutesTest {
         assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Labs), page(AuthenticatedProductRoute.SettingsLabs))
         assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Feedback), page(AuthenticatedProductRoute.SettingsHandsFeedback))
         listOf(
+            AuthenticatedProductRoute.TaskPending,
             AuthenticatedProductRoute.ThreadMembers,
             AuthenticatedProductRoute.ChannelSettings,
             AuthenticatedProductRoute.ThreadSettings,

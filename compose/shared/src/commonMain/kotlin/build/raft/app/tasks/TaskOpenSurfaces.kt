@@ -14,8 +14,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAuthGateState
@@ -141,6 +144,17 @@ internal suspend fun startTaskConversation(
 }
 
 /**
+ * In-memory first-frame seed for a pushed [TASK_PENDING_CONVERSATION_PAGE] route (identity-only
+ * `pageData` never carries product objects). Holds the [task] tapped on the opener and optional
+ * channel access hints until the live store / conversation directory hydrates.
+ */
+internal data class TaskPendingSeed(
+    val task: TaskSummary,
+    val channelJoined: Boolean? = null,
+    val canWriteChannel: Boolean? = null,
+)
+
+/**
  * The first message typed into a task that has no conversation yet ([TaskOpenSurface.Pending]),
  * per server and task, for one window's signed-in session. The conversation composer's drafts are
  * keyed by a conversation channel, which such a task does not have, so they live here instead: the
@@ -157,6 +171,7 @@ internal class TaskPendingDraftStore {
 
     private val drafts = mutableStateMapOf<Key, String>()
     private val randomIds = mutableMapOf<Key, String>()
+    private val seeds = mutableMapOf<Key, TaskPendingSeed>()
     private var accountId: String? = null
 
     private fun key(serverId: String?, taskId: String) = Key(serverId.orEmpty(), taskId)
@@ -171,16 +186,41 @@ internal class TaskPendingDraftStore {
     fun randomId(serverId: String?, taskId: String, newRandomId: () -> String): String =
         randomIds.getOrPut(key(serverId, taskId), newRandomId)
 
+    /** Stores the tapped task and optional channel access hints for instant Frame-1 rendering. */
+    fun seed(
+        serverId: String?,
+        task: TaskSummary,
+        channelJoined: Boolean? = null,
+        canWriteChannel: Boolean? = null,
+    ) {
+        seeds[key(serverId, task.id.value)] =
+            TaskPendingSeed(
+                task = task,
+                channelJoined = channelJoined,
+                canWriteChannel = canWriteChannel,
+            )
+    }
+
+    fun seeded(serverId: String?, taskId: String): TaskPendingSeed? = seeds[key(serverId, taskId)]
+
+    fun seededTask(serverId: String?, taskId: String): TaskSummary? = seeded(serverId, taskId)?.task
+
+    fun clearSeed(serverId: String?, taskId: String) {
+        seeds.remove(key(serverId, taskId))
+    }
+
     /** The first send created the task's conversation: its text is a message now, not a draft. */
     fun clear(serverId: String?, taskId: String) {
         val key = key(serverId, taskId)
         drafts.remove(key)
         randomIds.remove(key)
+        seeds.remove(key)
     }
 
     fun clearAll() {
         drafts.clear()
         randomIds.clear()
+        seeds.clear()
     }
 
     /**
@@ -200,6 +240,7 @@ internal class TaskPendingDraftStore {
         if (serverIds.isNullOrEmpty()) return
         drafts.keys.filter { it.serverId !in serverIds }.forEach { drafts.remove(it) }
         randomIds.keys.filter { it.serverId !in serverIds }.forEach { randomIds.remove(it) }
+        seeds.keys.filter { it.serverId !in serverIds }.forEach { seeds.remove(it) }
     }
 }
 
@@ -619,6 +660,13 @@ internal fun TaskPendingConversationPage(
     onAmend: (suspend (TaskAmendPatch, Long?) -> TaskAmendResult)? = null,
     /** False: the reader may not write the task's channel; status, assignee and text are plain ([TaskConversationHeadRoute]). */
     canWriteChannel: Boolean = true,
+    /**
+     * True when mounted as a full pushed stack page ([ComposeTaskPendingPage]) rather than inside
+     * [TaskPendingConversationWindow]: lets the top header, join footer and composer dock use the
+     * host's safe-area and live keyboard insets directly, matching [ThreadPage] so nothing shifts
+     * when the first send swaps in the conversation page.
+     */
+    useHostSafeArea: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -633,7 +681,15 @@ internal fun TaskPendingConversationPage(
             onToggleFollow = {},
             serverId = serverId,
         )
-    val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val density = LocalDensity.current
+    val keyboardUp =
+        if (useHostSafeArea) {
+            raftImeBottomPx(WindowInsets.ime, LocalRaftHostImeInsets.current, density) > 0
+        } else {
+            WindowInsets.ime.getBottom(density) > 0
+        }
+    val bottomSafeArea = if (useHostSafeArea) raftBottomSafeAreaPadding() else 0.dp
+    val keyboardInsetExcludesBottomSafeArea = if (useHostSafeArea) raftKeyboardInsetExcludesBottomSafeArea() else false
     val jointSurface =
         parseConversationKindOrNull(task.channelType) == ConversationKind.Joint || LocalRaftJointActorSurface.current
     // Back puts the pulled-down head back up before it leaves the page.
@@ -646,7 +702,7 @@ internal fun TaskPendingConversationPage(
         RaftTopPageHeader(
             title = task.taskRefTitle(),
             backgroundColor = RaftColor.Canvas,
-            topSafeAreaOverride = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
+            topSafeAreaOverride = if (useHostSafeArea) null else WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding(),
             contentStartPadding = RaftBackButtonDefaults.EdgeInset,
             contentSpacing = ThreadHeaderContentSpacing,
             titleLeadingContent = {
@@ -731,12 +787,24 @@ internal fun TaskPendingConversationPage(
                 label = stringResource(Res.string.task_conversation_join_to_reply),
                 onJoin = onJoin,
                 joining = ThreadChannelJoinsInFlight.isJoining(task.channelId),
-                // TaskPendingConversationWindow already applies WindowInsets.safeDrawing bottom padding.
-                bottomSafeArea = 0.dp,
+                // Inside TaskPendingConversationWindow safeDrawing bottom padding is already applied by the window.
+                bottomSafeArea = bottomSafeArea,
             )
         } else {
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
-            ThreadComposerDock {
+            ThreadComposerDock(
+                composerModifier =
+                    if (useHostSafeArea) {
+                        Modifier
+                            .raftThreadComposerLiveKeyboardPadding(
+                                bottomSafeArea = bottomSafeArea,
+                                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                            )
+                            .onFocusChanged { if (it.hasFocus) headScrollState.closeFloat() }
+                    } else {
+                        Modifier
+                    },
+            ) {
                 ThreadComposerContent(
                     payload =
                         RaftThreadComposerPayload(
