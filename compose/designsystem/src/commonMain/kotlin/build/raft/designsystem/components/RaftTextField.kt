@@ -187,8 +187,9 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  *   the field in a [RaftField] for its label and help text.
  * - Focus: the focus ring (2dp gap, 2dp `line-strong`) outside the border, on any focus,
  *   a tap included (`focus:shadow-focus`, not `focus-visible`). The border stays. Its focus
- *   is reported to [build.raft.designsystem.focus.RaftAutofocusGuard], so an automatic focus
- *   request (the composer when a conversation opens) never takes it.
+ *   is reported to its window's [build.raft.designsystem.focus.RaftAutofocusGuard]
+ *   ([build.raft.designsystem.focus.LocalRaftAutofocusGuard]), so an automatic focus request (the
+ *   composer when a conversation opens in that window) never takes it.
  * - [invalid]: a `danger-strong` border (`data-invalid`), no ring of its own. Inside a
  *   [RaftField] with an error it defaults to true.
  * - [enabled] = false: `fill-muted`, `line-hairline` border, `foreground-disabled` text

@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 
@@ -73,7 +73,7 @@ fun RaftWindowDialog(
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
     // A conversation opened underneath does not take focus from the dialog.
-    RaftAutofocusGuard.HoldOpenSurface()
+    LocalRaftAutofocusGuard.current.HoldOpenSurface()
     // A page pushed over this one closes the window first: the covered page stops composing.
     RaftDismissOnPageCover(onDismissRequest)
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)

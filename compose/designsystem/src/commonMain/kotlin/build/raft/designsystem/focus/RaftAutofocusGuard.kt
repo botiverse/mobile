@@ -1,6 +1,7 @@
 package build.raft.designsystem.focus
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,8 +21,14 @@ import androidx.compose.ui.focus.onFocusChanged
  * design-system `RaftTextField` / `RaftTextarea` themselves through [raftReportsFocusToAutofocusGuard])
  * unless it is the field the automatic request is for (a conversation composer, inside
  * [LocalRaftAutofocusTargetField]), which reports nothing. Main thread only.
+ *
+ * One per window ([LocalRaftAutofocusGuard], provided at each window's root): a dialog open or a
+ * search field focused in one window never keeps the composer of another window (Android's app
+ * windows, one per server) from taking the focus. A composition with no window of its own uses
+ * [Default].
  */
-object RaftAutofocusGuard {
+@Stable
+class RaftAutofocusGuard {
     private var openSurfaces by mutableStateOf(0)
     private var focusedFields by mutableStateOf(emptySet<Any>())
 
@@ -50,7 +57,15 @@ object RaftAutofocusGuard {
             onDispose { if (enabled) openSurfaces -= 1 }
         }
     }
+
+    companion object {
+        /** The guard of a composition no window provides one for (tests, a single-window host). */
+        val Default: RaftAutofocusGuard = RaftAutofocusGuard()
+    }
 }
+
+/** This window's [RaftAutofocusGuard]; [RaftAutofocusGuard.Default] where no window provides one. */
+val LocalRaftAutofocusGuard = staticCompositionLocalOf { RaftAutofocusGuard.Default }
 
 /**
  * True around the field an automatic focus request is for (a conversation composer's editor): its
@@ -59,16 +74,17 @@ object RaftAutofocusGuard {
 val LocalRaftAutofocusTargetField = staticCompositionLocalOf { false }
 
 /**
- * Reports this text field's focus to [RaftAutofocusGuard] (skipped inside
+ * Reports this text field's focus to its window's [RaftAutofocusGuard] (skipped inside
  * [LocalRaftAutofocusTargetField]). Put it on the editor's modifier, before the editor's own focus
  * target, as `RaftTextField` / `RaftTextarea` do.
  */
 @Composable
 fun Modifier.raftReportsFocusToAutofocusGuard(): Modifier {
     val reports = !LocalRaftAutofocusTargetField.current
+    val guard = LocalRaftAutofocusGuard.current
     val owner = remember { Any() }
-    DisposableEffect(owner, reports) {
-        onDispose { RaftAutofocusGuard.setFieldFocused(owner, false) }
+    DisposableEffect(owner, reports, guard) {
+        onDispose { guard.setFieldFocused(owner, false) }
     }
-    return if (reports) onFocusChanged { RaftAutofocusGuard.setFieldFocused(owner, it.isFocused) } else this
+    return if (reports) onFocusChanged { guard.setFieldFocused(owner, it.isFocused) } else this
 }
