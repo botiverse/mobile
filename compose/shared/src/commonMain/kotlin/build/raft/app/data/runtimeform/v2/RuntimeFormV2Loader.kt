@@ -63,7 +63,8 @@ private val runtimeFormV2ErrorJson = Json { ignoreUnknownKeys = true }
 internal class RuntimeFormV2Loader(
     private val computers: RaftComputersApi,
     private val agents: RaftAgentsApi? = null,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val onLiveModelDetect: (ServerId) -> Unit = {}
 ) {
     suspend fun loadCreate(serverId: ServerId, machineId: String, runtimeId: String): DataResult<RuntimeFormV2Loaded> =
         loadCreateUnlogged(serverId, machineId, runtimeId)
@@ -121,6 +122,9 @@ internal class RuntimeFormV2Loader(
         val result =
             if (machineId.isBlank() || runtimeId.isBlank()) failure("runtime_form_v2_ref_missing")
             else fetchSource(serverId, machineId, runtimeId, sourceId, refresh = refresh, formRevision = formRevision)
+        if (result is DataResult.Content && result.data.answeredLiveModels()) {
+            onLiveModelDetect(serverId)
+        }
         log(if (refresh) "source_refresh" else "source_follow", serverId, machineId, "runtimeId=$runtimeId sourceId=$sourceId", result)
         return result
     }
@@ -165,6 +169,9 @@ internal class RuntimeFormV2Loader(
                 is DataResult.Empty -> sources[sourceId] = unavailableRuntimeFormV2Source(key)
                 is DataResult.NoPermission -> return source
             }
+        }
+        if (sources.values.any { it.answeredLiveModels() }) {
+            onLiveModelDetect(serverId)
         }
         return DataResult.Content(RuntimeFormV2Loaded(form, sources))
     }
@@ -244,6 +251,14 @@ private fun runtimeFormV2ErrorCode(body: String?): String? =
         ?.get("code").stringOrNull()
 
 private val RUNTIME_FORM_V2_FATAL_SOURCE_CODES = setOf("runtime_form_v2_http_401", "runtime_form_v2_http_403")
+
+/**
+ * Web `answeredLiveModels` (slock #15780, useRuntimeFormV2.ts): true when the model option source
+ * answered live (so the server upserted fresh labels into the shared model-label catalog). Only
+ * `/model` counts; static sources (provider, auth type) carry no status and are ignored.
+ */
+internal fun RuntimeFormV2Source.answeredLiveModels(): Boolean =
+    pointer == "/model" && (status == null || status == "live")
 
 /** Stand-in for an option source that failed to load: no options, `unavailable`, retryable. */
 internal fun unavailableRuntimeFormV2Source(key: RuntimeFormV2OptionSourceKey): RuntimeFormV2Source =

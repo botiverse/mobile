@@ -790,6 +790,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellComputersStores.entries().map { (_, store) -> store }.distinct()
     private val shellCreateAgentFormStores = RaftShellScopedStoreCache<SharedCreateAgentFormStore>()
     private val shellServerRuntimeCatalogRepositories = RaftShellScopedStoreCache<SharedServerRuntimeCatalogRepository>()
+    private val shellServerModelLabelCatalogRepositories = RaftShellScopedStoreCache<SharedServerModelLabelCatalogRepository>()
     private val shellCreateAgentFormOwnerJobs = RaftShellScopedStoreCache<Job>()
     private val shellAuthLoginGenerations = RaftShellScopedStoreCache<SharedAuthLoginGeneration>()
     private val shellAuthLoginGenerationJobs = RaftShellScopedStoreCache<Job>()
@@ -2165,9 +2166,19 @@ internal class RaftSharedStoreProvider private constructor(
                             repository.load(clean, DataRequestPriority.Background)
                         }
                     }
+                    // The selected server's model-label catalog (slock #15780, web watchModelLabelCatalog):
+                    // daemon-reported model labels per machine/runtime, shared across author rows, profiles,
+                    // preview cards, members list, and computers pages.
+                    val modelLabelCatalog = launch {
+                        selectionStore.currentServerId.collectLatest { serverId ->
+                            val clean = serverId?.trim()?.takeIf { it.isNotBlank() } ?: return@collectLatest
+                            serverModelLabelCatalogRepository(scope).load(clean, DataRequestPriority.Background)
+                        }
+                    }
                     selectionStore.disposed.first { it }
                     prefetching.cancel()
                     runtimeCatalog.cancel()
+                    modelLabelCatalog.cancel()
                 }
             }
         }
@@ -2606,6 +2617,31 @@ internal class RaftSharedStoreProvider private constructor(
         threadSendScope.launch { repository.ensureLoaded(clean, DataRequestPriority.Background) }
     }
 
+    /**
+     * The server model-label catalog (`GET servers/:id/model-label-catalog`, slock #15780) of this
+     * shell scope: shared by author rows, agent profiles, preview cards, and live-detect refreshes.
+     */
+    internal fun serverModelLabelCatalogRepository(scope: RaftShellStoreScope): SharedServerModelLabelCatalogRepository =
+        shellServerModelLabelCatalogRepositories.getOrPut(scope) {
+            SharedServerModelLabelCatalogRepository(
+                api = RaftServerModelLabelCatalogNetworkApi(networkClient(scope)),
+                scope = threadSendScope,
+                logger = sharedInfoLogger("SlockModelLabelCatalog", "shared_server_model_label_catalog")
+            )
+        }
+
+    internal fun ensureServerModelLabelCatalog(serverId: String) {
+        val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        val repository = serverModelLabelCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
+        threadSendScope.launch { repository.load(clean, DataRequestPriority.Background) }
+    }
+
+    internal fun refreshServerModelLabelCatalogAfterLiveDetect(serverId: String) {
+        val clean = serverId.trim().takeIf { it.isNotBlank() } ?: return
+        val repository = serverModelLabelCatalogRepository(scopesForServer(clean).firstOrNull() ?: RaftShellStoreScope.Legacy)
+        repository.refreshAfterLiveDetect(clean)
+    }
+
     fun createAgentFormStore(scope: RaftShellStoreScope): SharedCreateAgentFormStore =
         shellCreateAgentFormStores.getOrPut(scope) {
             val shellAuthStore = authStore(scope)
@@ -2640,7 +2676,8 @@ internal class RaftSharedStoreProvider private constructor(
                 runtimeFormV2Loader = RuntimeFormV2Loader(
                     computers = RaftComputersNetworkApi(networkClient(scope)),
                     agents = RaftAgentsNetworkApi(networkClient(scope)),
-                    logger = formLogger
+                    logger = formLogger,
+                    onLiveModelDetect = { sid -> serverModelLabelCatalogRepository(scope).refreshAfterLiveDetect(sid.value) }
                 ),
                 serverRuntimeCatalogs = serverRuntimeCatalogRepository(scope),
                 lastConfigs = CreateAgentLastConfigRepository(sharedPreferenceStore)
@@ -3266,6 +3303,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAuthLoginGenerations.remove(scope)
         shellCreateAgentFormStores.remove(scope)
         shellServerRuntimeCatalogRepositories.remove(scope)
+        shellServerModelLabelCatalogRepositories.remove(scope)
         shellNavigationCoordinators.remove(scope)?.clear()
         shellConversationForwardHistories.remove(scope)?.release()
         shellForegroundBannerStores.remove(scope)?.clear()
