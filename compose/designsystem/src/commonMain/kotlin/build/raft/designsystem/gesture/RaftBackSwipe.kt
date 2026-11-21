@@ -155,7 +155,10 @@ internal enum class RaftBackSwipeYieldDecision {
     /** Not enough movement yet. */
     Undecided,
 
-    /** Forward (next page / further content) horizontal drag: drive the scroller ourselves. */
+    /**
+     * Horizontal drag to drive the scroller with ourselves: forward at its start, either direction
+     * in [raftEdgePopDragDecision].
+     */
     ClaimForward,
 
     /** Back-direction or vertical drag, or nothing to scroll: consume nothing for this gesture. */
@@ -181,6 +184,31 @@ internal fun raftBackSwipeYieldDecision(
     if (ady > adx) return RaftBackSwipeYieldDecision.Release
     val forward = if (isLtr) dxPx < 0f else dxPx > 0f
     return if (forward && canScrollForward) RaftBackSwipeYieldDecision.ClaimForward else RaftBackSwipeYieldDecision.Release
+}
+
+/**
+ * Pure classification for a drag on a scroller whose leading edge pops the page
+ * ([rememberRaftBackSwipeScroll] with `leadingEdgePops`), wherever the scroller is: a back-direction
+ * drag is driven (pages back) only when there is something before and it did not start in the
+ * leading-edge strip, else it is left unconsumed for the host's pop; a forward drag is driven while
+ * there is something after; vertical-dominant drags go to the content.
+ */
+internal fun raftEdgePopDragDecision(
+    dxPx: Float,
+    dyPx: Float,
+    touchSlopPx: Float,
+    isLtr: Boolean,
+    startsInLeadingEdge: Boolean,
+    canScrollBackward: Boolean,
+    canScrollForward: Boolean,
+): RaftBackSwipeYieldDecision {
+    val adx = abs(dxPx)
+    val ady = abs(dyPx)
+    if (adx < touchSlopPx && ady < touchSlopPx) return RaftBackSwipeYieldDecision.Undecided
+    if (ady > adx) return RaftBackSwipeYieldDecision.Release
+    val forward = if (isLtr) dxPx < 0f else dxPx > 0f
+    val drives = if (forward) canScrollForward else canScrollBackward && !startsInLeadingEdge
+    return if (drives) RaftBackSwipeYieldDecision.ClaimForward else RaftBackSwipeYieldDecision.Release
 }
 
 /** Scroll delta (positive = forward) for a horizontal finger movement of [dxPx]. */
@@ -243,6 +271,13 @@ class RaftBackSwipeScroll internal constructor(
  * Pass the scroller's [nestedDrags] host when its content may claim horizontal drags itself
  * ([raftClaimsHorizontalDragFirst]): the forward drag driven here then waits for that content to decide,
  * exactly like the scroller's own drag does.
+ *
+ * With [leadingEdgePops] (a page's tab pager) a back drag that starts in the leading
+ * [RaftBackSwipeEdgeWidth] strip pops the page wherever the scroller is, as a native
+ * `UINavigationController` edge pop wins over its content: the region leaves that strip out, the
+ * scroller's own scrolling stays off on the back-swipe host, and every horizontal drag is driven here
+ * ([raftEdgePopDragDecision]). On such a host horizontal scroll a child leaves over (nested scrolling)
+ * no longer reaches this scroller.
  */
 @Composable
 fun rememberRaftBackSwipeScroll(
@@ -250,24 +285,35 @@ fun rememberRaftBackSwipeScroll(
     flingBehavior: FlingBehavior = ScrollableDefaults.flingBehavior(),
     enabled: Boolean = true,
     nestedDrags: RaftNestedHorizontalDragHost? = null,
+    leadingEdgePops: Boolean = false,
 ): RaftBackSwipeScroll {
     val regions = LocalRaftBackSwipeRegions.current
     val hostHasBackSwipe = regions != null && enabled
-    val yielding = remember(state, hostHasBackSwipe) {
-        derivedStateOf { raftBackSwipeYieldsAtStart(hostHasBackSwipe, state.canScrollBackward) }
+    val yielding = remember(state, hostHasBackSwipe, leadingEdgePops) {
+        derivedStateOf {
+            // Edge-pop mode: the scroller's own drag would take back drags from the strip too.
+            if (leadingEdgePops) hostHasBackSwipe else raftBackSwipeYieldsAtStart(hostHasBackSwipe, state.canScrollBackward)
+        }
     }
     if (!hostHasBackSwipe) return remember(yielding) { RaftBackSwipeScroll(yielding, Modifier, Modifier) }
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val edgePx = if (leadingEdgePops) with(LocalDensity.current) { RaftBackSwipeEdgeWidth.toPx() } else null
     val scope = rememberCoroutineScope()
     val currentFling = rememberUpdatedState(flingBehavior)
     // Remembered: a new pointerInput lambda would reset the handler and cancel a drag in flight
     // when the page recomposes (the yielding flag flips as soon as the drag leaves the start).
-    return remember(state, isLtr, yielding, scope, nestedDrags) {
+    return remember(state, isLtr, yielding, scope, nestedDrags, edgePx) {
         RaftBackSwipeScroll(
             yieldingState = yielding,
             baseModifier = Modifier
-                .raftBackSwipeRegion { state.canScrollBackward }
-                .raftForwardDragAtStart(state, isLtr, yielding, scope, currentFling, nestedDrags),
+                .then(
+                    if (edgePx != null) {
+                        Modifier.raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { state.canScrollBackward }
+                    } else {
+                        Modifier.raftBackSwipeRegion { state.canScrollBackward }
+                    }
+                )
+                .raftForwardDragAtStart(state, isLtr, yielding, scope, currentFling, nestedDrags, edgePx),
             yieldingSemantics = Modifier.raftYieldingScrollSemantics(state, isLtr, scope, currentFling),
         )
     }
@@ -276,6 +322,8 @@ fun rememberRaftBackSwipeScroll(
 /**
  * At the start of [state] (while [yielding]), claims forward horizontal drags and drives [state]
  * with them, settling with [fling] on release. Back-direction and vertical drags are never consumed.
+ * With [leadingEdgePx] (edge-pop mode, yielding everywhere) it drives back drags too, except those
+ * that start in that leading strip ([raftEdgePopDragDecision]).
  * Over [nestedDrags] content the claim waits for the slop the content asked for.
  */
 private fun Modifier.raftForwardDragAtStart(
@@ -285,11 +333,15 @@ private fun Modifier.raftForwardDragAtStart(
     scope: CoroutineScope,
     fling: State<FlingBehavior>,
     nestedDrags: RaftNestedHorizontalDragHost?,
-): Modifier = pointerInput(state, isLtr, nestedDrags) {
+    leadingEdgePx: Float? = null,
+): Modifier = pointerInput(state, isLtr, nestedDrags, leadingEdgePx) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
         // Decided per gesture: away from the start the scroller's own handling is enabled.
         if (!yielding.value) return@awaitEachGesture
+        // Edge-pop mode: the host's pop decides from where the gesture began, so this does too.
+        val startsInLeadingEdge =
+            leadingEdgePx != null && raftStartsInLeadingEdge(down.position.x, size.width.toFloat(), leadingEdgePx, isLtr)
         // Content that decides on horizontal drags itself (an Activity row) gets to first.
         val slop = nestedDrags?.touchSlop(viewConfiguration.touchSlop) ?: viewConfiguration.touchSlop
         val tracker = VelocityTracker()
@@ -302,7 +354,21 @@ private fun Modifier.raftForwardDragAtStart(
             if (!change.pressed || change.isConsumed) return@awaitEachGesture
             tracker.addPointerInputChange(change)
             val total = change.position - down.position
-            when (raftBackSwipeYieldDecision(total.x, total.y, slop, isLtr, state.canScrollForward)) {
+            val decision =
+                if (leadingEdgePx == null) {
+                    raftBackSwipeYieldDecision(total.x, total.y, slop, isLtr, state.canScrollForward)
+                } else {
+                    raftEdgePopDragDecision(
+                        total.x,
+                        total.y,
+                        slop,
+                        isLtr,
+                        startsInLeadingEdge,
+                        state.canScrollBackward,
+                        state.canScrollForward,
+                    )
+                }
+            when (decision) {
                 RaftBackSwipeYieldDecision.Undecided -> Unit
                 RaftBackSwipeYieldDecision.Release -> return@awaitEachGesture
                 RaftBackSwipeYieldDecision.ClaimForward -> {
