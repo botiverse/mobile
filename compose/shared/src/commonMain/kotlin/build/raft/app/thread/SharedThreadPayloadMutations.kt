@@ -72,6 +72,7 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
         errorServerMessage = patch.errorServerMessage,
+        errorTraceId = patch.errorTraceId,
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
         replySummariesAuthority = patch.replySummariesAuthority,

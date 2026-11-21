@@ -6,6 +6,7 @@ import build.raft.app.model.MessageType
 import build.raft.app.parsedMessageTypeOrNull
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.EncodeDefault
@@ -171,11 +172,19 @@ internal class RaftThreadApiClient(
     ): ThreadApiResult<SharedMessagesPayload> {
         val response = transport.messageContext(messageId = messageId, channelId = channelId)
         if (!response.isSuccessful) {
-            return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+            return ThreadApiResult.Failure(
+                code = response.code,
+                contractCode = "message_context_contract_mismatch",
+                traceId = response.traceId
+            )
         }
         val body =
             response.bodyText?.takeIf { it.isNotBlank() }
-                ?: return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+                ?: return ThreadApiResult.Failure(
+                    code = response.code,
+                    contractCode = "message_context_contract_mismatch",
+                    traceId = response.traceId
+                )
         val payload =
             parseSharedMessageContext(
                 bodyText = body,
@@ -183,7 +192,11 @@ internal class RaftThreadApiClient(
                 diagnostics = diagnosticsLogger
             )
         if (payload.messages.isEmpty()) {
-            return ThreadApiResult.Failure(code = response.code, contractCode = "message_context_contract_mismatch")
+            return ThreadApiResult.Failure(
+                code = response.code,
+                contractCode = "message_context_contract_mismatch",
+                traceId = response.traceId
+            )
         }
         return ThreadApiResult.Success(payload)
     }
@@ -536,13 +549,15 @@ internal sealed interface ThreadApiResult<out T> {
     data class Failure(
         val code: Int,
         val errorBodyText: String? = null,
-        val contractCode: String? = null
+        val contractCode: String? = null,
+        val traceId: String? = if (code > 0 && code !in 200..299 && code != 401) RaftFailedRequestTraceIds.recent() else null
     ) : ThreadApiResult<Nothing>
 }
 
 internal data class ThreadAttachmentCommentsFailureProjection(
     val errorCode: String,
-    val serverMessage: String?
+    val serverMessage: String?,
+    val traceId: String? = null
 )
 
 internal fun ThreadApiResult.Failure.toThreadAttachmentCommentsFailureProjection():
@@ -560,7 +575,8 @@ internal fun ThreadApiResult.Failure.toThreadAttachmentCommentsFailureProjection
             contractCode?.trim()?.takeIf { it.isNotBlank() }
                 ?: envelope?.code?.trim()?.takeIf { it.isNotBlank() }
                 ?: "http_$code",
-        serverMessage = envelope?.error?.takeIf { it.isNotBlank() }
+        serverMessage = envelope?.error?.takeIf { it.isNotBlank() },
+        traceId = traceId
     )
 }
 
@@ -677,7 +693,7 @@ internal data class ThreadAttachmentCommentViewer(
 )
 
 private fun HomeNetworkResponse.toThreadApiFailure(): ThreadApiResult.Failure =
-    ThreadApiResult.Failure(code = code, errorBodyText = errorBodyText)
+    ThreadApiResult.Failure(code = code, errorBodyText = errorBodyText, traceId = traceId)
 
 private inline fun <Wire, T> HomeNetworkResponse.mapThreadBodySync(
     contractCode: String,
@@ -686,14 +702,14 @@ private inline fun <Wire, T> HomeNetworkResponse.mapThreadBodySync(
 ): ThreadApiResult<T> {
     if (!isSuccessful) return toThreadApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     val wire = try {
         threadApiJson.decodeFromString(serializer, body)
     } catch (_: SerializationException) {
-        return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+        return ThreadApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     }
     val value = transform(wire)
-        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     return ThreadApiResult.Success(value)
 }
 
@@ -768,7 +784,7 @@ private suspend fun HomeNetworkResponse.mapThreadSendBody(
 private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): ThreadApiResult<ThreadMessagesPage> {
     if (!isSuccessful) return toThreadApiFailure()
     val body = bodyText?.takeIf { it.isNotBlank() }
-        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     val rawMessage = runCatching {
         threadApiJson.decodeFromString(WireMessage.serializer(), body)
     }.getOrNull()
@@ -786,7 +802,7 @@ private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): Thr
     }.getOrNull()
     val message = wrapped?.message
     if (message == null || message.id.isBlank()) {
-        return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+        return ThreadApiResult.Failure(code = code, contractCode = contractCode, traceId = traceId)
     }
     return ThreadApiResult.Success(
         ThreadMessagesPage(

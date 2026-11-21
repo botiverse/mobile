@@ -3723,10 +3723,10 @@ internal class SharedThreadDataSource(
     ): DataResult<RaftThreadFilesPayload> {
         val repository =
             conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false))
+                ?: return DataResult.Error(ScreenError(code = "thread_files_unavailable", retryable = false, traceId = null))
         val threadId =
             basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false, traceId = null))
         return when (val result = repository.getChannelFiles(ChannelId(threadId), cursor = cursor)) {
             is DataResult.Content ->
                 DataResult.Content(
@@ -3740,7 +3740,15 @@ internal class SharedThreadDataSource(
                 DataResult.Content(
                     currentPayload
                         ?.takeIf { cursor != null && it.items.isNotEmpty() }
-                        ?.copy(status = "content", hasMore = false, loadingMore = false, nextCursor = null, errorCode = null)
+                        ?.copy(
+                            status = "content",
+                            hasMore = false,
+                            loadingMore = false,
+                            nextCursor = null,
+                            errorCode = null,
+                            errorServerMessage = null,
+                            errorTraceId = null
+                        )
                         ?: RaftThreadFilesPayload(
                             instanceId = basePayload.instanceId,
                             status = "empty",
@@ -5013,7 +5021,8 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                     PermissionBlocker(
                         code = "auth_required",
                         requiredCapability = "auth_session",
-                        serverMessage = projection.serverMessage
+                        serverMessage = projection.serverMessage,
+                        traceId = projection.traceId
                     )
                 )
             403 -> {
@@ -5025,7 +5034,8 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                             code = resolvedServerCode,
                             retryable = false,
                             serverMessage = projection.serverMessage,
-                            serverCode = resolvedServerCode
+                            serverCode = resolvedServerCode,
+                            traceId = projection.traceId
                         )
                     )
                 } else {
@@ -5034,7 +5044,8 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                             code = normalizedContractCode ?: "thread_forbidden",
                             requiredCapability = "thread_access",
                             serverMessage = projection.serverMessage,
-                            serverCode = resolvedServerCode
+                            serverCode = resolvedServerCode,
+                            traceId = projection.traceId
                         )
                     )
                 }
@@ -5047,7 +5058,8 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                                 ?: projection.errorCode.takeUnless { it == "http_$code" }
                                 ?: fallbackCode,
                         retryable = contractCode == null,
-                        serverMessage = projection.serverMessage
+                        serverMessage = projection.serverMessage,
+                        traceId = projection.traceId
                     )
                 )
         }

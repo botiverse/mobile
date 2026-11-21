@@ -619,7 +619,8 @@ private fun ThreadChatTabContent(
                     userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
                         ?: stringResource(Res.string.common_error),
                 actionLabel = stringResource(Res.string.common_retry),
-                onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
+                onClick = { onThreadEvent("retryThreadLoad", null, null, null) },
+                traceId = renderConfig.errorTraceId
             )
         "no_permission" ->
             ThreadStateMessage(
@@ -632,7 +633,8 @@ private fun ThreadChatTabContent(
                     stringResource(Res.string.error_edge_blocked)
                 } else {
                     stringResource(Res.string.thread_error_no_permission)
-                }
+                },
+                traceId = renderConfig.errorTraceId
             )
         "empty" ->
             if (timelineSlice.originStatus != "none") {

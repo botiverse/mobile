@@ -1170,35 +1170,46 @@ internal data class MembersAgentGroup(
  * emulator display.
  */
 @Composable
-internal fun ErrorBanner(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
-    Row(
+internal fun ErrorBanner(
+    text: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+    traceId: String? = null,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .raftCardSurface(fill = RaftColor.FillMuted)
             .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        RaftLucideIcon(
-            RaftLucideIconName.TriangleAlert,
-            modifier = Modifier.size(16.dp),
-            color = "#FFD32F2F"
-        )
-        Text(
-            text = text,
-            // Web Banner: text-callout (14/20 400).
-            style = RaftType.Callout,
-            color = RaftColor.TextBlack,
-            modifier = Modifier.weight(1f)
-        )
-        if (action != null && onAction != null) {
-            RaftButton(
-                text = action,
-                onClick = onAction,
-                variant = RaftButtonVariant.Default,
-                size = RaftButtonSize.Md
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RaftLucideIcon(
+                RaftLucideIconName.TriangleAlert,
+                modifier = Modifier.size(16.dp),
+                color = "#FFD32F2F"
             )
+            Text(
+                text = text,
+                // Web Banner: text-callout (14/20 400).
+                style = RaftType.Callout,
+                color = RaftColor.TextBlack,
+                modifier = Modifier.weight(1f)
+            )
+            if (action != null && onAction != null) {
+                RaftButton(
+                    text = action,
+                    onClick = onAction,
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md
+                )
+            }
         }
+        RaftTraceIdNote(traceId)
     }
 }
 

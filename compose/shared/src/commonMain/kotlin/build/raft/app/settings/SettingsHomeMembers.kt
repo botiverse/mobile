@@ -235,9 +235,9 @@ internal fun SharedMembersScreen(
                         content
                     }
                     is DataResult.NoPermission ->
-                        previousContent ?: SharedMembersUiState.Error(response.blocker.code)
+                        previousContent ?: SharedMembersUiState.Error(response.blocker.code, response.blocker.traceId)
                     is DataResult.Error ->
-                        previousContent ?: SharedMembersUiState.Error(response.error.code)
+                        previousContent ?: SharedMembersUiState.Error(response.error.code, response.error.traceId)
                 }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -261,6 +261,7 @@ internal fun SharedMembersScreen(
             MembersPageErrorContent(
                 message = membersLoadFailedMessage,
                 code = current.code,
+                traceId = current.traceId,
                 onBack = onBack,
                 onRetry = {
                     membersRetryForce = true
@@ -627,7 +628,7 @@ internal fun buildHostMembersPayload(
 
 internal sealed interface SharedMembersUiState {
     data object Loading : SharedMembersUiState
-    data class Error(val code: String) : SharedMembersUiState
+    data class Error(val code: String, val traceId: String? = null) : SharedMembersUiState
     data class Content(
         val server: ServerSummary,
         val members: List<MemberProfile>,

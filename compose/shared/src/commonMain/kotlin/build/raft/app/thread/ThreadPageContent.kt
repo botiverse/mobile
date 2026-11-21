@@ -1020,6 +1020,7 @@ private fun ThreadPageContentContent(
             payload.backgroundRefreshing,
             payload.errorCode,
             payload.errorServerMessage,
+            payload.errorTraceId,
             payload.originPreview,
             payload.originErrorCode,
             payload.localOffsetMinutes,
@@ -2055,7 +2056,7 @@ private fun ThreadPageContentContent(
                                                 "forwardMessagesFailed",
                                                 outcome.failureCode ?: ThreadForwardFailureCodePartial,
                                                 null,
-                                                null
+                                                outcome.traceId
                                             )
                                         }
                                     } finally {

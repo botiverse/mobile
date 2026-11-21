@@ -215,6 +215,8 @@ private fun RaftThreadScreenPayload.applyRealtimeMessages(
     return copy(
         status = "content",
         errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
         messages = merged.sortedByThreadTimeline()
     ).withOriginReplyCountAtLeastLoadedReplies()
         .asLoadedEmptyReplyThreadPayload()
@@ -300,6 +302,8 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
     return copy(
         status = "content",
         errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
         messages = mergedMessages,
         canLoadMoreBefore = if (before) hasMore else canLoadMoreBefore,
         canLoadMoreAfter = if (before) canLoadMoreAfter else hasMore,
@@ -384,6 +388,8 @@ internal fun RaftThreadScreenPayload.withLocalSendStarted(
     return copy(
         status = "content",
         errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
         messages = nextMessages.sortedByThreadTimeline()
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
@@ -493,6 +499,8 @@ private fun RaftThreadScreenPayload.trimToLatestThreadWindow(limit: Int): RaftTh
     return copy(
         status = "content",
         errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
         messages = sortedMessages.takeLast(limit),
         originMessage = projectedOrigin,
         canLoadMoreBefore = true,
@@ -649,6 +657,8 @@ private fun RaftThreadScreenPayload.applyRealtimeMessageUpdate(
     return copy(
         status = "content",
         errorCode = null,
+        errorServerMessage = null,
+        errorTraceId = null,
         messages = mergedMessages.distinctBy { it.id },
         originMessage = updatedOrigin
     ).withOriginReplyCountAtLeastLoadedReplies()

@@ -26,24 +26,33 @@ internal data class MarkdownThreadRefTarget(
     val threadChannelId: String? = null
 )
 
-internal fun RaftThreadScreenPayload.asRefreshFailed(code: String): RaftThreadScreenPayload =
+internal fun RaftThreadScreenPayload.asRefreshFailed(
+    code: String,
+    traceId: String? = null,
+): RaftThreadScreenPayload =
     // artin 10-26: a failed load brings no full message, so a cut Activity seed stops loading.
-    withActivityPreviewsSettled().asRefreshFailedSettled(code)
+    withActivityPreviewsSettled().asRefreshFailedSettled(code, traceId)
 
-private fun RaftThreadScreenPayload.asRefreshFailedSettled(code: String): RaftThreadScreenPayload =
-    if (hasRenderableThreadContent()) {
-        copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
+private fun RaftThreadScreenPayload.asRefreshFailedSettled(
+    code: String,
+    traceId: String? = null,
+): RaftThreadScreenPayload {
+    val cleanTraceId = traceId?.takeIf { it.isNotBlank() }
+    return if (hasRenderableThreadContent()) {
+        copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null, errorTraceId = cleanTraceId)
     } else if (isDurableEmptyStandIn()) {
         // Task #1137: an empty last-known channel survives a transient failure like a non-empty one does.
-        copy(backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
+        copy(backgroundRefreshing = false, errorCode = code, errorServerMessage = null, errorTraceId = cleanTraceId)
     } else {
-        copy(status = "error", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
+        copy(status = "error", backgroundRefreshing = false, errorCode = code, errorServerMessage = null, errorTraceId = cleanTraceId)
     }
+}
 
 internal fun RaftThreadScreenPayload.asRefreshNoPermission(
     base: RaftThreadScreenPayload,
     code: String,
-    serverMessage: String? = null
+    serverMessage: String? = null,
+    traceId: String? = null,
 ): RaftThreadScreenPayload =
     withRouteContext(base)
         .withoutThreadTimelineContent()
@@ -52,6 +61,7 @@ internal fun RaftThreadScreenPayload.asRefreshNoPermission(
             backgroundRefreshing = false,
             errorCode = code,
             errorServerMessage = serverMessage,
+            errorTraceId = traceId?.takeIf { it.isNotBlank() },
             focusedMessageId = base.focusedMessageId,
             focusedMessageRequestNonce = base.focusedMessageRequestNonce
         )
@@ -62,6 +72,7 @@ internal fun RaftThreadScreenPayload.asRefreshEmpty(base: RaftThreadScreenPayloa
         backgroundRefreshing = false,
         errorCode = null,
         errorServerMessage = null,
+        errorTraceId = null,
         messages = emptyList(),
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
@@ -81,6 +92,7 @@ internal fun RaftThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): RaftThre
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
             errorCode = null,
+            errorTraceId = null,
             emptyTitle = ThreadReplyEmptyTitle,
             emptyDetail = ThreadReplyEmptyDetail
         )

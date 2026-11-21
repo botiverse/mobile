@@ -326,7 +326,7 @@ sealed interface SharedTasksRouteIntent {
 }
 
 sealed interface SharedTasksEvent {
-    data class OperationFailed(val code: String) : SharedTasksEvent
+    data class OperationFailed(val code: String, val traceId: String? = null) : SharedTasksEvent
 }
 
 sealed interface TasksPresentationIntent {
@@ -1046,7 +1046,7 @@ internal class SharedTasksViewModel(
                 }
             } else {
                 dropStoredList(result, selectedFilter)
-                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
+                result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it, result.failureTraceIdOrNull())) }
                 store.accept(
                     if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
@@ -1242,7 +1242,7 @@ internal class SharedTasksViewModel(
                                 mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                             }
                         if (restoredTask != null) {
-                            events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                            events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                             store.accept(
                                 SharedTasksIntent.TaskStatusUpdateFailed(
                                     previousTask = restoredTask,
@@ -1351,7 +1351,7 @@ internal class SharedTasksViewModel(
                             mutationPermit?.let { permit -> sharedStore.rollbackStatusMutation(permit) }
                         }
                     if (restoredTask != null) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                         store.accept(SharedTasksIntent.TaskAssignFailed(restoredTask, errorCode))
                     } else {
                         diagnosticsLogger(
@@ -1514,7 +1514,7 @@ internal class SharedTasksViewModel(
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_create_unknown"
                     if (store.accept(SharedTasksIntent.CreateTasksFailed(operation, errorCode))) {
-                        events.emit(SharedTasksEvent.OperationFailed(errorCode))
+                        events.emit(SharedTasksEvent.OperationFailed(errorCode, result.failureTraceIdOrNull()))
                     }
                 }
             }

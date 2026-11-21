@@ -601,6 +601,7 @@ data class RaftHomeInlineError(
     val detail: String,
     val code: String,
     val actionLabel: String = "",
+    val traceId: String? = null,
 )
 
 internal data class RaftHomeInlineErrorVisibleCopy(
@@ -6167,6 +6168,7 @@ internal fun HomeInlineErrorCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
+                    RaftTraceIdNote(error.traceId)
                 }
             }
             if (showAction) {

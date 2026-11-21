@@ -1021,6 +1021,7 @@ internal fun PageErrorContent(
     headerTitleStyle: TextStyle = RaftType.Headline,
     message: String,
     code: String,
+    traceId: String? = null,
     retryLabel: String? = stringResource(Res.string.common_retry),
     onRetry: (() -> Unit)? = null
 ) {
@@ -1041,6 +1042,7 @@ internal fun PageErrorContent(
         PageErrorBody(
             message = message,
             code = code,
+            traceId = traceId,
             retryLabel = retryLabel,
             onRetry = onRetry
         )
@@ -1052,7 +1054,8 @@ internal fun MembersPageErrorContent(
     message: String,
     code: String,
     onRetry: (() -> Unit)?,
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    traceId: String? = null
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
@@ -1062,6 +1065,7 @@ internal fun MembersPageErrorContent(
         PageErrorBody(
             message = message,
             code = code,
+            traceId = traceId,
             retryLabel = stringResource(Res.string.common_retry),
             onRetry = onRetry
         )
@@ -1072,6 +1076,7 @@ internal fun MembersPageErrorContent(
 private fun PageErrorBody(
     message: String,
     code: String,
+    traceId: String? = null,
     retryLabel: String?,
     onRetry: (() -> Unit)?
 ) {
@@ -1094,6 +1099,7 @@ private fun PageErrorBody(
                     color = RaftColor.AccentRed
                 )
             }
+            RaftTraceIdNote(traceId = traceId)
             if (retryLabel != null && onRetry != null) {
                 RaftButton(
                     text = retryLabel,

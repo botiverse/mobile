@@ -60,6 +60,7 @@ import build.raft.app.data.TasksQuerySection
 import build.raft.app.data.TasksQuerySectionRows
 import build.raft.app.data.TasksQueryState
 import build.raft.app.data.headNumber
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.data.scopeCounts
 import build.raft.app.data.sections
 import build.raft.app.data.shownRows
@@ -366,7 +367,8 @@ internal fun SharedTasksPanel(
                     title = stringResource(Res.string.tasks_error_load),
                     detail = loadState.error.code,
                     actionLabel = stringResource(Res.string.common_retry),
-                    onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
+                    onAction = { onIntent(SharedTasksRouteIntent.Refresh) },
+                    traceId = loadState.error.traceId,
                 )
             }
             is ScreenLoadState.NoPermission -> {
@@ -375,7 +377,8 @@ internal fun SharedTasksPanel(
                 }
                 SharedTasksStateBody(
                     title = stringResource(Res.string.tasks_unavailable),
-                    detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
+                    detail = loadState.blocker.requiredCapability ?: loadState.blocker.code,
+                    traceId = loadState.blocker.traceId,
                 )
             }
         }
@@ -842,10 +845,12 @@ private fun SharedTasksLoadedBodyContent(
                 }
                 (queryState?.error ?: queryState?.countsError)?.let { error ->
                     // The rows already shown stay; the failed read's trace id can be copied.
-                    Column(modifier = Modifier.padding(RaftAppSpacing.Md)) {
-                        SharedTasksNotice(stringResource(Res.string.tasks_error_load), error.code)
-                        RaftTraceIdNote(error.traceId)
-                    }
+                    SharedTasksNotice(
+                        stringResource(Res.string.tasks_error_load),
+                        error.code,
+                        modifier = Modifier.padding(RaftAppSpacing.Md),
+                        traceId = error.traceId,
+                    )
                 }
                 if (query != null && queryState != null) {
                     SharedTasksQueryToolbar(
@@ -1943,17 +1948,21 @@ internal fun tasksStatusMenuOwnerIdentity(taskId: String): String = "task:$taskI
 private fun SharedTasksNotice(
     title: String,
     detail: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    traceId: String? = null,
 ) {
     // A recoverable failure: the design-system warning banner (raft-ui keeps `destructive`
     // for what cannot be undone).
-    RaftBanner(
-        description = detail,
-        status = RaftBannerStatus.Warning,
-        modifier = modifier.fillMaxWidth(),
-        title = title,
-        size = RaftBannerSize.Sm
-    )
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftBanner(
+            description = detail,
+            status = RaftBannerStatus.Warning,
+            modifier = Modifier.fillMaxWidth(),
+            title = title,
+            size = RaftBannerSize.Sm
+        )
+        RaftTraceIdNote(traceId)
+    }
 }
 
 @Composable
@@ -1963,7 +1972,8 @@ private fun SharedTasksStateBody(
     loading: Boolean = false,
     iconName: RaftLucideIconName = RaftLucideIconName.SquareCheckBig,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
+    onAction: (() -> Unit)? = null,
+    traceId: String? = null,
 ) {
     if (loading) {
         RaftCenteredLoading(message = title)
@@ -1975,14 +1985,22 @@ private fun SharedTasksStateBody(
         description = detail,
         icon = { RaftContentLucideIcon(iconName, size = RaftEmptyStateDefaults.IconSize) },
         actions =
-            if (actionLabel != null && onAction != null) {
+            if ((actionLabel != null && onAction != null) || raftValidTraceIdOrNull(traceId) != null) {
                 {
-                    RaftButton(
-                        text = actionLabel,
-                        onClick = onAction,
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
-                        size = RaftButtonSize.Lg,
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RaftTraceIdNote(traceId)
+                        if (actionLabel != null && onAction != null) {
+                            RaftButton(
+                                text = actionLabel,
+                                onClick = onAction,
+                                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                                size = RaftButtonSize.Lg,
+                            )
+                        }
+                    }
                 }
             } else {
                 null

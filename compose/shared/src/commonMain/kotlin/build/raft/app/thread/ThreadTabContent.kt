@@ -164,7 +164,8 @@ internal fun ThreadTabContent(
                         null,
                         null
                     )
-                }
+                },
+                traceId = payload.errorTraceId
             )
         } else if (accessResolution == ThreadAccessResolution.NoPermission) {
             ThreadStateMessage(
@@ -177,7 +178,8 @@ internal fun ThreadTabContent(
                     stringResource(Res.string.error_edge_blocked)
                 } else {
                     stringResource(Res.string.thread_error_no_permission)
-                }
+                },
+                traceId = payload.errorTraceId
             )
         } else if (renderEarlyLoadingShell) {
             ThreadLoadingState()

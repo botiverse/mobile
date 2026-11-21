@@ -45,7 +45,8 @@ internal data class ThreadAttachmentOpenResult(
     /** The host's own words (platform English), for the log only: the UI maps [status]. */
     val message: String = "",
     /** The host's failure category (`http_status`, `storage_publish`...), for the log. */
-    val errorKind: String = ""
+    val errorKind: String = "",
+    val traceId: String? = null
 )
 
 @Composable
@@ -154,12 +155,16 @@ internal suspend fun openSharedThreadAttachment(
                     downloadId = downloadId,
                     onProgress = onProgress
                 )
+            val nativeErrorKind = nativeResult?.optString("errorKind").orEmpty()
+            val status = raftThreadAttachmentOpenStatus(nativeResult?.optString("status").orEmpty())
             ThreadAttachmentOpenResult(
-                status = raftThreadAttachmentOpenStatus(nativeResult?.optString("status").orEmpty())
+                status = status,
+                errorKind = nativeErrorKind,
+                traceId = null
             )
         }
         is ThreadApiResult.Failure ->
-            ThreadAttachmentOpenResult(status = "failed")
+            ThreadAttachmentOpenResult(status = "failed", traceId = response.traceId)
     }
 }
 
@@ -191,14 +196,16 @@ internal suspend fun saveSharedThreadAttachment(
                 "saved" ->
                     ThreadAttachmentOpenResult(status = "saved")
                 "cancelled" -> ThreadAttachmentOpenResult(status = "cancelled")
-                "storage_failed", "download_failed" ->
+                "storage_failed" ->
                     ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind)
+                "download_failed" ->
+                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
                 else ->
-                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind)
+                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
             }
         }
         is ThreadApiResult.Failure ->
-            ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_failed code=${response.code}")
+            ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_failed code=${response.code}", traceId = response.traceId)
     }
 }
 

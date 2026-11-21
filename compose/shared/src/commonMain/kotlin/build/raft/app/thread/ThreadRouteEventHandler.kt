@@ -358,7 +358,7 @@ internal class ThreadRouteEventHandler(
                     handleForwardMessagesSent(itemId, tab)
                 }
                 action == "forwardMessagesFailed" -> {
-                    handleForwardMessagesFailed(itemId)
+                    handleForwardMessagesFailed(itemId, traceId = tab)
                 }
                 action == "forwardJoinConfirmationRequired" -> {
                     handleForwardJoinConfirmationRequired(itemId)
@@ -648,14 +648,14 @@ internal class ThreadRouteEventHandler(
                     )
     }
 
-    private fun handleForwardMessagesFailed(itemId: String?) {
+    private fun handleForwardMessagesFailed(itemId: String?, traceId: String?) {
                     // The event carries a failure code; the toast says it in this locale and only
                     // the log keeps the code itself.
                     val failure = threadForwardFailure(itemId)
                     if (failure == ThreadForwardFailure.Generic) {
                         bridge.log("thread_forward_failed code=${itemId.orEmpty()}")
                     }
-                    bridge.toast(failure.messageRes.desc().resolve())
+                    bridge.errorToast(failure.messageRes.desc().resolve(), traceId)
     }
 
     private fun handleForwardJoinConfirmationRequired(itemId: String?) {
@@ -789,11 +789,11 @@ internal class ThreadRouteEventHandler(
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast(unableToFollowThreadLabel)
+                                    bridge.errorToast(unableToFollowThreadLabel, result)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToFollowThreadLabel)
+                                    bridge.errorToast(unableToFollowThreadLabel, result.blocker)
                                 }
                             }
                         } finally {
@@ -830,11 +830,11 @@ internal class ThreadRouteEventHandler(
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast(unableToUnfollowThreadLabel)
+                                    bridge.errorToast(unableToUnfollowThreadLabel, result)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToUnfollowThreadLabel)
+                                    bridge.errorToast(unableToUnfollowThreadLabel, result.blocker)
                                 }
                             }
                         } finally {
@@ -917,12 +917,12 @@ internal class ThreadRouteEventHandler(
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
-                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
+                                bridge.errorToast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel, result)
                             }
                             is DataResult.NoPermission -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel)
+                                bridge.errorToast(if (nextSaved) unableToSaveMessageLabel else unableToRemoveSavedMessageLabel, result.blocker)
                             }
                         }
                     }

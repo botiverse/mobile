@@ -26,6 +26,7 @@ import build.raft.app.data.ForwardMessageTargetRequiredAction
 import build.raft.app.data.isForwardConversationTarget
 import build.raft.app.data.RealSettingsRepository
 import build.raft.app.data.DataResult
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.map
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -460,7 +461,8 @@ internal fun ThreadForwardSuccessBanner.forwardSuccessViewInChatAvailable(): Boo
 internal data class ThreadForwardBatchOutcome(
     val failureCode: String? = null,
     val result: ForwardMessageBatchResult? = null,
-    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList()
+    val failedReceipts: List<ThreadForwardDestinationReceipt> = emptyList(),
+    val traceId: String? = null
 )
 
 internal fun forwardRequestIdAfterSelectionChange(
@@ -514,7 +516,8 @@ internal suspend fun executeThreadForwardBatch(
     resolved.forEach { (receipt, result) ->
         val destination = (result as? DataResult.Content)?.data
             ?: return ThreadForwardBatchOutcome(
-                failureCode = result.threadForwardFailureCode("forward_target_unavailable")
+                failureCode = result.threadForwardFailureCode("forward_target_unavailable"),
+                traceId = result.failureTraceIdOrNull()
             )
         receipt.postResolveFailureCode(destination)?.let {
             return ThreadForwardBatchOutcome(failureCode = it)
@@ -554,7 +557,10 @@ internal suspend fun executeThreadForwardBatch(
                 }
             )
         }
-        else -> ThreadForwardBatchOutcome(failureCode = result.threadForwardFailureCode("forward_failed"))
+        else -> ThreadForwardBatchOutcome(
+            failureCode = result.threadForwardFailureCode("forward_failed"),
+            traceId = result.failureTraceIdOrNull()
+        )
     }
 }
 

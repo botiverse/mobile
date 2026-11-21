@@ -4012,9 +4012,9 @@ private fun SharedThreadRouteContentContent(
                 is SharedTasksEvent.OperationFailed -> {
                     when {
                         event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateTaskLabel)
+                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
                         event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateAssigneeLabel)
+                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
                     }
                 }
             }
@@ -4027,9 +4027,9 @@ private fun SharedThreadRouteContentContent(
                 is SharedTasksEvent.OperationFailed -> {
                     when {
                         event.code.startsWith("tasks_status") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateTaskLabel)
+                            bridge.errorToast(unableToUpdateTaskLabel, event.traceId)
                         event.code.startsWith("tasks_assign") && !routeAuthRequired(event.code) ->
-                            bridge.toast(unableToUpdateAssigneeLabel)
+                            bridge.errorToast(unableToUpdateAssigneeLabel, event.traceId)
                     }
                 }
             }
@@ -4735,8 +4735,8 @@ private fun SharedThreadRouteContentContent(
             localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
         )
     val threadRouteAttachmentUploader = buildThreadRouteAttachmentUploader()
-    fun showAttachmentUploadFailure(errorCode: String): Unit =
-        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode)
+    fun showAttachmentUploadFailure(errorCode: String, traceId: String? = null): Unit =
+        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode, traceId)
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
         replaceAttachmentId: String? = null,
@@ -4788,7 +4788,12 @@ private fun SharedThreadRouteContentContent(
                     attachmentUploadFilesByLocalId =
                         attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
                 },
-                onFailed = { _, errorCode -> showAttachmentUploadFailure(errorCode) },
+                onFailed = { upload, errorCode ->
+                    showAttachmentUploadFailure(
+                        errorCode,
+                        (upload.outcome as? RaftComposerDraftUploadOutcome.Failed)?.traceId
+                    )
+                },
                 onDelivered = { upload ->
                     attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
                 }

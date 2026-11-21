@@ -160,9 +160,12 @@ internal class SharedThreadFilesStore(
         val refreshInPlace = keepContent && cursor == null && current.payload.status == "content" && current.payload.items.isNotEmpty()
         val loadingPayload =
             when {
-                cursor != null -> current.payload.copy(loadingMore = true, errorCode = null)
-                refreshInPlace -> current.payload.copy(errorCode = null)
-                else -> current.payload.copy(status = "loading", loadingMore = false, errorCode = null)
+                cursor != null ->
+                    current.payload.copy(loadingMore = true, errorCode = null, errorServerMessage = null, errorTraceId = null)
+                refreshInPlace ->
+                    current.payload.copy(errorCode = null, errorServerMessage = null, errorTraceId = null)
+                else ->
+                    current.payload.copy(status = "loading", loadingMore = false, errorCode = null, errorServerMessage = null, errorTraceId = null)
             }
         reduce(current.copy(payload = loadingPayload, requestInFlight = true, refreshing = refreshInPlace))
         val result =
@@ -173,7 +176,7 @@ internal class SharedThreadFilesStore(
                     currentPayload = loadingPayload
                 )
             }.getOrElse {
-                DataResult.Error(ScreenError(code = "thread_files_network", retryable = true))
+                DataResult.Error(ScreenError(code = "thread_files_network", retryable = true, traceId = null))
             }
         val latest = _state.value
         if (latest.basePayload.threadFilesRouteKey() != routeKey) {
@@ -182,7 +185,8 @@ internal class SharedThreadFilesStore(
         }
         val nextPayload =
             when (result) {
-                is DataResult.Content -> result.data
+                is DataResult.Content ->
+                    result.data.copy(errorCode = null, errorServerMessage = null, errorTraceId = null)
                 is DataResult.Empty ->
                     latest.payload.copy(
                         status = if (latest.payload.items.isEmpty()) "empty" else "content",
@@ -190,21 +194,24 @@ internal class SharedThreadFilesStore(
                         loadingMore = false,
                         nextCursor = null,
                         errorCode = null,
-                        errorServerMessage = null
+                        errorServerMessage = null,
+                        errorTraceId = null
                     )
                 is DataResult.Error ->
                     latest.payload.copy(
                         status = if (latest.payload.items.isEmpty()) "error" else "content",
                         loadingMore = false,
                         errorCode = result.error.code,
-                        errorServerMessage = null
+                        errorServerMessage = null,
+                        errorTraceId = result.error.traceId
                     )
                 is DataResult.NoPermission ->
                     latest.payload.copy(
                         status = "no_permission",
                         loadingMore = false,
                         errorCode = result.blocker.requiredCapability ?: result.blocker.code,
-                        errorServerMessage = result.blocker.serverMessage
+                        errorServerMessage = result.blocker.serverMessage,
+                        errorTraceId = result.blocker.traceId
                     )
             }
         reduce(latest.copy(payload = nextPayload, requestInFlight = false, refreshing = false))
