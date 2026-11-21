@@ -11,6 +11,9 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageBundle
+import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
+import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.network.sync.initialThreadRepliesReadModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -98,6 +101,70 @@ class ThreadMessageMenuParityTest {
         assertEquals(5, ordinary.buttonCount)
         assertEquals(164f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(ordinary.buttonCount).value)
         assertEquals(132f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(guest.buttonCount).value)
+    }
+
+    @Test
+    fun theMenuDropsReplyInThreadOnceTheMessageShowsItsThread() {
+        // botiverse/slock #15524 (web MessageItem `showMenuReplyInThread`): the replies under a
+        // message (its inline replies, else its replies badge for replies or a reply draft) open its
+        // thread, so the long-press, right-click and More menus leave Reply in Thread out. A reply
+        // thread (a phone's thread page, a wide layout's side panel) never offers it.
+        val inlineReplies =
+            initialThreadRepliesReadModel(
+                replies = listOf(replyPreview("reply-1", seq = 1)),
+                replyCount = 1,
+                limit = InlineThreadReplyPreviewLimit,
+            )
+        val withReplies = message(threadChannelId = "thread-1", replyCount = 2)
+        val replyThread = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = withReplies)
+        data class Case(
+            val name: String,
+            val message: RaftThreadMessageItem,
+            val slice: ThreadTimelineSlice = slice(),
+            val hasReplyDraft: Boolean = false,
+            val shows: Boolean,
+        )
+        listOf(
+            Case("no replies", message(), shows = true),
+            Case("a thread channel without replies yet", message(threadChannelId = "thread-1"), shows = true),
+            Case("a DM message without replies", message(), slice(surfaceKind = RaftThreadSurfaceKind.DirectMessage), shows = true),
+            Case("its replies badge", withReplies, shows = false),
+            Case("a DM message's replies badge", withReplies, slice(surfaceKind = RaftThreadSurfaceKind.DirectMessage), shows = false),
+            Case("a reply draft's badge", message(), hasReplyDraft = true, shows = false),
+            Case(
+                "its inline replies",
+                message(threadChannelId = "thread-1", replyCount = 1).copy(inlineReplies = inlineReplies),
+                shows = false,
+            ),
+            Case("the reply thread's parent", withReplies, replyThread, shows = false),
+            Case("a reply in the reply thread", message(id = "reply-1"), replyThread, shows = false),
+            Case("a task conversation", message(), slice().copy(channelKind = RaftTaskConversationChannelKind), shows = false),
+            Case("a local send", message(deliveryState = ThreadMessageDeliveryFailed).copy(pendingSendContext = pendingSend()), shows = false),
+        ).forEach { case ->
+            assertEquals(
+                case.shows,
+                threadMessageMenuShowsReplyInThread(
+                    capabilities = capabilities(case.message, slice = case.slice),
+                    message = case.message,
+                    replyMetadata = case.message.toThreadReplyMetadata(),
+                    slice = case.slice,
+                    hasReplyDraft = case.hasReplyDraft,
+                ),
+                case.name,
+            )
+        }
+        // web MessageHoverToolbar keeps its Reply button there.
+        val toolbar =
+            assertNotNull(
+                threadMessageHoverToolbarActions(
+                    message = withReplies,
+                    capabilities = capabilities(withReplies),
+                    onShowReactions = {},
+                    onForward = {},
+                    onToggleSave = {},
+                )
+            )
+        assertTrue(toolbar.reply)
     }
 
     @Test
@@ -489,6 +556,17 @@ class ThreadMessageMenuParityTest {
 
     private fun pendingSend(): RaftThreadPendingSendContext =
         RaftThreadPendingSendContext(channelId = "channel-1", body = "Hello")
+
+    private fun replyPreview(id: String, seq: Long): ReplyPreview =
+        ReplyPreview(
+            messageId = id,
+            seq = seq,
+            content = "reply $seq",
+            senderId = "member-2",
+            senderType = "user",
+            senderName = "member-2",
+            createdAt = "2026-11-19T11:00:00Z",
+        )
 
     private fun slice(
         surfaceKind: String = RaftThreadSurfaceKind.Channel,

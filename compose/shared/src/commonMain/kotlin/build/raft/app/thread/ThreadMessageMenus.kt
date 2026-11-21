@@ -936,7 +936,10 @@ internal data class ThreadQuickReactionBarRequest(
 internal class ThreadMessageHoverToolbarActions(
     /** Add Reaction: the quick reactions under the button (web `canReact && !isSystem`). */
     val reaction: Boolean,
-    /** Reply in Thread: not on the rows of a thread (web `hideThreadActions`). */
+    /**
+     * Reply in Thread: not on the rows of a thread (web `hideThreadActions`). Kept on a message that
+     * shows its thread, which the menu drops it from (botiverse/slock #15524).
+     */
     val reply: Boolean,
     /** Forward: where the message can be forwarded (web `canForwardThisMessage`). */
     val forward: Boolean,
