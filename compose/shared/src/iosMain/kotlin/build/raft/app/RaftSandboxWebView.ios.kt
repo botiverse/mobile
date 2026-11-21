@@ -594,14 +594,20 @@ internal class RaftIosSandboxWebView(
     internal fun decideNavigationPolicy(source: WKWebView, targetURL: NSURL?, isMainFrame: Boolean): Boolean {
         if (!raftIsSameObjCObject(source, webView)) return false
         if (isMainFrame) {
+            val targetString = targetURL?.absoluteString ?: ""
             if (targetURL == null || !isNavigationSchemeAllowed(targetURL) ||
                 !isOnLockedOrigin(targetURL) ||
                 (!allowNavigation && !isAllowedMainDocumentURL(targetURL))
             ) {
-                handleBlockedMainFrameNavigation(targetURL?.absoluteString ?: "")
+                handleBlockedMainFrameNavigation(targetString)
                 return false
             }
-            currentURL = targetURL.absoluteString ?: ""
+            if (events.routesMainFrameNavigation?.invoke(targetString) == true) {
+                diagnosticsInfo("navigation_routed_as_link url=${raftWebViewUrlForLog(targetString)}")
+                handleBlockedMainFrameNavigation(targetString)
+                return false
+            }
+            currentURL = targetString
             events.onUrlChange(currentURL)
             notifyNavigationState(force = false)
         }

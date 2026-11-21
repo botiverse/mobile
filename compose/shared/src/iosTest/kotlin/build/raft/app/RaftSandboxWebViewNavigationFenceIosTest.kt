@@ -115,4 +115,25 @@ class RaftSandboxWebViewNavigationFenceIosTest {
         assertFalse(raftIsSameObjCObject(webView, null))
         assertTrue(host.decideNavigationPolicy(webView, NSURL.URLWithString(trusted), isMainFrame = true))
     }
+
+    @Test
+    fun mainFrameLinkRoutingCancelsFullDocumentLoadAndHandsUrlToBlockedCallback() {
+        val shownId = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
+        val otherId = "pt_0b6d3c1e-9a2f-4c7e-8d11-2f3a4b5c6d7e"
+        val webOrigin = "https://example.test"
+        events.routesMainFrameNavigation = { url -> raftArtifactViewerRoutesDocumentAsLink(url, webOrigin, shownId, emptySet()) }
+        val open = host(allowNavigation = true)
+
+        val bareOther = "$webOrigin/artifacts/$otherId"
+        val bareSame = "$webOrigin/artifacts/$shownId"
+        val embeddedSame = "$webOrigin/artifacts/$shownId?${raftArtifactViewerEmbedQuery()}"
+
+        assertFalse(open.allows(bareOther))
+        assertFalse(open.allows(bareSame))
+        assertEquals(listOf(bareOther, bareSame), blocked)
+
+        blocked.clear()
+        assertTrue(open.allows(embeddedSame))
+        assertEquals(emptyList<String>(), blocked)
+    }
 }
