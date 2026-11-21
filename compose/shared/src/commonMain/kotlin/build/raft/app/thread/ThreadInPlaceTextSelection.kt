@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -646,19 +645,8 @@ internal const val ThreadInPlaceSelectableActivationFrames = 2
  * A body first composed on a page that is already active is selectable from the start.
  */
 @Composable
-internal fun rememberThreadInPlaceBodySelectable(pageActive: Boolean, hasSelection: Boolean): Boolean {
-    var activeSettled by remember { mutableStateOf(pageActive) }
-    LaunchedEffect(pageActive) {
-        if (!pageActive) {
-            activeSettled = false
-            return@LaunchedEffect
-        }
-        if (activeSettled) return@LaunchedEffect
-        repeat(ThreadInPlaceSelectableActivationFrames) { withFrameNanos {} }
-        activeSettled = true
-    }
-    return (pageActive && activeSettled) || hasSelection
-}
+internal fun rememberThreadInPlaceBodySelectable(pageActive: Boolean, hasSelection: Boolean): Boolean =
+    rememberRaftPageActiveForFrames(pageActive, ThreadInPlaceSelectableActivationFrames) || hasSelection
 
 /** Wraps a message body so it can be selected in place; renders [content] untouched when [controller] is null. */
 @Composable

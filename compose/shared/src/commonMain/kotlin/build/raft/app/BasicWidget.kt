@@ -2073,7 +2073,9 @@ private fun RaftAppStateTextField(
         onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
         lineLimits = raftTextFieldLineLimits(singleLine = raftTextFieldSingleLine(maxLines), maxLines = maxLines),
         onTextLayout = { getResult -> getResult()?.let(onTextLayout) },
-        cursorBrush = cursorBrush,
+        // No caret until the page has settled: its first showing in the frame Navigation 3 moves
+        // the page throws (RaftPageMoveSafety.kt).
+        cursorBrush = raftPageGatedCursorBrush(cursorBrush),
         outputTransformation = outputTransformation,
         decorator = decorator,
     )
