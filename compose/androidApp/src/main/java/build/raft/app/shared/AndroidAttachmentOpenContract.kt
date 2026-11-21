@@ -574,7 +574,9 @@ internal class AndroidUnknownSourcesSettingsPrompt(
     /** Shows the explanation with its confirm wired to `onOpenSettings`; false when it could not be shown. */
     private val showExplanation: (onOpenSettings: () -> Unit) -> Boolean,
     private val openSettings: () -> Boolean,
-    private val record: (String) -> Unit = {}
+    private val record: (String) -> Unit = {},
+    /** Names what is being installed in the [record] lines. */
+    private val logPrefix: String = "attachment_install_permission"
 ) {
     /** True when the person was led toward the switch: the explanation shown, or the page opened. */
     fun request(): Boolean {
@@ -582,15 +584,15 @@ internal class AndroidUnknownSourcesSettingsPrompt(
             runCatching {
                 showExplanation {
                     val opened = runCatching(openSettings).getOrDefault(false)
-                    record("attachment_install_permission_settings confirmed=true settingsOpened=$opened")
+                    record("${logPrefix}_settings confirmed=true settingsOpened=$opened")
                 }
             }.getOrDefault(false)
         if (shown) {
-            record("attachment_install_permission_explained shown=true")
+            record("${logPrefix}_explained shown=true")
             return true
         }
         val opened = runCatching(openSettings).getOrDefault(false)
-        record("attachment_install_permission_explained shown=false settingsOpened=$opened")
+        record("${logPrefix}_explained shown=false settingsOpened=$opened")
         return opened
     }
 }

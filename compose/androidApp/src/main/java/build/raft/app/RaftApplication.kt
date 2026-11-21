@@ -165,7 +165,7 @@ class RaftApplication : Application() {
             // crashes, ANRs, native crashes) are run by RaftHandsLaunchUploads, only once every
             // signed-in server answered privacy mode off. Release-health sessions (sent to Hands as
             // they happen) stay off: they come only with Hands.install(trackSessions = true), which
-            // this app does not call, and the SDK (0.13.3) cannot start them after install.
+            // this app does not call, and the SDK (0.14.3) cannot start them after install.
             uploadOnLaunch = false,
             reportDeviceAnalytics = false,
             extraContext = {
