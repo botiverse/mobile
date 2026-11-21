@@ -20,10 +20,10 @@ on:
         required: true
         type: string
       runner:
-        description: "macOS runner label"
+        description: "macOS runner label (default: GitHub's free macos-latest)"
         required: false
         type: string
-        default: "blacksmith-12vcpu-macos-latest"
+        default: "macos-latest"
       artifact_name:
         required: false
         type: string
@@ -61,7 +61,7 @@ jobs:
   package-dmg:
     name: Package unsigned macOS dmg
     # Dispatch and push keep the GitHub-hosted Mac (no `runner` input there); callers pick
-    # the runner (default Blacksmith). Do not key this on github.event_name: in a called
+    # the runner (default macos-latest). Do not key this on github.event_name: in a called
     # workflow that is the caller's event.
     runs-on: ${{ inputs.runner || 'macos-latest' }}
     timeout-minutes: 60

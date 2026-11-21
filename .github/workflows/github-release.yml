@@ -8,7 +8,7 @@ name: GitHub Release
 #   xcode-27 Mac (ios-simulator-app.yml), attached only if its metadata.json names the tag
 #   commit.
 # - macOS: the unsigned, not notarized desktop dmg built here from the tag's commit
-#   (desktop-macos-dmg.yml on a Blacksmith Mac), with first-launch steps.
+#   (desktop-macos-dmg.yml on GitHub's free macos-latest Mac), with first-launch steps.
 # Notes are the three-language notes on the Hands releases. See
 # scripts/github_release_from_hands.py.
 #
@@ -73,7 +73,9 @@ jobs:
     with:
       source_sha: ${{ needs.tag.outputs.commit }}
       version: ${{ needs.tag.outputs.version }}
-      runner: blacksmith-12vcpu-macos-latest
+      # GitHub's standard Mac: free on this public repo. The dmg is not urgent, and its pushes
+      # build on this runner already (runs 44763383586, 44441956607: 21-30 min). artin 2026-11-21.
+      runner: macos-latest
       artifact_name: raft-desktop-macos-dmg
 
   simulator:
