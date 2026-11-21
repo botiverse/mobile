@@ -3,6 +3,10 @@ package build.raft.app
 import androidx.compose.foundation.layout.WindowInsetsSides
 import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
+import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.app.resources.*
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
@@ -180,10 +184,12 @@ internal fun RaftAppShellSurface(
         Box(
             modifier =
                 modifier
+                    .raftObserveFocusInteractions()
                     .then(focusDismissModifier)
                     .fillMaxSize()
                     .background(RaftColor.SurfaceWhite)
         ) {
+            CompositionLocalProvider(LocalRaftFocusInteractionObserverInstalled provides true) {
             RaftUnifiedDialogHostProvider(effectiveModalHostState) {
                 Column(
                     modifier =
@@ -200,7 +206,11 @@ internal fun RaftAppShellSurface(
                                 }
                             )
                 ) {
-                    topNavigation?.invoke()
+                    if (topNavigation != null) {
+                        RaftFocusRegionHost(region = RaftFocusRegion.TopBar, modifier = Modifier.fillMaxWidth()) {
+                            topNavigation()
+                        }
+                    }
                     if (topNavigation != null && effectiveTopNoticeBanner != null) {
                         effectiveTopNoticeBanner()
                         Box(
@@ -213,7 +223,11 @@ internal fun RaftAppShellSurface(
                     }
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
-                            leadingNavigation?.invoke()
+                            if (leadingNavigation != null) {
+                                RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxHeight()) {
+                                    leadingNavigation()
+                                }
+                            }
                             Box(
                                 modifier =
                                     Modifier
@@ -262,13 +276,15 @@ internal fun RaftAppShellSurface(
                         enter = RaftAppShellBottomBarReturn,
                         exit = RaftAppShellBottomBarLeave
                     ) {
-                        RaftAppBottomTabBarHost(
-                            items = bottomTabs,
-                            onSelect = onBottomTabSelected,
-                            modifier = Modifier.fillMaxWidth(),
-                            bottomSafeArea = shellScope.bottomSafeArea,
-                            serverTab = bottomServerTab,
-                        )
+                        RaftFocusRegionHost(region = RaftFocusRegion.Navigation, modifier = Modifier.fillMaxWidth()) {
+                            RaftAppBottomTabBarHost(
+                                items = bottomTabs,
+                                onSelect = onBottomTabSelected,
+                                modifier = Modifier.fillMaxWidth(),
+                                bottomSafeArea = shellScope.bottomSafeArea,
+                                serverTab = bottomServerTab,
+                            )
+                        }
                     }
                 }
                 if (interactionLocked) {
@@ -287,6 +303,7 @@ internal fun RaftAppShellSurface(
                     modifier = Modifier.fillMaxSize(),
                     bottomInset = shellScope.globalDialogBottomInset(bottomTabsShown)
                 )
+            }
             }
         }
     }

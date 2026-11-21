@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -27,6 +28,13 @@ fun RaftPageStackDisplay(
     // The root page never leaves the stack; guard NavDisplay's non-empty requirement anyway.
     if (stack.pages.isEmpty()) return
     val sceneStrategy = remember { RaftStackSceneStrategy<RaftStackPage>() }
+    val focusManager = LocalFocusManager.current
+    // Before NavDisplay: clear focus from the covered page so non-text or text focus left on a
+    // covered desktop stack page cannot block the newly pushed top page's focus coordinator.
+    DisposableEffect(stack.pages.last().contentKey) {
+        focusManager.clearFocus(force = true)
+        onDispose {}
+    }
     NavDisplay(
         backStack = stack.pages,
         onBack = { if (stack.pages.size > 1) stack.back() },

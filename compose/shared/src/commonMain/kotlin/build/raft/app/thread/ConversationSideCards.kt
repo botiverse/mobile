@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabs
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
@@ -385,12 +387,14 @@ internal fun conversationSideCardsColumn(
                     // Web `defaultShares(["tasks", "files"])`: 60/40.
                     defaultShare = if (card == ConversationSideCard.Tasks) 0.6f else 0.4f,
                 ) {
-                    RaftPaneGridCard(
-                        title = titles.getValue(card),
-                        closeLabel = closeLabels.getValue(card),
-                        onClose = { currentOnClose(card) },
-                    ) {
-                        if (card == ConversationSideCard.Tasks) currentTasks() else currentFiles()
+                    RaftFocusRegionHost(region = RaftFocusRegion.SupportingPane, modifier = Modifier.fillMaxSize()) {
+                        RaftPaneGridCard(
+                            title = titles.getValue(card),
+                            closeLabel = closeLabels.getValue(card),
+                            onClose = { currentOnClose(card) },
+                        ) {
+                            if (card == ConversationSideCard.Tasks) currentTasks() else currentFiles()
+                        }
                     }
                 }
             },

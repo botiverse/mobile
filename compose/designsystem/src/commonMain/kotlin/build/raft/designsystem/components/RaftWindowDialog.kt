@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -16,6 +17,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 
@@ -73,8 +79,10 @@ fun RaftWindowDialog(
 ) {
     // A right swipe must not pop the page underneath an open dialog.
     RaftBlockBackSwipe()
-    // A conversation opened underneath does not take focus from the dialog.
-    LocalRaftAutofocusGuard.current.HoldOpenSurface()
+    // A conversation opened underneath (or a buried modal) does not take focus from this modal.
+    val autofocusGuard = LocalRaftAutofocusGuard.current
+    val modalToken = remember { Any() }
+    autofocusGuard.coordinator.HoldModal(modalToken)
     // A page pushed over this one closes the window first: the covered page stops composing.
     RaftDismissOnPageCover(onDismissRequest)
     RaftPrepareDialogWindow(isDark = RaftTheme.isDark)
@@ -89,12 +97,23 @@ fun RaftWindowDialog(
             Modifier
                 .raftBoundedWindowLayer { hostWindow.containerSize }
                 .fillMaxSize()
-                .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier),
+                .then(if (properties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier)
+                .raftObserveFocusInteractions(
+                    coordinator = autofocusGuard.coordinator,
+                    observeWindowFocus = false,
+                    forceInstall = true,
+                ),
         ) {
             // Its own OS window: a head in it is no pane's of the row under it, and its local
             // boundsInRoot() coordinates must not feed the host window's toast avoidances.
-            CompositionLocalProvider(LocalRaftToastAvoidanceActive provides false) {
-                RaftPaneGridOutsideRow(content)
+            CompositionLocalProvider(
+                LocalRaftToastAvoidanceActive provides false,
+                LocalRaftFocusModalToken provides modalToken,
+                LocalRaftFocusInteractionObserverInstalled provides true,
+            ) {
+                RaftFocusRegionHost(region = RaftFocusRegion.Modal, modifier = Modifier.fillMaxSize()) {
+                    RaftPaneGridOutsideRow(content)
+                }
             }
         }
     }

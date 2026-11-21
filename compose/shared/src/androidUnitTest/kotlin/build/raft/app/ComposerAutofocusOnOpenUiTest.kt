@@ -1,6 +1,7 @@
 package build.raft.app
 
 import android.content.res.Configuration
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,16 +17,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.RaftFocusCoordinator
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -77,8 +87,17 @@ class ComposerAutofocusOnOpenUiTest {
 
     /** A conversation page's focus state with the policy on and nothing beside it. */
     @Composable
-    private fun pageFocus(policy: Boolean = true, yieldsToSideThread: Boolean = false): ComposerFocusOnOpen =
-        rememberComposerFocusOnOpen(policy = policy, shown = true, yieldsToSideThread = yieldsToSideThread)
+    private fun pageFocus(
+        policy: Boolean = true,
+        yieldsToSideThread: Boolean = false,
+        userInitiated: Boolean = false,
+    ): ComposerFocusOnOpen =
+        rememberComposerFocusOnOpen(
+            policy = policy,
+            shown = true,
+            yieldsToSideThread = yieldsToSideThread,
+            userInitiated = userInitiated,
+        )
 
     /** Something the user can move the keyboard focus to that is not a text field (a row, a button). */
     @Composable
@@ -469,11 +488,267 @@ class ComposerAutofocusOnOpenUiTest {
             assertEquals(listOf(ComposerAutofocusOutcome.Blocked), outcomes)
         }
 
+    // Audit S6 / rule 2: keyboard Tab onto a non-text button or row in another region (Navigation,
+    // TopBar, SupportingPane) keeps its focus when a passive default-landing conversation opens.
+    @Test
+    fun nonTextKeyboardFocusInAnotherRegionKeepsFocusWhenConversationOpens() =
+        runRobolectricComposeUiTest {
+            val navButton = FocusRequester()
+            var opened by mutableStateOf(false)
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            setContent {
+                RaftWindowFocusScope {
+                    Column {
+                        RaftFocusRegionHost(RaftFocusRegion.Navigation) {
+                            FocusableControl(CONTROL, navButton)
+                        }
+                        if (opened) {
+                            RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(userInitiated = false), outcomes = outcomes)
+                            }
+                        }
+                    }
+                }
+            }
+            runOnIdle { navButton.requestFocus() }
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsFocused()
+
+            runOnIdle { opened = true }
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsFocused()
+            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Blocked), outcomes)
+        }
+
+    // Rule 2 (user navigation): clicking or pressing Enter on a real clickable channel row in
+    // ListPane (or clicking it while sticky non-text focus sat in SupportingPane) focuses the
+    // newly opened conversation's composer.
+    @Test
+    fun userClickingOrPressingEnterOnListPaneRowFocusesOpenedConversationComposer() =
+        runRobolectricComposeUiTest {
+            val listRow = FocusRequester()
+            val paneButton = FocusRequester()
+            var conversation by mutableStateOf<String?>(null)
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            setContent {
+                RaftWindowFocusScope {
+                    Column {
+                        RaftFocusRegionHost(RaftFocusRegion.SupportingPane) {
+                            FocusableControl(CONTROL, paneButton)
+                        }
+                        RaftFocusRegionHost(RaftFocusRegion.ListPane) {
+                            Box(
+                                Modifier
+                                    .testTag(LIST_ROW)
+                                    .size(48.dp)
+                                    .focusRequester(listRow)
+                                    .clickable { conversation = if (conversation == "ch-1") "ch-2" else "ch-1" },
+                            )
+                        }
+                        conversation?.let { active ->
+                            RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                key(active) {
+                                    Composer(
+                                        tag = COMPOSER,
+                                        conversation = active,
+                                        focus = pageFocus(userInitiated = true),
+                                        outcomes = outcomes,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Keyboard Enter on a focused ListPane row -> opens ch-1 and moves focus into composer.
+            runOnIdle { listRow.requestFocus() }
+            waitForIdle()
+            onNodeWithTag(LIST_ROW).assertIsFocused()
+            onNodeWithTag(LIST_ROW).performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+
+            // Sticky non-text focus in SupportingPane + mouse click on ListPane row -> opens ch-2 and focuses composer.
+            runOnIdle { paneButton.requestFocus() }
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsFocused()
+            onNodeWithTag(LIST_ROW).performTouchInput { click() }
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Focused, ComposerAutofocusOutcome.Focused), outcomes)
+        }
+
+    // Rule 3: real pointer touch input while the open request is waiting for a closing menu/surface
+    // to settle advances interactionEpoch via raftObserveFocusInteractions and cancels the open.
+    @Test
+    fun realPointerInteractionDuringSettleCancelsPendingComposerAutofocus() =
+        runRobolectricComposeUiTest {
+            var menuOpen by mutableStateOf(true)
+            var opened by mutableStateOf(false)
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            setContent {
+                RaftWindowFocusScope {
+                    Column {
+                        LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = menuOpen)
+                        Box(Modifier.testTag(TOUCH_TARGET).size(48.dp))
+                        if (opened) {
+                            RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(userInitiated = true), outcomes = outcomes)
+                            }
+                        }
+                    }
+                }
+            }
+            mainClock.autoAdvance = false
+            runOnIdle { opened = true }
+            mainClock.advanceTimeByFrame()
+            onNodeWithTag(TOUCH_TARGET).performTouchInput { click() }
+            runOnIdle { menuOpen = false }
+            mainClock.autoAdvance = true
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Cancelled), outcomes)
+        }
+
+    // Rule 3 + S6: focus moving to a non-text control in another pane while the open request is
+    // settling cancels the open request and keeps focus on that control.
+    @Test
+    fun focusMoveToNonTextControlDuringSettleCancelsPendingComposerAutofocus() =
+        runRobolectricComposeUiTest {
+            var menuOpen by mutableStateOf(true)
+            var opened by mutableStateOf(false)
+            val paneControl = FocusRequester()
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            setContent {
+                RaftWindowFocusScope {
+                    Column {
+                        LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = menuOpen)
+                        RaftFocusRegionHost(RaftFocusRegion.SupportingPane) {
+                            FocusableControl(CONTROL, paneControl)
+                        }
+                        if (opened) {
+                            RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
+                            }
+                        }
+                    }
+                }
+            }
+            mainClock.autoAdvance = false
+            runOnIdle { opened = true }
+            mainClock.advanceTimeByFrame()
+            runOnIdle {
+                paneControl.requestFocus()
+                menuOpen = false
+            }
+            mainClock.autoAdvance = true
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsFocused()
+            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Cancelled), outcomes)
+        }
+
+    // Rule 4 (positive + negative inside RaftWindowFocusScope + RaftFocusRegionHost): closing the
+    // side thread restores focus to the channel composer when focus fell to nowhere, and leaves it
+    // alone when focus moved to a non-text control in another pane on the same turn.
+    @Test
+    fun sideThreadCloseRestoresOnlyWhenLostInsideWindowFocusScope() =
+        runRobolectricComposeUiTest {
+            var panelOpen by mutableStateOf(false)
+            val control = FocusRequester()
+            setContent {
+                RaftWindowFocusScope {
+                    Column {
+                        RaftFocusRegionHost(RaftFocusRegion.SupportingPane) {
+                            FocusableControl(CONTROL, control)
+                        }
+                        RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                            Composer(
+                                tag = CHANNEL,
+                                conversation = "ch-1",
+                                focus = pageFocus(yieldsToSideThread = panelOpen, userInitiated = true),
+                            )
+                        }
+                        if (panelOpen) {
+                            RaftFocusRegionHost(RaftFocusRegion.SideThread) {
+                                Composer(
+                                    tag = THREAD,
+                                    conversation = "th-1",
+                                    focus = pageFocus(userInitiated = true),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithTag(CHANNEL).assertIsFocused()
+
+            // Positive restore: side thread closes while its composer held focus -> focus returns to channel.
+            runOnIdle { panelOpen = true }
+            waitForIdle()
+            onNodeWithTag(THREAD).assertIsFocused()
+            runOnIdle { panelOpen = false }
+            waitForIdle()
+            onNodeWithTag(CHANNEL).assertIsFocused()
+
+            // Negative restore: focus moves to a non-text control on the same turn the thread closes -> stays on control.
+            runOnIdle { panelOpen = true }
+            waitForIdle()
+            onNodeWithTag(THREAD).assertIsFocused()
+            runOnIdle {
+                control.requestFocus()
+                panelOpen = false
+            }
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsFocused()
+            onNodeWithTag(CHANNEL).assertIsNotFocused()
+        }
+
+    // Multi-window isolation: a focused non-text control or user interaction in window 1 never
+    // blocks or cancels composer autofocus in window 2.
+    @Test
+    fun windowScopeIsolatesFocusCoordinatorEpochsAcrossWindows() =
+        runRobolectricComposeUiTest {
+            val firstWindowControl = FocusRequester()
+            var secondOpened by mutableStateOf(false)
+            val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            var firstCoordinator: RaftFocusCoordinator? = null
+            setContent {
+                Column {
+                    RaftWindowFocusScope {
+                        firstCoordinator = currentRaftFocusCoordinator()
+                        RaftFocusRegionHost(RaftFocusRegion.Navigation) {
+                            FocusableControl(CONTROL, firstWindowControl)
+                        }
+                    }
+                    RaftWindowFocusScope {
+                        if (secondOpened) {
+                            RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                Composer(COMPOSER, conversation = "ch-2", focus = pageFocus(), outcomes = outcomes)
+                            }
+                        }
+                    }
+                }
+            }
+            runOnIdle {
+                firstWindowControl.requestFocus()
+                checkNotNull(firstCoordinator).recordUserInteraction()
+                secondOpened = true
+            }
+            waitForIdle()
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertEquals(listOf(ComposerAutofocusOutcome.Focused), outcomes)
+        }
+
     private companion object {
         const val COMPOSER = "composer"
         const val CHANNEL = "channel_composer"
         const val THREAD = "thread_composer"
         const val SEARCH = "search"
         const val CONTROL = "control"
+        const val LIST_ROW = "list_row"
+        const val TOUCH_TARGET = "touch_target"
     }
 }

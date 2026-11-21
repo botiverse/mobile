@@ -4,6 +4,7 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.app.resources.*
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
@@ -1805,8 +1806,16 @@ internal fun Modifier.raftAppEditorBehavior(
     val blocksComposerAutofocus = !LocalRaftEditorIsConversationComposer.current
     // This window's guard: a field focused in another app window never blocks this one's composer.
     val autofocusGuard = LocalRaftAutofocusGuard.current
+    val focusRegion = LocalRaftFocusRegion.current
+    androidx.compose.runtime.SideEffect {
+        if (!blocksComposerAutofocus) {
+            if (lastFocus) autofocusGuard.setFieldFocused(focusOwner, false, focusRegion)
+        } else if (lastFocus) {
+            autofocusGuard.setFieldFocused(focusOwner, true, focusRegion)
+        }
+    }
     DisposableEffect(focusOwner, autofocusGuard) {
-        onDispose { autofocusGuard.setFieldFocused(focusOwner, false) }
+        onDispose { autofocusGuard.setFieldFocused(focusOwner, false, focusRegion) }
     }
     return this
         .raftImeEnterAction(
@@ -1821,7 +1830,7 @@ internal fun Modifier.raftAppEditorBehavior(
         .focusRequester(focusRequester)
         .onGloballyPositioned(focusOwnerAnchor::update)
         .onFocusChanged {
-            if (blocksComposerAutofocus) autofocusGuard.setFieldFocused(focusOwner, it.isFocused)
+            if (blocksComposerAutofocus) autofocusGuard.setFieldFocused(focusOwner, it.isFocused, focusRegion)
             if (it.isFocused) {
                 if (!lastFocus) {
                     if (participatesInGlobalFocusDismiss) {

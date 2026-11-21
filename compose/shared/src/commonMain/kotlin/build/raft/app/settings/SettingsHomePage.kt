@@ -10,6 +10,8 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.resources.*
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.app.data.raftHostShowsContent
 import build.raft.app.data.raftProcessRealtimeOwnerGeneration
 import build.raft.app.data.raftProcessRealtimeSessionDemand
@@ -5634,12 +5636,17 @@ private fun RaftAppShellReadyContent(
                                         cells =
                                             listOf(
                                                 RaftPaneGridCell(id = "thread") {
-                                                    RaftChildPage(
-                                                        pageName = THREAD_PAGE,
-                                                        pageData = sideThreadPageData,
+                                                    RaftFocusRegionHost(
+                                                        region = RaftFocusRegion.SideThread,
                                                         modifier = Modifier.fillMaxSize(),
-                                                        active = sideThreadActive,
-                                                    )
+                                                    ) {
+                                                        RaftChildPage(
+                                                            pageName = THREAD_PAGE,
+                                                            pageData = sideThreadPageData,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            active = sideThreadActive,
+                                                        )
+                                                    }
                                                 }
                                             ),
                                     )
@@ -5688,18 +5695,23 @@ private fun RaftAppShellReadyContent(
                                     icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
                                 )
                             } else {
-                                RaftChildPage(
-                                    pageName = THREAD_PAGE,
-                                    pageData = detailPageData,
+                                RaftFocusRegionHost(
+                                    region = RaftFocusRegion.Conversation,
                                     modifier = Modifier.fillMaxSize(),
-                                    active = childActive,
-                                    onLoadSuccess = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                    onLoadFailure = {
-                                        selection?.generation?.let(::releaseAdaptiveHandoffLease)
-                                    },
-                                )
+                                ) {
+                                    RaftChildPage(
+                                        pageName = THREAD_PAGE,
+                                        pageData = detailPageData,
+                                        modifier = Modifier.fillMaxSize(),
+                                        active = childActive,
+                                        onLoadSuccess = {
+                                            selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                        },
+                                        onLoadFailure = {
+                                            selection?.generation?.let(::releaseAdaptiveHandoffLease)
+                                        },
+                                    )
+                                }
                             }
                         }
                         }
