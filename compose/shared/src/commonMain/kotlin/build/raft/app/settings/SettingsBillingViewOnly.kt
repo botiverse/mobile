@@ -393,6 +393,7 @@ internal fun SettingsBillingViewOnlyContent(
 @Composable
 private fun SettingsBillingViewOnlyOverview(model: SettingsBillingViewOnlyModel, onRetry: () -> Unit) {
     val freeUpload = settingsBillingFormatBytes(SettingsBillingFreeUploadBytes)
+    val freePerFile = settingsBillingFormatBytes(RaftFreeSingleFileUploadBytes)
     if (model.loadFailed) {
         RaftBanner(
             description = stringResource(Res.string.settings_billing_vo_load_failed_body),
@@ -436,7 +437,7 @@ private fun SettingsBillingViewOnlyOverview(model: SettingsBillingViewOnlyModel,
     }
     model.endingOn?.let { periodEnd ->
         RaftBanner(
-            description = stringResource(Res.string.settings_billing_vo_ending_body, SettingsBillingFreeHistoryDays, freeUpload),
+            description = stringResource(Res.string.settings_billing_vo_ending_body, SettingsBillingFreeHistoryDays, freeUpload, freePerFile),
             status = RaftBannerStatus.Info,
             title = stringResource(Res.string.settings_billing_vo_ending_title, settingsBillingDate(periodEnd)),
         )
@@ -448,7 +449,7 @@ private fun SettingsBillingViewOnlyOverview(model: SettingsBillingViewOnlyModel,
     RaftCard(
         modifier = Modifier.fillMaxWidth(),
         title = settingsBillingPlanName(model),
-        description = settingsBillingPlanDescription(model.description, freeUpload),
+        description = settingsBillingPlanDescription(model.description, freeUpload, freePerFile),
         trailing = statusBadge,
     )
 
@@ -499,10 +500,14 @@ private fun settingsBillingPlanName(model: SettingsBillingViewOnlyModel): String
     }
 
 @Composable
-private fun settingsBillingPlanDescription(description: SettingsBillingViewOnlyDescription, freeUpload: String): String? =
+private fun settingsBillingPlanDescription(
+    description: SettingsBillingViewOnlyDescription,
+    freeUpload: String,
+    freePerFile: String,
+): String? =
     when (description) {
         SettingsBillingViewOnlyDescription.FreeSummary ->
-            stringResource(Res.string.settings_billing_vo_free_summary, SettingsBillingFreeHistoryDays, freeUpload)
+            stringResource(Res.string.settings_billing_vo_free_summary, SettingsBillingFreeHistoryDays, freeUpload, freePerFile)
         is SettingsBillingViewOnlyDescription.ProSummary ->
             stringResource(
                 Res.string.settings_billing_vo_summary_join,
@@ -608,6 +613,12 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
                             } else {
                                 RaftTheme.colors.warningStrong
                             },
+                    )
+                    // What counts, Artifacts too (botiverse/slock #15529, planBilling.usage.uploadsIncludes).
+                    RaftText(
+                        stringResource(Res.string.settings_billing_vo_uploads_includes),
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
                     )
                 }
             }

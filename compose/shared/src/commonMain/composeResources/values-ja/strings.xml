@@ -371,7 +371,7 @@
     <string name="settings_billing_vo_plan_founder">ファウンダー</string>
     <string name="settings_billing_vo_plan_partner">パートナー</string>
     <string name="settings_billing_vo_plan_appsumo">AppSumo 永久 Pro · ティア %1$d</string>
-    <string name="settings_billing_vo_free_summary">直近 %1$d 日間のメッセージ · 毎月 %2$s までのファイルアップロード</string>
+    <string name="settings_billing_vo_free_summary">直近 %1$d 日間のメッセージ · 毎月 %2$s までのファイルアップロード、1 ファイル %3$s まで · 外部チャンネル 1 つ</string>
     <string name="settings_billing_vo_pro_description">エージェントとのコラボレーションを拡大する開発者やチーム向け。</string>
     <string name="settings_billing_vo_founder_description">旧契約を引き継いだ無制限アクセス。</string>
     <string name="settings_billing_vo_partner_description">テストおよびスポンサー利用向けのパートナーアクセスです。</string>
@@ -394,6 +394,7 @@
     <string name="settings_billing_vo_uploads">今月のファイルアップロード</string>
     <string name="settings_billing_vo_uploads_used">%2$s 中 %1$s 使用 · %3$s にリセット</string>
     <string name="settings_billing_vo_uploads_used_up">使い切りました · %1$s にリセット</string>
+    <string name="settings_billing_vo_uploads_includes">メンバーとエージェントがアップロードしたファイルが対象で、Artifact も含まれます。</string>
     <string name="settings_billing_vo_history">メッセージ履歴</string>
     <string name="settings_billing_vo_history_value">直近 %1$d 日間。それより前のメッセージは表示されません。</string>
     <string name="settings_billing_vo_members">メンバー</string>
@@ -413,7 +414,7 @@
     <string name="settings_billing_vo_member_note">請求の変更や請求書の確認ができるのはサーバーオーナーだけです。</string>
     <string name="settings_billing_vo_past_due_body">Stripe がこのサブスクリプションのカードに請求できませんでした。</string>
     <string name="settings_billing_vo_ending_title">Pro は %1$s に終了します</string>
-    <string name="settings_billing_vo_ending_body">その後このサーバーは Free になり、%1$d 日より前のメッセージは非表示になり、ファイルアップロードは毎月 %2$s までになります。</string>
+    <string name="settings_billing_vo_ending_body">その後このサーバーは Free になり、%1$d 日より前のメッセージは非表示になり、ファイルアップロードは毎月 %2$s、1 ファイル %3$s までになり、コンピューター間でエージェントを移動できなくなります。</string>
     <string name="settings_billing_vo_downgraded_title">プランがダウングレードされました</string>
     <string name="settings_billing_vo_grace_expired_title">猶予期間終了</string>
     <string name="settings_billing_vo_grace_remaining_one">猶予期間は残り %1$d 日です。すべてのリソースが無料枠内に収まっています。</string>
@@ -4680,7 +4681,7 @@
     <string name="upgrade_dialog_pro_theme_title">退屈グレーは Pro のテーマです</string>
     <string name="upgrade_dialog_pro_theme_hint">%1$s を Pro にアップグレードすると、メンバー全員が退屈グレーを使えます。</string>
     <string name="upgrade_dialog_general_title">%1$s を Pro にアップグレード</string>
-    <string name="upgrade_dialog_general_hint">Pro にすると、チャット履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。</string>
+    <string name="upgrade_dialog_general_hint">Pro にすると、メッセージ履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。</string>
     <string name="upgrade_dialog_external_limit_title">%1$s の外部の人とより多くのチャンネルを共有</string>
     <string name="upgrade_dialog_external_limit_hint">無料プランの外部チャンネルは 1 つまでで、%1$s はすでに 1 つ使っています。Pro なら、%1$s は必要なだけチャンネルを共有できます。</string>
     <string name="upgrade_dialog_external_frozen_title">外部チャンネルへの投稿を再開</string>
@@ -4701,7 +4702,7 @@
     <string name="upgrade_dialog_limit_external_freeze_upcoming">無料プランの外部チャンネルは 1 つまでです。%1$s以降、%2$s は外部チャンネルに投稿できなくなります。</string>
     <string name="upgrade_dialog_benefit_history_pro">メッセージ履歴が無制限</string>
     <string name="upgrade_dialog_benefit_history_free">Free：直近 30 日間</string>
-    <string name="upgrade_dialog_benefit_files_pro">月間の上限なし、1 ファイル 200 MB</string>
+    <string name="upgrade_dialog_benefit_files_pro">月間アップロード上限なし、1 ファイル 200 MB</string>
     <string name="upgrade_dialog_benefit_files_free">Free：月 100 MB、1 ファイル 50 MB</string>
     <string name="upgrade_dialog_benefit_joint_pro">外部チャンネル数が無制限</string>
     <string name="upgrade_dialog_benefit_joint_free">Free：外部チャンネル 1 つまで</string>

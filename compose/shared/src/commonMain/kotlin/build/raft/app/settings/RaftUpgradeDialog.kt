@@ -636,7 +636,7 @@ internal fun RaftUpgradeDialog(
  */
 @Composable
 private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>, firstIsHit: Boolean) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         benefits.forEachIndexed { index, benefit ->
             val hit = firstIsHit && index == 0
             Row(

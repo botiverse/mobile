@@ -27,7 +27,13 @@ class ExternalChannelCopyCatalogTest {
                     "joint_connections_rule" to
                         "An external channel holds up to 30 servers and guests together, including the server that hosts it.",
                     "upgrade_dialog_general_hint" to
-                        "Pro lifts the Free limits on chat history, file uploads and external channels.",
+                        "Pro lifts the Free limits on message history, file uploads and external channels.",
+                    "upgrade_dialog_benefit_files_pro" to "No monthly upload limit, 200 MB per file",
+                    "settings_billing_vo_free_summary" to
+                        "Messages from the last 30 days · %2\$s of file uploads a month, %3\$s per file · 1 external channel",
+                    "settings_billing_vo_uploads_includes" to "Counts files people and agents upload, Artifacts included.",
+                    "settings_billing_vo_ending_body" to
+                        "After that, this server moves to Free: messages older than 30 days are hidden, file uploads are limited to %2\$s a month and %3\$s per file, and agents can't move between computers.",
                     "upgrade_dialog_benefit_joint_pro" to "Unlimited external channels",
                     "upgrade_dialog_benefit_joint_free" to "Free: 1 external channel",
                     "upgrade_dialog_external_limit_title" to "Share more channels outside %1\$s",
@@ -48,7 +54,17 @@ class ExternalChannelCopyCatalogTest {
                     "channel_settings_status_joint" to "外部",
                     "joint_disconnect_title" to "断开外部频道？",
                     "joint_connections_rule" to "外部频道的服务器和访客加起来最多 30 个，包括托管频道的服务器。",
-                    "upgrade_dialog_general_hint" to "升级到 Pro，免费版在聊天记录、文件上传和外部频道上的限制都会解除。",
+                    "upgrade_dialog_general_hint" to "升级到 Pro，免费版在消息历史、文件上传和外部频道上的限制都会解除。",
+                    "upgrade_dialog_benefit_migration_pro" to "在计算机之间迁移 Agent",
+                    "upgrade_dialog_migration_title" to "在计算机之间迁移 Agent",
+                    "upgrade_dialog_migration_hint" to "把 Agent 迁移到另一台计算机是 Pro 功能。",
+                    "upgrade_dialog_limit_migration" to "免费版不包含把 Agent 迁移到另一台计算机。",
+                    "channel_external_invite_error_free_limit" to
+                        "免费版下，一个服务器只能有一个与外部的人共享的频道。升级到 Pro 即可邀请到更多频道。",
+                    "settings_billing_vo_free_summary" to "可查看最近 30 天的消息 · 每月可上传 %2\$s 文件，单个文件 %3\$s · 1 个外部频道",
+                    "settings_billing_vo_uploads_includes" to "成员和 Agent 上传的文件都算在内，包括 Artifact。",
+                    "settings_billing_vo_ending_body" to
+                        "之后这个服务器改为免费版：超过 30 天的消息会被隐藏，文件上传限制为每月 %2\$s、单个文件 %3\$s，也不能在计算机之间迁移 Agent。",
                     "upgrade_dialog_benefit_joint_pro" to "不限数量的外部频道",
                     "upgrade_dialog_benefit_joint_free" to "免费版：1 个外部频道",
                     "upgrade_dialog_external_limit_title" to "与 %1\$s 之外的人共享更多频道",
@@ -70,7 +86,13 @@ class ExternalChannelCopyCatalogTest {
                     "joint_connections_rule" to
                         "外部チャンネルに参加できるのは、ホストのサーバーを含め、サーバーとゲストを合わせて最大 30 までです。",
                     "upgrade_dialog_general_hint" to
-                        "Pro にすると、チャット履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。",
+                        "Pro にすると、メッセージ履歴、ファイルのアップロード、外部チャンネルに関する無料プランの制限がなくなります。",
+                    "upgrade_dialog_benefit_files_pro" to "月間アップロード上限なし、1 ファイル 200 MB",
+                    "settings_billing_vo_free_summary" to
+                        "直近 30 日間のメッセージ · 毎月 %2\$s までのファイルアップロード、1 ファイル %3\$s まで · 外部チャンネル 1 つ",
+                    "settings_billing_vo_uploads_includes" to "メンバーとエージェントがアップロードしたファイルが対象で、Artifact も含まれます。",
+                    "settings_billing_vo_ending_body" to
+                        "その後このサーバーは Free になり、30 日より前のメッセージは非表示になり、ファイルアップロードは毎月 %2\$s、1 ファイル %3\$s までになり、コンピューター間でエージェントを移動できなくなります。",
                     "upgrade_dialog_benefit_joint_pro" to "外部チャンネル数が無制限",
                     "upgrade_dialog_benefit_joint_free" to "Free：外部チャンネル 1 つまで",
                     "upgrade_dialog_external_limit_title" to "%1\$s の外部の人とより多くのチャンネルを共有",
