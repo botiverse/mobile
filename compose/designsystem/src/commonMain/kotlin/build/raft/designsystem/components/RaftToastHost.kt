@@ -152,7 +152,10 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
                                 ?: safeDrawing.getBottom(this@layout).toFloat()
                         val clearancePx = state.resolveBottomClearancePx(hostBottomPx, safeBottomPx)
                         val bottomPx = (clearancePx + RaftToastViewportOffset.toPx()).roundToInt()
-                        val x = ((layoutWidth - placeable.width) / 2).coerceAtLeast(0)
+                        val x =
+                            Alignment.CenterHorizontally
+                                .align(placeable.width, layoutWidth, layoutDirection)
+                                .coerceAtLeast(0)
                         val y = (layoutHeight - placeable.height - bottomPx).coerceAtLeast(0)
                         placeable.placeRelative(x, y)
                     }
