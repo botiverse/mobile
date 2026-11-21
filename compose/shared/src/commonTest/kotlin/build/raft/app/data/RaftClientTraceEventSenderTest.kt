@@ -1,12 +1,19 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import build.raft.app.model.raftEpochMillisUtcIso
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -20,19 +27,71 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftClientTraceEventSenderTest {
-    private class RecordingTransport(var status: Int = 200) : RaftClientTraceTransport {
+    /**
+     * [status] / [attestStatus]: what the trace POST / the attestation request answer (0: no HTTP
+     * response). [sendErrorFor]: the POST of that batch throws instead. [batches] is every POST tried, [accepted] those
+     * answered 2xx, [sendAtMillis] when each was tried on [clock].
+     */
+    private class RecordingTransport(
+        var status: Int = 200,
+        var attestStatus: Int = 200,
+        var sendErrorFor: (RaftWebTraceBatchRequest) -> Throwable? = { null },
+        private val clock: () -> Long = { 0L },
+    ) : RaftClientTraceTransport {
         val attested = mutableListOf<ServerId>()
         val batches = mutableListOf<RaftWebTraceBatchRequest>()
+        val accepted = mutableListOf<RaftWebTraceBatchRequest>()
+        val sendAtMillis = mutableListOf<Long>()
 
-        override suspend fun attest(serverId: ServerId): RaftScopeAttestationResponse {
+        override suspend fun attest(serverId: ServerId): RaftScopeAttestationAnswer {
             attested += serverId
-            return RaftScopeAttestationResponse(attestation = "att-${attested.size}", expiresAt = "2026-11-11T10:10:00Z")
+            if (attestStatus !in 200..299) return RaftScopeAttestationAnswer(attestStatus)
+            return RaftScopeAttestationAnswer(
+                status = attestStatus,
+                response = RaftScopeAttestationResponse(attestation = "att-${attested.size}", expiresAt = "2026-11-11T10:10:00Z"),
+            )
         }
 
         override suspend fun send(batch: RaftWebTraceBatchRequest): Int {
             batches += batch
+            sendAtMillis += clock()
+            sendErrorFor(batch)?.let { throw it }
+            if (status in 200..299) accepted += batch
             return status
         }
+    }
+
+    /** 2026-11-11T10:00:00Z; [senderOnVirtualTime]'s clock is this plus the test's virtual time. */
+    private val baseEpochMillis = 1_794_391_200_000L
+
+    private fun TestScope.senderOnVirtualTime(
+        transport: RecordingTransport,
+        privacy: MutableStateFlow<RaftPrivacyMode> = MutableStateFlow(RaftPrivacyMode.Off),
+        networkRestored: Flow<Any> = emptyFlow(),
+        log: (String) -> Unit = {},
+    ): RaftClientTraceEventSender =
+        RaftClientTraceEventSender(
+            scope = backgroundScope,
+            nowEpochMillis = { baseEpochMillis + currentTime },
+            defaultAttrs = { mapOf("clientPlatform" to "android") },
+            privacyMode = privacy,
+            networkRestored = networkRestored,
+            log = log,
+        ).also { it.bindTransport(transport) }
+
+    /** A numbered event; [numbers] reads them back from a batch (the dropped-count event has none). */
+    private fun RaftClientTraceEventSender.emitNumbered(n: Int, traceId: String? = null, spanId: String? = null) {
+        emit("server-1", RaftStateTransitionTraceName, buildJsonObject { put("n", n) }, traceId = traceId, spanId = spanId)
+    }
+
+    private fun RaftWebTraceBatchRequest.numbers(): List<Int> = events.mapNotNull { it.attrs["n"]?.jsonPrimitive?.int }
+
+    private fun RaftWebTraceBatchRequest.droppedReports(): List<RaftWebEventRecord> =
+        events.filter { it.name == RaftClientTraceDroppedEventName }
+
+    private fun TestScope.advance(millis: Long) {
+        advanceTimeBy(millis)
+        runCurrent()
     }
 
     private val attrs = buildJsonObject { put("inbox.inplace.result", "match") }
@@ -206,5 +265,304 @@ class RaftClientTraceEventSenderTest {
                 assertEquals("ios", attrs.getValue("clientPlatform").jsonPrimitive.content)
             }
         }
+    }
+
+    /**
+     * No HTTP answer (status 0) or a 5xx, from the attestation request or the
+     * trace POST: the batch is kept and the next flush delivers it once, in order, as first built.
+     */
+    @Test
+    fun aBatchThatGotNoAnswerOrA5xxIsResentOnceInOrderWithTheSameIdsAndTimes() = runTest {
+        val failures: List<Pair<String, (RecordingTransport) -> Unit>> =
+            listOf(
+                "attestation without a response" to { it.attestStatus = 0 },
+                "attestation 502" to { it.attestStatus = 502 },
+                "post without a response" to { it.status = 0 },
+                "post 503" to { it.status = 503 },
+            )
+        for ((label, breakIt) in failures) {
+            val transport = RecordingTransport()
+            val sender = senderOnVirtualTime(transport)
+            breakIt(transport)
+            val firstAt = baseEpochMillis + currentTime
+            sender.emitNumbered(1, traceId = "0af7651916cd43dd8448eb211c80319c", spanId = "b7ad6b7169203331")
+            advance(1_000L)
+            sender.emitNumbered(2)
+            advance(RaftClientTraceFlushDelayMillis - 1_000L)
+            assertTrue(transport.accepted.isEmpty(), "$label: the first flush failed")
+            assertEquals(2, sender.queuedCount, "$label: both events are kept")
+
+            transport.attestStatus = 200
+            transport.status = 200
+            advance(RaftClientTraceRetryDelaysMillis.first())
+            advance(3_600_000L)
+
+            val delivered = transport.accepted.single().events
+            assertEquals(listOf(1, 2), transport.accepted.single().numbers(), "$label: delivered once, in order")
+            assertEquals(
+                listOf(raftEpochMillisUtcIso(firstAt), raftEpochMillisUtcIso(firstAt + 1_000L)),
+                delivered.map { it.time },
+                "$label: the times are those of the events, not of the resend",
+            )
+            assertEquals(listOf("0af7651916cd43dd8448eb211c80319c", null), delivered.map { it.traceId }, label)
+            assertEquals(listOf("b7ad6b7169203331", null), delivered.map { it.spanId }, label)
+            assertTrue(transport.batches.all { it.events == delivered }, "$label: every attempt carried the same records")
+            assertEquals(0, sender.queuedCount, label)
+        }
+    }
+
+    /** An HTTP refusal is final: the batch is dropped, not resent and not counted as given up. */
+    @Test
+    fun aRefusedBatchIsDroppedAndNeverResent() = runTest {
+        val refusals: List<Pair<String, (RecordingTransport) -> Unit>> =
+            listOf(
+                "post 400" to { it.status = 400 },
+                "post 401" to { it.status = 401 },
+                "post 429" to { it.status = 429 },
+                "attestation 403" to { it.attestStatus = 403 },
+                "attestation 404" to { it.attestStatus = 404 },
+            )
+        for ((label, refuse) in refusals) {
+            val transport = RecordingTransport()
+            val sender = senderOnVirtualTime(transport)
+            refuse(transport)
+            sender.emitNumbered(1)
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(0, sender.queuedCount, "$label: dropped")
+            val requests = transport.attested.size + transport.batches.size
+
+            transport.attestStatus = 200
+            transport.status = 200
+            advance(3_600_000L)
+            assertEquals(requests, transport.attested.size + transport.batches.size, "$label: nothing is sent again")
+
+            sender.emitNumbered(2)
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(listOf(2), transport.accepted.single().numbers(), label)
+            assertTrue(transport.accepted.single().droppedReports().isEmpty(), "$label: a refusal is not a counted drop")
+        }
+    }
+
+    /**
+     * While nothing answers, flushes come 4 s, 15 s, 60 s and then every 5 min after the one before;
+     * the first failure 30 min behind it, an event is given up. The next batch reports that once,
+     * and keeps reporting it until a batch carrying the report is accepted.
+     */
+    @Test
+    fun repeatedFailuresWaitLongerEachTimeThenGiveUpAfterThirtyMinutesAndReportTheCountOnce() = runTest {
+        val transport = RecordingTransport(status = 0, clock = { currentTime })
+        val logged = mutableListOf<String>()
+        val sender = senderOnVirtualTime(transport, log = { logged += it })
+        val startedAt = currentTime
+        sender.emitNumbered(1)
+        advance(7_200_000L)
+
+        assertEquals(
+            listOf(4_000L, 8_000L, 23_000L, 83_000L, 383_000L, 683_000L, 983_000L, 1_283_000L, 1_583_000L, 1_883_000L),
+            transport.sendAtMillis.map { it - startedAt },
+        )
+        assertEquals(0, sender.queuedCount, "given up at the first failure 30 min after the first one")
+        assertEquals(1, sender.droppedNotYetReported(RaftClientTraceDropReason.AgedOut))
+        assertEquals(0, sender.droppedNotYetReported(RaftClientTraceDropReason.QueueCap))
+        assertTrue(logged.any { "client_trace_dropped reason=aged_out count=1" in it }, "logged: $logged")
+
+        // The batch that carries the report fails too: it is resent as it was, and the count is not lost.
+        sender.emitNumbered(2)
+        advance(RaftClientTraceFlushDelayMillis)
+        val failed = transport.batches.last()
+        assertEquals(listOf(2), failed.numbers())
+        with(failed.droppedReports().single()) {
+            assertEquals(1, attrs.getValue(RaftClientTraceDroppedCountAttr).jsonPrimitive.int)
+            assertEquals("aged_out", attrs.getValue(RaftClientTraceDroppedReasonAttr).jsonPrimitive.content)
+            assertEquals(1_883, attrs.getValue(RaftClientTraceDroppedOldestAgeAttr).jsonPrimitive.int)
+            assertEquals("android", attrs.getValue("clientPlatform").jsonPrimitive.content)
+            assertEquals(setOf("dropped_count", "reason", "oldest_dropped_age_s", "clientPlatform"), attrs.keys)
+        }
+        assertEquals(2, sender.queuedCount, "the report waits with its batch")
+
+        transport.status = 200
+        advance(RaftClientTraceRetryDelaysMillis.last())
+        assertEquals(failed.events, transport.accepted.single().events, "resent unchanged: same report, same time")
+        assertEquals(0, sender.droppedNotYetReported(RaftClientTraceDropReason.AgedOut))
+
+        sender.emitNumbered(3)
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(listOf(3), transport.accepted.last().numbers())
+        assertTrue(transport.accepted.last().droppedReports().isEmpty(), "reported once")
+    }
+
+    /** While sends fail, a full queue gives up its oldest events for newer ones and counts them. */
+    @Test
+    fun aFullQueueDropsItsOldestEventsWhileSendsFailAndReportsHowMany() = runTest {
+        val transport = RecordingTransport(status = 0)
+        val logged = mutableListOf<String>()
+        val sender = senderOnVirtualTime(transport, log = { logged += it })
+        sender.emitNumbered(0)
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(1, sender.queuedCount, "kept after the failed flush")
+
+        for (n in 1..RaftClientTraceMaxQueued + 5) sender.emitNumbered(n)
+        assertEquals(RaftClientTraceMaxQueued, sender.queuedCount, "never more than the cap")
+        assertEquals(6, sender.droppedNotYetReported(RaftClientTraceDropReason.QueueCap))
+        val dropLines = logged.filter { "client_trace_dropped" in it }
+        assertTrue(dropLines.last().startsWith("client_trace_dropped reason=queue_cap count=1 notYetReported=6"), "logged: ${dropLines.last()}")
+        assertTrue(logged.none { RaftStateTransitionTraceName in it || "\"n\"" in it }, "counts only, no event names or contents")
+
+        transport.status = 200
+        advance(RaftClientTraceRetryDelaysMillis.first())
+        assertEquals((6..RaftClientTraceMaxQueued + 5).toList(), transport.accepted.flatMap { it.numbers() }, "the newest 500, in order, once")
+        val report = transport.accepted.flatMap { it.droppedReports() }.single()
+        assertEquals(transport.accepted.first().events.first(), report, "in the first accepted batch")
+        assertEquals(6, report.attrs.getValue(RaftClientTraceDroppedCountAttr).jsonPrimitive.int)
+        assertEquals("queue_cap", report.attrs.getValue(RaftClientTraceDroppedReasonAttr).jsonPrimitive.content)
+        assertEquals(4, report.attrs.getValue(RaftClientTraceDroppedOldestAgeAttr).jsonPrimitive.int)
+        assertEquals(0, sender.droppedNotYetReported(RaftClientTraceDropReason.QueueCap), "reset once accepted")
+        assertEquals(0, sender.queuedCount)
+    }
+
+    /** Privacy mode decides over kept events as over new ones: on drops them, unknown holds them unsent. */
+    @Test
+    fun privacyModeOnDropsKeptEventsAndUnknownHoldsThemWithoutSending() = runTest {
+        for (answer in listOf(RaftPrivacyMode.On, RaftPrivacyMode.Unknown)) {
+            val transport = RecordingTransport(status = 0)
+            val privacy = MutableStateFlow(RaftPrivacyMode.Off)
+            val sender = senderOnVirtualTime(transport, privacy = privacy)
+            sender.emitNumbered(1)
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(1, sender.queuedCount, "$answer: kept after the failed flush")
+
+            privacy.value = answer
+            runCurrent()
+            transport.status = 200
+            advance(3_600_000L)
+            assertEquals(1, transport.batches.size, "$answer: nothing is sent while not off")
+            when (answer) {
+                RaftPrivacyMode.On -> {
+                    assertEquals(0, sender.queuedCount, "on: kept events are dropped")
+                    for (reason in RaftClientTraceDropReason.entries) {
+                        assertEquals(0, sender.droppedNotYetReported(reason), "on: not a counted drop")
+                    }
+                }
+                else -> {
+                    assertEquals(1, sender.queuedCount, "unknown: still held")
+                    privacy.value = RaftPrivacyMode.Off
+                    runCurrent()
+                    advance(RaftClientTraceFlushDelayMillis)
+                    assertEquals(listOf(1), transport.accepted.single().numbers(), "unknown then off: sent")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun onlyTheFailedBatchIsResentAfterAnEarlierOneWasAccepted() = runTest {
+        val transport = RecordingTransport()
+        val sender = senderOnVirtualTime(transport)
+        sender.emitNumbered(1)
+        advance(RaftClientTraceFlushDelayMillis)
+        assertEquals(listOf(1), transport.accepted.single().numbers())
+
+        transport.status = 0
+        sender.emitNumbered(2)
+        advance(RaftClientTraceFlushDelayMillis)
+        transport.status = 200
+        advance(3_600_000L)
+        assertEquals(listOf(listOf(1), listOf(2)), transport.accepted.map { it.numbers() }, "each event is accepted once")
+        assertEquals(listOf(listOf(1), listOf(2), listOf(2)), transport.batches.map { it.numbers() })
+    }
+
+    /** What is held belongs to the account that was signed in: sign-out or another account drops it. */
+    @Test
+    fun signOutOrAnotherAccountDropsKeptEventsAndTheCachedAttestation() = runTest {
+        for (next in listOf<String?>(null, "user-2")) {
+            val transport = RecordingTransport()
+            val sender = senderOnVirtualTime(transport)
+            sender.emitNumbered(1)
+            sender.setAccount("user-1")
+            sender.setAccount("user-1")
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(listOf("att-1"), transport.accepted.map { it.attestation }, "the first account keeps what was queued")
+
+            transport.status = 0
+            sender.emitNumbered(2)
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(1, sender.queuedCount)
+            sender.setAccount(next)
+            assertEquals(0, sender.queuedCount, "$next: dropped")
+
+            transport.status = 200
+            sender.setAccount("user-2")
+            // Short of the attestation's expiry, so a reused one would show below.
+            advance(60_000L)
+            assertEquals(1, transport.accepted.size, "$next: the kept event is never sent")
+            sender.emitNumbered(3)
+            advance(RaftClientTraceFlushDelayMillis)
+            assertEquals(listOf(3), transport.accepted.last().numbers())
+            assertEquals("att-2", transport.accepted.last().attestation, "$next: the other account's attestation is not reused")
+            assertTrue(transport.accepted.last().droppedReports().isEmpty(), "$next: not a counted drop")
+        }
+    }
+
+    @Test
+    fun theNetworkComingBackBringsAWaitingRetryForwardOnce() = runTest {
+        val transport = RecordingTransport(status = 0, clock = { currentTime })
+        val networkRestored = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
+        val sender = senderOnVirtualTime(transport, networkRestored = networkRestored)
+        sender.emitNumbered(1)
+        advance(30_000L)
+        assertEquals(listOf(4_000L, 8_000L, 23_000L), transport.sendAtMillis, "the next retry is due at 83 s")
+
+        transport.status = 200
+        networkRestored.tryEmit(Unit)
+        networkRestored.tryEmit(Unit)
+        advance(3_600_000L)
+        assertEquals(listOf(4_000L, 8_000L, 23_000L, 34_000L), transport.sendAtMillis)
+        assertEquals(listOf(1), transport.accepted.single().numbers())
+    }
+
+    /** Only the scheduled retry sends while sends fail: new events, also at the cap, wait for it. */
+    @Test
+    fun queueingEventsDuringARetryWaitNeitherSendsNorShortensTheWait() = runTest {
+        val transport = RecordingTransport(status = 0, clock = { currentTime })
+        val sender = senderOnVirtualTime(transport)
+        sender.emitNumbered(0)
+        advance(30_000L)
+        assertEquals(listOf(4_000L, 8_000L, 23_000L), transport.sendAtMillis, "the next retry is due at 83 s")
+
+        for (n in 1..RaftClientTraceMaxQueued + 100) {
+            sender.emitNumbered(n)
+            if (n % 100 == 0) advance(1_000L)
+        }
+        assertEquals(RaftClientTraceMaxQueued, sender.queuedCount)
+        advance(83_000L - currentTime - 1L)
+        assertEquals(3, transport.sendAtMillis.size, "nothing is sent before the retry is due")
+        advance(1L)
+        assertEquals(listOf(4_000L, 8_000L, 23_000L, 83_000L), transport.sendAtMillis, "one request, at the scheduled time")
+        advance(299_999L)
+        assertEquals(4, transport.sendAtMillis.size, "and the wait after it is the next longer one")
+        advance(1L)
+        assertEquals(383_000L, transport.sendAtMillis.last())
+    }
+
+    /**
+     * A batch whose request cannot be built (a record that does not encode) will never go through:
+     * it is dropped at once, not retried, and the events queued behind it are sent by the same flush.
+     */
+    @Test
+    fun aBatchThatFailsLocallyIsDroppedAndDoesNotBlockTheEventsBehindIt() = runTest {
+        val transport = RecordingTransport(clock = { currentTime })
+        transport.sendErrorFor = { batch -> IllegalStateException("cannot encode").takeIf { 1 in batch.numbers() } }
+        val logged = mutableListOf<String>()
+        val sender = senderOnVirtualTime(transport, log = { logged += it })
+        for (n in 1..RaftClientTraceMaxBatch + 50) sender.emitNumbered(n)
+        advance(RaftClientTraceFlushDelayMillis)
+
+        assertEquals(listOf(4_000L, 4_000L), transport.sendAtMillis, "the bad batch, then the one behind it, in one flush")
+        assertEquals((RaftClientTraceMaxBatch + 1..RaftClientTraceMaxBatch + 50).toList(), transport.accepted.single().numbers())
+        assertEquals(0, sender.queuedCount, "the bad batch is not kept")
+        assertTrue(logged.any { "reason=refused stage=local_error" in it && "count=$RaftClientTraceMaxBatch" in it }, "logged: $logged")
+        advance(3_600_000L)
+        assertEquals(2, transport.batches.size, "and never retried")
+        for (reason in RaftClientTraceDropReason.entries) assertEquals(0, sender.droppedNotYetReported(reason))
     }
 }
