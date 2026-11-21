@@ -17,6 +17,7 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -132,9 +133,15 @@ class RaftComputerProcJobsTest {
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
-        api.nextStopResponse = HomeNetworkResponse(200, """{"outcome":"failed"}""", traceId = "trace-12345678")
+        val failedTraceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        api.nextStopResponse =
+            HomeNetworkResponse(
+                200,
+                """{"outcome":"failed"}""",
+                responseHeaders = mapOf("X-Trace-Id" to listOf(failedTraceId))
+            )
         assertEquals(
-            ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed, traceId = "trace-12345678"),
+            ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed, traceId = failedTraceId),
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
@@ -148,14 +155,15 @@ class RaftComputerProcJobsTest {
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
+        val offlineTraceId = "abcdef0123456789abcdef0123456789"
         api.nextStopResponse =
             HomeNetworkResponse(
                 409,
                 """{"code":"computer_offline","error":"This Computer is offline."}""",
-                traceId = "trace-err99999"
+                responseHeaders = mapOf("X-Trace-Id" to listOf(offlineTraceId))
             )
         assertEquals(
-            ComputerProcJobStopResult.Error("computer_offline", traceId = "trace-err99999"),
+            ComputerProcJobStopResult.Error("computer_offline", traceId = offlineTraceId),
             client.stopMachineProcJob(ServerId("s-1"), "m-1", "agent-1", "dev-server")
         )
 
@@ -444,6 +452,7 @@ class RaftComputerProcJobsTest {
         assertEquals(1, readCount)
 
         val stopCall = async { controller.stopJob(runningJob, this, ServerId("s-1"), "m-1") }
+        runCurrent()
         // Computer goes offline while stop request is in flight.
         controller.refresh(ServerId("s-1"), "m-1", online = false)
         stopGate.complete(ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Stopped))

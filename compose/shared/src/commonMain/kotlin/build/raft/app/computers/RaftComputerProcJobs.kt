@@ -33,6 +33,7 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftButton
@@ -41,6 +42,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftToastIntent
+import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CancellationException
@@ -485,6 +487,24 @@ internal fun RaftComputerAgentProcJobs(
         val failedToast = stringResource(Res.string.settings_computers_proc_jobs_toast_failed, targetJob.name)
         val upgradeRequiredToast = stringResource(Res.string.settings_computers_proc_jobs_toast_upgrade_required)
         val traceIdFormat = stringResource(Res.string.error_trace_id_value, "%s")
+        val copyLabel = stringResource(Res.string.common_copy)
+        val copiedToast = stringResource(Res.string.error_trace_id_copied)
+        val copy = rememberRaftCopyAction()
+        val showFailedToast: (String?) -> Unit = { rawTraceId ->
+            val id = raftValidTraceIdOrNull(rawTraceId)
+            toastHost?.show(
+                title = failedToast,
+                description = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },
+                intent = RaftToastIntent.Warning,
+                actionLabel = if (id != null) copyLabel else null,
+                onAction = id?.let { validId ->
+                    {
+                        copy(validId)
+                        toastHost.show(copiedToast, durationMillis = 1_500L)
+                    }
+                }
+            )
+        }
         val showOutcome: (ComputerProcJobStopResult) -> Unit = { result ->
             when (result) {
                 is ComputerProcJobStopResult.Completed ->
@@ -493,21 +513,11 @@ internal fun RaftComputerAgentProcJobs(
                         ComputerProcJobStopOutcome.AlreadyExited,
                         ComputerProcJobStopOutcome.NotFound ->
                             toastHost?.show(alreadyEndedToast)
-                        ComputerProcJobStopOutcome.Failed ->
-                            toastHost?.show(
-                                title = failedToast,
-                                description = result.traceId?.takeIf { it.isNotBlank() }?.let { traceIdFormat.replace("%s", it.take(8)) },
-                                intent = RaftToastIntent.Warning
-                            )
+                        ComputerProcJobStopOutcome.Failed -> showFailedToast(result.traceId)
                     }
                 ComputerProcJobStopResult.UpgradeRequired ->
                     toastHost?.show(upgradeRequiredToast, intent = RaftToastIntent.Warning)
-                is ComputerProcJobStopResult.Error ->
-                    toastHost?.show(
-                        title = failedToast,
-                        description = result.traceId?.takeIf { it.isNotBlank() }?.let { traceIdFormat.replace("%s", it.take(8)) },
-                        intent = RaftToastIntent.Warning
-                    )
+                is ComputerProcJobStopResult.Error -> showFailedToast(result.traceId)
             }
         }
         RaftDialog(

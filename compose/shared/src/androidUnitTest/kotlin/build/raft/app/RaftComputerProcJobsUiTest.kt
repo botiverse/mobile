@@ -281,14 +281,19 @@ class RaftComputerProcJobsUiTest {
         waitForIdle()
         onNodeWithText("Update this Computer to stop its jobs from here.").assertIsDisplayed()
 
-        // Failed with trace ID -> warning toast with Trace ID description.
-        nextResult = ComputerProcJobStopResult.Completed(ComputerProcJobStopOutcome.Failed, traceId = "abcdef123456")
+        // Failed with trace ID -> warning toast with Trace ID description and Copy action.
+        nextResult =
+            ComputerProcJobStopResult.Completed(
+                ComputerProcJobStopOutcome.Failed,
+                traceId = "abcdef1234567890abcdef1234567890"
+            )
         onNodeWithTag(computerProcJobStopButtonTestTag("dev-server")).performClick()
         waitForIdle()
         onNodeWithTag(COMPUTER_PROC_JOBS_STOP_CONFIRM_TEST_TAG).performClick()
         waitForIdle()
         onNodeWithText("Couldn’t stop dev-server. Try again.").assertIsDisplayed()
-        onNodeWithText("Trace ID abcdef12").assertIsDisplayed()
+        onNodeWithText("Trace ID abcdef12…").assertIsDisplayed()
+        onNodeWithText("Copy").assertIsDisplayed()
 
         assertEquals(listOf("dev-server", "dev-server", "dev-server"), stoppedJobs)
     }
