@@ -18,7 +18,7 @@ class RaftBackSwipeTest {
     }
 
     @Test
-    fun edgePopModeLeavesABackDragFromTheLeadingStripToTheHostEvenPastTheStart() {
+    fun edgePopModeLeavesEveryDragFromTheLeadingStripToTheHost() {
         // Past the first tab (can scroll back): from the strip a back drag pops, from the body it pages back.
         assertEquals(
             RaftBackSwipeYieldDecision.Release,
@@ -28,10 +28,28 @@ class RaftBackSwipeTest {
             RaftBackSwipeYieldDecision.ClaimForward,
             raftEdgePopDragDecision(12f, 1f, slop, isLtr = true, startsInLeadingEdge = false, canScrollBackward = true, canScrollForward = true),
         )
+        // A forward reading from the strip is the pop's too (#198: a fast edge fling turned the next tab).
+        assertEquals(
+            RaftBackSwipeYieldDecision.Release,
+            raftEdgePopDragDecision(-60f, 1f, slop, isLtr = true, startsInLeadingEdge = true, canScrollBackward = true, canScrollForward = true),
+        )
+        assertEquals(
+            RaftBackSwipeYieldDecision.Release,
+            raftEdgePopDragDecision(-60f, 1f, slop, isLtr = true, startsInLeadingEdge = true, canScrollBackward = false, canScrollForward = true),
+        )
+        // Decided at once, before any slop: nothing from the strip waits to be claimed later.
+        assertEquals(
+            RaftBackSwipeYieldDecision.Release,
+            raftEdgePopDragDecision(1f, 0f, slop, isLtr = true, startsInLeadingEdge = true, canScrollBackward = true, canScrollForward = true),
+        )
         // RTL: back is leftward, the strip is the right edge.
         assertEquals(
             RaftBackSwipeYieldDecision.Release,
             raftEdgePopDragDecision(-12f, 1f, slop, isLtr = false, startsInLeadingEdge = true, canScrollBackward = true, canScrollForward = true),
+        )
+        assertEquals(
+            RaftBackSwipeYieldDecision.Release,
+            raftEdgePopDragDecision(60f, 1f, slop, isLtr = false, startsInLeadingEdge = true, canScrollBackward = true, canScrollForward = true),
         )
         // Nothing before: released wherever it starts (the first tab).
         assertEquals(
@@ -41,10 +59,10 @@ class RaftBackSwipeTest {
     }
 
     @Test
-    fun edgePopModeDrivesForwardDragsFromAnywhereAndLeavesVerticalOnes() {
+    fun edgePopModeDrivesForwardDragsFromTheBodyAndLeavesVerticalOnes() {
         assertEquals(
             RaftBackSwipeYieldDecision.ClaimForward,
-            raftEdgePopDragDecision(-12f, 1f, slop, isLtr = true, startsInLeadingEdge = true, canScrollBackward = true, canScrollForward = true),
+            raftEdgePopDragDecision(-12f, 1f, slop, isLtr = true, startsInLeadingEdge = false, canScrollBackward = true, canScrollForward = true),
         )
         assertEquals(
             RaftBackSwipeYieldDecision.Release,

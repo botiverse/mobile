@@ -97,11 +97,11 @@ class RaftSegmentSwipeTest {
     }
 
     @Test
-    fun aBackSwipeFromTheLeadingStripIsLeftToThePopOnlyOnABackSwipeHost() {
-        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = true))
-        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = false))
+    fun aSwipeFromTheLeadingStripTurnsNoSubTabOnABackSwipeHost() {
+        // Either way it reads: a fast back swipe can read as one toward the end once the host moves the page.
+        assertFalse(raftSegmentSwipeTurnsFrom(hostHasBackSwipe = true, startsInLeadingEdge = true))
+        assertTrue(raftSegmentSwipeTurnsFrom(hostHasBackSwipe = true, startsInLeadingEdge = false))
         // Android: Back is an OS gesture, sub-tabs turn from the edge as before.
-        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = false, startsInLeadingEdge = true))
-        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = false, hostHasBackSwipe = false, startsInLeadingEdge = false))
+        assertTrue(raftSegmentSwipeTurnsFrom(hostHasBackSwipe = false, startsInLeadingEdge = true))
     }
 }
