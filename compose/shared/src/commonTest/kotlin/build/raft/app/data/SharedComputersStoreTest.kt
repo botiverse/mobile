@@ -478,12 +478,14 @@ class SharedComputersStoreTest {
         store.ensureComputerPickerForServer("server-1")
         val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
         assertNull(renamed.loginSteps)
+        assertNull(renamed.serverNeedsAttention)
 
         assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
 
         val machine = store.state.value.selectComputerServerSlice("server-1").machines.single()
         assertEquals("Maria Desktop", machine.name)
         assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machine.loginSteps)
+        assertEquals(true, machine.serverNeedsAttention)
     }
 
     @Test

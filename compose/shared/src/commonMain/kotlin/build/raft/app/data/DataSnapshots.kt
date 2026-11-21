@@ -1920,7 +1920,9 @@ data class SettingsComputerSnapshot(
      */
     val canManage: Boolean = false,
     /** Server `attention`'s machine logins that need a step, for the usage cells (web `rackLoginStep`); empty when none or not reported. */
-    val loginSteps: List<ComputerLoginStep> = emptyList()
+    val loginSteps: List<ComputerLoginStep> = emptyList(),
+    /** Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534); null when not reported by the server. */
+    val serverNeedsAttention: Boolean? = null
 )
 
 /**

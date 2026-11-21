@@ -199,6 +199,8 @@ class ComputersApiTest {
                ],"waitingAgents":0}},
               {"id":"mbp","name":"MBP","status":"online","isComputer":true,"runtimes":["claude"],
                "attention":{"count":1,"items":[{"actor":"computer_owner","actorName":"Olive","action":"fix","agentCount":1}],"waitingAgents":0}},
+              {"id":"clear","name":"Clear","status":"online","isComputer":true,"computerUpgradeAvailable":true,"runtimes":["claude"],
+               "attention":{"count":0,"items":[],"waitingAgents":0}},
               {"id":"old","name":"Old server","status":"online","isComputer":true,"runtimes":["claude"]}
             ],"latestDaemonVersion":null,"latestComputerVersion":"1.25.0"}
             """.trimIndent()
@@ -212,12 +214,23 @@ class ComputersApiTest {
         assertEquals(listOf(ComputerLoginStep("codex", ComputerLoginStepAction.SignIn)), machines.getValue("signed-out").loginSteps)
         // A viewer who may not see the reason gets no code: no step.
         assertEquals(emptyList(), machines.getValue("mbp").loginSteps)
+        assertEquals(emptyList(), machines.getValue("clear").loginSteps)
         assertEquals(null, machines.getValue("old").loginSteps)
+        // Server attention.count > 0 verdict (slock #15534, web `serverNeedsAttention`): present
+        // even when items have no code (guest/non-owner), false at count == 0, null when absent.
+        assertEquals(true, machines.getValue("hetzner").serverNeedsAttention)
+        assertEquals(true, machines.getValue("signed-out").serverNeedsAttention)
+        assertEquals(true, machines.getValue("mbp").serverNeedsAttention)
+        assertEquals(false, machines.getValue("clear").serverNeedsAttention)
+        assertEquals(null, machines.getValue("old").serverNeedsAttention)
         assertEquals(
             listOf(ComputerLoginStep("claude", ComputerLoginStepAction.VerifyAccount)),
             machines.getValue("hetzner").toSettingsComputerSnapshot().loginSteps
         )
         assertEquals(emptyList(), machines.getValue("old").toSettingsComputerSnapshot().loginSteps)
+        assertEquals(true, machines.getValue("hetzner").toSettingsComputerSnapshot().serverNeedsAttention)
+        assertEquals(false, machines.getValue("clear").toSettingsComputerSnapshot().serverNeedsAttention)
+        assertEquals(null, machines.getValue("old").toSettingsComputerSnapshot().serverNeedsAttention)
     }
 
     @Test

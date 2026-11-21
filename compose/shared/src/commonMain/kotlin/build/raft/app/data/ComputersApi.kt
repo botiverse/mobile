@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -1142,7 +1143,13 @@ internal data class ComputerSummary(
      * web `rackLoginStep`). Null: the row carried no `attention` (an older server, a viewer the
      * server computes none for, or an incremental-sync row, which never carries it).
      */
-    val loginSteps: List<ComputerLoginStep>? = null
+    val loginSteps: List<ComputerLoginStep>? = null,
+    /**
+     * Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534): true when a
+     * person must act on this Computer, false when the server reported `count == 0`, null when the
+     * row carried no readable `attention` summary (older server or incremental-sync row).
+     */
+    val serverNeedsAttention: Boolean? = null
 )
 
 /**
@@ -1683,7 +1690,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         agentScopes = agentScopes?.toSnapshot(),
         diskStatus = diskStatus?.toStatus(),
         memoryStatus = memoryStatus?.toStatus(),
-        loginSteps = attention?.let(::computerLoginSteps)
+        loginSteps = attention?.let(::computerLoginSteps),
+        serverNeedsAttention = attention?.let(::computerServerNeedsAttention)
     )
 }
 
@@ -1739,6 +1747,21 @@ private data class ReadinessResourceDto(
 
 /** slock `READINESS_ACTIONS`: every action the server derives from a code. */
 private val READINESS_ACTION_WIRES = setOf("sign_in", "verify_account", "update_computer", "fix")
+
+/**
+ * Web `serverNeedsAttention` (slock #15534, utils/computerUpgradeIndicator.ts): the server's
+ * `attention.count > 0` verdict when the machine row carried an `attention` summary; null from
+ * older servers or when `count` is absent/unreadable (callers keep their fallback rule).
+ */
+internal fun computerServerNeedsAttention(attention: JsonElement): Boolean? {
+    val count =
+        ((attention as? JsonObject)?.get("count") as? JsonPrimitive)
+            ?.takeIf { !it.isString }
+            ?.doubleOrNull
+            ?.takeIf { it.isFinite() }
+            ?: return null
+    return count > 0.0
+}
 
 /**
  * Web `rackLoginStep`'s items (slock #14602): each `attention.items` entry with a `code` (the

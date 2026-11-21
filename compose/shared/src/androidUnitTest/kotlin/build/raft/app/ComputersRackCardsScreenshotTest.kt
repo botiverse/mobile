@@ -75,9 +75,10 @@ import org.robolectric.annotation.GraphicsMode
  * agents on one scrolling line (gpu-rig's fade at the end), the runtime cells under the header,
  * and the next step; no Disk / Memory, no ⋯.
  * Toolbar (#proj-mobile:#60): every capture has it under the counts, Cards / List and Add Computer
- * at its end (web ComputersRackToolbar, slock #14149); with no sort chosen the list is Mine
- * first (web #14479): the viewer (Artin) owns Studio Mac, so it leads though the server lists it
- * third, then the rest in the server's order, the offline laptop in its folded Offline section. `settings.computers.filtered`: Runtime Codex and
+ * at its end (web ComputersRackToolbar, slock #14149); with no sort chosen the list is Needs
+ * attention first over Mine first (web #14479, #15534): build-box (update available) leads, then
+ * Studio Mac (owned by the viewer Artin, though the server lists it third), then the rest in the
+ * server's order, the offline laptop in its Offline section. `settings.computers.filtered`: Runtime Codex and
  * Sort by Codex remaining (both filled, Clear all's ×), each card's Codex line leading in bold
  * (web `leadUsage`); `.sorted_memory`: Sort by Memory used, Memory before Disk in bold; `.grouped` (cards and list): Group by
  * Provider, AWS and Hetzner Cloud then Personal computers; `.no_match`: a search and Needs
@@ -440,8 +441,9 @@ private fun ComputersListVisualContent(
                         rackView = view,
                         toolbar = toolbar,
                         serverId = "server-1",
-                        // The viewer is Artin, Studio Mac's owner: with no sort chosen (Mine first) it
-                        // leads, though the server lists it third.
+                        // The viewer is Artin, Studio Mac's owner: with no sort chosen (Needs
+                        // attention first over Mine first, slock #15534) build-box leads (update
+                        // available), then Studio Mac ahead of the rest.
                         currentUserId = "user-1",
                         summaryInHeader = wide,
                         computerControl = SettingsComputerControlState(restart = SettingsComputerRestartProgress(machineId = "m-studio")),
