@@ -10,13 +10,9 @@ import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.assistant.threadForegroundBannerOnPage
 import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.resources.*
-import build.raft.app.transfer.RaftTransferMeter
-import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.downloads.RaftDownloadCenterProcess
-import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftRatingPrompt
-import build.raft.app.data.RaftAttachmentUploadAttempt
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
@@ -30,7 +26,6 @@ import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
-import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
@@ -58,18 +53,13 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
 import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
-import build.raft.app.data.ThreadComposerDirectUploadDecision
-import build.raft.app.data.ThreadComposerDirectUploadPhase
-import build.raft.app.data.resolveThreadComposerDirectUpload
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
-import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
@@ -77,11 +67,9 @@ import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftRealtimeEvents
-import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
-import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpRepository
@@ -235,12 +223,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -248,8 +234,6 @@ import kotlin.time.TimeMark
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlin.time.TimeSource
-import kotlinx.atomicfu.locks.synchronized
-import kotlinx.atomicfu.locks.SynchronizedObject
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
@@ -2420,7 +2404,8 @@ private fun SharedThreadRouteContentContent(
             ?: return@LaunchedEffect
         sharedStores.activityUnreadSummaryStore.ensure(ServerId(serverId), reason = "thread_route_attach")
     }
-    val latestCurrentSession by rememberUpdatedState(currentSession)
+    val latestCurrentSessionState = rememberUpdatedState(currentSession)
+    val latestCurrentSession by latestCurrentSessionState
     // An offline stand-in (durable last-known frame whose refresh failed) is only replaced by a network
     // answer; nothing re-asked after the network came back, so it stayed until the channel was re-entered
     // (HuaTuo, alpha 71). The host's authoritative online signal now re-requests it in place. A signal
@@ -2847,12 +2832,14 @@ private fun SharedThreadRouteContentContent(
         rememberUpdatedState(currentSession?.currentServerId?.takeIf { it.isNotBlank() })
     val createAgentComputerServerResolvedState =
         rememberUpdatedState(producerContextCaptured || currentSession != null)
-    var attachmentOpenStates by remember(threadInstanceKey) {
+    val attachmentOpenStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
-    var attachmentOperationTokens by remember(threadInstanceKey) {
+    var attachmentOpenStates by attachmentOpenStatesHolder
+    val attachmentOperationTokensState = remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentOperationToken>>(emptyMap())
     }
+    var attachmentOperationTokens by attachmentOperationTokensState
     LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
         val currentOwner = attachmentOwner
         val hasForeign = attachmentOperationTokens.values.any { it.owner != currentOwner }
@@ -2861,10 +2848,11 @@ private fun SharedThreadRouteContentContent(
             attachmentOpenStates = emptyMap()
         }
     }
-    var nextAttachmentDownloadGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
-    var inlineVideoPreviewStates by remember(threadInstanceKey) {
+    val nextAttachmentDownloadGenerationState = remember(threadInstanceKey) { mutableStateOf(0L) }
+    val inlineVideoPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
+    var inlineVideoPreviewStates by inlineVideoPreviewStatesHolder
     val inlineVideoPreviewJobs = remember(threadInstanceKey) { mutableMapOf<String, Job>() }
     // attachmentId to wake one waiting retry, null to wake all of them (a realtime timeline update).
     val inlineVideoPreviewRetryNudges =
@@ -2879,12 +2867,14 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    var inlineAudioPreviewStates by remember(threadInstanceKey) {
+    val inlineAudioPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
     }
-    var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
+    var inlineAudioPreviewStates by inlineAudioPreviewStatesHolder
+    val attachmentUploadFilesByLocalIdState = remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
     }
+    var attachmentUploadFilesByLocalId by attachmentUploadFilesByLocalIdState
     val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
         ThreadComposerDirectUploadClientRequestIds()
     }
@@ -2904,7 +2894,8 @@ private fun SharedThreadRouteContentContent(
     var externalShareExpectedAuthority by remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
     }
-    var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
+    val composerImageActionCounterState = remember(threadInstanceKey) { mutableStateOf(0) }
+    var composerImageActionCounter by composerImageActionCounterState
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
     // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
     // duplicate cannot race the complete N/N handoff.
@@ -2915,60 +2906,6 @@ private fun SharedThreadRouteContentContent(
         }
     val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
         ThreadComposerImageEventSessionTracker()
-    }
-    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean {
-        var registeredSessionId = ""
-        var registrationRejected = false
-        val opened =
-            pager.openRaftFilePreviewPage(
-                payload,
-                onEphemeralSessionRegistered = { sessionId ->
-                    registeredSessionId = sessionId
-                    val accepted = registerThreadComposerImagePreviewSession(
-                        sessionId = sessionId,
-                        tracker = composerImageEventSessionTracker,
-                        abort = { rejectedSessionId ->
-                            registrationRejected = true
-                            // The preview opener may race page disposal between registry admission
-                            // and its callback. Retire the process-owned row immediately; returning
-                            // false alone is not enough if the opener has already crossed its open
-                            // boundary.
-                            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(rejectedSessionId)
-                            if (cleanupRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = rejectedSessionId,
-                                    fileRefs = cleanupRefs.toList()
-                                )
-                            }
-                        }
-                    )
-                    accepted
-                }
-            )
-        if ((registrationRejected || !opened) && registeredSessionId.isNotBlank()) {
-            // The preview opener retires its registry/ledger on a failed route open; this page
-            // still owns the local tracker witness and must release it as well.
-            composerImageEventSessionTracker.release(registeredSessionId)
-        }
-        if (opened && registeredSessionId.isNotBlank() &&
-            composerImageEventSessionTracker.isClosed() &&
-            !composerImageEventSessionTracker.owns(registeredSessionId) &&
-            !composerImageEventSessionTracker.isHandoffStarted(registeredSessionId)
-        ) {
-            // Disposal can close the tracker immediately after the opener callback returns but
-            // before the router reports success. Do a second ownership check after the boundary
-            // so a successfully opened preview can never retain an ownerless registry row.
-            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(registeredSessionId)
-            if (cleanupRefs.isNotEmpty()) {
-                bridge.retireFilePreviewTemporaryFiles(
-                    sessionId = registeredSessionId,
-                    fileRefs = cleanupRefs.toList()
-                )
-            }
-            composerImageEventSessionTracker.release(registeredSessionId)
-            return false
-        }
-        return opened
     }
     val chatLayoutPreferenceStore =
         remember(pager) {
@@ -2985,32 +2922,7 @@ private fun SharedThreadRouteContentContent(
         )
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
-    val commentsUnavailableLabel = labels.commentsUnavailableLabel
-    val unableToSendCommentLabel = labels.unableToSendCommentLabel
-    val unableToResolveCommentLabel = labels.unableToResolveCommentLabel
-    val unableToOpenAttachmentLabel = labels.unableToOpenAttachmentLabel
-    val unableToDownloadAttachmentLabel = labels.unableToDownloadAttachmentLabel
-    val attachmentOpenResultTerms = labels.attachmentOpenResultTerms
-    val attachmentSavedToDownloadsLabel = labels.attachmentSavedToDownloadsLabel
-    val attachmentSavedToFilesLabel = labels.attachmentSavedToFilesLabel
-    val attachmentSavedToPhotosLabel = labels.attachmentSavedToPhotosLabel
-    val attachmentDownloadedLabel = labels.attachmentDownloadedLabel
-    val attachmentSavedLabel =
-        raftFilePreviewSavedMessage(
-            exportPrivateDownload = false,
-            toPhotos = false,
-            supportsPublicDownloadReadback = raftPlatformSupportsPublicAttachmentDownloadReadback(),
-            supportsPrivateAttachmentExport = raftPlatformSupportsPrivateAttachmentExport(),
-            downloadSaved = attachmentSavedToDownloadsLabel,
-            privateDownloadSaved = attachmentDownloadedLabel,
-            fileExportSaved = attachmentSavedToFilesLabel,
-            imageSavedToPhotos = attachmentSavedToPhotosLabel
-        )
-    val attachmentUploadFailedLabel = labels.attachmentUploadFailedLabel
-    val preparingAttachmentPreviewLabel = labels.preparingAttachmentPreviewLabel
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
-    val attachmentLimitUnavailableLabel = labels.attachmentLimitUnavailableLabel
-    val attachmentTooLargeTemplate = labels.attachmentTooLargeTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
     val genericThreadErrorLabel = labels.genericThreadErrorLabel
     val pendingMentionActionBatchStrings = labels.pendingMentionActionBatchStrings
@@ -3030,10 +2942,6 @@ private fun SharedThreadRouteContentContent(
     val attachmentSkippedManyTemplate = labels.attachmentSkippedManyTemplate
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
         attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
-    fun localizedAttachmentTooLarge(fileSize: Long, maxBytes: Long): String =
-        attachmentTooLargeTemplate
-            .replace(ThreadLocalizedFeedbackPlaceholder, RaftFormat.bytes(fileSize))
-            .replace("__RAFT_ATTACHMENT_LIMIT__", RaftFormat.byteLimit(maxBytes))
     fun localizedAttachmentSkippedMany(count: Int): String =
         attachmentSkippedManyTemplate.replace(ThreadLocalizedFeedbackPlaceholder, count.toString())
     val attachmentCommentsDialogStateHolder = remember(threadInstanceKey) {
@@ -4183,9 +4091,10 @@ private fun SharedThreadRouteContentContent(
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
     }
-    var inlineImageFallbackState by remember(threadInstanceKey) {
+    val inlineImageFallbackStateHolder = remember(threadInstanceKey) {
         mutableStateOf(ThreadInlineImageFallbackState())
     }
+    var inlineImageFallbackState by inlineImageFallbackStateHolder
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -4273,221 +4182,6 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         }
-    // Attachment comments are on for every server (web, end of June); the server still decides who may comment.
-    val attachmentCommentsEnabled = true
-    fun threadWritesEnabledNow(): Boolean = threadViewModel.state.value.writeActionsEnabled
-
-    fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
-        attachmentCommentsDialogState =
-            attachmentCommentsDialogState
-                ?.takeIf { current -> current.attachment.id == next.attachment.id }
-                ?.let { next }
-    }
-
-    fun loadAttachmentCommentsIntoDialog(state: ThreadAttachmentCommentsDialogState) {
-        coroutineScope.launch {
-            val nextState =
-                when (val result = dataSource.loadAttachmentComments(state.attachment.id)) {
-                    is DataResult.Content ->
-                        state.copy(
-                            status = "loaded",
-                            page = result.data,
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).clearAttachmentCommentsError()
-                    is DataResult.Empty ->
-                        state.copy(
-                            status = "loaded",
-                            page = ThreadAttachmentCommentsPage(comments = emptyList(), threadChannelId = null, viewer = null),
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).clearAttachmentCommentsError()
-                    is DataResult.Error ->
-                        state.copy(
-                            status = "error",
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).withAttachmentCommentsError(
-                            errorCode = result.error.code,
-                            serverMessage = result.error.serverMessage
-                        )
-                    is DataResult.NoPermission -> {
-                        if (routeAuthRequired(result)) return@launch
-                        state.copy(
-                            status = "error",
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).withAttachmentCommentsError(
-                            errorCode = result.blocker.code,
-                            serverMessage = null
-                        )
-                    }
-                }
-            setAttachmentCommentsState(nextState)
-        }
-    }
-
-    fun openAttachmentComments(attachmentId: String) {
-        if (!threadWritesEnabledNow() || !attachmentCommentsEnabled) return
-        val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
-        if (target == null) {
-            bridge.toast(commentsUnavailableLabel)
-            return
-        }
-        if (!target.attachment.supportsThreadAttachmentComments()) return
-        target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
-            pager.openRaftFilePreviewPage(previewPayload)
-            return
-        }
-        val state =
-            ThreadAttachmentCommentsDialogState(
-                attachment = target.attachment,
-                status = "loading",
-                pendingAnchorLabel = target.attachment.name
-            )
-        attachmentCommentsDialogState = state
-        loadAttachmentCommentsIntoDialog(state)
-    }
-
-    fun reloadAttachmentComments() {
-        val current = attachmentCommentsDialogState ?: return
-        val state = current.copy(status = "loading").clearAttachmentCommentsError()
-        attachmentCommentsDialogState = state
-        loadAttachmentCommentsIntoDialog(state)
-    }
-
-    fun sendAttachmentComment() {
-        if (!threadWritesEnabledNow()) {
-            attachmentCommentsDialogState = null
-            return
-        }
-        val current = attachmentCommentsDialogState ?: return
-        val cleanDraft = current.draft.text.trim()
-        if (cleanDraft.isBlank() || current.sending) return
-        attachmentCommentsDialogState = current.copy(sending = true).clearAttachmentCommentsError()
-        coroutineScope.launch {
-            when (
-                val result =
-                    runThreadWriteActionIfEnabled(
-                        writeActionsEnabled = ::threadWritesEnabledNow,
-                        blockedCode = "thread_attachment_comment_write_disabled"
-                    ) {
-                        dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)
-                    }
-            ) {
-                is DataResult.Content -> {
-                    val loadingState =
-                        current.withAttachmentCommentDraftProjection("").copy(
-                            status = "loading",
-                            sending = false,
-                            pendingQuoteLabel = null
-                        ).clearAttachmentCommentsError()
-                    attachmentCommentsDialogState = loadingState
-                    loadAttachmentCommentsIntoDialog(loadingState)
-                }
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
-                        attachmentCommentsDialogState = null
-                        return@launch
-                    }
-                    val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_send_failed"
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false)
-                            ?.withAttachmentCommentsError(
-                                errorCode = code,
-                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
-                            )
-                    bridge.toast(unableToSendCommentLabel)
-                }
-                is DataResult.NoPermission -> {
-                    if (routeAuthRequired(result)) return@launch
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false)
-                            ?.withAttachmentCommentsError(
-                                errorCode = result.blocker.code,
-                                serverMessage = null
-                            )
-                    bridge.toast(unableToSendCommentLabel)
-                }
-            }
-        }
-    }
-
-    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
-        if (!threadWritesEnabledNow()) {
-            attachmentCommentsDialogState = null
-            return
-        }
-        val current = attachmentCommentsDialogState ?: return
-        if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
-        if (comment.id in current.resolvingCommentIds) return
-        attachmentCommentsDialogState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
-                .clearAttachmentCommentsError()
-        coroutineScope.launch {
-            when (
-                val result =
-                    runThreadWriteActionIfEnabled(
-                        writeActionsEnabled = ::threadWritesEnabledNow,
-                        blockedCode = "thread_attachment_comment_write_disabled"
-                    ) {
-                        dataSource.setMessageReaction(comment.id, "✅", selected = true)
-                    }
-            ) {
-                is DataResult.Content -> {
-                    val loadingState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
-                            ?.clearAttachmentCommentsError()
-                            ?: return@launch
-                    attachmentCommentsDialogState = loadingState
-                    loadAttachmentCommentsIntoDialog(loadingState)
-                }
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
-                        attachmentCommentsDialogState = null
-                        return@launch
-                    }
-                    val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_resolve_failed"
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.let { state ->
-                                state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
-                                ).withAttachmentCommentsError(
-                                    errorCode = code,
-                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
-                                )
-                            }
-                    bridge.toast(unableToResolveCommentLabel)
-                }
-                is DataResult.NoPermission -> {
-                    if (routeAuthRequired(result)) return@launch
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.let { state ->
-                                state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
-                                ).withAttachmentCommentsError(
-                                    errorCode = result.blocker.code,
-                                    serverMessage = null
-                                )
-                            }
-                    bridge.toast(unableToResolveCommentLabel)
-                }
-            }
-        }
-    }
-
     LaunchedEffect(
         renderedThread.status,
         renderedThread.errorCode,
@@ -4506,230 +4200,66 @@ private fun SharedThreadRouteContentContent(
     // The desktop / wide image lightbox (RaftImageLightbox.kt): open while non-null.
     val imageLightboxWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val imageLightboxEnabled = raftImageLightboxEnabled(raftPlatformHasFinePointer(), imageLightboxWindowWidthDp)
-    var imageLightboxRequest by remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    val imageLightboxRequestState = remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    var imageLightboxRequest by imageLightboxRequestState
     // The image being edited from the image viewer (RaftViewerImageEdit.kt); null: none.
     var viewerImageEditAttachment by remember(threadInstanceKey) { mutableStateOf<RaftThreadAttachmentItem?>(null) }
-    fun requestInlineImageFallback(attachmentId: String) {
-        val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
-        inlineImageFallbackState = nextState
-        if (!shouldRequest) return
-        bridge.log("thread_inline_image_fallback status=start attachmentId=${attachmentId.take(8)}")
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    inlineImageFallbackState =
-                        inlineImageFallbackState.resolve(attachmentId, response.data.url)
-                    bridge.log("thread_inline_image_fallback status=resolved attachmentId=${attachmentId.take(8)}")
-                }
-                is ThreadApiResult.Failure -> {
-                    bridge.log(
-                        "thread_inline_image_fallback status=failed attachmentId=${attachmentId.take(8)} " +
-                            "code=${response.code} contractCode=${response.contractCode.orEmpty()}"
-                    )
-                }
-            }
-        }
-    }
-    /**
-     * Desktop and wide windows open images in the lightbox over the app (artin 10-29); phones
-     * keep the full-page viewer. [conversationWide]: step through every loaded image of the
-     * conversation (a click in the timeline) rather than only [group] (the Files tab's list).
-     */
-    fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true) {
-        if (group.images.isEmpty()) return
-        val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
-        val attachment = group.images[currentIndex]
-        if (imageLightboxEnabled) {
-            imageLightboxRequest =
-                (if (conversationWide) {
-                    raftImageLightboxRequestFor(
-                        messages = listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages,
-                        attachmentId = attachment.id,
-                        isImage = { it.isImageAttachment() }
-                    )
-                } else {
-                    null
-                }) ?: RaftImageLightboxRequest(group.images.map { RaftImageLightboxItem(it) }, currentIndex)
-            bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
-            return
-        }
-        RaftViewerImageEditOpener.threadKey = threadInstanceKey
-        pager.openRaftFilePreviewPage(
-            attachment.toThreadAttachmentLazyPreviewPayload(
-                kind = "image",
-                imageGallery = group.images,
-                imageGalleryIndex = currentIndex,
-                attachmentCommentsEnabled = attachmentCommentsEnabled
-            )
+    // The attachment open and comment actions (ThreadRouteAttachmentActions.kt), built every
+    // composition by a local function (a method of its own, so this one only loads what it captures
+    // for the call). The route still calls them by these local functions' names.
+    fun buildThreadRouteAttachmentActions(): ThreadRouteAttachmentActions =
+        ThreadRouteAttachmentActions(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            pager = pager,
+            coroutineScope = coroutineScope,
+            threadViewModel = threadViewModel,
+            composerDraftViewModel = composerDraftViewModel,
+            renderedTimelineSlice = renderedTimelineSlice,
+            threadInstanceKey = threadInstanceKey,
+            attachmentOwner = attachmentOwner,
+            labels = labels,
+            imageLightboxEnabled = imageLightboxEnabled,
+            attachmentCommentsDialogStateHolder = attachmentCommentsDialogStateHolder,
+            inlineImageFallbackStateHolder = inlineImageFallbackStateHolder,
+            imageLightboxRequestState = imageLightboxRequestState,
+            attachmentOpenStatesHolder = attachmentOpenStatesHolder,
+            attachmentOperationTokensState = attachmentOperationTokensState,
+            nextAttachmentDownloadGenerationState = nextAttachmentDownloadGenerationState,
+            inlineVideoPreviewStatesHolder = inlineVideoPreviewStatesHolder,
+            inlineVideoPreviewJobs = inlineVideoPreviewJobs,
+            inlineVideoPreviewRetryNudges = inlineVideoPreviewRetryNudges,
+            inlineAudioPreviewStatesHolder = inlineAudioPreviewStatesHolder,
+            attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+            composerImageActionCounterState = composerImageActionCounterState,
+            composerImageEventSessionTracker = composerImageEventSessionTracker,
+            routeAuthRequiredForCodeFn = { code -> routeAuthRequired(code) },
+            routeAuthRequiredFn = { result -> routeAuthRequired(result) },
+            currentComposerPayloadFn = { currentComposerPayload() },
         )
-    }
-    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
-        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val owner = attachmentOwner ?: return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
-        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
-        coroutineScope.launch {
-            val result =
-                openSharedThreadAttachment(
-                    bridge = bridge,
-                    dataSource = dataSource,
-                    attachment = attachment,
-                    owner = owner,
-                    downloadId = downloadId,
-                    onProgress = { progress ->
-                        val token = attachmentOperationTokens[attachment.id]
-                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
-                            return@openSharedThreadAttachment
-                        }
-                        val current = attachmentOpenStates[attachment.id]
-                        if (current?.downloadId != downloadId) return@openSharedThreadAttachment
-                        val reduced =
-                            reduceAttachmentDownloadProgress(
-                                current = current.progress,
-                                incoming = progress,
-                                expectedDownloadId = downloadId
-                            )
-                        if (reduced === current.progress) return@openSharedThreadAttachment
-                        attachmentOpenStates =
-                            attachmentOpenStates +
-                                (attachment.id to current.copy(
-                                    status = if (reduced?.status == "paused") "paused" else "downloading",
-                                    progress = reduced
-                                ))
-                    }
-                )
-            val token = attachmentOperationTokens[attachment.id]
-            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
-            if (result.status == "opened" || result.status == "save_cancelled") {
-                attachmentOpenStates = attachmentOpenStates - attachment.id
-                attachmentOperationTokens = attachmentOperationTokens - attachment.id
-            } else {
-                attachmentOpenStates =
-                    attachmentOpenStates +
-                        (attachment.id to ThreadAttachmentOpenUiState(
-                            status = result.status,
-                            downloadId = downloadId
-                        ))
-                if (result.status != "cancelled") {
-                    bridge.toast(
-                        raftAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
-                            ?: unableToOpenAttachmentLabel
-                    )
-                }
-                attachmentOperationTokens = attachmentOperationTokens - attachment.id
-            }
-        }
-    }
-    fun saveAttachmentExternally(attachment: RaftThreadAttachmentItem) {
-        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val owner = attachmentOwner ?: return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
-        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
-        coroutineScope.launch {
-            val result =
-                saveSharedThreadAttachment(
-                    bridge = bridge,
-                    dataSource = dataSource,
-                    attachment = attachment,
-                    owner = owner,
-                    downloadId = downloadId,
-                    onProgress = { progress ->
-                        val token = attachmentOperationTokens[attachment.id]
-                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
-                            return@saveSharedThreadAttachment
-                        }
-                        val current = attachmentOpenStates[attachment.id]
-                        if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
-                        val reduced =
-                            reduceAttachmentDownloadProgress(
-                                current = current.progress,
-                                incoming = progress,
-                                expectedDownloadId = downloadId
-                            )
-                        if (reduced === current.progress) return@saveSharedThreadAttachment
-                        attachmentOpenStates =
-                            attachmentOpenStates +
-                                (attachment.id to current.copy(
-                                    status = if (reduced?.status == "paused") "paused" else "downloading",
-                                    progress = reduced
-                                ))
-                    }
-                )
-            val token = attachmentOperationTokens[attachment.id]
-            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
-            when (result.status) {
-                "saved" -> {
-                    attachmentOpenStates = attachmentOpenStates - attachment.id
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                    bridge.toast(
-                        raftThreadAttachmentSavedMessage(
-                            nativeMessage = attachmentSavedLabel,
-                            fallbackMessage = attachmentDownloadedLabel
-                        )
-                    )
-                }
-                "cancelled" -> {
-                    attachmentOpenStates = attachmentOpenStates - attachment.id
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                }
-                else -> {
-                    attachmentOpenStates =
-                        attachmentOpenStates +
-                            (attachment.id to ThreadAttachmentOpenUiState(
-                                status = result.status,
-                                downloadId = downloadId
-                            ))
-                    val failure =
-                        raftAttachmentSaveFailure(result.status, RaftAttachmentSaveDestination.Downloads)
-                            ?: RaftAttachmentSaveFailure.UnableToDownload
-                    bridge.log(
-                        "thread_attachment_save_failed attachment=${attachment.id.take(8)} " +
-                            "status=${raftAttachmentOpenDiagnosticStatus(result.status)} " +
-                            "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
-                            "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
-                    )
-                    bridge.toast(
-                        when (failure) {
-                            RaftAttachmentSaveFailure.DownloadFailed -> attachmentOpenResultTerms.downloadFailed
-                            RaftAttachmentSaveFailure.StorageUnavailable -> attachmentOpenResultTerms.storageUnavailable
-                            else -> unableToDownloadAttachmentLabel
-                        }
-                    )
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                }
-            }
-        }
-    }
-    /** True when the file page opened. */
-    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem): Boolean {
-        if (attachment.id.isBlank()) return false
-        // A tap never downloads in the conversation: previewable files open their preview, any
-        // other file its file page, where Download shows progress (task #75).
-        return pager.openRaftFilePreviewPage(
-            attachment.toThreadAttachmentLazyPreviewPayload(
-                kind = attachment.threadAttachmentOpenRoute().requestedPreviewKind,
-                attachmentCommentsEnabled = attachmentCommentsEnabled
-            )
-        )
-    }
+    val threadRouteAttachmentActions = buildThreadRouteAttachmentActions()
+    fun requestInlineImageFallback(attachmentId: String): Unit =
+        threadRouteAttachmentActions.requestInlineImageFallback(attachmentId)
+    fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true): Unit =
+        threadRouteAttachmentActions.openImagePreview(group, conversationWide)
+    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem): Unit =
+        threadRouteAttachmentActions.openAttachmentExternally(attachment)
+    fun saveAttachmentExternally(attachment: RaftThreadAttachmentItem): Unit =
+        threadRouteAttachmentActions.saveAttachmentExternally(attachment)
+    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem): Boolean =
+        threadRouteAttachmentActions.openAttachmentNoPreview(attachment)
+    fun reloadAttachmentComments(): Unit = threadRouteAttachmentActions.reloadAttachmentComments()
+    fun sendAttachmentComment(): Unit = threadRouteAttachmentActions.sendAttachmentComment()
+    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem): Unit =
+        threadRouteAttachmentActions.resolveAttachmentComment(comment)
+    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false): Unit =
+        threadRouteAttachmentActions.requestInlineAudioPreview(attachmentId, force)
+    fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false): Unit =
+        threadRouteAttachmentActions.requestInlineVideoPreview(attachmentId, force)
+    fun openComposerAttachmentPreview(attachmentId: String): Boolean =
+        threadRouteAttachmentActions.openComposerAttachmentPreview(attachmentId)
+    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean =
+        threadRouteAttachmentActions.openTrackedComposerImagePreview(payload)
     imageLightboxRequest?.let { request ->
         RaftImageLightbox(
             request = request,
@@ -4747,190 +4277,6 @@ private fun SharedThreadRouteContentContent(
             onOpenWith = { attachment -> openAttachmentExternally(attachment) },
             onEdit = { attachment -> viewerImageEditAttachment = attachment }
         )
-    }
-    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
-        if (inlineAudioPreviewStates[attachmentId]?.status == ThreadInlineAudioPreviewStatus.Loading) return
-        if (!force && !inlineAudioPreviewStates.canRequestInlineAudioPreview(attachmentId)) return
-        inlineAudioPreviewStates =
-            inlineAudioPreviewStates +
-                (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    val url = response.data.url.trim()
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to
-                                if (url.isNotBlank()) {
-                                    ThreadInlineAudioPreviewUiState(
-                                        status = ThreadInlineAudioPreviewStatus.Ready,
-                                        url = url,
-                                        expiresAt = response.data.expiresAt
-                                    )
-                                } else {
-                                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
-                                })
-                }
-                is ThreadApiResult.Failure -> {
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
-                    if (response.code == 401) {
-                        routeAuthRequired("auth_required")
-                    }
-                }
-            }
-        }
-    }
-    fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
-        val running = inlineVideoPreviewJobs[attachmentId]?.isActive == true
-        if (running) {
-            // A retry is waiting out its backoff: a forced request (tap, realtime update) runs it now.
-            if (force) inlineVideoPreviewRetryNudges.tryEmit(attachmentId)
-            return
-        }
-        if (!force && !inlineVideoPreviewStates.canRequestInlineVideoPreview(attachmentId)) return
-        inlineVideoPreviewJobs[attachmentId] =
-            coroutineScope.launch {
-                val outcome =
-                    runThreadInlineVideoPreviewFetch(
-                        policy = ThreadInlineVideoRetryPolicy.Default,
-                        fetch = {
-                            dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
-                        },
-                        awaitRetry = { delayMs ->
-                            withTimeoutOrNull(delayMs) {
-                                inlineVideoPreviewRetryNudges.first { it == attachmentId || it == null }
-                            }
-                        },
-                        onState = { state ->
-                            inlineVideoPreviewStates = inlineVideoPreviewStates + (attachmentId to state)
-                        }
-                    )
-                if (outcome is ThreadInlineVideoFetchOutcome.Failed && outcome.code == 401) {
-                    routeAuthRequired("auth_required")
-                }
-            }
-    }
-
-    /** True when a page (the preview, the image editor) opened over the conversation. */
-    fun openComposerAttachmentPreview(attachmentId: String): Boolean {
-        val composerPayload = currentComposerPayload()
-        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return false
-        val currentDraftState = composerDraftViewModel.state.value
-        val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = attachment.displaySizeLabel()
-        if (!attachment.isReadyThreadAttachmentForSend()) {
-            return pager.openRaftFilePreviewPage(
-                RaftFilePreviewPayload(
-                    kind = if (attachment.status == "failed") "error" else "loading",
-                    requestedKind = "composer_attachment",
-                    title = name,
-                    subtitle = meta,
-                    name = name,
-                    path = name,
-                    meta = meta,
-                    message =
-                        when (attachment.status) {
-                            "failed" ->
-                                listOf(
-                                    attachmentUploadFailedLabel,
-                                    threadFailureReasonLabel(attachment.errorCode)
-                                ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
-                            else -> preparingAttachmentPreviewLabel
-                        },
-                    messageDesc = null,
-                    error =
-                        if (attachment.status == "failed") {
-                            "attachment_upload_failed"
-                        } else {
-                            null
-                        },
-                    externalFileName = name,
-                    externalMimeType = attachment.mimeType.orEmpty()
-                )
-            )
-        }
-        val threadAttachment =
-            RaftThreadAttachmentItem(
-                id = attachment.id,
-                name = name,
-                mimeType = attachment.mimeType.orEmpty(),
-                sizeLabel = attachment.sizeLabel,
-                sizeBytes = attachment.sizeBytes,
-                thumbnailUrl = attachment.previewUri
-        )
-        val composerImageGroup = composerPayload.pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
-        // RaftPendingAttachmentItem is intentionally a render-only projection and therefore
-        // does not carry the platform file handle. Resolve each gallery item back to the
-        // session-owned draft/upload descriptor before opening an editable preview; otherwise
-        // the gallery payload would contain only thumbnails and the Done/session registry could
-        // never admit the resulting events.
-        val draftAttachmentsById = currentDraftState.uploadedAttachments.associateBy { it.id }
-        val currentDraftKey = normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
-        fun composerImageFileFor(id: String): PlatformFile? =
-            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, currentDraftKey)
-                ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
-                ?: draftAttachmentsById[id]
-                    ?.toComposerImagePlatformFile()
-                    ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
-        return if (composerImageGroup != null && composerImageGroup.images.size > 1) {
-            val galleryFiles =
-                composerImageGroup.images.mapNotNull { image -> composerImageFileFor(image.id) }
-            // A ready tile without a local file ref is not safely editable. Keep it as an
-            // ordinary preview rather than creating a composer session whose Done action can
-            // never produce a deliverable event.
-            if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
-                return pager.openRaftFilePreviewPage(
-                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
-                        kind = "image",
-                        imageGallery = composerImageGroup.images,
-                        imageGalleryIndex = composerImageGroup.currentIndex
-                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
-                )
-            }
-            composerImageActionCounter += 1
-            val baseActionId =
-                "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${attachmentId.take(12)}"
-            openTrackedComposerImagePreview(
-                threadComposerUploadedImagePreviewPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = baseActionId,
-                    files = galleryFiles,
-                    replacementAttachmentIds = composerImageGroup.images.map { it.id },
-                    selectedIndex = composerImageGroup.currentIndex,
-                    originalImage = currentDraftState.originalImage
-                ) ?: return false
-            )
-        } else if (threadAttachment.isImageAttachment()) {
-            composerImageActionCounter += 1
-            val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
-            val composerImageFile = composerImageFileFor(attachment.id)
-            // A server-ready tile can still be previewable after its local picker ref has been
-            // retired.  It is not safely editable/compressible in that state, so keep it a plain
-            // read-only preview instead of creating a Done session that can never emit an event.
-            if (composerImageFile == null) {
-                return pager.openRaftFilePreviewPage(
-                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
-                        kind = "image"
-                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
-                )
-            }
-            openTrackedComposerImagePreview(
-                threadComposerUploadedImagePreviewPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = composerImageActionId,
-                    files = listOf(composerImageFile),
-                    replacementAttachmentIds = listOf(attachment.id),
-                    selectedIndex = 0,
-                    originalImage = currentDraftState.originalImage
-                ) ?: return false
-            )
-        } else {
-            openAttachmentNoPreview(threadAttachment)
-        }
     }
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
@@ -5329,851 +4675,44 @@ private fun SharedThreadRouteContentContent(
             }
         }.invokeOnCompletion { ThreadPendingSendInFlightRegistry.end(context.randomId) }
     }
-    /**
-     * A draft-owned upload failed and its row now offers Retry: the upgrade dialog when the month's
-     * uploads are used up (`FILE_UPLOAD_QUOTA_EXCEEDED`, web MessageInput `upload_monthly_quota`;
-     * nothing opens on a paid plan), and the failure toast.
-     */
-    fun showAttachmentUploadFailure(errorCode: String) {
-        if (raftUpgradeGateForErrorCode(errorCode) == RaftUpgradeGate.UploadMonthlyQuota) {
-            pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadMonthlyQuota, storeScope)
-        }
-        bridge.toast(
-            localizedAttachmentUploadFailedDetail(
-                userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-            )
+    // The composer's attachment upload pipeline (ThreadRouteAttachmentUploader.kt), built every
+    // composition by a local function (a method of its own, so this one only loads what it captures
+    // for the call). The draft's uploads, their semaphore and the remembered upload files stay here.
+    // The route still calls it by these local functions' names.
+    fun buildThreadRouteAttachmentUploader(): ThreadRouteAttachmentUploader =
+        ThreadRouteAttachmentUploader(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            pager = pager,
+            storeScope = data.storeScope,
+            labels = labels,
+            userFacingErrorLabels = userFacingErrorLabels,
+            latestCurrentSessionState = latestCurrentSessionState,
+            composerDraftViewModel = composerDraftViewModel,
+            composerSurface = composerSurface,
+            attachmentUploads = attachmentUploads,
+            attachmentUploadOrchestrator = attachmentUploadOrchestrator,
+            attachmentUploadSemaphore = attachmentUploadSemaphore,
+            attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+            threadDirectUploadClientRequestIds = threadDirectUploadClientRequestIds,
+            routeAuthRequiredFn = { result -> routeAuthRequired(result) },
+            localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
         )
-    }
-    suspend fun admittedComposerAttachmentFiles(
-        files: List<PlatformFile>,
-        maxBytesOverride: Long? = null,
-        skipClientSizeGate: Boolean = false,
-    ): List<PlatformFile> {
-        if (skipClientSizeGate) return files
-        val maxBytes =
-            maxBytesOverride ?: when (val capability = dataSource.attachmentUploadMaxBytes()) {
-                is DataResult.Content -> capability.data
-                is DataResult.NoPermission -> {
-                    routeAuthRequired(capability)
-                    bridge.toast(attachmentLimitUnavailableLabel)
-                    return emptyList()
-                }
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    bridge.toast(attachmentLimitUnavailableLabel)
-                    return emptyList()
-                }
-            }
-        val sizeDecision = applyServerAttachmentUploadLimit(files, maxBytes)
-        if (sizeDecision.rejected.isNotEmpty()) {
-            val largest = sizeDecision.largestRejectedBytes ?: 0L
-            bridge.toast(localizedAttachmentTooLarge(largest, maxBytes))
-            // Free's per-file ceiling: the upgrade dialog too (web `upload_file_size`).
-            if (raftUploadSizeLimitIsFree(maxBytes)) {
-                pager.openRaftUpgradeDialog(RaftUpgradeGate.UploadFileSize, storeScope)
-            }
-            bridge.log(
-                "thread_composer_attachment_size_rejected rejected=${sizeDecision.rejected.size} " +
-                    "largestBytes=$largest maxBytes=$maxBytes"
-            )
-        }
-        return sizeDecision.accepted
-    }
+    val threadRouteAttachmentUploader = buildThreadRouteAttachmentUploader()
+    fun showAttachmentUploadFailure(errorCode: String): Unit =
+        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode)
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
         replaceAttachmentId: String? = null,
         requireAllFiles: Boolean = false,
         replaceAttachmentIdsByLocalId: Map<String, String> = emptyMap()
-    ): Boolean {
-        // slock.attachment.upload_finished: the clock of each upload starts as the picked files arrive.
-        val uploadPickedAt = TimeSource.Monotonic.markNow()
-        // ... and the event is filed under the server the upload started on, whatever the session
-        // says by the time it ends.
-        val uploadSessionServerId = latestCurrentSession?.currentServerId
-        // Upload callbacks must retain the store-owned draft identity they were admitted under.
-        // A route can remain mounted while the composer store transitions to another key; using
-        // the key captured here makes every progress/success/failure publication fail closed.
-        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-            ?: return false
-        val channelId = composerSurface.sendChannelId
-        if (channelId == null) {
-            bridge.toast(attachmentPickerUnavailableLabel)
-            return false
-        }
-        // Capture one complete authority witness for the all-files/direct-session path and reuse
-        // it for capabilities, upload, and compensation. This prevents a session/account/server
-        // switch between those calls from silently falling back to an unbound repository.
-        val directUploadOperation =
-            dataSource.captureDirectAttachmentUploadOperation { message -> bridge.log(message) }
-        if (requireAllFiles && directUploadOperation == null) {
-            bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
-            return false
-        }
-        val uploadServerId =
-            directUploadOperation?.authority?.serverId?.takeIf { it.isNotBlank() } ?: uploadSessionServerId
-        // Never await the capabilities request on the per-file pick path: on a weak network it
-        // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
-        // otherwise the background upload task resolves it after the chip is admitted.  The
-        // all-files (Gallery) path must have an explicit receipt before admission, so it awaits.
-        val directCapabilities: AttachmentUploadCapabilities? =
-            if (directUploadOperation == null) {
-                null
-            } else if (requireAllFiles) {
-                val probe = dataSource.attachmentUploadCapabilities(directUploadOperation)
-                if (probe is DataResult.NoPermission) {
-                    routeAuthRequired(probe)
-                    bridge.toast(attachmentLimitUnavailableLabel)
-                    return false
-                }
-                if ((probe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)) {
-                    return false
-                }
-                (probe as? DataResult.Content)?.data
-            } else {
-                dataSource.peekAttachmentUploadCapabilities(directUploadOperation)
-            }
-        // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
-        // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
-        if (requireAllFiles && directCapabilities == null) {
-            bridge.toast(attachmentLimitUnavailableLabel)
-            return false
-        }
-        val admittedFiles = admittedComposerAttachmentFiles(
-            files = files,
-            maxBytesOverride = directCapabilities?.maxBytes,
-            // Caller sizeBytes is an untrusted hint. Direct and fail-open paths
-            // decide TooLarge/threshold only after authority-bound prepare/stat
-            // (or skip the gate entirely when capabilities cannot be read).
-            skipClientSizeGate = true,
+    ): Boolean =
+        threadRouteAttachmentUploader.uploadComposerAttachmentFiles(
+            files,
+            replaceAttachmentId,
+            requireAllFiles,
+            replaceAttachmentIdsByLocalId
         )
-        if (admittedFiles.isEmpty() || (requireAllFiles && admittedFiles.size != files.size)) {
-            if (requireAllFiles && admittedFiles.size != files.size) {
-                bridge.logWarn(
-                    "thread_composer_attachment_batch_rejected reason=size_gate " +
-                        "expected=${files.size} admitted=${admittedFiles.size}"
-                )
-            }
-            return false
-        }
-        if (requireAllFiles && admittedFiles.any { file -> file.id.isBlank() }) {
-            bridge.logWarn("thread_composer_attachment_batch_rejected reason=blank_local_id")
-            return false
-        }
-        val activeUploadFileRefs =
-            attachmentUploadOrchestrator.activeAttemptIds(draftKey)
-                .filter { id -> attachmentUploadOrchestrator.isActive(id, draftKey) }
-                .mapNotNull {
-                    id -> attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)?.fileRef?.takeIf { it.isNotBlank() }
-                }
-                .toSet()
-        val activeUploadIds = attachmentUploadOrchestrator.activeAttemptIds(draftKey)
-        val acceptedFileRefs = mutableSetOf<String>()
-        val acceptedLocalIds = mutableSetOf<String>()
-        val acceptedFiles =
-            admittedFiles.filter { file ->
-                val fileRef = file.fileRef?.takeIf { it.isNotBlank() }
-                val isDuplicate =
-                    file.id in activeUploadIds ||
-                        !acceptedLocalIds.add(file.id) ||
-                    fileRef != null &&
-                        (fileRef in activeUploadFileRefs || !acceptedFileRefs.add(fileRef))
-                !isDuplicate
-            }
-        if (requireAllFiles && acceptedFiles.size != admittedFiles.size) {
-            bridge.logWarn(
-                "thread_composer_attachment_batch_rejected reason=duplicate_or_active " +
-                    "expected=${admittedFiles.size} accepted=${acceptedFiles.size}"
-            )
-            return false
-        }
-        if (acceptedFiles.size != admittedFiles.size) {
-            bridge.log(
-                "thread_composer_attachment_duplicate_skip skipped=${admittedFiles.size - acceptedFiles.size} " +
-                    "activeUploads=${activeUploadFileRefs.size}"
-            )
-        }
-        val existingAttachmentsById =
-            composerDraftViewModel.state.value.uploadedAttachments.associateBy { attachment -> attachment.id }
-        val localAttachments =
-            acceptedFiles
-                .filter { file -> file.id.isNotBlank() }
-                .map { file ->
-                    existingAttachmentsById[file.id]
-                        ?.copy(
-                            fileName = file.fileName,
-                            sizeBytes = file.sizeBytes ?: 0L,
-                            mimeType = file.mimeType?.takeIf(String::isNotBlank),
-                            previewUri = file.composerLocalPreviewUri(),
-                            status = "uploading",
-                            errorCode = null,
-                            fileRef = file.fileRef,
-                            source = file.source ?: existingAttachmentsById[file.id]?.source,
-                            uploadTransfer = null
-                        )
-                        ?: SharedThreadComposerAttachment(
-                            id = file.id,
-                            fileName = file.fileName,
-                            sizeLabel = "",
-                            sizeBytes = file.sizeBytes ?: 0L,
-                            mimeType = file.mimeType?.takeIf(String::isNotBlank),
-                            previewUri = file.composerLocalPreviewUri(),
-                            status = "uploading",
-                            fileRef = file.fileRef,
-                            source = file.source
-                        )
-                }
-        if (requireAllFiles && localAttachments.size != acceptedFiles.size) {
-            bridge.logWarn(
-                "thread_composer_attachment_batch_rejected reason=local_projection " +
-                    "expected=${acceptedFiles.size} actual=${localAttachments.size}"
-            )
-            return false
-        }
-        val replacementSlotsByLocalId =
-            acceptedFiles.associate { file ->
-                file.id to
-                    threadComposerReplacementSlotId(
-                        replaceAttachmentId =
-                            replaceAttachmentIdsByLocalId[file.id] ?: replaceAttachmentId,
-                        localAttachmentId = file.id
-                    )
-            }
-        var admittedLocalAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap()
-        if (localAttachments.isNotEmpty()) {
-            val keyedFiles =
-                acceptedFiles
-                    .filter { file -> file.id.isNotBlank() }
-                    .mapNotNull { file ->
-                        threadAttachmentUploadAttemptIdentity(file.id, draftKey)?.let { identity ->
-                            identity to file
-                        }
-                    }
-                    .toMap()
-            attachmentUploadFilesByLocalId =
-                attachmentUploadFilesByLocalId + keyedFiles
-            val admissionReceipt =
-                try {
-                    withContext(NonCancellable) {
-                        composerDraftViewModel.acceptQueued(
-                            SharedThreadComposerDraftIntent.AddLocalAttachments(
-                                attachments = localAttachments,
-                                expectedDraftKey = draftKey,
-                                replacementAttachmentIdsByLocalId = replacementSlotsByLocalId
-                            )
-                        )
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    bridge.logWarn(
-                        "thread_composer_attachment_admission_exception " +
-                            "error=${error::class.simpleName.orEmpty()}"
-                    )
-                    null
-                }
-            val admitted =
-                admissionReceipt?.accepted == true &&
-                    normalizeThreadAttachmentUploadDraftKey(admissionReceipt.state.draftKey) == draftKey &&
-                    threadComposerAttachmentAdmissionReceiptIsValid(
-                        accepted = admissionReceipt.accepted,
-                        before = admissionReceipt.previousState,
-                        after = admissionReceipt.state,
-                        expectedDraftKey = draftKey,
-                        localAttachments = localAttachments,
-                        replacementAttachmentIdsByLocalId = replacementSlotsByLocalId
-                    ) &&
-                    localAttachments.all { expected ->
-                        admissionReceipt.state.attachmentAdmissionsByLocalId[expected.id]
-                            ?.replacementAttachmentId
-                            ?.trim()
-                            ?.ifBlank { expected.id } == replacementSlotsByLocalId[expected.id]
-                    } &&
-                    localAttachments.all { expected ->
-                        admissionReceipt.state.uploadedAttachments.any { actual ->
-                            actual.id == expected.id &&
-                                actual.status == "uploading" &&
-                                actual.fileRef?.trim() == expected.fileRef?.trim() &&
-                                actual.source?.trim() == expected.source?.trim()
-                        }
-                    } &&
-                    localAttachments.none { expected ->
-                        expected.id in admissionReceipt.state.removedAttachmentIds
-                    }
-            if (!admitted) {
-                attachmentUploadFilesByLocalId =
-                    attachmentUploadFilesByLocalId.filterKeys { identity ->
-                        !(identity.draftKey == draftKey && identity.localAttachmentId in acceptedLocalIds)
-                    }
-                bridge.logWarn(
-                    "thread_composer_attachment_batch_rejected reason=admission_receipt " +
-                        "draftKey=$draftKey"
-                )
-                return false
-            }
-            admittedLocalAdmissions =
-                localAttachments
-                    .mapNotNull { attachment ->
-                        admissionReceipt.state.attachmentAdmissionsByLocalId[attachment.id]
-                            ?.let { admission -> attachment.id to admission }
-                    }
-                    .toMap()
-            bridge.log(
-                "thread_composer_attachment_local_queue fileCount=${localAttachments.size} " +
-                    "ids=${localAttachments.joinToString(",") { it.id }}"
-            )
-        }
-
-        if (requireAllFiles) {
-            // Gallery handoff is an atomic N/N surface.  Do not launch one legacy multipart
-            // attempt per file: a sibling can fail after an earlier server attachment has been
-            // published, and the legacy route has no retract contract.  The direct-session
-            // coordinator stages every member, compensates every created session on any failure,
-            // and returns ready attachments only after the whole batch is complete.
-            // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
-            val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
-            suspend fun markGalleryBatchFailed(errorCode: String): Boolean {
-                val currentFailureState = composerDraftViewModel.state.value
-                val markableIds =
-                    acceptedLocalIds
-                        .filter { id ->
-                            normalizeThreadAttachmentUploadDraftKey(currentFailureState.draftKey) == draftKey &&
-                                id !in currentFailureState.removedAttachmentIds &&
-                                currentFailureState.attachmentAdmissionsByLocalId[id] == admittedLocalAdmissions[id] &&
-                                currentFailureState.uploadedAttachments.any { attachment ->
-                                    attachment.id == id && attachment.status == "uploading"
-                                }
-                        }
-                        .toSet()
-                val markableAdmissions =
-                    markableIds.mapNotNull { id -> admittedLocalAdmissions[id]?.let { id to it } }.toMap()
-                val receipt =
-                    if (markableIds.isEmpty()) {
-                        null
-                    } else try {
-                        withContext(NonCancellable) {
-                            composerDraftViewModel.acceptQueued(
-                                SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
-                                    attachmentIds = markableIds,
-                                    errorCode = errorCode,
-                                    expectedDraftKey = draftKey,
-                                    expectedAdmissions = markableAdmissions
-                                )
-                            )
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (error: Throwable) {
-                        bridge.logWarn(
-                            "thread_composer_attachment_batch_failure_projection_exception " +
-                                "error=${error::class.simpleName.orEmpty()}"
-                        )
-                        null
-                    }
-                val receiptState = receipt?.state
-                val accepted =
-                    markableIds.isEmpty() ||
-                        (
-                                receipt?.accepted == true &&
-                                normalizeThreadAttachmentUploadDraftKey(receiptState?.draftKey) == draftKey &&
-                                markableIds.all { id ->
-                                    receiptState?.uploadedAttachments.orEmpty().any { attachment ->
-                                        attachment.id == id && attachment.status == "failed" &&
-                                            attachment.errorCode == errorCode
-                                    }
-                                }
-                        )
-                if (!accepted) {
-                    bridge.logWarn(
-                        "thread_composer_attachment_batch_failure_projection_rejected " +
-                            "draftKey=$draftKey"
-                    )
-                }
-                bridge.toast(
-                    localizedAttachmentUploadFailedDetail(
-                        userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                    )
-                )
-                return accepted
-            }
-
-            suspend fun compensateGalleryBatch(
-                batch: build.raft.app.data.DirectAttachmentUploadBatch,
-                reason: String,
-            ): Boolean {
-                val compensated =
-                    try {
-                        withContext(NonCancellable) {
-                            requireNotNull(directUploadOperation).compensate(batch)
-                        }
-                    } catch (cancelled: CancellationException) {
-                        bridge.logWarn(
-                            "thread_composer_attachment_batch_compensation_cancelled " +
-                                "reason=$reason"
-                        )
-                        false
-                    } catch (error: Throwable) {
-                        bridge.logWarn(
-                            "thread_composer_attachment_batch_compensation_exception " +
-                                "reason=$reason error=${error::class.simpleName.orEmpty()}"
-                        )
-                        false
-                    }
-                if (!compensated) {
-                    bridge.logWarn(
-                        "thread_composer_attachment_batch_compensation_failed reason=$reason"
-                    )
-                }
-                return compensated
-            }
-
-            val batchResult =
-                try {
-                    withContext(Dispatchers.Default) {
-                        attachmentUploadSemaphore.withPermit {
-                            requireNotNull(directUploadOperation).upload(
-                                channelId = ChannelId(channelId),
-                                files = acceptedFiles,
-                                admittedCapabilities = requireNotNull(directCapabilities),
-                            )
-                        }
-                    }
-                } catch (cancelled: CancellationException) {
-                    withContext(NonCancellable) {
-                        markGalleryBatchFailed("attachment_upload_batch_cancelled")
-                    }
-                    throw cancelled
-                } catch (error: Throwable) {
-                    bridge.logWarn(
-                        "thread_composer_attachment_batch_upload_exception " +
-                            "error=${error::class.simpleName.orEmpty()}"
-                    )
-                    markGalleryBatchFailed("attachment_upload_batch_failed")
-                    return false
-                }
-
-            val batch =
-                when (batchResult) {
-                    is DataResult.Content -> batchResult.data
-                    is DataResult.NoPermission -> {
-                        routeAuthRequired(batchResult)
-                        markGalleryBatchFailed(batchResult.blocker.code)
-                        return false
-                    }
-                    is DataResult.Error -> {
-                        markGalleryBatchFailed(batchResult.error.code)
-                        return false
-                    }
-                    is DataResult.Empty -> {
-                        markGalleryBatchFailed("attachment_upload_batch_empty")
-                        return false
-                    }
-                }
-
-            val uploads = batch.uploads
-            val uploadIds = uploads.map { upload -> upload.uploadId }
-            val uploadedAttachmentIds = uploads.map { upload -> upload.attachment.id.value }
-            val batchContractValid =
-                uploads.size == acceptedFiles.size &&
-                    uploads.map { upload -> upload.localId }.toSet() == acceptedLocalIds &&
-                    uploads.map { upload -> upload.localId }.size == acceptedLocalIds.size &&
-                    uploadIds.toSet().size == uploadIds.size &&
-                    batch.sessionIds.toSet() == uploadIds.toSet() &&
-                    uploadedAttachmentIds.all { id -> id.isNotBlank() } &&
-                    uploadedAttachmentIds.toSet().size == uploadedAttachmentIds.size
-            if (!batchContractValid) {
-                bridge.logWarn(
-                    "thread_composer_attachment_batch_rejected reason=contract " +
-                        "expected=${acceptedFiles.size} actual=${uploads.size}"
-                )
-                // Compensation is cleanup evidence only. Preserve the primary contract failure
-                // even when a cancel/status operation is incomplete; replacing it with a generic
-                // cleanup code would hide the operation that actually rejected the batch.
-                compensateGalleryBatch(batch, reason = "contract")
-                markGalleryBatchFailed("attachment_upload_session_contract_invalid")
-                return false
-            }
-
-            val fileByLocalId = acceptedFiles.associateBy(PlatformFile::id)
-            val admittedAttachmentsById = localAttachments.associateBy { attachment -> attachment.id }
-            val readyAttachments =
-                uploads.mapNotNull { upload ->
-                    val file = fileByLocalId[upload.localId] ?: return@mapNotNull null
-                    val sourceAttachment = admittedAttachmentsById[upload.localId]
-                    val serverAttachment = upload.attachment
-                    SharedThreadComposerAttachment(
-                        id = serverAttachment.id.value,
-                        fileName = serverAttachment.name,
-                        sizeLabel = serverAttachment.sizeLabel,
-                        sizeBytes = serverAttachment.sizeBytes,
-                        mimeType = serverAttachment.mimeType.takeIf { it.isNotBlank() },
-                        previewUri = file.composerLocalPreviewUri(),
-                        status = "ready",
-                        fileRef =
-                            sourceAttachment
-                                ?.takeIf { source -> source.source in ThreadComposerOwnedTemporarySources }
-                                ?.fileRef,
-                        source = sourceAttachment?.source ?: file.source,
-                        externalShareToken = sourceAttachment?.externalShareToken,
-                        externalShareAccountId = sourceAttachment?.externalShareAccountId,
-                        externalShareServerId = sourceAttachment?.externalShareServerId,
-                        // The server confirmed the upload: the transfer is done.
-                        uploadTransfer = sourceAttachment?.uploadTransfer?.completed(file.sizeBytes)
-                    )
-                }
-            if (readyAttachments.size != acceptedFiles.size) {
-                bridge.logWarn(
-                    "thread_composer_attachment_batch_rejected reason=local_mapping " +
-                        "expected=${acceptedFiles.size} actual=${readyAttachments.size}"
-                )
-                compensateGalleryBatch(batch, reason = "local_mapping")
-                markGalleryBatchFailed("attachment_upload_batch_incomplete")
-                return false
-            }
-
-            val replacementsByUploadedId =
-                uploads.associate { upload ->
-                    upload.attachment.id.value to
-                        threadComposerReplacementSlotId(
-                            replaceAttachmentId =
-                                replaceAttachmentIdsByLocalId[upload.localId]
-                                    ?: replaceAttachmentId,
-                            localAttachmentId = upload.localId
-                        )
-                }
-            val expectedReplacementAttachmentIdsByLocalId =
-                acceptedLocalIds.associateWith { localId ->
-                    threadComposerReplacementSlotId(
-                        replaceAttachmentId =
-                            replaceAttachmentIdsByLocalId[localId]
-                                ?: replaceAttachmentId,
-                        localAttachmentId = localId
-                    )
-                }
-            val expectedServerAttachmentIdsByLocalId =
-                uploads
-                    .groupBy { upload -> upload.localId }
-                    .mapValues { (_, localUploads) ->
-                        localUploads.map { upload -> upload.attachment.id.value }.toSet()
-                    }
-            // This is the sole Gallery projection/ownership publication.  No per-file callback
-            // may transfer a temporary ref before this aggregate commit point.
-            val commitReceipt =
-                try {
-                    composerDraftViewModel.acceptQueued(
-                        SharedThreadComposerDraftIntent.AddUploadedAttachments(
-                            attachments = readyAttachments,
-                            replacedAttachmentIds = acceptedLocalIds,
-                            replacedAttachmentIdsByUploadedId = replacementsByUploadedId,
-                            expectedDraftKey = draftKey,
-                            expectedAdmissions = admittedLocalAdmissions,
-                            expectedServerAttachmentIdsByLocalId = expectedServerAttachmentIdsByLocalId,
-                            expectedReplacementAttachmentIdsByLocalId = expectedReplacementAttachmentIdsByLocalId
-                        )
-                    )
-                } catch (cancelled: CancellationException) {
-                    compensateGalleryBatch(batch, reason = "aggregate_cancelled")
-                    markGalleryBatchFailed("attachment_upload_batch_failed")
-                    throw cancelled
-                } catch (error: Throwable) {
-                    bridge.logWarn(
-                        "thread_composer_attachment_batch_projection_exception " +
-                            "error=${error::class.simpleName.orEmpty()}"
-                    )
-                    compensateGalleryBatch(batch, reason = "aggregate_projection")
-                    markGalleryBatchFailed("attachment_upload_batch_failed")
-                    return false
-                }
-            val receiptState = commitReceipt.state
-            val receiptPostconditionHolds =
-                threadComposerAggregateReceiptIsValid(
-                    accepted = commitReceipt.accepted,
-                    before = commitReceipt.previousState,
-                    after = receiptState,
-                    expectedDraftKey = draftKey,
-                    readyAttachments = readyAttachments,
-                    expectedLocalAttachmentIds = acceptedLocalIds,
-                    expectedReplacementAttachmentIds = expectedReplacementAttachmentIdsByLocalId.values
-                )
-            if (!receiptPostconditionHolds) {
-                bridge.logWarn(
-                    "thread_composer_attachment_batch_rejected reason=aggregate_receipt " +
-                        "accepted=${commitReceipt.accepted} expected=${readyAttachments.size} " +
-                        "actual=${receiptState.uploadedAttachments.size}"
-                )
-                compensateGalleryBatch(batch, reason = "aggregate_receipt")
-                markGalleryBatchFailed("attachment_upload_batch_failed")
-                return false
-            }
-            // The receipt is the exact serialized commit boundary.  Once accepted, a later draft
-            // switch cannot retroactively make this projection rejectable; compensating here
-            // would retract server reservations already referenced by committed durable state.
-            // Ownership is retired only after this aggregate commit and there is no per-file
-            // transfer/deletion callback on the Gallery path.
-            attachmentUploadFilesByLocalId =
-                attachmentUploadFilesByLocalId.filterKeys { identity ->
-                    !(identity.draftKey == draftKey && identity.localAttachmentId in acceptedLocalIds)
-                }
-            runCatching {
-                bridge.log(
-                    "thread_composer_attachment_batch_upload_committed fileCount=${readyAttachments.size} " +
-                        "ids=${readyAttachments.joinToString(",") { attachment -> attachment.id }}"
-                )
-            }
-            return true
-        }
-
-        // Gallery on this train calls with requireAllFiles=false, so this remaining
-        // per-file multipart path is the 1.10.0-shaped uploader. The aggregate
-        // direct-session branch above stays dormant.
-        var launchedCount = 0
-        // The draft owns these uploads (process-wide), so they keep going when the user leaves
-        // the conversation; results go to the draft's uploads and the composer showing this draft
-        // applies them (see composerDraftUploadApplier).
-        val draftUploads = attachmentUploads
-        for (file in acceptedFiles) {
-            val localAttachmentId = file.id.takeIf { it.isNotBlank() } ?: continue
-            val admission = admittedLocalAdmissions[localAttachmentId] ?: continue
-            val admittedSourceAttachment = localAttachments.firstOrNull { it.id == localAttachmentId } ?: continue
-            val identity = threadAttachmentUploadAttemptIdentity(localAttachmentId, draftKey)
-            val clientRequestId =
-                if (identity != null) {
-                    threadDirectUploadClientRequestIds.idFor(identity)
-                } else {
-                    newAttachmentUploadClientRequestId()
-                }
-            // 1 for the first upload of this picked file, 2 for its first Retry, ...
-            val uploadAttemptNumber = identity?.let { threadDirectUploadClientRequestIds.nextAttempt(it) } ?: 1
-            val attemptToken =
-                draftUploads.launch(
-                    draftKey = draftKey,
-                    row = admittedSourceAttachment,
-                    file = file,
-                    launchAdmission = admission
-                ) { uploadAttemptToken ->
-                    fun publishTerminalFailure(errorCode: String) {
-                        draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode)
-                    }
-                    // Where this attempt's time goes (RaftAttachmentUploadTelemetry.kt); the network
-                    // layer fills its recorder in through the coroutine context. Reported once.
-                    val uploadAttempt =
-                        RaftAttachmentUploadAttempt(
-                            serverId = uploadServerId,
-                            attempt = uploadAttemptNumber,
-                            pickedSizeBytes = file.sizeBytes,
-                            elapsedMs = { uploadPickedAt.elapsedNow().inWholeMilliseconds },
-                            log = { line -> bridge.log(line) },
-                        )
-                    try {
-                        bridge.log(
-                            "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
-                        )
-                        // The chip is already on screen; resolve upload limits in the background
-                        // (cache hit, or one shared request) and fail open to multipart on error.
-                        var taskCapabilities = directCapabilities
-                        if (taskCapabilities == null && directUploadOperation != null) {
-                            when (val fetched = dataSource.attachmentUploadCapabilities(directUploadOperation)) {
-                                is DataResult.Content -> taskCapabilities = fetched.data
-                                is DataResult.NoPermission -> routeAuthRequired(fetched)
-                                is DataResult.Error,
-                                is DataResult.Empty -> Unit
-                            }
-                        }
-                        val uploadResult =
-                            withContext(Dispatchers.Default + uploadAttempt.recorder) {
-                                attachmentUploadSemaphore.withPermit {
-                                    val resolvedUpload =
-                                        when (
-                                            val resolved =
-                                                resolveThreadComposerDirectUpload(
-                                                    file = file,
-                                                    capabilities = taskCapabilities,
-                                                    cancelled = false,
-                                                    prepare = { candidate ->
-                                                        val operation = directUploadOperation
-                                                        if (operation == null) {
-                                                            DataResult.Error(
-                                                                ScreenError(
-                                                                    code = "attachment_size_unavailable",
-                                                                    retryable = true,
-                                                                )
-                                                            )
-                                                        } else {
-                                                            operation.prepare(candidate)
-                                                        }
-                                                    },
-                                                )
-                                        ) {
-                                            is DataResult.Content -> resolved.data
-                                            is DataResult.Error ->
-                                                return@withPermit resolved
-                                            is DataResult.NoPermission ->
-                                                return@withPermit resolved
-                                            is DataResult.Empty ->
-                                                return@withPermit DataResult.Error(
-                                                    ScreenError(
-                                                        code = "attachment_size_unavailable",
-                                                        retryable = false,
-                                                    )
-                                                )
-                                        }
-                                    val uploadFile = resolvedUpload.file
-                                    val decision = resolvedUpload.decision
-                                    // This attempt's upload meter. The engine reports the bytes it wrote; the percent stays
-                                    // at 99 until the server confirmed the upload (the ready attachment is the 100%). Until the
-                                    // first publish the chip says "Checking file…" (size, limits, upload session).
-                                    val uploadMeter = RaftTransferMeter(bytesTotal = uploadFile.sizeBytes)
-                                    val uploadMeterLock = SynchronizedObject()
-                                    fun publishTransfer(step: RaftTransferMeter.() -> RaftTransferProgress) {
-                                        val transfer = synchronized(uploadMeterLock) { uploadMeter.step() }
-                                        draftUploads.progress(draftKey, localAttachmentId, uploadAttemptToken, transfer)
-                                    }
-                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
-                                        when (phase) {
-                                            // Still checking: the upload session is being created.
-                                            ThreadComposerDirectUploadPhase.Creating -> Unit
-                                            ThreadComposerDirectUploadPhase.Putting -> publishTransfer { total(uploadFile.sizeBytes) }
-                                            // Every byte is with the storage; the server verifies before it confirms.
-                                            ThreadComposerDirectUploadPhase.Verifying -> publishTransfer { finishing() }
-                                        }
-                                    }
-                                    when (decision) {
-                                        ThreadComposerDirectUploadDecision.Cancelled ->
-                                            DataResult.Error(ScreenError(code = "cancelled", retryable = false))
-                                        ThreadComposerDirectUploadDecision.TooLarge ->
-                                            DataResult.Error(
-                                                ScreenError(code = "UPLOAD_TOO_LARGE", retryable = false)
-                                            )
-                                        ThreadComposerDirectUploadDecision.Direct -> {
-                                            val operation = directUploadOperation
-                                            if (operation == null) {
-                                                publishTransfer { total(uploadFile.sizeBytes) }
-                                                dataSource.uploadAttachments(
-                                                    channelId = channelId,
-                                                    files = listOf(uploadFile),
-                                                    onProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } }
-                                                )
-                                            } else {
-                                                when (
-                                                    val one =
-                                                        operation.uploadOneThreadFile(
-                                                            channelId = ChannelId(channelId),
-                                                            file = uploadFile,
-                                                            clientRequestId = clientRequestId,
-                                                            onPhase = ::publishPhaseProgress,
-                                                            onUploadProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } },
-                                                        )
-                                                ) {
-                                                    is DataResult.Content ->
-                                                        DataResult.Content(AttachmentUploadResult(listOf(one.data)))
-                                                    is DataResult.Error -> one
-                                                    is DataResult.NoPermission -> one
-                                                    is DataResult.Empty -> one
-                                                }
-                                            }
-                                        }
-                                        ThreadComposerDirectUploadDecision.LegacyMultipart -> {
-                                            publishTransfer { total(uploadFile.sizeBytes) }
-                                            dataSource.uploadAttachments(
-                                                channelId = channelId,
-                                                files = listOf(uploadFile),
-                                                onProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } }
-                                            )
-                                        }
-                                    }
-                                }.also { settled ->
-                                    // Inside the context: a scope cancelled as this returns cannot
-                                    // turn a finished upload into a cancelled one.
-                                    uploadAttempt.settle(settled)
-                                }
-                            }
-                        uploadAttempt.report()
-                        val published =
-                            draftUploads.orchestrator.publishIfAccepted(
-                                localAttachmentId,
-                                draftKey,
-                                uploadAttemptToken
-                            ) {
-                                when (uploadResult) {
-                                    is DataResult.Content -> {
-                                        val previewUri = file.composerLocalPreviewUri()
-                                        val sourceAttachment = admittedSourceAttachment
-                                        val uploaded =
-                                            uploadResult.data.attachments.map { attachment ->
-                                                SharedThreadComposerAttachment(
-                                                    id = attachment.id.value,
-                                                    fileName = attachment.name,
-                                                    sizeLabel = attachment.sizeLabel,
-                                                    sizeBytes = attachment.sizeBytes,
-                                                    mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
-                                                    previewUri = previewUri,
-                                                    status = "ready",
-                                                    fileRef =
-                                                        sourceAttachment
-                                                            ?.takeIf { source ->
-                                                                source.source in ThreadComposerOwnedTemporarySources
-                                                            }
-                                                            ?.fileRef,
-                                                    source = sourceAttachment?.source,
-                                                    externalShareToken = sourceAttachment?.externalShareToken,
-                                                    externalShareAccountId = sourceAttachment?.externalShareAccountId,
-                                                    externalShareServerId = sourceAttachment?.externalShareServerId,
-                                                    // The server confirmed the upload: the transfer is done.
-                                                    uploadTransfer = sourceAttachment?.uploadTransfer?.completed()
-                                                )
-                                            }
-                                        if (
-                                            uploaded.isEmpty() ||
-                                            uploaded.none { attachment ->
-                                                attachment.id.isNotBlank() && !attachment.id.startsWith("picked-")
-                                            }
-                                        ) {
-                                            publishTerminalFailure("empty_upload_result")
-                                        } else {
-                                            // The composer showing this draft (this page, or the
-                                            // one that opens it after the user came back) puts
-                                            // these in place of the local row.
-                                            draftUploads.succeed(draftKey, localAttachmentId, uploadAttemptToken, uploaded)
-                                        }
-                                    }
-                                    is DataResult.Error ->
-                                        publishTerminalFailure(uploadResult.error.code)
-                                    is DataResult.NoPermission -> {
-                                        routeAuthRequired(uploadResult)
-                                        publishTerminalFailure(uploadResult.blocker.code)
-                                    }
-                                    is DataResult.Empty ->
-                                        publishTerminalFailure("empty_upload_result")
-                                }
-                            }
-                        if (!published) {
-                            bridge.log(
-                                "thread_composer_attachment_upload_drop attachmentId=$localAttachmentId " +
-                                    "attempt=$uploadAttemptToken reason=stale_or_terminal"
-                            )
-                        }
-                    } catch (_: CancellationException) {
-                        // The user removed this uploading tile; RemoveAttachment already hid it.
-                        // A gallery caller still receives a false completion below, so its
-                        // session cannot be committed as if cancellation were a transfer.
-                        // The event says `cancelled` only when this upload's own job was cancelled
-                        // (remove, draft sent or cleared, sign-out), not for a cancellation from below.
-                        uploadAttempt.reportCancellation(taskCancelled = !currentCoroutineContext().isActive)
-                    } catch (error: Throwable) {
-                        bridge.logWarn(
-                            "thread_composer_attachment_upload_exception " +
-                                "attachmentId=$localAttachmentId " +
-                                "error=${error::class.simpleName.orEmpty()}"
-                        )
-                        uploadAttempt.report(failureCode = "attachment_upload_failed")
-                        publishTerminalFailure("attachment_upload_failed")
-                    }
-                }
-            if (attemptToken != null) {
-                launchedCount += 1
-            }
-        }
-        return acceptedFiles.isNotEmpty() && acceptedFiles.size == files.size && launchedCount == acceptedFiles.size
-    }
     // Effects keyed only on the thread (the event-bus subscriptions below) live across
     // recompositions, so they must call the latest copy of the upload function. The first frame's
     // copy holds the upload store of an account the page does not know yet (no session loaded),
@@ -7349,10 +5888,10 @@ private fun SharedThreadRouteContentContent(
             actionCardStepUp = actionCardStepUp,
             installAppDialogStore = installAppDialogStore,
             actionCardSpecHost = actionCardSpecHost,
-            openAttachmentCommentsFn = { attachmentId -> openAttachmentComments(attachmentId) },
-            openImagePreviewFn = { group -> openImagePreview(group) },
-            saveAttachmentExternallyFn = { attachment -> saveAttachmentExternally(attachment) },
-            openAttachmentNoPreviewFn = { attachment -> openAttachmentNoPreview(attachment) },
+            openAttachmentCommentsFn = { attachmentId -> threadRouteAttachmentActions.openAttachmentComments(attachmentId) },
+            openImagePreviewFn = { group -> threadRouteAttachmentActions.openImagePreview(group) },
+            saveAttachmentExternallyFn = { attachment -> threadRouteAttachmentActions.saveAttachmentExternally(attachment) },
+            openAttachmentNoPreviewFn = { attachment -> threadRouteAttachmentActions.openAttachmentNoPreview(attachment) },
             sendPendingLocalMessageFn = { localMessageId, context, startedFromComposer, authority ->
                 sendPendingLocalMessage(
                     localMessageId = localMessageId,
@@ -8809,12 +7348,6 @@ private fun RaftThreadScreenPayload.threadComposerMentionScopeChannelId(): Strin
 }
 
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
-private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
-    listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
-        .joinToString(":")
-        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
-        .take(160)
-        .ifBlank { "thread-attachment-download" }
 
 /**
  * Typed text is written in the background within ~40 ms (task #246); going to the background, like
