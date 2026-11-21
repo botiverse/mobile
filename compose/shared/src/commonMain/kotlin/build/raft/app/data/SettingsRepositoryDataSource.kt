@@ -308,6 +308,16 @@ class RealSettingsRepository(
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
+    private val deviceLoginApprovalRepository = DeviceLoginApprovalRepository(networkClient)
+
+    override suspend fun describeDeviceLogin(userCode: String): DataResult<DeviceLoginRequest> =
+        deviceLoginApprovalRepository.describe(userCode)
+
+    override suspend fun approveDeviceLogin(request: DeviceLoginRequest, serverId: String): DataResult<Unit> =
+        deviceLoginApprovalRepository.approve(request, serverId)
+
+    override suspend fun denyDeviceLogin(request: DeviceLoginRequest): DataResult<Unit> =
+        deviceLoginApprovalRepository.deny(request)
 
     override suspend fun stepUpSecondFactor(answer: SecondFactorStepUpAnswer): SecondFactorStepUpResult =
         secondFactorStepUpRepository.stepUp(answer)
