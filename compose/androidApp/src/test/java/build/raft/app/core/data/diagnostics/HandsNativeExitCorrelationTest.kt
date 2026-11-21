@@ -243,6 +243,8 @@ class HandsNativeExitCorrelationTest {
         dir.resolve("a.qnc").writeText("QNC2\npid 4242\ncrash_at 2000000\n")
         dir.resolve("b.qnc").writeText("garbage")
         dir.resolve("a.qnc.exit.json").writeText("{}")
+        // hands-android-sdk 0.14+: every process's build, next to the records.
+        dir.resolve("3f2c8a3e-9b1d-4c7e-8f00-1a2b3c4d5e6f.build").writeText("QNC2\npid 4343\ncrash_at 2000001\n")
         val scan = scanHandsNativePendingRecords(dir)
         assertEquals(listOf(HandsNativePendingRecord(4242, 2_000_000L)), scan.records)
         assertEquals(1, scan.unreadable)
