@@ -2,7 +2,7 @@
 type: fixed
 area: channels
 platforms: [android, ios, desktop]
-pull_request: TBD
+pull_request: 5205
 rollout: full
 ---
 
