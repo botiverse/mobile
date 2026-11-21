@@ -965,6 +965,52 @@ internal open class RaftCmpActivity :
         get() = resolvedPageName(intent)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Consume any one-shot dead-launcher handoff or persisted launcher server BEFORE
+        // prepareHomeColdStartSplashIfNeeded() so cold-start splash gating sees the final
+        // initialTab/tapEpochMillis, and strip FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY after writing
+        // the sanitized/merged payload so subsequent resolvedPageData(intent) calls keep it.
+        var clearSavedNav3ForPendingLaunch = false
+        if (this is RaftAppShellActivity) {
+            val pendingLauncherLaunch = AndroidPendingLauncherTaskLaunchStore.consume(taskId)
+            if (pendingLauncherLaunch != null) {
+                val merged = JSONObject(resolvedPageData(intent).text)
+                pendingLauncherLaunch.serverId?.let {
+                    merged.put(ANDROID_SHELL_SERVER_ID_KEY, it)
+                    merged.put(build.raft.app.RAFT_SHELL_SERVER_ID, it)
+                }
+                pendingLauncherLaunch.initialTab?.let { merged.put(KEY_APP_SHELL_INITIAL_TAB, it) }
+                if (pendingLauncherLaunch.tapEpochMillis > 0L) {
+                    merged.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, pendingLauncherLaunch.tapEpochMillis)
+                }
+                intent?.putExtra(KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+                intent?.let { it.flags = it.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv() }
+                clearSavedNav3ForPendingLaunch = pendingLauncherLaunch.hasExplicitDestination
+            } else {
+                val merged = JSONObject(resolvedPageData(intent).text)
+                val hasExplicitServer =
+                    merged.optNonNullString(build.raft.app.RAFT_SHELL_SERVER_ID).isNotEmpty() ||
+                        merged.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).isNotEmpty() ||
+                        merged.optNonNullString(KEY_APP_SHELL_NOTIFICATION_SERVER_ID).isNotEmpty()
+                if (!hasExplicitServer) {
+                    val multiShellHostEnabled =
+                        runCatching {
+                            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
+                                .readMultiShellHostEnabledSync()
+                        }.getOrDefault(false)
+                    if (multiShellHostEnabled) {
+                        currentAndroidShellRouteOwner(applicationContext)?.let { owner ->
+                            AndroidShellWindowStore.persistedLauncherServerId(owner.environmentId, owner.accountId)
+                                ?.let { serverId ->
+                                    merged.put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                                    merged.put(build.raft.app.RAFT_SHELL_SERVER_ID, serverId)
+                                    intent?.putExtra(KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+                                    intent?.let { it.flags = it.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv() }
+                                }
+                        }
+                    }
+                }
+            }
+        }
         prepareHomeColdStartSplashIfNeeded()
         super.onCreate(savedInstanceState)
         if (!AndroidLoginTransitionRouting.observeHost(this)) {
@@ -992,8 +1038,10 @@ internal open class RaftCmpActivity :
         requestHighestSupportedDisplayMode()
         schedulePickedThreadAttachmentCacheCleanup()
         installHuaweiAndroid12InsetsAnimationWorkaroundIfNeeded()
-        nav3SavedKeysText = savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
-        nav3SavedRootTab = savedInstanceState?.getString(RAFT_NAV3_STACK_ROOT_TAB_KEY)
+        nav3SavedKeysText =
+            if (clearSavedNav3ForPendingLaunch) null else savedInstanceState?.getString(RAFT_NAV3_STACK_STATE_KEY)
+        nav3SavedRootTab =
+            if (clearSavedNav3ForPendingLaunch) null else savedInstanceState?.getString(RAFT_NAV3_STACK_ROOT_TAB_KEY)
         nav3Results =
             RaftStackActivityResults(
                 isOpen = { key -> nav3Stack?.pages?.any { it.contentKey == key } == true },
@@ -1679,6 +1727,7 @@ internal open class RaftCmpActivity :
         if (shouldReleaseAndroidShellWindow(isFinishing, isChangingConfigurations)) {
             androidShellLaunchTarget?.let { target ->
                 AndroidShellWindowRegistry.unregister(target.shellInstanceId)
+                AndroidShellWindowStore.remove(target.shellInstanceId)
                 target.serverId?.takeIf(String::isNotBlank)?.let { serverId ->
                     AndroidAppScopeRealtimeOwner.releaseRealtimeOwner(
                         serverId = ServerId(serverId),
@@ -1881,6 +1930,11 @@ internal open class RaftCmpActivity :
         val target = androidShellLaunchTargetFromPageData(appShellPageDataFromIntent(intent)) ?: return
         androidShellLaunchTarget = target
         AndroidShellWindowRegistry.register(target, taskId = taskId)
+        AndroidShellWindowStore.recordRegistered(
+            target = target,
+            taskId = taskId,
+            fallbackOwner = currentAndroidShellRouteOwner(applicationContext),
+        )
         RaftAppLog.record(
             "SlockKuiklyActivity",
             "shell_window_registered shellInstanceId=${target.shellInstanceId} " +
@@ -2096,6 +2150,8 @@ internal open class RaftCmpActivity :
         val data = JSONObject(pageData.toRaftJsonString())
         val replaceCurrent = shouldReplaceCurrentPage(data)
         if (pageName == RaftPages.LOGIN && replaceCurrent) {
+            AndroidShellWindowStore.clear()
+            AndroidPendingLauncherTaskLaunchStore.clear()
             AndroidLoginTransitionRouting.openReplacement(this, data)
             // Sign-out from a stack page (Account): the window is replaced as today; nothing on the
             // stack survives it, nor comes back with a recreation.
@@ -2113,8 +2169,13 @@ internal open class RaftCmpActivity :
                 start(this, pageName, data, animated = !shouldOpenWithoutAnimation(data))
             }
         }
+        val sourcePageData = runCatching { JSONObject(resolvedPageData(intent).text) }.getOrNull()
         if (from == null && AndroidLoginTransitionRouting.isPostAuthReplacement(
-                intent?.getStringExtra(KEY_PAGE_NAME), pageName, replaceCurrent,
+                sourcePage = intent?.getStringExtra(KEY_PAGE_NAME),
+                destination = pageName,
+                replaceCurrent = replaceCurrent,
+                sourcePageData = sourcePageData,
+                destinationPageData = data,
             )) {
             if (!AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
                     this, launchDestination = startDestination,
@@ -3585,21 +3646,58 @@ internal open class RaftCmpActivity :
                     KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                         .readMultiShellHostEnabledSync()
                 }.getOrDefault(false)
-            // A server switch to a server that already has a window: that window, and as it is
-            // when the switch names no destination (androidServerSwitchExistingWindowOrNull).
+            // A server switch to a server that already has a window: check live registry first,
+            // then reconcile persisted windows + Android appTasks so dead tasks in Recents are
+            // revived instead of spawning duplicate windows after process death.
             val existingWindow =
-                if (clearTask) null else androidServerSwitchExistingWindowOrNull(pageData, multiShellHostEnabled)
+                if (clearTask) {
+                    null
+                } else {
+                    androidServerSwitchExistingWindowOrNull(pageData, multiShellHostEnabled)
+                        ?: if (multiShellHostEnabled) {
+                            val owner = pageData.androidShellRouteOwnerOrNull()
+                            if (owner != null) {
+                                val reconciled =
+                                    AndroidShellWindowStore.reconcile(
+                                        appTasks = snapshotAndroidAppTasks(context),
+                                        environmentId = owner.environmentId,
+                                        accountId = owner.accountId,
+                                    )
+                                androidServerSwitchReconciledWindowOrNull(pageData, true, reconciled)
+                            } else {
+                                null
+                            }
+                        } else {
+                            null
+                        }
+                }
             val forwardTaskId = existingWindow?.bringForwardTaskId
-            if (existingWindow != null && forwardTaskId != null && bringAppTaskToFront(context, forwardTaskId)) {
-                RaftAppLog.record(
-                    "SlockKuiklyActivity",
-                    "shell_window_brought_forward shellInstanceId=${existingWindow.target.shellInstanceId} " +
-                        "taskId=$forwardTaskId",
-                )
-                return
+            if (existingWindow != null && forwardTaskId != null) {
+                val stashedForDeadLauncher = existingWindow.isDead && !existingWindow.target.documentShell
+                if (stashedForDeadLauncher) {
+                    AndroidPendingLauncherTaskLaunchStore.stash(
+                        taskId = forwardTaskId,
+                        serverId = pageData.androidShellRouteOwnerOrNull()?.serverId
+                            ?: pageData.optNonNullString(build.raft.app.RAFT_SHELL_SERVER_ID).takeIf { it.isNotEmpty() }
+                            ?: pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).takeIf { it.isNotEmpty() },
+                        initialTab = pageData.optNonNullString(KEY_APP_SHELL_INITIAL_TAB).takeIf { it.isNotEmpty() },
+                        tapEpochMillis = pageData.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L),
+                    )
+                }
+                if (bringAppTaskToFront(context, forwardTaskId, removeOnFailure = existingWindow.isDead)) {
+                    RaftAppLog.record(
+                        "SlockKuiklyActivity",
+                        "shell_window_brought_forward shellInstanceId=${existingWindow.target.shellInstanceId} " +
+                            "taskId=$forwardTaskId dead=${existingWindow.isDead}",
+                    )
+                    return
+                }
+                if (stashedForDeadLauncher) {
+                    AndroidPendingLauncherTaskLaunchStore.clear()
+                }
             }
             val target =
-                existingWindow?.target
+                existingWindow?.target?.takeUnless { existingWindow.isDead && forwardTaskId != null }
                     ?: androidShellLaunchTargetFromPageData(pageData, multiShellHostEnabled)
                     ?: resolveAndroidShellLaunchTarget(pageData, multiShellHostEnabled)
             val resolvedPageData = pageData.withAndroidShellLaunchTarget(target)
@@ -3615,15 +3713,35 @@ internal open class RaftCmpActivity :
         }
 
         /** Brings this app's task [taskId] to the front as it is (no Intent); false when it is gone. */
-        private fun bringAppTaskToFront(context: Context, taskId: Int): Boolean =
+        private fun bringAppTaskToFront(
+            context: Context,
+            taskId: Int,
+            removeOnFailure: Boolean = false,
+        ): Boolean =
             runCatching {
                 val task =
                     context.getSystemService(ActivityManager::class.java)
                         ?.appTasks
-                        ?.firstOrNull { it.taskInfo?.taskId == taskId }
-                        ?: return@runCatching false
-                task.moveToFront()
-                true
+                        ?.firstOrNull { appTask ->
+                            val info = runCatching { appTask.taskInfo }.getOrNull() ?: return@firstOrNull false
+                            @Suppress("DEPRECATION")
+                            val stableId = info.taskId.takeIf { it >= 0 } ?: info.persistentId
+                            stableId == taskId
+                        }
+                        ?: run {
+                            if (removeOnFailure) AndroidShellWindowStore.removeByTaskId(taskId)
+                            return@runCatching false
+                        }
+                try {
+                    task.moveToFront()
+                    true
+                } catch (_: Throwable) {
+                    if (removeOnFailure) {
+                        runCatching { task.finishAndRemoveTask() }
+                        AndroidShellWindowStore.removeByTaskId(taskId)
+                    }
+                    false
+                }
             }.getOrDefault(false)
 
         fun startAuthChooseServer(
@@ -3674,7 +3792,16 @@ internal open class RaftCmpActivity :
                     rawPageData.put(RaftDesktopShortcutContract.KeyLaunchId, it)
                 }
             }
-            return RaftPageData.fromJson(rawPageData)
+            val pageDataForIntent =
+                if (
+                    resolvedPageName(intent) == PAGE_APP_SHELL &&
+                    ((intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+                ) {
+                    sanitizeAppShellPageDataForHistoryLaunch(rawPageData)
+                } else {
+                    rawPageData
+                }
+            return RaftPageData.fromJson(pageDataForIntent)
         }
 
         private fun Intent?.isDiagnosticsDeepLinkIntent(): Boolean =

@@ -4,7 +4,11 @@ import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
 import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
 import build.raft.app.RAFT_ROUTE_SERVER_ID
 import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.data.RaftDesktopShortcutContract
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -17,6 +21,8 @@ class AndroidShellWindowContractTest {
     @After
     fun tearDown() {
         AndroidShellWindowRegistry.clearForTest()
+        AndroidShellWindowStore.clear()
+        AndroidPendingLauncherTaskLaunchStore.clear()
     }
 
     @Test
@@ -381,6 +387,272 @@ class AndroidShellWindowContractTest {
         assertFalse(shouldReleaseAndroidShellWindow(isFinishing = true, isChangingConfigurations = true))
         assertFalse(shouldReleaseAndroidShellWindow(isFinishing = false, isChangingConfigurations = false))
         assertTrue(shouldReleaseAndroidShellWindow(isFinishing = true, isChangingConfigurations = false))
+    }
+
+    @Test
+    fun persistedLauncherWindowRevivesDeadTaskAfterProcessDeathInsteadOfOpeningDuplicateDocument() {
+        val backingStore = InMemoryRaftKeyValueStore()
+        val previousProvider = AndroidShellWindowStore.storeProvider
+        AndroidShellWindowStore.storeProvider = { backingStore }
+        try {
+            val launcherTarget = AndroidShellLaunchTarget(DEFAULT_ANDROID_SHELL_INSTANCE_ID, null, documentShell = false)
+            AndroidShellWindowRegistry.register(launcherTarget, taskId = 16)
+            AndroidShellWindowStore.recordRegistered(launcherTarget, taskId = 16, fallbackOwner = serverAOwner)
+            AndroidShellWindowStore.recordServerClaim(DEFAULT_ANDROID_SHELL_INSTANCE_ID, "server-a", serverAOwner)
+
+            // Simulate process death (in-memory registry cleared, Recents still holds dead task 16).
+            AndroidShellWindowRegistry.clearForTest()
+            assertEquals("server-a", AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+
+            val appTasks =
+                listOf(
+                    AndroidAppTaskSnapshot(
+                        taskId = 16,
+                        isAlive = false,
+                        baseIntentData = null,
+                        baseActivityClassName = "build.raft.app.MainActivity",
+                    )
+                )
+            val reconciled = AndroidShellWindowStore.reconcile(appTasks, "https://api.test", "user-1")
+            val match = androidServerSwitchReconciledWindowOrNull(switchToServerA(), true, reconciled)!!
+
+            assertEquals(16, match.bringForwardTaskId)
+            assertTrue(match.isDead)
+            assertFalse(match.target.documentShell)
+            assertEquals(DEFAULT_ANDROID_SHELL_INSTANCE_ID, match.target.shellInstanceId)
+
+            // Even with a kept tab on a dead launcher task, bringForwardTaskId stays set (launcher uses stash + moveToFront).
+            val withTab = switchToServerA().put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, "activity")
+            val tabMatch = androidServerSwitchReconciledWindowOrNull(withTab, true, reconciled)!!
+            assertEquals(16, tabMatch.bringForwardTaskId)
+            assertTrue(tabMatch.isDead)
+            assertFalse(tabMatch.target.documentShell)
+
+            // Once task 16 disappears from Recents (swiped away), the persisted record is pruned.
+            val afterSwipe = AndroidShellWindowStore.reconcile(emptyList(), "https://api.test", "user-1")
+            assertTrue(afterSwipe.isEmpty())
+            assertNull(androidServerSwitchReconciledWindowOrNull(switchToServerA(), true, afterSwipe))
+            assertNull(AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+        } finally {
+            AndroidShellWindowStore.storeProvider = previousProvider
+        }
+    }
+
+    @Test
+    fun deadDocumentTaskInRecentsIsMatchedFromCanonicalUriWithoutPersistedRecord() {
+        val backingStore = InMemoryRaftKeyValueStore()
+        val previousProvider = AndroidShellWindowStore.storeProvider
+        AndroidShellWindowStore.storeProvider = { backingStore }
+        try {
+            val serverCOwner = AndroidShellRouteOwner("https://api.test", "user-1", "server-c")
+            val appTasks =
+                listOf(
+                    AndroidAppTaskSnapshot(
+                        taskId = 18,
+                        isAlive = false,
+                        baseIntentData = serverCOwner.shellCanonicalUri(),
+                        baseActivityClassName = "build.raft.app.shared.RaftDocumentShellActivity",
+                    )
+                )
+            val reconciled = AndroidShellWindowStore.reconcile(appTasks, "https://api.test", "user-1")
+            val switchToC =
+                JSONObject()
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                    .withAndroidShellRouteOwner(serverCOwner)
+
+            // No destination -> moveToFront revives dead task 18.
+            val keepMatch = androidServerSwitchReconciledWindowOrNull(switchToC, true, reconciled)!!
+            assertEquals(18, keepMatch.bringForwardTaskId)
+            assertTrue(keepMatch.isDead)
+            assertTrue(keepMatch.target.documentShell)
+            assertEquals(serverCOwner.shellCanonicalUri(), keepMatch.target.shellInstanceId)
+
+            // With a destination tab -> startActivity reuses dead task 18 via documentLaunchMode=intoExisting.
+            val tabSwitchToC = JSONObject(switchToC.toString()).put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, "activity")
+            val tabMatch = androidServerSwitchReconciledWindowOrNull(tabSwitchToC, true, reconciled)!!
+            assertNull(tabMatch.bringForwardTaskId)
+            assertTrue(tabMatch.isDead)
+            assertTrue(tabMatch.target.documentShell)
+
+            // Different account ignores and does not match server C's task.
+            assertTrue(AndroidShellWindowStore.reconcile(appTasks, "https://api.test", "user-2").isEmpty())
+        } finally {
+            AndroidShellWindowStore.storeProvider = previousProvider
+        }
+    }
+
+    @Test
+    fun pendingLauncherTaskLaunchConsumesOnceAndExpiresAfterTtl() {
+        var now = 1_000L
+        val previousClock = AndroidPendingLauncherTaskLaunchStore.elapsedMsProvider
+        AndroidPendingLauncherTaskLaunchStore.elapsedMsProvider = { now }
+        try {
+            AndroidPendingLauncherTaskLaunchStore.stash(taskId = 16, serverId = "server-a", initialTab = "activity", tapEpochMillis = 99L)
+            assertNull(AndroidPendingLauncherTaskLaunchStore.consume(taskId = 17))
+            val consumed = AndroidPendingLauncherTaskLaunchStore.consume(taskId = 16)!!
+            assertEquals("server-a", consumed.serverId)
+            assertEquals("activity", consumed.initialTab)
+            assertEquals(99L, consumed.tapEpochMillis)
+            assertTrue(consumed.hasExplicitDestination)
+            // One-shot: second consume returns null.
+            assertNull(AndroidPendingLauncherTaskLaunchStore.consume(taskId = 16))
+
+            // Expired stash returns null.
+            AndroidPendingLauncherTaskLaunchStore.stash(taskId = 16, serverId = "server-a", initialTab = null)
+            now += 15_000L
+            assertNull(AndroidPendingLauncherTaskLaunchStore.consume(taskId = 16))
+        } finally {
+            AndroidPendingLauncherTaskLaunchStore.elapsedMsProvider = previousClock
+        }
+    }
+
+    @Test
+    fun historyLaunchSanitizerStripsOneShotPayloadsAndPreservesDocumentWindowIdentity() {
+        val owner = AndroidShellRouteOwner("https://api.test", "user-1", "server-b")
+        val target = AndroidShellLaunchTarget(owner.shellCanonicalUri(), "server-b", documentShell = true, routeOwner = owner)
+        val raw =
+            JSONObject()
+                .put("pageName", RaftCmpActivity.PAGE_APP_SHELL)
+                .put("instanceId", "notification-app-shell-12345")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-b")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "channel-qa-b")
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID, "msg-1")
+                .put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, "activity")
+                .put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 123456789L)
+                .put(RAFT_SERVER_SWITCH_WINDOW_ID, owner.shellCanonicalUri())
+                .put(RAFT_SERVER_SWITCH_KEEP_WINDOW, true)
+                .put("slockSuppressRestoreLanding", true)
+                .put(RaftDesktopShortcutContract.KeyTargetId, "ch-1")
+                .withAndroidShellLaunchTarget(target)
+
+        val sanitized = sanitizeAppShellPageDataForHistoryLaunch(raw)
+
+        // Window identity preserved (including slockShellServerId written by withAndroidShellLaunchTarget).
+        assertEquals(owner.shellCanonicalUri(), sanitized.getString(ANDROID_SHELL_INSTANCE_ID_KEY))
+        assertTrue(sanitized.getBoolean(ANDROID_DOCUMENT_SHELL_KEY))
+        assertEquals("server-b", sanitized.getString(ANDROID_SHELL_SERVER_ID_KEY))
+        assertEquals("server-b", sanitized.getString(RAFT_SHELL_SERVER_ID))
+        assertEquals("https://api.test", sanitized.getString(RAFT_ROUTE_ENVIRONMENT_ID))
+        assertEquals("user-1", sanitized.getString(RAFT_ROUTE_ACCOUNT_ID))
+        assertEquals("server-b", sanitized.getString(RAFT_ROUTE_SERVER_ID))
+
+        // One-shot payloads stripped so reopening from Recents lands cleanly on Home.
+        assertFalse(sanitized.has("instanceId"))
+        assertFalse(sanitized.has(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
+        assertFalse(sanitized.has(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID))
+        assertFalse(sanitized.has(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_MESSAGE_ID))
+        assertFalse(sanitized.has(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB))
+        assertFalse(sanitized.has(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS))
+        assertFalse(sanitized.has(RAFT_SERVER_SWITCH_WINDOW_ID))
+        assertFalse(sanitized.has(RAFT_SERVER_SWITCH_KEEP_WINDOW))
+        assertFalse(sanitized.has("slockSuppressRestoreLanding"))
+        assertFalse(sanitized.has(RaftDesktopShortcutContract.KeyTargetId))
+    }
+
+    @Test
+    fun launcherRecordRegisteredPreservesPersistedServerAndNullAppTasksDoesNotWipeStore() {
+        val backingStore = InMemoryRaftKeyValueStore()
+        val previousProvider = AndroidShellWindowStore.storeProvider
+        AndroidShellWindowStore.storeProvider = { backingStore }
+        try {
+            val ownerA = AndroidShellRouteOwner("https://api.test", "user-1", "server-a")
+            val ownerB = AndroidShellRouteOwner("https://api.test", "user-1", "server-b")
+            val launcherTarget = AndroidShellLaunchTarget(DEFAULT_ANDROID_SHELL_INSTANCE_ID, null, documentShell = false)
+            AndroidShellWindowStore.recordRegistered(launcherTarget, taskId = 16, fallbackOwner = ownerA)
+            assertEquals("server-a", AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+
+            // LMK revival with global fallback owner pointing to server-b must not overwrite launcher's server-a.
+            AndroidShellWindowStore.recordRegistered(launcherTarget, taskId = 16, fallbackOwner = ownerB)
+            assertEquals("server-a", AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+
+            // Failed ActivityManager snapshot (null) must not prune the persisted store.
+            assertTrue(AndroidShellWindowStore.reconcile(null, "https://api.test", "user-1").isEmpty())
+            assertEquals("server-a", AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+
+            // Reassigned taskId now carrying a document canonical URI must not match as launcher.
+            val reassignedTasks =
+                listOf(
+                    AndroidAppTaskSnapshot(
+                        taskId = 16,
+                        isAlive = false,
+                        baseIntentData = ownerB.shellCanonicalUri(),
+                        baseActivityClassName = "build.raft.app.shared.RaftDocumentShellActivity",
+                    )
+                )
+            val reconciled = AndroidShellWindowStore.reconcile(reassignedTasks, "https://api.test", "user-1")
+            assertEquals(1, reconciled.size)
+            assertTrue(reconciled.single().documentShell)
+            assertEquals("server-b", reconciled.single().serverId)
+            assertNull(AndroidShellWindowStore.persistedLauncherServerId("https://api.test", "user-1"))
+        } finally {
+            AndroidShellWindowStore.storeProvider = previousProvider
+        }
+    }
+
+    @Test
+    fun reconciledRichDestinationDoesNotDropPayloadViaMoveToFront() {
+        val ownerA = AndroidShellRouteOwner("https://api.test", "user-1", "server-a")
+        val deadLauncher =
+            listOf(
+                ReconciledAndroidShellWindow(
+                    shellInstanceId = DEFAULT_ANDROID_SHELL_INSTANCE_ID,
+                    taskId = 16,
+                    serverId = "server-a",
+                    documentShell = false,
+                    routeOwner = ownerA,
+                    isAlive = false,
+                )
+            )
+        val notificationToThread =
+            JSONObject()
+                .withAndroidShellRouteOwner(ownerA)
+                .put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_THREAD_ID, "ch-1")
+        val match = androidServerSwitchReconciledWindowOrNull(notificationToThread, true, deadLauncher)!!
+        assertNull(match.bringForwardTaskId)
+
+        val shortcutToTarget =
+            JSONObject()
+                .withAndroidShellRouteOwner(ownerA)
+                .put(RaftDesktopShortcutContract.KeyTargetId, "ch-2")
+        assertNull(androidServerSwitchReconciledWindowOrNull(shortcutToTarget, true, deadLauncher)!!.bringForwardTaskId)
+    }
+
+    @Test
+    fun chooseServerFromShellOrDocumentShellTargetIsNotPostAuthReplacement() {
+        assertTrue(
+            AndroidLoginTransitionRouting.isPostAuthReplacement(
+                sourcePage = RaftPages.AUTH_CHOOSE_SERVER,
+                destination = RaftPages.APP_SHELL,
+                replaceCurrent = true,
+                sourcePageData = JSONObject(),
+                destinationPageData = JSONObject(),
+            )
+        )
+        assertFalse(
+            AndroidLoginTransitionRouting.isPostAuthReplacement(
+                sourcePage = RaftPages.AUTH_CHOOSE_SERVER,
+                destination = RaftPages.APP_SHELL,
+                replaceCurrent = true,
+                sourcePageData = JSONObject().put("slockChooseServerFromShell", true),
+                destinationPageData = JSONObject(),
+            )
+        )
+        assertFalse(
+            AndroidLoginTransitionRouting.isPostAuthReplacement(
+                sourcePage = RaftPages.AUTH_CHOOSE_SERVER,
+                destination = RaftPages.APP_SHELL,
+                replaceCurrent = true,
+                sourcePageData = JSONObject(),
+                destinationPageData = JSONObject().put(ANDROID_DOCUMENT_SHELL_KEY, true),
+            )
+        )
+    }
+
+    @Test
+    fun optNonNullStringTreatsJsonNullAsEmpty() {
+        val json = JSONObject().put(RAFT_SHELL_SERVER_ID, JSONObject.NULL).put("real", "  srv-1  ")
+        assertEquals("", json.optNonNullString(RAFT_SHELL_SERVER_ID))
+        assertEquals("srv-1", json.optNonNullString("real"))
     }
 
 }

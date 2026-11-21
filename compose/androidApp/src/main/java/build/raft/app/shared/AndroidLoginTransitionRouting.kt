@@ -115,12 +115,36 @@ internal object AndroidLoginTransitionRouting {
         return accepted
     }
 
-    fun isPostAuthReplacement(sourcePage: String?, destination: String, replaceCurrent: Boolean): Boolean =
-        replaceCurrent &&
-            destination in setOf(RaftPages.APP_SHELL, RaftPages.AUTH_CHOOSE_SERVER) &&
-            sourcePage in setOf(
+    fun isPostAuthReplacement(
+        sourcePage: String?,
+        destination: String,
+        replaceCurrent: Boolean,
+        sourcePageData: JSONObject? = null,
+        destinationPageData: JSONObject? = null,
+    ): Boolean {
+        if (!replaceCurrent) return false
+        if (destination !in setOf(RaftPages.APP_SHELL, RaftPages.AUTH_CHOOSE_SERVER)) return false
+        if (sourcePage !in setOf(
                 RaftPages.LOGIN,
                 RaftPages.AUTH_CHOOSE_SERVER,
                 "compose_auth_profile_setup",
             )
+        ) {
+            return false
+        }
+        // Choose Workspace opened from a live shell window (not post-login) shares that shell's
+        // task: retiring task sources on close would poison the live shell underneath it.
+        if (sourcePage == RaftPages.AUTH_CHOOSE_SERVER &&
+            sourcePageData?.optBoolean("slockChooseServerFromShell", false) == true
+        ) {
+            return false
+        }
+        if (destination == RaftPages.APP_SHELL &&
+            (destinationPageData?.optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false) == true ||
+                destinationPageData?.optNonNullString(build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID)?.isNotEmpty() == true)
+        ) {
+            return false
+        }
+        return true
+    }
 }

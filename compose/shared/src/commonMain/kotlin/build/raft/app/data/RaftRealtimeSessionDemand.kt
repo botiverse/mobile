@@ -3,10 +3,31 @@ package build.raft.app.data
 import build.raft.app.data.realtime.realtimeCurrentServerScopedServerIds
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+
+/**
+ * Host listener notified when a shell window's claimed server changes (or null when released), so
+ * Android can keep its persisted multi-window mapping current for windows like the launcher shell
+ * whose Intent carries no fixed server id.
+ */
+fun interface RaftShellWindowServerListener {
+    fun onShellServerChanged(shellInstanceId: String, serverId: String?)
+}
+
+/** Installed by the platform host (androidApp); while null, nothing is told about window claims. */
+object RaftShellWindowServerHost {
+    @Volatile
+    var listener: RaftShellWindowServerListener? = null
+
+    internal fun notify(shellInstanceId: String, serverId: String?) {
+        val current = listener ?: return
+        runCatching { current.onShellServerChanged(shellInstanceId, serverId) }
+    }
+}
 
 /**
  * Which servers keep a realtime session when workspaces open in separate app windows (Phase 3,
@@ -27,7 +48,9 @@ import kotlinx.coroutines.flow.update
  * Time comes in as `nowMillis` from the caller, so tests drive it with a virtual clock. A window
  * whose visibility was never reported counts as visible, like [isRaftHostVisible].
  */
-internal class RaftRealtimeSessionDemand {
+internal class RaftRealtimeSessionDemand(
+    private val notifyHost: Boolean = false,
+) {
     private class ShellDemand {
         var serverId: String? = null
         var visible: Boolean = true
@@ -54,21 +77,29 @@ internal class RaftRealtimeSessionDemand {
             release(shellInstanceId)
             return
         }
+        val normalizedShell = normalizeShell(shellInstanceId)
         val changed =
             synchronized(lock) {
-                val shell = shells.getOrPut(normalizeShell(shellInstanceId)) { ShellDemand() }
+                val shell = shells.getOrPut(normalizedShell) { ShellDemand() }
                 val previous = shell.serverId
                 shell.serverId = server
                 if (shell.lastVisibleOrder == 0L) shell.lastVisibleOrder = ++visibleOrder
                 previous != server
             }
-        if (changed) bumpRevision()
+        if (changed) {
+            if (notifyHost) RaftShellWindowServerHost.notify(normalizedShell, server)
+            bumpRevision()
+        }
     }
 
     /** The window closed: drop its claim and visibility. Other windows on the same server keep it wanted. */
     fun release(shellInstanceId: String) {
-        val removed = synchronized(lock) { shells.remove(normalizeShell(shellInstanceId)) }
-        if (removed?.serverId != null) bumpRevision()
+        val normalizedShell = normalizeShell(shellInstanceId)
+        val removed = synchronized(lock) { shells.remove(normalizedShell) }
+        if (removed?.serverId != null) {
+            if (notifyHost) RaftShellWindowServerHost.notify(normalizedShell, null)
+            bumpRevision()
+        }
     }
 
     /**

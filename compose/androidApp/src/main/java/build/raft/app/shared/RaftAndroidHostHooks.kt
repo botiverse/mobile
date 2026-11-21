@@ -3,6 +3,8 @@ package build.raft.app.shared
 import android.content.Context
 import build.raft.app.RaftAndroidWebViewHooks
 import build.raft.app.RaftWebViewDocument
+import build.raft.app.data.RaftShellWindowServerHost
+import build.raft.app.data.RaftShellWindowServerListener
 import build.raft.app.image.RaftImageHost
 import build.raft.app.image.RaftManagedImageRead
 import build.raft.app.image.RaftManagedImageReader
@@ -62,6 +64,14 @@ internal object RaftAndroidHostHooks {
             )
         }
         AndroidUnreadNotificationPoster.installConversationReadListener(appContext)
+        RaftShellWindowServerHost.listener =
+            RaftShellWindowServerListener { shellInstanceId, serverId ->
+                AndroidShellWindowStore.recordServerClaim(
+                    shellInstanceId = shellInstanceId,
+                    serverId = serverId,
+                    currentOwner = currentAndroidShellRouteOwner(appContext),
+                )
+            }
         val releaseNotesDocuments = RaftReleaseNotesDocumentCache(appContext)
         RaftAndroidWebViewHooks.mainDocumentProvider = { url ->
             releaseNotesDocuments.loadForWebView(url)?.let { document ->

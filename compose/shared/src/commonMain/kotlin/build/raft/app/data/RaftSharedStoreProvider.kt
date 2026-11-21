@@ -3036,7 +3036,7 @@ internal class RaftSharedStoreProvider private constructor(
                     readReceiptRepository = readReceiptRepository,
                     conversationRepository = conversationRepository,
                     memberRepository = memberRepository,
-                    serverMembersStore = serverMembersStore,
+                    serverMembersStore = serverMembersStore(scope),
                     tasksDataStore = tasksDataStore,
                     channelRepository = channelRepository,
                     persistSlices = listOf(activityPersistSlice),
@@ -3082,7 +3082,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onBadgeReleased = { serverId ->
                     activityUnreadSummaryStore.refresh(ServerId(serverId), reason = ActivityBadgeReleasedSummaryReason)
                 },
-                activityObjectsRepository = NetworkActivityObjectsRepository(networkClient),
+                activityObjectsRepository = NetworkActivityObjectsRepository(networkClient(scope)),
                 hiddenRealtimeBackgroundRefreshIntervalMillis = ActivityHiddenRealtimeBackgroundRefreshIntervalMillis,
                 syncReloads = syncReloadLedger,
                 inboxInPlaceEnabled = ::inboxInPlaceEnabled,

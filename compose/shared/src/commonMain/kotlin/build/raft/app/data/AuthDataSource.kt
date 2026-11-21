@@ -1021,7 +1021,8 @@ class SharedAuthDataSource(
     suspend fun createServer(
         name: String,
         slug: String? = null,
-        region: String? = null
+        region: String? = null,
+        selectCreatedServer: Boolean = true,
     ): SharedAuthResult<StoredAuthSession> {
         var session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
         val normalizedName = name.trim()
@@ -1099,6 +1100,14 @@ class SharedAuthDataSource(
             ).also { persisted = it }
         }
         val updated = persisted ?: return SharedAuthResult.Unauthenticated
+        if (!selectCreatedServer) {
+            return SharedAuthResult.Success(
+                updated.copy(
+                    selectedServerId = selected.id,
+                    selectedServerSlug = selected.slug,
+                )
+            )
+        }
         return selectStoredAuthServer(
             sessionStore = sessionStore,
             expectedSession = updated,

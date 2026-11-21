@@ -337,10 +337,12 @@ internal fun AppShellAppearanceEffects(
             sharedStores.markActiveAppShellPager(pager.pagerId)
         }
     }
-    // The app wears this shell's selected server theme from its first composition, and again
-    // whenever it appears (another window's shell may have taken over meanwhile).
-    LaunchedEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
+    // The app wears this shell's selected server theme synchronously on composition commit
+    // (preempting followProcessServerTheme before Frame 1 on cold start of another server's
+    // window), and again whenever it appears (another window's shell may have taken over meanwhile).
+    DisposableEffect(sharedStores, storeScope, visibleAppearanceGeneration) {
         sharedStores.followServerTheme(storeScope)
+        onDispose {}
     }
     // The account is scheduled for deletion (a 403 `account_deletion_pending` on any request): open
     // the web deletion page, which shows the pending state and its Cancel. Once per session; the

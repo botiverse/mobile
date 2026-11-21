@@ -409,16 +409,17 @@ internal fun SharedHomeActivityScreen(
     val conversationListContext by
         conversationListContextSource.second.collectAsState(conversationListContextSource.first)
     val conversationListPending = conversationListContext == null
+    val scopedMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val conversationListAgentStatusResolver =
-        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
-            raftScopedAgentStatusResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
+        remember(scopedMembersStore, activitySummaryServerId) {
+            raftScopedAgentStatusResolver(scopedMembersStore, activitySummaryServerId.value)
         }
     // Activity faces (senders, DM peers) load from this server's member directory, like Home DM rows.
     val activityAvatarSource =
-        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
+        remember(scopedMembersStore, activitySummaryServerId) {
             val serverId = activitySummaryServerId.value.takeIf { it.isNotBlank() }
             ActivityAvatarSource(
-                memberAvatarResolver = raftMemberAvatarResolver(sharedStores.serverMembersStore, serverId),
+                memberAvatarResolver = raftMemberAvatarResolver(scopedMembersStore, serverId),
                 cacheServerId = serverId,
             )
         }
@@ -630,8 +631,8 @@ internal fun SharedHomeActivityScreen(
     }
     // botiverse/slock #11273: a DM row with an App Bot shows the Bot badge after the name.
     val activityAppBotResolver =
-        remember(sharedStores.serverMembersStore, activitySummaryServerId) {
-            raftMemberAppBotResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
+        remember(scopedMembersStore, activitySummaryServerId) {
+            raftMemberAppBotResolver(scopedMembersStore, activitySummaryServerId.value)
         }
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
