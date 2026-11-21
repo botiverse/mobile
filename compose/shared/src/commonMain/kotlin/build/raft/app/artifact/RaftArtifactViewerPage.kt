@@ -601,6 +601,7 @@ private fun RaftArtifactViewerScreen() {
     val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
     val downloadSavedToDownloads = stringResource(Res.string.file_preview_download_saved)
     val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
+    val downloadSavedToFiles = stringResource(Res.string.file_preview_export_saved)
     val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
     val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
@@ -685,6 +686,7 @@ private fun RaftArtifactViewerScreen() {
                                         savedMessage = downloadSaved,
                                         savedToDownloadsMessage = downloadSavedToDownloads,
                                         alreadySavedMessage = downloadAlreadySaved,
+                                        savedToFilesMessage = downloadSavedToFiles,
                                         failedMessage = downloadFailed,
                                     )
                                 }
@@ -1296,6 +1298,7 @@ private suspend fun raftArtifactViewerSaveDownload(
     savedMessage: String,
     savedToDownloadsMessage: String,
     alreadySavedMessage: String,
+    savedToFilesMessage: String,
     failedMessage: String,
 ) {
     val owner = currentAttachmentOwnerLease(host.storeScope)
@@ -1360,6 +1363,7 @@ private suspend fun raftArtifactViewerSaveDownload(
                     saved = savedMessage,
                     savedToDownloads = savedToDownloadsMessage,
                     alreadySaved = alreadySavedMessage,
+                    savedToFiles = savedToFilesMessage,
                 )
             )
         }
@@ -1385,10 +1389,13 @@ internal fun raftArtifactViewerSavedToast(
     saved: String,
     savedToDownloads: String,
     alreadySaved: String,
+    savedToFiles: String,
 ): String =
     when {
         result?.optBoolean("alreadySaved") == true -> alreadySaved
         result?.optBoolean("cached") == true -> savedToDownloads
+        // iOS: exported through the Files picker (HRBridgeModule `savedTo`).
+        result?.optString("savedTo") == "files" -> savedToFiles
         else -> saved
     }
 

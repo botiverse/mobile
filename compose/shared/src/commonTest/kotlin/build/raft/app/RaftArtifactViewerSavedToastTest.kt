@@ -12,6 +12,7 @@ class RaftArtifactViewerSavedToastTest {
             saved = "saved",
             savedToDownloads = "savedToDownloads",
             alreadySaved = "alreadySaved",
+            savedToFiles = "savedToFiles",
         )
 
     @Test
@@ -21,8 +22,13 @@ class RaftArtifactViewerSavedToastTest {
     }
 
     @Test
+    fun iosSaysTheFileWentToFiles() {
+        assertEquals("savedToFiles", toast("""{"status":"saved","message":"Saved to Files","savedTo":"files","cached":false}"""))
+    }
+
+    @Test
     fun anyOtherSaveSaysSavedNotTheHostsWords() {
-        // The iOS Files export still answers in English; desktop answers with no flags at all.
+        // An older iOS host without `savedTo` answers in English only; desktop answers with no flags.
         assertEquals("saved", toast("""{"status":"saved","message":"Saved to Files","cached":false}"""))
         assertEquals("saved", toast("""{"status":"saved","uri":"file:/Users/a/Downloads/a.zip"}"""))
         assertEquals("saved", toast(null))

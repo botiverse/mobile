@@ -5776,6 +5776,8 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     [self raft_finishAttachmentExport:@{
         @"status" : @"saved",
         @"message" : @"Saved to Files",
+        // Where it went, for the shared toast's own (localized) words; `message` is the log's.
+        @"savedTo" : @"files",
         @"uri" : savedURL.absoluteString ?: @"",
         @"fileName" : self.raft_attachmentExportFileName ?: @"attachment",
         @"cached" : @NO,
