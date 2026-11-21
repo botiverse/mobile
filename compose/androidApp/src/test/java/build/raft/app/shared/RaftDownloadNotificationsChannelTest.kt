@@ -5,8 +5,11 @@ import android.app.Application
 import android.app.NotificationManager
 import android.content.Context
 import org.robolectric.RuntimeEnvironment
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -25,6 +28,11 @@ class RaftDownloadNotificationsChannelTest {
     private val context: Context = RuntimeEnvironment.getApplication()
     private val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    @After
+    fun resetCaches() {
+        RaftDownloadNotifications.resetCachesForTests()
+    }
+
     @Test
     fun progressNotificationChannelExistsWithoutNotificationPermission() {
         shadowOf(context as Application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
@@ -35,6 +43,38 @@ class RaftDownloadNotificationsChannelTest {
         assertNotNull(
             "the service notification's channel must exist before startForeground",
             manager.getNotificationChannel(notification.channelId)
+        )
+    }
+
+    @Test
+    fun ensureChannelCachesPerApplicationContextAndRecreatesAfterReset() {
+        RaftDownloadNotifications.ensureChannel(context)
+        assertNotNull(manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID))
+
+        // Removing the channel directly proves a repeat call hits the in-memory cache rather than
+        // issuing getNotificationChannel/createNotificationChannel Binder IPCs on every progress tick.
+        manager.deleteNotificationChannel(RaftDownloadNotifications.CHANNEL_ID)
+        RaftDownloadNotifications.ensureChannel(context)
+        assertNull(
+            "repeat ensureChannel on the same application context must short-circuit via cache",
+            manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID)
+        )
+
+        RaftDownloadNotifications.resetCachesForTests()
+        RaftDownloadNotifications.ensureChannel(context)
+        assertNotNull(manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID))
+    }
+
+    @Test
+    fun progressLaunchAppIntentReusesCachedPendingIntentInstance() {
+        val first = RaftDownloadNotifications.progressLaunchAppIntentForTest(context)
+        val second = RaftDownloadNotifications.progressLaunchAppIntentForTest(context)
+
+        assertNotNull("launcher activity from manifest must resolve a progress PendingIntent", first)
+        assertSame(
+            "progress notifications must reuse the cached PendingIntent across ticks",
+            first,
+            second,
         )
     }
 }

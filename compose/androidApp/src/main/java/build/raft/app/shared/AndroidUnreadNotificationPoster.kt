@@ -39,6 +39,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -150,6 +152,11 @@ internal object AndroidUnreadNotificationPoster {
         Executors.newSingleThreadScheduledExecutor { runnable ->
             Thread(runnable, "raft-unread-notifications").apply { isDaemon = true }
         }
+    }
+
+    /** Serialized single-thread dispatcher shared with realtime notification post/retract work. */
+    internal val backgroundDispatcher: CoroutineDispatcher by lazy {
+        backgroundExecutor.asCoroutineDispatcher()
     }
 
     /** Runs a deferred summary update; tests replace it to run the update when they choose. */

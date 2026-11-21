@@ -44,8 +44,11 @@ import build.raft.app.model.ServerId
 import com.tencent.mmkv.MMKV
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -266,17 +269,12 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
     /** Another device read the conversation: close what this tray shows of it (contract §5). */
     override fun onNotificationRetracted(event: NotificationRetracted) {
-        val closed =
-            AndroidUnreadNotificationPoster.retract(
-                appContext,
-                RaftNotificationRetract(
-                    serverId = event.serverId.value,
-                    groupKey = event.groupKey,
-                    conversationId = event.conversationId,
-                    throughSeq = event.throughSeq
-                )
-            )
-        RaftAppLog.i(LOG_TAG, "notification_retract source=socket serverId=${event.serverId.value} closed=$closed")
+        // Dispatched onto the shared serialized notification queue off the main thread so
+        // groupingLock contention and NotificationManager Binder IPCs never stall the UI thread,
+        // while keeping strict FIFO order with fallback notification posts.
+        notificationQueue.enqueue {
+            retractNotification(appContext, event)
+        }
     }
 
     /**
@@ -285,46 +283,14 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
      * a tap opens the app (Activity).
      */
     override suspend fun maybePostBackgroundNotificationNotice(event: NotificationNoticeReceived, isAppInForeground: Boolean) {
-        val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
-        val remotePushActive =
-            isRemotePushActive(
-                appContext,
-                sessionStore,
-                NotificationPushReceived(
-                    serverId = event.serverId,
-                    kind = build.raft.app.model.ConversationKind.Channel,
-                    messageId = build.raft.app.model.MessageId(event.notificationId ?: event.groupKey),
-                    title = event.title,
-                    body = event.body,
-                    tag = event.groupKey
-                )
+        notificationQueue.enqueueAndAwait {
+            postBackgroundNotificationNotice(
+                appContext = appContext,
+                sessionStore = sessionStore,
+                event = event,
+                isAppInForeground = isAppInForeground,
             )
-        if (!shouldPostBackgroundUnreadNotification(false, preferenceEnabled, isAppInForeground, remotePushActive)) {
-            RaftAppLog.w(
-                LOG_TAG,
-                "background_notice_skip reason=${backgroundUnreadNotificationSkipReason(false, preferenceEnabled, isAppInForeground, remotePushActive)} " +
-                    "serverId=${event.serverId.value} category=${event.category}"
-            )
-            return
         }
-        val request =
-            org.json.JSONObject()
-                .put("serverId", event.serverId.value)
-                .put("groupKey", event.groupKey)
-                .put("category", event.category)
-                .put("title", event.title.ifBlank { appContext.getString(R.string.app_name) })
-                .put("body", event.body)
-                .put("notificationKey", event.notificationId ?: event.groupKey)
-                .put("messageId", event.notificationId ?: event.groupKey)
-                .put("silent", event.silent == true)
-                .put("route", event.routeJson.orEmpty())
-                .put("subtitle", event.subtitle.orEmpty())
-                .let { with(AndroidUnreadNotificationPoster) { it.putRaftNotificationLocalization(event.localization) } }
-        val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
-        RaftAppLog.w(
-            LOG_TAG,
-            "background_notice_result code=${result["code"]} status=${result["status"]} serverId=${event.serverId.value} category=${event.category}"
-        )
     }
 
     override suspend fun maybePostBackgroundUnreadNotification(
@@ -332,13 +298,15 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         event: NotificationPushReceived,
         isAppInForeground: Boolean
     ) {
-        maybePostBackgroundUnreadNotification(
-            appContext = appContext,
-            sessionStore = sessionStore,
-            serverId = serverId,
-            event = event,
-            isAppInForeground = isAppInForeground
-        )
+        notificationQueue.enqueueAndAwait {
+            maybePostBackgroundUnreadNotification(
+                appContext = appContext,
+                sessionStore = sessionStore,
+                serverId = serverId,
+                event = event,
+                isAppInForeground = isAppInForeground
+            )
+        }
     }
 
     override fun dispatchRealtime(block: suspend () -> Unit) {
@@ -355,6 +323,20 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
         // Process-wide: a rebuilt host context must not restart at 1 and reuse an epoch a durable window
         // already committed under (that would read as the same connection).
         private val presenceTransportEpochs = AtomicLong(0L)
+
+        // Single-lane FIFO queue on AndroidUnreadNotificationPoster's background executor so realtime
+        // retracts and fallback notification posts never run on Main.immediate and stay strictly ordered.
+        private val notificationQueue: AndroidRealtimeNotificationQueue by lazy {
+            AndroidRealtimeNotificationQueue(
+                scope = CoroutineScope(SupervisorJob() + AndroidUnreadNotificationPoster.backgroundDispatcher),
+                onError = { error ->
+                    RaftAppLog.w(
+                        LOG_TAG,
+                        "realtime_notification_queue_failed errorType=${error::class.simpleName ?: "unknown"}"
+                    )
+                },
+            )
+        }
 
         fun create(
             context: Context,
@@ -451,6 +433,68 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
         private fun Any?.toRealtimeRawPayloadString(): String = realtimeRawPayloadJson(this)
 
+        private fun retractNotification(appContext: Context, event: NotificationRetracted) {
+            val closed =
+                AndroidUnreadNotificationPoster.retract(
+                    appContext,
+                    RaftNotificationRetract(
+                        serverId = event.serverId.value,
+                        groupKey = event.groupKey,
+                        conversationId = event.conversationId,
+                        throughSeq = event.throughSeq
+                    )
+                )
+            RaftAppLog.i(LOG_TAG, "notification_retract source=socket serverId=${event.serverId.value} closed=$closed")
+        }
+
+        private suspend fun postBackgroundNotificationNotice(
+            appContext: Context,
+            sessionStore: RaftAuthSessionStore,
+            event: NotificationNoticeReceived,
+            isAppInForeground: Boolean
+        ) {
+            val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
+            val remotePushActive =
+                isRemotePushActive(
+                    appContext,
+                    sessionStore,
+                    NotificationPushReceived(
+                        serverId = event.serverId,
+                        kind = build.raft.app.model.ConversationKind.Channel,
+                        messageId = build.raft.app.model.MessageId(event.notificationId ?: event.groupKey),
+                        title = event.title,
+                        body = event.body,
+                        tag = event.groupKey
+                    )
+                )
+            if (!shouldPostBackgroundUnreadNotification(false, preferenceEnabled, isAppInForeground, remotePushActive)) {
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "background_notice_skip reason=${backgroundUnreadNotificationSkipReason(false, preferenceEnabled, isAppInForeground, remotePushActive)} " +
+                        "serverId=${event.serverId.value} category=${event.category}"
+                )
+                return
+            }
+            val request =
+                org.json.JSONObject()
+                    .put("serverId", event.serverId.value)
+                    .put("groupKey", event.groupKey)
+                    .put("category", event.category)
+                    .put("title", event.title.ifBlank { appContext.getString(R.string.app_name) })
+                    .put("body", event.body)
+                    .put("notificationKey", event.notificationId ?: event.groupKey)
+                    .put("messageId", event.notificationId ?: event.groupKey)
+                    .put("silent", event.silent == true)
+                    .put("route", event.routeJson.orEmpty())
+                    .put("subtitle", event.subtitle.orEmpty())
+                    .let { with(AndroidUnreadNotificationPoster) { it.putRaftNotificationLocalization(event.localization) } }
+            val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
+            RaftAppLog.w(
+                LOG_TAG,
+                "background_notice_result code=${result["code"]} status=${result["status"]} serverId=${event.serverId.value} category=${event.category}"
+            )
+        }
+
         private suspend fun maybePostBackgroundUnreadNotification(
             appContext: Context,
             sessionStore: RaftAuthSessionStore,
@@ -541,5 +585,58 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
             RaftNotificationAlertsPreference.isEnabled(context)
+    }
+}
+
+/**
+ * Single-lane FIFO notification work queue. Preserves strict submission order across non-suspend
+ * retractions ([enqueue]) and suspend fallback posts ([enqueueAndAwait]) even when a post suspends
+ * mid-flight (for example while reading the auth session), without blocking the caller's thread.
+ */
+internal class AndroidRealtimeNotificationQueue(
+    scope: CoroutineScope,
+    private val onError: (Throwable) -> Unit = {},
+) {
+    private class Entry(
+        val block: suspend () -> Unit,
+        val completion: CompletableDeferred<Unit>?,
+    )
+
+    private val channel = Channel<Entry>(Channel.UNLIMITED)
+
+    init {
+        scope.launch {
+            try {
+                for (entry in channel) {
+                    try {
+                        entry.block()
+                        entry.completion?.complete(Unit)
+                    } catch (cancel: CancellationException) {
+                        entry.completion?.cancel(cancel)
+                        if (!isActive) throw cancel
+                    } catch (error: Throwable) {
+                        entry.completion?.complete(Unit)
+                        onError(error)
+                    }
+                }
+            } finally {
+                channel.close()
+                while (true) {
+                    val remaining = channel.tryReceive().getOrNull() ?: break
+                    remaining.completion?.cancel()
+                }
+            }
+        }
+    }
+
+    fun enqueue(block: suspend () -> Unit) {
+        channel.trySend(Entry(block = block, completion = null))
+    }
+
+    suspend fun enqueueAndAwait(block: suspend () -> Unit) {
+        val completion = CompletableDeferred<Unit>()
+        if (channel.trySend(Entry(block = block, completion = completion)).isSuccess) {
+            completion.await()
+        }
     }
 }

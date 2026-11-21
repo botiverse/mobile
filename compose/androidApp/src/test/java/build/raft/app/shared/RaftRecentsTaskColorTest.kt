@@ -111,6 +111,108 @@ class RaftRecentsTaskColorTest {
         )
     }
 
+    @Test
+    fun deferredRecentsTaskColorCoalescesRapidChangesToLatestColor() {
+        val activity = themedActivity()
+        val posted = mutableListOf<Runnable>()
+        val applied = mutableListOf<Int>()
+        val deferred =
+            DeferredRecentsTaskColor(
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                postToDecorView = { _, runnable ->
+                    posted += runnable
+                    true
+                },
+                applyNow = { _, argb, _ ->
+                    applied += argb
+                    true
+                },
+            )
+
+        assertTrue(deferred.schedule(activity, LIGHT_CANVAS))
+        assertTrue(deferred.schedule(activity, DARK_CANVAS))
+        assertTrue(deferred.schedule(activity, SERVER_CANVAS))
+        assertFalse("duplicate scheduled colour must not re-post", deferred.schedule(activity, SERVER_CANVAS))
+        assertTrue("apply must not run synchronously before posted runnable executes", applied.isEmpty())
+
+        posted.forEach(Runnable::run)
+
+        assertEquals(listOf(SERVER_CANVAS), applied)
+        assertEquals(SERVER_CANVAS, deferred.appliedArgb)
+    }
+
+    @Test
+    fun deferredRecentsTaskColorCancelsPendingChangeWhenRevertingToAppliedColor() {
+        val activity = themedActivity()
+        val posted = mutableListOf<Runnable>()
+        val applied = mutableListOf<Int>()
+        val deferred =
+            DeferredRecentsTaskColor(
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                postToDecorView = { _, runnable ->
+                    posted += runnable
+                    true
+                },
+                applyNow = { _, argb, _ ->
+                    applied += argb
+                    true
+                },
+            )
+
+        assertTrue(deferred.schedule(activity, LIGHT_CANVAS))
+        posted.removeAt(0).run()
+        assertEquals(listOf(LIGHT_CANVAS), applied)
+
+        assertTrue(deferred.schedule(activity, DARK_CANVAS))
+        assertEquals(1, posted.size)
+        // Reverting to the already-applied colour cancels the pending change without posting a no-op runnable.
+        assertFalse(deferred.schedule(activity, LIGHT_CANVAS))
+        assertEquals(1, posted.size)
+
+        posted.removeAt(0).run()
+        assertEquals(listOf(LIGHT_CANVAS), applied)
+        assertEquals(LIGHT_CANVAS, deferred.appliedArgb)
+    }
+
+    @Test
+    fun deferredRecentsTaskColorSkipsFinishingCancelledOrBelowApi33() {
+        val activity = themedActivity()
+        val posted = mutableListOf<Runnable>()
+        val applied = mutableListOf<Int>()
+        val deferred =
+            DeferredRecentsTaskColor(
+                sdkInt = Build.VERSION_CODES.TIRAMISU,
+                postToDecorView = { _, runnable ->
+                    posted += runnable
+                    true
+                },
+                applyNow = { _, argb, _ ->
+                    applied += argb
+                    true
+                },
+            )
+
+        assertTrue(deferred.schedule(activity, DARK_CANVAS))
+        deferred.cancel()
+        posted.removeAt(0).run()
+        assertTrue(applied.isEmpty())
+        assertNull(deferred.appliedArgb)
+
+        assertTrue(deferred.schedule(activity, SERVER_CANVAS))
+        activity.finish()
+        posted.removeAt(0).run()
+        assertTrue("finishing activity must not call setTaskDescription", applied.isEmpty())
+        assertNull(deferred.appliedArgb)
+
+        val preTiramisu =
+            DeferredRecentsTaskColor(
+                sdkInt = Build.VERSION_CODES.S_V2,
+                postToDecorView = { _, _ -> error("must not post below API 33") },
+                applyNow = { _, _, _ -> error("must not apply below API 33") },
+            )
+        assertFalse(preTiramisu.schedule(themedActivity(), DARK_CANVAS))
+    }
+
     private fun themedActivity(): Activity {
         val controller = Robolectric.buildActivity(Activity::class.java)
         controller.get().setTheme(R.style.Theme_Raft)
