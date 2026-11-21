@@ -103,6 +103,24 @@ internal actual fun raftWebViewKeepAliveClear() {
     }
 }
 
+internal actual fun raftClearPlatformWebViewAuthStorage() {
+    val mainLooper = runCatching { Looper.getMainLooper() }.getOrNull() ?: return
+    val clear = Runnable {
+        runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
+        runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
+        runCatching {
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            cookieManager.removeAllCookies(null)
+            cookieManager.flush()
+        }
+    }
+    if (Looper.myLooper() == mainLooper) {
+        clear.run()
+    } else {
+        Handler(mainLooper).post(clear)
+    }
+}
+
 @Composable
 internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) {
     val context = LocalContext.current

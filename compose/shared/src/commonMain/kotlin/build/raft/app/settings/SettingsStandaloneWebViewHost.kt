@@ -57,6 +57,7 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
@@ -79,6 +80,7 @@ internal fun settingsWebViewPageData(
     anchor: SettingsSearchAnchorRequest? = null,
     /** An App bot's owning App row id (`?installed_app=<id>`, botiverse/slock #14286). */
     installedAppId: String? = null,
+    replaceCurrentPage: Boolean = false,
 ): JSONObject =
     JSONObject().apply {
         put("pageName", SETTINGS_WEB_VIEW_PAGE)
@@ -86,6 +88,7 @@ internal fun settingsWebViewPageData(
         put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName)
         put(RAFT_SHELL_INSTANCE_ID, storeScope.shellInstanceId)
         storeScope.initialServerId?.let { put(RAFT_SHELL_SERVER_ID, it) }
+        if (replaceCurrentPage) put(RAFT_REPLACE_CURRENT_PAGE, true)
         if (surface == SettingsWebViewSurface.ReleaseNotes) {
             releaseNotesSanitizeVersionCode(versionCode).takeIf { it.isNotBlank() }?.let {
                 put(SETTINGS_WEB_VIEW_VERSION_CODE, it)
@@ -112,10 +115,11 @@ internal fun Pager.openSettingsWebViewPage(
     versionCode: String = "",
     anchor: SettingsSearchAnchorRequest? = null,
     installedAppId: String? = null,
+    replaceCurrentPage: Boolean = false,
 ) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_WEB_VIEW_PAGE,
-        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId),
+        settingsWebViewPageData(surface, storeScope, versionCode, anchor, installedAppId, replaceCurrentPage = replaceCurrentPage),
     )
 }
 
@@ -529,8 +533,10 @@ private fun StandaloneSettingsWebViewBody(
         accessTokenRefresher = accessTokenRefresher,
         accessTokenRefreshVisible = rememberRaftPagerAppeared(pager),
         onUrlChange = { url ->
-            // Never the query: a Settings URL can carry tokens.
-            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=${raftWebViewUrlForLog(url)}")
+            // Never the query; WebPage also drops path segments past the first (invite/share tokens).
+            val loggedUrl =
+                if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(url) else raftWebViewUrlForLog(url)
+            bridge.log("settings_${spec.surface.diagnosticsName}_webview_url_changed url=$loggedUrl")
         },
         onLoadCommit = {
             bridge.log("settings_${spec.surface.diagnosticsName}_webview_load_commit")
@@ -620,9 +626,11 @@ internal fun StandaloneSettingsWebViewContent(
         }
         val target = decision.targetUrl
         if (target != null) {
+            val loggedUrl =
+                if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
             currentLogger(
                 "settings_${spec.surface.diagnosticsName}_host_open_external " +
-                    "result=open url=${raftWebViewUrlForLog(target)}"
+                    "result=open url=$loggedUrl"
             )
             currentOpenExternalLink(target)
         } else {
@@ -687,9 +695,11 @@ internal fun StandaloneSettingsWebViewContent(
                 onNavigationBlocked = { blockedUrl ->
                     val target = settingsWebViewBlockedNavigationUrlOrNull(blockedUrl)
                     if (target != null) {
+                        val loggedUrl =
+                            if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
                         currentLogger(
                             "settings_${spec.surface.diagnosticsName}_navigation_blocked " +
-                                "action=open url=${raftWebViewUrlForLog(target)}"
+                                "action=open url=$loggedUrl"
                         )
                         currentOpenBlockedNavigation(target)
                     } else {
@@ -842,7 +852,12 @@ internal fun SettingsWebViewContent(
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
                     loadWatchdog = loadWatchdog,
-                    diagnosticsSurface = "settings_web_view",
+                    diagnosticsSurface =
+                        if (diagnosticsName == SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME) {
+                            SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME
+                        } else {
+                            "settings_web_view"
+                        },
                     onLoadCommit = {
                         loadError = null
                         committed = true

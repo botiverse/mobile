@@ -772,8 +772,9 @@ internal class RaftSharedStoreProvider private constructor(
                 if (appLinkPreviewStoreLazy.isInitialized()) appLinkPreviewStore.clearAll()
                 if (artifactSummaryStoreLazy.isInitialized()) artifactSummaryStore.clearAll()
                 if (artifactScreenshotStoreLazy.isInitialized()) artifactScreenshotStore.clearAll()
-                // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
+                // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1), plus persistent WebView auth storage.
                 build.raft.app.RaftArtifactViewerMemory.clear()
+                build.raft.app.raftClearWebViewAuthStorage()
                 RaftModelLabelCatalogs.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),

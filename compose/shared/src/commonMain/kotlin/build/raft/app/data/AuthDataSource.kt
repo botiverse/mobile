@@ -1445,6 +1445,7 @@ class SharedAuthDataSource(
             sessionStore.clearSession(reason = "logout", source = "auth_data_source_logout")
             retireCapturedAvatarOwners(avatarRetirement, source = "logout")
             clearAccountImageCaches(source = "logout")
+            clearAccountWebViewStorage(source = "logout")
             diagnosticsLogger("auth_logout_cleared serverRevocation=$serverRevocation")
             SharedAuthResult.Success(Unit)
         }
@@ -1454,6 +1455,7 @@ class SharedAuthDataSource(
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
         clearAccountImageCaches(source)
+        clearAccountWebViewStorage(source)
     }
 
     private suspend fun replaceAuthenticatedSessionAndRetireChangedAccount(
@@ -1469,7 +1471,10 @@ class SharedAuthDataSource(
                 ?.let(::captureAvatarOwnerRetirement)
         if (!sessionStore.replaceAuthenticatedSessionIfCurrent(session, isCurrent)) return false
         retireCapturedAvatarOwners(capture, source)
-        if (accountChanged) clearAccountImageCaches(source)
+        if (accountChanged) {
+            clearAccountImageCaches(source)
+            clearAccountWebViewStorage(source)
+        }
         return true
     }
 
@@ -1477,6 +1482,12 @@ class SharedAuthDataSource(
     private suspend fun clearAccountImageCaches(source: String) {
         runCatchingPreservingCancellation { raftClearImageCaches() }
             .onFailure { diagnosticsLogger("image_cache_clear result=failure source=$source") }
+    }
+
+    /** Persistent WebView storage holds the previous account's web access token; drop it. */
+    private fun clearAccountWebViewStorage(source: String) {
+        runCatchingPreservingCancellation { build.raft.app.raftClearWebViewAuthStorage() }
+            .onFailure { diagnosticsLogger("webview_storage_clear result=failure source=$source") }
     }
 
     private fun captureAvatarOwnerRetirement(session: StoredAuthSession?): RaftAvatarOwnerRetirementCapture? =

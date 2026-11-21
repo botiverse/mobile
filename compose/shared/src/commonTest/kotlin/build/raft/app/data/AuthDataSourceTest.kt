@@ -1412,6 +1412,20 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun logoutClearsPersistentWebViewAuthStorage() = runBlocking {
+        var clearedCount = 0
+        build.raft.app.raftWebViewAuthStorageClearHookForTest = { clearedCount += 1 }
+        try {
+            val store = InMemoryRaftAuthSessionStore(storedSession())
+            val result = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store).logout()
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(1, clearedCount)
+        } finally {
+            build.raft.app.raftWebViewAuthStorageClearHookForTest = null
+        }
+    }
+
+    @Test
     fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(

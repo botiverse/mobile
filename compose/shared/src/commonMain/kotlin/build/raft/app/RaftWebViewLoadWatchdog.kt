@@ -290,6 +290,9 @@ internal fun raftWebViewLogHost(url: String): String {
     return host.take(80).ifEmpty { "-" }
 }
 
+/** Diagnostics surface token for [SettingsWebViewSurface.WebPage]; logs redact paths beyond segment 1. */
+internal const val SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME = "settings_web-page"
+
 /** [url] without its query and fragment (tokens), for a log line. */
 internal fun raftWebViewUrlForLog(url: String): String =
     url.trim().substringBefore('#').substringBefore('?').let { stripped ->
@@ -298,6 +301,34 @@ internal fun raftWebViewUrlForLog(url: String): String =
         val rest = stripped.substringAfter("://")
         "$scheme://${raftWebViewLogHost(stripped)}${rest.substringAfter('/', "").let { if (it.isEmpty()) "" else "/$it" }}"
     }.take(160)
+
+/**
+ * [url] redacted to its origin and first path segment only (`https://app.raft.build/integration-invites`),
+ * never query, fragment, userinfo, or deeper path segments that may carry invite/share tokens.
+ */
+internal fun raftOwnWebUrlForLog(url: String): String {
+    val stripped = url.trim().substringBefore('#').substringBefore('?')
+    if ("://" !in stripped) return raftWebViewLogHost(stripped)
+    val scheme =
+        stripped.substringBefore("://", "")
+            .lowercase()
+            .filter { it.isLetterOrDigit() || it == '+' || it == '-' || it == '.' }
+            .take(16)
+    if (scheme.isEmpty()) return raftWebViewLogHost(stripped)
+    val host = raftWebViewLogHost(stripped)
+    val rest = stripped.substringAfter("://")
+    val slashIndex = rest.indexOfFirst { it == '/' || it == '\\' }
+    if (slashIndex < 0) return "$scheme://$host"
+    val firstSegment =
+        rest.substring(slashIndex + 1)
+            .split('/', '\\')
+            .firstOrNull { it.isNotEmpty() }
+            ?.substringBefore('%')
+            ?.filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+            ?.take(48)
+            .orEmpty()
+    return if (firstSegment.isEmpty()) "$scheme://$host" else "$scheme://$host/$firstSegment"
+}
 
 private fun String.forLogToken(): String =
     trim().replace(Regex("[^A-Za-z0-9_.-]"), "_").take(64).ifEmpty { "-" }

@@ -4,20 +4,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AccountLoginSecurity
 import build.raft.app.data.NetworkAccountLoginSecurityDataSource
 import build.raft.app.data.RaftNetworkClient
@@ -38,8 +34,8 @@ import build.raft.designsystem.components.RaftListRowVariant
  * verification sections (slock `components/settings/PasskeysSection.tsx`,
  * `TwoStepVerificationSection.tsx`), read-only here. Each row opens its web section
  * (`/settings/account#passkeys`, `#two-step`, the ids those sections carry for
- * `useScrollToSettingsSection`) in the authenticated in-app WebView (#proj-mobile:#204), with a
- * header action to open in the default browser whenever WebAuthn passkey confirmation is needed.
+ * `useScrollToSettingsSection`) in the system browser: WebAuthn does not work in the in-app
+ * WebView, and Raft's own App Links would route a plain VIEW back into the app.
  */
 
 /** A web Account section the group links to, by its `#id`. */
@@ -66,8 +62,9 @@ internal fun settingsAccountLoginSecurityWebUrl(
 }
 
 /**
- * What a row's tap does: opens the web section of this account via [openInBrowser] (the
- * authenticated in-app WebView with browser fallback on SettingsAccountPage).
+ * What a row's tap does: the web section of this account in the system browser, whatever the
+ * link setting (passkeys need WebAuthn, which the in-app WebView lacks). [openInBrowser] is
+ * `bridge.openUrl(url, inBrowser = true)` (a browser even for Raft's own App Link origin).
  */
 internal fun settingsAccountLoginSecurityOpener(
     webBaseUrl: String?,
@@ -87,15 +84,12 @@ internal class SettingsAccountLoginSecurityUi(
 )
 
 /**
- * The page's store: read when the page shows and again on every return to the foreground (from the
- * system browser via lifecycle ON_RESUME) or when this page re-appears after covering in-app pages
- * (such as the authenticated own-web WebView on Android Nav3 stack or Desktop).
+ * The page's store: read when the page shows and again on every return to the foreground (the
+ * person may just have changed it in the browser). Lifecycle ON_RESUME covers both: the observer
+ * receives it when added to a resumed page.
  */
 @Composable
-internal fun rememberSettingsAccountLoginSecurityStore(
-    networkClient: RaftNetworkClient,
-    pager: Pager? = null,
-): SharedAccountLoginSecurityStore {
+internal fun rememberSettingsAccountLoginSecurityStore(networkClient: RaftNetworkClient): SharedAccountLoginSecurityStore {
     val scope = rememberCoroutineScope()
     val store = remember(networkClient, scope) {
         SharedAccountLoginSecurityStore(NetworkAccountLoginSecurityDataSource(networkClient), scope)
@@ -108,16 +102,6 @@ internal fun rememberSettingsAccountLoginSecurityStore(
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    if (pager != null) {
-        val appeared = rememberRaftPagerAppeared(pager)
-        var wasAppeared by remember(pager) { mutableStateOf(appeared) }
-        LaunchedEffect(store, appeared) {
-            if (appeared && !wasAppeared) {
-                store.dispatch(SharedAccountLoginSecurityIntent.Refresh)
-            }
-            wasAppeared = appeared
-        }
     }
     return store
 }
