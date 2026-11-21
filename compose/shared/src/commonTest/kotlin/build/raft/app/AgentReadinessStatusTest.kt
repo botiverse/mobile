@@ -547,8 +547,8 @@ class AgentReadinessStatusTest {
         val server = ServerSummary(id = serverId, name = "Test", slug = "test")
         val neutralAgent = baseAgent.copy(agentLifecycleStatus = "stopped")
         val registry = ProcessMemberPresenceRegistry()
-        val owner = ProcessServerMembersOwner(environmentId = "prod", accountId = "acct-1", serverId = serverId.value)
-        val transport = ProcessPresenceTransportEpoch(1L)
+        val owner = ProcessServerMembersOwner(environmentId = "local", accountId = "local", serverId = serverId.value)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
         val repo =
             object : MemberRepository by PresenceNoopMemberRepository {
                 override suspend fun getMembers(
@@ -561,6 +561,7 @@ class AgentReadinessStatusTest {
         registry.rebaselineTransport(owner, registry.writeGeneration, transport)
         store.refreshMembers(serverId, force = true, reason = "test")
         val neutralStatus = assertNotNull(store.currentMemberStatus(serverId, "agent-paused"))
+        assertEquals("—", neutralStatus.statusLabel)
         assertTrue(neutralStatus.paused)
         assertNull(effectiveHoldingReadiness(neutralStatus.toRaftAgentStatusIndicatorState()))
     }
@@ -577,7 +578,7 @@ class AgentReadinessStatusTest {
                         action = "fix",
                     ),
                 fallbackRuntimeId = "claude-code",
-                nowMillis = 1_795_246_000_000L,
+                nowEpochMillis = 1_795_246_000_000L,
             )
         assertNull(spec.actor)
     }
