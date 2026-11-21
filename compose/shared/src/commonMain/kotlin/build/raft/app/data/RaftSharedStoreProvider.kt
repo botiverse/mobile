@@ -3541,8 +3541,9 @@ internal class RaftSharedStoreProvider private constructor(
             val networkClient = scopedNetworkClientFactory(authStore)
             // Product analytics (RFC-067) sends through the shared client at Background priority.
             RaftProductEvents.bindTransport(networkClient)
-            // Client trace events (`/api/web-traces`, as web): `activity:inplace_check`.
-            RaftClientTraceEvents.bindTransport(networkClient)
+            // Client trace events (`/api/web-traces`, as web): `activity:inplace_check`. A batch goes
+            // out only while the session this client authenticates with is the account that recorded it.
+            RaftClientTraceEvents.bindTransport(networkClient) { authStore.readSession()?.user?.id }
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
                     scope = RaftStoreThreading.newScope(),

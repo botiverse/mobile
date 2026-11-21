@@ -33,18 +33,23 @@ import kotlinx.serialization.json.JsonPrimitive
  * `withDefaultWebAttrs` adds to every event, with `appVersion` beside it.
  *
  * Batched [RaftClientTraceFlushDelayMillis] after the first event, at most
- * [RaftClientTraceMaxBatch] per request. Nothing here throws. What a failed flush does with its batch:
+ * [RaftClientTraceMaxBatch] per request, each batch the records of one server recorded under one
+ * account. Nothing here throws. What a failed flush does with its batch:
  *
  * - No HTTP answer (status 0 from [RaftNetworkClient]: connect, DNS, reset, timeout, a closed
  *   reachability gate) or a 5xx, from the attestation request or the trace POST
  *   ([raftClientTraceShouldResend]): the batch goes back to the front of the queue in its original
- *   order, records unchanged (the same `time`, `trace_id` and `span_id` as the first attempt), and
- *   the next flush waits [RaftClientTraceRetryDelaysMillis] (4 s, 15 s, 60 s, then every 5 min; back
- *   to the start after any HTTP answer). A network-restored signal ([RaftFreshnessSignal]) replaces a
- *   waiting retry with one [RaftClientTraceFlushDelayMillis] from then, once per wait.
+ *   order, records unchanged (the same `time`, `trace_id` and `span_id` as the first attempt). Its
+ *   server's records then wait for the retry while the same flush goes on with the other servers'
+ *   records, so one failing server does not hold up the rest. The retry comes
+ *   [RaftClientTraceRetryDelaysMillis] after a flush that put a batch back: 4 s, 15 s, 60 s, then
+ *   every 5 min while each flush puts one back, and back to the start after a flush where a batch got
+ *   a 2xx or a refusal and none went back. A network-restored signal ([RaftFreshnessSignal]) replaces
+ *   a waiting retry with one [RaftClientTraceFlushDelayMillis] from then, once per wait.
  * - Any other answer (4xx, including a refused attestation, or a 2xx attestation without a token),
  *   or an exception while building the request (a record that does not encode): the batch is
- *   dropped, as the web does, and the flush goes on with the next; sending it again cannot help.
+ *   dropped, as the web does, and the flush goes on with the next; sending it again cannot help. An
+ *   exception is not an answer: the wait before the next retry stays as it was.
  * - Queueing an event never sends early: while a retry is waiting, new events (also at the cap)
  *   wait for it.
  * - Bounds: the queue never holds more than [RaftClientTraceMaxQueued]; while sends are failing a
@@ -54,12 +59,20 @@ import kotlinx.serialization.json.JsonPrimitive
  *   next batch carries one [RaftClientTraceDroppedEventName] event per reason (`dropped_count`,
  *   `reason` `aged_out` / `queue_cap`, `oldest_dropped_age_s`). That event is queued like any other
  *   (resent unchanged with its batch); a count is forgotten only when its batch was accepted, and
- *   losing the event itself puts its count back. Drops under privacy mode, a refusal or an account
- *   change are not counted.
- * - Account: records are queued per server and a batch is attested for its own server by the
- *   signed-in session at flush time. Sign-out or another account ([RaftClientTraceEventSender.setAccount])
- *   drops everything held and the cached attestation, so a record is never sent under another
- *   account's attestation. A server switch within one account keeps them.
+ *   losing the event itself puts its count back, unless the account changed or privacy mode went on
+ *   since its batch was taken. Sign-out, another account and privacy mode "on" forget the counts not
+ *   yet reported. Drops under privacy mode, a refusal or an account change are not counted.
+ * - Account: each record carries the account signed in when it was queued
+ *   ([RaftClientTraceEventSender.setAccount]). An event queued while no account is known (signed
+ *   out, or before the first sign-in) is dropped: it belongs to no account it could be sent under.
+ *   Before each batch, and again after a new attestation, the transport says which account its
+ *   requests authenticate as ([RaftClientTraceTransport.currentAccount], the stored session); a
+ *   batch recorded under another account is dropped (logged `account_changed`, not counted), and an
+ *   attestation is used only for the account and server it was obtained for. So a record never
+ *   leaves under another account's attestation, also between a login that replaces the session and
+ *   the app shell reporting the new account. That report ([RaftClientTraceEventSender.setAccount],
+ *   the fast path) drops everything held and the cached attestation at once, as sign-out does. A
+ *   server switch within one account keeps them.
  *
  * `RAFT_PRIVACY_MODE` ([RaftTelemetryPrivacy], web `webTelemetryPrivacyHold.ts`): until the
  * environment's client config answers, events are held in memory (up to [RaftClientTraceMaxQueued])
@@ -162,6 +175,12 @@ internal data class RaftWebTraceBatchRequest(
 internal class RaftScopeAttestationAnswer(val status: Int, val response: RaftScopeAttestationResponse? = null)
 
 internal interface RaftClientTraceTransport {
+    /**
+     * The account [attest] authenticates as: the user id of the stored session, null when signed
+     * out. Read locally, never a request.
+     */
+    suspend fun currentAccount(): String?
+
     /** Asks for a `web-trace-batch:create` attestation for [serverId]. */
     suspend fun attest(serverId: ServerId): RaftScopeAttestationAnswer
 
@@ -171,8 +190,12 @@ internal interface RaftClientTraceTransport {
 
 internal class RaftNetworkClientTraceTransport(
     private val networkClient: RaftNetworkClient,
+    /** The user id of the session [networkClient] authenticates with. */
+    private val sessionAccount: suspend () -> String?,
     private val traceBaseUrl: String = RAFT_AGENT_FEEDBACK_BASE_URL,
 ) : RaftClientTraceTransport {
+    override suspend fun currentAccount(): String? = sessionAccount()
+
     override suspend fun attest(serverId: ServerId): RaftScopeAttestationAnswer {
         val response =
             networkClient.request(
@@ -215,9 +238,10 @@ internal class RaftClientTraceEventSender(
     /** What a [RaftClientTraceDroppedEventName] event carries; put back if that event is lost. */
     private class DropReport(val reason: RaftClientTraceDropReason, val count: Int, val oldestAgeMillis: Long)
 
-    /** One queued record: an event, or a span. */
+    /** One queued record, an event or a span, of [serverId], queued while [account] was signed in. */
     private class Queued(
         val serverId: ServerId,
+        val account: String,
         val record: RaftWebEventRecord? = null,
         val span: RaftWebSpanRecord? = null,
         val queuedAtMillis: Long = 0L,
@@ -227,7 +251,8 @@ internal class RaftClientTraceEventSender(
         var firstFailedAtMillis: Long? = null
     }
 
-    private class Attestation(val serverId: ServerId, val value: String, val expiresAtMillis: Long)
+    /** Obtained by [account]'s session for [serverId]; used for that account's records only. */
+    private class Attestation(val serverId: ServerId, val account: String, val value: String, val expiresAtMillis: Long)
 
     /** Records given up for one reason and not yet carried by an event. */
     private class DropTally {
@@ -235,11 +260,29 @@ internal class RaftClientTraceEventSender(
         var oldestAgeMillis = 0L
     }
 
-    private class FlushWork(val transport: RaftClientTraceTransport, val batch: List<Queued>, val accountEpoch: Int)
+    private class FlushWork(
+        val transport: RaftClientTraceTransport,
+        val serverId: ServerId,
+        val account: String,
+        val batch: List<Queued>,
+        val accountEpoch: Int,
+        val heldEpoch: Int,
+    )
 
-    private enum class SendOutcome { Sent, Refused, Resend }
+    private enum class SendOutcome { Sent, Refused, AccountChanged, Resend }
 
     private class SendResult(val outcome: SendOutcome, val stage: String, val status: Int)
+
+    /** A batch one flush put back; its server is not tried again before the retry. */
+    private class PutBack(val serverId: ServerId, val stage: String, val status: Int, val kept: Int)
+
+    /** What one flush has done so far. */
+    private class FlushRound {
+        val putBack = mutableListOf<PutBack>()
+
+        /** A batch was settled by an HTTP answer: a 2xx or a refusal. */
+        var answered = false
+    }
 
     private val lock = SynchronizedObject()
     private var transport: RaftClientTraceTransport? = null
@@ -250,7 +293,7 @@ internal class RaftClientTraceEventSender(
     private var flushGeneration = 0
     private var attestation: Attestation? = null
 
-    /** Consecutive flushes that ended without a usable HTTP answer. */
+    /** Consecutive flushes that put a batch back. */
     private var failureStreak = 0
 
     /** The flush job is waiting out a retry delay (not sending). */
@@ -258,6 +301,12 @@ internal class RaftClientTraceEventSender(
     private var retryBroughtForward = false
     private var account: String? = null
     private var accountEpoch = 0
+
+    /**
+     * Moves on whenever what is held is dropped (sign-out, another account, privacy mode on): a batch
+     * taken before then neither comes back nor puts its counts back.
+     */
+    private var heldEpoch = 0
     private val dropTallies = RaftClientTraceDropReason.entries.associateWith { DropTally() }
 
     init {
@@ -267,10 +316,8 @@ internal class RaftClientTraceEventSender(
                     when (mode) {
                         RaftPrivacyMode.On -> {
                             queue.clear()
-                            dropTallies.values.forEach { tally ->
-                                tally.count = 0
-                                tally.oldestAgeMillis = 0L
-                            }
+                            resetTalliesLocked()
+                            heldEpoch += 1
                         }
                         RaftPrivacyMode.Off -> if (queue.isNotEmpty()) scheduleFlushLocked(flushDelayMillis)
                         RaftPrivacyMode.Unknown -> Unit
@@ -305,20 +352,22 @@ internal class RaftClientTraceEventSender(
     }
 
     /**
-     * The signed-in account, null when signed out. Signing out, or another account than the last
-     * one, drops what is held and the cached attestation (a record never leaves under another
-     * account's attestation); the first account after a start or a sign-out keeps what is held.
+     * The signed-in account, null when signed out. Events are queued under it, and only while one is
+     * known. Signing out, or another account, drops what is held, the cached attestation and the
+     * counts not yet reported, so nothing recorded under one account is sent or reported under
+     * another.
      */
     fun setAccount(accountId: String?) {
+        val next = accountId?.trim()?.takeIf { it.isNotEmpty() }
         val dropped =
             synchronized(lock) {
-                val previous = account
-                account = accountId
-                if (accountId != null && (previous == null || previous == accountId)) return
+                if (next == account) return
+                account = next
                 accountEpoch += 1
+                heldEpoch += 1
                 attestation = null
+                resetTalliesLocked()
                 val held = queue.count { it.report == null }
-                queue.forEach(::restoreReportLocked)
                 queue.clear()
                 held
             }
@@ -351,7 +400,7 @@ internal class RaftClientTraceEventSender(
                     spanId = spanId,
                     attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
                 )
-            enqueue(listOf(Queued(ServerId(server), record = record, queuedAtMillis = now)))
+            enqueue { account -> listOf(Queued(ServerId(server), account, record = record, queuedAtMillis = now)) }
         } catch (_: Throwable) {
             // Trace emission must never affect state transitions.
         }
@@ -368,25 +417,28 @@ internal class RaftClientTraceEventSender(
             val now = nowEpochMillis()
             val defaults = defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }
             val id = ServerId(server)
-            val unit =
+            val withDefaults = span.copy(attrs = JsonObject(span.attrs + defaults))
+            val eventsWithDefaults = events.map { it.copy(attrs = JsonObject(it.attrs + defaults)) }
+            enqueue { account ->
                 buildList {
-                    add(Queued(id, span = span.copy(attrs = JsonObject(span.attrs + defaults)), queuedAtMillis = now))
-                    events.forEach {
-                        add(Queued(id, record = it.copy(attrs = JsonObject(it.attrs + defaults)), queuedAtMillis = now))
-                    }
+                    add(Queued(id, account, span = withDefaults, queuedAtMillis = now))
+                    eventsWithDefaults.forEach { add(Queued(id, account, record = it, queuedAtMillis = now)) }
                 }
-            enqueue(unit)
+            }
         } catch (_: Throwable) {
             // Trace emission must never affect the app.
         }
     }
 
-    private fun enqueue(unit: List<Queued>) {
+    /** Queues the records [build] makes for the signed-in account; none while no account is known. */
+    private fun enqueue(build: (account: String) -> List<Queued>) {
         val line =
             synchronized(lock) {
                 val mode = privacyMode.value
                 if (mode == RaftPrivacyMode.On) return
                 if (transport == null) return
+                // Signed out, or before the first sign-in: no account it may be sent under.
+                val unit = build(account ?: return)
                 val over = queue.size + unit.size - RaftClientTraceMaxQueued
                 var dropLine: String? = null
                 if (over > 0) {
@@ -427,12 +479,19 @@ internal class RaftClientTraceEventSender(
         tally.oldestAgeMillis = maxOf(tally.oldestAgeMillis, report.oldestAgeMillis)
     }
 
+    private fun resetTalliesLocked() {
+        dropTallies.values.forEach { tally ->
+            tally.count = 0
+            tally.oldestAgeMillis = 0L
+        }
+    }
+
     private fun dropLineLocked(reason: RaftClientTraceDropReason, count: Int): String =
         "client_trace_dropped reason=${reason.wireName} count=$count " +
             "notYetReported=${dropTallies.getValue(reason).count} queued=${queue.size}"
 
     /** One [RaftClientTraceDroppedEventName] event per reason with a count; the tallies move into them. */
-    private fun takeDropReportsLocked(serverId: ServerId): List<Queued> {
+    private fun takeDropReportsLocked(serverId: ServerId, account: String): List<Queued> {
         if (dropTallies.values.none { it.count > 0 }) return emptyList()
         return try {
             val now = nowEpochMillis()
@@ -447,6 +506,7 @@ internal class RaftClientTraceEventSender(
                         )
                     Queued(
                         serverId = serverId,
+                        account = account,
                         record =
                             RaftWebEventRecord(
                                 name = RaftClientTraceDroppedEventName,
@@ -469,26 +529,12 @@ internal class RaftClientTraceEventSender(
     }
 
     private suspend fun flush(generation: Int) {
+        val round = FlushRound()
         while (true) {
-            val work =
-                synchronized(lock) {
-                    // Replaced while its delay was ending: the newer job owns the queue.
-                    if (generation != flushGeneration) return
-                    retryWaiting = false
-                    retryBroughtForward = false
-                    val transport = transport
-                    val mode = privacyMode.value
-                    if (queue.isEmpty() || transport == null || mode != RaftPrivacyMode.Off) {
-                        flushJob = null
-                        // Unknown again (an environment change): keep holding; the answer flushes.
-                        if (mode != RaftPrivacyMode.Unknown) queue.clear()
-                        return
-                    }
-                    val serverId = queue.first().serverId
-                    val batch = queue.filter { it.serverId == serverId }.take(RaftClientTraceMaxBatch)
-                    queue.removeAll(batch.toSet())
-                    FlushWork(transport, takeDropReportsLocked(serverId) + batch, accountEpoch)
-                }
+            val finished = mutableListOf<String>()
+            val work = synchronized(lock) { nextBatchLocked(generation, round, finished) }
+            finished.forEach(::logSafely)
+            if (work == null) return
             val result =
                 try {
                     send(work)
@@ -501,39 +547,74 @@ internal class RaftClientTraceEventSender(
                     SendResult(SendOutcome.Refused, stage = "local_error", status = 0)
                 }
             val lines = mutableListOf<String>()
-            val again = synchronized(lock) { settleLocked(work, result, lines) }
+            synchronized(lock) { settleLocked(work, result, round, lines) }
             lines.forEach(::logSafely)
-            if (!again) return
         }
     }
 
-    /** What becomes of a sent batch; false when this flush is over (a later one is scheduled if needed). */
-    private fun settleLocked(work: FlushWork, result: SendResult, lines: MutableList<String>): Boolean {
+    /**
+     * The next batch of this flush: the oldest records of a server it has not put a batch back for.
+     * Null when the flush is over; then the retry, if one is needed, is scheduled.
+     */
+    private fun nextBatchLocked(generation: Int, round: FlushRound, lines: MutableList<String>): FlushWork? {
+        // Replaced while its delay was ending: the newer job owns the queue.
+        if (generation != flushGeneration) return null
+        retryWaiting = false
+        retryBroughtForward = false
+        val transport = transport
+        val mode = privacyMode.value
+        val first = queue.firstOrNull { item -> round.putBack.none { it.serverId == item.serverId } }
+        if (transport == null || mode != RaftPrivacyMode.Off || first == null) {
+            // Unknown again (an environment change): keep holding; the answer flushes.
+            if (mode == RaftPrivacyMode.On) queue.clear()
+            finishFlushLocked(round, mode, lines)
+            return null
+        }
+        val batch = queue.filter { it.serverId == first.serverId && it.account == first.account }.take(RaftClientTraceMaxBatch)
+        queue.removeAll(batch.toSet())
+        return FlushWork(
+            transport = transport,
+            serverId = first.serverId,
+            account = first.account,
+            batch = takeDropReportsLocked(first.serverId, first.account) + batch,
+            accountEpoch = accountEpoch,
+            heldEpoch = heldEpoch,
+        )
+    }
+
+    /** What becomes of a batch this flush tried. */
+    private fun settleLocked(work: FlushWork, result: SendResult, round: FlushRound, lines: MutableList<String>) {
         val batch = work.batch
+        val count = batch.count { it.report == null }
+        // Neither sign-out, another account nor privacy mode on since it was taken.
+        val stillHeld = work.heldEpoch == heldEpoch && privacyMode.value != RaftPrivacyMode.On
         when (result.outcome) {
-            SendOutcome.Sent -> {
-                failureStreak = 0
-                return true
-            }
+            SendOutcome.Sent -> round.answered = true
             SendOutcome.Refused -> {
-                // An HTTP answer: the network works, and sending the same batch again cannot help.
-                failureStreak = 0
-                batch.forEach(::restoreReportLocked)
-                lines += "client_trace_dropped reason=refused stage=${result.stage} status=${result.status} " +
-                    "count=${batch.count { it.report == null }}"
-                return true
+                // An HTTP refusal says the network works; an exception says nothing about it.
+                if (result.status != 0) round.answered = true
+                if (stillHeld) batch.forEach(::restoreReportLocked)
+                lines += "client_trace_dropped reason=refused stage=${result.stage} status=${result.status} count=$count"
             }
-            SendOutcome.Resend -> Unit
+            // Recorded under another account than the session's: not sent, and its counts are not
+            // the session account's to report.
+            SendOutcome.AccountChanged -> lines += "client_trace_dropped reason=account_changed stage=${result.stage} count=$count"
+            SendOutcome.Resend -> {
+                if (stillHeld) queue.addAll(0, batch)
+                round.putBack += PutBack(work.serverId, result.stage, result.status, kept = if (stillHeld) batch.size else 0)
+            }
+        }
+    }
+
+    /** This flush is over. One that put a batch back failed: the retry waits longer each time. */
+    private fun finishFlushLocked(round: FlushRound, mode: RaftPrivacyMode, lines: MutableList<String>) {
+        flushJob = null
+        if (round.putBack.isEmpty()) {
+            if (round.answered) failureStreak = 0
+            return
         }
         val now = nowEpochMillis()
-        val mode = privacyMode.value
         failureStreak += 1
-        val sameAccount = work.accountEpoch == accountEpoch
-        when {
-            mode == RaftPrivacyMode.On -> queue.clear()
-            sameAccount -> queue.addAll(0, batch)
-            else -> batch.forEach(::restoreReportLocked)
-        }
         // Everything held waited through this failure; what has waited long enough is given up.
         var agedOut = 0
         val held = queue.iterator()
@@ -554,18 +635,18 @@ internal class RaftClientTraceEventSender(
             giveUpLocked(item, RaftClientTraceDropReason.QueueCap, now)
             if (item.report == null) pushedOut += 1
         }
-        flushJob = null
         var retryInMillis = -1L
         if (queue.isNotEmpty() && mode == RaftPrivacyMode.Off) {
             retryInMillis = RaftClientTraceRetryDelaysMillis[(failureStreak - 1).coerceIn(0, RaftClientTraceRetryDelaysMillis.lastIndex)]
             scheduleFlushLocked(retryInMillis)
             retryWaiting = true
         }
-        lines += "client_trace_send_failed stage=${result.stage} status=${result.status} failures=$failureStreak " +
-            "kept=${if (sameAccount && mode != RaftPrivacyMode.On) batch.size else 0} queued=${queue.size} retryInMs=$retryInMillis"
+        round.putBack.forEach { put ->
+            lines += "client_trace_send_failed stage=${put.stage} status=${put.status} failures=$failureStreak " +
+                "kept=${put.kept} queued=${queue.size} retryInMs=$retryInMillis"
+        }
         if (agedOut > 0) lines += dropLineLocked(RaftClientTraceDropReason.AgedOut, agedOut)
         if (pushedOut > 0) lines += dropLineLocked(RaftClientTraceDropReason.QueueCap, pushedOut)
-        return false
     }
 
     private fun logSafely(line: String) {
@@ -576,11 +657,22 @@ internal class RaftClientTraceEventSender(
         }
     }
 
+    /** The account [transport]'s requests authenticate as now. */
+    private suspend fun sessionAccount(transport: RaftClientTraceTransport): String? =
+        transport.currentAccount()?.trim()?.takeIf { it.isNotEmpty() }
+
     private suspend fun send(work: FlushWork): SendResult {
         val transport = work.transport
-        val serverId = work.batch.first().serverId
+        val serverId = work.serverId
+        // Another account's session (a login replaced it, the shell has not said so yet) or none.
+        if (sessionAccount(transport) != work.account) return SendResult(SendOutcome.AccountChanged, "session", 0)
         val now = nowEpochMillis()
-        val cached = synchronized(lock) { attestation?.takeIf { it.serverId == serverId && it.expiresAtMillis - AttestationReuseMarginMillis > now } }
+        val cached =
+            synchronized(lock) {
+                attestation?.takeIf {
+                    it.serverId == serverId && it.account == work.account && it.expiresAtMillis - AttestationReuseMarginMillis > now
+                }
+            }
         val value =
             cached?.value
                 ?: run {
@@ -591,10 +683,12 @@ internal class RaftClientTraceEventSender(
                         answer.response?.attestation?.takeIf { answer.status in 200..299 && it.isNotBlank() }
                             ?: return SendResult(SendOutcome.Refused, "attestation", answer.status)
                     val expiresAt = answer.response?.expiresAt?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
+                    // The session changed while it was asked for: it may be the other account's.
+                    if (sessionAccount(transport) != work.account) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
                     synchronized(lock) {
                         // Signed out or another account meanwhile: this attestation is not theirs to use.
-                        if (work.accountEpoch != accountEpoch) return SendResult(SendOutcome.Refused, "account_changed", answer.status)
-                        if (expiresAt != null) attestation = Attestation(serverId, token, expiresAt)
+                        if (work.accountEpoch != accountEpoch) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
+                        if (expiresAt != null) attestation = Attestation(serverId, work.account, token, expiresAt)
                     }
                     token
                 }
@@ -639,8 +733,9 @@ object RaftClientTraceEvents {
         sender.setAccount(null)
     }
 
-    fun bindTransport(networkClient: RaftNetworkClient) {
-        sender.bindTransport(RaftNetworkClientTraceTransport(networkClient))
+    /** [sessionAccount]: the user id of the session [networkClient] authenticates with (null signed out). */
+    fun bindTransport(networkClient: RaftNetworkClient, sessionAccount: suspend () -> String?) {
+        sender.bindTransport(RaftNetworkClientTraceTransport(networkClient, sessionAccount))
     }
 
     /** `mobile_inbox_inplace_v0`: one `activity:inplace_check` (web `emitStateTransitionTrace`). */
