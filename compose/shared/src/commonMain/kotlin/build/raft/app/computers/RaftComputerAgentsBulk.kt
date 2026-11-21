@@ -325,6 +325,8 @@ internal fun RaftComputerAgentsBulkReceiptBanner(
                 delay(RAFT_BULK_SUCCESS_BANNER_MS)
                 if (state.receipt === receipt) state.receipt = null
             }
+            build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+            build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
             val target =
                 raftComputerAgentIdentityLabel(
                     receipt.target.runtime,
@@ -469,6 +471,8 @@ internal fun RaftComputerSelectableAgentRow(
     serverId: String? = null,
     machineId: String? = null,
 ) {
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftListRow(
         title = agent.name,
         onClick = onToggle,
@@ -797,9 +801,11 @@ internal fun RaftComputerBulkChangeModelDialog(
                         color = RaftTheme.colors.foregroundMuted,
                     )
                 } else {
+                    val runtimeLabels = runtimeIds.associateWith { observeAgentRuntimeDisplayName(it) }
+                    val selectedRuntimeLabel = runtimeLabels[runtime] ?: observeAgentRuntimeDisplayName(runtime)
                     RaftField(
                         label = stringResource(Res.string.settings_computers_bulk_model_runtime),
-                        description = stringResource(Res.string.settings_computers_bulk_model_account_hint, raftAgentRuntimeDisplayName(runtime)),
+                        description = stringResource(Res.string.settings_computers_bulk_model_account_hint, selectedRuntimeLabel),
                     ) {
                         RaftSelect(
                             value = runtime,
@@ -810,7 +816,7 @@ internal fun RaftComputerBulkChangeModelDialog(
                                     modelChoice = ""
                                 }
                             },
-                            optionLabel = ::raftAgentRuntimeDisplayName,
+                            optionLabel = { id -> runtimeLabels[id] ?: raftAgentRuntimeDisplayName(id) },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -904,6 +910,8 @@ private fun RaftBulkModelReviewRow(
 ) {
     val skipped = row as? RaftBulkPlanRow.Skip
     val sameRuntime = agent.runtime == runtime
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     val from = raftBulkModelLabel(agent.runtime, agent.model, withRuntime = !sameRuntime, serverId = serverId, machineId = machineId)
     val to = raftBulkModelLabel(runtime, model, withRuntime = !sameRuntime, serverId = serverId, machineId = machineId)
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {

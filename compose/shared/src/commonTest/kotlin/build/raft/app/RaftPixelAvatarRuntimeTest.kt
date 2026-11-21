@@ -1,7 +1,8 @@
 package build.raft.app
 
-import build.raft.app.data.InMemoryRaftKeyValueStore
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
+import build.raft.app.data.InMemoryRaftKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -258,5 +259,33 @@ class RaftPixelAvatarRuntimeTest {
         assertFalse(nestedRandomAvatar.nativeCacheKey == defaultAvatar.nativeCacheKey)
         assertNull(pixelAvatarSpecForWireValue("random:agent-1"))
         assertNull(pixelAvatarSpecForWireValue("pixel:random:"))
+    }
+
+    @Test
+    fun runtimeSwapNeverRollsBackToOlderVersionOrThrowsInsideOpenSnapshot() {
+        try {
+            val baseVersion = RaftPixelAvatarRuntime.bundled.version
+            val openSnapshot = Snapshot.takeMutableSnapshot()
+            try {
+                val newer = assertNotNull(
+                    RaftPixelAvatarRuntime.applyRuntimeJson(
+                        sampleJson(version = baseVersion + 5),
+                        source = "fetch"
+                    )
+                )
+                assertNull(
+                    RaftPixelAvatarRuntime.applyRuntimeJson(
+                        sampleJson(version = baseVersion + 2),
+                        source = "cache"
+                    )
+                )
+                val observed = openSnapshot.enter { RaftPixelAvatarRuntime.current }
+                assertSame(newer, observed)
+            } finally {
+                openSnapshot.dispose()
+            }
+        } finally {
+            RaftPixelAvatarRuntime.resetForTest()
+        }
     }
 }

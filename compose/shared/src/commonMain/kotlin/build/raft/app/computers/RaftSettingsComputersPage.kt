@@ -3978,6 +3978,8 @@ private fun RaftComputerAgentRow(
             statusText == stringResource(Res.string.member_row_status_online) ||
             statusText == stringResource(Res.string.member_row_status_offline) ||
             statusText == stringResource(Res.string.member_row_status_likely_online)
+    build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(serverId)
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftListRow(
         title = agent.name,
         onClick = onClick,

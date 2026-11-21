@@ -929,6 +929,12 @@ private fun MembersListRow(
     // botiverse/slock #11273 `MemberAgentRow`: an App Bot's name carries the Bot badge.
     val appBot = remember(member) { member.appBotIdentityOrNull() }
     if (member.kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(member.serverId?.value)
+    val modelLabelCatalog =
+        if (member.kind == MemberKind.Agent) {
+            build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(member.serverId?.value)
+        } else {
+            null
+        }
     val subtitle =
         when {
             member.kind == MemberKind.Agent && runtimeLine -> {
@@ -942,11 +948,11 @@ private fun MembersListRow(
                 // botiverse/slock #15691: the reasoning effort its profile shows ("Reasoning: High"),
                 // last, so on a phone it gives way before the computer does.
                 val reasoning = member.membersAgentReasoningEffortLine()?.localized()
-                listOfNotNull(runtime, member.modelLabel(), machineName?.takeIf { it.isNotBlank() }, reasoning)
+                listOfNotNull(runtime, member.modelLabel(catalog = modelLabelCatalog), machineName?.takeIf { it.isNotBlank() }, reasoning)
                     .joinToString(" · ")
                     .takeIf { it.isNotEmpty() }
             }
-            member.kind == MemberKind.Agent -> member.modelLabel()
+            member.kind == MemberKind.Agent -> member.modelLabel(catalog = modelLabelCatalog)
             membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest &&
                 !member.guestChannel?.name.isNullOrBlank() -> "#${member.guestChannel?.name}"
             else -> member.description?.takeIf { it.isNotBlank() }

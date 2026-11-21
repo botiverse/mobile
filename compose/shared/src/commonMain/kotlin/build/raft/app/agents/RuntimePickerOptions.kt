@@ -19,8 +19,9 @@ import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.data.SharedCreateAgentRuntimeOption
 import build.raft.app.data.deprecatedHere
 import build.raft.app.data.hasMobileForm
+import build.raft.app.data.observeRuntimeCatalogDisplayName
+import build.raft.app.data.observeRuntimeCatalogIsDeprecated
 import build.raft.app.data.runtimeCatalogDisplayName
-import build.raft.app.data.runtimeCatalogIsDeprecated
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -355,9 +356,14 @@ internal fun runtimeLabelWithStatus(
     deprecated: Boolean? = null
 ): String {
     EnsureServerRuntimeCatalog(serverId)
-    val name = runtimeIdentityDisplayName(runtimeId, serverId)
+    val name =
+        if (isExternalAgentRuntime(runtimeId)) {
+            ExternalAgentRuntimeDisplayName
+        } else {
+            observeRuntimeCatalogDisplayName(runtimeId, serverId)
+        }
     return when {
-        deprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
+        deprecated ?: observeRuntimeCatalogIsDeprecated(runtimeId, serverId) -> name + stringResource(Res.string.runtime_suffix_deprecated)
         else -> name
     }
 }

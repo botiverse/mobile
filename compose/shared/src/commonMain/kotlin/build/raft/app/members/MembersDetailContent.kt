@@ -1035,6 +1035,7 @@ internal fun MembersDetailContent(
             // Web AgentDetailPanel `activityErrorText`: known runtime errors in the app's words (a
             // "not installed" says how the lookup ended and names the runtime, botiverse/slock
             // #12729), anything else as the server put it.
+            if (member.kind == MemberKind.Agent) build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
             val runtimeErrorDisplay = member.membersAgentRuntimeErrorDisplay(detail, agentStatusIndicatorState, canViewPrivate)
             val runtimeErrorText = runtimeErrorDisplay?.let { agentRuntimeErrorDisplayText(it) }
             if (member.kind == MemberKind.Human) {

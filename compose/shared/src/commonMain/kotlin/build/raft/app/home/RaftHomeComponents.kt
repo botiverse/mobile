@@ -8377,6 +8377,7 @@ private fun DirectMessageAgentMeta(
         )
         return
     }
+    build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     val meta = raftHomeDmAgentMeta(status) ?: return
     val (text, style, color) =
         when (meta) {
@@ -8479,7 +8480,11 @@ internal fun RaftAppAvatar(
             it.startsWith("http://") || it.startsWith("https://")
         }
     }
-    val pixelSpec = remember(displayAvatarWireValue) {
+    val isPixelWire = remember(displayAvatarWireValue) {
+        displayAvatarWireValue?.trim()?.startsWith(PixelAvatarProtocolPrefix) == true
+    }
+    val pixelAvatarData = if (isPixelWire) RaftPixelAvatarRuntime.observeCurrent() else null
+    val pixelSpec = remember(displayAvatarWireValue, pixelAvatarData) {
         traceMarkdownSectionNonComposable(RaftAvatarTraceNames.IDENTIFY) {
             displayAvatarWireValue?.toPixelAvatarSpec()
         }
@@ -8638,7 +8643,8 @@ private fun RaftAppAvatarFallback(kind: RaftAvatarKind, label: String, step: Raf
     val initials = remember(kind, label, step) { if (kind == RaftAvatarKind.Labeled) raftAppAvatarInitials(label, step) else "" }
     when (raftAvatarFallbackFace(kind, initials)) {
         RaftAvatarFallbackFace.DefaultPixel -> {
-            val spec = remember { pixelAvatarSpecForWireValue(agentAvatarFallbackWireValue("")) }
+            val pixelAvatarData = RaftPixelAvatarRuntime.observeCurrent()
+            val spec = remember(pixelAvatarData) { pixelAvatarSpecForWireValue(agentAvatarFallbackWireValue("")) }
             if (spec != null) RaftNativePixelAvatar(spec)
         }
         RaftAvatarFallbackFace.Placeholder ->

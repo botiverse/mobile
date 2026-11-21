@@ -33,7 +33,6 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.data.runtimeCatalogDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
@@ -315,7 +314,7 @@ private fun AgentMigrationTargetDetailsContent(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (usage != null && agentRuntime != null) {
             RaftText(
-                stringResource(Res.string.settings_computers_runtime_usage_title, runtimeCatalogDisplayName(agentRuntime)),
+                stringResource(Res.string.settings_computers_runtime_usage_title, build.raft.app.data.observeRuntimeCatalogDisplayName(agentRuntime)),
                 style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.foregroundMuted
             )
@@ -513,14 +512,15 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
     val name = agent.agentMigrationName()
     val catalogServerId = agent.serverId?.value ?: source.serverId
     build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
-    val modelLabelCatalog = build.raft.app.data.RaftModelLabelCatalogs.catalog(catalogServerId)
+    val modelLabelCatalog = build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(catalogServerId)
+    val runtimeCatalogs = build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     RaftPreviewCard(
         state = state,
         pinOnClick = true,
         card = {
             RaftProfilePreviewCardContent(
                 model =
-                    remember(agent, status, source.serverId, modelLabelCatalog) {
+                    remember(agent, status, source.serverId, modelLabelCatalog, runtimeCatalogs) {
                         raftProfilePreviewCardModel(
                             agent,
                             status,

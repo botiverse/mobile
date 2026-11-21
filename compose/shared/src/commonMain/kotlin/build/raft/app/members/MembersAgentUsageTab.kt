@@ -870,7 +870,7 @@ private fun AgentUsageModelsSection(figures: AgentUsageFigures) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     RaftText(
-                        text = model.runtime?.let(::raftAgentRuntimeDisplayName) ?: dash,
+                        text = model.runtime?.let { observeAgentRuntimeDisplayName(it) } ?: dash,
                         style = typography.monoMeta,
                         color = colors.foregroundHint,
                         maxLines = 1,

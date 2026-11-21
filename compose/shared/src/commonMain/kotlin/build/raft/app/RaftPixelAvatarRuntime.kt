@@ -1,18 +1,22 @@
 package build.raft.app
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.ui.graphics.Color
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Runtime refresh of the pixel-avatar table from the deployed web app (task #352).
@@ -183,8 +187,9 @@ internal fun parsePixelAvatarData(jsonText: String): PixelAvatarData? {
 
 /**
  * Holder for the active pixel-avatar table. Starts from the generated bundled table and swaps
- * to a cached/downloaded document once one validates. Backed by snapshot state so composables
- * resolving specs recompose when a fetch lands after first render.
+ * to a cached/downloaded document once one validates. Backed by a [MutableStateFlow] so composables
+ * observing [observeCurrent] recompose when a fetch lands after first render without triggering
+ * Compose snapshot errors during cold-start off-main initialization.
  */
 internal object RaftPixelAvatarRuntime {
     val bundled: PixelAvatarData =
@@ -198,8 +203,22 @@ internal object RaftPixelAvatarRuntime {
             series = PixelAvatarBundledSeries
         )
 
-    var current: PixelAvatarData by mutableStateOf(bundled)
-        private set
+    private val stateLock = SynchronizedObject()
+    private val currentFlow = MutableStateFlow(bundled)
+
+    /**
+     * Current pixel-avatar table. Backed by a [MutableStateFlow] instead of a top-level Compose
+     * `mutableStateOf` so cold-start cache hydration off main (`RaftSharedStoreProvider`) cannot
+     * trigger `SnapshotKt.readError` against an open main-thread `Recomposer` snapshot (Hands
+     * `25b91174`, `#proj-mobile-release:#35`). Composables subscribe with [observeCurrent].
+     */
+    val current: PixelAvatarData
+        get() = currentFlow.value
+
+    val flow: StateFlow<PixelAvatarData> = currentFlow.asStateFlow()
+
+    @Composable
+    fun observeCurrent(): PixelAvatarData = currentFlow.collectAsState().value
 
     /**
      * Parses [jsonText] and swaps it in when valid and its version is >= [minimumVersion]
@@ -236,14 +255,22 @@ internal object RaftPixelAvatarRuntime {
             )
             return null
         }
-        if (data.version == current.version) {
+        val accepted =
+            synchronized(stateLock) {
+                if (data.version <= currentFlow.value.version) {
+                    false
+                } else {
+                    currentFlow.value = data
+                    true
+                }
+            }
+        if (!accepted) {
             raftLogInfo(
                 PixelAvatarRuntimeLogTag,
                 "pixel_avatar_runtime unchanged source=$source version=${data.version}"
             )
             return null
         }
-        current = data
         raftLogInfo(
             PixelAvatarRuntimeLogTag,
             "pixel_avatar_runtime applied source=$source version=${data.version} avatars=${data.specs.size}"
@@ -252,7 +279,7 @@ internal object RaftPixelAvatarRuntime {
     }
 
     fun resetForTest() {
-        current = bundled
+        synchronized(stateLock) { currentFlow.value = bundled }
     }
 }
 
@@ -343,7 +370,7 @@ internal suspend fun refreshPixelAvatarsFromWeb(
         return
     }
     val data = parsePixelAvatarData(bodyText) ?: return
-    // The table is Compose state that avatars on screen read: swap it on main (the parse stays here).
+    // Swap the active table on main (parsing stays off main); observers collect currentFlow in composition.
     val applied = withContext(Dispatchers.Main) { RaftPixelAvatarRuntime.applyParsed(data, source = "fetch") } ?: return
     store.save(json = bodyText, version = applied.version, fetchedAtEpochMillis = nowEpochMillis())
 }
