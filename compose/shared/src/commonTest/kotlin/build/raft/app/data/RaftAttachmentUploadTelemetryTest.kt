@@ -1,10 +1,14 @@
 package build.raft.app.data
 
 import build.raft.app.ThreadAttachmentUploadAttemptIdentity
+import build.raft.app.model.Attachment
+import build.raft.app.model.AttachmentId
+import build.raft.app.model.ChannelId
 import build.raft.app.network.RaftTraceIds
 import build.raft.app.network.RaftTransportFailureKind
 import build.raft.app.network.RaftUploadWireFacts
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
@@ -12,6 +16,7 @@ import kotlinx.serialization.json.long
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -411,11 +416,12 @@ class RaftAttachmentUploadTelemetryTest {
         attempt: Int = 1,
         logs: MutableList<String> = mutableListOf(),
         emitted: MutableList<Emitted>,
+        elapsedMs: () -> Long = { 500L },
     ) = RaftAttachmentUploadAttempt(
         serverId = serverId,
         attempt = attempt,
         pickedSizeBytes = 1_024L,
-        elapsedMs = { 500L },
+        elapsedMs = elapsedMs,
         log = { logs += it },
         emit = { server, attrs, traceId, spanId -> emitted += Emitted(server, attrs, traceId, spanId) },
     )
@@ -719,5 +725,341 @@ class RaftAttachmentUploadTelemetryTest {
         assertEquals("thread_composer_attachment_upload_finished", tokens.first())
         val expected = attrs.map { (name, value) -> "$name=${value.jsonPrimitive.content}" } + "traceId=0af7651916cd43dd8448eb211c80319c"
         assertEquals(expected, tokens.drop(1))
+    }
+
+    // control_ms (botiverse/slock #16006): the first attempt of each control call, summed.
+
+    private val controlAuthority = RaftExpectedAuthBinding("account", "access", "refresh", "server-1", "env")
+    private val directCapabilities =
+        AttachmentUploadCapabilities(maxBytes = 10_000L, directUploadEnabled = true, directUploadThresholdBytes = 10L)
+
+    /** The attempt's clock: each fake call moves it on by what it "took". */
+    private class ControlClock(var now: Long = 0L) {
+        fun spend(ms: Long) {
+            now += ms
+        }
+    }
+
+    private class ClockedGateway(
+        private val clock: ControlClock,
+        private val recorder: RaftAttachmentUploadTimingRecorder,
+    ) : DirectAttachmentUploadSessionGateway {
+        var createMs = 200L
+        var createResult: DataResult<AttachmentUploadSessionCreateResult>? = null
+        /** Inside one create call: the request, a 401, the token refresh and the resend. */
+        var createSteps: List<Long>? = null
+        var putMs = 1_000L
+        var putResult: DataResult<Unit> = DataResult.Content(Unit)
+        var statusMs = 70L
+        /** Each complete call's time and answer, in order. */
+        val completes = ArrayDeque<Pair<Long, DataResult<AttachmentUploadSessionCompleteResult>>>()
+        var completeCalls = 0
+
+        override suspend fun capabilities(): DataResult<AttachmentUploadCapabilities> = error("probed through the cache")
+
+        override suspend fun create(
+            request: AttachmentUploadSessionCreateRequest,
+        ): DataResult<AttachmentUploadSessionCreateResult> {
+            // As the network client does when the call is handed over.
+            recorder.uploadRequestStarting(RaftAttachmentUploadRouteDirect)
+            createSteps?.forEach(clock::spend) ?: clock.spend(createMs)
+            return createResult ?: DataResult.Content(
+                AttachmentUploadSessionCreateResult(
+                    uploadId = UPLOAD_ID,
+                    attachmentId = AttachmentId(ATTACHMENT_ID),
+                    state = "pending",
+                    expiresAt = "2026-12-01T00:00:00Z",
+                    upload = AttachmentUploadSessionPut(
+                        method = "PUT",
+                        url = "https://r2.example/object",
+                        headers = mapOf("Content-Type" to "application/octet-stream", "If-None-Match" to "*"),
+                    ),
+                ),
+            )
+        }
+
+        override suspend fun put(
+            upload: AttachmentUploadSessionPut,
+            file: PlatformFile,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
+        ): DataResult<Unit> {
+            clock.spend(putMs)
+            return putResult
+        }
+
+        override suspend fun complete(uploadId: String): DataResult<AttachmentUploadSessionCompleteResult> {
+            completeCalls += 1
+            val (ms, answer) = completes.removeFirstOrNull() ?: (50L to completed())
+            clock.spend(ms)
+            return answer
+        }
+
+        override suspend fun cancel(uploadId: String): DataResult<AttachmentUploadSessionView> =
+            DataResult.Content(AttachmentUploadSessionView(uploadId = uploadId, state = "canceled", expiresAt = ""))
+
+        override suspend fun status(uploadId: String): DataResult<AttachmentUploadSessionView> {
+            clock.spend(statusMs)
+            return DataResult.Content(AttachmentUploadSessionView(uploadId = uploadId, state = "pending", expiresAt = ""))
+        }
+
+        companion object {
+            const val UPLOAD_ID = "11111111-1111-4111-8111-111111111111"
+            const val ATTACHMENT_ID = "22222222-2222-4222-8222-222222222222"
+
+            fun completed() =
+                DataResult.Content(
+                    AttachmentUploadSessionCompleteResult(
+                        uploadId = UPLOAD_ID,
+                        state = "completed",
+                        attachment = Attachment(
+                            id = AttachmentId(ATTACHMENT_ID),
+                            name = "a.bin",
+                            mimeType = "application/octet-stream",
+                            sizeLabel = "",
+                            sizeBytes = 100,
+                        ),
+                    ),
+                )
+        }
+    }
+
+    private fun pickedFile() =
+        PlatformFile(id = "local-1", fileName = "a.bin", mimeType = "application/octet-stream", sizeBytes = 100L, bytes = ByteArray(100) { 1 })
+
+    @Test
+    fun onTheLegacyRouteControlMsIsTheCapabilityProbeOnly() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val cache = AttachmentUploadCapabilitiesCache(nowMillis = { 0L })
+        var fetches = 0
+
+        withContext(upload.recorder) {
+            // The attempt's own probe: a real fetch.
+            cache.getOrFetch(controlAuthority) {
+                fetches += 1
+                clock.spend(120L)
+                DataResult.Content(AttachmentUploadCapabilities(maxBytes = 10_000L))
+            }
+            // A second read hits the cache: no call, no time.
+            cache.getOrFetch(controlAuthority) { error("cached") }
+            // The multipart POST is not a control call.
+            upload.recorder.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
+            clock.spend(900L)
+            upload.recorder.transferFinished(
+                RaftAttachmentUploadRouteLegacy,
+                RaftUploadWireFacts(requestBytes = 100L, requestBodyMs = 700L, responseWaitMs = 200L),
+            )
+        }
+        upload.settle(DataResult.Content(Unit))
+        upload.report()
+
+        val attrs = emitted.single().attrs
+        assertEquals(1, fetches)
+        assertEquals("legacy", attrs.text("route"))
+        assertEquals(120L, attrs.getValue("control_ms").jsonPrimitive.long)
+        // The probe is the whole wait before the POST: none of it is preparation.
+        assertEquals(0L, attrs.getValue("prepare_ms").jsonPrimitive.long)
+        assertEquals(1_020L, attrs.getValue("duration_ms").jsonPrimitive.long)
+    }
+
+    @Test
+    fun onTheDirectRouteControlMsIsTheProbeTheCreateAndTheFirstCompleteNotItsRetries() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val gateway = ClockedGateway(clock, upload.recorder)
+        // The first complete is told verification is still running; the retry answers.
+        gateway.completes.add(
+            300L to DataResult.Error(ScreenError(code = "http_409", retryable = true, serverCode = "UPLOAD_VERIFICATION_IN_PROGRESS")),
+        )
+        gateway.completes.add(450L to ClockedGateway.completed())
+        val cache = AttachmentUploadCapabilitiesCache(nowMillis = { 0L })
+
+        val result =
+            withContext(upload.recorder) {
+                cache.getOrFetch(controlAuthority) {
+                    clock.spend(100L)
+                    DataResult.Content(directCapabilities)
+                }
+                gateway.uploadOneThreadFile(ChannelId("channel-1"), pickedFile(), clientRequestId = "request-1")
+            }
+        upload.settle(result)
+        upload.report()
+
+        assertIs<DataResult.Content<*>>(result)
+        assertEquals(2, gateway.completeCalls)
+        val attrs = emitted.single().attrs
+        assertEquals("direct", attrs.text("route"))
+        assertEquals("ok", attrs.text("outcome"))
+        // probe 100 + create 200 + first complete 300; the retry's 450 and the PUT's 1000 are not in it.
+        assertEquals(600L, attrs.getValue("control_ms").jsonPrimitive.long)
+        assertEquals(0L, attrs.getValue("prepare_ms").jsonPrimitive.long)
+        assertEquals(2_050L, attrs.getValue("duration_ms").jsonPrimitive.long)
+    }
+
+    @Test
+    fun theRecoveryAfterAnUncertainPutIsNotInControlMs() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val gateway =
+            ClockedGateway(clock, upload.recorder).apply {
+                putResult = DataResult.Error(ScreenError(code = "attachment_upload_session_put_failed", retryable = true))
+            }
+        gateway.completes.add(80L to ClockedGateway.completed())
+
+        val result =
+            withContext(upload.recorder) {
+                gateway.uploadOneThreadFile(ChannelId("channel-1"), pickedFile(), clientRequestId = "request-1")
+            }
+        upload.settle(result)
+        upload.report()
+
+        assertIs<DataResult.Content<*>>(result)
+        assertEquals(1, gateway.completeCalls)
+        // The create only: the status check (70) and the recovery's complete (80) stay in the remainder.
+        assertEquals(200L, emitted.single().attrs.getValue("control_ms").jsonPrimitive.long)
+    }
+
+    @Test
+    fun aFailedControlCallCountsItsTimeIncludingATokenRefreshAndResend() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val cache = AttachmentUploadCapabilitiesCache(nowMillis = { 0L })
+        // Fetched before this attempt (the composer's prefetch): a cache hit is no probe.
+        cache.getOrFetch(controlAuthority) { DataResult.Content(directCapabilities) }
+        val gateway =
+            ClockedGateway(clock, upload.recorder).apply {
+                // One create call: 150 to a 401, 80 refreshing the token, 170 for the resend, which fails.
+                createSteps = listOf(150L, 80L, 170L)
+                createResult = DataResult.Error(ScreenError(code = "http_500", retryable = true))
+            }
+
+        val result =
+            withContext(upload.recorder) {
+                clock.spend(30L)
+                cache.getOrFetch(controlAuthority) { error("cached") }
+                gateway.uploadOneThreadFile(ChannelId("channel-1"), pickedFile(), clientRequestId = "request-1")
+            }
+        upload.settle(result)
+        upload.report()
+
+        val attrs = emitted.single().attrs
+        assertEquals("error", attrs.text("outcome"))
+        assertEquals(400L, attrs.getValue("control_ms").jsonPrimitive.long)
+        assertEquals(430L, attrs.getValue("duration_ms").jsonPrimitive.long)
+        assertEquals(30L, attrs.getValue("prepare_ms").jsonPrimitive.long)
+    }
+
+    @Test
+    fun withoutAControlCallControlMsIsAbsent() = runTest {
+        val emitted = mutableListOf<Emitted>()
+        // Ended while preparing the file (cache hit, so no probe): nothing reached the server.
+        attempt(emitted = emitted).apply {
+            settle(DataResult.Error(ScreenError(code = "attachment_read_failed", retryable = false)))
+            report()
+        }
+        // Removed before any call.
+        attempt(emitted = emitted).reportCancellation(true, RaftUploadCancelled(RaftAttachmentUploadCancelReason.UserRemoved))
+        // A call outside an upload attempt (the composer's prefetch) is timed nowhere.
+        val outside = attempt(emitted = emitted)
+        AttachmentUploadCapabilitiesCache(nowMillis = { 0L }).getOrFetch(controlAuthority) { DataResult.Content(directCapabilities) }
+        outside.settle(DataResult.Content(Unit))
+        outside.report()
+
+        assertEquals(3, emitted.size)
+        emitted.forEach { assertNull(it.attrs["control_ms"], it.attrs.toString()) }
+        // A call that took no measurable time was still reached: 0, not absent.
+        val zero = RaftAttachmentUploadTimingRecorder(elapsedMs = { 5L })
+        zero.controlCallTimed(zero.controlCallStarting())
+        assertEquals(0L, zero.snapshot().controlMs)
+        // Never more than the total.
+        val capped = raftAttachmentUploadFinishedAttrs(RaftAttachmentUploadFinished(route = "direct", durationMs = 300L, controlMs = 450L))
+        assertEquals(300L, capped.getValue("control_ms").jsonPrimitive.long)
+    }
+
+    @Test
+    fun aCancelledControlCallStillCountsAndTheAttemptEmitsOnce() = runTest {
+        var now = 0L
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { now })
+        val cancelled =
+            runCatching {
+                withContext(upload.recorder) {
+                    raftUploadControlCall {
+                        now += 250L
+                        if (now > 0L) throw RaftUploadCancelled(RaftAttachmentUploadCancelReason.DraftCleared)
+                    }
+                }
+            }.exceptionOrNull()
+        upload.reportCancellation(true, cancelled)
+        upload.report()
+
+        val attrs = emitted.single().attrs
+        assertEquals("cancelled", attrs.text("outcome"))
+        assertEquals("draft_cleared", attrs.text("cancel_reason"))
+        assertEquals(250L, attrs.getValue("control_ms").jsonPrimitive.long)
+    }
+
+    /** As on the web, the parts are disjoint: what they leave of duration_ms is resends and polling. */
+    @Test
+    fun theProbeIsControlMsNotPrepareMsAndThePartsNeverExceedTheTotal() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val cache = AttachmentUploadCapabilitiesCache(nowMillis = { 0L })
+
+        withContext(upload.recorder) {
+            clock.spend(40L) // local work
+            cache.getOrFetch(controlAuthority) {
+                clock.spend(120L)
+                DataResult.Content(AttachmentUploadCapabilities(maxBytes = 10_000L))
+            }
+            clock.spend(60L) // waiting for an upload slot, reading the size
+            upload.recorder.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
+            clock.spend(1_000L)
+            upload.recorder.transferFinished(
+                RaftAttachmentUploadRouteLegacy,
+                RaftUploadWireFacts(requestBytes = 100L, connectMs = 50L, requestBodyMs = 600L, responseWaitMs = 250L),
+            )
+            // A legacy body resend after a token refresh is in no part.
+            clock.spend(300L)
+        }
+        upload.settle(DataResult.Content(Unit))
+        upload.report()
+
+        val attrs = emitted.single().attrs
+        fun ms(name: String) = attrs.getValue(name).jsonPrimitive.long
+        assertEquals(100L, ms("prepare_ms"), "40 + 60 of local work, the 120 probe excluded")
+        assertEquals(120L, ms("control_ms"))
+        val parts = listOf("prepare_ms", "control_ms", "connect_ms", "request_body_ms", "response_wait_ms").sumOf(::ms)
+        assertEquals(1_520L, ms("duration_ms"))
+        assertTrue(parts <= ms("duration_ms"), "parts=$parts")
+        assertEquals(400L, ms("duration_ms") - parts, "the remainder: what the parts do not cover")
+
+        // A probe made before the attempt (a prefetch) and a cache hit in it add to neither part.
+        val cachedClock = ControlClock()
+        val cached = attempt(emitted = emitted, elapsedMs = { cachedClock.now })
+        withContext(cached.recorder) {
+            cachedClock.spend(70L)
+            cache.getOrFetch(controlAuthority) { error("cached") }
+            cached.recorder.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
+        }
+        cached.settle(DataResult.Content(Unit))
+        cached.report()
+        assertEquals(70L, emitted.last().attrs.getValue("prepare_ms").jsonPrimitive.long)
+        assertNull(emitted.last().attrs["control_ms"])
+
+        // The app's clock and the engine's disagree: each part is capped by what is left, never below 0.
+        val phases =
+            raftAttachmentUploadPhases(
+                durationMs = 1_000L,
+                prepareMs = 300L,
+                facts = RaftUploadWireFacts(connectMs = 100L, requestBodyMs = 500L, responseWaitMs = 400L),
+                controlMs = 200L,
+            )
+        assertEquals(RaftAttachmentUploadPhases(300L, 100L, 400L, 0L, controlMs = 200L), phases)
     }
 }

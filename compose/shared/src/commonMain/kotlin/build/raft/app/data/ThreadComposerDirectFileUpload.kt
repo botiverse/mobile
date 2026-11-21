@@ -161,7 +161,8 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
             clientRequestId = clientRequestId,
         )
     val created =
-        when (val createResult = create(createRequest)) {
+        // `control_ms`: the session create, with any token refresh and resend inside it.
+        when (val createResult = raftUploadControlCall { create(createRequest) }) {
             is DataResult.Content -> createResult.data
             is DataResult.Error -> return createResult
             is DataResult.NoPermission -> return createResult
@@ -196,6 +197,7 @@ internal suspend fun DirectAttachmentUploadSessionGateway.uploadOneThreadFile(
             completeThreadFile(
                 expectedUploadId = created.uploadId,
                 expectedAttachmentId = created.attachmentId,
+                timeFirstAttempt = true,
             )
         if (completed is DataResult.Error &&
             completed.error.code == "attachment_upload_session_contract_invalid"
@@ -265,14 +267,19 @@ private suspend fun DirectAttachmentUploadSessionGateway.recoverSameSessionAfter
     }
 }
 
+/**
+ * [timeFirstAttempt]: the first complete call counts in `control_ms` ([raftUploadControlCall]); its
+ * retries never do, and the recovery after an uncertain PUT leaves it false, as the web.
+ */
 private suspend fun DirectAttachmentUploadSessionGateway.completeThreadFile(
     expectedUploadId: String,
     expectedAttachmentId: AttachmentId,
+    timeFirstAttempt: Boolean = false,
 ): DataResult<Attachment> {
     var last: DataResult<AttachmentUploadSessionCompleteResult>? = null
     repeat(3) { attempt ->
         currentCoroutineContext().ensureActive()
-        val result = complete(expectedUploadId)
+        val result = raftUploadControlCall(counted = timeFirstAttempt && attempt == 0) { complete(expectedUploadId) }
         last = result
         val error = (result as? DataResult.Error)?.error
         val serverCode = error?.serverCode?.trim()?.lowercase() ?: error?.code?.lowercase()

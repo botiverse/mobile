@@ -726,7 +726,12 @@ internal class ThreadRouteAttachmentUploader(
                         // (cache hit, or one shared request) and fail open to multipart on error.
                         var taskCapabilities = directCapabilities
                         if (taskCapabilities == null && directUploadOperation != null) {
-                            when (val fetched = dataSource.attachmentUploadCapabilities(directUploadOperation)) {
+                            // In the attempt's context: a fetch it makes is its capability probe (`control_ms`).
+                            val fetched =
+                                withContext(uploadAttempt.recorder) {
+                                    dataSource.attachmentUploadCapabilities(directUploadOperation)
+                                }
+                            when (fetched) {
                                 is DataResult.Content -> taskCapabilities = fetched.data
                                 is DataResult.NoPermission -> routeAuthRequired(fetched)
                                 is DataResult.Error,

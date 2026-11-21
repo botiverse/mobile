@@ -46,7 +46,9 @@ import kotlinx.serialization.json.put
  *   files reach the composer.
  * - `prepare_ms`: from there to the first upload request being handed to the network client (the
  *   multipart POST, or the upload session's create call), before it queues for a request slot:
- *   capability lookup, waiting for an upload slot, reading the file's size.
+ *   waiting for an upload slot, reading the file's size, a capability cache lookup. A capability
+ *   probe this attempt made in that window is `control_ms`, not `prepare_ms` (subtracted; never
+ *   negative), so the two are disjoint as on the web.
  * - `connect_ms`, `request_body_ms`, `response_wait_ms`, `request_bytes`, `edge_pop`:
  *   [RaftUploadWireFacts], of the multipart POST or the presigned PUT. When the body went more than
  *   once they describe the last send, and `body_sends` says how many there were.
@@ -55,9 +57,21 @@ import kotlinx.serialization.json.put
  *   sent. The time is the engine's on Android / desktop when the transport returned
  *   ([RaftUploadWireFacts.requestBodyPartialMs]); otherwise (iOS, and every cancellation) it is the
  *   span between the first and the last upload-progress report.
+ * - `control_ms`: as the web (slock #16006), the summed time of the first attempt of each control
+ *   call: the capability probe (both routes), plus on `direct` the session create and the first
+ *   complete call. A failed call counts the time it took, and so does a token refresh and resend
+ *   inside it (the auth middleware's 401 handling runs within the call). Later complete attempts,
+ *   the recovery after an uncertain PUT (status and its completes) and body resends are left out.
+ *   Absent when no control call was reached. The app keeps the capabilities for a few minutes
+ *   ([AttachmentUploadCapabilitiesCache]): the probe counts only when this attempt itself fetched
+ *   them; a cache hit, or a capability prefetched before the attempt, adds to neither `control_ms`
+ *   nor `prepare_ms`. Each call is timed where the upload makes it ([raftUploadControlCall]), on
+ *   the attempt's monotonic clock.
  *
- * The four phases never add up to more than `duration_ms`; the rest is the control calls (session
- * create / complete / status) and queueing. No file name, id, URL, error text or user identifier.
+ * As on the web the phases are disjoint: `prepare_ms`, `control_ms`, `connect_ms`, `request_body_ms`
+ * and `response_wait_ms` never add up to more than `duration_ms` ([raftAttachmentUploadPhases]); the
+ * rest is retries (later complete attempts), recovery polling, body resends and queueing. No file
+ * name, id, URL, error text or user identifier.
  * `clientPlatform` and `appVersion` are added by the sender.
  */
 internal const val RaftAttachmentUploadFinishedTraceName = "slock.attachment.upload_finished"
@@ -143,6 +157,7 @@ internal class RaftAttachmentUploadTimingRecorder(
 
     internal class Snapshot(
         val route: String?,
+        /** First upload request handed over, less the control calls timed before it (this attempt's probe). */
         val prepareMs: Long?,
         val facts: RaftUploadWireFacts?,
         /** Times the body was sent in this attempt, over every call of the transport. */
@@ -152,6 +167,8 @@ internal class RaftAttachmentUploadTimingRecorder(
         val progressSpanMs: Long?,
         /** The control call that timed out last, unless a later call of the attempt answered. */
         val controlTimeoutPhase: String?,
+        /** `control_ms`: the timed control calls' summed time; null when none was reached. */
+        val controlMs: Long? = null,
     )
 
     private val lock = SynchronizedObject()
@@ -163,6 +180,9 @@ internal class RaftAttachmentUploadTimingRecorder(
     private var firstProgressAtMs: Long? = null
     private var lastProgressAtMs: Long? = null
     private var controlTimeoutPhase: String? = null
+    private var controlMs: Long? = null
+    /** Control time recorded before the first upload request: the probe, which is not preparation. */
+    private var controlBeforePrepareMs = 0L
 
     private fun now(): Long? = runCatching(elapsedMs).getOrNull()
 
@@ -180,6 +200,19 @@ internal class RaftAttachmentUploadTimingRecorder(
     /** A control call of the upload (create / complete / status) ended; [timedOut] when it got no answer in time. */
     fun controlCallFinished(phase: String, timedOut: Boolean) {
         synchronized(lock) { controlTimeoutPhase = if (timedOut) phase else null }
+    }
+
+    /** A control call counted in `control_ms` starts ([raftUploadControlCall]): its start on the attempt's clock. */
+    fun controlCallStarting(): Long? = now()
+
+    /** That control call ended, answered, failed or cancelled: its time is added to `control_ms`. */
+    fun controlCallTimed(startedAtMs: Long?) {
+        val endedAt = now()
+        synchronized(lock) {
+            val spent = if (startedAtMs != null && endedAt != null) (endedAt - startedAtMs).coerceAtLeast(0L) else 0L
+            controlMs = (controlMs ?: 0L) + spent
+            if (prepareMs == null) controlBeforePrepareMs += spent
+        }
     }
 
     /** The body is handed to the transport (again): the progress of an earlier send no longer counts. */
@@ -218,14 +251,31 @@ internal class RaftAttachmentUploadTimingRecorder(
             val last = lastProgressAtMs
             Snapshot(
                 route = route,
-                prepareMs = prepareMs,
+                prepareMs = prepareMs?.let { (it - controlBeforePrepareMs).coerceAtLeast(0L) },
                 facts = facts,
                 bodySends = bodySends,
                 bytesSent = bytesSent,
                 progressSpanMs = if (first != null && last != null) (last - first).coerceAtLeast(0L) else null,
                 controlTimeoutPhase = controlTimeoutPhase,
+                controlMs = controlMs,
             )
         }
+}
+
+/**
+ * Runs one control call of a composer upload, adding its time to the attempt's `control_ms` whether it
+ * answers, fails or is cancelled (as the web's `timeControlCall`). Only the first attempt of each call
+ * counts: pass [counted] false for a retry or a recovery call. Without a recorder in the coroutine
+ * context (an upload started elsewhere, a prefetch) it just runs [call].
+ */
+internal suspend inline fun <T> raftUploadControlCall(counted: Boolean = true, call: () -> T): T {
+    val recorder = if (counted) currentCoroutineContext()[RaftAttachmentUploadTimingRecorder] else null
+    val startedAt = recorder?.controlCallStarting()
+    try {
+        return call()
+    } finally {
+        recorder?.controlCallTimed(startedAt)
+    }
 }
 
 internal data class RaftAttachmentUploadPhases(
@@ -233,17 +283,20 @@ internal data class RaftAttachmentUploadPhases(
     val connectMs: Long? = null,
     val requestBodyMs: Long? = null,
     val responseWaitMs: Long? = null,
+    val controlMs: Long? = null,
 )
 
 /**
- * The phases as reported, in the order they happen: a phase that was not measured stays null, the
- * response wait needs a body time, and together they never exceed [durationMs] (the engine's clock
- * and the app's are read separately, so each phase is capped by what is left of the total).
+ * The phases as reported: a phase that was not measured stays null, the response wait needs a body
+ * time, and together they never exceed [durationMs] (the engine's clock and the app's are read
+ * separately, so each phase is capped by what is left of the total; the two on the app's own clock,
+ * preparation and the control calls, first).
  */
 internal fun raftAttachmentUploadPhases(
     durationMs: Long,
     prepareMs: Long?,
     facts: RaftUploadWireFacts?,
+    controlMs: Long? = null,
 ): RaftAttachmentUploadPhases {
     var left = durationMs.coerceAtLeast(0L)
     fun capped(value: Long?): Long? {
@@ -253,10 +306,17 @@ internal fun raftAttachmentUploadPhases(
         return kept
     }
     val prepare = capped(prepareMs)
+    val control = capped(controlMs)
     val connect = capped(facts?.connectMs)
     val body = capped(facts?.requestBodyMs)
     val wait = if (body == null) null else capped(facts?.responseWaitMs)
-    return RaftAttachmentUploadPhases(prepareMs = prepare, connectMs = connect, requestBodyMs = body, responseWaitMs = wait)
+    return RaftAttachmentUploadPhases(
+        prepareMs = prepare,
+        connectMs = connect,
+        requestBodyMs = body,
+        responseWaitMs = wait,
+        controlMs = control,
+    )
 }
 
 internal data class RaftAttachmentUploadFinished(
@@ -276,6 +336,8 @@ internal data class RaftAttachmentUploadFinished(
     val bytesSent: Long? = null,
     val progressSpanMs: Long? = null,
     val controlTimeoutPhase: String? = null,
+    /** `control_ms` ([RaftAttachmentUploadTimingRecorder.Snapshot.controlMs]); null when no control call was reached. */
+    val controlMs: Long? = null,
     /** [RaftAttachmentUploadCancelReason.wire]; written only when the outcome is `cancelled` (`other` when null). */
     val cancelReason: String? = null,
 )
@@ -305,7 +367,8 @@ internal fun raftAttachmentUploadElapsedBucket(ms: Long): String =
  * Which step ran out of time, as the web's `timeout_phase`: the body's request when the transport
  * classified its failure as a timeout (`response` once every byte was sent, else `transfer`), else the
  * control call that timed out last. The web's `channel` and `capability` do not occur: the app
- * resolves neither inside an upload attempt.
+ * resolves no channel inside an upload attempt, and a failed capability probe (cached, and often
+ * fetched before the attempt) falls back to multipart instead of ending the upload.
  */
 internal fun raftAttachmentUploadTimeoutPhase(facts: RaftUploadWireFacts?, controlTimeoutPhase: String?): String? =
     when {
@@ -433,7 +496,7 @@ internal fun raftAttachmentUploadFinishedAttrs(finished: RaftAttachmentUploadFin
     val timeoutPhase = raftAttachmentUploadTimeoutPhase(facts, finished.controlTimeoutPhase)
     val outcome = raftAttachmentUploadOutcome(finished.errorCode, finished.cancelled, timeoutPhase)
     val errorCode = raftAttachmentUploadErrorCode(outcome, finished.errorCode, finished.serverCode, facts?.transportError)
-    val phases = raftAttachmentUploadPhases(durationMs, finished.prepareMs, facts)
+    val phases = raftAttachmentUploadPhases(durationMs, finished.prepareMs, facts, finished.controlMs)
     // The file actually sent, when the transport reported its length; else the picked file's.
     val requestBytes = facts?.requestBytes?.takeIf { it > 0L }
     val sizeBytes = requestBytes ?: finished.sizeBytes?.takeIf { it > 0L }
@@ -452,6 +515,7 @@ internal fun raftAttachmentUploadFinishedAttrs(finished: RaftAttachmentUploadFin
         phases.connectMs?.let { put("connect_ms", it) }
         phases.requestBodyMs?.let { put("request_body_ms", it) }
         phases.responseWaitMs?.let { put("response_wait_ms", it) }
+        phases.controlMs?.let { put("control_ms", it) }
         if (bodyUnfinished) {
             (facts?.requestBodyPartialMs ?: finished.progressSpanMs)
                 ?.takeIf { it >= 0L }
@@ -575,6 +639,7 @@ internal class RaftAttachmentUploadAttempt(
                         bytesSent = timing.bytesSent,
                         progressSpanMs = timing.progressSpanMs,
                         controlTimeoutPhase = timing.controlTimeoutPhase,
+                        controlMs = timing.controlMs,
                         cancelReason = if (result == null) cancellation?.reason?.wire else null,
                     )
                 )
