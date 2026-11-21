@@ -15,7 +15,7 @@ version to our patched-dependency Maven repository. Nothing here is built by nor
 | Patch | `RaftAttachGuardPatch.java`: two entry guards written into the official `classes.jar` with ASM 9.11.1. A bytecode patch, not a rebuild (see [How the build works](#how-the-build-works)) |
 | Workflow | `.github/workflows/compose-foundation-patch.yml` (`workflow_dispatch` only; `publish` input, default `false`) |
 | Repository secrets | the same as [compose-ui-1.12.2](../compose-ui-1.12.2/README.md): `COMPOSE_PATCH_MAVEN_URL`, `COMPOSE_PATCH_MAVEN_USER`, `COMPOSE_PATCH_MAVEN_TOKEN`; read only by the publish step |
-| App pin | none yet: it comes in a separate change after the first publish |
+| App pin | Android only: `raft.composeFoundationPatch.*` in `compose/gradle.properties`, the `RaftArtifactsComposeFoundationPatch` repository in `compose/settings.gradle.kts`, the version rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts`, guarded by `scripts/ci/check_compose_foundation_patch_pin.py` (see [The app pin](#the-app-pin)) |
 
 The official files, pinned in the workflow. Google Maven's `.sha256` files and the hashes in the
 official `.module` have the same values.
@@ -41,11 +41,17 @@ reaches the moved, detached node. Two foundation nodes then read a CompositionLo
 - `TextFieldCoreModifierNode` (text fields): `updateNode` calls `startCursorJob()`, which reads
   `LocalCursorBlinkEnabled` the first time the caret shows. This is the crash on main.
 - `SelectableTextAnnotatedStringNode` (text in a `SelectionContainer`): `update` calls
-  `retrievePinnableContainer()`, which reads `LocalPinnableContainer`. The selection crash in 1.22
-  (Hands 21abdfad, c561c66a) is this class of crash.
+  `retrievePinnableContainer()`, which reads `LocalPinnableContainer` (Hands 11b1a052, a975d7ca,
+  6cfdfcde). The app worked around it by keeping message text plain on inactive pages (#4390), and
+  the 1.22 selection crashes (Hands 21abdfad, c561c66a) came from the same move: c561c66a, "LayoutNode
+  should be attached to an owner", from that workaround's own switch of the body in and out of its
+  selection container (#4509). With the pin, the message bodies stay selectable on every page and
+  both workarounds are gone.
 
-`compose/shared/src/androidUnitTest/kotlin/build/raft/app/ComposeDetachedNodeUpdateUiTest.kt`
-reproduces the text-field crash on the official foundation 1.12.1.
+`ThreadSelectableTextStackMoveUiTest` (`compose/shared/src/androidUnitTest`) reproduced the selection
+crash on the official foundation 1.12.1 (a plain `SelectionContainer` in a lazy list row, pushed
+over while the row changes on every frame); it runs against the patched AAR now and checks that the
+move completes.
 
 ### What the patch changes
 
@@ -80,9 +86,13 @@ protect the two nodes that crash for us.
 ### When to remove
 
 Remove this when an androidx release with the fix (in foundation, or in ui's attach order) reaches
-the app, through Compose Multiplatform or a direct androidx dependency. Then delete the app's pin of
-`foundation-android:1.12.1-raft.1`, delete this directory and the workflow, and stop publishing
-`1.12.1-raft.N`. Run `ComposeDetachedNodeUpdateUiTest` on the new release first.
+the app, through Compose Multiplatform or a direct androidx dependency. Then delete the app pin (the
+four `raft.composeFoundationPatch.*` properties, the `RaftArtifactsComposeFoundationPatch` repository,
+the rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts`, the
+`:verifyComposeFoundationPatch` calls in test.yml, android-release.yml and android-alpha.yml, and
+`scripts/ci/check_compose_foundation_patch_pin.py` with its test.yml step), delete this directory and
+the workflow, and stop publishing `1.12.1-raft.N`. Run `ThreadSelectableTextStackMoveUiTest` on the
+new release, without the pin, first.
 
 ## How the build works
 
@@ -158,10 +168,35 @@ while its content does not. Pin the SHA-256 of the `.aar` as published (the publ
 To make a new revision, change the patcher and the verifier here and bump `PATCHED_VERSION` in the
 workflow.
 
+## The app pin
+
+Android only; iOS and desktop keep the official JetBrains foundation (`org.jetbrains.compose.foundation`
+never requests `androidx.compose.foundation:foundation-android`).
+
+- `compose/gradle.properties`: `raft.composeFoundationPatch.composeMultiplatform=1.12.2` (the Compose
+  Multiplatform version whose Android foundation is `base`), `base=1.12.1`, `version=1.12.1-raft.1`
+  and `sha256.foundation-android`, the SHA-256 of the published `.aar`
+  (`e8bc23becabe5f12f068f7892d3ec197be3728bbbea42cbea4bb469dfe0bf61b`, publish run 44880491311).
+- `compose/settings.gradle.kts`: the repository `RaftArtifactsComposeFoundationPatch`, exclusive for
+  `foundation-android` at exactly the patched version; every other version and artifact stays on
+  Google Maven.
+- `compose/build.gradle.kts`: every configuration of every project that asks for
+  `foundation-android:1.12.1` gets `1.12.1-raft.1`: the root `foundation` module's `available-at`
+  redirect, the androidx Compose BOM's constraint and any direct request alike.
+  `verifyComposeFoundationPatch` resolves the Android runtime classpaths of `:androidApp` (all of
+  them: they hold every module's dependencies) and `:shared` (its Robolectric tests'), and fails
+  unless `foundation-android` resolves at `1.12.1-raft.1` with that SHA-256. Any other version means
+  a Compose upgrade left the patch behind, and the build fails saying to re-make the patch for that
+  version or remove the pin. Every `preBuild` of those projects depends on it, and test.yml,
+  android-release.yml and android-alpha.yml also call `:verifyComposeFoundationPatch`.
+- `scripts/ci/check_compose_foundation_patch_pin.py` (test.yml, next to the compose-ui check) fails
+  once `composePlugin` is no longer `composeMultiplatform`, or when the properties, the task or its
+  workflow calls are incomplete.
+
 ## Verification
 
 The workflow proves that the published AAR is Google's 1.12.1 plus exactly the two guards, with
-stack map frames that match the bytecode. It does not run the patched code. The first Android build
-of these classes (D8/R8) and the proof that the crash is gone come with the app pin:
-`ComposeDetachedNodeUpdateUiTest` asserts the crash on the official foundation today, and the pin
-change turns it into a test that the move completes without the crash.
+stack map frames that match the bytecode. It does not run the patched code. The app pin does: the
+Android CI builds compile and dex these classes, `verifyComposeFoundationPatch` checks that the
+classpaths carry the published bytes, and `ThreadSelectableTextStackMoveUiTest`, whose plain
+`SelectionContainer` case threw on the official foundation, checks that the stack move completes.
