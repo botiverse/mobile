@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PlatformFile
+import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.coroutines.CompletableDeferred
@@ -82,7 +83,7 @@ class RaftComposerDraftUploadsTest {
         assertTrue(thirdPage.state.value.uploadedAttachments.none { it.id == PickedId })
 
         // Sending forgets the draft's uploads.
-        uploads.retireDraft(DraftA)
+        uploads.retireDraft(DraftA, RaftAttachmentUploadCancelReason.DraftSent)
         assertTrue(uploads.uploads(DraftA).isEmpty())
     }
 
@@ -402,7 +403,7 @@ class RaftComposerDraftUploadsTest {
         assertEquals("uploading", channelPage.row(PickedId).status, "the thread's result stays in the thread")
 
         // Sending the thread reply forgets only the thread draft's uploads.
-        uploads.retireDraft(ThreadDraftA)
+        uploads.retireDraft(ThreadDraftA, RaftAttachmentUploadCancelReason.DraftSent)
         assertTrue(uploads.uploads(ThreadDraftA).isEmpty())
         assertTrue(uploads.orchestrator.isActive(PickedId, DraftA), "the channel's upload keeps going")
         inChannel.progress(60)

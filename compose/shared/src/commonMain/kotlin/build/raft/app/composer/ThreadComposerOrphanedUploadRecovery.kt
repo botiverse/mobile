@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.MviDispatchReceipt
+import build.raft.app.data.RaftAttachmentUploadCancelReason
+import build.raft.app.data.RaftUploadCancelSiteOrphanRecovery
+import build.raft.app.data.RaftUploadCancelled
 
 /**
  * Turns composer rows that no upload attempt can finish into failed `upload_interrupted` rows, so
@@ -66,7 +69,13 @@ internal fun recoverOrphanedThreadComposerUploads(
         interrupted.filter { id ->
             id !in admissionsNow && orchestrator.isActive(id, normalizedDraftKey)
         }
-    stoppedAttempts.forEach { id -> orchestrator.remove(id, normalizedDraftKey) }
+    stoppedAttempts.forEach { id ->
+        orchestrator.remove(
+            id,
+            normalizedDraftKey,
+            RaftUploadCancelled(RaftAttachmentUploadCancelReason.Other, RaftUploadCancelSiteOrphanRecovery)
+        )
+    }
     val previousStatuses =
         receipt.previousState.uploadedAttachments
             .filter { row -> row.id in interrupted }

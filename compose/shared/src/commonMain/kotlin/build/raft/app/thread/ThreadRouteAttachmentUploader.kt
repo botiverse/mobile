@@ -21,8 +21,6 @@ import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
@@ -900,13 +898,15 @@ internal class ThreadRouteAttachmentUploader(
                                     "attempt=$uploadAttemptToken reason=stale_or_terminal"
                             )
                         }
-                    } catch (_: CancellationException) {
+                    } catch (cancellation: CancellationException) {
                         // The user removed this uploading tile; RemoveAttachment already hid it.
                         // A gallery caller still receives a false completion below, so its
                         // session cannot be committed as if cancellation were a transfer.
                         // The event says `cancelled` only when this upload's own job was cancelled
                         // (remove, draft sent or cleared, sign-out), not for a cancellation from below.
-                        uploadAttempt.reportCancellation(taskCancelled = !currentCoroutineContext().isActive)
+                        // Its `cancel_reason` is the RaftUploadCancelled the canceller passed to the
+                        // job: on the exception that ended the task, or on the job itself.
+                        uploadAttempt.reportTaskCancellation(cancellation)
                     } catch (error: Throwable) {
                         bridge.logWarn(
                             "thread_composer_attachment_upload_exception " +
