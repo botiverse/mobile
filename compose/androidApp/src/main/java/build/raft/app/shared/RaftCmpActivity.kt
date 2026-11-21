@@ -3593,7 +3593,7 @@ internal open class RaftCmpActivity :
                 val task =
                     context.getSystemService(ActivityManager::class.java)
                         ?.appTasks
-                        ?.firstOrNull { it.taskInfo.taskId == taskId }
+                        ?.firstOrNull { it.taskInfo?.taskId == taskId }
                         ?: return@runCatching false
                 task.moveToFront()
                 true
