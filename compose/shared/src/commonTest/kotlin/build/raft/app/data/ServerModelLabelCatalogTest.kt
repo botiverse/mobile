@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -82,7 +83,7 @@ class ServerModelLabelCatalogTest {
     }
 
     @Test
-    fun repositoryRespectsCacheWindowRetryBackoffAndLiveDetectRefresh() = runPortableCoroutineTest {
+    fun repositoryRespectsCacheWindowRetryBackoffAndLiveDetectRefresh() = runTest {
         var calls = 0
         var nextBody =
             """{"machines":{"m-1":{"runtimes":{"claude":{"models":[{"id":"fable","label":"Fable 5.1"}],"updatedAt":"2026-11-21T00:00:00Z"}}}}}"""
@@ -156,7 +157,7 @@ class ServerModelLabelCatalogTest {
     }
 
     @Test
-    fun repositoryDeduplicatesInFlightAndAllowsImmediateForceReloadAfterCompletion() = runPortableCoroutineTest {
+    fun repositoryDeduplicatesInFlightAndAllowsImmediateForceReloadAfterCompletion() = runTest {
         val calls = atomic(0)
         val entered = CompletableDeferred<Unit>()
         val gate = CompletableDeferred<Unit>()
