@@ -2083,7 +2083,7 @@
     <string name="task_head_source_open">출처 메시지 열기</string>
     <string name="task_head_source_unloaded">메시지를 불러오지 않았어요</string>
     <string name="task_head_created_by">만든 사람</string>
-    <string name="task_head_created_at">만든 시간</string>
+    <string name="task_head_created_at_value">만든 시각 %1$s</string>
     <string name="task_head_month_1">1월</string>
     <string name="task_head_month_2">2월</string>
     <string name="task_head_month_3">3월</string>

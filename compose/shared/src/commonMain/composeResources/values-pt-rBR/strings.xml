@@ -2083,7 +2083,7 @@
     <string name="task_head_source_open">Abrir a mensagem de origem</string>
     <string name="task_head_source_unloaded">Mensagem não carregada</string>
     <string name="task_head_created_by">Criada por</string>
-    <string name="task_head_created_at">Criada em</string>
+    <string name="task_head_created_at_value">Criada em %1$s</string>
     <string name="task_head_month_1">jan</string>
     <string name="task_head_month_2">fev</string>
     <string name="task_head_month_3">mar</string>
