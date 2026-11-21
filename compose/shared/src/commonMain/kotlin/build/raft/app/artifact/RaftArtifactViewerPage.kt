@@ -1080,31 +1080,33 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     val currentShownTarget by rememberUpdatedState(shownTarget)
-    val currentAddress by rememberUpdatedState(address)
     val currentLeft by rememberUpdatedState(left)
     val currentLoadError by rememberUpdatedState(loadError)
     val currentVisible by rememberUpdatedState(visible)
+    val currentNavigated by rememberUpdatedState(navigated)
     DisposableEffect(Unit) {
         onDispose {
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState")
             // Keep-alive parks this page's WebView right as it leaves composition: align cache metadata with
             // the document actually parked (including when a stacked Artifact viewer closed before this one),
-            // and never leave an un-embedded document parked in keep-alive.
-            if (!currentLeft && !currentLoadError && currentVisible) {
-                val parkedUrl = currentAddress.ifBlank { src }
-                if (raftArtifactViewerHasEmbedContract(parkedUrl)) {
-                    RaftArtifactViewerMemory.cache.rememberKeptDocument(
-                        scope,
-                        currentShownTarget,
-                        raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId),
-                        currentAppToken,
-                    )
-                    RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId)
-                } else {
-                    raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=dispose_embed_contract_missing")
-                    RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-                    raftWebViewKeepAliveClear()
-                }
+            // and never leave an un-embedded or stale-scope document parked in keep-alive.
+            val parked = raftWebViewKeptDocument(scope.keepAliveKey) ?: return@onDispose
+            if (host.scope() != scope) {
+                raftWebViewKeepAliveClear()
+                return@onDispose
+            }
+            if (!raftArtifactViewerKeptDocumentHasEmbedContract(parked)) {
+                raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=dispose_embed_contract_missing")
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+                raftWebViewKeepAliveClear()
+            } else if (!currentLeft && !currentLoadError && currentVisible && currentNavigated) {
+                RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                    scope,
+                    currentShownTarget,
+                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId),
+                    currentAppToken,
+                )
+                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId)
             }
         }
     }
@@ -1185,7 +1187,8 @@ private fun RaftArtifactViewerWebBody(
                     RaftArtifactViewerBlockedTarget.Ignore -> {
                         val sameArtifact = raftArtifactViewerNavigation(blocked, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay
                         if (sameArtifact != null && !raftArtifactViewerHasEmbedContract(blocked)) {
-                            val currentVersion = (raftArtifactViewerNavigation(address, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay)?.version ?: shownTarget.version
+                            val currentStay = raftArtifactViewerNavigation(address, scope.webOrigin, shownTarget.id) as? RaftArtifactViewerNavigation.Stay
+                            val currentVersion = if (currentStay != null) currentStay.version else shownTarget.version
                             if (sameArtifact.version != currentVersion) {
                                 controller.evaluateJavaScript(
                                     raftArtifactViewerNavigateScript(

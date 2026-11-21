@@ -77,10 +77,10 @@ internal class RaftWebViewEvents {
     var onLoadFailure: (String) -> Unit = {}
     var onNavigationBlocked: (String) -> Unit = {}
     /**
-     * A new top-level document the page asked for that the host routes as a link instead of loading
-     * it here (true): it goes to [onNavigationBlocked] and the page stays. Read on Android, whose
-     * single-window WebView loads a page's `window.open(link)` in place (iOS reports a new window as a
-     * blocked navigation already). Null: every allowed navigation loads, as before.
+     * A new top-level document navigation the page asked for that the host routes as a link instead
+     * of loading it here (true): it goes to [onNavigationBlocked] and the page stays. Read on
+     * Android (`shouldOverrideUrlLoading`) and iOS (`decideNavigationPolicy`, excluding the host's
+     * own `loadCurrentSrc` loads). Null: every allowed navigation loads, as before.
      */
     var routesMainFrameNavigation: ((String) -> Boolean)? = null
     /**

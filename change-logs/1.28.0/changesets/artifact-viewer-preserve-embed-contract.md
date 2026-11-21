@@ -4,8 +4,8 @@ area: artifacts
 platforms:
   - android
   - ios
-  - desktop
 rollout: full
+pull_request: 5238
 ---
 
 ## zh-CN
