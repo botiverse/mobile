@@ -74,7 +74,7 @@ class ThreadInitialFocusedPlacementTest {
                 focusedItemIndex = -1,
             ),
         )
-        // Out-of-range focused index falls back cleanly.
+        // Out-of-range focused index, empty list, and single-item list.
         assertEquals(
             0,
             threadInitialFirstVisibleItemIndex(
@@ -82,6 +82,24 @@ class ThreadInitialFocusedPlacementTest {
                 latestItemIndex = 51,
                 lazyItemCount = 52,
                 focusedItemIndex = 52,
+            ),
+        )
+        assertEquals(
+            0,
+            threadInitialFirstVisibleItemIndex(
+                reverseLayout = true,
+                latestItemIndex = -1,
+                lazyItemCount = 0,
+                focusedItemIndex = 0,
+            ),
+        )
+        assertEquals(
+            0,
+            threadInitialFirstVisibleItemIndex(
+                reverseLayout = true,
+                latestItemIndex = 0,
+                lazyItemCount = 1,
+                focusedItemIndex = 0,
             ),
         )
     }
@@ -219,6 +237,46 @@ class ThreadInitialFocusedPlacementTest {
                 focusedForwardIndex = 20,
                 placement = LazyViewportAnchorPlacement.Focused,
                 minBottomReservePx = 100,
+            ),
+        )
+
+        // Short list already clamped at bottom (cannot scroll forward toward newer rows):
+        // returns AlreadyAligned to skip a redundant synchronous forceRemeasure().
+        val clampedShortInfo =
+            RawInfo(
+                visibleItemsInfo = listOf(RawItem(index = 2, offset = 240, size = 120)),
+                totalItemsCount = 3,
+                layoutSize = 1000,
+            )
+        assertEquals(
+            ThreadInitialFocusedPlacementDecision.AlreadyAligned,
+            resolveThreadInitialFocusedPlacement(
+                layoutInfo = clampedShortInfo,
+                focusedForwardIndex = 0,
+                placement = LazyViewportAnchorPlacement.Focused,
+                minBottomReservePx = 100,
+                canScrollForward = false,
+                canScrollBackward = false,
+            ),
+        )
+
+        // Clamped at top (cannot scroll backward toward older rows) when replies placement wants
+        // to push the row down: returns AlreadyAligned instead of issuing a clamped scroll.
+        val clampedTopInfo =
+            RawInfo(
+                visibleItemsInfo = listOf(RawItem(index = 2, offset = 880, size = 120)),
+                totalItemsCount = 3,
+                layoutSize = 1000,
+            )
+        assertEquals(
+            ThreadInitialFocusedPlacementDecision.AlreadyAligned,
+            resolveThreadInitialFocusedPlacement(
+                layoutInfo = clampedTopInfo,
+                focusedForwardIndex = 0,
+                placement = LazyViewportAnchorPlacement.FocusedThreadReplies,
+                minBottomReservePx = 100,
+                canScrollForward = true,
+                canScrollBackward = false,
             ),
         )
     }

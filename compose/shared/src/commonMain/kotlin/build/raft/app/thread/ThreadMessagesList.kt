@@ -992,7 +992,12 @@ private fun ThreadMessagesListContent(
     val expandRevealOwner = remember(threadInstanceKey) { ThreadExpandRevealOwner() }
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
     // whole thread open, so a row keeps its state when it scrolls away and back.
-    val longMessageCollapseController = remember(threadInstanceKey) { RaftLongMessageCollapseController() }
+    val longMessageCollapseController =
+        remember(threadInstanceKey) {
+            RaftLongMessageCollapseController().apply {
+                autoExpand(renderPayload.focusedMessageId)
+            }
+        }
     LaunchedEffect(longMessageCollapseController, renderPayload.focusedMessageId, renderPayload.focusedMessageRequestNonce) {
         // A jump to a message shows it in full (its target may sit in the clipped part).
         longMessageCollapseController.autoExpand(renderPayload.focusedMessageId)
@@ -1026,14 +1031,14 @@ private fun ThreadMessagesListContent(
         val rawIndex = if (reverseLayout) reversedThreadListIndex(listItemIndex, rawCount) else listItemIndex
         val rawItem = listState.raw.layoutInfo.visibleItemsInfo.firstOrNull { it.index == rawIndex }
         longMessageCollapseController.setExpanded(messageId, expanding)
+        if (forwardItem != null && !listState.isScrollInProgress) {
+            listState.noteUserNavigation()
+        }
         val ownsViewport =
             forwardItem != null &&
                 rawItem != null &&
                 !listState.isScrollInProgress &&
                 (expanding || viewportControllerState.intent != LazyViewportIntent.FollowingLatest)
-        if (ownsViewport) {
-            listState.noteUserNavigation()
-        }
         val keptByReadingAnchor =
             ownsViewport && forwardItem != null && reverseLayout && (expanding || forwardItem.offset >= 0)
         if (keptByReadingAnchor && forwardItem != null) {
@@ -1159,47 +1164,6 @@ private fun ThreadMessagesListContent(
                 )
             }
         }
-    // Cached focused open pre-first-draw placement (#proj-mobile:#258): align the focused row on
-    // a reversed list before Frame 1 draws so the initial paint lands directly on the target.
-    val initialFocusedPlacementOwner =
-        remember(threadInstanceKey, listState) {
-            ThreadInitialFocusedPlacementOwner(
-                listState = listState,
-                scope = coroutineScope,
-                armed = reverseLayout && initialFocusedItemIndex >= 0,
-            )
-        }
-    val initialFocusedJumpNonceState = rememberUpdatedState(jumpInputs.jumpFocusNonce)
-    val initialFocusedKeyboardInsetState = rememberUpdatedState(composerKeyboardInsetDp)
-    val initialFocusedRetiredByHostState =
-        rememberUpdatedState(initialBottomAnchorReady || shareSelectionCaptureActive || adaptiveAnchorRestoreInFlight)
-    val initialFocusedRepliesMinReservePx =
-        with(threadDensity) { ThreadRepliesFocusMinBottomReserve.roundToPx() }
-    val alignInitialFocusedAfterLayout: () -> Unit =
-        remember(initialFocusedPlacementOwner, initialFocusedRepliesMinReservePx, imeProgrammaticViewportPolicy) {
-            {
-                initialFocusedPlacementOwner.afterLayout(
-                    owns = {
-                        !listState.isScrollInProgress &&
-                            !listState.isRetired &&
-                            !readingAnchorPageLeavingState.value &&
-                            !threadImeOpenSuppressesProgrammaticViewport(
-                                keyboardInsetDp = initialFocusedKeyboardInsetState.value,
-                                policy = imeProgrammaticViewportPolicy,
-                            )
-                    },
-                    retiredByHost = { initialFocusedRetiredByHostState.value },
-                    focusedForwardIndex = { readingAnchorPayloadState.value.focusedMessageListItemIndex() },
-                    placement = {
-                        threadFocusedAnchorBasePlacement(
-                            requestNonce = readingAnchorPayloadState.value.focusedMessageRequestNonce,
-                            unreadThreadJumpFocusNonce = initialFocusedJumpNonceState.value,
-                        )
-                    },
-                    minBottomReservePx = initialFocusedRepliesMinReservePx,
-                )
-            }
-        }
     // The row whose control the user just tapped becomes the reading anchor (the API the long-message
     // expand/reveal path and any other in-place row action call): the viewport controller is
     // anchored on its current top, so the keeper and the controller's HeightChange replay agree.
@@ -1320,6 +1284,61 @@ private fun ThreadMessagesListContent(
                     )
                 }
         )
+    // Cached focused open pre-first-draw placement (#proj-mobile:#258): align the focused row on
+    // a reversed list before Frame 1 draws so the initial paint lands directly on the target.
+    // Reads live snapshot state directly (and user takeover / focus retirement guards) so a user
+    // drag or host settlement between recompositions permanently retires the owner.
+    val initialFocusedPlacementOwner =
+        remember(threadInstanceKey, listState) {
+            ThreadInitialFocusedPlacementOwner(
+                listState = listState,
+                scope = coroutineScope,
+                armed = reverseLayout && initialFocusedItemIndex >= 0,
+            )
+        }
+    val initialFocusedUserNavigationCount = remember(threadInstanceKey, listState) { listState.userNavigationCount }
+    val initialFocusedJumpNonceState = rememberUpdatedState(jumpInputs.jumpFocusNonce)
+    val initialFocusedShareCaptureState = rememberUpdatedState(shareSelectionCaptureActive)
+    val initialFocusedRepliesMinReservePx =
+        with(threadDensity) { ThreadRepliesFocusMinBottomReserve.roundToPx() }
+    val alignInitialFocusedAfterLayout: () -> Unit =
+        remember(
+            initialFocusedPlacementOwner,
+            initialFocusedUserNavigationCount,
+            initialFocusedRepliesMinReservePx,
+            imeProgrammaticViewportPolicy,
+        ) {
+            {
+                initialFocusedPlacementOwner.afterLayout(
+                    owns = {
+                        !listState.isScrollInProgress &&
+                            !listState.isRetired &&
+                            !readingAnchorPageLeavingState.value &&
+                            !threadImeOpenSuppressesProgrammaticViewport(
+                                keyboardInsetDp = liveComposerKeyboardInsetDp,
+                                policy = imeProgrammaticViewportPolicy,
+                            )
+                    },
+                    retiredByHost = {
+                        initialBottomAnchorReady ||
+                            adaptiveAnchorRestoreInFlight ||
+                            initialFocusedShareCaptureState.value ||
+                            userScrollGeneration.value > 0 ||
+                            listState.userNavigationCount != initialFocusedUserNavigationCount ||
+                            scrollInterruptedFocusedMessageAnchorIdentity != null ||
+                            consumedFocusedMessageAnchorIdentity != null
+                    },
+                    focusedForwardIndex = { readingAnchorPayloadState.value.focusedMessageListItemIndex() },
+                    placement = {
+                        threadFocusedAnchorBasePlacement(
+                            requestNonce = readingAnchorPayloadState.value.focusedMessageRequestNonce,
+                            unreadThreadJumpFocusNonce = initialFocusedJumpNonceState.value,
+                        )
+                    },
+                    minBottomReservePx = initialFocusedRepliesMinReservePx,
+                )
+            }
+        }
     // Open-path jitter tracing (#proj-mobile:#199): only a sampled open installs the recorder;
     // it reads this list's layout once per frame and never scrolls (ThreadOpenTrace.kt).
     ThreadMessagesListOpenTrace(
@@ -1366,6 +1385,7 @@ private fun ThreadMessagesListContent(
         }
         if (threadFindJumpRequested == match.messageId) return@LaunchedEffect
         threadFindJumpRequested = match.messageId
+        listState.noteUserNavigation()
         diagnosticsLogger("thread_find_jump messageId=${match.messageId.take(8)}")
         onThreadEvent(ThreadFindJumpAction, match.messageId, null, null)
     }
@@ -1436,6 +1456,7 @@ private fun ThreadMessagesListContent(
         val summaryItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
         val ownsViewport = listItemIndex >= 0 && summaryItem != null && !listState.isScrollInProgress
         if (ownsViewport && summaryItem != null) {
+            listState.noteUserNavigation()
             keepTappedRowForToggle(summaryMessageId, summaryItem.offset, expanding)
         }
         if (expanding && ownsViewport && summaryItem != null) {
@@ -2535,6 +2556,7 @@ private fun ThreadMessagesListContent(
                 }
             }
     }
+    val initialInFlightLocalSendKey = remember(threadInstanceKey) { latestLocalSendBottomAnchorKey }
     LaunchedEffect(
         threadInstanceKey,
         latestLocalSendBottomAnchorKey,
@@ -2552,7 +2574,9 @@ private fun ThreadMessagesListContent(
         ) {
             return@LaunchedEffect
         }
-        listState.noteUserNavigation()
+        if (latestLocalSendBottomAnchorKey != initialInFlightLocalSendKey) {
+            listState.noteUserNavigation()
+        }
         latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration.value
         latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
@@ -2942,6 +2966,7 @@ private fun ThreadMessagesListContent(
         }
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
+        listState.noteUserNavigation()
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
                 target = LazyViewportAnchorTarget.Message(match.messageId),
@@ -4730,6 +4755,7 @@ private fun ThreadMessagesListContent(
                 onJump = {
                     // Web: busy from the tap until the parent lands; a second tap does nothing.
                     if (!jumpInputs.jumpLoading) {
+                        listState.noteUserNavigation()
                         diagnosticsLogger(
                             "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
                                 "target=${jump.targetMessageId.take(8)}"
@@ -5456,7 +5482,7 @@ private fun ThreadListViewport.threadViewportGeometryDiagnostics(targetIndex: In
         "target=${target?.index ?: -1}:${target?.offset ?: 0}+${target?.size ?: 0}"
 }
 
-private fun ThreadListViewport.isLatestItemAtRenderedBottom(
+internal fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
 ): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)

@@ -425,7 +425,7 @@ internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
 
 /**
- * Initial physical [LazyListState] index for a thread message list (#proj-mobile:#258).
+ * Initial physical `LazyListState` index for a thread message list (#proj-mobile:#258).
  *
  * When the entry payload already carries its focused target message in cache, start at that row
  * instead of the latest/bottom row so Frame 1 never renders the bottom of the conversation before

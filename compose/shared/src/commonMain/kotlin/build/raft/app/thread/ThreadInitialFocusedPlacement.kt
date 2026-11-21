@@ -34,6 +34,8 @@ internal fun resolveThreadInitialFocusedPlacement(
     focusedForwardIndex: Int,
     placement: LazyViewportAnchorPlacement,
     minBottomReservePx: Int,
+    canScrollForward: Boolean = true,
+    canScrollBackward: Boolean = true,
 ): ThreadInitialFocusedPlacementDecision {
     val total = layoutInfo.totalItemsCount
     if (focusedForwardIndex !in 0 until total) return ThreadInitialFocusedPlacementDecision.Pending
@@ -67,7 +69,12 @@ internal fun resolveThreadInitialFocusedPlacement(
             layoutInfo.afterContentPadding -
             rawItem.size -
             desiredForwardTop
-    if (desiredRawOffset == rawItem.offset) {
+    val forwardDelta = desiredRawOffset - rawItem.offset
+    if (
+        forwardDelta == 0 ||
+        (forwardDelta > 0 && !canScrollForward) ||
+        (forwardDelta < 0 && !canScrollBackward)
+    ) {
         return ThreadInitialFocusedPlacementDecision.AlreadyAligned
     }
     return ThreadInitialFocusedPlacementDecision.Scroll(
@@ -110,13 +117,16 @@ internal class ThreadInitialFocusedPlacementOwner(
             return
         }
         if (!listState.reverse || !owns()) return
+        val resolvedPlacement = placement()
         when (
             val decision =
                 resolveThreadInitialFocusedPlacement(
                     layoutInfo = listState.raw.layoutInfo,
                     focusedForwardIndex = focusedForwardIndex(),
-                    placement = placement(),
+                    placement = resolvedPlacement,
                     minBottomReservePx = minBottomReservePx,
+                    canScrollForward = listState.canScrollForward,
+                    canScrollBackward = listState.canScrollBackward,
                 )
         ) {
             ThreadInitialFocusedPlacementDecision.Pending -> Unit
@@ -127,8 +137,14 @@ internal class ThreadInitialFocusedPlacementOwner(
             is ThreadInitialFocusedPlacementDecision.Scroll -> {
                 applied = true
                 retired = true
+                val ownerTag =
+                    if (resolvedPlacement == LazyViewportAnchorPlacement.FocusedThreadReplies) {
+                        ThreadViewportOwnerTag.JumpPill
+                    } else {
+                        ThreadViewportOwnerTag.FocusedReanchor
+                    }
                 scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                    listState.noteViewportOwner(ThreadViewportOwnerTag.FocusedReanchor)
+                    listState.noteViewportOwner(ownerTag)
                     listState.scrollRawToItem(decision.request.rawIndex, decision.request.scrollOffset)
                 }
             }
