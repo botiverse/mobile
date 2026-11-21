@@ -687,7 +687,7 @@ data class HomeNetworkResponse(
 
     /** The server's `X-Trace-Id` for this request (validated); null when it got no answer. */
     val traceId: String?
-        get() = responseHeaders.raftResponseTraceIdOrNull()
+        get() = if (code == 0) null else responseHeaders.raftResponseTraceIdOrNull()
 }
 
 internal class RaftHomeApiClient(
