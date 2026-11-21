@@ -4,7 +4,10 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.MemberDetailRouteState
+import build.raft.app.model.serverPermissionsForRole
 import build.raft.app.seedCachedAgentDetail
+import build.raft.app.viewerSeesPrivateAgentSurfaces
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -50,6 +53,34 @@ class AgentDetailOfflineTest {
         assertEquals("Atlas Prime", device.cache().cachedAgentDetailFor(owner, AGENT)?.detail?.summary?.name)
         // Other accounts never read it.
         assertNull(device.cache().cachedAgentDetailFor(sharedAgentDetailOwner(ENVIRONMENT, "user-2", ServerId(SERVER))!!, AGENT))
+    }
+
+    @Test
+    fun coldStartKeepsTheViewersRoleSoTheReplayShowsTheSameTabsAsTheLivePage() = runTest {
+        // #proj-mobile:#236 (artin): the record kept only the server's id and name, so after a cold start
+        // an owner opening an agent someone else created saw the Profile tab only until the background
+        // refresh landed. Knife: without `viewerRole` on disk the owner's replay below has no permissions.
+        val device = Device(backgroundScope)
+        val first = device.cache()
+        val ownersPage = cached(detail("Atlas")).copy(server = server(role = "owner"))
+        assertTrue(first.write(owner.agentDetailCacheKey(AGENT), ownersPage, first.ticket()))
+
+        val replay = assertNotNull(device.cache().cachedAgentDetailFor(owner, AGENT))
+        assertEquals("owner", replay.server.role)
+        assertTrue(replay.server.permissions.canManageSettings)
+        val ownerRoute = MemberDetailRouteState.Agent(server = replay.server, currentUserId = replay.currentUserId)
+        assertTrue(ownerRoute.viewerSeesPrivateAgentSurfaces(replay.detail), "an owner sees the private tabs from the first frame")
+
+        // A plain member who did not create the agent sees the profile only, on the replay as on a live answer.
+        val membersPage = cached(detail("Atlas")).copy(server = server(role = "member"))
+        assertTrue(first.write(owner.agentDetailCacheKey(AGENT), membersPage, first.ticket()))
+        val memberReplay = assertNotNull(device.cache().cachedAgentDetailFor(owner, AGENT))
+        assertFalse(memberReplay.server.permissions.canManageSettings)
+        val memberRoute = MemberDetailRouteState.Agent(server = memberReplay.server, currentUserId = memberReplay.currentUserId)
+        assertFalse(memberRoute.viewerSeesPrivateAgentSurfaces(memberReplay.detail))
+        // ... and the agent's creator does, whatever their role.
+        val created = memberReplay.detail.copy(summary = memberReplay.detail.summary?.copy(creatorId = "user-1"))
+        assertTrue(memberRoute.viewerSeesPrivateAgentSurfaces(created))
     }
 
     @Test
@@ -225,6 +256,10 @@ class AgentDetailOfflineTest {
 
     private fun cached(detail: AgentDetailSnapshot): RaftCachedAgentDetail =
         RaftCachedAgentDetail(server = ServerSummary(id = ServerId(SERVER), name = "Server"), currentUserId = "user-1", detail = detail)
+
+    /** The viewer's server as the live load builds it from the session (role, so permissions). */
+    private fun server(role: String): ServerSummary =
+        ServerSummary(id = ServerId(SERVER), name = "Server", role = role, permissions = serverPermissionsForRole(role))
 
     private companion object {
         const val ENVIRONMENT = "https://api.example"
