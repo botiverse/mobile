@@ -63,3 +63,10 @@ internal val settingsBillingViewOnlyProFixture =
                 ),
         )
     )
+
+/** [settingsBillingViewOnlyProFixture] with [humans] people and [agents] agents on the server (shared getBillingUsage). */
+internal fun settingsBillingViewOnlyProFixtureUsing(humans: Int, agents: Int): ScreenLoadState.Content<SettingsBillingSnapshot> {
+    val pro = settingsBillingViewOnlyProFixture.data
+    val usage = SettingsBillingSeatUsageSnapshot(humans = humans, agents = agents, universalSeats = (humans * 10 + agents) / 10.0)
+    return ScreenLoadState.Content(pro.copy(summary = pro.summary?.copy(usage = usage)))
+}

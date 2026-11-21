@@ -388,8 +388,14 @@
     <string name="settings_billing_vo_seats">Seats</string>
     <string name="settings_billing_vo_people">People</string>
     <string name="settings_billing_vo_agents">Agents</string>
-    <string name="settings_billing_vo_count_seats_one">%1$d · %2$s seat</string>
-    <string name="settings_billing_vo_count_seats_other">%1$d · %2$s seats</string>
+    <string name="settings_billing_vo_usage_people_count_one">%1$d person</string>
+    <string name="settings_billing_vo_usage_people_count_other">%1$d people</string>
+    <string name="settings_billing_vo_usage_agents_count_one">%1$d agent</string>
+    <string name="settings_billing_vo_usage_agents_count_other">%1$d agents</string>
+    <string name="settings_billing_vo_usage_seats_value_one">%1$s seat</string>
+    <string name="settings_billing_vo_usage_seats_value_other">%1$s seats</string>
+    <string name="settings_billing_vo_usage_agent_seats_value_one">%1$s seat (1 per %2$d agents)</string>
+    <string name="settings_billing_vo_usage_agent_seats_value_other">%1$s seats (1 per %2$d agents)</string>
     <string name="settings_billing_vo_joint_channels">Joint Channels you host</string>
     <string name="settings_billing_vo_uploads">File uploads this month</string>
     <string name="settings_billing_vo_uploads_used">%1$s of %2$s used · resets %3$s</string>
