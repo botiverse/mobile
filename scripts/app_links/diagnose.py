@@ -500,16 +500,34 @@ def cmd_web(args) -> int:
 
 
 def parse_swcutil(stdout: str, app_id: str) -> tuple[str | None, str]:
-    """Map `swcutil verify` output to app/web for one app ID (format: TN3155)."""
-    current, verdicts, loose = None, {}, []
+    """Map `swcutil verify` output to app/web for one app ID (format: TN3155).
+
+    Only the `applinks` service decides whether a link opens the app. An AASA that also has
+    `webcredentials` (passkeys, password autofill) makes swcutil print a second block,
+    `{ s = webcredentials, a = <app>, d = <host> }`, which "matches" every URL of the host; that is
+    credential sharing, not a universal link, and is ignored here (2026-11-21: it turned `/`,
+    `/login` and `/s/<slug>/settings` into false "opens the app" failures). A block that names no
+    service is treated as applinks.
+    """
+    current, verdicts, loose, other_services = None, {}, [], set()
     for line in stdout.splitlines():
         line = line.strip()
-        header = re.match(r"\{.*\ba = ([^,}\s]+).*\}:?$", line)
+        header = re.match(r"(\{[^}]*\ba = ([^,}\s]+)[^}]*\}):?\s*(.*)$", line)
+        rest = line
         if header:
-            current = header.group(1)
+            service = re.search(r"\bs = ([^,}\s]+)", header.group(1))
+            if service and service.group(1) != "applinks":
+                current = False  # a block of another service: skip its verdict lines
+                other_services.add(service.group(1))
+            else:
+                current = header.group(2)
+            rest = header.group(3)
+            if not rest:
+                continue
+        if current is False:
             continue
         for needle, outcome in (("blocked match", "web"), ("did not match", "web"), ("matched", "app")):
-            if needle in line:
+            if needle in rest:
                 (verdicts.setdefault(current, []) if current else loose).append((outcome, line))
                 break
     if app_id in verdicts:
@@ -518,6 +536,8 @@ def parse_swcutil(stdout: str, app_id: str) -> tuple[str | None, str]:
         return "web", f"no verdict for {app_id} (only {', '.join(k for k in verdicts if k)})"
     if loose:
         return loose[0][0], loose[0][1]
+    if other_services:
+        return "web", f"no applinks verdict (only {', '.join(sorted(other_services))})"
     return None, (stdout.strip().splitlines() or ["(no output)"])[-1][:200]
 
 
