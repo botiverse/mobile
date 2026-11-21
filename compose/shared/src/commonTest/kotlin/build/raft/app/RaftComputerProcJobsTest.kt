@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
  */
 class RaftComputerProcJobsTest {
     @Test
-    fun wireReadParsesKnownUnknownAndErrors() = runPortableCoroutineTest {
+    fun wireReadParsesKnownUnknownAndErrors() = runPortableCoroutineTest<Unit> {
         val api = FakeProcJobsComputersApi()
         val client = RaftComputersApiClient(api)
 
@@ -112,7 +112,7 @@ class RaftComputerProcJobsTest {
     }
 
     @Test
-    fun wireStopSendsExactBodyAndMapsOutcomesAndUpgradeRequired() = runPortableCoroutineTest {
+    fun wireStopSendsExactBodyAndMapsOutcomesAndUpgradeRequired() = runPortableCoroutineTest<Unit> {
         val api = FakeProcJobsComputersApi()
         val client = RaftComputersApiClient(api)
 
