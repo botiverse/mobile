@@ -58,7 +58,6 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
-import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftListRow
@@ -603,7 +602,7 @@ private enum class RaftBulkApplyState { Saving, Saved, Failed }
  * Web `BulkChangeModelDialog`: choose a runtime (this Computer's, those the bulk change can set),
  * a model and a reasoning effort; review what happens to each selected agent (changes, and skips
  * with the reason); then apply, one `PATCH /agents/:id` per agent, and leave a receipt on the page.
- * Running agents switch when next idle unless "Restart running agents now" is ticked.
+ * Running agents apply immediately (restarting if busy; botiverse/slock #15669 / #15714).
  */
 @Composable
 internal fun RaftComputerBulkChangeModelDialog(
@@ -629,7 +628,6 @@ internal fun RaftComputerBulkChangeModelDialog(
     }
     var modelChoice by remember(request) { mutableStateOf(retry?.target?.model.orEmpty()) }
     var effortChoice by remember(request) { mutableStateOf(retry?.target?.reasoningEffort) }
-    var restartNow by remember(request) { mutableStateOf(false) }
     val applyStates = remember(request) { mutableStateMapOf<String, RaftBulkApplyState>() }
     // The runtime's model list on this Computer: live when it answers, else nothing to pick.
     var catalog by remember(request) { mutableStateOf<RaftBulkModelCatalog?>(null) }
@@ -654,7 +652,6 @@ internal fun RaftComputerBulkChangeModelDialog(
             planRaftBulkModelChange(
                 agents.map { agent -> RaftBulkPlanAgent(agent, running(agent.id), retry?.unfinished?.get(agent.id)) },
                 it,
-                restartNow,
             )
         }
     val agentById = remember(agents) { agents.associateBy { it.id } }
@@ -837,23 +834,16 @@ internal fun RaftComputerBulkChangeModelDialog(
                     }
                 }
                 if (plan0.runningChangeCount > 0) {
-                    RaftCheckboxRow(
-                        label = stringResource(Res.string.settings_computers_bulk_model_restart_now),
-                        checked = restartNow,
-                        onCheckedChange = { restartNow = it },
+                    val n = plan0.runningChangeCount
+                    RaftText(
+                        if (n == 1) {
+                            stringResource(Res.string.settings_computers_bulk_model_idle_line_one, n)
+                        } else {
+                            stringResource(Res.string.settings_computers_bulk_model_idle_line_many, n)
+                        },
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
                     )
-                    if (!restartNow) {
-                        val n = plan0.runningChangeCount
-                        RaftText(
-                            if (n == 1) {
-                                stringResource(Res.string.settings_computers_bulk_model_idle_line_one, n)
-                            } else {
-                                stringResource(Res.string.settings_computers_bulk_model_idle_line_many, n)
-                            },
-                            style = RaftTheme.typography.footnote,
-                            color = RaftTheme.colors.foregroundMuted,
-                        )
-                    }
                 }
                 if (plan0.restartCount > 0) {
                     val n = plan0.restartCount

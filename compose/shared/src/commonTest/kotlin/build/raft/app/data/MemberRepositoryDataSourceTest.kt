@@ -803,7 +803,7 @@ class MemberRepositoryDataSourceTest {
         val network = FakeMemberNetworkClient()
         val repository = RealMemberRepository(sampleStore(), network)
         val request = AgentProfileUpdateRequest(agentId = MemberId("agent-1"), displayName = "Noel Bot", description = null)
-        for ((wire, expected) in listOf("when_idle" to AgentConfigApply.WhenIdle, "saved" to AgentConfigApply.Saved, "restarted" to AgentConfigApply.Restarted, null to null)) {
+        for ((wire, expected) in listOf("applied" to AgentConfigApply.Applied, "when_idle" to AgentConfigApply.WhenIdle, "saved" to AgentConfigApply.Saved, "restarted" to AgentConfigApply.Restarted, null to null)) {
             network.patchConfigApply = wire
             val result = repository.updateAgentProfile(DataRequestPriority.Foreground, request)
             assertTrue(result is DataResult.Content, "wire=$wire")
