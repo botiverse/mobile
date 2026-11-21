@@ -24,6 +24,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 class RaftDesktopShortcutTest {
+    // What the caller passes in: thread_direct_message_title in the app language.
+    private val dmFallback = "私信"
 
     private fun homeSnapshot(
         channels: List<HomeChannelRow>,
@@ -80,7 +82,7 @@ class RaftDesktopShortcutTest {
             )
         )
 
-        val shortcuts = extractTopPinnedDesktopShortcuts(snapshot, maxCount = 4)
+        val shortcuts = extractTopPinnedDesktopShortcuts(snapshot, directMessageFallbackTitle = dmFallback, maxCount = 4)
         assertEquals(4, shortcuts.size)
 
         assertEquals("shortcut_srv-1_c1", shortcuts[0].id)
@@ -121,7 +123,7 @@ class RaftDesktopShortcutTest {
             )
         )
 
-        val shortcuts = extractTopPinnedDesktopShortcuts(snapshot, maxCount = 4)
+        val shortcuts = extractTopPinnedDesktopShortcuts(snapshot, directMessageFallbackTitle = dmFallback, maxCount = 4)
         assertEquals(4, shortcuts.size)
         assertEquals(listOf("c1", "c2", "c3", "c4"), shortcuts.map { it.targetId })
     }
@@ -157,6 +159,7 @@ class RaftDesktopShortcutTest {
             serverId = "srv-1",
             serverName = "Acme",
             pinnedRows = pinnedRows,
+            directMessageFallbackTitle = dmFallback,
             maxCount = 4
         )
 
@@ -165,6 +168,38 @@ class RaftDesktopShortcutTest {
         assertEquals("#general", shortcuts[0].title)
         assertEquals("dm1", shortcuts[1].targetId)
         assertEquals("Charlie", shortcuts[1].title)
+    }
+
+    @Test
+    fun blankDmNamesTakeTheCallersLocalizedTitle() {
+        val unnamedDm = HomeDirectMessageRow(
+            threadId = ThreadId("dm-user3"),
+            channelId = ChannelId("dm-user3"),
+            name = "  ",
+            presenceMemberId = MemberId("user-3")
+        )
+        val snapshot = homeSnapshot(
+            channels = emptyList(),
+            directMessages = listOf(unnamedDm),
+            sidebarOrder = SettingsServerSidebarOrderSnapshot(
+                pinned = listOf(SettingsServerSidebarPinnedItem(kind = "human", id = "user-3"))
+            )
+        )
+        assertEquals(
+            listOf(dmFallback),
+            extractTopPinnedDesktopShortcuts(snapshot, directMessageFallbackTitle = dmFallback).map { it.title }
+        )
+
+        val unnamedConversation = RaftHomeConversationItem(id = "dm3", name = "", kind = "dm", channelType = "dm")
+        assertEquals(
+            listOf(dmFallback),
+            extractTopPinnedDesktopShortcuts(
+                serverId = "srv-1",
+                serverName = "Acme",
+                pinnedRows = listOf(RaftHomePinnedRow(key = "dm:dm3", conversation = unnamedConversation)),
+                directMessageFallbackTitle = dmFallback
+            ).map { it.title }
+        )
     }
 
     @Test

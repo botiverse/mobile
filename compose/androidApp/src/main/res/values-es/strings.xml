@@ -114,6 +114,10 @@
     <string name="attachment_save_as_cancel">Cancelar</string>
     <string name="attachment_save_as_saved_toast">Archivo guardado</string>
     <string name="attachment_save_as_failed_toast">Raft no pudo guardar este archivo. Inténtalo de nuevo.</string>
+    <string name="host_error_title">Algo salió mal</string>
+    <string name="host_error_message">Esta página tuvo un problema al mostrarse. Se registró un informe. (%1$s)</string>
+    <string name="host_error_reload">Volver a cargar</string>
+    <string name="host_error_close">Cerrar</string>
     <string name="raft_background_connection_channel_name">Conexión en segundo plano</string>
     <string name="raft_background_connection_channel_description">Se muestra mientras Raft mantiene la conexión abierta en segundo plano para entregar notificaciones de mensajes sin los servicios de Google Play.</string>
     <string name="raft_background_connection_notification_title">Raft está recibiendo mensajes</string>

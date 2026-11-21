@@ -4921,7 +4921,7 @@ class ThreadPayloadTest {
         val linkedMessage = payload.messages.first().withLinkedTask(linkedTasks["message-240"])
         assertEquals("in_review", linkedMessage.taskStatus)
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
-        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName))
+        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName, untitledLabel = "Task"))
     }
 
     @Test
@@ -6045,7 +6045,7 @@ class ThreadPayloadTest {
         assertEquals(42, payload.messages.first().taskNumber)
         assertEquals("in_review", payload.messages.first().taskStatus)
         assertEquals("Android-Developer-2", payload.messages.first().taskAssigneeName)
-        assertEquals("#42", threadMessageTaskMetaLabel(payload.messages.first()))
+        assertEquals("#42", threadMessageTaskMetaLabel(payload.messages.first(), untitledLabel = "Task"))
         assertEquals("👍", payload.messages.first().reactions.first().emoji)
         assertEquals(2, payload.messages.first().reactions.first().count)
         assertEquals(true, payload.messages.first().reactions.first().selected)
@@ -6750,7 +6750,8 @@ class ThreadPayloadTest {
                     )
             )
 
-        assertEquals("#163", threadMessageTaskMetaLabel(payload.messages.first()))
+        assertEquals("#163", threadMessageTaskMetaLabel(payload.messages.first(), untitledLabel = "タスク"))
+        assertEquals("タスク", threadMessageTaskMetaLabel(payload.messages.first().copy(taskNumber = null), untitledLabel = "タスク"))
     }
 
     @Test
@@ -6800,10 +6801,7 @@ class ThreadPayloadTest {
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName))
         assertEquals(
             "#10",
-            threadMessageTaskMetaLabel(
-                message,
-                resolvedTaskAssigneeName = null
-            )
+            threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName = null, untitledLabel = "Task")
         )
         assertEquals(
             "#10 @Tasks Claimed Name",
@@ -6825,7 +6823,8 @@ class ThreadPayloadTest {
                         updatedAtLabel = ""
                     )
                 ),
-                "Tasks Claimed Name"
+                "Tasks Claimed Name",
+                untitledLabel = "Task"
             )
         )
     }
@@ -6890,11 +6889,11 @@ class ThreadPayloadTest {
 
         val linkedMessage = message.withLinkedTask(linkedTasks[message.id])
         assertEquals("Android Developer", linkedMessage.taskAssigneeName)
-        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName))
+        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName, untitledLabel = "Task"))
 
         val uuidOnlyMessage = message.copy(id = "message-241", taskNumber = 241).withLinkedTask(linkedTasks["message-241"])
         assertEquals(null, uuidOnlyMessage.taskAssigneeName)
-        assertEquals("#241", threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName))
+        assertEquals("#241", threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName, untitledLabel = "Task"))
     }
 
     @Test
@@ -8806,7 +8805,7 @@ class ThreadPayloadTest {
         val message = payload.messages.first()
         assertEquals(assigneeId, message.taskAssigneeId)
         assertEquals(null, message.taskAssigneeName)
-        assertEquals("#236", threadMessageTaskMetaLabel(message))
+        assertEquals("#236", threadMessageTaskMetaLabel(message, untitledLabel = "Task"))
     }
 
     @Test
@@ -8845,10 +8844,7 @@ class ThreadPayloadTest {
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId))
         assertEquals(
             "#236",
-            threadMessageTaskMetaLabel(
-                message,
-                resolvedTaskAssigneeName = null
-            )
+            threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName = null, untitledLabel = "Task")
         )
     }
 

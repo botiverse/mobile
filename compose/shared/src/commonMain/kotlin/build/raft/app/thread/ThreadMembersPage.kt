@@ -306,7 +306,7 @@ private fun ThreadMembersPageScreen() {
         Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 RaftTopPageHeader(
-                    title = "Members",
+                    title = stringResource(Res.string.thread_members_heading),
                     iconName = RaftLucideIconName.Users,
                     onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 )

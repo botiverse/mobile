@@ -114,6 +114,10 @@
     <string name="attachment_save_as_cancel">취소</string>
     <string name="attachment_save_as_saved_toast">파일을 저장했어요</string>
     <string name="attachment_save_as_failed_toast">Raft에서 이 파일을 저장하지 못했어요. 다시 시도해 주세요.</string>
+    <string name="host_error_title">문제가 발생했어요</string>
+    <string name="host_error_message">이 페이지를 표시하는 중에 문제가 발생했어요. 보고서를 기록했어요. (%1$s)</string>
+    <string name="host_error_reload">새로고침</string>
+    <string name="host_error_close">닫기</string>
     <string name="raft_background_connection_channel_name">백그라운드 연결</string>
     <string name="raft_background_connection_channel_description">Google Play 서비스 없이 메시지 알림을 전달하기 위해 Raft가 백그라운드에서 연결을 유지하는 동안 표시돼요.</string>
     <string name="raft_background_connection_notification_title">Raft에서 메시지를 받고 있어요</string>

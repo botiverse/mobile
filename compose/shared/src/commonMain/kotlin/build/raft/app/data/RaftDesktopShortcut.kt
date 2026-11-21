@@ -44,10 +44,12 @@ object RaftDesktopShortcutContract {
 
 /**
  * Extracts up to [maxCount] desktop shortcuts from a [HomeSnapshot], prioritising
- * explicitly pinned channels and DMs in their configured sidebar order.
+ * explicitly pinned channels and DMs in their configured sidebar order. A DM without a name is
+ * labelled [directMessageFallbackTitle], the caller's localized "Direct Message".
  */
 internal fun extractTopPinnedDesktopShortcuts(
     snapshot: HomeSnapshot,
+    directMessageFallbackTitle: String,
     maxCount: Int = 4
 ): List<RaftDesktopShortcutItem> {
     val serverId = snapshot.server.id.value.trim()
@@ -88,7 +90,7 @@ internal fun extractTopPinnedDesktopShortcuts(
     fun addDmShortcut(dm: HomeDirectMessageRow) {
         val targetId = dm.threadId.value.trim()
         if (targetId.isBlank() || !seenTargetIds.add(targetId)) return
-        val title = dm.name.trim().ifBlank { "Direct Message" }
+        val title = dm.name.trim().ifBlank { directMessageFallbackTitle }
         results.add(
             RaftDesktopShortcutItem(
                 id = "shortcut_${serverId}_$targetId",
@@ -165,12 +167,14 @@ internal fun extractTopPinnedDesktopShortcuts(
 }
 
 /**
- * Extracts desktop shortcuts from rendered [RaftHomePinnedRow] entries.
+ * Extracts desktop shortcuts from rendered [RaftHomePinnedRow] entries; a DM without a name is
+ * labelled [directMessageFallbackTitle].
  */
 internal fun extractTopPinnedDesktopShortcuts(
     serverId: String,
     serverName: String,
     pinnedRows: List<RaftHomePinnedRow>,
+    directMessageFallbackTitle: String,
     maxCount: Int = 4
 ): List<RaftDesktopShortcutItem> {
     if (serverId.isBlank() || pinnedRows.isEmpty() || maxCount <= 0) return emptyList()
@@ -188,7 +192,7 @@ internal fun extractTopPinnedDesktopShortcuts(
         val targetKind = if (isDm) RaftDesktopShortcutContract.TargetKindDm else RaftDesktopShortcutContract.TargetKindChannel
         val rawName = conversation.name.trim()
         val title = if (isDm) {
-            rawName.ifBlank { "Direct Message" }
+            rawName.ifBlank { directMessageFallbackTitle }
         } else {
             if (rawName.startsWith("#")) rawName else "#$rawName"
         }

@@ -1962,6 +1962,7 @@
     <string name="file_preview_download_stopped">Download interrompido</string>
     <string name="file_preview_download_failed">Falha no download</string>
     <string name="file_preview_download_saved">Salvo em Downloads</string>
+    <string name="file_preview_download_already_saved">Já estava baixado</string>
     <string name="file_preview_private_download_saved">Baixado</string>
     <string name="file_preview_export_saved">Salvo em Arquivos</string>
     <string name="file_preview_export_failed">Não foi possível salvar em Arquivos</string>

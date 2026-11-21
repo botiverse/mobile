@@ -2138,9 +2138,11 @@ internal open class RaftCmpActivity :
                 setPadding(dp(32), dp(32), dp(32), dp(32))
                 isClickable = true
             }
+        // Android string resources (the system language), not the shared catalog: this native
+        // fallback stands in for a page Compose could not draw and depends on nothing there.
         surface.addView(
             android.widget.TextView(this).apply {
-                text = "Something went wrong"
+                text = getString(R.string.host_error_title)
                 textSize = 20f
                 setTextColor(RaftAppAppearanceRuntime.foregroundArgb)
                 typeface = Typeface.DEFAULT_BOLD
@@ -2148,7 +2150,7 @@ internal open class RaftCmpActivity :
         )
         surface.addView(
             android.widget.TextView(this).apply {
-                text = "This page hit a rendering problem. A report was recorded. ($reasonCode)"
+                text = getString(R.string.host_error_message, reasonCode)
                 textSize = 14f
                 setTextColor(RaftAppAppearanceRuntime.foregroundMutedArgb)
                 setPadding(0, dp(8), 0, dp(24))
@@ -2157,14 +2159,14 @@ internal open class RaftCmpActivity :
         )
         surface.addView(
             android.widget.Button(this).apply {
-                text = "Reload"
+                text = getString(R.string.host_error_reload)
                 setOnClickListener { recreate() }
             }
         )
         if (!isTaskRoot) {
             surface.addView(
                 android.widget.Button(this).apply {
-                    text = "Close"
+                    text = getString(R.string.host_error_close)
                     setOnClickListener { finish() }
                 }
             )
@@ -9216,7 +9218,8 @@ private fun JSONObject.publicAttachmentIdentity(
 private fun AndroidAttachmentPublicRecord.toSavedAttachmentPayload(): Map<String, Any> =
         buildMap {
             put("status", "saved")
-            put("message", "Already downloaded")
+            // Saved before, so nothing was written now; shared code words the toast (no host text).
+            put("alreadySaved", true)
             put("cached", true)
             put("sizeBytes", sizeBytes)
             put("fileName", displayName)
