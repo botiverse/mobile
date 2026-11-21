@@ -615,6 +615,8 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
     qa, ios, ral = ".github/workflows/qa-acceptance.yml", ".github/workflows/qa-acceptance-ios.yml", ".github/workflows/release-auto-login.yml"
     kvm = "      - name: Enable KVM\n"
     gate = f"{LEGACY} && secrets.QA_TEST_PASSWORD || ''"
+    preflight_gate = ("re:" + r"(^      - name: " + re.escape(PREFLIGHT) +
+                      r"\n(?:        #[^\n]*\n|\n)*)        if: " + re.escape(ANDROID_LEGACY_IF) + r"\n")
     out = []
     for spelling in ("secrets['QA_TEST_PASSWORD']", 'secrets["QA_TEST_PASSWORD"]', "secrets[ 'qa_test_password' ]", "secrets.qa_test_password", "Secrets.Qa_Test_Password"):
         out.append((f"unlisted step reads {spelling}", qa, kvm, kvm + f"        env:\n          X: ${{{{ {spelling} }}}}\n"))
@@ -633,12 +635,9 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
          f"        env:\n          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n"),
         ("iOS acceptance agent gets the QA password back", ios, "          QA_PASSWORD_LOGIN: ",
          f"          QA_TEST_PASSWORD: ${{{{ {gate} }}}}\n          QA_PASSWORD_LOGIN: "),
-        ("preflight gate -> true", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
-         "        if: ${{ true }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
-        ("preflight gate -> false", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
-         "        if: ${{ false }}\n        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
-        ("preflight gate removed", qa, f"        if: {ANDROID_LEGACY_IF}\n        env:\n          QA_TEST_EMAIL: ${{{{ secrets.QA_TEST_EMAIL }}}}\n          QA_TEST_PASSWORD: ${{{{ secrets.QA_TEST_PASSWORD }}}}\n        run: |\n          mkdir -p qa-evidence",
-         "        env:\n          QA_TEST_EMAIL: ${{ secrets.QA_TEST_EMAIL }}\n          QA_TEST_PASSWORD: ${{ secrets.QA_TEST_PASSWORD }}\n        run: |\n          mkdir -p qa-evidence"),
+        ("preflight gate -> true", qa, preflight_gate, r"\g<1>        if: ${{ true }}\n"),
+        ("preflight gate -> false", qa, preflight_gate, r"\g<1>        if: ${{ false }}\n"),
+        ("preflight gate removed", qa, preflight_gate, r"\g<1>"),
         ("staging/production branch pair swapped", ral,
          "QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'staging' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}\n        with:",
          "QA_LOGIN_PASSWORD: ${{ (needs.plan.outputs.environment == 'production' && secrets.QA_STAGING_TEST_PASSWORD) || secrets.QA_TEST_PASSWORD }}\n        with:"),
