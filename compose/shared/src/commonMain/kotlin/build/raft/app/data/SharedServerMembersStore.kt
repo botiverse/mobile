@@ -397,9 +397,7 @@ data class SharedServerMemberStatus(
     /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
     val machineId: String? = null,
     /** The agent's Computer display name from the roster (`computer:` badge), for sign-in detail copy. */
-    val machineName: String? = null,
-    /** The agent's display name (or handle), for sign-in detail copy. */
-    val agentDisplayName: String? = null
+    val machineName: String? = null
 )
 
 /**
@@ -516,7 +514,6 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             .maxByOrNull { parseExternalAgentTimestampOrNull(it) ?: Long.MIN_VALUE }
     val memberMachineId = this?.agentComputerIdOrNull()
     val memberMachineName = this?.agentComputerNameOrNull()
-    val memberDisplayName = this?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: this?.handle?.trim()?.takeIf { it.isNotBlank() }
     val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
     val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
     if (
@@ -545,8 +542,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
             paused = memberPaused,
             machineId = memberMachineId,
-            machineName = memberMachineName,
-            agentDisplayName = memberDisplayName
+            machineName = memberMachineName
         )
     }
     if (this?.kind != MemberKind.Agent) return null
@@ -559,8 +555,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
         paused = memberPaused,
         machineId = memberMachineId,
-        machineName = memberMachineName,
-        agentDisplayName = memberDisplayName
+        machineName = memberMachineName
     )
 }
 

@@ -17,6 +17,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AppLocale
@@ -91,7 +96,6 @@ class AgentRuntimeSignInSurfacesUiTest {
             paused = false,
             machineId = "m-1",
             machineName = "Studio Mac",
-            agentDisplayName = "Milo",
         ).toRaftAgentStatusIndicatorState()
 
     private fun testAccess(
@@ -146,7 +150,16 @@ class AgentRuntimeSignInSurfacesUiTest {
             val member = RaftThreadMemberItem(id = "agent-1", displayName = "Milo", handle = "milo", kind = "agent")
             setContent {
                 val access = remember { testAccess(api) }
-                CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply {
+                            pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+                        }
+                    }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalMembersRuntimeAccountUsageAccess provides access,
+                ) {
                     ThreadMembersPageContent(
                         members = listOf(member),
                         filteredMembers = listOf(member),

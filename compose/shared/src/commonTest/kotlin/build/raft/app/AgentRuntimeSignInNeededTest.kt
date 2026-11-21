@@ -148,7 +148,6 @@ class AgentRuntimeSignInNeededTest {
                 paused = false,
                 machineId = "m-1",
                 machineName = "Studio Mac",
-                agentDisplayName = "Milo",
             ).toRaftAgentStatusIndicatorState()
 
         val stripped = indicator.withoutActivityDetail()
@@ -156,7 +155,6 @@ class AgentRuntimeSignInNeededTest {
         assertEquals("runtime_login_required", stripped.lastRuntimeErrorSpawnFailureReason)
         assertEquals("m-1", stripped.machineId)
         assertEquals("Studio Mac", stripped.machineName)
-        assertEquals("Milo", stripped.agentDisplayName)
         assertFalse(stripped.paused)
     }
 }

@@ -217,8 +217,7 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
         paused = paused,
         machineId = machineId,
-        machineName = machineName,
-        agentDisplayName = agentDisplayName
+        machineName = machineName
     )
 
 /**
