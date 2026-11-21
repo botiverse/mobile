@@ -5081,7 +5081,15 @@ private fun ThreadMessagesListContent(
                         message = message,
                         replyMetadata = replyMetadata,
                         anchor = resolvedActionAnchor,
-                        showReplyAction = capabilities.reply,
+                        // botiverse/slock #15524: not once the row shows its thread (its replies open it).
+                        showReplyAction =
+                            threadMessageMenuShowsReplyInThread(
+                                capabilities = capabilities,
+                                message = message,
+                                replyMetadata = replyMetadata,
+                                slice = renderPayload,
+                                hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id)
+                            ),
                         showSaveAction = capabilities.save,
                         showFollowAction = capabilities.follow,
                         showTaskStatusAction = capabilities.taskStatus,

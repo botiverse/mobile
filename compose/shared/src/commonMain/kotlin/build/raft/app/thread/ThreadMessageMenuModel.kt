@@ -413,7 +413,8 @@ internal fun threadTaskStatusMenuIcon(isDone: Boolean): RaftLucideIconName =
  * with web MessageItem's context menu (botiverse/slock 9be029411):
  *  - quick reactions, and the reaction row's trailing Add Reaction (full picker): `!isSystem && canReact`
  *  - Select Message: not system, not a guest
- *  - Reply in Thread: `!hideThreadActions`
+ *  - Reply in Thread: `!hideThreadActions`; the menu also drops it once the message shows its
+ *    thread ([threadMessageMenuShowsReplyInThread]), the hover toolbar keeps it
  *  - Forward: `showForwardAction` (non-guest, source channel) and `getForwardableMessages`
  *  - Follow/Unfollow: `canShowThreadFollowAction && hasThreadConversation`
  *  - Mark as Done/Reopen and Convert to Task: never for external senders
@@ -563,6 +564,40 @@ internal fun threadMessageMenuCapabilities(
         markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice),
         copyText = !cutBody
     )
+}
+
+/**
+ * botiverse/slock #15524 (web MessageItem `showMenuReplyInThread`): the message menu (long press,
+ * right click, the hover toolbar's More) offers Reply in Thread only while the message does not
+ * show its thread. Its inline replies, or else its replies badge (replies or a reply draft), open
+ * that thread already; both are read here as the message's row draws them. Where the menu never
+ * offers it ([ThreadMessageMenuCapabilities.reply]: a reply thread, on a phone's thread page or in a
+ * wide layout's side panel, or a task conversation), it stays out. The hover toolbar keeps its
+ * Reply button ([ThreadMessageHoverToolbarActions.reply]).
+ */
+internal fun threadMessageMenuShowsReplyInThread(
+    capabilities: ThreadMessageMenuCapabilities,
+    message: RaftThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata,
+    slice: ThreadTimelineSlice,
+    hasReplyDraft: Boolean,
+): Boolean {
+    if (!capabilities.reply) return false
+    val inlineReplies =
+        threadInlineReplyPresentationForMessage(
+            model = message.inlineReplies,
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = slice.showReplyActions,
+        )
+    val repliesBadge =
+        threadRepliesBadgeSpec(
+            replyMetadata = replyMetadata,
+            hasDraft = hasReplyDraft,
+            showReplyAction = slice.showReplyActions,
+            hasInlineReplies = inlineReplies != null,
+        )
+    return inlineReplies == null && repliesBadge == null
 }
 
 /**
