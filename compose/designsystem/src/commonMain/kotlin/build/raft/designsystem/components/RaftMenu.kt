@@ -1,7 +1,7 @@
 package build.raft.designsystem.components
 
 import androidx.compose.runtime.ReadOnlyComposable
-import build.raft.designsystem.focus.RaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -463,7 +463,7 @@ fun RaftDropdownMenu(
     val nav = remember { RaftMenuNav() }
     // A right swipe must not pop the page underneath an open menu.
     RaftBlockBackSwipe()
-    RaftAutofocusGuard.HoldOpenSurface()
+    LocalRaftAutofocusGuard.current.HoldOpenSurface()
     // A page pushed over this one closes the menu first: the covered page stops composing.
     RaftDismissOnPageCover { dismiss() }
     // raft-ui 0.102.6 (`usePopupAnchorDismiss`, elevation.md): a menu whose trigger is scrolled

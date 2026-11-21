@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.reportUnknownTypeDropped
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -235,7 +236,193 @@ internal data class RuntimeAccountUsageAccount(
      * [RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY].
      */
     val agentIds: List<String>? = null,
+    /**
+     * Why an `unsupported` account has no reading (slock #15395, OAR `AccountUsageUnsupportedReason`);
+     * only with that health. Null: no reason, a reason this app does not know, or a server that
+     * predates it. Served only to a request declaring [RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY].
+     */
+    val unsupportedReason: RuntimeAccountUsageUnsupportedReason? = null,
 )
+
+/** slock `RUNTIME_ACCOUNT_USAGE_UNSUPPORTED_REASONS` (#15395): why an account's usage cannot be read. */
+internal enum class RuntimeAccountUsageUnsupportedReason(val wire: String) {
+    VersionUnsupported("version_unsupported"),
+    CapabilityUnavailable("capability_unavailable"),
+    UnsupportedInstallation("unsupported_installation"),
+    UnsupportedAuthMode("unsupported_auth_mode"),
+    UnsupportedAuthStorage("unsupported_auth_storage"),
+    AuthConfigurationUnavailable("auth_configuration_unavailable"),
+    EndpointUnavailable("endpoint_unavailable"),
+    QuotaUnavailable("quota_unavailable");
+
+    companion object {
+        fun fromWire(value: String?): RuntimeAccountUsageUnsupportedReason? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * Web `formatRuntimePlanName` (slock #15557, accountText.ts): a runtime's own plan code in lowercase
+ * ("pro", "max", "team", ...) reads as a plan ("Pro", "Team"); any other name ("Ultra", "SuperGrok")
+ * as sent. Null when there is no plan.
+ */
+internal fun formatRuntimePlanName(planLabel: String?): String? {
+    val trimmed = planLabel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return KnownRuntimePlanNames[trimmed.lowercase()] ?: trimmed
+}
+
+private val KnownRuntimePlanNames: Map<String, String> =
+    mapOf(
+        "free" to "Free",
+        "go" to "Go",
+        "plus" to "Plus",
+        "pro" to "Pro",
+        "max" to "Max",
+        "team" to "Team",
+        "business" to "Business",
+        "enterprise" to "Enterprise",
+        "edu" to "Edu",
+    )
+
+/** How an account's heading on the usage card reads (web `formatRuntimePlanHeading`). */
+internal sealed interface RuntimePlanHeading {
+    /** No plan: "Runtime account". */
+    data object Fallback : RuntimePlanHeading
+
+    /** The plan's own name already says it is a plan ("Team plan", "Pro 套餐"): as it is. */
+    data class Named(val name: String) : RuntimePlanHeading
+
+    /** "{plan} plan" / "{plan} 套餐": "Team plan", never a bare "team" that reads like a workspace. */
+    data class Plan(val plan: String) : RuntimePlanHeading
+}
+
+private val PlanWord = Regex("\\bplan\\b", RegexOption.IGNORE_CASE)
+
+internal fun runtimePlanHeading(planLabel: String?): RuntimePlanHeading {
+    val plan = formatRuntimePlanName(planLabel) ?: return RuntimePlanHeading.Fallback
+    return if (PlanWord.containsMatchIn(plan) || plan.contains("套餐")) RuntimePlanHeading.Named(plan) else RuntimePlanHeading.Plan(plan)
+}
+
+/** Web `usageOnCredits`: the account keeps running on credits once a window is used up (`credits.available`). */
+internal val RuntimeAccountUsageAccount.usageOnCredits: Boolean
+    get() = credits?.available == true
+
+/**
+ * Web `usageModelGroupsAllUsedUp` (slock #15483): an account of model groups only (Antigravity's
+ * "Gemini Models") whose every group has a window at its limit.
+ */
+internal fun RuntimeAccountUsageAccount.modelGroupsAllUsedUp(): Boolean {
+    val groups = LinkedHashMap<String, Boolean>()
+    windows.forEach { window ->
+        val scope = window.scope as? RuntimeAccountUsageWindowScope.Models ?: return false
+        val key = scope.name.lowercase()
+        groups[key] = (groups[key] ?: false) || window.status == RuntimeAccountUsageWindowStatus.LimitReached
+    }
+    return groups.isNotEmpty() && groups.values.all { it }
+}
+
+/** The usage card's chip for an account fine on the all-models basis whose model windows say otherwise. */
+internal enum class RuntimeAccountUsageModelLimit {
+    /** Every model group used up while the runtime says not rate limited, credits unreported: "may be on credits". */
+    MaybeOnCredits,
+
+    /** Every model group used up and credits reported as none: "used up", whatever the runtime's flag says. */
+    UsedUp,
+
+    /** A model's or group's own window used up while the account runs others: "some models used up". */
+    SomeModelsUsedUp,
+}
+
+/**
+ * Web `modelLimitChip` (slock #15483, runtimeUsageCredits.ts): every group used up reads "may be on
+ * credits" while credits are unreported, nothing while they are available (each row says "using
+ * credits"), "used up" when reported as none; one model's or group's window used up while the
+ * account runs others reads "some models used up", unless the account is on credits.
+ */
+internal fun RuntimeAccountUsageAccount.modelLimitChip(): RuntimeAccountUsageModelLimit? {
+    if (modelGroupsAllUsedUp()) {
+        val reported = credits ?: return RuntimeAccountUsageModelLimit.MaybeOnCredits
+        return if (reported.available) null else RuntimeAccountUsageModelLimit.UsedUp
+    }
+    if (usageOnCredits) return null
+    return if (windows.any { it.status == RuntimeAccountUsageWindowStatus.LimitReached && it.modelScoped }) {
+        RuntimeAccountUsageModelLimit.SomeModelsUsedUp
+    } else {
+        null
+    }
+}
+
+/** The one word an account's chip on the usage card says (web `runtime-account-health`); none when healthy. */
+internal enum class RuntimeAccountUsageBadge {
+    RateLimited,
+    ReauthRequired,
+    Unsupported,
+    Error,
+    Unknown,
+    SomeModelsUsedUp,
+    MaybeOnCredits,
+
+    /** Unsupported, the account reports no usage limits (`quota_unavailable`). */
+    NoUsageData,
+
+    /** Unsupported, the CLI is too old to report them (`version_unsupported`). */
+    UpdateRequired,
+}
+
+/**
+ * Web `RuntimeUsageContents`' badge rule (slock #15482, #15483, #15395): no chip for a healthy
+ * account (on the all-models basis, with no model limit); otherwise its model limit, an
+ * unsupported account's reason, or its health.
+ */
+internal fun RuntimeAccountUsageAccount.usageBadge(): RuntimeAccountUsageBadge? {
+    val health = allModels().account.health
+    val modelLimit = if (health == RuntimeAccountUsageHealth.Ok) modelLimitChip() else null
+    return when (modelLimit) {
+        RuntimeAccountUsageModelLimit.MaybeOnCredits -> RuntimeAccountUsageBadge.MaybeOnCredits
+        RuntimeAccountUsageModelLimit.UsedUp -> RuntimeAccountUsageBadge.RateLimited
+        RuntimeAccountUsageModelLimit.SomeModelsUsedUp -> RuntimeAccountUsageBadge.SomeModelsUsedUp
+        null ->
+            when (health) {
+                RuntimeAccountUsageHealth.Ok -> null
+                RuntimeAccountUsageHealth.RateLimited -> RuntimeAccountUsageBadge.RateLimited
+                RuntimeAccountUsageHealth.ReauthRequired -> RuntimeAccountUsageBadge.ReauthRequired
+                RuntimeAccountUsageHealth.Error -> RuntimeAccountUsageBadge.Error
+                RuntimeAccountUsageHealth.Unknown -> RuntimeAccountUsageBadge.Unknown
+                RuntimeAccountUsageHealth.Unsupported ->
+                    when (unsupportedReason) {
+                        RuntimeAccountUsageUnsupportedReason.QuotaUnavailable -> RuntimeAccountUsageBadge.NoUsageData
+                        RuntimeAccountUsageUnsupportedReason.VersionUnsupported -> RuntimeAccountUsageBadge.UpdateRequired
+                        else -> RuntimeAccountUsageBadge.Unsupported
+                    }
+            }
+    }
+}
+
+/**
+ * Web `unsupportedReasonTextId`: the line under an unsupported account saying why; none where its
+ * badge already says it ("no usage data", "update required", or a plain "unsupported").
+ */
+internal val RuntimeAccountUsageAccount.unsupportedReasonLine: RuntimeAccountUsageUnsupportedReason?
+    get() =
+        unsupportedReason?.takeIf {
+            health == RuntimeAccountUsageHealth.Unsupported &&
+                it != RuntimeAccountUsageUnsupportedReason.QuotaUnavailable &&
+                it != RuntimeAccountUsageUnsupportedReason.VersionUnsupported &&
+                it != RuntimeAccountUsageUnsupportedReason.CapabilityUnavailable
+        }
+
+/**
+ * Web `runtimeUsageWindowLabel` (slock #15482): the 5-hour and weekly windows, by the labels the
+ * Computer sends for them, read in the reader's language ("5h", "Week"); any other window as named.
+ */
+internal fun RuntimeAccountUsageWindow.cardWindowKind(): RuntimeQuotaWindowKind? =
+    when (label) {
+        in RuntimeUsageCardFiveHourLabels -> RuntimeQuotaWindowKind.FiveHour
+        in RuntimeUsageCardWeekLabels -> RuntimeQuotaWindowKind.Week
+        else -> null
+    }
+
+private val RuntimeUsageCardFiveHourLabels = setOf("Current session", "5 hours", "Codex · 5 hours")
+private val RuntimeUsageCardWeekLabels = setOf("Current week (all models)", "1 week", "Codex · 1 week", "Weekly included usage")
 
 /** The Computer's own account, not an agent's own folder's (slock `agentIds === undefined`). */
 internal val RuntimeAccountUsageAccount.isDefaultAccount: Boolean get() = agentIds == null
@@ -313,7 +500,7 @@ internal fun RuntimeAccountUsageAccount.windowFill(window: RuntimeAccountUsageWi
     }
 }
 
-/** The account's credits line on the usage card, beside its limit resets; null says nothing. */
+/** The account's credits on the usage card's facts line, beside its limit resets; null says nothing. */
 internal sealed interface RuntimeAccountUsageCreditsLine {
     /** "30784 credits": the runtime's own number, as it wrote it. */
     data class Balance(val balance: String) : RuntimeAccountUsageCreditsLine
@@ -322,17 +509,20 @@ internal sealed interface RuntimeAccountUsageCreditsLine {
 
     /** Credits to spend, how many not said. */
     data object Available : RuntimeAccountUsageCreditsLine
+
+    /** "No credits left", in orange (web `usageCreditsText`, slock #15482). */
+    data object None : RuntimeAccountUsageCreditsLine
 }
 
-/** Null when credits are unknown, or none are available and no balance is said. */
+/** Web `usageCreditsText`: null only when credits are unknown. */
 internal val RuntimeAccountUsageAccount.creditsLine: RuntimeAccountUsageCreditsLine?
     get() {
         val credits = credits ?: return null
         return when {
+            !credits.available -> RuntimeAccountUsageCreditsLine.None
             credits.unlimited == true -> RuntimeAccountUsageCreditsLine.Unlimited
             credits.balance != null -> RuntimeAccountUsageCreditsLine.Balance(credits.balance)
-            credits.available -> RuntimeAccountUsageCreditsLine.Available
-            else -> null
+            else -> RuntimeAccountUsageCreditsLine.Available
         }
     }
 
@@ -478,7 +668,18 @@ private fun JsonObject.toRuntimeAccountUsageAccount(): RuntimeAccountUsageAccoun
             (this["agentIds"] as? JsonArray)?.mapNotNull { element ->
                 (element as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
             },
+        unsupportedReason = if (health == RuntimeAccountUsageHealth.Unsupported) unsupportedReasonOrNull() else null,
     )
+}
+
+/** A reason this app does not know reads as a plain `unsupported` (slock: an unknown code is left out). */
+private fun JsonObject.unsupportedReasonOrNull(): RuntimeAccountUsageUnsupportedReason? {
+    val wire = stringOrNull("unsupportedReason") ?: return null
+    return RuntimeAccountUsageUnsupportedReason.fromWire(wire)
+        ?: run {
+            reportUnknownTypeDropped("runtime_account_usage", "unsupported_reason", wire, fallback = "unsupported")
+            null
+        }
 }
 
 /** slock `RUNTIME_ACCOUNT_USAGE_CREDITS_BALANCE_PATTERN`: digits with `.` or `,`, an optional leading `-`. */

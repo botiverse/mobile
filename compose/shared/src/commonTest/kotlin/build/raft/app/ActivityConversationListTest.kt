@@ -656,7 +656,7 @@ class ActivityConversationListTest {
             }
         val homeContext = home.toActivityConversationListContext("server-1")
         // The projection is the Home sidebar's own helper, row for row: the External glyph for a
-        // joint channel and one with outside people, not gated by external_channels_v1 (web plan §2a).
+        // joint channel and one with outside people.
         val external = RaftChannelKindGlyph.External.symbol
         assertEquals(
             mapOf("general" to "#", "secret" to "lock", "joint-hands" to external, "lobby" to HomeChannelSymbolHashGlobe, "vendor" to external),

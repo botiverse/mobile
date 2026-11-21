@@ -15,8 +15,8 @@ import dev.vcase.VCase
 
 /**
  * [RaftEmptyState] (raft-ui EmptyState): icon, title, description and an action; title and
- * description; the title alone; a long description cut at three lines; and one centred in a
- * taller box (`justify-center`).
+ * description; the title alone; a long title and description, both wrapping in full; and one
+ * centred in a taller box (`justify-center`).
  */
 @VCase("ds.empty-state.gallery")
 @Composable
@@ -37,7 +37,7 @@ fun EmptyStateGallery() {
         }
         Caption("Title only")
         CanvasSurface { RaftEmptyState(title = "Nothing here yet") }
-        Caption("Long text: title one line, description three")
+        Caption("Long text: title and description wrap")
         CanvasSurface {
             RaftEmptyState(
                 title = "No agents have been added to this workspace so far",

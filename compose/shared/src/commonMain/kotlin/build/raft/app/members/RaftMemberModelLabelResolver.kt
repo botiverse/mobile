@@ -1,9 +1,13 @@
 package build.raft.app
 
+import build.raft.app.data.EnsureServerModelLabelCatalog
 import build.raft.app.data.RaftDisplayPreferenceRuntime
+import build.raft.app.data.RaftModelLabelCatalogs
+import build.raft.app.data.ServerModelLabelCatalog
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
 import androidx.compose.runtime.Composable
@@ -11,6 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -31,6 +36,7 @@ internal class RaftMemberModelLabelResolver(
     private val labelFlow: (String?) -> Flow<String?>,
     private val currentAuthorFacts: (String?) -> RaftMemberAuthorFacts? = { null },
     private val authorFactsFlow: (String?) -> Flow<RaftMemberAuthorFacts?> = { flowOf(null) },
+    internal val serverId: String? = null,
 ) {
     fun current(memberId: String?): String? = currentLabel(memberId)
 
@@ -66,11 +72,13 @@ internal val EmptyRaftMemberModelLabelResolver =
 
 internal fun raftMemberModelLabelResolver(
     serverMembersStore: SharedServerMembersStore?,
-    serverId: String?
+    serverId: String?,
+    knownServers: List<MemberServerRef> = emptyList(),
 ): RaftMemberModelLabelResolver {
     val cleanServerId = serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId)
         ?: return EmptyRaftMemberModelLabelResolver
     return RaftMemberModelLabelResolver(
+        serverId = cleanServerId.value,
         currentLabel = { memberId ->
             serverMembersStore
                 ?.state
@@ -81,14 +89,16 @@ internal fun raftMemberModelLabelResolver(
             if (serverMembersStore == null) {
                 flowOf(null)
             } else {
-                serverMembersStore
-                    .memberProfileFlow(cleanServerId, memberId)
-                    .map { profile -> profile?.authorRowModelLabel(cleanServerId) }
-                    .distinctUntilChanged()
+                combine(
+                    serverMembersStore.memberProfileFlow(cleanServerId, memberId),
+                    RaftModelLabelCatalogs.catalogFlow(cleanServerId.value)
+                ) { profile, catalog ->
+                    profile?.authorRowModelLabel(cleanServerId, catalog)
+                }.distinctUntilChanged()
             }
         },
         currentAuthorFacts = { memberId ->
-            serverMembersStore?.state?.value?.memberProfile(cleanServerId, memberId)?.authorFacts(cleanServerId)
+            serverMembersStore?.state?.value?.memberProfile(cleanServerId, memberId)?.authorFacts(cleanServerId, knownServers)
         },
         authorFactsFlow = { memberId ->
             if (serverMembersStore == null) {
@@ -96,7 +106,7 @@ internal fun raftMemberModelLabelResolver(
             } else {
                 serverMembersStore
                     .memberProfileFlow(cleanServerId, memberId)
-                    .map { profile -> profile?.authorFacts(cleanServerId) }
+                    .map { profile -> profile?.authorFacts(cleanServerId, knownServers) }
                     .distinctUntilChanged()
             }
         },
@@ -106,21 +116,27 @@ internal fun raftMemberModelLabelResolver(
 internal fun SharedServerMembersState.currentMemberModelLabel(
     serverId: ServerId?,
     memberId: String?
-): String? = memberProfile(serverId, memberId)?.authorRowModelLabel(serverId)
+): String? = memberProfile(serverId, memberId)?.authorRowModelLabel(serverId, RaftModelLabelCatalogs.currentCatalog(serverId?.value))
 
 /**
  * The model the message author row names (web MessageItem `agentModelLabelText`): this server's
  * agents only, never a personal assistant's (nor an App Bot's, [modelLabel]).
  */
-internal fun build.raft.app.model.MemberProfile.authorRowModelLabel(viewerServerId: ServerId?): String? {
+internal fun build.raft.app.model.MemberProfile.authorRowModelLabel(
+    viewerServerId: ServerId?,
+    catalog: ServerModelLabelCatalog? = null
+): String? {
     if (!assistantOwnerUserId.isNullOrBlank()) return null
     if (isFromAnotherServer(viewerServerId)) return null
-    return modelLabel()
+    return modelLabel(viewerServerId = viewerServerId?.value, catalog = catalog)
 }
 
 /** The author row's directory facts about [this] sender, as seen from [viewerServerId]. */
-internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: ServerId?): RaftMemberAuthorFacts {
-    val origin = memberOrigin(this, viewerServerId?.value)
+internal fun build.raft.app.model.MemberProfile.authorFacts(
+    viewerServerId: ServerId?,
+    knownServers: List<MemberServerRef> = emptyList(),
+): RaftMemberAuthorFacts {
+    val origin = memberOrigin(this, viewerServerId?.value, knownServers)
     return RaftMemberAuthorFacts(
         description = description?.trim()?.takeIf { it.isNotEmpty() },
         // web `isViewerServerGuest`: a Guest label is a fact of the viewed server only.
@@ -139,13 +155,20 @@ internal fun build.raft.app.model.MemberProfile.authorFacts(viewerServerId: Serv
 private fun build.raft.app.model.MemberProfile.isFromAnotherServer(viewerServerId: ServerId?): Boolean =
     memberOrigin(this, viewerServerId?.value).external
 
-internal fun build.raft.app.model.MemberProfile.modelLabel(): String? {
+internal fun build.raft.app.model.MemberProfile.modelLabel(
+    viewerServerId: String? = null,
+    catalog: ServerModelLabelCatalog? = null
+): String? {
     if (kind != build.raft.app.model.MemberKind.Agent) return null
     // An App Bot runs no model: `agents.model` keeps the column default (botiverse/slock #11273
     // MessageItem `isAppBotSender`). Its row carries the Bot badge instead.
     if (!managedByAppInstallId.isNullOrBlank()) return null
     val rawModel = model?.trim()?.takeIf { it.isNotBlank() } ?: return null
-    return getModelLabel(runtimeId = roleDescription.orEmpty(), modelId = rawModel)
+    val runtimeId = roleDescription.orEmpty()
+    val resolvedCatalog = catalog ?: RaftModelLabelCatalogs.catalog(serverId?.value ?: viewerServerId)
+    val catalogLabel = resolvedCatalog?.label(raftComputerMachineId(), runtimeId, rawModel)
+    if (!catalogLabel.isNullOrBlank()) return catalogLabel
+    return getModelLabel(runtimeId = runtimeId, modelId = rawModel)
 }
 
 @Composable
@@ -153,6 +176,7 @@ internal fun rememberRaftMemberModelLabel(
     modelLabelResolver: RaftMemberModelLabelResolver,
     memberId: String?
 ): String? {
+    EnsureServerModelLabelCatalog(modelLabelResolver.serverId)
     val labelFlowValue = remember(modelLabelResolver, memberId) { modelLabelResolver(memberId) }
     val initialLabel =
         remember(modelLabelResolver, memberId) {

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -47,10 +48,19 @@ import build.raft.designsystem.tokens.RaftUiThemeColors
 enum class RaftListRowVariant(
     /** Where the hairline above a row starts (`--list-row-rule-start`); null: no lines. */
     internal val ruleStart: Dp?,
+    /** The least height under a fine pointer (a mouse or trackpad). */
     internal val minHeight: Dp,
+    /** The least height with a finger (raft-ui `pointer-coarse:`). */
+    internal val touchMinHeight: Dp = minHeight,
+    /** The padding above and below the content with a finger (raft-ui `pointer-coarse:py-*`; `py-3` otherwise). */
+    internal val touchPaddingY: Dp = 12.dp,
 ) {
-    /** A conversation, a person or an agent: a 35dp leading block, at least 64dp tall. */
-    Default(63.dp, 64.dp),
+    /**
+     * A conversation, a person or an agent: a 35dp leading block. raft-ui `min-h-16
+     * pointer-coarse:min-h-14 pointer-coarse:py-2`: at least 64dp with 12dp above and below under
+     * a mouse or trackpad, 56dp with 8dp by touch.
+     */
+    Default(63.dp, 64.dp, touchMinHeight = 56.dp, touchPaddingY = 8.dp),
 
     /** A setting: title (and its consequence), then a value and a chevron, or a switch. */
     Plain(16.dp, 0.dp),
@@ -321,6 +331,7 @@ fun RaftListRow(
     val isFocused = raftIsFocused(source)
     val focused = interactive && enabled && isFocused
     val ruleStart = variant.ruleStart
+    val pointer = RaftTheme.pointerInput
     val showBadge = badge != null && enabled && !selected
     // raft-ui 0.21.1 (#703, a control and its label): a plain row's ends centre on the whole row,
     // with or without a description, as every other row's do; [alignTop] alone puts them on top.
@@ -334,7 +345,7 @@ fun RaftListRow(
         Row(
             modifier
                 .fillMaxWidth()
-                .heightIn(min = raftListRowMinHeight(variant, attached, interactive, RaftTheme.controls.height))
+                .heightIn(min = raftListRowMinHeight(variant, attached, interactive, RaftTheme.controls.height, pointer))
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
                 .raftStateOverlay(overlay, 0.dp)
                 .raftInsetFocusOutline(focused, colors.foreground)
@@ -355,7 +366,12 @@ fun RaftListRow(
                 // where the text starts) stays out of the horizontal safe area.
                 .raftSafeAreaHorizontalPadding()
                 .then(if (divider && !attached && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
-                .padding(start = 16.dp, end = 16.dp, top = raftListRowTopPadding(variant, attached), bottom = 12.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = raftListRowTopPadding(variant, attached, pointer),
+                    bottom = raftListRowPaddingY(variant, pointer),
+                ),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = align,
         ) {
@@ -453,13 +469,34 @@ fun RaftListRow(
     }
 }
 
-/** The least height of a [RaftListRow]: an attached interactive plain row stays a [controlHeight] target. */
-internal fun raftListRowMinHeight(variant: RaftListRowVariant, attached: Boolean, interactive: Boolean, controlHeight: Dp): Dp =
-    if (attached && interactive && variant == RaftListRowVariant.Plain) maxOf(variant.minHeight, controlHeight) else variant.minHeight
+/** raft-ui ListRow `py-3`: the padding above and below a row's content unless its variant sets its own. */
+private val RaftListRowPaddingY = 12.dp
+
+/**
+ * The least height of a [RaftListRow] under [pointer] (a default row is 56dp by touch, 64dp under
+ * a mouse or trackpad): an attached interactive plain row stays a [controlHeight] target.
+ */
+internal fun raftListRowMinHeight(
+    variant: RaftListRowVariant,
+    attached: Boolean,
+    interactive: Boolean,
+    controlHeight: Dp,
+    pointer: RaftPointerInput = RaftPointerInput.Touch,
+): Dp {
+    val least = if (pointer == RaftPointerInput.Fine) variant.minHeight else variant.touchMinHeight
+    return if (attached && interactive && variant == RaftListRowVariant.Plain) maxOf(least, controlHeight) else least
+}
+
+/** The padding above and below a [RaftListRow]'s content under [pointer]: a default row's 8dp by touch, else 12dp. */
+internal fun raftListRowPaddingY(variant: RaftListRowVariant, pointer: RaftPointerInput = RaftPointerInput.Touch): Dp =
+    if (pointer == RaftPointerInput.Fine) RaftListRowPaddingY else variant.touchPaddingY
 
 /** The padding above a [RaftListRow]'s content: none for an attached plain row (it follows the row it belongs to). */
-internal fun raftListRowTopPadding(variant: RaftListRowVariant, attached: Boolean): Dp =
-    if (attached && variant == RaftListRowVariant.Plain) 0.dp else 12.dp
+internal fun raftListRowTopPadding(
+    variant: RaftListRowVariant,
+    attached: Boolean,
+    pointer: RaftPointerInput = RaftPointerInput.Touch,
+): Dp = if (attached && variant == RaftListRowVariant.Plain) 0.dp else raftListRowPaddingY(variant, pointer)
 
 /**
  * Machine-written facts in Space Mono 12 tabular, ink-3: the time, a gray count. Kept whole

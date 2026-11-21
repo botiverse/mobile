@@ -12,6 +12,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.resources.*
 
 @Page(RAFT_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellChildTabPage : build.raft.app.base.BasePager() {
@@ -44,11 +45,12 @@ private fun RaftAppShellChildTabPageContent() {
         LaunchedEffect(shellId, tab) {
             bridge.log("app_shell_child_tab_registry_entry shellId=$shellId pageDataTab=$tab result=missing")
         }
+        // Only an internal failure lands here (the shell's entry is gone): the app's generic error copy.
         PageErrorContent(
-            title = "App Shell",
-            subtitle = "Child tab host",
+            title = stringResource(Res.string.common_error),
+            subtitle = null,
             iconName = RaftLucideIconName.House,
-            message = "Could not attach child tab",
+            message = stringResource(Res.string.error_generic),
             code = "child_tab_registry_missing"
         )
         return

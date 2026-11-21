@@ -1,10 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.DataResult
-import build.raft.app.data.JOINT_CHANNEL_FREE_LIMIT_REACHED
-import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
-import build.raft.app.data.JointChannelErrorDetails
-import build.raft.app.data.ScreenError
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -98,8 +93,9 @@ class RaftUpgradeDialogTest {
     @Test
     fun serverErrorCodesMapToTheirGates() {
         assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("FILE_UPLOAD_QUOTA_EXCEEDED"))
-        assertEquals(RaftUpgradeGate.JointChannelHostLimit, raftUpgradeGateForErrorCode(JOINT_CHANNEL_FREE_LIMIT_REACHED))
-        assertEquals(RaftUpgradeGate.JointChannelFreeCap, raftUpgradeGateForErrorCode(JOINT_FREE_SERVER_LIMIT))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("file_upload_quota_exceeded"))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, raftUpgradeGateForErrorCode("UPLOAD_QUOTA_EXCEEDED"))
+        assertEquals(RaftUpgradeGate.ExternalChannelFrozen, raftUpgradeGateForErrorCode("external_limit_frozen"))
         assertEquals(RaftUpgradeGate.AgentMigration, raftUpgradeGateForErrorCode("MIGRATION_PRO_PLAN_REQUIRED"))
         assertEquals(RaftUpgradeGate.SeatLimitAgentCreate, raftUpgradeGateForErrorCode("agent_limit_reached"))
         assertEquals(RaftUpgradeGate.SeatLimitInvite, raftUpgradeGateForErrorCode("human_seat_limit_reached"))
@@ -107,6 +103,9 @@ class RaftUpgradeDialogTest {
         assertEquals(RaftUpgradeGate.ExternalChannelFreeLimit, raftUpgradeGateForErrorCode("free_external_limit"))
         assertNull(raftUpgradeGateForErrorCode("UPLOAD_RATE_LIMITED"))
         assertNull(raftUpgradeGateForErrorCode(null))
+        assertEquals(RaftUpgradeGate.UploadMonthlyQuota, threadAttachmentUploadFailureUpgradeGate("FILE_UPLOAD_QUOTA_EXCEEDED"))
+        assertEquals(RaftUpgradeGate.ExternalChannelFrozen, threadAttachmentUploadFailureUpgradeGate("external_limit_frozen"))
+        assertNull(threadAttachmentUploadFailureUpgradeGate("UPLOAD_FORBIDDEN"))
     }
 
     @Test
@@ -124,22 +123,6 @@ class RaftUpgradeDialogTest {
         assertTrue(raftUploadSizeLimitIsFree(50L * 1024 * 1024))
         assertFalse(raftUploadSizeLimitIsFree(200L * 1024 * 1024))
         assertFalse(raftUploadSizeLimitIsFree(0))
-    }
-
-    @Test
-    fun jointCreateErrorsNameTheirGate() {
-        fun state(code: String?, message: String? = null) =
-            CreateJointChannelState(
-                error =
-                    CreateJointChannelError.Server(
-                        DataResult.Error(ScreenError(code ?: "joint_http_400", serverMessage = message)),
-                        JointChannelErrorDetails(code, null, null, null, null, null, false, null),
-                    ),
-            )
-        assertEquals(RaftUpgradeGate.JointChannelFreeCap, state(JOINT_FREE_SERVER_LIMIT).billingGate)
-        assertEquals(RaftUpgradeGate.JointChannelHostLimit, state(JOINT_CHANNEL_FREE_LIMIT_REACHED).billingGate)
-        assertEquals(RaftUpgradeGate.JointChannelHostLimit, state(null, "Hosting more requires the Pro plan").billingGate)
-        assertNull(state(null, "Channel name already taken").billingGate)
     }
 
     @Test

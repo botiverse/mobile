@@ -2841,7 +2841,14 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                             logger = { message -> bridge.log("settings_computers_bulk $message") },
                         ),
                     agentsApi = agentsApi,
-                    modelCatalog = SharedCreateAgentCoordinator(agentsApi, RaftComputersApiClient(RaftComputersNetworkApi(client))),
+                    modelCatalog =
+                        SharedCreateAgentCoordinator(
+                            agentsApiClient = agentsApi,
+                            computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(client)),
+                            onLiveModelDetect = { sid ->
+                                sharedStores.serverModelLabelCatalogRepository(environment.storeScope).refreshAfterLiveDetect(sid.value)
+                            },
+                        ),
                     serverId = owner.serverId,
                     machineId = target.machineId,
                 )
@@ -2919,6 +2926,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                         onOutcome = onOutcome,
                     )
                 },
+                serverId = target.serverId ?: currentServerId,
             )
         }
         }
@@ -2979,7 +2987,10 @@ internal fun RaftSettingsComputerDetailContent(
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
     /** Stops one running `raft proc` job (web `POST …/proc-jobs/stop`); null hides Stop. */
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
+    /** Owning server id for server model-label catalog lookup on agent rows. */
+    serverId: String? = null,
 ) {
+    build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
             RaftComputerDetailModel.Loading ->
@@ -3023,6 +3034,7 @@ internal fun RaftSettingsComputerDetailContent(
                     onBulkAgentsChanged = onBulkAgentsChanged,
                     procJobsByAgent = procJobsByAgent,
                     onStopProcJob = onStopProcJob,
+                    serverId = serverId,
                 )
         }
     }
@@ -3047,6 +3059,7 @@ private fun RaftComputerDetailBody(
     onBulkAgentsChanged: () -> Unit,
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>>,
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)?,
+    serverId: String? = null,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3302,6 +3315,7 @@ private fun RaftComputerDetailBody(
                 canStopProcJobs = model.canControl && snapshot.computer.online && onStopProcJob != null,
                 procJobsByAgent = procJobsByAgent,
                 onStopProcJob = onStopProcJob,
+                serverId = serverId,
             )
         }
         item(key = "workspaces") {
@@ -3395,6 +3409,8 @@ private fun RaftComputerDetailBody(
                         bulkState.clearSelection()
                         onBulkAgentsChanged()
                     },
+                    serverId = serverId,
+                    machineId = machineId,
                 )
             }
         }
@@ -3838,6 +3854,7 @@ private fun RaftComputerAgentsSection(
     canStopProcJobs: Boolean = false,
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>> = emptyMap(),
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
+    serverId: String? = null,
 ) {
     val agents = snapshot.agents
     val selecting = bulk?.state?.selectionMode == true
@@ -3877,7 +3894,7 @@ private fun RaftComputerAgentsSection(
             else ->
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (bulk != null) {
-                        RaftComputerAgentsBulkReceiptBanner(bulk)
+                        RaftComputerAgentsBulkReceiptBanner(bulk, serverId = serverId, machineId = snapshot.computer.id)
                         RaftComputerAgentsBulkToolbar(bulk, agents)
                     }
                     RaftListRowGroup(Modifier.fillMaxWidth()) {
@@ -3891,6 +3908,8 @@ private fun RaftComputerAgentsSection(
                                         selected = agent.id in bulk.state.selected,
                                         onToggle = { bulk.state.toggle(agent.id) },
                                         avatar = { RaftComputerAgentAvatar(agent) },
+                                        serverId = serverId,
+                                        machineId = snapshot.computer.id,
                                     )
                                 } else {
                                     RaftComputerAgentRow(
@@ -3898,6 +3917,8 @@ private fun RaftComputerAgentsSection(
                                         divider = index > 0,
                                         live = agentLive[agent.id],
                                         onClick = { onOpenAgent(agent) },
+                                        serverId = serverId,
+                                        machineId = snapshot.computer.id,
                                     )
                                     val agentJobs = procJobsByAgent[agent.id].orEmpty()
                                     if (agentJobs.isNotEmpty()) {
@@ -3935,6 +3956,8 @@ private fun RaftComputerAgentRow(
     divider: Boolean,
     live: RaftAgentStatusIndicatorState?,
     onClick: () -> Unit,
+    serverId: String? = null,
+    machineId: String? = null,
 ) {
     // Web MachineAgentRow on a phone-width row: a plain Online / Offline is the status light
     // alone; anything else (an error, a block, what it is working on) keeps its words, on a line
@@ -3949,7 +3972,7 @@ private fun RaftComputerAgentRow(
         title = agent.name,
         onClick = onClick,
         divider = divider,
-        subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model),
+        subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model, serverId = serverId, machineId = machineId),
         description = statusText?.takeIf { !plainPresence },
         descriptionMaxLines = 3,
         leading = { RaftComputerAgentAvatar(agent) },

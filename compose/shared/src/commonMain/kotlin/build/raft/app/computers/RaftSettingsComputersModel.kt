@@ -620,7 +620,7 @@ internal fun raftRackUsageCell(column: RaftRackUsageColumn, load: RuntimeAccount
         if (current == null || used > current || (used == current && limitWins)) {
             tightestUsed = used
             tightestLimit = limit
-            tightestPlan = account.planLabel?.takeIf { it.isNotBlank() }
+            tightestPlan = build.raft.app.data.formatRuntimePlanName(account.planLabel)
             tightestAccount = account
         }
     }
@@ -938,11 +938,21 @@ internal fun raftComputerEditorClosesAfterSave(wasSaving: Boolean, saving: Boole
  * runtime's display name and the model's label, joined by " · ", either one dropped when absent.
  * The model label follows web `agentModelLabel`: the bundled catalog label, else the raw id.
  */
-internal fun raftComputerAgentIdentityLabel(runtime: String?, model: String?): String? {
+internal fun raftComputerAgentIdentityLabel(
+    runtime: String?,
+    model: String?,
+    serverId: String? = null,
+    machineId: String? = null,
+): String? {
     val runtimeId = runtime?.trim()?.takeIf { it.isNotBlank() }
     val modelId = model?.trim()?.takeIf { it.isNotBlank() }
     val runtimeLabel = runtimeId?.let(::raftAgentRuntimeDisplayName)
-    val modelLabel = modelId?.let { getModelLabel(runtimeId = runtimeId.orEmpty(), modelId = it).ifBlank { it } }
+    val modelLabel =
+        modelId?.let { id ->
+            build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, runtimeId, id)
+                ?.takeIf { it.isNotBlank() }
+                ?: getModelLabel(runtimeId = runtimeId.orEmpty(), modelId = id).ifBlank { id }
+        }
     return listOfNotNull(runtimeLabel, modelLabel).joinToString(" · ").ifBlank { null }
 }
 

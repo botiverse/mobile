@@ -69,6 +69,29 @@ internal object AndroidPackageInstallPermission {
     }
 
     /**
+     * [AndroidUnknownSourcesSettingsPrompt] for an install that is not an attachment (the Alpha
+     * build's Hands update; [gate] covers attachments): the same explanation, then Raft's switch.
+     * [beforeOpenSettings] runs just before the page opens, from the explanation's confirm, or at
+     * once when there is no window to explain in.
+     */
+    fun requestUnknownSourcesSettings(
+        context: Context,
+        activity: Activity?,
+        logPrefix: String,
+        beforeOpenSettings: () -> Unit,
+        record: (String) -> Unit
+    ): Boolean =
+        AndroidUnknownSourcesSettingsPrompt(
+            showExplanation = { onOpenSettings -> showRestartExplanation(activity, onOpenSettings) },
+            openSettings = {
+                beforeOpenSettings()
+                openUnknownSourcesSettings(context)
+            },
+            record = record,
+            logPrefix = logPrefix
+        ).request()
+
+    /**
      * Opens the system file manager on `Download/Raft` (where published attachments live), else on
      * the Downloads list. Returns which surface opened, or null when neither could be started.
      * Any file manager that handles a directory document holds the install permission itself.

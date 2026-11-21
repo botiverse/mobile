@@ -319,22 +319,22 @@ private fun AgentMigrationTargetDetailsContent(
                 style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.foregroundMuted
             )
-            ComputerRuntimeUsageContents(usage, timeContext)
             val available = (usage.load as? RuntimeAccountUsageLoad.Loaded)?.read as? RuntimeAccountUsageRead.Available
-            if (computer.offline && available != null) {
-                val reported =
-                    available.snapshot.collectedAt
-                        ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
-                RaftText(
-                    stringResource(Res.string.agent_migration_target_last_reported, reported),
-                    style = typography.caption,
-                    color = colors.foregroundHint
-                )
-            }
-            // The usage card closes a snapshot with its own separator.
-            if (available == null) RaftSeparator()
+            // Web `RuntimeUsageContents metadata`: an offline computer's usage says when it last reported,
+            // in place of "Updated …".
+            val lastReported =
+                if (computer.offline && available != null) {
+                    val reported =
+                        available.snapshot.collectedAt
+                            ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
+                            ?.takeIf { it.isNotEmpty() }
+                            ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
+                    stringResource(Res.string.agent_migration_target_last_reported, reported)
+                } else {
+                    null
+                }
+            Column(Modifier.fillMaxWidth()) { ComputerRuntimeUsageContents(usage, timeContext, metadata = lastReported) }
+            RaftSeparator()
         }
         val offlineFor =
             if (computer.offline) {
@@ -511,12 +511,23 @@ private fun AgentMigrationAgentAvatar(agent: MemberProfile, source: AgentMigrati
     val status = rememberRaftAgentStatusIndicatorState(source.agentStatusResolver, agent.id.value)
     val state = rememberRaftPreviewCardState()
     val name = agent.agentMigrationName()
+    val catalogServerId = agent.serverId?.value ?: source.serverId
+    build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
+    val modelLabelCatalog = build.raft.app.data.RaftModelLabelCatalogs.catalog(catalogServerId)
     RaftPreviewCard(
         state = state,
         pinOnClick = true,
         card = {
             RaftProfilePreviewCardContent(
-                model = remember(agent, status, source.serverId) { raftProfilePreviewCardModel(agent, status, viewerServerId = source.serverId) },
+                model =
+                    remember(agent, status, source.serverId, modelLabelCatalog) {
+                        raftProfilePreviewCardModel(
+                            agent,
+                            status,
+                            viewerServerId = source.serverId,
+                            modelLabelCatalog = modelLabelCatalog,
+                        )
+                    },
                 onViewProfile = {
                     state.dismiss()
                     source.onOpenProfile(agent)

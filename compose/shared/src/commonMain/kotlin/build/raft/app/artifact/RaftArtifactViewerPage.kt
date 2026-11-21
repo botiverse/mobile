@@ -19,6 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -308,7 +311,8 @@ internal fun rememberRaftArtifactOpener(
 /**
  * Prewarm (an Artifact card or Activity row on screen): after the page settles, a WebView boots
  * the web app on the viewer's route with no Artifact, signed in, and is kept for the viewer.
- * Nothing is read or marked read. No-op without keep-alive (iOS, desktop) or a known subject.
+ * Nothing is read or marked read. No-op without keep-alive (iOS, desktop) or a known subject, or
+ * while the hosting page is covered (`!pager.isAppeared`) or the app is in the background.
  * Booted for [conversationId] (`hostConversation`, latched by the page), the one the cards on screen
  * open from; a kept document of another conversation is not reused for them.
  */
@@ -317,7 +321,50 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
     if (!enabled) return
     val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current) ?: return
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
-    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
+    RaftArtifactViewerPrewarmRuntime(
+        enabled = true,
+        pager = host.pager,
+        authStore = authStore,
+        processAuthEvents = host.sharedStores.authStore,
+        webBaseUrl = host.webBaseUrl,
+        scope = host.scope(),
+        conversationId = conversationId,
+    )
+}
+
+@Composable
+internal fun RaftArtifactViewerPrewarmRuntime(
+    enabled: Boolean,
+    pager: Pager?,
+    authStore: build.raft.app.data.RaftAuthSessionStore,
+    processAuthEvents: build.raft.app.data.RaftAuthSessionEventSource,
+    webBaseUrl: String,
+    scope: RaftArtifactViewerScope?,
+    conversationId: String? = null,
+    desktopModeOverride: Boolean? = null,
+    keptDocumentPresent: (String) -> Boolean = { key -> raftWebViewKeptDocument(key) != null },
+    prewarmEffect: @Composable (RaftWebViewConfig?) -> Unit = { config -> RaftWebViewPrewarmEffect(config) },
+) {
+    if (!enabled) return
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val pagerAppeared = rememberRaftPagerAppeared(pager)
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val observer =
+            LifecycleEventObserver { _, _ ->
+                foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    if (!pagerAppeared || !foreground) return
+    val desktopMode =
+        desktopModeOverride
+            ?: (raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true })
+    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, processAuthEvents)
     val controller = rememberRaftWebViewController()
     val binding = rememberSettingsWebViewHostAuthBinding(snapshot, controller)
     var settled by remember { mutableStateOf(false) }
@@ -325,21 +372,18 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
         kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS)
         settled = true
     }
-    val scope = host.scope()
-    // Booted as the viewer will show it, so the kept document is not reloaded when it opens.
-    val desktopMode = raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true }
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     val config =
         remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
-            } else if (raftWebViewKeptDocument(scope.keepAliveKey) != null) {
+            } else if (keptDocumentPresent(scope.keepAliveKey)) {
                 null
             } else {
                 RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation)
                 raftArtifactViewerWebViewConfig(
-                    url = raftArtifactViewerWarmUrl(host.webBaseUrl, conversation),
+                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation),
                     scope = scope,
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
@@ -347,10 +391,10 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
                 )
             }
         }
-    RaftWebViewPrewarmEffect(config)
+    prewarmEffect(config)
 }
 
-private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
+internal const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
 
 /** After this long without the document shown, the viewer logs where its load stands. */
 internal const val RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS = 10_000L
@@ -599,6 +643,9 @@ private fun RaftArtifactViewerScreen() {
     val shownLink = ArtifactLinkTarget(shown.id, if (addressed != null) addressed?.version else shown.version)
     val shownUrl = remember(webBaseUrl, shownLink) { raftArtifactViewerPageUrl(webBaseUrl, shownLink) }
     val downloadSaved = stringResource(Res.string.file_preview_private_download_saved)
+    val downloadSavedToDownloads = stringResource(Res.string.file_preview_download_saved)
+    val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
+    val downloadSavedToFiles = stringResource(Res.string.file_preview_export_saved)
     val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
     val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
@@ -681,6 +728,9 @@ private fun RaftArtifactViewerScreen() {
                                         scope = scope,
                                         download = download,
                                         savedMessage = downloadSaved,
+                                        savedToDownloadsMessage = downloadSavedToDownloads,
+                                        alreadySavedMessage = downloadAlreadySaved,
+                                        savedToFilesMessage = downloadSavedToFiles,
                                         failedMessage = downloadFailed,
                                     )
                                 }
@@ -1290,6 +1340,9 @@ private suspend fun raftArtifactViewerSaveDownload(
     scope: RaftArtifactViewerScope,
     download: RaftWebViewDownload,
     savedMessage: String,
+    savedToDownloadsMessage: String,
+    alreadySavedMessage: String,
+    savedToFilesMessage: String,
     failedMessage: String,
 ) {
     val owner = currentAttachmentOwnerLease(host.storeScope)
@@ -1348,7 +1401,15 @@ private suspend fun raftArtifactViewerSaveDownload(
     when (val status = result?.optString("status").orEmpty()) {
         "saved" -> {
             host.bridge.log("artifact_viewer_download action=save result=saved")
-            host.bridge.toast(result?.optString("message").orEmpty().trim().ifBlank { savedMessage })
+            host.bridge.toast(
+                raftArtifactViewerSavedToast(
+                    result,
+                    saved = savedMessage,
+                    savedToDownloads = savedToDownloadsMessage,
+                    alreadySaved = alreadySavedMessage,
+                    savedToFiles = savedToFilesMessage,
+                )
+            )
         }
         "cancelled" -> host.bridge.log("artifact_viewer_download action=save result=cancelled")
         else -> {
@@ -1360,6 +1421,27 @@ private suspend fun raftArtifactViewerSaveDownload(
         }
     }
 }
+
+/**
+ * The toast after the host saved a file an Artifact page downloads, by the result's status words,
+ * never its `message` (the host's own English, for diagnostics). Android answers a file it had
+ * saved before with `alreadySaved`, and a copy committed to Downloads with `cached`; any other
+ * save (the iOS Files export, desktop) says [saved].
+ */
+internal fun raftArtifactViewerSavedToast(
+    result: JSONObject?,
+    saved: String,
+    savedToDownloads: String,
+    alreadySaved: String,
+    savedToFiles: String,
+): String =
+    when {
+        result?.optBoolean("alreadySaved") == true -> alreadySaved
+        result?.optBoolean("cached") == true -> savedToDownloads
+        // iOS: exported through the Files picker (HRBridgeModule `savedTo`).
+        result?.optString("savedTo") == "files" -> savedToFiles
+        else -> saved
+    }
 
 /** A file-name-safe key for the device copy of [url] in [serverId]: `artifact-<16 hex>` (FNV-1a 64). */
 internal fun raftArtifactViewerDownloadCacheId(serverId: String, url: String): String {

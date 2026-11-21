@@ -1,0 +1,178 @@
+name: Compose foundation patch (androidx foundation-android 1.12.1)
+
+# Patches ONLY androidx.compose.foundation:foundation-android:1.12.1: the official AAR from Google
+# Maven gets two isAttached entry guards in its classes.jar (third_party/compose-foundation-1.12.1/
+# RaftAttachGuardPatch.java, a bytecode patch with ASM) and is staged as 1.12.1-raft.1. Every other
+# file of the AAR and every other class stays byte-identical, and everything else in the app keeps
+# resolving the official artifacts. See third_party/compose-foundation-1.12.1/README.md.
+# Manual only: never runs on push or pull_request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the verified AAR to the patched-dependency Maven repository
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compose-foundation-patch
+  cancel-in-progress: false
+
+env:
+  OFFICIAL_REPO: https://dl.google.com/dl/android/maven2
+  MAVEN_GROUP: androidx.compose.foundation
+  ARTIFACT: foundation-android
+  UPSTREAM_VERSION: "1.12.1"
+  PATCHED_VERSION: 1.12.1-raft.1
+  PATCH_DIR: third_party/compose-foundation-1.12.1
+  # SHA-256 of the official release files: the same values as Google Maven's .sha256 files and the
+  # hashes in the official .module (which lists the two sources jars too).
+  OFFICIAL_AAR_SHA256: 444749ea7b5a563e530504b9035c87e47ed0fb62b9f7ba00e90af8aa81e6bfb8
+  OFFICIAL_POM_SHA256: 9415263f478c2b6924eab712c427ab887c6d47fb81050aa2efe21049df3af325
+  OFFICIAL_MODULE_SHA256: 9326fe08b7a49a920d5cb340e70a8da8259c3e601189ea07242823ca965f1d88
+  OFFICIAL_SOURCES_SHA256: 5b58cea5db2583142e4b4b39dce10cbd75722bd06ab35161f06f987be90a53f1
+  OFFICIAL_SAMPLES_SOURCES_SHA256: 96ff8cb9129ff31a70a0ec19fd5a418576e24b8fa612f072e4207c6ef2f628f6
+  # The patcher's only dependency, org.ow2.asm:asm from Maven Central.
+  ASM_VERSION: 9.11.1
+  ASM_SHA256: ae4e6e10d59d0a1500317764b21881ad883f8550e33c66e6142f7032c6fb566c
+  # The classes RaftAttachGuardPatch.java changes (the TARGETS of the patcher and of verify_patch.py).
+  PATCHED_CLASSES: >-
+    androidx.compose.foundation.text.input.internal.TextFieldCoreModifierNode
+    androidx.compose.foundation.text.modifiers.SelectableTextAnnotatedStringNode
+
+jobs:
+  build:
+    name: Patch, verify and stage foundation-android
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WORK_DIR: ${{ github.workspace }}/compose-foundation-patch-out/work
+      OFFICIAL_DIR: ${{ github.workspace }}/compose-foundation-patch-out/official
+      STAGING_DIR: ${{ github.workspace }}/compose-foundation-patch-out/maven
+    steps:
+      - name: Refuse to publish from a non-default branch
+        if: ${{ inputs.publish && github.ref_name != github.event.repository.default_branch }}
+        run: |
+          echo "::error::publish=true is only allowed from the default branch"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - name: Download official ${{ env.UPSTREAM_VERSION }} files and check their SHA-256
+        run: |
+          set -euo pipefail
+          mkdir -p "$OFFICIAL_DIR" "$WORK_DIR"
+          base="$OFFICIAL_REPO/${MAVEN_GROUP//.//}/$ARTIFACT/$UPSTREAM_VERSION"
+          prefix="$ARTIFACT-$UPSTREAM_VERSION"
+          pins="$WORK_DIR/official.sha256"
+          {
+            echo "$OFFICIAL_AAR_SHA256  $prefix.aar"
+            echo "$OFFICIAL_POM_SHA256  $prefix.pom"
+            echo "$OFFICIAL_MODULE_SHA256  $prefix.module"
+            echo "$OFFICIAL_SOURCES_SHA256  $prefix-sources.jar"
+            echo "$OFFICIAL_SAMPLES_SOURCES_SHA256  $prefix-samples-sources.jar"
+          } > "$pins"
+          cd "$OFFICIAL_DIR"
+          while read -r _ file; do
+            curl --fail --silent --show-error --location --retry 3 -o "$file" "$base/$file"
+          done < "$pins"
+          sha256sum --check --strict "$pins"
+
+      - name: Download ASM ${{ env.ASM_VERSION }} and check its SHA-256
+        run: |
+          set -euo pipefail
+          jar="$WORK_DIR/asm-$ASM_VERSION.jar"
+          curl --fail --silent --show-error --location --retry 3 -o "$jar" \
+            "https://repo1.maven.org/maven2/org/ow2/asm/asm/$ASM_VERSION/asm-$ASM_VERSION.jar"
+          echo "$ASM_SHA256  $jar" | sha256sum --check --strict
+
+      - name: Patch classes.jar (RaftAttachGuardPatch.java)
+        run: |
+          set -euo pipefail
+          java -version 2>&1
+          python3 -I -m zipfile -e "$OFFICIAL_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" "$WORK_DIR/official-aar"
+          java -cp "$WORK_DIR/asm-$ASM_VERSION.jar" "$PATCH_DIR/RaftAttachGuardPatch.java" \
+            "$WORK_DIR/official-aar/classes.jar" "$WORK_DIR/patched-classes.jar"
+
+      - name: Rebuild the AAR with the patched classes.jar
+        run: |
+          set -euo pipefail
+          python3 -I "$PATCH_DIR/repack_aar.py" "$OFFICIAL_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" \
+            "$WORK_DIR/patched-classes.jar" "$WORK_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar"
+
+      # The listings come from the classes.jar inside each AAR, the files that are compared and shipped.
+      - name: Disassemble the patched classes, official and patched (javap -c -p)
+        run: |
+          set -euo pipefail
+          python3 -I -m zipfile -e "$WORK_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" "$WORK_DIR/patched-aar"
+          mkdir -p "$WORK_DIR/javap"
+          for cls in $PATCHED_CLASSES; do
+            javap -c -p -cp "$WORK_DIR/official-aar/classes.jar" "$cls" > "$WORK_DIR/javap/$cls.official.txt"
+            javap -c -p -cp "$WORK_DIR/patched-aar/classes.jar" "$cls" > "$WORK_DIR/javap/$cls.patched.txt"
+            echo "== $cls: official -> patched (the patched method's offsets move by the guard's length)"
+            diff -u "$WORK_DIR/javap/$cls.official.txt" "$WORK_DIR/javap/$cls.patched.txt" || true
+          done
+
+      - name: Verify the patch against the official AAR
+        run: |
+          set -euo pipefail
+          python3 -I "$PATCH_DIR/verify_patch.py" --self-test "$OFFICIAL_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar"
+          python3 -I "$PATCH_DIR/verify_patch.py" "$OFFICIAL_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" \
+            "$WORK_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" "$WORK_DIR/javap"
+
+      - name: Re-version to ${{ env.PATCHED_VERSION }}
+        run: |
+          set -euo pipefail
+          rm -rf "$STAGING_DIR"
+          python3 -I "$PATCH_DIR/reversion_artifact.py" "$OFFICIAL_DIR" "$WORK_DIR/$ARTIFACT-$UPSTREAM_VERSION.aar" \
+            "$STAGING_DIR" "$MAVEN_GROUP" "$ARTIFACT" "$UPSTREAM_VERSION" "$PATCHED_VERSION"
+
+      - name: List staged files
+        run: |
+          set -euo pipefail
+          cd "$STAGING_DIR"
+          find . -type f | sort | while IFS= read -r f; do
+            printf '%10d  %s  %s\n' "$(stat -c %s "$f")" "$(sha256sum "$f" | cut -d' ' -f1)" "${f#./}"
+          done
+          count="$(find . -type f -name "*-$PATCHED_VERSION.aar" | wc -l | tr -d ' ')"
+          [ "$count" = 1 ] || { echo "::error::expected 1 aar at $PATCHED_VERSION, found $count"; exit 1; }
+          if find . -type f | grep -v -- "-$PATCHED_VERSION" | grep -q .; then
+            echo "::error::staged files without $PATCHED_VERSION in their name"; exit 1
+          fi
+
+      - name: Upload staged Maven repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-foundation-${{ env.PATCHED_VERSION }}-maven
+          path: compose-foundation-patch-out/maven
+          if-no-files-found: error
+
+      - name: Upload javap listings
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: compose-foundation-patch-javap
+          path: compose-foundation-patch-out/work/javap
+          if-no-files-found: ignore
+
+      # The same repository, secrets and upload script as compose-ui-patch.yml.
+      - name: Publish to patched-dependency Maven repository
+        if: ${{ inputs.publish && github.ref_name == github.event.repository.default_branch }}
+        env:
+          MAVEN_URL: ${{ secrets.COMPOSE_PATCH_MAVEN_URL }}
+          MAVEN_USER: ${{ secrets.COMPOSE_PATCH_MAVEN_USER }}
+          MAVEN_PASS: ${{ secrets.COMPOSE_PATCH_MAVEN_TOKEN }}
+        run: bash third_party/compose-ui-1.12.2/upload_maven_dir.sh compose-foundation-patch-out/maven

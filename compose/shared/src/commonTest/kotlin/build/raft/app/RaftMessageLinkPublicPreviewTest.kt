@@ -80,6 +80,20 @@ class RaftMessageLinkPublicPreviewTest {
     }
 
     @Test
+    fun serverThatIsNotPublicIsNotFoundWhateverItsChannelPageAnswers() = runTest {
+        // Backstop to the resolver's check: the server's card says missing, deleted or not public.
+        for (code in listOf(400, 403, 404)) {
+            val network =
+                FakePublicNetwork(
+                    channelPage = HomeNetworkResponse(200, """{"messages":[${message(mid, "second")}]}"""),
+                    card = HomeNetworkResponse(code, """{"error":"Not found"}"""),
+                )
+            val state = store(network, RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid), this).loadOnce()
+            assertEquals(RaftPublicPreviewState.NotFound, state, "code=$code")
+        }
+    }
+
+    @Test
     fun serverErrorTimeoutOrOfflineKeepsTheRetryStateNotTheEmptyState() = runTest {
         for (code in listOf(500, 503, 408, 429, 0)) {
             val network = FakePublicNetwork(channelPage = HomeNetworkResponse(code, null))

@@ -137,11 +137,33 @@ dependencyResolutionManagement {
         }
     }
 
+    // Android only: the patched androidx Compose foundation AAR, two isAttached guards for the
+    // detached-node crash (third_party/compose-foundation-1.12.1/README.md). Only this module at the
+    // patched version comes from here; foundation-android at any other version and every other
+    // androidx artifact stay on Google Maven. The version is raft.composeFoundationPatch.version in
+    // gradle.properties (root build.gradle.kts pins the module to it); without that property this
+    // repository is not added.
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsComposeFoundationPatch() {
+        val patchedVersion = providers.gradleProperty("raft.composeFoundationPatch.version").orNull ?: return
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsComposeFoundationPatch"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
+            }
+            filter {
+                includeVersion("androidx.compose.foundation", "foundation-android", patchedVersion)
+            }
+        }
+    }
+
     repositories {
         raftArtifactsKbaMetadata()
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         raftArtifactsComposeUiPatch()
+        raftArtifactsComposeFoundationPatch()
         mavenLocal()
         google()
         mavenCentral()

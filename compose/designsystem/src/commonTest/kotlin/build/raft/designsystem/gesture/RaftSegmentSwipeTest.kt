@@ -95,4 +95,13 @@ class RaftSegmentSwipeTest {
         assertEquals(emptyList(), t.turns)
         assertTrue(t.nested.owned)
     }
+
+    @Test
+    fun aBackSwipeFromTheLeadingStripIsLeftToThePopOnlyOnABackSwipeHost() {
+        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = true))
+        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = false))
+        // Android: Back is an OS gesture, sub-tabs turn from the edge as before.
+        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = false, startsInLeadingEdge = true))
+        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = false, hostHasBackSwipe = false, startsInLeadingEdge = false))
+    }
 }

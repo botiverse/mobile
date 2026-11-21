@@ -17,10 +17,12 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.isRuntimeAuthPastedCode
 import build.raft.app.model.RealtimeEvent
@@ -417,6 +419,8 @@ internal class ComputerRuntimeSignInSession(
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
     private val onSuperseded: () -> Unit = {},
+    /** The login ended signed in (its result arrived; web `RuntimeSignInDialog.onSignedIn`, slock #15786). */
+    private val onSignedIn: () -> Unit = {},
 ) {
     var state by mutableStateOf(ComputerRuntimeSignInState(choosingRegion = runtime.regionChoices.isNotEmpty()))
         private set
@@ -514,6 +518,7 @@ internal class ComputerRuntimeSignInSession(
                     }
                     log("computer_runtime_sign_in_result runtime=${runtime.wire} outcome=${event.result.diagnosticsLabel()}")
                     scope.launch { ops.invalidate() }
+                    if (event.result is RuntimeAuthLoginOutcome.LoggedIn) onSignedIn()
                 }
             else -> Unit
         }
@@ -782,11 +787,20 @@ internal class ComputerRuntimeAuthController(
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
     private val onIdentityChanged: () -> Unit = {},
+    /** Wall clock for the update check's age (web `currentTimeMs`). */
+    private val nowEpochMillis: () -> Long = ::defaultNowMillis,
 ) {
     var view by mutableStateOf<RuntimeAuthView?>(null)
         private set
     var dialog by mutableStateOf<ComputerRuntimeAuthDialog?>(null)
         private set
+
+    /**
+     * A sign-in on this card just succeeded (web `useRuntimeUsageCard.handleSignedIn`, slock #15786):
+     * the card's usage reads again at once rather than keep the signed-out reading. Bound by the card
+     * that shows this runtime's usage; null where none does.
+     */
+    var onSignedIn: (() -> Unit)? = null
 
     /** What the last Upgrade on this card learned (web `useRuntimeUpgrade`). */
     var upgrade by mutableStateOf<ComputerRuntimeUpgradeState>(ComputerRuntimeUpgradeState.Idle)
@@ -796,6 +810,17 @@ internal class ComputerRuntimeAuthController(
     /** Upgrade where the server offers it for this runtime (web `useOfferedRuntimeUpgrade`); null otherwise. */
     val upgradeOffer: ComputerRuntimeUpgradeOffer?
         get() = if (view?.upgradeOffered(runtime) == true) ComputerRuntimeUpgradeOffer(upgrade, ::startUpgrade) else null
+
+    /**
+     * The Computer's update check for this runtime where Upgrade is offered and the check is under a
+     * day old (web `runtimeUpdateOf`, slock #15429); null: Upgrade as before.
+     */
+    val updateCheck: RuntimeUpdateCheck?
+        get() = view?.updateCheckOf(runtime, nowEpochMillis())
+
+    /** What the card draws from [view] (web `SurfaceAuth`); null until the Computer's sign-in state is read. */
+    val cardState: ComputerRuntimeAuthCardState?
+        get() = view?.let { ComputerRuntimeAuthCardState(raftRuntimeId, runtime, it, upgrade = upgradeOffer, update = updateCheck) }
 
     /**
      * Upgrade, only on the person's press: the Computer runs the runtime's own updater, then
@@ -826,7 +851,7 @@ internal class ComputerRuntimeAuthController(
 
     /** Signed out on the Computer: Pi with no stored sign-in may still run on a key in the environment. */
     val signedOut: Boolean
-        get() = status == RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
+        get() = status is RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
 
     fun read(force: Boolean = false) {
         val seq = ++readSeq
@@ -891,6 +916,7 @@ internal class ComputerRuntimeAuthController(
             scope = scope,
             log = log,
             onSuperseded = ::superseded,
+            onSignedIn = { onSignedIn?.invoke() },
         )
 
     fun openSignOut(provider: RuntimeAuthSignedInProvider? = null) {

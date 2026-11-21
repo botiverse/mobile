@@ -1,0 +1,58 @@
+name: i18n literal scan
+
+# Review scanner for user-visible English literals in production Kotlin
+# (scripts/i18n_code_literal_scan.py). It reports candidates for a person to
+# triage, so it runs on demand rather than on every pull request. The report is
+# the job summary and a downloadable artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      direct_only:
+        description: "Only direct Text/Button/toast/dialog sinks"
+        type: boolean
+        default: false
+      catalog_backed_only:
+        description: "Only literals that already have a string resource with the same English text"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan production Kotlin
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Scanner self-test
+        run: python3 scripts/qa/test_i18n_code_literal_scan.py
+
+      - name: Scan
+        env:
+          DIRECT_ONLY: ${{ inputs.direct_only }}
+          CATALOG_BACKED_ONLY: ${{ inputs.catalog_backed_only }}
+        run: |
+          flags=()
+          if [ "$DIRECT_ONLY" = "true" ]; then flags+=(--direct-only); fi
+          if [ "$CATALOG_BACKED_ONLY" = "true" ]; then flags+=(--catalog-backed-only); fi
+          mkdir -p i18n-scan
+          python3 scripts/i18n_code_literal_scan.py "${flags[@]}" --output i18n-scan/report.md
+          python3 scripts/i18n_code_literal_scan.py "${flags[@]}" --format json --output i18n-scan/report.json
+          # The summary keeps the counts and stale allowlist entries; the full table is in the artifact.
+          {
+            sed -n '1,4p' i18n-scan/report.md
+            sed -n '/^## Stale allowlist entries/,$p' i18n-scan/report.md
+            echo
+            echo "Full report: the i18n-literal-scan artifact (report.md and report.json)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v7
+        with:
+          name: i18n-literal-scan
+          path: i18n-scan/

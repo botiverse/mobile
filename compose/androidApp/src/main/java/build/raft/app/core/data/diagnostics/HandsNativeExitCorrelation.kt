@@ -34,9 +34,10 @@ import java.io.File
  *   returns `Submission(ticketId: String?, merged: Boolean)`; `ticketId` may be null only when
  *   merged. A non-2xx answer throws `HandsFeedbackException(code, first 300 chars of the body)`;
  *   a submission id that is not a UUID (version 1-8, RFC variant) throws IllegalArgumentException.
- * - `HandsCrash.install` runs `HandsNativeCrash.uploadPending` itself and drops its per-record
- *   results (`NativeCrashUpload`), so the app still gets no native ticket id: nothing is ever
- *   confirmed ([HandsNativeTicketConfirmation.None]), and with the merge none is needed.
+ * - `HandsNativeCrash.uploadPending` is run by [RaftHandsLaunchUploads] (`uploadOnLaunch = false`),
+ *   which drops its per-record results (`NativeCrashUpload`), so the app still gets no native
+ *   ticket id: nothing is ever confirmed ([HandsNativeTicketConfirmation.None]), and with the merge
+ *   none is needed.
  *
  * Verified in hands-android-sdk 0.13.1 and unchanged in 0.13.2 (the conservative path relies on it):
  * - Records live in `.qnc` files under `filesDir/quiver/native-crashes`. A text format: first line `QNC1` or
@@ -46,8 +47,13 @@ import java.io.File
  * - The SDK attaches an exit to a record only for reason `crash_native` (5), by equal pid and
  *   |exit timestamp - crash_at| <= 5000 ms. The native ticket then carries `crash_process_id`,
  *   `crash_at` and `crash_exit_timestamp`; for any other exit only `crash_process_id` and
- *   `crash_at`. It never carries `crash_exit_event_id` or a process start time, and the app
- *   cannot add fields to it. `HandsFeedback.submit` sends `device_id` with every ticket.
+ *   `crash_at` of these (a 0.13.2+ record adds its event id and process start, above). It never
+ *   carries `crash_exit_event_id`, and the app cannot add fields to it. `HandsFeedback.submit`
+ *   sends `device_id` with every ticket.
+ *
+ * Since hands-android-sdk 0.14 (read in the 0.14.3 sources): each process also leaves its build in
+ * `<process event id>.build` next to the records, and the native ticket names that build
+ * (`version_name` / `version_code`), the one that crashed. The app reads only the `.qnc` files.
  *
  * Assumed (not verified):
  * - `crash_at` is wall-clock milliseconds (the SDK compares it with the exit timestamp in a

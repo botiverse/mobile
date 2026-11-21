@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -31,6 +33,7 @@ import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.runtimeCatalogDisplayName
@@ -78,12 +81,41 @@ internal data class ComputerRuntimeAuthCardState(
     val view: RuntimeAuthView,
     /** Upgrade where the server offers it for this runtime (slock #15117); null: no Upgrade on the card. */
     val upgrade: ComputerRuntimeUpgradeOffer? = null,
+    /**
+     * With [upgrade]: the Computer's update check for this runtime (web `SurfaceAuth.update`, slock
+     * #15429, `RuntimeAuthView.updateCheckOf`); null (an older Computer or server): Upgrade as before.
+     */
+    val update: RuntimeUpdateCheck? = null,
 ) {
     val status: RuntimeAuthStatus?
         get() = view.statusOf(runtime)
 
     val signedOut: Boolean
-        get() = status == RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
+        get() = status is RuntimeAuthStatus.LoggedOut && !runtime.perProvider && !runtime.hasProviderKey
+
+    /** The CLI is too old to sign in from here (`version_unsupported`): Upgrade stays whatever the check says. */
+    val tooOld: Boolean
+        get() = (status as? RuntimeAuthStatus.Unavailable)?.reason == RuntimeAuthUnavailableReason.VersionUnsupported
+}
+
+/**
+ * Whether the card shows its Upgrade button (web `runtimeUpgradeButtonShown`): offered to this viewer,
+ * and the Computer's check found a newer version, reported none, the CLI is too old, or one runs.
+ */
+internal val ComputerRuntimeAuthCardState.upgradeButtonShown: Boolean
+    get() {
+        val offer = upgrade?.takeIf { view.canAct } ?: return false
+        return computerRuntimeUpgradeButtonShown(update, offer.state, tooOld)
+    }
+
+/**
+ * The line that stands in for the bare [runtimeVersion] where Upgrade is offered and the Computer
+ * checked (web `RuntimeUsageSurface` `updateCopy`); null: the version line as before.
+ */
+internal fun ComputerRuntimeAuthCardState?.updateCheckCopy(runtimeVersion: String?): ComputerRuntimeUpdateCheckCopy? {
+    val card = this ?: return null
+    if (card.upgrade == null) return null
+    return computerRuntimeUpdateCheckCopy(card.update, runtimeVersion)
 }
 
 /** The card's sign-in action for a person who may act (web `runtimeAuthAction`), or why there is none. */
@@ -149,20 +181,71 @@ internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
     return ComputerRuntimeAuthAction.SignIn
 }
 
-/** Whether the card has anything in its action row: the sign-in action, or Upgrade (web `runtimeAuthAction`). */
+/** Whether the card has anything in its action row: the sign-in action (web `runtimeAuthAction`; Upgrade is in the version line). */
 internal val ComputerRuntimeAuthCardState.hasActions: Boolean
-    get() = action() != null || (upgrade != null && view.canAct)
+    get() = action() != null
 
 /**
- * The sign-in state under the card's title (web `RuntimeAuthHeaderLine`): "Not signed in", the
- * account (masked email · plan) when no usage block names it, or "Signed in" on a card with no usage.
+ * Web `signOutInMenu` (slock #15482): signed in with the Computer's own account drawn, Sign out is in
+ * that account's "…" menu rather than a button on the card, where this Computer signs the runtime in
+ * and out from here.
+ */
+internal fun ComputerRuntimeAuthCardState.signOutInMenu(usageShowsAccount: Boolean): Boolean =
+    usageShowsAccount &&
+        view.canActNow &&
+        status is RuntimeAuthStatus.LoggedIn &&
+        !runtime.perProvider &&
+        !runtime.hasProviderKey &&
+        view.computerSupports(runtime) &&
+        view.computerSignsOut(runtime)
+
+/** Web `canSignInHere` (slock #15787): this viewer can sign the runtime in from the card. */
+internal val ComputerRuntimeAuthCardState.canSignInHere: Boolean
+    get() =
+        view.canActNow &&
+            view.computerSupports(runtime) &&
+            status !is RuntimeAuthStatus.Unavailable &&
+            !runtime.statusOnly &&
+            !runtime.perProvider &&
+            !runtime.hasProviderKey
+
+/** Web `headerAccountText`: the signed-in account under the title, only when the usage does not name it. */
+private fun ComputerRuntimeAuthCardState.headerAccountText(usageShowsAccount: Boolean): String? {
+    if (runtime.perProvider || runtime.hasProviderKey) return null
+    val current = status as? RuntimeAuthStatus.LoggedIn ?: return null
+    return if (usageShowsAccount) null else current.account?.text
+}
+
+/** Web `headerLastAccountText` (slock #15931): who was signed in last, on a signed-out runtime that remembers it. */
+internal val ComputerRuntimeAuthCardState.lastAccount: String?
+    get() = if (runtime.perProvider || runtime.hasProviderKey) null else (status as? RuntimeAuthStatus.LoggedOut)?.lastAccount
+
+/**
+ * Web `RuntimeAuthHeaderBadge` (slock #15482): the runtime's sign-in state as a chip at the end of the
+ * card's title line: "Signed out", or "Signed in" on a card with no usage and no account line.
  */
 @Composable
-internal fun ComputerRuntimeAuthHeaderLine(auth: ComputerRuntimeAuthCardState, usageShowsAccount: Boolean, authOnly: Boolean) {
+internal fun ComputerRuntimeAuthHeaderBadge(auth: ComputerRuntimeAuthCardState, usageShowsAccount: Boolean, authOnly: Boolean) {
+    if (auth.runtime.perProvider) return
+    val status = auth.status
+    when {
+        status is RuntimeAuthStatus.LoggedOut -> ComputerRuntimeAuthStatusChip(signedIn = false, Modifier.testTag(COMPUTER_RUNTIME_AUTH_LOGGED_OUT_TAG))
+        authOnly && status is RuntimeAuthStatus.LoggedIn && auth.headerAccountText(usageShowsAccount) == null ->
+            ComputerRuntimeAuthStatusChip(signedIn = true, Modifier.testTag(COMPUTER_RUNTIME_AUTH_LOGGED_IN_TAG))
+    }
+}
+
+/**
+ * The sign-in state in words under the card's title (web `RuntimeAuthHeaderLine`): Pi's "no providers",
+ * "Last signed in as …" on a signed-out runtime that remembers who (slock #15931), or the account
+ * (masked email · plan) when no usage block names it.
+ */
+@Composable
+internal fun ComputerRuntimeAuthHeaderLine(auth: ComputerRuntimeAuthCardState, usageShowsAccount: Boolean) {
     val status = auth.status
     if (auth.runtime.perProvider) {
         // Its providers are listed below; none stored is no "signed out".
-        if (status == RuntimeAuthStatus.LoggedOut) {
+        if (status is RuntimeAuthStatus.LoggedOut) {
             RaftText(
                 stringResource(Res.string.settings_computers_runtime_auth_pi_no_providers),
                 modifier = Modifier.padding(top = 4.dp).testTag(COMPUTER_RUNTIME_AUTH_NO_PROVIDERS_TAG),
@@ -172,19 +255,37 @@ internal fun ComputerRuntimeAuthHeaderLine(auth: ComputerRuntimeAuthCardState, u
         }
         return
     }
-    when {
-        status == RuntimeAuthStatus.LoggedOut ->
-            ComputerRuntimeAuthStatusChip(signedIn = false, Modifier.padding(top = 4.dp).testTag(COMPUTER_RUNTIME_AUTH_LOGGED_OUT_TAG))
-        status is RuntimeAuthStatus.LoggedIn && !usageShowsAccount && status.account?.text != null ->
-            RaftText(
-                status.account.text.orEmpty(),
-                modifier = Modifier.padding(top = 4.dp),
-                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
-                color = RaftTheme.colors.foreground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        authOnly && status is RuntimeAuthStatus.LoggedIn -> ComputerRuntimeAuthStatusChip(signedIn = true, Modifier.padding(top = 4.dp))
+    val last = auth.lastAccount
+    if (last != null) {
+        RaftText(
+            computerRuntimeLastSignedInText(stringResource(Res.string.settings_computers_runtime_auth_last_signed_in_as, last), last),
+            modifier = Modifier.padding(top = 4.dp).testTag(COMPUTER_RUNTIME_AUTH_LAST_ACCOUNT_TAG),
+            style = RaftTheme.typography.caption,
+            color = RaftTheme.colors.foregroundMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        return
+    }
+    val account = auth.headerAccountText(usageShowsAccount) ?: return
+    RaftText(
+        account,
+        modifier = Modifier.padding(top = 4.dp),
+        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold),
+        color = RaftTheme.colors.foreground,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+/** "Last signed in as x*****n@botiverse.dev" with the account in the mono meta face (web `font-mono text-mono-meta`). */
+@Composable
+private fun computerRuntimeLastSignedInText(sentence: String, account: String): AnnotatedString {
+    val mono = RaftTheme.typography.monoMeta
+    return buildAnnotatedString {
+        append(sentence)
+        val at = sentence.lastIndexOf(account)
+        if (at >= 0) addStyle(SpanStyle(fontFamily = mono.fontFamily, fontSize = mono.fontSize, letterSpacing = mono.letterSpacing), at, at + account.length)
     }
 }
 
@@ -203,10 +304,24 @@ private fun ComputerRuntimeAuthStatusChip(signedIn: Boolean, modifier: Modifier 
 }
 
 /**
- * The card's actions (web `runtimeAuthAction`): the sign-in action (a button, or the caption that
- * says why there is none here), then Upgrade for a runtime the Computer can upgrade (slock #15117)
- * and what the last Upgrade learned. Nothing for a person who may not act. [fullWidth]: the phone
- * sheet's stacked buttons.
+ * Web `signInButton` (slock #15482): the card's one thing to do while signed out, or while the provider
+ * wants the Computer's own account signed in again: a full-width "Sign in to <runtime>" (Raft DS Button `xl`).
+ */
+@Composable
+internal fun ComputerRuntimeSignInButton(auth: ComputerRuntimeAuthCardState, onSignIn: () -> Unit, modifier: Modifier = Modifier) {
+    RaftButton(
+        text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_title, runtimeCatalogDisplayName(auth.raftRuntimeId)),
+        onClick = onSignIn,
+        modifier = modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG),
+        variant = RaftButtonVariant.Primary,
+        size = RaftButtonSize.Xl,
+        leadingIcon = { RaftComputersIcon(RaftLucideIconName.LogIn) },
+    )
+}
+
+/**
+ * The card's sign-in action (web `runtimeAuthAction`): a button, or the caption that says why there is
+ * none here. Nothing for a person who may not act. Upgrade is in the version line (slock #15482).
  */
 @Composable
 internal fun ComputerRuntimeAuthActionView(
@@ -214,32 +329,8 @@ internal fun ComputerRuntimeAuthActionView(
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
-    fullWidth: Boolean = false,
-) {
-    val upgrade = auth.upgrade?.takeIf { auth.view.canAct }
-    if (upgrade == null) {
-        ComputerRuntimeAuthSignInActionView(auth, onSignIn, onSignOut, modifier, fullWidth)
-        return
-    }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        ComputerRuntimeAuthSignInActionView(auth, onSignIn, onSignOut, Modifier, fullWidth)
-        ComputerRuntimeUpgradeButton(upgrade, fullWidth)
-        ComputerRuntimeOperationOutcome(computerRuntimeUpgradeCopy(upgrade.state), runtimeName = runtimeCatalogDisplayName(auth.raftRuntimeId))
-    }
-}
-
-/** The sign-in action alone (web `runtimeAuthActionAlone`). */
-@Composable
-private fun ComputerRuntimeAuthSignInActionView(
-    auth: ComputerRuntimeAuthCardState,
-    onSignIn: () -> Unit,
-    onSignOut: () -> Unit,
-    modifier: Modifier,
-    fullWidth: Boolean,
 ) {
     val action = auth.action() ?: return
-    val size = if (fullWidth) RaftButtonSize.Lg else RaftButtonSize.Md
-    val buttonModifier = if (fullWidth) modifier.fillMaxWidth() else modifier
     when (action) {
         is ComputerRuntimeAuthAction.Caption ->
             RaftText(
@@ -262,31 +353,24 @@ private fun ComputerRuntimeAuthSignInActionView(
             RaftButton(
                 text = stringResource(Res.string.settings_computers_runtime_auth_pi_add_provider),
                 onClick = onSignIn,
-                modifier = buttonModifier.testTag(COMPUTER_RUNTIME_AUTH_ADD_PROVIDER_TAG),
+                modifier = modifier.testTag(COMPUTER_RUNTIME_AUTH_ADD_PROVIDER_TAG),
                 variant = if (action.primary) RaftButtonVariant.Primary else RaftButtonVariant.Default,
-                size = size,
+                size = RaftButtonSize.Md,
                 leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
             )
         // Raft DS Button: a sign-out can be undone (sign in again), so the card's is a quiet ghost
-        // action; its confirm carries the warning tone.
+        // action; its confirm carries the warning tone. Where the Computer's own account is drawn it is
+        // in that account's menu instead ([signOutInMenu]).
         ComputerRuntimeAuthAction.SignOut ->
             RaftButton(
                 text = stringResource(Res.string.settings_computers_runtime_auth_sign_out_action),
                 onClick = onSignOut,
-                modifier = buttonModifier.testTag(COMPUTER_RUNTIME_AUTH_SIGN_OUT_TAG),
+                modifier = modifier.testTag(COMPUTER_RUNTIME_AUTH_SIGN_OUT_TAG),
                 variant = RaftButtonVariant.Ghost,
-                size = size,
+                size = RaftButtonSize.Md,
                 leadingIcon = { RaftComputersIcon(RaftLucideIconName.LogOut) },
             )
-        ComputerRuntimeAuthAction.SignIn ->
-            RaftButton(
-                text = stringResource(Res.string.settings_computers_runtime_auth_sign_in_action),
-                onClick = onSignIn,
-                modifier = buttonModifier.testTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG),
-                variant = RaftButtonVariant.Primary,
-                size = size,
-                leadingIcon = { RaftComputersIcon(RaftLucideIconName.LogIn) },
-            )
+        ComputerRuntimeAuthAction.SignIn -> ComputerRuntimeSignInButton(auth, onSignIn, modifier)
     }
 }
 
@@ -1089,6 +1173,8 @@ internal const val COMPUTER_RUNTIME_AUTH_CREDENTIALS_NOTE_TAG = "runtime-auth-cr
 internal const val COMPUTER_RUNTIME_AUTH_CLI_UNAVAILABLE_TAG = "runtime-auth-cli-unavailable"
 internal const val COMPUTER_RUNTIME_AUTH_INSTALL_LINE_TAG = "runtime-auth-install-line"
 internal const val COMPUTER_RUNTIME_AUTH_LOGGED_OUT_TAG = "runtime-auth-logged-out"
+internal const val COMPUTER_RUNTIME_AUTH_LOGGED_IN_TAG = "runtime-auth-logged-in"
+internal const val COMPUTER_RUNTIME_AUTH_LAST_ACCOUNT_TAG = "runtime-auth-last-account"
 internal const val COMPUTER_RUNTIME_AUTH_NO_PROVIDERS_TAG = "runtime-auth-no-providers"
 internal const val COMPUTER_RUNTIME_AUTH_PROVIDERS_TAG = "runtime-auth-providers"
 internal const val COMPUTER_RUNTIME_AUTH_FAILURE_TAG = "runtime-auth-failure"

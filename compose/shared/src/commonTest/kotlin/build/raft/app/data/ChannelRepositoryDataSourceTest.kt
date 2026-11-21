@@ -205,37 +205,6 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun createJointChannelSendsServerInviteContractFields() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody = """{"id":"joint-1","name":"partner","type":"joint","joined":true}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        repository.createChannel(
-            CreateChannelRequest(
-                name = "partner",
-                visibility = "joint",
-                agentMemberIds = listOf("agent-1"),
-                userMemberIds = listOf("user-1"),
-                targetServerSlug = " partner-server ",
-                invitedPeople = listOf("owner@example.com", "owner@example.com", " @admin ")
-            )
-        )
-
-        val body = network.bodies.single().asJsonObject()
-        assertEquals("joint", body["visibility"]?.jsonPrimitive?.content)
-        assertEquals(listOf("agent-1"), body.stringList("agentIds"))
-        assertEquals(listOf("user-1"), body.stringList("userIds"))
-        assertEquals("partner-server", body["targetServerSlug"]?.jsonPrimitive?.content)
-        assertEquals(listOf("owner@example.com", "@admin"), body.stringList("invitedPeople"))
-        assertEquals(
-            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "POST", "channels")),
-            network.requests
-        )
-    }
-
-    @Test
     fun createChannelPreservesServerConflictCode() = runBlocking {
         val network =
             FakeChannelNetworkClient(

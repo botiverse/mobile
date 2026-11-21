@@ -16,6 +16,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
@@ -2003,7 +2004,12 @@ class SharedServerMembersStore internal constructor(
      * generation: the late rows are then dropped (the presence projection, fenced on its own,
      * still applies). A roster not loaded (or only durable-seeded) takes the full forced load.
      */
-    internal suspend fun refreshAgents(serverId: ServerId, reason: String): DataResult<Unit> {
+    internal suspend fun refreshAgents(
+        serverId: ServerId,
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: kotlin.time.ComparableTimeMark? = null,
+    ): DataResult<Unit> {
         val key = serverId.value.normalizedServerMembersId()
             ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
         val owner = processOwner(ServerId(key)) ?: return authSessionRequiredResult()
@@ -2021,7 +2027,14 @@ class SharedServerMembersStore internal constructor(
             presenceWrite(ServerId(key))
                 ?.takeIf { it.owner == owner }
                 ?.let { write -> presenceRegistry.captureRosterProjectionRequest(write.owner, write.writeGeneration) }
-        val loadResult = processCore.loadAgents(owner, DataRequestPriority.Background, reason)
+        val loadResult =
+            processCore.loadAgents(
+                owner = owner,
+                priority = DataRequestPriority.Background,
+                reason = reason,
+                coalesceFreshWithin = coalesceFreshWithin,
+                notStartedBefore = notStartedBefore,
+            )
         val agents =
             (loadResult.result as? DataResult.Content)?.data ?: run {
                 logger("shared_server_members_agents_refresh serverId=$key result=not_content reason=$reason")
@@ -2126,6 +2139,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             // The answer's `configApply` is for the caller only; the roster never keeps it.
             seedProfiles(serverId, listOf(result.data.withoutConfigApply()))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_profile_updated")
+            }
         }
         return result
     }
@@ -2203,6 +2219,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             beforePublish(result.data)
             seedProfiles(serverId, listOf(result.data))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_avatar_uploaded")
+            }
         }
         return result
     }
@@ -4530,8 +4549,41 @@ private fun MemberProfile.mergeSeedProfile(seed: MemberProfile): MemberProfile {
         avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: seed.avatarLabel,
         serverId = serverId ?: seed.serverId,
         serverName = serverName ?: seed.serverName,
-        serverSlug = serverSlug ?: seed.serverSlug
+        serverSlug = serverSlug ?: seed.serverSlug,
+        servers = servers.mergeSeedServerRefs(seed.servers),
+        inViewerServer = inViewerServer ?: seed.inViewerServer,
     )
+}
+
+private fun List<MemberServerRef>?.mergeSeedServerRefs(
+    seed: List<MemberServerRef>?,
+): List<MemberServerRef>? {
+    if (this.isNullOrEmpty()) return seed ?: this
+    if (seed.isNullOrEmpty()) return this
+    return mergeOriginServerRefs(seed)
+}
+
+private fun List<MemberServerRef>.mergeOriginServerRefs(
+    fallback: List<MemberServerRef>,
+): List<MemberServerRef> {
+    if (isEmpty()) return fallback
+    if (fallback.isEmpty()) return this
+    val fallbackById =
+        buildMap {
+            for (server in fallback) {
+                val id = server.id.trim().takeIf { it.isNotEmpty() } ?: continue
+                if (!containsKey(id)) put(id, server)
+            }
+        }
+    return map { server ->
+        val id = server.id.trim()
+        val other = fallbackById[id] ?: return@map server
+        server.copy(
+            name = server.name.ifBlank { other.name },
+            slug = server.slug.ifBlank { other.slug },
+            avatarUrl = server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() } ?: other.avatarUrl,
+        )
+    }
 }
 
 /** Agents of a roster read that its server/deleted filters kept out of [kept] (diagnostics only). */
@@ -4565,7 +4617,17 @@ private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
  * merge; they remain fill-only through [MemberProfile.mergeSeedProfile].
  */
 private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
-    val merged = mergeSeedProfile(incoming)
+    val merged =
+        mergeSeedProfile(incoming).copy(
+            // Authoritative hydration may advance/replace origin metadata (`serverId`, `serverName`,
+            // `serverSlug`, `servers` including `avatarUrl`, `inViewerServer`), while a sparse
+            // incoming profile preserves what the cache already learned.
+            serverId = incoming.serverId ?: serverId,
+            serverName = incoming.serverName ?: serverName,
+            serverSlug = incoming.serverSlug ?: serverSlug,
+            servers = incoming.servers ?: servers,
+            inViewerServer = incoming.inViewerServer ?: inViewerServer,
+        )
     val statusMerged =
         if (incoming.kind == MemberKind.Agent && incoming.agentStatus != null) {
             merged.copy(presence = incoming.presence, agentStatus = incoming.agentStatus)
@@ -4645,7 +4707,8 @@ private fun List<MemberProfile>.toServerMembersMemberSuggestions(
                 avatarWireValue = avatar.effectiveAvatarWireValue,
                 avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
                     ?: member.displayName.toRaftAvatarLabel().ifBlank { handle.toRaftAvatarLabel() },
-                memberId = memberId
+                memberId = memberId,
+                originServers = if (origin.external) origin.servers else emptyList(),
             )
         val key = suggestion.memberSuggestionIdentityKey()
         if (!deduped.containsKey(key)) {
@@ -4763,7 +4826,8 @@ private fun SharedMembersMemberSuggestion.mergePatchedSuggestion(
         description = description ?: patch.description,
         avatarWireValue = avatarWireValue.preferServerMembersConcreteSuggestionAvatar(patch.avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { patch.avatarLabel },
-        memberId = memberId ?: patch.memberId
+        memberId = memberId ?: patch.memberId,
+        originServers = originServers.mergeOriginServerRefs(patch.originServers),
     )
 
 private fun String?.preferServerMembersConcreteSuggestionAvatar(candidate: String?): String? =

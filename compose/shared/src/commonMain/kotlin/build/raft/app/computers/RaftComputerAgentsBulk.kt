@@ -58,7 +58,6 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
-import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftListRow
@@ -313,7 +312,11 @@ internal fun RaftComputerAgentsSelectButtons(state: RaftComputerAgentsBulkState,
 
 /** The bulk Change model's result (web success / partial banners) above the agents. */
 @Composable
-internal fun RaftComputerAgentsBulkReceiptBanner(bulk: RaftComputerAgentsBulk) {
+internal fun RaftComputerAgentsBulkReceiptBanner(
+    bulk: RaftComputerAgentsBulk,
+    serverId: String? = null,
+    machineId: String? = null,
+) {
     val state = bulk.state
     when (val receipt = state.receipt) {
         null -> Unit
@@ -322,7 +325,13 @@ internal fun RaftComputerAgentsBulkReceiptBanner(bulk: RaftComputerAgentsBulk) {
                 delay(RAFT_BULK_SUCCESS_BANNER_MS)
                 if (state.receipt === receipt) state.receipt = null
             }
-            val target = raftComputerAgentIdentityLabel(receipt.target.runtime, receipt.target.model).orEmpty()
+            val target =
+                raftComputerAgentIdentityLabel(
+                    receipt.target.runtime,
+                    receipt.target.model,
+                    serverId = serverId,
+                    machineId = machineId,
+                ).orEmpty()
             val changed =
                 if (receipt.changed == 1) {
                     stringResource(Res.string.settings_computers_bulk_model_success_one, receipt.changed, target)
@@ -457,13 +466,15 @@ internal fun RaftComputerSelectableAgentRow(
     selected: Boolean,
     onToggle: () -> Unit,
     avatar: @Composable () -> Unit,
+    serverId: String? = null,
+    machineId: String? = null,
 ) {
     RaftListRow(
         title = agent.name,
         onClick = onToggle,
         divider = divider,
         selected = selected,
-        subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model),
+        subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model, serverId = serverId, machineId = machineId),
         leading = {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftCheckboxIndicator(checked = selected)
@@ -603,7 +614,7 @@ private enum class RaftBulkApplyState { Saving, Saved, Failed }
  * Web `BulkChangeModelDialog`: choose a runtime (this Computer's, those the bulk change can set),
  * a model and a reasoning effort; review what happens to each selected agent (changes, and skips
  * with the reason); then apply, one `PATCH /agents/:id` per agent, and leave a receipt on the page.
- * Running agents switch when next idle unless "Restart running agents now" is ticked.
+ * Running agents apply immediately (restarting if busy; botiverse/slock #15669 / #15714).
  */
 @Composable
 internal fun RaftComputerBulkChangeModelDialog(
@@ -616,6 +627,8 @@ internal fun RaftComputerBulkChangeModelDialog(
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
     onClose: () -> Unit,
     onFinished: (RaftComputerBulkReceipt) -> Unit,
+    serverId: String? = null,
+    machineId: String? = null,
 ) {
     val runtimeIds = remember(computerRuntimes) { computerRuntimes.filter(::isRaftBulkModelSelectableRuntime) }
     val retry = request.retry
@@ -629,7 +642,6 @@ internal fun RaftComputerBulkChangeModelDialog(
     }
     var modelChoice by remember(request) { mutableStateOf(retry?.target?.model.orEmpty()) }
     var effortChoice by remember(request) { mutableStateOf(retry?.target?.reasoningEffort) }
-    var restartNow by remember(request) { mutableStateOf(false) }
     val applyStates = remember(request) { mutableStateMapOf<String, RaftBulkApplyState>() }
     // The runtime's model list on this Computer: live when it answers, else nothing to pick.
     var catalog by remember(request) { mutableStateOf<RaftBulkModelCatalog?>(null) }
@@ -654,7 +666,6 @@ internal fun RaftComputerBulkChangeModelDialog(
             planRaftBulkModelChange(
                 agents.map { agent -> RaftBulkPlanAgent(agent, running(agent.id), retry?.unfinished?.get(agent.id)) },
                 it,
-                restartNow,
             )
         }
     val agentById = remember(agents) { agents.associateBy { it.id } }
@@ -833,27 +844,28 @@ internal fun RaftComputerBulkChangeModelDialog(
                 Column {
                     plan0.rows.forEach { row ->
                         val agent = agentById[row.agentId] ?: return@forEach
-                        RaftBulkModelReviewRow(agent, row, runtime, target?.model.orEmpty(), onOpenAgent)
+                        RaftBulkModelReviewRow(
+                            agent = agent,
+                            row = row,
+                            runtime = runtime,
+                            model = target?.model.orEmpty(),
+                            onOpenAgent = onOpenAgent,
+                            serverId = serverId,
+                            machineId = machineId,
+                        )
                     }
                 }
                 if (plan0.runningChangeCount > 0) {
-                    RaftCheckboxRow(
-                        label = stringResource(Res.string.settings_computers_bulk_model_restart_now),
-                        checked = restartNow,
-                        onCheckedChange = { restartNow = it },
+                    val n = plan0.runningChangeCount
+                    RaftText(
+                        if (n == 1) {
+                            stringResource(Res.string.settings_computers_bulk_model_idle_line_one, n)
+                        } else {
+                            stringResource(Res.string.settings_computers_bulk_model_idle_line_many, n)
+                        },
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
                     )
-                    if (!restartNow) {
-                        val n = plan0.runningChangeCount
-                        RaftText(
-                            if (n == 1) {
-                                stringResource(Res.string.settings_computers_bulk_model_idle_line_one, n)
-                            } else {
-                                stringResource(Res.string.settings_computers_bulk_model_idle_line_many, n)
-                            },
-                            style = RaftTheme.typography.footnote,
-                            color = RaftTheme.colors.foregroundMuted,
-                        )
-                    }
                 }
                 if (plan0.restartCount > 0) {
                     val n = plan0.restartCount
@@ -887,11 +899,13 @@ private fun RaftBulkModelReviewRow(
     runtime: String,
     model: String,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
+    serverId: String? = null,
+    machineId: String? = null,
 ) {
     val skipped = row as? RaftBulkPlanRow.Skip
     val sameRuntime = agent.runtime == runtime
-    val from = raftBulkModelLabel(agent.runtime, agent.model, withRuntime = !sameRuntime)
-    val to = raftBulkModelLabel(runtime, model, withRuntime = !sameRuntime)
+    val from = raftBulkModelLabel(agent.runtime, agent.model, withRuntime = !sameRuntime, serverId = serverId, machineId = machineId)
+    val to = raftBulkModelLabel(runtime, model, withRuntime = !sameRuntime, serverId = serverId, machineId = machineId)
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         RaftText(
             agent.name,
@@ -968,9 +982,19 @@ private fun RaftBulkModelApplyRow(agent: SettingsComputerAgentSnapshot, state: R
 }
 
 /** Web `formatBulkModelLabel`: "Model", or "Runtime · Model" when the runtime changes. */
-private fun raftBulkModelLabel(runtime: String?, model: String?, withRuntime: Boolean): String =
+private fun raftBulkModelLabel(
+    runtime: String?,
+    model: String?,
+    withRuntime: Boolean,
+    serverId: String? = null,
+    machineId: String? = null,
+): String =
     if (withRuntime) {
-        raftComputerAgentIdentityLabel(runtime, model).orEmpty()
+        raftComputerAgentIdentityLabel(runtime, model, serverId = serverId, machineId = machineId).orEmpty()
     } else {
-        model?.let { getModelLabel(runtimeId = runtime.orEmpty(), modelId = it).ifBlank { it } }.orEmpty()
+        model?.let { id ->
+            build.raft.app.data.RaftModelLabelCatalogs.label(serverId, machineId, runtime, id)
+                ?.takeIf { it.isNotBlank() }
+                ?: getModelLabel(runtimeId = runtime.orEmpty(), modelId = id).ifBlank { id }
+        }.orEmpty()
     }

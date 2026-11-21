@@ -11,6 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.resources.*
@@ -33,28 +36,31 @@ import build.raft.designsystem.theme.RaftTheme
 /*
  * Upgrade on a runtime's card and Install on a not-installed runtime chip (web RuntimeUpgradeButton,
  * RuntimeUpgradeOutcome, MachineRuntimeChips' InstallCard, RuntimeInstallDialog, RuntimeInstallOutcome
- * at botiverse/slock #15117 / #15214). State and copy: ComputerRuntimeOperations.kt.
+ * at botiverse/slock #15117 / #15214), and the card's update-check line (#15429 RuntimeUsageSurface).
+ * State and copy: ComputerRuntimeOperations.kt.
  */
 
 /**
- * Web `RuntimeUpgradeButton`: runs the runtime's own updater on the Computer. `Default` (never pink:
- * not the screen's main action), busy ("Upgrading…") while the Computer runs it.
+ * [copy] with each version in mono. Each version stands in as its own private-use character while the
+ * sentence is formatted, so a translation may place them in any order.
  */
 @Composable
-internal fun ComputerRuntimeUpgradeButton(offer: ComputerRuntimeUpgradeOffer, fullWidth: Boolean = false) {
-    val running = offer.state == ComputerRuntimeUpgradeState.Running
-    val runningLabel = stringResource(Res.string.settings_computers_runtime_upgrade_running)
-    RaftButton(
-        text = if (running) runningLabel else stringResource(Res.string.settings_computers_runtime_upgrade_action),
-        onClick = offer.onUpgrade,
-        modifier = (if (fullWidth) Modifier.fillMaxWidth() else Modifier).testTag(COMPUTER_RUNTIME_UPGRADE_TAG),
-        variant = RaftButtonVariant.Default,
-        size = if (fullWidth) RaftButtonSize.Lg else RaftButtonSize.Md,
-        loading = running,
-        loadingLabel = runningLabel,
-        leadingIcon = if (running) null else ({ RaftComputersIcon(RaftLucideIconName.CircleArrowUp) }),
-    )
+internal fun computerRuntimeUpdateCheckText(copy: ComputerRuntimeUpdateCheckCopy): AnnotatedString {
+    val slots = copy.args.indices.map { (ComputerRuntimeVersionSlot + it).toString() }
+    val sentence = stringResource(copy.message, *slots.toTypedArray())
+    val mono = RaftTheme.typography.monoMeta.toSpanStyle()
+    return remember(sentence, copy.args, mono) {
+        buildAnnotatedString {
+            sentence.forEach { char ->
+                val index = char - ComputerRuntimeVersionSlot
+                if (index in copy.args.indices) withStyle(mono) { append(copy.args[index]) } else append(char)
+            }
+        }
+    }
 }
+
+/** U+E000, the first private-use character: the first version's stand-in while the sentence is formatted. */
+private const val ComputerRuntimeVersionSlot = '\uE000'
 
 /**
  * What the last Upgrade or Install learned, one plain sentence (web `RuntimeUpgradeOutcome` /
@@ -281,6 +287,7 @@ internal fun ComputerRuntimeInstallDialog(
 }
 
 internal const val COMPUTER_RUNTIME_UPGRADE_TAG = "runtime-upgrade-action"
+internal const val COMPUTER_RUNTIME_UPDATE_CHECK_TAG = "runtime-update-check"
 internal const val COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG = "runtime-operation-outcome"
 internal const val COMPUTER_RUNTIME_INSTALL_TAG = "machine-runtime-install"
 internal const val COMPUTER_RUNTIME_INSTALL_CHIP_TAG = "machine-runtime-install-chip"

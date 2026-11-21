@@ -93,7 +93,6 @@ class AlphaAppNameResourcesTest {
                 "push_preview_hidden_title", // hidden-preview push title
                 "settings_notification_test_title", // test notification
                 "notification_unread_general_channel_description", // notification settings
-                "inbox_notification_channel_description", // notification settings
                 "slock_activity_widget_name", // widget picker
                 "slock_agent_status_widget_name", // widget picker
                 "raft_download_notification_tap_retry", // download failure notification

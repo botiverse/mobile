@@ -322,6 +322,9 @@ sealed interface HomeConversationRow {
     val jointPeerServerName: String?
     val jointPeerServerSlug: String?
     val jointPeerStatus: String?
+    /** Connected servers of a joint channel (`jointServers[]`, slock #15809) with each server's logo. */
+    val jointServers: List<MemberServerRef>
+        get() = emptyList()
     val jointBillingLocked: Boolean?
     val jointOverLimitGraceEndsAt: String?
     val externalFreezeAt: String?
@@ -389,6 +392,7 @@ data class HomeChannelRow(
     override val jointPeerServerName: String? = null,
     override val jointPeerServerSlug: String? = null,
     override val jointPeerStatus: String? = null,
+    override val jointServers: List<MemberServerRef> = emptyList(),
     override val jointBillingLocked: Boolean? = null,
     override val jointOverLimitGraceEndsAt: String? = null,
     override val externalFreezeAt: String? = null,
@@ -486,6 +490,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointServers = jointServers,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
@@ -532,6 +537,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         jointPeerServerName = jointPeerServerName,
         jointPeerServerSlug = jointPeerServerSlug,
         jointPeerStatus = jointPeerStatus,
+        jointServers = jointServers,
         jointBillingLocked = jointBillingLocked,
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt,
         externalFreezeAt = externalFreezeAt,
@@ -1914,7 +1920,9 @@ data class SettingsComputerSnapshot(
      */
     val canManage: Boolean = false,
     /** Server `attention`'s machine logins that need a step, for the usage cells (web `rackLoginStep`); empty when none or not reported. */
-    val loginSteps: List<ComputerLoginStep> = emptyList()
+    val loginSteps: List<ComputerLoginStep> = emptyList(),
+    /** Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534); null when not reported by the server. */
+    val serverNeedsAttention: Boolean? = null
 )
 
 /**

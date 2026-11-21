@@ -32,7 +32,7 @@ import build.raft.app.nav.RaftPageStack
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
@@ -47,7 +47,11 @@ import org.robolectric.annotation.Config
  * content. A message row lives in its lazy list's own composition, so when it recomposes in the
  * frame of the move its modifier update reaches a detached LayoutNode and is applied on re-attach,
  * where SelectableTextAnnotatedStringNode.update reads a CompositionLocal unconditionally.
- * [ThreadInPlaceSelectableBody] keeps a body selectable only on the active page for that reason.
+ * Robolectric runs the Android foundation artifact, and the app pins the patched
+ * androidx.compose.foundation:foundation-android 1.12.1-raft.1 (third_party/compose-foundation-1.12.1:
+ * the node returns early while it is detached, and onAttach sets its pinnable container again), so
+ * these tests exercise the patched classes: [ThreadInPlaceSelectableBody] keeps a body in its
+ * selection container on every page, and every move below must complete without the crash.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -165,13 +169,16 @@ class ThreadSelectableTextStackMoveUiTest {
 
     /**
      * The framework's own behaviour, with no app selection code: an always selectable text in the
-     * same place. When a Compose upgrade makes this stop throwing, the gate in
-     * [ThreadInPlaceSelectableBody] and this test can go.
+     * same place. On the official foundation 1.12.1 this push threw "Cannot read CompositionLocal
+     * because the Modifier node is not currently attached." from
+     * SelectableTextAnnotatedStringNode.retrievePinnableContainer, under LayoutNode.attach as the
+     * moved row's nodes went to their new place. With the patched foundation the push completes.
      */
     @Test
-    fun aPlainSelectionContainerStillThrowsTheFrameworkCrash() {
+    fun aPlainSelectionContainerCompletesTheStackMoveWithThePatchedFoundation() {
         var crash: Throwable? = null
-        // After the crash the tree is broken: tearing the activity down throws a follow-up error.
+        var topPage: String? = null
+        // Were the crash back, tearing the broken tree down would throw a follow-up error: keep the first.
         runCatching {
             runRobolectricComposeUiTest {
                 val stack = showChat {
@@ -180,17 +187,11 @@ class ThreadSelectableTextStackMoveUiTest {
                     }
                 }
                 crash = runCatching { pushWithRowChange(stack) }.exceptionOrNull()
+                topPage = stack.pages.last().args.pageName
             }
-        }
-        val thrown = assertIs<IllegalStateException>(crash)
-        assertEquals(
-            "Cannot read CompositionLocal because the Modifier node is not currently attached.",
-            thrown.message,
-        )
-        val frames = thrown.stackTrace.map { "${it.className}.${it.methodName}" }
-        for (frame in listOf("SelectableTextAnnotatedStringNode.retrievePinnableContainer", "LayoutNode.attach", "CopyNodesToNewAnchorLocation")) {
-            assertTrue(frames.any { frame in it }, "$frame in $frames")
-        }
+        }.onFailure { if (crash == null) crash = it }
+        assertNull(crash, "the stack move threw: ${crash?.stackTraceToString()}")
+        assertEquals(COVERING_PAGE, topPage, "the pushed page is on top once the move has run")
     }
 
     /** A selection is dropped when the page is covered, and the body selects again once back. */
@@ -298,40 +299,10 @@ class ThreadSelectableTextStackMoveUiTest {
         }
 
     /**
-     * Hands c561c66a / b40c0cf8 ("LayoutNode should be attached to an owner" in the list's measure
-     * pass): a body moved into its selection container in the frame its page turned active, the
-     * frame NavDisplay moves the settled page's entries out of the transition's scene. It goes in
-     * only some frames later; out of it (plain text, #4390) still in the frame the page goes inactive.
-     */
-    @Test
-    fun aBodyGoesSelectableOnlyFramesAfterItsPageBecameActiveAndPlainAtOnce() =
-        runRobolectricComposeUiTest {
-            var pageActive by mutableStateOf(true)
-            // Every composition's (page active, body selectable): the rule is per composition, so it
-            // holds whatever frame the test clock lands the recomposition on.
-            val compositions = mutableListOf<Pair<Boolean, Boolean>>()
-            setContent { compositions += pageActive to rememberThreadInPlaceBodySelectable(pageActive, hasSelection = false) }
-            waitForIdle()
-            assertEquals(true to true, compositions.last(), "first composed on an active page: selectable at once")
-
-            val beforeDeactivation = compositions.size
-            runOnIdle { pageActive = false }
-            waitForIdle()
-            val inactive = compositions.drop(beforeDeactivation)
-            assertTrue(inactive.isNotEmpty() && inactive.all { (active, _) -> !active }, "recomposed inactive: $compositions")
-            assertTrue(inactive.none { (_, selectable) -> selectable }, "plain in the composition the page goes inactive: $compositions")
-
-            val beforeActivation = compositions.size
-            runOnIdle { pageActive = true }
-            waitForIdle()
-            val active = compositions.drop(beforeActivation)
-            assertEquals(true to false, active.first(), "still plain in the composition the page becomes active: $compositions")
-            assertEquals(true to true, active.last(), "selectable once the page has been active for a few frames: $compositions")
-        }
-
-    /**
-     * The production order of c561c66a: a long, collapsible Markdown row in the list, selected
-     * whole, and a reply thread pushed over the page while rows change on every frame.
+     * The production order of Hands c561c66a / b40c0cf8 ("LayoutNode should be attached to an owner"
+     * in the list's measure pass, from when a body still moved in and out of its selection container
+     * as its page changed activity): a long, collapsible Markdown row in the list, selected whole,
+     * and a reply thread pushed over the page while rows change on every frame.
      */
     @Test
     fun aSelectedCollapsibleMarkdownRowDuringThePushAndPopDoesNotCrash() =

@@ -78,7 +78,7 @@ internal fun computerRuntimeClaudeLimitResetAccess(
     notSupportedHere: Boolean,
 ): ComputerRuntimeClaudeLimitResetAccess? {
     if (provider != RuntimeAccountUsageProvider.Claude || !flagOn || authView == null || !authView.canActNow) return null
-    if (authView.statusOf(RuntimeAuthRuntime.Claude) == RuntimeAuthStatus.LoggedOut) return null
+    if (authView.statusOf(RuntimeAuthRuntime.Claude) is RuntimeAuthStatus.LoggedOut) return null
     if (authView.claudeLimitResets != ClaudeLimitResetsAvailability.Ok || notSupportedHere) return null
     if (authView.claudeLimitResetAccess?.canUse != false) return ComputerRuntimeClaudeLimitResetAccess.Use
     return if (atFiveHourLimit) null else ComputerRuntimeClaudeLimitResetAccess.ViewOnly

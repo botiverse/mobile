@@ -10,8 +10,8 @@ import kotlin.test.assertEquals
 /**
  * The one channel-kind glyph chooser (web components/channel/channelKind.ts `channelKindIconProps`,
  * channelKindIcon.tsx `ChannelKindIcon`, sidebarChannelVisibility.ts `isSidebarExternalSectionChannel`;
- * botiverse/slock@44ce160f1, #13983). Not gated by `external_channels_v1`, like the web
- * (sidebarChannelVisibility.ts `isSidebarExternalOnlyChannel`, plan §2a).
+ * botiverse/slock@44ce160f1, #13983), like the web (sidebarChannelVisibility.ts
+ * `isSidebarExternalOnlyChannel`).
  */
 class RaftChannelKindTest {
     private data class Case(

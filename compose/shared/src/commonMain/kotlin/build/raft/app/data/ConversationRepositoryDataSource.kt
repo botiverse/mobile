@@ -2619,14 +2619,25 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
             )
         401 -> authRequired(serverMessage)
         403 ->
-            DataResult.NoPermission(
-                PermissionBlocker(
-                    code = "server_forbidden",
-                    requiredCapability = "server_access",
-                    serverMessage = serverMessage,
-                    serverCode = serverCode
+            if (serverCode != null && isNonPermissionPlanOrQuota403Code(serverCode)) {
+                DataResult.Error(
+                    ScreenError(
+                        code = serverCode,
+                        retryable = false,
+                        serverMessage = serverMessage,
+                        serverCode = serverCode,
+                    )
                 )
-            )
+            } else {
+                DataResult.NoPermission(
+                    PermissionBlocker(
+                        code = "server_forbidden",
+                        requiredCapability = "server_access",
+                        serverMessage = serverMessage,
+                        serverCode = serverCode
+                    )
+                )
+            }
         in 500..599 ->
             DataResult.Error(
                 ScreenError(
@@ -2640,7 +2651,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
         413 ->
             DataResult.Error(
                 ScreenError(
-                    code = conversationRouteStructuredErrorCodeOrNull() ?: "attachment_too_large",
+                    code = serverCode ?: "attachment_too_large",
                     retryable = false,
                     serverMessage = serverMessage,
                     serverCode = serverCode,
@@ -2665,7 +2676,10 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
 }
 
 @Serializable
-private data class ConversationRouteErrorDto(val error: String? = null)
+private data class ConversationRouteErrorDto(
+    val error: String? = null,
+    val message: String? = null,
+)
 
 @Serializable
 private data class ConversationRouteStructuredErrorDto(
@@ -2682,7 +2696,8 @@ private fun HomeNetworkResponse.conversationRouteStructuredErrorCodeOrNull(): St
         runCatching {
             conversationRepositoryJson.decodeFromString<ConversationRouteStructuredErrorDto>(payload)
         }.getOrNull()
-    return (dto?.code ?: dto?.errorCode)?.trim()?.takeIf { it.isNotBlank() }
+    return dto?.code?.trim()?.takeIf { it.isNotBlank() }
+        ?: dto?.errorCode?.trim()?.takeIf { it.isNotBlank() }
 }
 
 private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
@@ -2690,9 +2705,9 @@ private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
         ?: errorBodyText?.takeIf { it.isNotBlank() }
         ?: return null
     return runCatching {
-        conversationRepositoryJson.decodeFromString(ConversationRouteErrorDto.serializer(), payload)
-            .error
-            ?.takeIf { it.isNotBlank() }
+        val dto = conversationRepositoryJson.decodeFromString(ConversationRouteErrorDto.serializer(), payload)
+        dto.error?.trim()?.takeIf { it.isNotBlank() }
+            ?: dto.message?.trim()?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }
 

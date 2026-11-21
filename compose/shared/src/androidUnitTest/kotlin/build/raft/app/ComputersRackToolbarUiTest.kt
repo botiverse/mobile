@@ -41,7 +41,13 @@ class ComputersRackToolbarUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    private fun computer(id: String, name: String, online: Boolean = true, owner: String? = null) =
+    private fun computer(
+        id: String,
+        name: String,
+        online: Boolean = true,
+        owner: String? = null,
+        upgradeAvailable: Boolean = false,
+    ) =
         SettingsComputerSnapshot(
             id = id,
             name = name,
@@ -49,6 +55,7 @@ class ComputersRackToolbarUiTest {
             computerVersion = "1.0.53",
             isComputer = true,
             online = online,
+            upgradeAvailable = upgradeAvailable,
             latestComputerVersion = "1.0.53",
             ownerUserId = owner,
         )
@@ -62,10 +69,13 @@ class ComputersRackToolbarUiTest {
             computer("m-a1", "alpha-1", owner = "user-1"),
         )
 
-    private fun ComposeUiTest.show(view: ComputersRackView = ComputersRackView.Cards): RaftComputersRackToolbarStore {
+    private fun ComposeUiTest.show(
+        view: ComputersRackView = ComputersRackView.Cards,
+        computers: List<SettingsComputerSnapshot> = fleet,
+    ): RaftComputersRackToolbarStore {
         val store = RaftComputersRackToolbarStore(KeyValueComputersRackPreferenceRepository(InMemoryRaftKeyValueStore()))
         store.onServer("server-1")
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = fleet)))
+        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = computers)))
         setContent {
             val toolbar by store.state.collectAsState()
             RaftTheme(appearance = RaftAppearance.Light) {
@@ -110,6 +120,21 @@ class ComputersRackToolbarUiTest {
         onNodeWithTag(RaftComputersRackTags.OfflineTitle).performClick()
         waitForIdle()
         onNodeWithText("zeta").assertIsDisplayed()
+    }
+
+    @Test
+    fun theListPutsComputersNeedingAttentionAboveMineUntilAChosenSortOverrides() = runRobolectricComposeUiTest {
+        val attentionFleet =
+            listOf(
+                computer("m-beta", "beta", upgradeAvailable = true),
+                computer("m-a2", "alpha-2"),
+                computer("m-a1", "alpha-1", owner = "user-1"),
+            )
+        val store = show(computers = attentionFleet)
+        assertTrue(top("beta") < top("alpha-1") && top("alpha-1") < top("alpha-2"), "Needs attention first, then mine, then others")
+        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
+        waitForIdle()
+        assertTrue(top("alpha-1") < top("alpha-2") && top("alpha-2") < top("beta"), "chosen Name sort wins")
     }
 
     @Test

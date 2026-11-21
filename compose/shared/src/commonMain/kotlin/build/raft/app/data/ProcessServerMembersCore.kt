@@ -10,10 +10,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import kotlin.time.ComparableTimeMark
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.TimeMark
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal data class ProcessServerMembersOwner(
@@ -97,7 +98,8 @@ internal class ProcessServerMembersCore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob()),
     private val maxEntries: Int = 16,
     private val logger: (String) -> Unit = {},
-    private val staleForcedFlightAge: Duration = StaleForcedFlightAge
+    private val staleForcedFlightAge: Duration = StaleForcedFlightAge,
+    private val timeSource: TimeSource.WithComparableMarks = TimeSource.Monotonic,
 ) {
     init {
         require(maxEntries > 0)
@@ -113,24 +115,66 @@ internal class ProcessServerMembersCore(
     private val terminalRevisions = linkedMapOf<ProcessServerMembersDirectoryOwner, Long>()
     private val agentFlights = mutableMapOf<ProcessServerMembersOwner, AgentsFlight>()
     private val agentGenerations = mutableMapOf<ProcessServerMembersOwner, Long>()
+    private val recentAgents = linkedMapOf<ProcessServerMembersOwner, RecentAgentsEntry>()
 
     /**
      * Incremental sync's presence refetch: `/agents` of [owner] alone, one read shared by every
-     * shell store asking meanwhile. Not cached (presence is the point of the read).
+     * shell store asking meanwhile. When [coalesceFreshWithin] > 0 and a recent `/agents` read
+     * for the same owner & generation succeeded within that window (e.g. a foreground reconcile
+     * followed seconds later by a jittered reconnect refetch), returns that fresh result without
+     * issuing a duplicate `/agents` HTTP read (`startedByCaller = false` so live pushes still win).
+     *
+     * When [notStartedBefore] is given (e.g. a transport reconnect timestamp), only an in-flight or
+     * recently completed read that STARTED at or after [notStartedBefore] may be joined or reused;
+     * an earlier in-flight read is detached and superseded so state changes during a disconnect are
+     * never masked by a pre-connect read.
      */
     suspend fun loadAgents(
         owner: ProcessServerMembersOwner,
         priority: DataRequestPriority,
-        reason: String
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: ComparableTimeMark? = null,
     ): ProcessServerAgentsLoadResult {
-        val (flight, started) =
+        val decision =
             mutex.withLock {
-                agentFlights[owner]?.let { active ->
-                    logger("process_agents_flight result=join ${owner.diagnosticsKey} reason=$reason")
-                    return@withLock active to false
+                val active = agentFlights[owner]
+                if (active != null) {
+                    if (notStartedBefore == null || active.startedAt >= notStartedBefore) {
+                        logger("process_agents_flight result=join ${owner.diagnosticsKey} reason=$reason")
+                        return@withLock AgentsLoadDecision.Flight(active, started = false)
+                    }
+                    agentFlights.remove(owner)
+                    agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
+                    logger("process_agents_flight result=replace_pre_boundary ${owner.diagnosticsKey} reason=$reason")
+                }
+                val generation = agentsGeneration(owner)
+                if (coalesceFreshWithin > Duration.ZERO) {
+                    recentAgents[owner]?.let { cached ->
+                        if (
+                            cached.generation == generation &&
+                            (notStartedBefore == null || cached.startedAt >= notStartedBefore)
+                        ) {
+                            val age = cached.completedAt.elapsedNow()
+                            if (age <= coalesceFreshWithin) {
+                                logger(
+                                    "process_agents_flight result=fresh_coalesced ${owner.diagnosticsKey} " +
+                                        "ageMs=${age.inWholeMilliseconds} reason=$reason"
+                                )
+                                return@withLock AgentsLoadDecision.Fresh(
+                                    ProcessServerAgentsLoadResult(
+                                        result = cached.result,
+                                        owner = owner,
+                                        generation = cached.generation,
+                                        startedByCaller = false,
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
                 val token = Any()
-                val generation = agentsGeneration(owner)
+                val startedAt = timeSource.markNow()
                 val deferred =
                     scope.async(start = CoroutineStart.LAZY) {
                         try {
@@ -147,18 +191,40 @@ internal class ProcessServerMembersCore(
                                     DataResult.Error(ScreenError(code = "members_exception", retryable = true))
                                 }
                             logger("process_agents_load result=${fetched.resultLabel()} ${owner.diagnosticsKey} reason=$reason")
+                            if (fetched is DataResult.Content) {
+                                mutex.withLock {
+                                    if (agentsGeneration(owner) == generation) {
+                                        recentAgents.remove(owner)
+                                        recentAgents[owner] =
+                                            RecentAgentsEntry(
+                                                result = fetched,
+                                                generation = generation,
+                                                startedAt = startedAt,
+                                                completedAt = timeSource.markNow(),
+                                            )
+                                        while (recentAgents.size > maxEntries) {
+                                            recentAgents.remove(recentAgents.keys.first())
+                                        }
+                                    }
+                                }
+                            }
                             ProcessServerAgentsLoadResult(fetched, owner, generation)
                         } finally {
                             mutex.withLock { if (agentFlights[owner]?.token === token) agentFlights.remove(owner) }
                         }
                     }
-                val flight = AgentsFlight(token, deferred)
+                val flight = AgentsFlight(token = token, startedAt = startedAt, result = deferred)
                 agentFlights[owner] = flight
                 logger("process_agents_flight result=start ${owner.diagnosticsKey} reason=$reason")
-                flight to true
+                AgentsLoadDecision.Flight(flight, started = true)
             }
-        if (started) flight.result.start()
-        return flight.result.await().copy(startedByCaller = started)
+        return when (decision) {
+            is AgentsLoadDecision.Fresh -> decision.result
+            is AgentsLoadDecision.Flight -> {
+                if (decision.started) decision.flight.result.start()
+                decision.flight.result.await().copy(startedByCaller = decision.started)
+            }
+        }
     }
 
     /** Runs [publish] when no roster change or reload moved [loadResult]'s owner since its read started. */
@@ -221,7 +287,7 @@ internal class ProcessServerMembersCore(
                     scope.async(start = CoroutineStart.LAZY) {
                         produce(directoryOwner, generation, token, priority, force, reason)
                     }
-                val flight = ActiveFlight(token, generation, deferred)
+                val flight = ActiveFlight(token, generation, deferred, startedAt = timeSource.markNow())
                 activeFlights[directoryOwner] = flight
                 logger(
                     "process_members_flight result=start ${directoryOwner.diagnosticsKey} " +
@@ -275,7 +341,7 @@ internal class ProcessServerMembersCore(
                     result = DataResult.Content(snapshot),
                     version = version,
                     terminalRevision = terminalRevision,
-                    createdAt = TimeSource.Monotonic.markNow()
+                    createdAt = timeSource.markNow()
                 )
             trimCache()
             ProcessServerMembersSeedResult(version = version, inserted = true)
@@ -315,7 +381,17 @@ internal class ProcessServerMembersCore(
             terminalRevisions.clear()
             agentFlights.clear()
             agentGenerations.clear()
+            recentAgents.clear()
             logger("process_members_invalidate scope=all generation=$processGeneration reason=$reason")
+        }
+    }
+
+    suspend fun invalidateRecentAgents(owner: ProcessServerMembersOwner, reason: String) {
+        mutex.withLock {
+            agentFlights.remove(owner)
+            recentAgents.remove(owner)
+            agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
+            logger("process_agents_invalidate ${owner.diagnosticsKey} reason=$reason")
         }
     }
 
@@ -326,6 +402,7 @@ internal class ProcessServerMembersCore(
                     .filterTo(mutableSetOf()) { it.processOwner == owner }
             // An `/agents` read started before this point answers for an older roster.
             agentFlights.remove(owner)
+            recentAgents.remove(owner)
             agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
             ownedKeys.forEach { key ->
                 val hadActiveFlight = activeFlights.remove(key) != null
@@ -350,7 +427,7 @@ internal class ProcessServerMembersCore(
         reason: String
     ): ProcessServerMembersLoadResult {
         try {
-            val startedAt = TimeSource.Monotonic.markNow()
+            val startedAt = timeSource.markNow()
             val fetched =
                 try {
                     fetchMembers(priority, ServerId(owner.processOwner.serverId))
@@ -363,7 +440,7 @@ internal class ProcessServerMembersCore(
                     )
                     DataResult.Error(ScreenError(code = "members_exception", retryable = true))
                 }
-            val reduceStartedAt = TimeSource.Monotonic.markNow()
+            val reduceStartedAt = timeSource.markNow()
             val reduced =
                 when (fetched) {
                     is DataResult.Content ->
@@ -394,7 +471,7 @@ internal class ProcessServerMembersCore(
                             result = reduced,
                             version = version,
                             terminalRevision = terminalRevision,
-                            createdAt = TimeSource.Monotonic.markNow()
+                            createdAt = timeSource.markNow()
                         )
                     trimCache()
                 } else if (current && activeCurrent) {
@@ -483,8 +560,21 @@ internal class ProcessServerMembersCore(
 
     private class AgentsFlight(
         val token: Any,
+        val startedAt: ComparableTimeMark,
         val result: Deferred<ProcessServerAgentsLoadResult>
     )
+
+    private data class RecentAgentsEntry(
+        val result: DataResult.Content<List<MemberProfile>>,
+        val generation: ProcessServerMembersGeneration,
+        val startedAt: ComparableTimeMark,
+        val completedAt: ComparableTimeMark,
+    )
+
+    private sealed interface AgentsLoadDecision {
+        data class Fresh(val result: ProcessServerAgentsLoadResult) : AgentsLoadDecision
+        data class Flight(val flight: AgentsFlight, val started: Boolean) : AgentsLoadDecision
+    }
 
     private sealed interface LoadDecision {
         data class Cached(

@@ -431,10 +431,10 @@ internal fun raftRackGroupByLabel(groupBy: ComputersRackGroupBy): String =
         },
     )
 
-/** Mine first's test tag suffix, web `key:default`. */
+/** Default sort ("Needs attention first") test tag suffix, web `key:default`. */
 internal const val RAFT_RACK_SORT_MINE_FIRST_WIRE = "default"
 
-/** "Mine first" (null, no sort), "Name", "Disk used", "Claude Code remaining". */
+/** "Needs attention first" (null, no sort), "Name", "Disk used", "Claude Code remaining". */
 @Composable
 internal fun raftRackSortKeyLabel(key: ComputersRackSortKey?): String =
     when (key) {

@@ -132,8 +132,13 @@ internal object AndroidAppScopeRealtimeOwner {
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
                 // The OS permission rides the registration (osPermission): a change made in system
                 // settings while the app was away re-registers, so the server stops (or resumes)
-                // alerting this device (slock docs/contracts/notifications.md §3.1).
-                installedApplicationContext?.let(RaftNotificationPermissionReporter::report)
+                // alerting this device (slock docs/contracts/notifications.md §3.1). Off-main so
+                // foreground return does not block the first frame on NotificationManager IPC.
+                installedApplicationContext?.let { context ->
+                    scope.launch(Dispatchers.IO) {
+                        RaftNotificationPermissionReporter.report(context)
+                    }
+                }
             } else {
                 takePendingProductAppOpen()
                 RaftProductEvents.onAppBackground()

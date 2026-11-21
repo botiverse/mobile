@@ -749,6 +749,7 @@ class RealMemberRepository(
                 // So do a new description's link `warnings` (slock #15236).
                 parseSharedAgentProfile(bodyText)?.copy(
                     configApply = parseSharedAgentConfigApply(bodyText),
+                    configApplyNewSession = parseSharedAgentConfigApplyNewSession(bodyText),
                     descriptionLinkWarnings = parseSharedDescriptionLinkWarnings(bodyText),
                 )
                     ?: throw IllegalStateException("Agent profile update response missing agent")

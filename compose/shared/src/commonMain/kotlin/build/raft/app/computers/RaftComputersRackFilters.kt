@@ -103,6 +103,33 @@ internal fun raftRackEffectiveRuntimeFilter(
 ): List<RaftComputersRackRuntimeFilter> = chosen.filter { it in options }
 
 /**
+ * Web `machineNeedsAttention` (slock #15534, utils/computerUpgradeIndicator.ts): the server's
+ * verdict when it sent one (`attention.count > 0`); otherwise an update waiting on a managed
+ * Computer (`shouldShowComputerUpgradeIndicator`) or offline. Drives the Computers page's default
+ * order ([raftAttentionFirst]). Note: the Status filter's broader "Needs attention"
+ * ([raftRackNeedsAttention]) also includes low disk and below-floor version notices, unchanged.
+ */
+internal fun raftComputerNeedsAttention(computer: SettingsComputerSnapshot): Boolean =
+    computer.serverNeedsAttention ?: ((computer.isComputer && computer.upgradeAvailable) || !computer.online)
+
+/**
+ * Web `attentionFirst` (slock #15534, features/computer/computersRackSort.ts): the Computers
+ * page's default order (no sort chosen; artin, #triage:#527): computers needing attention
+ * ([raftComputerNeedsAttention]) first, then the rest, each part keeping the order given
+ * (the list's own Mine-first order). Only this page: every other computer list keeps the
+ * shared Mine-first order.
+ */
+internal fun raftAttentionFirst(computers: List<SettingsComputerSnapshot>): List<SettingsComputerSnapshot> {
+    val needing = mutableListOf<SettingsComputerSnapshot>()
+    val rest = mutableListOf<SettingsComputerSnapshot>()
+    computers.forEach { computer ->
+        if (raftComputerNeedsAttention(computer)) needing += computer else rest += computer
+    }
+    if (needing.isEmpty() || rest.isEmpty()) return computers
+    return needing + rest
+}
+
+/**
  * Web `rackNeedsAttention`: an upgrade waiting (`getComputerAttentionStatus` "upgrade": Update
  * available and Update required alike, raft-design patterns/status.md), a Computer that is not
  * online (unless it is only restarting for an update in flight, which is in progress), or an
@@ -221,10 +248,12 @@ private fun Char.rackFold(): Char {
 // Sort
 
 /*
- * No sort chosen (null; web #14479, artin #triage:#332) is the default, the Sort's "Mine first":
- * the list keeps the Computers list's own order, the viewer's own computers (attached or owned,
- * `isMyComputer`) first, then the rest, each in the server's order; grouped, the groups holding
- * the viewer's own lead. A sort someone chose (Name, Disk, what a runtime has left) stays theirs.
+ * No sort chosen (null; web #14479, #15534, artin #triage:#332 / #triage:#527) is the default, the
+ * Sort's "Needs attention first": the list keeps the Computers list's own order (the viewer's own
+ * computers, `isMyComputer`, first, then the rest, each in the server's order) with the computers
+ * needing attention moved first ([raftAttentionFirst]); grouped, the groups holding the viewer's
+ * own lead, attention first within each. A sort someone chose (Name, Disk, what a runtime has
+ * left) stays theirs.
  */
 
 /** Web `firstSortDirection`: text starts A to Z, numbers high to low. */
@@ -232,14 +261,14 @@ internal fun raftRackFirstSortDirection(key: ComputersRackSortKey): ComputersRac
     if (key == ComputersRackSortKey.Name) ComputersRackSortDirection.Asc else ComputersRackSortDirection.Desc
 
 /**
- * Web `chooseRackSortKey`: a new key starts at its own first direction; null (Mine first, web
- * `"default"`) is no sort.
+ * Web `chooseRackSortKey`: a new key starts at its own first direction; null (Needs attention
+ * first, web `"default"`) is no sort.
  */
 internal fun raftRackChooseSortKey(key: ComputersRackSortKey?): ComputersRackSort? = key?.let { ComputersRackSort(it, raftRackFirstSortDirection(it)) }
 
 /**
  * Web `effectiveRackSort`: the stored sort while these computers still have its runtime, else null,
- * no sort (Mine first).
+ * no sort (Needs attention first).
  */
 internal fun raftRackEffectiveSort(sort: ComputersRackSort?, columns: RaftRackRuntimeColumns): ComputersRackSort? {
     if (sort == null) return null
@@ -248,8 +277,8 @@ internal fun raftRackEffectiveSort(sort: ComputersRackSort?, columns: RaftRackRu
 }
 
 /**
- * Web `sortMenuSections`: Mine first (null, the default) and Name; what each runtime these
- * computers have has left; Disk, Memory. Empty sections dropped.
+ * Web `sortMenuSections`: Needs attention first (null, the default) and Name; what each runtime
+ * these computers have has left; Disk, Memory. Empty sections dropped.
  */
 internal fun raftRackSortMenuSections(columns: RaftRackRuntimeColumns): List<List<ComputersRackSortKey?>> =
     listOf(
@@ -557,11 +586,11 @@ internal data class RaftComputersRackLayout(
 }
 
 /**
- * Web `ComputersRackList` (phone, no "This device"): filter, sort (with no sort chosen, Mine first:
- * the viewer's own computers, [userId] attached or owns, then the rest, each in the list's order),
- * then the offline computers apart in one section at the end (whatever the grouping and the sort;
- * with Status: Offline they are the list itself), then the online ones grouped, groups ranked by
- * the sort.
+ * Web `ComputersRackList` (phone, no "This device"): filter, sort (with no sort chosen, Needs
+ * attention first over Mine first: computers needing attention first, then the rest, each keeping
+ * the viewer's own computers ahead of others in the server's order), then the offline computers
+ * apart in one section at the end (whatever the grouping and the sort; with Status: Offline they
+ * are the list itself), then the online ones grouped, groups ranked by the sort.
  */
 internal fun raftComputersRackLayout(
     computers: List<SettingsComputerSnapshot>,
@@ -573,7 +602,12 @@ internal fun raftComputersRackLayout(
 ): RaftComputersRackLayout {
     val filtered = raftFilterRackComputers(computers, model.filters)
     val sort = model.sort
-    val sorted = if (sort != null) raftSortRackComputers(filtered, sort, usage) else filtered.raftMineFirst { it.isMyComputer(userId) }
+    val sorted =
+        if (sort != null) {
+            raftSortRackComputers(filtered, sort, usage)
+        } else {
+            raftAttentionFirst(filtered.raftMineFirst { it.isMyComputer(userId) })
+        }
     val offlineSection = model.filters.status != RaftComputersRackStatusFilter.Offline
     // An updating Computer stays in place while it restarts (raft-design patterns/status.md).
     val online = if (offlineSection) sorted.filter { it.online || it.raftComputerUpdating() } else sorted

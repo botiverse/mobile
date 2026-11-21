@@ -992,13 +992,13 @@ internal fun AppShellRestoreSplashContent() {
 @Composable
 internal fun PageErrorContent(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     iconName: RaftLucideIconName?,
     headerContentStartPadding: Dp = 20.dp,
     headerTitleStyle: TextStyle = RaftType.Headline,
     message: String,
     code: String,
-    retryLabel: String? = "Retry",
+    retryLabel: String? = stringResource(Res.string.common_retry),
     onRetry: (() -> Unit)? = null
 ) {
     Column(
@@ -1062,11 +1062,15 @@ private fun PageErrorBody(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
             Text(text = message, style = RaftType.ButtonBold, color = RaftColor.TextBlack)
-            Text(
-                text = code.userFacingErrorCodeMessage(localizedErrorPresentationStrings()),
-                style = RaftType.Caption,
-                color = RaftColor.AccentRed
-            )
+            val codeMessage = code.userFacingErrorCodeMessage(localizedErrorPresentationStrings())
+            // A page whose message is already the generic sentence its code resolves to says it once.
+            if (codeMessage != message) {
+                Text(
+                    text = codeMessage,
+                    style = RaftType.Caption,
+                    color = RaftColor.AccentRed
+                )
+            }
             if (retryLabel != null && onRetry != null) {
                 RaftButton(
                     text = retryLabel,

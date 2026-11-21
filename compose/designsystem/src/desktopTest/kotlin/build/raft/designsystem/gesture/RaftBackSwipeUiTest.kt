@@ -47,10 +47,10 @@ class RaftBackSwipeUiTest {
     private var movementConsumedAbove = false
 
     @Composable
-    private fun BackSwipePager(regions: RaftBackSwipeRegions) {
+    private fun BackSwipePager(regions: RaftBackSwipeRegions, leadingEdgePops: Boolean = false) {
         CompositionLocalProvider(LocalDensity provides Density(1f), LocalRaftBackSwipeRegions provides regions) {
             pager = rememberPagerState(pageCount = { 3 })
-            val backSwipe = rememberRaftBackSwipeScroll(pager, PagerDefaults.flingBehavior(pager))
+            val backSwipe = rememberRaftBackSwipeScroll(pager, PagerDefaults.flingBehavior(pager), leadingEdgePops = leadingEdgePops)
             Box(
                 Modifier
                     .size(300.dp, 400.dp)
@@ -124,6 +124,45 @@ class RaftBackSwipeUiTest {
         assertFalse(movementConsumedAbove, "a rightward drag at page 0 must stay unconsumed")
         assertEquals(0, pager.currentPage)
         assertEquals(0f, pager.currentPageOffsetFraction)
+    }
+
+    /**
+     * A tab pager on a pushed page (`TabPager`, #proj-mobile:#160): past its first tab a back drag
+     * from the leading 40 dp strip (40 px at density 1) is the host's pop, from the body it pages back.
+     */
+    @Test
+    fun edgePopPagerPastItsStartLeavesABackDragFromTheLeadingStripToTheHost() = runComposeUiTest {
+        val regions = RaftBackSwipeRegions()
+        setContent { BackSwipePager(regions, leadingEdgePops = true) }
+        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = right - 10f, endX = right - 120f, durationMillis = 80) }
+        waitForIdle()
+        assertEquals(1, pager.currentPage)
+        assertFalse(regions.contentConsumesBackSwipeAt(10f, 200f), "the leading strip is the pop's")
+        assertTrue(regions.contentConsumesBackSwipeAt(150f, 200f), "the body pages back")
+
+        movementConsumedAbove = false
+        onNodeWithTag("pager").performTouchInput { swipeRight(startX = 10f, endX = 200f, durationMillis = 150) }
+        waitForIdle()
+        assertFalse(movementConsumedAbove, "a back drag from the strip must stay unconsumed")
+        assertEquals(1, pager.currentPage)
+        assertEquals(0f, pager.currentPageOffsetFraction)
+
+        onNodeWithTag("pager").performTouchInput { swipeRight(startX = 100f, endX = 290f, durationMillis = 150) }
+        waitForIdle()
+        assertEquals(0, pager.currentPage, "a back drag from the body pages back")
+    }
+
+    @Test
+    fun edgePopPagerStillTurnsForwardFromTheLeadingStrip() = runComposeUiTest {
+        val regions = RaftBackSwipeRegions()
+        setContent { BackSwipePager(regions, leadingEdgePops = true) }
+        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = right - 10f, endX = right - 120f, durationMillis = 80) }
+        waitForIdle()
+        assertEquals(1, pager.currentPage)
+        // Down inside the strip, then well past the pager's start edge (the gesture stays the pager's).
+        onNodeWithTag("pager").performTouchInput { swipeLeft(startX = 30f, endX = -90f, durationMillis = 80) }
+        waitForIdle()
+        assertEquals(2, pager.currentPage, "only the back direction belongs to the pop")
     }
 
     @Test

@@ -73,10 +73,8 @@ internal data class RaftAppLinkChipHost(
     val artifacts: Map<String, ArtifactSummary> = emptyMap(),
     /** Raft's own app hosts the links were split on ([parseArtifactLinkTarget]). */
     val artifactHosts: List<String> = emptyList(),
-    /** A tap on an Artifact's chip: its item card (or its page when the card can't open). */
+    /** A tap on an Artifact's chip: opens the Artifact (no item card first, as on the web). */
     val onOpenArtifact: ((ArtifactLinkTarget) -> Unit)? = null,
-    /** Marks an Artifact chip's mark, by [ArtifactLinkTarget.key], as its item card's anchor. */
-    val artifactAnchor: ((String) -> Modifier)? = null,
     /**
      * A tap on an Artifact link the author gave words to (web `ObjectLabelledLink`,
      * #proj-workspace:#289): the words stay as written and open the Artifact in place, as its card
@@ -347,12 +345,11 @@ private fun AnnotatedString.Builder.appendRaftArtifactLinkChip(
             pop()
         }
     }
-    val anchor = host.artifactAnchor?.invoke(chip.target.key) ?: Modifier
     inlineContent[iconId] =
         InlineTextContent(
             placeholder = Placeholder(width = 12.sp, height = 12.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter),
         ) {
-            Box(anchor.size(12.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
                 RaftLucideIcon(
                     name = chip.summary.kind.lucideIcon(),
                     modifier = Modifier.size(12.dp),

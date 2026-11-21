@@ -13,6 +13,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.LayoutDirection
@@ -48,6 +49,17 @@ fun raftSegmentSwipeDecision(
         else -> RaftSegmentSwipeDecision.Release
     }
 }
+
+/**
+ * Whether a swipe that started here may turn to the previous sub-tab: not when it starts in the
+ * leading-edge strip on a host whose back swipe pops the page from there (iOS), which keeps that
+ * swipe for the pop. Swipes that start elsewhere, and every swipe without such a host, turn as before.
+ */
+internal fun raftSegmentSwipeCanGoBackward(
+    canGoBackward: Boolean,
+    hostHasBackSwipe: Boolean,
+    startsInLeadingEdge: Boolean,
+): Boolean = canGoBackward && !(hostHasBackSwipe && startsInLeadingEdge)
 
 /**
  * One gesture's hand-over of horizontal scroll a child scroller left over (the segment track itself,
@@ -114,6 +126,10 @@ internal class RaftSegmentNestedSwipe(private val decidePx: Float) {
  * scroller (the segment track, a code block) while it scrolls; what such a scroller leaves over at its
  * end reaches the sub-tabs before the pager ([RaftSegmentNestedSwipe]), so a swipe on the sub-tab
  * switch itself turns the sub-tab too.
+ *
+ * On a host with a full-page back swipe (iOS) a back-direction swipe that starts in the leading
+ * [RaftBackSwipeEdgeWidth] strip never turns a sub-tab: it is left unconsumed for the host's pop
+ * ([raftSegmentSwipeCanGoBackward]), as the enclosing tab pager leaves it.
  */
 @Composable
 fun Modifier.raftSwipesBetweenSegments(
@@ -123,6 +139,8 @@ fun Modifier.raftSwipesBetweenSegments(
 ): Modifier {
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val decidePx = LocalViewConfiguration.current.touchSlop * 2
+    val hostHasBackSwipe = LocalRaftBackSwipeRegions.current != null
+    val edgePx = with(LocalDensity.current) { RaftBackSwipeEdgeWidth.toPx() }
     val backward by rememberUpdatedState(canGoBackward)
     val forward by rememberUpdatedState(canGoForward)
     val swipe by rememberUpdatedState(onSwipe)
@@ -145,10 +163,16 @@ fun Modifier.raftSwipesBetweenSegments(
     return this
         .raftClaimsHorizontalDragFirst { _, _ -> decidePx }
         .nestedScroll(connection)
-        .pointerInput(isLtr, decidePx) {
+        .pointerInput(isLtr, decidePx, hostHasBackSwipe, edgePx) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 nested.reset()
+                val canGoBackwardHere =
+                    raftSegmentSwipeCanGoBackward(
+                        canGoBackward = backward,
+                        hostHasBackSwipe = hostHasBackSwipe,
+                        startsInLeadingEdge = raftStartsInLeadingEdge(down.position.x, size.width.toFloat(), edgePx, isLtr),
+                    )
                 var claimed = false
                 while (true) {
                     val event = awaitPointerEvent()
@@ -161,7 +185,7 @@ fun Modifier.raftSwipesBetweenSegments(
                     // A second finger, or a child (a list's scroll) took the drag: not a sub-tab swipe.
                     if (event.changes.size > 1 || change.isConsumed) break
                     val delta = change.position - down.position
-                    when (raftSegmentSwipeDecision(delta.x, delta.y, decidePx, isLtr, backward, forward)) {
+                    when (raftSegmentSwipeDecision(delta.x, delta.y, decidePx, isLtr, canGoBackwardHere, forward)) {
                         RaftSegmentSwipeDecision.Undecided -> Unit
                         RaftSegmentSwipeDecision.Release -> break
                         RaftSegmentSwipeDecision.Forward, RaftSegmentSwipeDecision.Backward -> {

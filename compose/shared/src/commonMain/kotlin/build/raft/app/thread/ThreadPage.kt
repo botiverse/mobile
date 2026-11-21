@@ -39,7 +39,6 @@ import build.raft.app.data.AuthLossSignal
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftThreadApiClient
@@ -56,7 +55,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
@@ -2094,13 +2092,6 @@ private fun SharedThreadRouteContentContent(
                 diagnosticsLogger = { message -> bridge.log("thread_avatar_member $message") }
             )
         }
-    val memberModelLabelResolver =
-        remember(serverMembersStore, headerProjectionServerId) {
-            raftMemberModelLabelResolver(
-                serverMembersStore = serverMembersStore,
-                serverId = headerProjectionServerId?.value,
-            )
-        }
     val memberAppBotResolver =
         remember(serverMembersStore, headerProjectionServerId) {
             raftMemberAppBotResolver(
@@ -2284,7 +2275,7 @@ private fun SharedThreadRouteContentContent(
     }
     // Public-page globe on the channel header icon: the server's publicPageLive comes from
     // the session server list (canonical store state), never from the route payload. The External
-    // glyph needs no server fact: it is not gated by external_channels_v1 (web plan §2a).
+    // glyph needs no server fact.
     val headerServerPublicPageLive =
         currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
@@ -6068,13 +6059,34 @@ private fun SharedThreadRouteContentContent(
         // The profile card an @mention in a message, or an author's avatar, opens under a mouse or
         // trackpad pointer (web MentionLink): a mention is the member its click opens.
         val currentMentionThread by rememberUpdatedState(renderedThread)
+        // Connected servers of this external channel (or parent channel for reply threads / tasks):
+        // feeds server logos & names into message authors, @ badges, and profile preview cards.
+        val channelJointServers =
+            rememberThreadChannelJointServers(
+                lookupIds = conversationDirectoryLookupIds,
+                parentChannelId = renderedThread.parentChannelId,
+                taskParentChannelId = taskConversation.parentChannelId?.value,
+                serverId = headerProjectionServerId?.value,
+                projections = billingDirectoryProjections,
+                conversationIdentityProvider = conversationIdentityProvider,
+                homeContentRevision = sharedHomeState.content,
+            )
+        val memberModelLabelResolver =
+            remember(serverMembersStore, headerProjectionServerId, channelJointServers) {
+                raftMemberModelLabelResolver(
+                    serverMembersStore = serverMembersStore,
+                    serverId = headerProjectionServerId?.value,
+                    knownServers = channelJointServers,
+                )
+            }
         val memberPreviewCardSource =
-            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId) {
+            remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId, channelJointServers) {
                 RaftMemberPreviewCardSource(
                     serverMembersStore = serverMembersStore,
                     serverId = headerProjectionServerId?.value,
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
+                    knownServers = channelJointServers,
                     resolveMention = { label ->
                         val serverMembers =
                             if (serverMembersStore == null || threadMembersServerId == null) {
@@ -6089,11 +6101,11 @@ private fun SharedThreadRouteContentContent(
                     },
                 )
             }
-        // Member labels (web #14535): another server's tile shows its logo only when the viewer is
-        // also a member of it (the session's servers); otherwise its initial.
+        // Member labels (web #14535/#15817): viewer's joined servers overlaid with this external
+        // channel's `jointServers[].serverAvatarUrl` so badges show other servers' logos too.
         val viewerServerLogos =
-            remember(currentSession?.servers) {
-                raftViewerServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl })
+            remember(currentSession?.servers, channelJointServers) {
+                raftOriginServerLogos(currentSession?.servers.orEmpty().map { it.id to it.avatarUrl }, channelJointServers)
             }
         val taskConversationId = taskConversation.conversationId
         val taskConversationHeaderViewModel = taskConversation.headerViewModel
@@ -6119,6 +6131,7 @@ private fun SharedThreadRouteContentContent(
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalRaftViewerServerLogos provides viewerServerLogos,
+                LocalRaftChannelJointServers provides channelJointServers,
                 // One channel-kind glyph per channel (forward targets, composer suggestions). Read
                 // from values this lambda already captures (see the JVM-limit note below).
                 LocalRaftChannelKinds provides rememberRaftChannelKindsState(sharedHomeStore.homeStateForPage()),
@@ -6336,9 +6349,6 @@ private fun SharedThreadRouteContentContent(
         val taskConversationFloat: (@Composable () -> Unit)? = taskConversationHeadRoute?.let { route -> { route(TaskHeadPlacement.PullDown) } }
         val taskConversationHeadRow =
             rememberTaskConversationHeadRow(taskHeadScrollState) { taskConversationHeadRoute?.invoke(TaskHeadPlacement.FirstRow) }
-        // Web reads external_channels_v1 for the current server: the one whose copy is open.
-        val externalChannelsEnabled =
-            rememberServerFeatureLatched(sharedStores.serverFeatureFlags, threadMembersServerId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
         // What the settings drawer (and the phone's settings page) do beyond the members strip and
         // the preferences: Info with the Slack pick, Guest access and every action through the
         // settings page's store, then what follows them. [onLeave] leaves the conversation after
@@ -6353,7 +6363,6 @@ private fun SharedThreadRouteContentContent(
             val homeServer = (homeContent as? SharedHomeContentState.Content)?.snapshot?.server
             val routeOwner = sharedStores.currentAuthenticatedRouteOwner(storeScope)
             return panel.copy(
-                externalChannelsEnabled = externalChannelsEnabled,
                 // The settings page's store: Info with the Slack pick, Guest access and every action.
                 storeFactory =
                     if (serverId != null && channelId != null && routeOwner != null && routeOwner.serverId == serverId.value) {
@@ -6377,7 +6386,7 @@ private fun SharedThreadRouteContentContent(
                 },
                 onChannelChanged = { sharedHomeStore?.dispatch(SharedHomeIntent.Refresh) },
                 onChannelClosed = { action, accessLost ->
-                    if (externalChannelsEnabled && action == ChannelSettingsAction.Disconnect) {
+                    if (action == ChannelSettingsAction.Disconnect) {
                         // Web: say which server let go of which channel before moving the reader on.
                         channelSettingsDisconnectedToast(homeServer?.name, panel.channel?.name)?.let(bridge::toast)
                     }
@@ -7391,3 +7400,53 @@ private fun threadActionCardStepUpCoordinator(networkClient: RaftNetworkClient):
         webStepUp = repository.webStepUp(),
     )
 }
+
+/**
+ * Connected servers of the active external channel (or parent channel for reply threads and task
+ * conversations), out of SharedThreadRouteContentContent to stay below its JVM method-size cap.
+ */
+internal fun threadChannelJointServers(
+    lookupIds: List<String>,
+    parentChannelId: String?,
+    taskParentChannelId: String?,
+    serverId: String?,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+): List<build.raft.app.model.MemberServerRef> {
+    val candidates = buildList {
+        parentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+        taskParentChannelId?.trim()?.takeIf { it.isNotEmpty() }?.let(::add)
+        addAll(lookupIds)
+    }
+    for (id in candidates) {
+        val joint = projections[id]?.jointServers
+        if (!joint.isNullOrEmpty()) return joint
+    }
+    val server = serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId) ?: return emptyList()
+    for (id in candidates) {
+        val joint = conversationIdentityProvider?.resolveProjection(server, id)?.jointServers
+        if (!joint.isNullOrEmpty()) return joint
+    }
+    return emptyList()
+}
+
+@Composable
+private fun rememberThreadChannelJointServers(
+    lookupIds: List<String>,
+    parentChannelId: String?,
+    taskParentChannelId: String?,
+    serverId: String?,
+    projections: Map<String, SharedConversationDirectoryProjection>,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+    homeContentRevision: Any? = null,
+): List<build.raft.app.model.MemberServerRef> =
+    remember(lookupIds, parentChannelId, taskParentChannelId, serverId, projections, conversationIdentityProvider, homeContentRevision) {
+        threadChannelJointServers(
+            lookupIds = lookupIds,
+            parentChannelId = parentChannelId,
+            taskParentChannelId = taskParentChannelId,
+            serverId = serverId,
+            projections = projections,
+            conversationIdentityProvider = conversationIdentityProvider,
+        )
+    }

@@ -299,13 +299,13 @@ class SharedComputersStore internal constructor(
         serverId: String,
         force: Boolean,
         priority: DataRequestPriority
-    ) {
+    ): DataResult<ComputerListSummary>? {
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedServerId = serverId.normalizedComputerServerId()
         if (normalizedServerId == null) {
             logger("shared_computers_skip reason=server_id_missing")
             logger("store_load domain=computers serverId= result=skip reason=server_id_missing durationMs=${startedAt.elapsedNow().inWholeMilliseconds}")
-            return
+            return null
         }
         val owner =
             when (val binding = readOwnerBinding()) {
@@ -313,14 +313,14 @@ class SharedComputersStore internal constructor(
                 RaftAccountBinding.SignedOut -> {
                     clearForMissingOwner()
                     logger("store_load domain=computers serverId=$normalizedServerId result=skip reason=owner_missing")
-                    return
+                    return null
                 }
                 RaftAccountBinding.Unknown, is RaftAccountBinding.Corrupt -> {
                     logger(
                         "store_load domain=computers serverId=$normalizedServerId result=skip " +
                             "reason=owner_unknown cause=${binding.unknownReason()}"
                     )
-                    return
+                    return null
                 }
             }
         hydrateFromDurable(owner, normalizedServerId)
@@ -393,7 +393,7 @@ class SharedComputersStore internal constructor(
             }.also { loads[normalizedServerId] = it }
         }
         deferred?.start()
-        deferred?.await()
+        return deferred?.await()
     }
 
     private suspend fun publishResult(
@@ -507,11 +507,13 @@ class SharedComputersStore internal constructor(
                         .filter { it.id !in deletes }
                         .associateBy { it.id }
                         .mapValues { (_, machine) ->
+                            val previous = current.machines.firstOrNull { it.id == machine.id }
                             machine.copy(
                                 latestComputerVersion = current.latestComputerVersion,
                                 latestComputerReleaseNotes = releaseNotes,
                                 // A sync row never carries `attention` (the list computes it per viewer): keep the list's.
-                                loginSteps = machine.loginSteps ?: current.machines.firstOrNull { it.id == machine.id }?.loginSteps
+                                loginSteps = machine.loginSteps ?: previous?.loginSteps,
+                                serverNeedsAttention = machine.serverNeedsAttention ?: previous?.serverNeedsAttention
                             )
                         }
                 val kept = current.machines.filterNot { it.id in deletes }
@@ -558,6 +560,17 @@ class SharedComputersStore internal constructor(
         val key = serverId.normalizedComputerServerId() ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         mutex.withLock { supersedeLoadLocked(key) }
         return loadSettingsComputersForServer(key, force = true)
+    }
+
+    /**
+     * Same forced reload as [reloadMachinesForSync], returning whether the network fetch itself
+     * succeeded (`Content` / `Empty`) rather than falling back to a stale cached snapshot on error.
+     */
+    internal suspend fun reloadMachinesForSyncSucceeded(serverId: String): Boolean {
+        val key = serverId.normalizedComputerServerId() ?: return false
+        mutex.withLock { supersedeLoadLocked(key) }
+        val result = ensureComputersForServer(serverId = key, force = true, priority = DataRequestPriority.Visible)
+        return result is DataResult.Content || result is DataResult.Empty
     }
 
     /** Retires [serverId]'s in-flight load, if any: true when there was one. */

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
+import build.raft.app.data.isNonPermissionPlanOrQuota403Code
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftJsonParseDispatcher
 import build.raft.app.data.defaultNowMillis
@@ -4277,6 +4278,15 @@ internal class SharedThreadDataSource(
         requestPriority: DataRequestPriority = DataRequestPriority.Foreground,
     ): DataResult<RaftThreadScreenPayload>? {
         val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
+        val replyParentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+        if (basePayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && focusedMessageId == replyParentMessageId) {
+            // The parent message lives in the parent channel, not the thread stream: requesting
+            // `messages/context/<parentMessageId>?channelId=<threadChannelId>` always 404s. Fall
+            // through to `resolveReplyParentMessageFromStore` + `getThread` while keeping focus.
+            return null
+        }
         val focusedContextChannelId = basePayload.focusedMessageContextChannelIdOrNull()
         // Phase 3b: read before the request: a horizonReset during it voids the page's head claim.
         val headEpochAtRequest = durableHeadEpochOrNull(replyResolutionScope.provenance)
@@ -5006,15 +5016,29 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                         serverMessage = projection.serverMessage
                     )
                 )
-            403 ->
-                DataResult.NoPermission(
-                    PermissionBlocker(
-                        code = contractCode ?: "thread_forbidden",
-                        requiredCapability = "thread_access",
-                        serverMessage = projection.serverMessage,
-                        serverCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
+            403 -> {
+                val normalizedContractCode = contractCode?.trim()?.takeIf { it.isNotBlank() }
+                val resolvedServerCode = normalizedContractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
+                if (resolvedServerCode != null && isNonPermissionPlanOrQuota403Code(resolvedServerCode)) {
+                    DataResult.Error(
+                        ScreenError(
+                            code = resolvedServerCode,
+                            retryable = false,
+                            serverMessage = projection.serverMessage,
+                            serverCode = resolvedServerCode
+                        )
                     )
-                )
+                } else {
+                    DataResult.NoPermission(
+                        PermissionBlocker(
+                            code = normalizedContractCode ?: "thread_forbidden",
+                            requiredCapability = "thread_access",
+                            serverMessage = projection.serverMessage,
+                            serverCode = resolvedServerCode
+                        )
+                    )
+                }
+            }
             else ->
                 DataResult.Error(
                     ScreenError(

@@ -43,6 +43,7 @@ import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftOpacity
 import org.jetbrains.compose.resources.StringResource
 
 /*
@@ -290,10 +291,14 @@ internal fun ThreadHistoryPaywallEmptyState(
 /** raft-ui `mask-fade-t` (48dp): the glimpse fades out toward the top. */
 private val ThreadHiddenHistoryFade = 48.dp
 
+/** raft-ui `--opacity-dimmed` (60%, slock #15936): hidden-history preview rows sit at Dimmed. */
+internal const val ThreadHiddenHistoryGlimpseAlpha = RaftOpacity.Dimmed
+
 /**
  * The newest hidden messages as message rows (sender, time, at most two lines of the server's
- * 40-character cut), at 70%, fading out toward the top. A glimpse, not a read: not interactive and
- * hidden from screen readers (the card says what is hidden).
+ * 40-character cut), at [ThreadHiddenHistoryGlimpseAlpha] (60%, slock #15936 `opacity-dimmed`),
+ * fading out toward the top. A glimpse, not a read: not interactive and hidden from screen readers
+ * (the card says what is hidden).
  */
 @Composable
 private fun ThreadHiddenHistoryGlimpse(messages: List<HiddenHistoryMessage>, timeContext: RaftTimeContext?) {
@@ -302,7 +307,7 @@ private fun ThreadHiddenHistoryGlimpse(messages: List<HiddenHistoryMessage>, tim
             Modifier
                 .fillMaxWidth()
                 .clearAndSetSemantics {}
-                .alpha(0.7f)
+                .alpha(ThreadHiddenHistoryGlimpseAlpha)
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()

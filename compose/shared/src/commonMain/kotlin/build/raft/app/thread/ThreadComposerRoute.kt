@@ -18,6 +18,7 @@ import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.data.SharedMembersMemberSuggestion
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
+import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -771,8 +772,9 @@ private fun ThreadComposerContentWithSuggestions(
 ) {
     val memberSuggestionSlice by memberSuggestionsFlow.collectAsState(SharedMembersMemberSuggestionSlice())
     val channelSuggestionSlice by channelSuggestionsFlow.collectAsState(SharedMembersChannelSuggestionSlice())
+    val channelJointServers = LocalRaftChannelJointServers.current
     val loadedMemberSuggestions =
-        remember(memberSuggestionSlice.suggestions, threadMessages, originMessage, prioritizeThreadParticipants) {
+        remember(memberSuggestionSlice.suggestions, threadMessages, originMessage, prioritizeThreadParticipants, channelJointServers) {
             val threadParticipantRanks =
                 threadMentionParticipantRanks(
                     threadMessages = threadMessages,
@@ -782,19 +784,9 @@ private fun ThreadComposerContentWithSuggestions(
             memberSuggestionSlice.suggestions
                 .sortForThreadMentionParticipants(threadParticipantRanks)
                 .map { suggestion ->
-                    RaftComposerMemberItem(
-                        displayName = suggestion.displayName,
-                        handle = suggestion.handle,
-                        inMentionChannel = suggestion.inMentionChannel,
+                    suggestion.toRaftComposerMemberItem(
                         inThread = suggestion.isThreadMentionParticipant(threadParticipantRanks),
-                        sourceServerId = suggestion.sourceServerId,
-                        isLocalServer = suggestion.isLocalServer,
-                        sourceServerLabel = suggestion.sourceServerLabel,
-                        kind = suggestion.kind,
-                        description = suggestion.description,
-                        avatarWireValue = suggestion.avatarWireValue,
-                        avatarLabel = suggestion.avatarLabel,
-                        memberId = suggestion.memberId
+                        knownServers = channelJointServers,
                     )
                 }
         }
@@ -1029,7 +1021,8 @@ internal fun threadComposerImageAnnotationPayload(
     val previewUri = firstFile.composerLocalPreviewUri().orEmpty()
     return RaftFilePreviewPayload(
         kind = "image",
-        title = "Image preview",
+        // Shown only when the image has no name; resolved in the app language like the gallery's.
+        titleDesc = Res.string.file_preview_image.desc(),
         subtitle = firstFile.fileName,
         name = firstFile.fileName,
         path = firstFile.fileName,
@@ -1065,34 +1058,6 @@ internal fun threadComposerImageAnnotationPayload(
         composerImageCanEdit = true
     )
 }
-
-private fun RaftThreadAttachmentItem.toThreadAttachmentPreviewPayload(
-    kind: String,
-    title: String,
-    content: String = "",
-    imageUrl: String? = null,
-    message: String = "",
-    error: String? = null,
-    externalUrl: String? = null
-): RaftFilePreviewPayload =
-    RaftFilePreviewPayload(
-        kind = kind,
-        requestedKind = kind,
-        title = title,
-        subtitle = name.ifBlank { "Attachment" },
-        name = name.ifBlank { "Attachment" },
-        path = name,
-        meta = genericAttachmentMetaLine(),
-        content = content,
-        markdown = kind == "markdown",
-        imageUrl = imageUrl,
-        message = message,
-        messageDesc = null,
-        error = error,
-        externalUrl = externalUrl,
-        externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
-        externalMimeType = mimeType
-    )
 
 /** Renderer-facing URI; [PlatformFile.fileRef] remains the platform upload handle. */
 internal fun PlatformFile.composerLocalPreviewUri(): String? =
@@ -1181,4 +1146,70 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
             extension in RaftFilePreviewVideoExtensions
         }
     return !normalizedMime.startsWith("video/") && !hasVideoExtension
+}
+
+internal fun SharedMembersMemberSuggestion.toRaftComposerMemberItem(
+    inThread: Boolean,
+    knownServers: List<MemberServerRef> = emptyList(),
+): RaftComposerMemberItem {
+    val resolvedOriginServers =
+        if (isLocalServer) {
+            emptyList()
+        } else {
+            resolveExternalMentionOriginServers(
+                originServers = originServers,
+                sourceServerId = sourceServerId,
+                knownServers = knownServers,
+            )
+        }
+    val resolvedServerLabel =
+        if (isLocalServer) {
+            sourceServerLabel
+        } else {
+            sourceServerLabel?.trim()?.takeIf { it.isNotEmpty() }
+                ?: resolvedOriginServers.firstOrNull()?.originLabel()?.takeIf { it.isNotEmpty() }
+        }
+    return RaftComposerMemberItem(
+        displayName = displayName,
+        handle = handle,
+        inMentionChannel = inMentionChannel,
+        inThread = inThread,
+        sourceServerId = sourceServerId,
+        isLocalServer = isLocalServer,
+        sourceServerLabel = resolvedServerLabel,
+        kind = kind,
+        description = description,
+        avatarWireValue = avatarWireValue,
+        avatarLabel = avatarLabel,
+        memberId = memberId,
+        originServers = resolvedOriginServers,
+    )
+}
+
+private fun resolveExternalMentionOriginServers(
+    originServers: List<MemberServerRef>,
+    sourceServerId: String?,
+    knownServers: List<MemberServerRef>,
+): List<MemberServerRef> {
+    val knownById =
+        buildMap {
+            for (server in knownServers) {
+                val id = server.id.trim().takeIf { it.isNotEmpty() } ?: continue
+                if (!containsKey(id)) put(id, server)
+            }
+        }
+    if (originServers.isNotEmpty()) {
+        return originServers.map { server ->
+            val known = knownById[server.id.trim()] ?: return@map server
+            server.copy(
+                name = server.name.ifBlank { known.name },
+                slug = server.slug.ifBlank { known.slug },
+                avatarUrl = server.avatarUrl?.trim()?.takeIf { it.isNotEmpty() } ?: known.avatarUrl,
+            )
+        }
+    }
+    val cleanId = sourceServerId?.trim()?.takeIf { it.isNotEmpty() } ?: return emptyList()
+    val known = knownById[cleanId] ?: return emptyList()
+    if (known.originLabel().isEmpty()) return emptyList()
+    return listOf(known)
 }

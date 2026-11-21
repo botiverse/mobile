@@ -3,10 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,10 +15,11 @@ import kotlin.test.assertTrue
  * 7d349b509d6511eb922f7870099017fdda0d3f61. Payload shapes follow:
  *  - `packages/server/src/services/channelService.ts` `JointChannelMetadata`, `JointServerMetadata`,
  *    `JointPendingInviteMetadata` and `attachJointChannelMetadata` (L1666-1845);
- *  - `listPendingJointChannelInvites` (L1014) for `GET channels/joint-invites`;
- *  - `packages/server/src/routes/channels.joint.api.test.ts` L986 (`{ ok: true, resentCount: 2 }`),
- *    L3330/L3455/L3614 (invite `code`s) and `routes/channels.ts` `sendJointLimitError` /
- *    `sendJointInviteValidationError` for the error bodies.
+ *  - `listPendingJointChannelInvites` (L1014) for `GET channels/joint-invites`.
+ * The accept refusals are `routes/channels.ts` `POST /joint-invites/:inviteId/accept` with
+ * `sendJointLimitError` (`refuse()`, `lib/refusal.ts` `refusalBody`) and
+ * `services/jointChannelLimitService.ts` `hostPlanLimitError`, botiverse/slock `staging` @
+ * 5881c7b53ca7b447e4d4ac391390c68453cba952.
  */
 class JointChannelsApiTest {
     /**
@@ -51,11 +48,12 @@ class JointChannelsApiTest {
                 parseSharedJointChannelConnections(
                     """{"id":"ch-1","name":"room","type":"joint","jointRole":"owner",
                     |"channelCapabilities":{"federateChannels":false},
-                    |"jointServers":[{"serverId":"s1","serverName":"S","serverSlug":"s","role":"admin","status":"active","plan":"free"}]}""".trimMargin()
+                    |"jointServers":[{"serverId":"s1","serverName":"S","serverSlug":"s","serverAvatarUrl":"/api/avatars/server-s1/logo.webp","role":"admin","status":"active","plan":"free"}]}""".trimMargin()
                 )
             )
         assertNull(unknown.jointRole)
         assertNull(unknown.servers.single().role)
+        assertEquals("/api/avatars/server-s1/logo.webp", unknown.servers.single().avatarUrl)
         assertEquals(false, unknown.federateChannels)
     }
 
@@ -111,11 +109,10 @@ class JointChannelsApiTest {
         assertEquals(JointChannelServerPlan.Free, target.plan)
         assertEquals("Target Co", target.name)
         assertTrue(connections.hasCurrentServerPendingInvites)
-        assertFalse(connections.serverLimitReached)
     }
 
     @Test
-    fun participantProjectionWithoutOwnPendingInvitesCannotResend() {
+    fun participantProjectionHasNoPendingInvitesOfItsOwn() {
         val connections = assertNotNullValue(parseSharedJointChannelConnections(PARTICIPANT_PROJECTION))
 
         assertEquals(2, connections.servers.size)
@@ -158,8 +155,7 @@ class JointChannelsApiTest {
     }
 
     @Test
-    fun resendDisconnectAndAcceptResponsesParse() {
-        assertEquals(2, parseSharedJointResendCount("""{"ok":true,"resentCount":2}"""))
+    fun disconnectAndAcceptResponsesParse() {
         assertTrue(parseSharedJointDisconnectOk("""{"ok":true}"""))
         val accepted = assertNotNullValue(parseSharedJointAcceptedChannel(PARTICIPANT_PROJECTION))
         assertEquals(ChannelId("ch-target"), accepted.channelId)
@@ -170,72 +166,9 @@ class JointChannelsApiTest {
     fun parsersRejectGuessedWrappersAndAliases() {
         assertNull(parseSharedPendingJointInvites("""{"data":{"invites":[]}}"""))
         assertNull(parseSharedPendingJointInvites("""[{"id":"x"}]"""))
-        assertNull(parseSharedJointResendCount("""{"ok":true,"resent_count":2}"""))
         assertNull(parseSharedJointChannelConnections("""{"channel":{"id":"ch-1","type":"joint"}}"""))
         assertNull(parseSharedJointAcceptedChannel("""{"channelId":"ch-1"}"""))
         assertFalse(parseSharedJointDisconnectOk("""{"success":true}"""))
-    }
-
-    @Test
-    fun inviteBodyCarriesExactServerFields() {
-        val body = Json.parseToJsonElement(buildSharedJointChannelInviteBody("partner-co", listOf("@ada", "bo@example.com"))).jsonObject
-
-        assertEquals(setOf("targetServerSlug", "invitedPeople"), body.keys)
-        assertEquals("partner-co", body.getValue("targetServerSlug").jsonPrimitive.content)
-        assertEquals(listOf("@ada", "bo@example.com"), body.getValue("invitedPeople").jsonArray.map { it.jsonPrimitive.content })
-    }
-
-    @Test
-    fun sameAdminIsSentOnlyWhenSetLikeWeb() {
-        // botiverse/slock staging d8082739a routes/channels.ts `POST /:id/joint-invites` reads `sameAdmin === true`.
-        val direct = Json.parseToJsonElement(buildSharedJointChannelInviteBody("partner-co", listOf("@me"), sameAdmin = true)).jsonObject
-        assertEquals(setOf("targetServerSlug", "invitedPeople", "sameAdmin"), direct.keys)
-        assertEquals("true", direct.getValue("sameAdmin").jsonPrimitive.content)
-
-        val create =
-            Json.parseToJsonElement(
-                buildSharedCreateJointChannelBody(
-                    "launch",
-                    null,
-                    emptyList(),
-                    emptyList(),
-                    listOf(JointInviteTarget("partner-co", listOf("@me"), sameAdmin = true), JointInviteTarget("third-co", listOf("@cy"))),
-                )
-            ).jsonObject
-        val invites = create.getValue("jointInvites").jsonArray.map { it.jsonObject }
-        assertEquals("true", invites[0].getValue("sameAdmin").jsonPrimitive.content)
-        assertEquals(setOf("targetServerSlug", "invitedPeople"), invites[1].keys)
-    }
-
-    @Test
-    fun sameAdminContextComesFromTheSessionServersAndUser() {
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "u1", email = "me@example.com", name = "me"),
-                accessToken = "a",
-                refreshToken = "r",
-                servers =
-                    listOf(
-                        StoredAuthServer(id = "s1", name = "Home Co", slug = "home-co", role = "member"),
-                        StoredAuthServer(id = "s2", name = "Partner Co", slug = "partner-co", role = "admin"),
-                    ),
-            )
-        val context = session.jointSameAdminContext("s1")!!
-        assertEquals("Home Co", context.currentServerName)
-        assertEquals("partner-co", findSameAdminJointTarget(context, "partner-co", listOf("Me@Example.com"))?.slug)
-        assertNull(findSameAdminJointTarget(context, "partner-co", listOf("bo@example.com")))
-        assertNull(session.jointSameAdminContext("unknown"))
-    }
-
-    @Test
-    fun invitedPeopleAndSlugFollowWebRules() {
-        assertEquals(listOf("@ada", "bo@example.com", "cy"), parseJointInvitedPeopleText(" @ada ,bo@example.com\n\n cy ,"))
-        assertEquals(JointServerSlugIssue.Required, jointServerSlugIssue(""))
-        assertEquals(JointServerSlugIssue.Pattern, jointServerSlugIssue("Partner"))
-        assertEquals(JointServerSlugIssue.Pattern, jointServerSlugIssue("1partner"))
-        // Reference slugs have no minimum length (shared validateServerSlugReferenceReason).
-        assertNull(jointServerSlugIssue("ab"))
-        assertNull(jointServerSlugIssue("partner-co-2"))
     }
 
     @Test
@@ -244,8 +177,6 @@ class JointChannelsApiTest {
             RecordingJointNetworkClient { path, _ ->
                 when (path) {
                     "channels/ch-host" -> HomeNetworkResponse(200, HOST_PROJECTION)
-                    "channels/ch-host/joint-invites" -> HomeNetworkResponse(200, HOST_PROJECTION)
-                    "channels/ch-host/joint-invite/resend" -> HomeNetworkResponse(200, """{"ok":true,"resentCount":2}""")
                     "channels/ch-host/disconnect" -> HomeNetworkResponse(200, """{"ok":true}""")
                     "channels/joint-invites" -> HomeNetworkResponse(200, PENDING_INVITES)
                     else -> HomeNetworkResponse(200, PARTICIPANT_PROJECTION)
@@ -255,8 +186,6 @@ class JointChannelsApiTest {
         val channel = ChannelId("ch-host")
 
         assertIs<DataResult.Content<*>>(repository.loadConnections(channel, DataRequestPriority.Visible))
-        assertIs<DataResult.Content<*>>(repository.inviteServer(channel, "target-co", listOf("@ada")))
-        assertEquals(2, assertIs<DataResult.Content<Int>>(repository.resendInvites(channel)).data)
         assertIs<DataResult.Content<Unit>>(repository.disconnect(channel))
         assertEquals(1, assertIs<DataResult.Content<List<PendingJointInvite>>>(repository.pendingInvites(ServerId("srv-target"), DataRequestPriority.Background)).data.size)
         assertIs<DataResult.Content<JointChannelAccepted>>(repository.acceptInvite(ServerId("srv-target"), "inv-1"))
@@ -264,37 +193,34 @@ class JointChannelsApiTest {
         assertEquals(
             listOf(
                 Triple("GET", "channels/ch-host", DataRequestPriority.Visible),
-                Triple("POST", "channels/ch-host/joint-invites", DataRequestPriority.Foreground),
-                Triple("POST", "channels/ch-host/joint-invite/resend", DataRequestPriority.Foreground),
                 Triple("POST", "channels/ch-host/disconnect", DataRequestPriority.Foreground),
                 Triple("GET", "channels/joint-invites", DataRequestPriority.Background),
                 Triple("POST", "channels/joint-invites/inv-1/accept", DataRequestPriority.Foreground),
             ),
             client.calls.map { Triple(it.method, it.path, it.priority) },
         )
-        assertEquals(listOf(null, null, null, null, ServerId("srv-target"), ServerId("srv-target")), client.calls.map { it.serverIdOverride })
-        val inviteBody = Json.parseToJsonElement(assertNotNullValue(client.calls[1].body)).jsonObject
-        assertEquals("target-co", inviteBody.getValue("targetServerSlug").jsonPrimitive.content)
+        assertEquals(listOf(null, null, ServerId("srv-target"), ServerId("srv-target")), client.calls.map { it.serverIdOverride })
     }
 
     @Test
     fun failuresKeepServerCodeAndReason() = runTest {
         data class Case(val status: Int, val body: String, val code: String, val blocked: Boolean, val message: String?)
         listOf(
-            // sendJointLimitError: 403 { error, code }.
-            Case(403, """{"error":"This joint channel already has 2 free servers; one side needs to upgrade.","code":"joint_free_server_limit"}""", JOINT_FREE_SERVER_LIMIT, true, "This joint channel already has 2 free servers; one side needs to upgrade."),
-            Case(403, """{"error":"Joint channels are limited to 30 servers.","code":"joint_server_limit"}""", JOINT_SERVER_LIMIT, true, "Joint channels are limited to 30 servers."),
-            // federateChannels gate: 403 { error } only.
-            Case(403, """{"error":"Only admins can invite servers to joint channels"}""", "joint_forbidden", true, "Only admins can invite servers to joint channels"),
-            // sendJointInviteValidationError: 400 { error, code, targetServerSlug?, invitee? }.
-            Case(400, """{"error":"Invited person not found in target server: @ghost","code":"joint_invitee_not_found","targetServerSlug":"target-co","invitee":"@ghost"}""", JOINT_INVITEE_NOT_FOUND, false, "Invited person not found in target server: @ghost"),
-            Case(400, """{"error":"Target server not found","code":"joint_target_server_invalid","targetServerSlug":"nope"}""", JOINT_TARGET_SERVER_INVALID, false, "Target server not found"),
-            // Resend with nothing pending: 409 { error }.
-            Case(409, """{"error":"No pending joint channel invite found"}""", "joint_http_409", false, "No pending joint channel invite found"),
-            Case(500, """{"error":"Failed to disconnect joint channel"}""", "server_unavailable", false, "Failed to disconnect joint channel"),
+            // sendJointLimitError through refuse(): 403 { error, code, errorCode }.
+            Case(403, """{"error":"Joint channels are limited to 30 servers.","code":"joint_server_limit","errorCode":"joint_server_limit"}""", JOINT_SERVER_LIMIT, true, "Joint channels are limited to 30 servers."),
+            Case(
+                403,
+                """{"error":"The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.","code":"joint_channel_plan_limit_reached","errorCode":"joint_channel_plan_limit_reached"}""",
+                JOINT_CHANNEL_PLAN_LIMIT_REACHED,
+                true,
+                "The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.",
+            ),
+            // The name is taken on the accepting server: 409 { error } only.
+            Case(409, """{"error":"Channel name \"partner-room\" is already taken"}""", "joint_http_409", false, "Channel name \"partner-room\" is already taken"),
+            Case(500, """{"error":"Failed to accept joint channel invite"}""", "server_unavailable", false, "Failed to accept joint channel invite"),
         ).forEach { case ->
             val result = RealJointChannelRepository(RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(case.status, case.body) })
-                .inviteServer(ChannelId("ch-host"), "target-co", listOf("@ghost"))
+                .acceptInvite(ServerId("srv-target"), "inv-1")
             assertEquals(case.code, result.jointFailureCode(), "status=${case.status}")
             if (case.blocked) {
                 assertEquals(case.message, assertIs<DataResult.NoPermission>(result).blocker.serverMessage)
@@ -304,8 +230,18 @@ class JointChannelsApiTest {
         }
         val unauthenticated =
             RealJointChannelRepository(RecordingJointNetworkClient { _, _ -> HomeNetworkResponse(401, """{"error":"Unauthorized"}""") })
-                .resendInvites(ChannelId("ch-host"))
+                .acceptInvite(ServerId("srv-target"), "inv-1")
         assertEquals("auth_required", unauthenticated.jointFailureCode())
+    }
+
+    @Test
+    fun aRateLimitWaitIsWholeMinutesRoundedUpAndAtLeastOne() {
+        // The action card's feedback rate limit words its wait with this (ThreadActionCardSpecView).
+        assertEquals(
+            listOf(1, 1, 1, 2, 59, 60),
+            listOf(0L, 1L, 60L, 61L, 3540L, 3600L).map { jointInviteRateLimitMinutes(it) },
+        )
+        assertNull(jointInviteRateLimitMinutes(null))
     }
 
     private fun <T> assertNotNullValue(value: T?): T {

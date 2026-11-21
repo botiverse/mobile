@@ -1,25 +1,33 @@
 package build.raft.app
 
 import build.raft.app.data.AgentConfigApply
-import build.raft.app.data.AgentResetMode
+import build.raft.app.data.RaftBulkModelTarget
+import build.raft.app.data.RaftBulkPlanAgent
+import build.raft.app.data.RaftBulkPlanRow
+import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.parseSharedAgentConfigApply
+import build.raft.app.data.parseSharedAgentConfigApplyNewSession
+import build.raft.app.data.planRaftBulkModelChange
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
- * botiverse/slock #13372 / #13373 (reconciler step 11c): a running agent's runtime config change
- * saves without a restart and applies when the agent is next idle. The PATCH answer's
- * `configApply` decides the saved notice (`announceRuntimeConfigApply`), Restart now restarts
- * (or resets the session of) the agent, and the Model row says what still runs until then.
+ * botiverse/slock #15669 / #15714 (reconciler step 11c + `#proj-runtime:#80`): a running agent's
+ * saved runtime config applies automatically with a plain confirmation toast (no manual Restart
+ * now / Switch now prompt), and bulk Change model defaults to applying immediately without a
+ * restart checkbox.
  */
 class MembersRuntimeConfigApplyTest {
     @Test
-    fun configApplyIsReadFromThePatchAnswer() {
-        // slock packages/server/src/routes/agents.ts `res.json({ ...agent, configApply })`.
+    fun configApplyAndNewSessionAreReadFromThePatchAnswer() {
+        // slock packages/server/src/routes/agents.ts `res.json({ ...agent, configApply, configApplyNewSession })`.
+        assertEquals(AgentConfigApply.Applied, parseSharedAgentConfigApply("""{"id":"a1","configApply":"applied"}"""))
         assertEquals(AgentConfigApply.WhenIdle, parseSharedAgentConfigApply("""{"id":"a1","name":"witty","configApply":"when_idle"}"""))
         assertEquals(AgentConfigApply.Restarted, parseSharedAgentConfigApply("""{"id":"a1","configApply":"restarted"}"""))
         assertEquals(AgentConfigApply.Saved, parseSharedAgentConfigApply("""{"id":"a1","configApply":"saved"}"""))
@@ -27,86 +35,89 @@ class MembersRuntimeConfigApplyTest {
         assertNull(parseSharedAgentConfigApply("""{"id":"a1"}"""))
         assertNull(parseSharedAgentConfigApply("""{"id":"a1","configApply":"later"}"""))
         assertNull(parseSharedAgentConfigApply("""{"id":"a1","config_apply":"when_idle"}"""))
+        // Server's configApplyNewSession flag.
+        assertEquals(true, parseSharedAgentConfigApplyNewSession("""{"id":"a1","configApplyNewSession":true}"""))
+        assertEquals(false, parseSharedAgentConfigApplyNewSession("""{"id":"a1","configApplyNewSession":false}"""))
+        assertNull(parseSharedAgentConfigApplyNewSession("""{"id":"a1"}"""))
     }
 
     @Test
     fun theProfileAsStoredHasNoConfigApply() {
-        val saved = MemberProfile(MemberId("a1"), "witty", "witty", MemberKind.Agent, configApply = AgentConfigApply.WhenIdle)
+        val saved =
+            MemberProfile(
+                MemberId("a1"),
+                "witty",
+                "witty",
+                MemberKind.Agent,
+                configApply = AgentConfigApply.Applied,
+                configApplyNewSession = true
+            )
         assertNull(saved.withoutConfigApply().configApply)
-        assertEquals(saved.copy(configApply = null), saved.withoutConfigApply())
+        assertNull(saved.withoutConfigApply().configApplyNewSession)
+        assertEquals(saved.copy(configApply = null, configApplyNewSession = null), saved.withoutConfigApply())
     }
 
     @Test
-    fun whenIdleSaysItAppliesAtTheNextIdlePointWithRestartNow() {
+    fun appliedAndRestartedOnAnActiveAgentShowPlainAppliedConfirmation() {
         assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.WhenIdle, AgentResetMode.Restart),
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            notice(AgentConfigApply.Applied, agentActive = true, newSession = false)
+        )
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            notice(AgentConfigApply.Restarted, agentActive = true, newSession = false)
+        )
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
+            notice(AgentConfigApply.Applied, agentActive = true, newSession = true)
+        )
+        // Inactive agent: no notice.
+        assertNull(notice(AgentConfigApply.Applied, agentActive = false, newSession = false))
+        assertNull(notice(AgentConfigApply.Restarted, agentActive = false, newSession = false))
+    }
+
+    @Test
+    fun whenIdleOnOlderDaemonShowsAutomaticTurnEndNotice() {
+        assertEquals(
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.WhenIdle),
             notice(AgentConfigApply.WhenIdle, agentActive = true, newSession = false)
         )
-        // A new-session change: its own words, and Restart now resets the session.
         assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.NewSessionWhenIdle, AgentResetMode.Session),
+            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.NewSessionWhenIdle),
             notice(AgentConfigApply.WhenIdle, agentActive = true, newSession = true)
         )
     }
 
     @Test
-    fun anOlderDaemonsSavedOnARunningAgentAppliesAtTheNextStart() {
-        assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.NextStart, AgentResetMode.Restart),
-            notice(AgentConfigApply.Saved, agentActive = true, newSession = false)
-        )
-        assertEquals(AgentResetMode.Session, notice(AgentConfigApply.Saved, agentActive = true, newSession = true)?.restartNow)
-    }
-
-    @Test
-    fun aStoppedAgentARestartAndAnOldServerShowNoNotice() {
+    fun savedAndAbsentShowNoManualRestartPrompt() {
+        assertNull(notice(AgentConfigApply.Saved, agentActive = true, newSession = false))
+        assertNull(notice(AgentConfigApply.Saved, agentActive = true, newSession = true))
         assertNull(notice(AgentConfigApply.Saved, agentActive = false, newSession = false))
-        assertNull(notice(AgentConfigApply.Restarted, agentActive = true, newSession = false))
         assertNull(notice(null, agentActive = true, newSession = false))
     }
 
     @Test
-    fun restartNowIsOfferedOnlyToWhoMayRestartTheAgent() {
-        assertEquals(
-            MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.WhenIdle, restartNow = null),
-            notice(AgentConfigApply.WhenIdle, agentActive = true, newSession = false, canRestart = false)
-        )
+    fun bulkModelChangeDefaultsToImmediateApplyWithoutExplicitRestart() {
+        val runningAgent =
+            SettingsComputerAgentSnapshot(
+                id = "a1",
+                name = "Otter",
+                runtime = "claude",
+                model = "claude-sonnet-4-5"
+            )
+        val plan =
+            planRaftBulkModelChange(
+                agents = listOf(RaftBulkPlanAgent(runningAgent, running = true)),
+                target = RaftBulkModelTarget(runtime = "claude", model = "claude-opus-4-6", reasoningEffort = null)
+            )
+        assertEquals(1, plan.applyCount)
+        assertEquals(1, plan.runningChangeCount)
+        assertEquals(0, plan.restartCount)
+        val row = plan.rows.single() as RaftBulkPlanRow.Change
+        assertFalse(row.restarts)
+        assertTrue(row.agentId == "a1")
     }
 
-    @Test
-    fun theModelRowSaysWhatARunningAgentStillRuns() {
-        assertEquals(
-            MembersRuntimeRunningHint.Model(running = "label:grok-3", saved = "label:grok-4"),
-            hint(runningRuntime = "grok", runningModel = "grok-3")
-        )
-        assertEquals(
-            MembersRuntimeRunningHint.Runtime(running = "name:claude", saved = "name:grok"),
-            hint(runningRuntime = "claude", runningModel = "sonnet")
-        )
-        // The running runtime unknown: the model still decides, as on the web.
-        assertEquals(MembersRuntimeRunningHint.Model("label:grok-3", "label:grok-4"), hint(runningRuntime = null, runningModel = "grok-3"))
-    }
-
-    @Test
-    fun theModelRowSaysNothingWhenEqualUnknownOrStopped() {
-        assertNull(hint(runningRuntime = "grok", runningModel = "grok-4"))
-        assertNull(hint(runningRuntime = null, runningModel = null))
-        assertNull(hint(runningRuntime = "grok", runningModel = null))
-        assertNull(hint(runningRuntime = "grok", runningModel = "grok-3", agentActive = false))
-        assertNull(hint(runningRuntime = "claude", runningModel = "sonnet", agentActive = false))
-    }
-
-    private fun notice(configApply: AgentConfigApply?, agentActive: Boolean, newSession: Boolean, canRestart: Boolean = true) =
-        membersRuntimeConfigApplyNotice(configApply, agentActive, newSession, canRestart)
-
-    private fun hint(runningRuntime: String?, runningModel: String?, agentActive: Boolean = true) =
-        membersRuntimeRunningHint(
-            agentActive = agentActive,
-            savedRuntime = "grok",
-            savedModel = "grok-4",
-            runningRuntime = runningRuntime,
-            runningModel = runningModel,
-            runtimeName = { "name:$it" },
-            modelLabel = { "label:$it" }
-        )
+    private fun notice(configApply: AgentConfigApply?, agentActive: Boolean, newSession: Boolean) =
+        membersRuntimeConfigApplyNotice(configApply, agentActive, newSession)
 }

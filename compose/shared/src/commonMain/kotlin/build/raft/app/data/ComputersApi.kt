@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -1142,7 +1143,13 @@ internal data class ComputerSummary(
      * web `rackLoginStep`). Null: the row carried no `attention` (an older server, a viewer the
      * server computes none for, or an incremental-sync row, which never carries it).
      */
-    val loginSteps: List<ComputerLoginStep>? = null
+    val loginSteps: List<ComputerLoginStep>? = null,
+    /**
+     * Server `attention.count > 0` verdict (web `serverNeedsAttention`, slock #15534): true when a
+     * person must act on this Computer, false when the server reported `count == 0`, null when the
+     * row carried no readable `attention` summary (older server or incremental-sync row).
+     */
+    val serverNeedsAttention: Boolean? = null
 )
 
 /**
@@ -1683,7 +1690,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         agentScopes = agentScopes?.toSnapshot(),
         diskStatus = diskStatus?.toStatus(),
         memoryStatus = memoryStatus?.toStatus(),
-        loginSteps = attention?.let(::computerLoginSteps)
+        loginSteps = attention?.let(::computerLoginSteps),
+        serverNeedsAttention = attention?.let(::computerServerNeedsAttention)
     )
 }
 
@@ -1739,6 +1747,21 @@ private data class ReadinessResourceDto(
 
 /** slock `READINESS_ACTIONS`: every action the server derives from a code. */
 private val READINESS_ACTION_WIRES = setOf("sign_in", "verify_account", "update_computer", "fix")
+
+/**
+ * Web `serverNeedsAttention` (slock #15534, utils/computerUpgradeIndicator.ts): the server's
+ * `attention.count > 0` verdict when the machine row carried an `attention` summary; null from
+ * older servers or when `count` is absent/unreadable (callers keep their fallback rule).
+ */
+internal fun computerServerNeedsAttention(attention: JsonElement): Boolean? {
+    val count =
+        ((attention as? JsonObject)?.get("count") as? JsonPrimitive)
+            ?.takeIf { !it.isString }
+            ?.doubleOrNull
+            ?.takeIf { it.isFinite() }
+            ?: return null
+    return count > 0.0
+}
 
 /**
  * Web `rackLoginStep`'s items (slock #14602): each `attention.items` entry with a `code` (the
@@ -1872,13 +1895,16 @@ internal const val RUNTIME_FORM_V2_MARKER_HEADER = "X-Raft-Runtime-Form-V2"
  * - `RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY` (#14605, #14667): the server sends a usage
  *   window's `scope` (every kind, `models` too) only to a request that declares it reads it.
  * - `RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY` (#15374): likewise an account's `credits`.
- * This app's parser reads both; a server that predates a token ignores it.
+ * - `RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY` (#15395): likewise an unsupported account's `unsupportedReason`.
+ * This app's parser reads them all; a server that predates a token ignores it.
  */
 internal const val RAFT_CLIENT_CAPABILITIES_HEADER = "X-Raft-Client-Capabilities"
 internal const val RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY = "runtime-usage-window-scope@2"
 internal const val RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY = "runtime-usage-credits@1"
 /** slock `RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY` (#15348): this build reads an account's `agentIds`. */
 internal const val RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY = "runtime-usage-account-folders@1"
+/** slock `RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY` (#15395): this build reads an account's `unsupportedReason`. */
+internal const val RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY = "runtime-usage-unsupported-reason@1"
 internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
     mapOf(
         RAFT_CLIENT_CAPABILITIES_HEADER to
@@ -1886,6 +1912,7 @@ internal val RUNTIME_USAGE_CLIENT_CAPABILITY_HEADERS: Map<String, String> =
                 RUNTIME_USAGE_WINDOW_SCOPE_CLIENT_CAPABILITY,
                 RUNTIME_USAGE_CREDITS_CLIENT_CAPABILITY,
                 RUNTIME_USAGE_ACCOUNT_FOLDERS_CLIENT_CAPABILITY,
+                RUNTIME_USAGE_UNSUPPORTED_REASON_CLIENT_CAPABILITY,
             ).joinToString(", ")
     )
 

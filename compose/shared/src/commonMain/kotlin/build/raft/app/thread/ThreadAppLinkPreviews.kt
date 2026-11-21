@@ -231,8 +231,8 @@ internal fun ThreadAppLinkPreviewScope(
     // No card changes under the person: a card of this message open, or Raft's question open on it.
     ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || asking != null }
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
-    // An Artifact link the author gave words to opens in place, as its card under the message does
-    // (#proj-workspace:#289); the browser only when no page can open.
+    // An Artifact link (its chip, or words the author gave it) opens in place, as its card under the
+    // message does (#proj-workspace:#289); the browser only when no page can open.
     val openArtifactWebPage = rememberRaftWebPageOpener()
     val artifactOpener = rememberRaftArtifactOpener { openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, it)) }
     val chipHost =
@@ -244,8 +244,17 @@ internal fun ThreadAppLinkPreviewScope(
                 cardAnchor = cards::anchor,
                 artifacts = artifacts.summaries,
                 artifactHosts = artifacts.appHosts,
-                onOpenArtifact = { target -> cards.openArtifact(target, artifactWebUrl(artifactWebBaseUrl, target)) },
-                artifactAnchor = { key -> cards.anchor(threadArtifactCardKey(key)) },
+                // A tap on an Artifact's chip opens the Artifact in place, as a click on the web's chip
+                // does (ObjectLinkChip; on touch the web shows no card first): no item card in
+                // between (artin, #proj-mobile:#238). Its page only when the summary is gone.
+                onOpenArtifact = { target ->
+                    val summary = artifacts.summaries[target.key]
+                    if (summary != null) {
+                        artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_chip")
+                    } else {
+                        openArtifactWebPage(artifactWebUrl(artifactWebBaseUrl, target))
+                    }
+                },
                 onOpenArtifactInPlace = { target, summary ->
                     artifactOpener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_labelled_link")
                 },
@@ -298,8 +307,6 @@ internal fun ThreadAppLinkPreviewScope(
     ThreadAppLinkCardPopoverHost(
         results = view.results,
         cards = cards,
-        artifacts = artifacts.summaries,
-        artifactWebBaseUrl = artifactWebBaseUrl,
         actions = actionHost,
     )
     // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.

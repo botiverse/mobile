@@ -274,35 +274,6 @@ internal object SettingsVisualFixtureBridge {
 internal val settingsVisualFixtureValues: SettingsVisualFixtureValues
     get() = SettingsVisualFixtureBridge.values
 
-private val settingsPageVisualPayload: RaftSharedSettingsPayload
-    get() {
-        val fixture = settingsVisualFixtureValues
-        return RaftSharedSettingsPayload(
-            instanceId = "visual-settings-page",
-            title = "Account",
-            detail = "Profile, email, password, connected accounts",
-            heroIconName = RaftLucideIconName.User,
-            heroLabel = fixture.ownerDisplayName,
-            sections = listOf(
-                RaftSharedSettingsSection(
-                    title = "Profile",
-                    rows = listOf(
-                        RaftSharedSettingsRow("displayName", RaftLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = fixture.ownerDisplayName),
-                        RaftSharedSettingsRow("email", RaftLucideIconName.Mail, "Email", fixture.ownerEmail, status = "Verified"),
-                        RaftSharedSettingsRow("avatar", RaftLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
-                    )
-                ),
-                RaftSharedSettingsSection(
-                    title = "Session",
-                    rows = listOf(
-                        RaftSharedSettingsRow("password", RaftLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
-                        RaftSharedSettingsRow("logout", RaftLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
-                    )
-                )
-            )
-        )
-    }
-
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
     RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity),
@@ -1069,7 +1040,8 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
 // renders them. A display label such as "6 minutes ago" is not a timestamp:
 // under the page's live clock it reads "unknown time". No task and no draft:
 // the React fixture has neither.
-private val homeActivityVisualSnapshot = InboxSnapshot(
+// Also the rows of the wide layout's screens.wide.activity-task (WideShellVisualFixtures), as on the web.
+internal val homeActivityVisualSnapshot = InboxSnapshot(
     server = homeSearchVisualServer,
     items =
         listOf(

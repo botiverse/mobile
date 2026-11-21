@@ -2,6 +2,9 @@ package build.raft.app
 
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.data.SharedMembersMemberSuggestion
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -77,14 +80,39 @@ class RaftMemberOriginPartsTest {
             mapOf("server-acme" to "https://cdn.example/acme.png"),
             raftViewerServerLogos(listOf(" server-acme " to "https://cdn.example/acme.png", "server-1" to null, "server-2" to " ")),
         )
+
+        // slock #15817: row's own `servers[].avatarUrl` wins, else channel `jointServers[].serverAvatarUrl`,
+        // else viewer's joined server logo, else null (dot/initial).
+        val joined = raftViewerServerLogos(listOf(acme.id to "/joined-acme.webp", peer.id to "/joined-peer.webp"))
+        val channelLogo = "/channel-acme.webp"
+        val rowLogo = "/row-acme.webp"
+        val combined =
+            raftOriginServerLogos(
+                viewerServers = listOf(acme.id to "/joined-acme.webp", peer.id to "/joined-peer.webp"),
+                channelJointServers = listOf(acme.copy(avatarUrl = channelLogo), peer.copy(avatarUrl = null)),
+            )
+        assertEquals(channelLogo, combined[acme.id])
+        // Null/absent channel logo preserves the viewer's joined server logo.
+        assertEquals("/joined-peer.webp", combined[peer.id])
+        assertEquals(rowLogo, raftOriginServerLogo(acme.copy(avatarUrl = rowLogo), combined))
+        assertEquals(channelLogo, raftOriginServerLogo(acme, combined))
+        assertEquals("/joined-acme.webp", raftOriginServerLogo(acme, joined))
+        assertNull(raftOriginServerLogo(MemberServerRef("server-unknown", "Unknown"), combined))
+        assertNull(raftOriginServerLogo(null, combined))
     }
 
     @Test
     fun theMentionListMarksOnlyANamedCandidateFromAnotherServer() {
         val candidate = RaftComposerMemberItem(displayName = "Ada", handle = "ada", sourceServerId = peer.id, isLocalServer = false, sourceServerLabel = "Peer Labs +1")
         assertEquals(listOf(MemberServerRef(peer.id, "Peer Labs +1")), candidate.mentionOriginServers())
+        // Candidate carrying `originServers` keeps `servers[].avatarUrl` for the @ badge.
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
+        assertEquals(
+            listOf(peerWithLogo),
+            candidate.copy(originServers = listOf(peerWithLogo)).mentionOriginServers(),
+        )
         // One of the viewed server's own, even when they are also in another server.
-        assertEquals(emptyList(), candidate.copy(isLocalServer = true).mentionOriginServers())
+        assertEquals(emptyList(), candidate.copy(isLocalServer = true, originServers = listOf(peerWithLogo)).mentionOriginServers())
         // From another server, but its server was not named: nothing to mark (web: no first server).
         assertEquals(emptyList(), candidate.copy(sourceServerLabel = null).mentionOriginServers())
     }
@@ -125,5 +153,130 @@ class RaftMemberOriginPartsTest {
         assertEquals(emptyList(), unnamed.originServers)
         // Without a viewed server nothing is decided.
         assertFalse(raftProfilePreviewCardModel(person).external)
+
+        // slock #15817: bare-serverId external agent resolves name + logo from channel jointServers.
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-joint-logo.webp")
+        val bareAgent =
+            MemberProfile(
+                id = MemberId("a-ext-bare"),
+                displayName = "Volta",
+                handle = "volta",
+                kind = MemberKind.Agent,
+                serverId = ServerId(peer.id),
+            )
+        val resolvedBare =
+            raftProfilePreviewCardModel(
+                bareAgent,
+                viewerServerId = viewer,
+                knownServers = listOf(peerWithLogo),
+            )
+        assertTrue(resolvedBare.external)
+        assertEquals(listOf(peerWithLogo), resolvedBare.originServers)
+    }
+
+    @Test
+    fun mentionSuggestionResolvesBareExternalAgentFromChannelJointServers() {
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-joint-logo.webp")
+        val bareSuggestion =
+            SharedMembersMemberSuggestion(
+                displayName = "Volta",
+                handle = "volta",
+                inMentionChannel = true,
+                sourceServerId = peer.id,
+                isLocalServer = false,
+                sourceServerLabel = null,
+                kind = MemberKind.Agent,
+                memberId = "agent-volta",
+                originServers = emptyList(),
+            )
+        val item = bareSuggestion.toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
+        assertEquals("Peer Labs", item.sourceServerLabel)
+        assertEquals(listOf(peerWithLogo), item.mentionOriginServers())
+
+        // Row's own servers[].avatarUrl wins over channel jointServers[].serverAvatarUrl.
+        val rowLogoPeer = peer.copy(avatarUrl = "/peer-row-logo.webp")
+        val richSuggestion = bareSuggestion.copy(originServers = listOf(rowLogoPeer), sourceServerLabel = "Peer Labs")
+        val richItem = richSuggestion.toRaftComposerMemberItem(inThread = true, knownServers = listOf(peerWithLogo))
+        assertEquals(listOf(rowLogoPeer), richItem.mentionOriginServers())
+
+        // Local member never receives an external badge even if jointServers has entries,
+        // while preserving any extra server label (e.g. a local member who also shares another server).
+        val localItem =
+            bareSuggestion
+                .copy(
+                    sourceServerId = viewer,
+                    isLocalServer = true,
+                    sourceServerLabel = "Peer Labs",
+                    originServers = listOf(rowLogoPeer),
+                )
+                .toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
+        assertEquals("Peer Labs", localItem.sourceServerLabel)
+        assertEquals(emptyList(), localItem.mentionOriginServers())
+    }
+
+    @Test
+    fun threadChannelJointServersResolvesDirectAndParentChannelFallback() {
+        val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
+        val jointProjection =
+            SharedConversationDirectoryProjection(
+                serverId = viewer,
+                canonicalChannelId = "joint-ch",
+                aliases = setOf("joint-ch"),
+                conversationKind = ConversationKind.Joint,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "joint",
+                title = "partner-sync",
+                jointServers = listOf(peerWithLogo),
+            )
+        val threadProjection =
+            SharedConversationDirectoryProjection(
+                serverId = viewer,
+                canonicalChannelId = "reply-stream",
+                aliases = setOf("reply-stream"),
+                conversationKind = ConversationKind.Thread,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = "thread",
+                title = "Reply",
+                parentChannelId = "joint-ch",
+                jointServers = emptyList(),
+            )
+        val projections = mapOf("joint-ch" to jointProjection, "reply-stream" to threadProjection)
+
+        // Direct channel lookup
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("joint-ch"),
+                parentChannelId = null,
+                taskParentChannelId = null,
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
+        // Reply thread resolves through parentChannelId
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("reply-stream"),
+                parentChannelId = "joint-ch",
+                taskParentChannelId = null,
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
+        // Task conversation resolves through taskParentChannelId
+        assertEquals(
+            listOf(peerWithLogo),
+            threadChannelJointServers(
+                lookupIds = listOf("task-conv-1"),
+                parentChannelId = null,
+                taskParentChannelId = "joint-ch",
+                serverId = viewer,
+                projections = projections,
+                conversationIdentityProvider = null,
+            ),
+        )
     }
 }

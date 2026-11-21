@@ -11,7 +11,6 @@
     <string name="raft_background_connection_channel_description">Exibida enquanto o Raft Alpha mantém a conexão aberta em segundo plano para entregar notificações de mensagens sem os serviços do Google Play.</string>
     <string name="settings_notification_test_title">Teste de notificação do Raft Alpha</string>
     <string name="notification_unread_general_channel_description">Notificações gerais de mensagens não lidas do Raft Alpha.</string>
-    <string name="inbox_notification_channel_description">Atualizações de atividade não lidas do Raft Alpha.</string>
     <string name="slock_activity_widget_name">Atividade do Raft Alpha</string>
     <string name="slock_agent_status_widget_name">Agentes ativos do Raft Alpha</string>
     <string name="raft_download_notification_tap_retry">Abra o Raft Alpha para tentar novamente</string>

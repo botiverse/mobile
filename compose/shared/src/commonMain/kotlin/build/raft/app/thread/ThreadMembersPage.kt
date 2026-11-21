@@ -22,13 +22,11 @@ import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.base.Utils
 import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.RemoveChannelMemberRequest
 import build.raft.app.data.ChangeChannelMemberRoleRequest
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.map
-import build.raft.app.data.EXTERNAL_CHANNELS_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedAgentDetailIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersEntry
@@ -39,6 +37,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
@@ -306,7 +305,7 @@ private fun ThreadMembersPageScreen() {
         Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 RaftTopPageHeader(
-                    title = "Members",
+                    title = stringResource(Res.string.thread_members_heading),
                     iconName = RaftLucideIconName.Users,
                     onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 )
@@ -421,12 +420,19 @@ private fun ThreadMembersPageScreen() {
     var viewerUserId by remember(routeOwner) { mutableStateOf<String?>(null) }
     val canChangeMemberRoles =
         liveOwner == routeOwner && channelMembersSlice.canChangeMemberRoles && !channelMembersSlice.storedStandIn
+    val addChannelProjection = channelProjections[route.channelId.value]
+    val channelJointServers =
+        addChannelProjection?.jointServers?.takeIf { it.isNotEmpty() }
+            ?: addChannelProjection?.parentChannelId?.let { parentId ->
+                channelProjections[parentId]?.jointServers?.takeIf { it.isNotEmpty() }
+                    ?: conversationIdentityProvider?.resolveProjection(route.serverId, parentId)?.jointServers
+            }.orEmpty()
     val members = remember(
-        channelMembersSlice.members, channelMembersSlice.canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId
+        channelMembersSlice.members, channelMembersSlice.canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId, channelJointServers
     ) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
-            .map { profile -> profile.toRaftThreadMemberItem(route.serverId).let { row ->
+            .map { profile -> profile.toRaftThreadMemberItem(route.serverId, knownServers = channelJointServers).let { row ->
                 row.copy(
                     canRemove = row.canRemove && channelMembersSlice.canRemoveMembers,
                     roleAction = channelMemberRoleAction(profile, canChangeMemberRoles, viewerUserId),
@@ -445,7 +451,6 @@ private fun ThreadMembersPageScreen() {
             },
     )
     // A Guest is offered only in its own bound, non-joint channel (web isAddableToChannel, #15354).
-    val addChannelProjection = channelProjections[route.channelId.value]
     val channelKind = addChannelProjection?.channelKind
     val addChannelId = addChannelProjection?.canonicalChannelId ?: route.channelId.value
     val candidates = remember(serverMembersEntry.members, route.serverId, addChannelId, channelKind, members) {
@@ -485,14 +490,15 @@ private fun ThreadMembersPageScreen() {
     // External invites (web ChannelMembers): the viewer's role and this server's name.
     var viewerServerRole by remember(routeOwner) { mutableStateOf<String?>(null) }
     var viewerServerName by remember(routeOwner) { mutableStateOf("") }
-    // Member labels (web #14535): logos of the servers the viewer is in, for the rows' server tiles.
-    var viewerServerLogos by remember(routeOwner) { mutableStateOf<Map<String, String>>(emptyMap()) }
+    // Member labels (web #14535/#15817): logos of the viewer's joined servers overlaid with this
+    // external channel's `jointServers[].serverAvatarUrl`.
+    var viewerServerLogoPairs by remember(routeOwner) { mutableStateOf<List<Pair<String, String?>>>(emptyList()) }
     LaunchedEffect(liveOwner, routeOwner) {
         canCreateAgents = false
         viewerServerRole = null
         if (liveOwner == routeOwner) {
             val session = sharedStores.authStore(storeScope).readSession()
-            viewerServerLogos = raftViewerServerLogos(session?.servers.orEmpty().map { it.id to it.avatarUrl })
+            viewerServerLogoPairs = session?.servers.orEmpty().map { it.id to it.avatarUrl }
             val stored = session?.servers?.firstOrNull { it.id == routeOwner.serverId }
             val server = stored?.toServerSummary()
             canCreateAgents = threadAddMemberCanCreateAgents(server?.permissions)
@@ -502,6 +508,10 @@ private fun ThreadMembersPageScreen() {
             viewerUserId = session?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
         } else createAgentName = null
     }
+    val viewerServerLogos =
+        remember(viewerServerLogoPairs, channelJointServers) {
+            raftOriginServerLogos(viewerServerLogoPairs, channelJointServers)
+        }
     var addDialogVisible by remember { mutableStateOf(false) }
     var addMemberStatus by remember { mutableStateOf("idle") }
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
@@ -517,10 +527,8 @@ private fun ThreadMembersPageScreen() {
             ?.ifBlank { null }
             ?: route.channelId.value.trim().removePrefix("#")
     val authorityRejected = liveOwner != routeOwner
-    // Web useExternalInviteAccess / useExternalInviteManagement: external_channels_v1 for this server,
-    // its owner or admin, an invitable channel (the directory row: type, jointRole, archived).
-    val externalChannelsOn =
-        rememberServerFeatureLatched(sharedStores.serverFeatureFlags, route.serverId, EXTERNAL_CHANNELS_FEATURE_FLAG_KEY)
+    // Web useExternalInviteAccess / useExternalInviteManagement: this server's owner or admin, an
+    // invitable channel (the directory row: type, jointRole, archived).
     val externalInviteChannel =
         channelProjections[route.channelId.value]?.let { projection ->
             ExternalInviteChannel(
@@ -531,9 +539,8 @@ private fun ThreadMembersPageScreen() {
                 hasExternalRelation = projection.hasExternalRelation,
             )
         }
-    val externalInviteAccessOn = !authorityRejected && externalInviteAccess(externalChannelsOn, viewerServerRole, externalInviteChannel)
-    val externalInviteManagementOn =
-        !authorityRejected && externalInviteManagement(externalChannelsOn, viewerServerRole, externalInviteChannel)
+    val externalInviteAccessOn = !authorityRejected && externalInviteAccess(viewerServerRole, externalInviteChannel)
+    val externalInviteManagementOn = !authorityRejected && externalInviteManagement(viewerServerRole, externalInviteChannel)
     val externalInvitesStore =
         remember(routeOwner, route.channelId) {
             ExternalInvitesStore(memberScope, RealExternalInvitesDataSource(route.channelId, routeOwner, authorityGateway, bridge::log))
@@ -1555,9 +1562,12 @@ private val MemberProfile.threadMemberKey: String
  * so a viewed-server member whose first source is another server stays local here (opens the full
  * profile, keeps Remove) and still names that server, as the web's tag does.
  */
-internal fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = null): RaftThreadMemberItem {
+internal fun MemberProfile.toRaftThreadMemberItem(
+    localServerId: ServerId? = null,
+    knownServers: List<MemberServerRef> = emptyList(),
+): RaftThreadMemberItem {
     val viewerServerId = localServerId?.value?.trim()?.takeIf { it.isNotBlank() }
-    val origin = memberOrigin(this, viewerServerId)
+    val origin = memberOrigin(this, viewerServerId, knownServers)
     val rosterServerId = serverId?.value
     return RaftThreadMemberItem(
         id = id.value,
@@ -1578,7 +1588,7 @@ internal fun MemberProfile.toRaftThreadMemberItem(localServerId: ServerId? = nul
         // The server whose profile this row opens: the viewed one unless the member is from another.
         sourceServerId = if (origin.external || viewerServerId == null || rosterServerId == null) rosterServerId else viewerServerId,
         rosterServerId = rosterServerId,
-        sourceServerLabel = memberRowServerLabel(this, viewerServerId),
+        sourceServerLabel = memberRowServerLabel(this, viewerServerId, knownServers),
         canRemove = memberRemovableFromChannel(this, viewerServerId),
         // A Guest label is a fact of the viewed server only (web `rosterRoleTag`).
         effectiveChannelRole = if (origin.external && effectiveChannelRole == "guest") "member" else effectiveChannelRole,

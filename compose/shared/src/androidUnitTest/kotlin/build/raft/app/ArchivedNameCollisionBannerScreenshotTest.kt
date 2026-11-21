@@ -18,7 +18,6 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import org.robolectric.shadows.ShadowDialog
 
 /** The banner alone: a short phone viewport. */
 private const val BANNER_QUALIFIERS = "w390dp-h320dp-xxhdpi"
@@ -29,8 +28,7 @@ private const val RENAME_QUALIFIERS = "w390dp-h560dp-xxhdpi"
 /**
  * JVM screenshots of the archived-name warning (web ArchivedNameCollisionBanner, slock #12614),
  * light and dark: Create Channel's banner for someone who may unarchive (Unarchive, Open Channel,
- * Change Name) and for someone who may not (Open Channel, Change Name), and Create Joint
- * Channel's dialog with the warning (no hint line, as on the web); and channel settings' Info
+ * Change Name) and for someone who may not (Open Channel, Change Name); and channel settings' Info
  * form after a rename onto an archived channel's name (Unarchive and Open Channel, no Change
  * Name), also after that Unarchive failed. Verify / record as
  * [RaftRobolectricScreenshot].
@@ -59,12 +57,6 @@ class ArchivedNameCollisionBannerScreenshotTest {
     @Config(qualifiers = BANNER_QUALIFIERS)
     fun cannotUnarchiveDark() =
         captureBanner("create-channel.archived-name.no-unarchive.dark", RaftAppAppearance.Dark, canUnarchive = false)
-
-    @Test
-    fun jointLight() = captureJoint("joint.create.archived-name", RaftAppAppearance.Light)
-
-    @Test
-    fun jointDark() = captureJoint("joint.create.archived-name.dark", RaftAppAppearance.Dark)
 
     @Test
     @Config(qualifiers = RENAME_QUALIFIERS)
@@ -152,32 +144,6 @@ class ArchivedNameCollisionBannerScreenshotTest {
                     )
                 }
             }
-        }
-    }
-
-    private fun captureJoint(name: String, appearance: RaftAppAppearance) {
-        RaftRobolectricScreenshot.capture(
-            name,
-            appearance,
-            reportDir = "build/reports/home-screenshots",
-            activities = activities,
-            root = { ShadowDialog.getLatestDialog()?.window?.decorView },
-        ) {
-            CreateJointChannelDialog(
-                state =
-                    CreateJointChannelState(
-                        name = "launch-room",
-                        collision = CreateJointArchivedCollision(ChannelId("ch-old"), "launch-room", canUnarchive = true),
-                    ),
-                freePlan = false,
-                currentServerSlug = "mobile",
-                selectableMembers = MemberPickerTestFixtures.roster,
-                membersLoading = false,
-                onIntent = {},
-                onDismiss = {},
-                onOpenBilling = {},
-                fixtureStatusFallbackEnabled = true,
-            )
         }
     }
 }

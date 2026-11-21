@@ -43,7 +43,9 @@ import org.robolectric.annotation.GraphicsMode
  * 8dp above and below the content, rows 2dp apart and no line between them. The second row is
  * selected (the open conversation), so its shape shows.
  *  - `screens.activity.wide.rows.touch` / `.dark`: by touch, content 20dp from the column's edge, rows at least 56dp;
- *  - `screens.activity.wide.rows.fine`: a mouse or trackpad, content 16dp in, the third row hovered.
+ *    every row shows its ink-outline Mark as Done at rest (web InboxRowDone), 12dp past its time and marks;
+ *  - `screens.activity.wide.rows.fine`: a mouse or trackpad, content 16dp in, the third row hovered: the
+ *    selected row and the hovered one show the ghost Mark as Done, 8dp past their time and marks.
  * The phone takes the same cell with two reserved excerpt lines: [ActivityConversationRowsScreenshotTest].
  * Verify / record as [RaftRobolectricScreenshot].
  */
@@ -170,7 +172,7 @@ private fun WideRows(hoverThird: Boolean) {
                     onOpen = {},
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
-                    onHoverDone = {},
+                    onRowDone = {},
                     hoverPreview = hoverThird && item.key == "channel:release",
                 )
             }

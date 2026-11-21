@@ -31,12 +31,28 @@ import kotlinx.coroutines.launch
 /** Web `useExternalChannelAvailability`: `freeLimit` when the Free plan's one external channel is taken. */
 internal enum class ExternalChannelCreateAvailability { Loading, Open, FreeLimit }
 
+/** Web `useExternalChannelCreateAccess`: External is offered to the current server's owners and admins. */
+internal fun externalChannelCreateAccess(serverRole: String?): Boolean =
+    serverRole == "owner" || serverRole == "admin"
+
+/** Where the External section's create entries (Home's "+") lead. */
+internal enum class ExternalCreateEntry {
+    /** Create Channel with External chosen. */
+    CreateChannel,
+
+    /** The Free plan's one external channel is taken: the upgrade instead (web `externalChannelSlot.ts`). */
+    FreeLimit,
+}
+
 /**
- * Web `useExternalChannelCreateAccess`: External is offered with `external_channels_v1` on for
- * the current server, to its owners and admins.
+ * Web `useExternalLimitGate` (surface `sidebar`) behind the External section's create entries:
+ * Create Channel with External chosen, the one way to make a channel with another server; only a
+ * Free server whose one external channel is taken gets [ExternalCreateEntry.FreeLimit] instead.
+ * Only a Free [plan] reads the availability; a failed read is Create Channel, which reads it again
+ * itself (and the send is refused by the same rule).
  */
-internal fun externalChannelCreateAccess(flagOn: Boolean, serverRole: String?): Boolean =
-    flagOn && (serverRole == "owner" || serverRole == "admin")
+internal suspend fun externalCreateEntry(plan: String?, dataSource: CreateExternalChannelDataSource): ExternalCreateEntry =
+    if (plan == "free" && dataSource.freeLimitReached() == true) ExternalCreateEntry.FreeLimit else ExternalCreateEntry.CreateChannel
 
 /** The new channel's own fields, as step 1 and step 2 left them. */
 internal data class CreateExternalChannelDraft(

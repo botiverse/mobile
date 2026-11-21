@@ -26,6 +26,7 @@ import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
+import build.raft.app.RaftWindowFocusScope
 import build.raft.app.RaftDatabaseLaunchReadiness
 import android.graphics.Matrix
 import android.graphics.Rect
@@ -163,6 +164,7 @@ import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_APP_UPDATE_EVENT
+import build.raft.app.data.RaftAppUpdatePermissionResume
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SECOND_FACTOR_STEP_UP_REQUIRED_CODE
@@ -200,6 +202,7 @@ import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsUpdateEventListener
+import build.hands.update.HandsUpdateStatus
 import build.hands.update.UpdateChecker
 import build.hands.update.internal.HandsClient
 import build.hands.update.models.UpdateCheckResponse
@@ -232,6 +235,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -815,6 +819,8 @@ internal open class RaftCmpActivity :
     private val adaptivePaneHost by adaptivePaneHostDelegate
     private val renderReadinessCreatedAtMillis = SystemClock.elapsedRealtime()
     @Volatile private var renderReadinessResumedAtMillis: Long? = null
+    private val postFirstFrameResumeCoordinator = RaftPostFirstFrameResumeCoordinator()
+    private var postFirstFrameResumeJob: Job? = null
     @Volatile private var renderReadinessTopPageLoad: RaftLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, RaftLoadReadiness>()
     private var pageSpec: RaftPageSpec? = null
@@ -1163,32 +1169,36 @@ internal open class RaftCmpActivity :
                     // background window gets a switch only when shown again (RaftCmpRoot systemDark).
                     // One toast host for the window, over the shell and every stack page (each
                     // page's RaftCmpRoot uses it instead of adding its own).
-                    RaftCmpToastLayer {
-                        CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
-                            if (stack == null) {
-                                RaftCmpRoot(
-                                    args,
-                                    host,
-                                    onSystemBarsResolved = ::applySystemBarAppearance,
-                                    onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                                    systemDark = RaftThemeState.App.systemDark,
-                                )
-                            } else {
-                                RaftAndroidNav3StackContent(
-                                    stack = stack,
-                                    onSystemBars = ::applySystemBarAppearance,
-                                    onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
-                                    shell = { onBars, onCanvas ->
-                                        CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
-                                            RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
-                                        }
-                                    },
-                                    page = { page, onBars, onCanvas ->
-                                        val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
-                                        RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
-                                    },
-                                    transitions = nav3TransitionProbe,
-                                )
+                    // This window's own focus bookkeeping: another app window's dialog or focused
+                    // field never decides this window's composer focus (RaftWindowFocusScope).
+                    RaftWindowFocusScope {
+                        RaftCmpToastLayer {
+                            CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                                if (stack == null) {
+                                    RaftCmpRoot(
+                                        args,
+                                        host,
+                                        onSystemBarsResolved = ::applySystemBarAppearance,
+                                        onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                                        systemDark = RaftThemeState.App.systemDark,
+                                    )
+                                } else {
+                                    RaftAndroidNav3StackContent(
+                                        stack = stack,
+                                        onSystemBars = ::applySystemBarAppearance,
+                                        onCanvas = { color -> applyHostCanvasColor(color.toArgb()) },
+                                        shell = { onBars, onCanvas ->
+                                            CompositionLocalProvider(LocalRaftStackRootTab provides nav3RootTab) {
+                                                RaftCmpRoot(shellArgs, host, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
+                                            }
+                                        },
+                                        page = { page, onBars, onCanvas ->
+                                            val pageHost = remember(page) { nav3PageHost(stack, page, transport) }
+                                            RaftCmpRoot(page.args, pageHost, onSystemBarsResolved = onBars, onCanvasColorResolved = onCanvas, systemDark = RaftThemeState.App.systemDark)
+                                        },
+                                        transitions = nav3TransitionProbe,
+                                    )
+                                }
                             }
                         }
                     }
@@ -1658,6 +1668,9 @@ internal open class RaftCmpActivity :
         removeCmpFirstFrameListener()
         whiteScreenHandler.removeCallbacks(whiteScreenWatch)
         removeDatabaseLaunchDrawListener()
+        postFirstFrameResumeCoordinator.cancel()
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob = null
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
         }
@@ -1875,6 +1888,9 @@ internal open class RaftCmpActivity :
     }
 
     override fun onPause() {
+        postFirstFrameResumeCoordinator.cancel()
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob = null
         RaftShareOutResumeNotice.installClock(SystemClock::elapsedRealtime)
         RaftShareOutResumeNotice.onHostPaused(System.identityHashCode(this))
         RaftResumeFrameProbe.onActivityPaused(this)
@@ -1905,7 +1921,6 @@ internal open class RaftCmpActivity :
             recreate()
             return
         }
-        RaftNotificationPermissionReporter.report(applicationContext)
         renderReadinessResumedAtMillis = SystemClock.elapsedRealtime()
         RaftResumeFrameProbe.onActivityResumed(this, pageName)
         RaftScrollFrameProbe.onActivityResumed(this, pageName)
@@ -1913,18 +1928,13 @@ internal open class RaftCmpActivity :
         if (hostAttached) {
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
         }
-
-        AndroidRealtimeKeepAliveController.onHostResumed(applicationContext)
-        AndroidRealtimeKeepAliveController.start(
-            context = applicationContext,
-            source = "activity_on_resume"
-        )
-        SlockActivityWidgetProvider.refreshAllWidgets(applicationContext)
-        SlockAgentStatusWidgetProvider.refreshAllWidgets(applicationContext)
-        RaftBridgeModule.resumePendingHandsAutoInstall(applicationContext)
-        // A tapped conversation notification auto-cancels and lands here; drop its server's summary
-        // if it was the last one.
-        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(applicationContext)
+        // Defer non-first-frame Binder IPCs (Play services/battery probes, widget queries,
+        // notification permission/summary refreshes, keep-alive start) until after Frame 1 draws
+        // so returning from background paints cleanly without stalling the opening scroll.
+        postFirstFrameResumeCoordinator.scheduleAfterFirstFrame(window?.decorView) {
+            dispatchPostFirstFrameResume()
+        }
+        // Share-out return notice: no IPC, posts itself after the frame (RaftShareOutResumeNotice).
         if (!isFinishing && !isDestroyed) {
             RaftShareOutResumeNotice.installClock(SystemClock::elapsedRealtime)
             RaftShareOutResumeNotice.onHostResumed(System.identityHashCode(this))?.let(::showDeferredShareOutNotice)
@@ -1941,6 +1951,31 @@ internal open class RaftCmpActivity :
             }
         }
         window?.decorView?.post(show) ?: show()
+    }
+
+    private fun dispatchPostFirstFrameResume() {
+        val appContext = applicationContext
+        RaftBridgeModule.resumePendingHandsAutoInstall(appContext)
+        RaftBridgeModule.resumeHandsDeltaInstallAfterPermission(appContext, lifecycleScope)
+        postFirstFrameResumeJob?.cancel()
+        postFirstFrameResumeJob =
+            lifecycleScope.launch(Dispatchers.IO) {
+                RaftNotificationPermissionReporter.report(appContext)
+                AndroidRealtimeKeepAliveController.onHostResumed(appContext)
+                // A tapped conversation notification auto-cancels and lands here; drop its server's
+                // summary if it was the last one.
+                AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(appContext)
+                coroutineContext.ensureActive()
+                SlockActivityWidgetProvider.refreshAllWidgets(appContext)
+                coroutineContext.ensureActive()
+                SlockAgentStatusWidgetProvider.refreshAllWidgets(appContext)
+                withContext(Dispatchers.Main.immediate) {
+                    AndroidRealtimeKeepAliveController.start(
+                        context = appContext,
+                        source = "activity_on_resume"
+                    )
+                }
+            }
     }
 
     private fun reportRealtimeVisibility(
@@ -2158,9 +2193,11 @@ internal open class RaftCmpActivity :
                 setPadding(dp(32), dp(32), dp(32), dp(32))
                 isClickable = true
             }
+        // Android string resources (the system language), not the shared catalog: this native
+        // fallback stands in for a page Compose could not draw and depends on nothing there.
         surface.addView(
             android.widget.TextView(this).apply {
-                text = "Something went wrong"
+                text = getString(R.string.host_error_title)
                 textSize = 20f
                 setTextColor(RaftAppAppearanceRuntime.foregroundArgb)
                 typeface = Typeface.DEFAULT_BOLD
@@ -2168,7 +2205,7 @@ internal open class RaftCmpActivity :
         )
         surface.addView(
             android.widget.TextView(this).apply {
-                text = "This page hit a rendering problem. A report was recorded. ($reasonCode)"
+                text = getString(R.string.host_error_message, reasonCode)
                 textSize = 14f
                 setTextColor(RaftAppAppearanceRuntime.foregroundMutedArgb)
                 setPadding(0, dp(8), 0, dp(24))
@@ -2177,14 +2214,14 @@ internal open class RaftCmpActivity :
         )
         surface.addView(
             android.widget.Button(this).apply {
-                text = "Reload"
+                text = getString(R.string.host_error_reload)
                 setOnClickListener { recreate() }
             }
         )
         if (!isTaskRoot) {
             surface.addView(
                 android.widget.Button(this).apply {
-                    text = "Close"
+                    text = getString(R.string.host_error_close)
                     setOnClickListener { finish() }
                 }
             )
@@ -5939,7 +5976,7 @@ internal class RaftBridgeModule(
 
     private fun loadSettingsDeveloper(
             feedback: String? = null,
-            updateRoute: HandsUpdateRoute = handsUpdateRouteForRuntime()
+            updateRoute: HandsUpdateRoute = handsUpdateRouteForRuntime(appContext)
     ): Map<String, Any> {
         val current = AndroidApiServerEnvironmentStore(appContext).current()
         val options =
@@ -5991,8 +6028,8 @@ internal class RaftBridgeModule(
                     )
 
     private suspend fun checkHandsUpdate(install: Boolean = true): Map<String, Any> {
-        val arch = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
-        val updateRoute = handsUpdateRouteForRuntime()
+        val arch = handsUpdateArch()
+        val updateRoute = handsUpdateRouteForRuntime(appContext)
         val deviceId = HandsDeviceId.get(appContext)
         val languageTag =
                 handsUpdateLanguageTag(
@@ -6076,41 +6113,16 @@ internal class RaftBridgeModule(
             languageTag: String
     ): Map<String, Any> {
         val checker =
-                UpdateChecker(
+                handsDeltaUpdateChecker(
                         context = appContext,
-                        baseUrl = BuildConfig.HANDS_BASE_URL,
-                        appSlug = updateRoute.appSlug,
-                        installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                        channel = updateRoute.channel,
-                        productType = "android-apk",
-                        platform = "android",
+                        updateRoute = updateRoute,
                         arch = arch,
                         deviceId = deviceId,
-                        deltaApplyEnabled = true,
-                        languageTag = languageTag,
-                        eventListener =
-                                HandsUpdateEventListener { event ->
-                                    RaftAppLog.record(
-                                            "SlockHandsUpdate",
-                                            handsUpdateEventLogLine(
-                                                    name = event.name,
-                                                    stateWire = event.state.wireValue,
-                                                    targetVersionCode = event.targetVersionCode,
-                                                    errorCode = event.errorCode,
-                                                    requestedLanguageTag = event.requestedLanguageTag,
-                                                    resolvedLanguageTag = event.resolvedLanguageTag
-                                            )
-                                    )
-                                    if (handsUpdateEventShouldRefresh(event.name)) {
-                                        emitHandsUpdateStatusEvent()
-                                    }
-                                }
+                        languageTag = languageTag
                 )
         val status =
                 if (install) {
-                    alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
-                        checker.install(languageTag)
-                    } ?: checker.status()
+                    installHandsDeltaUpdate(checker, languageTag)
                 } else {
                     checker.status()
                 }
@@ -6163,13 +6175,23 @@ internal class RaftBridgeModule(
                                         assetSha256 = response?.asset?.sha256 ?: response?.patch?.target_sha256
                                 )
                 )
-        val errorCode =
+        val sdkErrorCode =
                 when {
                     decision.targetDrifted && offerAvailable -> "target_changed"
                     decision.targetDrifted -> "offer_withdrawn"
                     else -> status.errorCode
                 }
-        val installResult = decision.toHandsInstallResult(errorCode)
+        // The SDK keeps install_permission_required until the installer opens: read it against the
+        // permission as it is now (granted since then: a plain Install).
+        val permission =
+                handsDeltaInstallPermissionDecision(
+                        state = decision.state,
+                        errorCode = sdkErrorCode,
+                        canInstall = checker.canInstallUpdates(),
+                        permissionDeclared = AndroidPackageInstallPermission.isDeclared(appContext)
+                )
+        val errorCode = permission.errorCode
+        val installResult = decision.toHandsInstallResult(errorCode, permission.presentation)
         val latestVersionCode =
                 response?.latest?.version_code
                         ?: response?.latest_version_code
@@ -6179,11 +6201,13 @@ internal class RaftBridgeModule(
                 response?.handsUpdateDisplaySizes(deltaEnabled = updateRoute.deltaEnabled)
                         ?: HandsUpdateDisplaySizes()
         val updateDetail =
-                response?.handsDetail(displaySizes)
-                        ?: RaftHostStrings.appUpdateDetail(
-                                updateAvailable = decision.updateAvailable,
-                                sizeLabel = null
-                        )
+                installResult.detail.ifBlank {
+                    response?.handsDetail(displaySizes)
+                            ?: RaftHostStrings.appUpdateDetail(
+                                    updateAvailable = decision.updateAvailable,
+                                    sizeLabel = null
+                            )
+                }
         val feedback =
                 if (decision.updateAvailable) {
                     "Update available: ${response?.latest?.version?.ifBlank { null } ?: "version code $latestVersionCode"}."
@@ -6226,6 +6250,29 @@ internal class RaftBridgeModule(
                 )
     }
 
+    private fun HandsUpdateBridgeDecision.toHandsInstallResult(
+            errorCode: String?,
+            presentation: HandsDeltaInstallPresentation
+    ): HandsInstallResult =
+            when (presentation) {
+                // Worded as the full-APK route says it (HandsUpdateDownload.toInstallResult).
+                HandsDeltaInstallPresentation.PermissionRequired ->
+                        HandsInstallResult(
+                                statusLabel = "Permission required",
+                                detail = RaftHostStrings.appUpdateInstallPermissionRequired(),
+                                actionLabel = "Install",
+                                errorCode = errorCode
+                        )
+                HandsDeltaInstallPresentation.InstallUnsupported ->
+                        HandsInstallResult(
+                                statusLabel = "Install failed",
+                                detail = RaftHostStrings.appUpdateInstallerFailed(),
+                                actionLabel = "Install",
+                                errorCode = errorCode
+                        )
+                HandsDeltaInstallPresentation.AsReported -> toHandsInstallResult(errorCode)
+            }
+
     private fun HandsUpdateBridgeDecision.toHandsInstallResult(errorCode: String?): HandsInstallResult =
             when (state) {
                 SharedSettingsUpdateTransactionState.Idle ->
@@ -6248,33 +6295,56 @@ internal class RaftBridgeModule(
                         HandsInstallResult(statusLabel = "Ready", actionLabel = "Download", errorCode = errorCode)
             }
 
-    private fun handsDeltaUpdateAllowedForRuntime(): Boolean {
-        val allowed =
-                handsDeltaUpdateAllowed(
-                        configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
-                        buildApplicationId = BuildConfig.APPLICATION_ID,
-                        runtimePackageName = appContext.packageName,
-                        appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                        channel = BuildConfig.HANDS_DELTA_CHANNEL
-                )
-        if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
-            RaftAppLog.record(
-                    "SlockHandsUpdate",
-                    "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
-                            "runtimePackageName=${appContext.packageName}"
-            )
-        }
-        return allowed
-    }
+    /**
+     * Install on the Alpha delta route. While Raft may not install apps the SDK (0.14+) opens nothing
+     * and another install() only checks Hands again ([handsDeltaInstallPermissionDecision]), so a
+     * waiting APK leads to the "Install unknown apps" switch instead, and so does an install() whose
+     * patch finished inside the call. One tap at a time: a concurrent one only reads the status.
+     */
+    private suspend fun installHandsDeltaUpdate(checker: UpdateChecker, languageTag: String): HandsUpdateStatus =
+            alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
+                if (!checker.canInstallUpdates()) {
+                    val current = checker.status()
+                    if (handsDeltaInstallPermission(current, checker).openPermissionSettings) {
+                        requestHandsDeltaInstallPermission(source = "install_tap", status = current)
+                        return@runIfEligible current
+                    }
+                }
+                val installed = checker.install(languageTag)
+                if (handsDeltaInstallPermission(installed, checker).openPermissionSettings) {
+                    requestHandsDeltaInstallPermission(source = "install_result", status = installed)
+                }
+                installed
+            } ?: checker.status()
 
-    private fun handsUpdateRouteForRuntime(): HandsUpdateRoute =
-            resolveHandsUpdateRoute(
-                    alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime(),
-                    defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
-                    defaultChannel = BuildConfig.HANDS_CHANNEL,
-                    deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
-                    deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL
+    private fun handsDeltaInstallPermission(
+            status: HandsUpdateStatus,
+            checker: UpdateChecker
+    ): HandsDeltaInstallPermissionDecision =
+            handsDeltaInstallPermissionDecision(
+                    state = SharedSettingsUpdateTransactionState.fromWire(status.state.wireValue),
+                    errorCode = status.errorCode,
+                    canInstall = checker.canInstallUpdates(),
+                    permissionDeclared = AndroidPackageInstallPermission.isDeclared(appContext)
             )
+
+    /**
+     * Leads to Raft's "Install unknown apps" switch through the explained prompt, and just before the
+     * page opens keeps "reopen the installer when Raft is back" ([RaftAppUpdatePermissionResume]):
+     * Android restarts Raft when the switch changes; [resumeHandsDeltaInstallAfterPermission] reads it.
+     */
+    private fun requestHandsDeltaInstallPermission(source: String, status: HandsUpdateStatus) {
+        val detail = "source=$source state=${status.state.wireValue} target=${status.targetVersionCode ?: 0L}"
+        val requested =
+                AndroidPackageInstallPermission.requestUnknownSourcesSettings(
+                        context = appContext,
+                        activity = activity,
+                        logPrefix = "app_update_install_permission",
+                        beforeOpenSettings = { RaftAppUpdatePermissionResume.repository.mark() },
+                        record = { line -> RaftAppLog.w("SlockHandsUpdate", "$line $detail") }
+                )
+        RaftAppLog.w("SlockHandsUpdate", "install_permission_required $detail requested=$requested")
+    }
 
     private suspend fun installHandsUpdate(
             response: UpdateCheckResponse,
@@ -6476,13 +6546,6 @@ internal class RaftBridgeModule(
                     versionCode = latest?.version_code ?: latest_version_code ?: 0L,
                     arch = arch
             )
-
-    private fun emitHandsUpdateStatusEvent() {
-        postAndroidAppScopeEvent(
-                eventName = RAFT_APP_UPDATE_EVENT,
-                eventData = JSONObject().put("source", "android")
-        )
-    }
 
     private fun HandsUpdateDownload.toInstallResult(context: Context, source: String): HandsInstallResult =
             when (openHandsDownloadedApkOrRequestPermission(context, this, source)) {
@@ -7028,7 +7091,7 @@ internal class RaftBridgeModule(
             description: String,
             attachmentNames: List<String>
     ): String {
-        val updateRoute = handsUpdateRouteForRuntime()
+        val updateRoute = handsUpdateRouteForRuntime(appContext)
         val environment = settingsFeedbackShareEnvironmentSection(buildSettingsDiagnosticsSummaryText())
         val utcTime =
                 SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
@@ -8967,6 +9030,131 @@ internal class RaftBridgeModule(
             )
         }
 
+        /**
+         * Alpha delta route, on resume: Raft is back from the "Install unknown apps" switch it led to
+         * for a waiting update (requestHandsDeltaInstallPermission). Android restarts Raft when the
+         * switch changes, hence the stored marker. When Raft may install now, the waiting installer
+         * reopens once, with no new check or download; a denial clears the marker and opens nothing.
+         */
+        internal fun resumeHandsDeltaInstallAfterPermission(context: Context, scope: CoroutineScope) {
+            val updateRoute = handsUpdateRouteForRuntime(context)
+            if (!updateRoute.deltaEnabled) return
+            scope.launch {
+                val checker by lazy {
+                    handsDeltaUpdateChecker(
+                            context = context,
+                            updateRoute = updateRoute,
+                            arch = handsUpdateArch(),
+                            deviceId = null,
+                            languageTag = null
+                    )
+                }
+                val outcome =
+                        try {
+                            handsDeltaPermissionResume(
+                                    marker = RaftAppUpdatePermissionResume.repository,
+                                    canInstall = { checker.canInstallUpdates() },
+                                    reopen = {
+                                        alphaHandsUpdateCallOwner.runIfEligible(eligible = true) {
+                                            checker.reopenPendingInstaller()
+                                        }
+                                    }
+                            )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Throwable) {
+                            RaftAppLog.w(
+                                    "SlockHandsUpdate",
+                                    "install_permission_resume_failed error=${error.javaClass.simpleName}"
+                            )
+                            return@launch
+                        }
+                if (outcome != HandsDeltaPermissionResume.NotWaiting) {
+                    RaftAppLog.w("SlockHandsUpdate", "install_permission_resume outcome=${outcome.diagnosticName}")
+                }
+            }
+        }
+
+        /** The ABI an update is asked for; part of the Alpha route's update authority. */
+        private fun handsUpdateArch(): String? = Build.SUPPORTED_ABIS.firstOrNull { it.isNotBlank() }
+
+        /**
+         * The Alpha delta route's [UpdateChecker]. Every caller builds the same update authority
+         * (base URL, app, channel, product, platform, arch), so all of them see one transaction.
+         */
+        private fun handsDeltaUpdateChecker(
+                context: Context,
+                updateRoute: HandsUpdateRoute,
+                arch: String?,
+                deviceId: String?,
+                languageTag: String?
+        ): UpdateChecker =
+                UpdateChecker(
+                        context = context,
+                        baseUrl = BuildConfig.HANDS_BASE_URL,
+                        appSlug = updateRoute.appSlug,
+                        installedVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                        channel = updateRoute.channel,
+                        productType = "android-apk",
+                        platform = "android",
+                        arch = arch,
+                        deviceId = deviceId,
+                        deltaApplyEnabled = true,
+                        languageTag = languageTag,
+                        eventListener =
+                                HandsUpdateEventListener { event ->
+                                    RaftAppLog.record(
+                                            "SlockHandsUpdate",
+                                            handsUpdateEventLogLine(
+                                                    name = event.name,
+                                                    stateWire = event.state.wireValue,
+                                                    targetVersionCode = event.targetVersionCode,
+                                                    errorCode = event.errorCode,
+                                                    requestedLanguageTag = event.requestedLanguageTag,
+                                                    resolvedLanguageTag = event.resolvedLanguageTag
+                                            )
+                                    )
+                                    if (handsUpdateEventShouldRefresh(event.name)) {
+                                        emitHandsUpdateStatusEvent()
+                                    }
+                                }
+                )
+
+        private fun handsDeltaUpdateAllowedForRuntime(context: Context): Boolean {
+            val allowed =
+                    handsDeltaUpdateAllowed(
+                            configuredEnabled = BuildConfig.HANDS_DELTA_UPDATE_ENABLED,
+                            buildApplicationId = BuildConfig.APPLICATION_ID,
+                            runtimePackageName = context.packageName,
+                            appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+                            channel = BuildConfig.HANDS_DELTA_CHANNEL
+                    )
+            if (BuildConfig.HANDS_DELTA_UPDATE_ENABLED && !allowed) {
+                RaftAppLog.record(
+                        "SlockHandsUpdate",
+                        "alpha_delta_gate_denied buildApplicationId=${BuildConfig.APPLICATION_ID} " +
+                                "runtimePackageName=${context.packageName}"
+                )
+            }
+            return allowed
+        }
+
+        private fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute =
+                resolveHandsUpdateRoute(
+                        alphaDeltaEnabled = handsDeltaUpdateAllowedForRuntime(context),
+                        defaultAppSlug = BuildConfig.HANDS_APP_SLUG,
+                        defaultChannel = BuildConfig.HANDS_CHANNEL,
+                        deltaAppSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
+                        deltaChannel = BuildConfig.HANDS_DELTA_CHANNEL
+                )
+
+        private fun emitHandsUpdateStatusEvent() {
+            postAndroidAppScopeEvent(
+                    eventName = RAFT_APP_UPDATE_EVENT,
+                    eventData = JSONObject().put("source", "android")
+            )
+        }
+
         private fun openHandsDownloadedApkOrRequestPermission(
                 context: Context,
                 download: HandsUpdateDownload,
@@ -9241,7 +9429,8 @@ private fun JSONObject.publicAttachmentIdentity(
 private fun AndroidAttachmentPublicRecord.toSavedAttachmentPayload(): Map<String, Any> =
         buildMap {
             put("status", "saved")
-            put("message", "Already downloaded")
+            // Saved before, so nothing was written now; shared code words the toast (no host text).
+            put("alreadySaved", true)
             put("cached", true)
             put("sizeBytes", sizeBytes)
             put("fileName", displayName)

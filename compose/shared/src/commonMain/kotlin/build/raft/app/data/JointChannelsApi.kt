@@ -3,8 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -15,18 +13,12 @@ import kotlinx.serialization.json.Json
  *  - `GET channels/:id` (`packages/server/src/routes/channels.ts` `channelRouter.get("/:id")`)
  *    → the channel row run through `channelService.attachJointChannelMetadata`, i.e. the
  *    `JointChannelMetadata` fields (`jointServers[]`, `jointPendingInvites[]`, `jointPeer*`).
- *  - `POST channels/:id/joint-invites` body `{ targetServerSlug, invitedPeople: string[], sameAdmin? }`
- *    → the channel with joint metadata plus `jointInvites` / `jointInvite`. 400 carries
- *    `{ error, code: JointChannelInviteValidationCode, targetServerSlug?, invitee? }`; 403 is
- *    either the `federateChannels` gate (`{ error }`) or a limit
- *    (`{ error, code: joint_free_server_limit | joint_server_limit | joint_channel_free_limit_reached }`).
- *  - `POST channels/:id/joint-invite/resend` → `{ ok: true, resentCount }`; 409 `No pending …`.
  *  - `POST channels/:id/disconnect` → `{ ok: true }`.
  *  - `POST channels/:id/joint-servers/:serverId/disconnect` (botiverse/slock `staging` @
  *    f3c3905046d16cd4a7225a533a071f667b687647, `routes/channels.ts`): the host's owner/admin takes
- *    another server out of the joint → `{ ok: true }`; 404 while `external_channels_v1` is off for
- *    the host, 400 `not_joint_host` / `host_cannot_be_disconnected`, 403 `forbidden`, 404
- *    `server_not_connected`, 409 `guests_present` (`routes/channels.jointHostDisconnect.api.test.ts`).
+ *    another server out of the joint → `{ ok: true }`; 400 `not_joint_host` /
+ *    `host_cannot_be_disconnected`, 403 `forbidden`, 404 `server_not_connected`, 409 `guests_present`
+ *    (`routes/channels.jointHostDisconnect.api.test.ts`).
  *  - The channel row's `jointRole` (`"host" | "participant" | null`), `jointServers[].role` (same
  *    union, null on pending rows) and `channelCapabilities.federateChannels`
  *    (`services/channelService.ts` `JointChannelMetadata` / `JointServerMetadata`,
@@ -37,37 +29,24 @@ import kotlinx.serialization.json.Json
  *  - `POST channels/joint-invites/:inviteId/accept` → the accepted channel (with joint metadata);
  *    403/404/409 `{ error }` or a limit `{ error, code }`.
  *
+ * Creating a joint channel (`POST channels` with `visibility: "joint"`), inviting another server
+ * (`POST channels/:id/joint-invites`) and resending those invites answer 404 since botiverse/slock
+ * #15939: another server joins through the external channel flow instead (ExternalInvitesApi.kt).
+ *
  * Web reference: `packages/web/src/components/channel/EditChannelDialog.tsx` (connected servers,
- * resend, invite form, disconnect) and `components/layout/usePendingJointInvites.ts` +
- * `useSystemNotifications.tsx` (pending invite → Accept).
+ * disconnect) and `components/layout/usePendingJointInvites.ts` + `useSystemNotifications.tsx`
+ * (pending invite → Accept).
  *
  * Field names are exact camelCase. No snake_case fallbacks.
  */
 internal const val JOINT_CHANNEL_MAX_SERVERS = 30
-internal const val JOINT_CHANNEL_MAX_FREE_SERVERS = 2
 
 /** `JointChannelLimitErrorCode` (`packages/server/src/services/jointChannelLimitService.ts`). */
 internal const val JOINT_FREE_SERVER_LIMIT = "joint_free_server_limit"
 internal const val JOINT_SERVER_LIMIT = "joint_server_limit"
-internal const val JOINT_CHANNEL_FREE_LIMIT_REACHED = "joint_channel_free_limit_reached"
 
-/** `JointChannelInviteValidationCode` (`packages/server/src/services/channelService.ts`). */
-internal const val JOINT_TARGET_SERVER_INVALID = "joint_target_server_invalid"
-internal const val JOINT_INVITEE_NOT_FOUND = "joint_invitee_not_found"
-internal const val JOINT_INVITEE_NOT_ADMIN = "joint_invitee_not_admin"
-internal const val JOINT_INVITE_REQUIRED = "joint_invite_required"
-internal const val JOINT_INVITE_LIMIT_EXCEEDED = "joint_invite_limit_exceeded"
-
-/**
- * 429 from `POST channels` with joint invites and `POST channels/:id/joint-invites`: the inviter
- * spent their hourly budget of invited people. Body `{ error, code, retryAfterSeconds }` plus a
- * `Retry-After` header (botiverse/slock `agent/joint-invite-rate-limit` 4ab05c6e3,
- * `routes/channels.ts`). Pending server PR: verify against the merged route before release.
- */
-internal const val JOINT_INVITE_RATE_LIMITED = "joint_invite_rate_limited"
-
-internal val JOINT_LIMIT_ERROR_CODES =
-    setOf(JOINT_FREE_SERVER_LIMIT, JOINT_SERVER_LIMIT, JOINT_CHANNEL_FREE_LIMIT_REACHED)
+/** A host on a plan with a hosted-joint limit (AppSumo) is at it (botiverse/slock #15952). */
+internal const val JOINT_CHANNEL_PLAN_LIMIT_REACHED = "joint_channel_plan_limit_reached"
 
 private val jointChannelsJson = Json {
     ignoreUnknownKeys = true
@@ -79,6 +58,7 @@ private data class WireJointServer(
     val serverId: String,
     val serverName: String = "",
     val serverSlug: String = "",
+    val serverAvatarUrl: String? = null,
     val role: String? = null,
     val status: String,
     val isCurrentServer: Boolean = false,
@@ -140,12 +120,6 @@ private data class WirePendingJointInvitesResponse(
 )
 
 @Serializable
-private data class WireJointResendResponse(
-    val ok: Boolean = false,
-    val resentCount: Int,
-)
-
-@Serializable
 private data class WireJointOkResponse(
     val ok: Boolean,
 )
@@ -154,181 +128,10 @@ private data class WireJointOkResponse(
 private data class WireJointErrorBody(
     val error: String? = null,
     val code: String? = null,
-    val targetServerSlug: String? = null,
-    val invitee: String? = null,
-    val archivedChannelId: String? = null,
-    val archivedChannelName: String? = null,
-    val archivedChannelType: String? = null,
-    val canUnarchiveArchivedChannel: Boolean = false,
-    val blockingChannel: WireJointBlockingChannel? = null,
-    /** `joint_invite_rate_limited`: seconds until the inviter's budget frees up. */
-    val retryAfterSeconds: Long? = null,
-)
-
-@Serializable
-private data class WireJointBlockingChannel(val name: String? = null)
-
-/**
- * `POST channels` with `visibility: "joint"` (`routes/channels.ts` `channelRouter.post("/")`): name,
- * optional description, initial current-server members and one `jointInvites` entry per server.
- */
-@Serializable
-internal data class CreateJointChannelRequestBody(
-    val name: String,
-    val description: String? = null,
-    val visibility: String = "joint",
-    val agentIds: List<String> = emptyList(),
-    val userIds: List<String> = emptyList(),
-    val jointInvites: List<JointChannelInviteRequestBody>,
-)
-
-/** The server's structured details of a rejected joint request (invite target, archived collision). */
-data class JointChannelErrorDetails(
-    val code: String?,
-    val targetServerSlug: String?,
-    val invitee: String?,
-    val archivedChannelId: String?,
-    val archivedChannelName: String?,
-    val archivedChannelType: String?,
-    val canUnarchiveArchivedChannel: Boolean,
-    /** `joint_channel_free_limit_reached`: the hosted joint that already uses the free slot. */
-    val blockingChannelName: String? = null,
 )
 
 /** `archived_name_collision`: 409 from `POST channels` when an archived channel holds the name. */
 internal const val ARCHIVED_NAME_COLLISION = "archived_name_collision"
-
-internal fun parseSharedJointErrorDetails(bodyText: String?): JointChannelErrorDetails? =
-    bodyText?.takeIf(String::isNotBlank)?.let { payload ->
-        runCatching { jointChannelsJson.decodeFromString(WireJointErrorBody.serializer(), payload) }.getOrNull()
-    }?.let { wire ->
-        JointChannelErrorDetails(
-            code = wire.code?.trim()?.takeIf(String::isNotBlank),
-            targetServerSlug = wire.targetServerSlug?.trim()?.takeIf(String::isNotBlank),
-            invitee = wire.invitee?.trim()?.takeIf(String::isNotBlank),
-            archivedChannelId = wire.archivedChannelId?.trim()?.takeIf(String::isNotBlank),
-            archivedChannelName = wire.archivedChannelName?.trim()?.takeIf(String::isNotBlank),
-            archivedChannelType = wire.archivedChannelType,
-            canUnarchiveArchivedChannel = wire.canUnarchiveArchivedChannel,
-            blockingChannelName = wire.blockingChannel?.name?.trim()?.takeIf(String::isNotBlank),
-        )
-    }
-
-/**
- * One invite draft as sent: slug + invitee list, and [sameAdmin] when the inviter confirmed
- * connecting directly as admin of both servers (see [findSameAdminJointTarget]).
- */
-data class JointInviteTarget(
-    val targetServerSlug: String,
-    val invitedPeople: List<String>,
-    val sameAdmin: Boolean = false,
-)
-
-sealed interface CreateJointChannelOutcome {
-    data class Created(val channel: JointChannelAccepted) : CreateJointChannelOutcome
-
-    /** Web: an archived joint channel holds the name; offer Unarchive (when allowed) or Change Name. */
-    data class ArchivedNameCollision(
-        val archivedChannelId: ChannelId,
-        val archivedChannelName: String,
-        val canUnarchive: Boolean,
-    ) : CreateJointChannelOutcome
-
-    data class Failed(val result: DataResult<*>, val details: JointChannelErrorDetails?) : CreateJointChannelOutcome
-}
-
-internal fun buildSharedCreateJointChannelBody(
-    name: String,
-    description: String?,
-    agentIds: List<String>,
-    userIds: List<String>,
-    invites: List<JointInviteTarget>,
-): String =
-    jointChannelsJson.encodeToString(
-        CreateJointChannelRequestBody.serializer(),
-        CreateJointChannelRequestBody(
-            name = name,
-            description = description,
-            agentIds = agentIds,
-            userIds = userIds,
-            jointInvites = invites.map { JointChannelInviteRequestBody(it.targetServerSlug, it.invitedPeople, it.sameAdmin.sameAdminWire()) },
-        ),
-    )
-
-/**
- * One `jointInvites` entry of `POST channels`, and the `POST channels/:id/joint-invites` body.
- * `sameAdmin: true` (RFC 075 §4.5, botiverse/slock `staging` d8082739a
- * `services/channelService.ts` `JointInviteRequest.sameAdmin`) asks the server to accept the
- * inviter's own invite on the target in the same request instead of emailing them; the server
- * re-checks their owner/admin role on both servers and falls back to the email on failure.
- * Omitted (not `false`) when not set, as the web sends it.
- */
-@OptIn(ExperimentalSerializationApi::class)
-@Serializable
-internal data class JointChannelInviteRequestBody(
-    val targetServerSlug: String,
-    val invitedPeople: List<String>,
-    @EncodeDefault(EncodeDefault.Mode.NEVER) val sameAdmin: Boolean? = null,
-)
-
-private fun Boolean.sameAdminWire(): Boolean? = takeIf { it }
-
-/** A server the signed-in account belongs to, as far as the same-admin check needs it. */
-internal data class JointSameAdminServer(val slug: String, val name: String, val role: String?)
-
-/** Who is inviting and from where: the inputs of web `findSameAdminJointTarget`. */
-internal data class JointSameAdminContext(
-    val currentServerSlug: String?,
-    val currentServerName: String,
-    val userName: String?,
-    val userEmail: String?,
-    val servers: List<JointSameAdminServer>,
-)
-
-/**
- * Web `invitesSelf` (`packages/web/src/utils/jointSameAdmin.ts`): `a@b` is an email
- * (case-insensitive), anything else a handle with an optional leading `@`, the same token rules
- * as the server's `resolveJointInvitees`.
- */
-internal fun jointInvitesSelf(invitedPeople: List<String>, userName: String?, userEmail: String?): Boolean =
-    invitedPeople.any { raw ->
-        val token = raw.trim()
-        if (token.contains('@') && !token.startsWith('@')) {
-            !userEmail.isNullOrEmpty() && token.equals(userEmail, ignoreCase = true)
-        } else {
-            !userName.isNullOrEmpty() && token.removePrefix("@") == userName
-        }
-    }
-
-/**
- * Web `findSameAdminJointTarget`: the target server the inviter owns or administers when they
- * invite themselves there, so the form asks to confirm the direct connection. Only decides what
- * the form shows; the server re-checks the inviter's authority on both servers.
- */
-internal fun findSameAdminJointTarget(
-    context: JointSameAdminContext?,
-    targetServerSlug: String,
-    invitedPeople: List<String>,
-): JointSameAdminServer? {
-    context ?: return null
-    val slug = targetServerSlug.trim()
-    if (slug.isEmpty() || slug == context.currentServerSlug) return null
-    if (!jointInvitesSelf(invitedPeople, context.userName, context.userEmail)) return null
-    val target = context.servers.firstOrNull { it.slug == slug } ?: return null
-    return target.takeIf { it.role == "owner" || it.role == "admin" }
-}
-
-/** The same-admin inputs from the stored session: its user and the servers with their roles. */
-internal fun StoredAuthSession.jointSameAdminContext(currentServerId: String?): JointSameAdminContext? {
-    val current = servers.firstOrNull { it.id == currentServerId } ?: return null
-    return JointSameAdminContext(
-        currentServerSlug = current.slug,
-        currentServerName = current.name,
-        userName = user.name,
-        userEmail = user.email,
-        servers = servers.mapNotNull { server -> server.slug?.let { JointSameAdminServer(it, server.name, server.role) } },
-    )
-}
 
 enum class JointChannelServerPlan { Free, Paid }
 
@@ -358,6 +161,8 @@ data class JointChannelServer(
     val plan: JointChannelServerPlan?,
     /** Null on pending rows and on the legacy single-peer fallback. */
     val role: JointChannelRole? = null,
+    /** The server's logo (`jointServers[].serverAvatarUrl`, slock #15809); null for pending or none. */
+    val avatarUrl: String? = null,
 )
 
 data class JointChannelConnections(
@@ -367,7 +172,7 @@ data class JointChannelConnections(
     val archived: Boolean,
     /** Active servers first, then pending targets, exactly as the server orders `jointServers`. */
     val servers: List<JointChannelServer>,
-    /** Web `hasCurrentServerPendingJointInvites`: this server has invites it may resend. */
+    /** Web `hasCurrentServerPendingJointInvites`: invites this server sent are still pending. */
     val hasCurrentServerPendingInvites: Boolean,
     /** This server's role in the joint (`jointRole`); null on a payload without it. */
     val jointRole: JointChannelRole? = null,
@@ -377,11 +182,7 @@ data class JointChannelConnections(
     val isPrivate: Boolean = false,
     /** The channel row's `joined`; null when the payload has none. */
     val joined: Boolean? = null,
-) {
-    /** Web `jointServerLimitReached`: active + pending servers count toward the 30-server cap. */
-    val serverLimitReached: Boolean
-        get() = servers.size >= JOINT_CHANNEL_MAX_SERVERS
-}
+)
 
 data class PendingJointInvite(
     val id: String,
@@ -459,6 +260,7 @@ private fun WireJointServer.toDomain(): JointChannelServer? {
                 else -> null
             },
         role = JointChannelRole.fromWire(role),
+        avatarUrl = serverAvatarUrl?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
 
@@ -477,10 +279,6 @@ internal fun parseSharedPendingJointInvites(bodyText: String): List<PendingJoint
         }
 }.getOrNull()
 
-internal fun parseSharedJointResendCount(bodyText: String): Int? = runCatching {
-    jointChannelsJson.decodeFromString(WireJointResendResponse.serializer(), bodyText).resentCount
-}.getOrNull()
-
 internal fun parseSharedJointDisconnectOk(bodyText: String): Boolean = runCatching {
     jointChannelsJson.decodeFromString(WireJointOkResponse.serializer(), bodyText).ok
 }.getOrDefault(false)
@@ -490,36 +288,6 @@ internal fun parseSharedJointAcceptedChannel(bodyText: String): JointChannelAcce
     val id = wire.id.trim().takeIf(String::isNotBlank) ?: return@runCatching null
     JointChannelAccepted(channelId = ChannelId(id), channelName = wire.name)
 }.getOrNull()
-
-internal fun buildSharedJointChannelInviteBody(
-    targetServerSlug: String,
-    invitedPeople: List<String>,
-    sameAdmin: Boolean = false,
-): String =
-    jointChannelsJson.encodeToString(
-        JointChannelInviteRequestBody.serializer(),
-        JointChannelInviteRequestBody(
-            targetServerSlug = targetServerSlug,
-            invitedPeople = invitedPeople,
-            sameAdmin = sameAdmin.sameAdminWire(),
-        ),
-    )
-
-/** Web `parseInvitedPeopleText` (`packages/web/src/utils/jointSameAdmin.ts`): commas or new lines. */
-internal fun parseJointInvitedPeopleText(text: String): List<String> =
-    text.split(',', '\n').map(String::trim).filter(String::isNotEmpty)
-
-internal enum class JointServerSlugIssue { Required, Pattern }
-
-private val JOINT_SERVER_SLUG_PATTERN = Regex("^[a-z][a-z0-9-]*$")
-
-/** Shared `validateServerSlugReferenceReason` (`packages/shared/src/serverSlugValidation.ts`). */
-internal fun jointServerSlugIssue(slug: String): JointServerSlugIssue? =
-    when {
-        slug.isEmpty() -> JointServerSlugIssue.Required
-        !JOINT_SERVER_SLUG_PATTERN.matches(slug) -> JointServerSlugIssue.Pattern
-        else -> null
-    }
 
 /**
  * Repository over the joint-channel routes. Every call goes through the caller's
@@ -534,36 +302,6 @@ internal class RealJointChannelRepository(
         execute("joint_connections", { networkClient.request(priority = priority, path = "channels/${channelId.value}") }) { body ->
             parseSharedJointChannelConnections(body)
         }
-
-    suspend fun inviteServer(
-        channelId: ChannelId,
-        targetServerSlug: String,
-        invitedPeople: List<String>,
-        sameAdmin: Boolean = false,
-    ): DataResult<JointChannelConnections> =
-        execute(
-            "joint_invite",
-            {
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = "channels/${channelId.value}/joint-invites",
-                    method = "POST",
-                    bodyText = buildSharedJointChannelInviteBody(targetServerSlug, invitedPeople, sameAdmin),
-                )
-            },
-        ) { body -> parseSharedJointChannelConnections(body) }
-
-    suspend fun resendInvites(channelId: ChannelId): DataResult<Int> =
-        execute(
-            "joint_resend",
-            {
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = "channels/${channelId.value}/joint-invite/resend",
-                    method = "POST",
-                )
-            },
-        ) { body -> parseSharedJointResendCount(body) }
 
     suspend fun disconnect(channelId: ChannelId): DataResult<Unit> =
         execute(
@@ -613,71 +351,6 @@ internal class RealJointChannelRepository(
             },
         ) { body -> parseSharedJointAcceptedChannel(body) }
 
-    suspend fun createJointChannel(
-        name: String,
-        description: String?,
-        agentIds: List<String>,
-        userIds: List<String>,
-        invites: List<JointInviteTarget>,
-    ): CreateJointChannelOutcome {
-        val response =
-            try {
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = "channels",
-                    method = "POST",
-                    bodyText = buildSharedCreateJointChannelBody(name, description, agentIds, userIds, invites),
-                )
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (exception: Exception) {
-                warningLogger("request_failed source=joint_create exception=${exception::class.simpleName}")
-                return CreateJointChannelOutcome.Failed(
-                    DataResult.Error(ScreenError(code = "network_unavailable", retryable = true)),
-                    details = null,
-                )
-            }
-        if (response.isSuccessful) {
-            val created = parseSharedJointAcceptedChannel(response.bodyText.orEmpty())
-            return if (created != null) {
-                CreateJointChannelOutcome.Created(created)
-            } else {
-                warningLogger("parse_failed source=joint_create status=${response.code}")
-                CreateJointChannelOutcome.Failed(
-                    DataResult.Error(ScreenError(code = "joint_response_parse_failed", retryable = true)),
-                    details = null,
-                )
-            }
-        }
-        val details = parseSharedJointErrorDetails(response.bodyText ?: response.errorBodyText)
-        val archivedId = details?.archivedChannelId
-        val archivedName = details?.archivedChannelName
-        // Web offers the collision recovery only when the archived holder is itself a joint channel.
-        if (
-            response.code == 409 && details?.code == ARCHIVED_NAME_COLLISION &&
-            archivedId != null && archivedName != null && details.archivedChannelType == "joint"
-        ) {
-            return CreateJointChannelOutcome.ArchivedNameCollision(
-                archivedChannelId = ChannelId(archivedId),
-                archivedChannelName = archivedName,
-                canUnarchive = details.canUnarchiveArchivedChannel,
-            )
-        }
-        return CreateJointChannelOutcome.Failed(response.toJointDataError<Unit>(), details)
-    }
-
-    suspend fun unarchiveChannel(channelId: ChannelId): DataResult<JointChannelAccepted> =
-        execute(
-            "joint_unarchive",
-            {
-                networkClient.request(
-                    priority = DataRequestPriority.Foreground,
-                    path = "channels/${channelId.value}/unarchive",
-                    method = "POST",
-                )
-            },
-        ) { body -> parseSharedJointAcceptedChannel(body) }
-
     private suspend fun <T> execute(
         source: String,
         block: suspend () -> HomeNetworkResponse,
@@ -705,9 +378,9 @@ internal class RealJointChannelRepository(
 }
 
 /**
- * Maps a failed joint response. The server's `code` (limit or invite-validation code) becomes the
- * result code so the UI can pick the web's localized copy; otherwise the HTTP status is kept as
- * `joint_http_<status>` and the server's `error` text is carried for the existing error pipeline.
+ * Maps a failed joint response. The server's `code` (a limit code) becomes the result code so the
+ * UI can pick the web's localized copy; otherwise the HTTP status is kept as `joint_http_<status>`
+ * and the server's `error` text is carried for the existing error pipeline.
  */
 internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
     val body =
@@ -733,13 +406,12 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                     code = serverCode ?: "joint_http_$code",
                     retryable = false,
                     serverMessage = serverMessage,
-                    retryAfterSeconds = if (code == 429) body?.retryAfterSeconds ?: retryAfterHeaderSeconds() else null,
                 )
             )
     }
 }
 
-/** `Retry-After` as delta-seconds (the form the joint routes send); an HTTP-date reads as null. */
+/** `Retry-After` as delta-seconds (the form Raft's routes send); an HTTP-date reads as null. */
 internal fun HomeNetworkResponse.retryAfterHeaderSeconds(): Long? =
     responseHeaders.entries
         .firstOrNull { (name, _) -> name.equals("Retry-After", ignoreCase = true) }
@@ -751,13 +423,11 @@ internal fun HomeNetworkResponse.retryAfterHeaderSeconds(): Long? =
 
 /**
  * Web `formatJointInviteRateLimited`: the wait in whole minutes, rounded up and at least 1; null
- * when the response named no wait (the copy then says "later").
+ * when the response named no wait (the copy then says "later"). The action card's feedback rate
+ * limit words its wait the same way.
  */
 internal fun jointInviteRateLimitMinutes(retryAfterSeconds: Long?): Int? =
     retryAfterSeconds?.let { seconds -> ((seconds + 59) / 60).coerceAtLeast(1).toInt() }
-
-/** The rate-limit wait carried by a failed joint result. */
-internal fun DataResult<*>.jointRetryAfterSeconds(): Long? = (this as? DataResult.Error)?.error?.retryAfterSeconds
 
 /** The server/limit code of a failed result, or null (network, parse, auth). */
 internal fun DataResult<*>.jointFailureCode(): String? =

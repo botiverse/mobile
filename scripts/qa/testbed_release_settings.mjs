@@ -12,6 +12,11 @@
 //   observe    POST .../release-settings-observation  { id_token, action: "observe", request_id, receipt, os } -> { state: "recorded" }
 //   decide     POST .../release-settings-decision     { id_token, attempt_id, request_id } -> { state, attempt_id, request_id }
 //
+// The same client fetches the login acceptance input (#216) for the claimed case login-email-password
+// (testbed_login_acceptance_input.mjs), with the claim credential of stamp_report.sh claim:
+//   input      POST .../login-acceptance-input        { id_token }                    -> HTTP 200 only: the six-field input
+//                                                      (botiverse/testbed worker/src/login-acceptance.ts)
+//
 // (all under /api/agent/run-cases/{run_case_id}/; after the claim also X-Testbed-CI-Job-Ref and
 // X-Testbed-Claim-Token). Any refusal, missing field or transport failure is a stop: nothing here
 // ever turns into a credential, an open capture gate or a pass. Replies are private: never logged.
@@ -23,7 +28,7 @@ const ATTEMPT_ID = /^pla_[0-9a-f]{32}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const REQUEST_ID = /^[0-9a-f]{32}$/;
 export const RELEASE_LOGIN_MODE = "release-prelogin";
-export const ENDPOINTS = ["release-settings-job", "release-settings-claim", "release-settings-observation", "release-settings-decision"];
+export const ENDPOINTS = ["release-settings-job", "release-settings-claim", "release-settings-observation", "release-settings-decision", "login-acceptance-input"];
 
 export class TestbedReleaseError extends Error {}
 const fail = (code) => { throw new TestbedReleaseError(code); };
@@ -80,8 +85,9 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
   // `retry`: the same request (same job signature, same body) again after a transport failure,
   // a timeout, a 5xx or an unreadable reply, a bounded number of times. Testbed answers a repeated
   // dedicated claim from the same job with the original result, so a claim whose reply was lost
-  // is recovered rather than abandoned. A 4xx is a refusal: never retried.
-  const post = async (endpoint, body, { claimed = true, retry = false } = {}) => {
+  // is recovered rather than abandoned. A 4xx is a refusal: never retried. `status`: the only
+  // success status the endpoint has (any other 2xx is a failure too).
+  const post = async (endpoint, body, { claimed = true, retry = false, status = null } = {}) => {
     const audience = releaseSettingsAudience(testbedUrl, runCaseId, endpoint);
     const idToken = await requestOidcToken({ env, fetchImpl, audience });
     if (claimed && !claimToken) fail("claim_token_missing");
@@ -107,7 +113,7 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
         continue;
       }
       if (response.status >= 400 && response.status < 500) fail(`${endpoint}_http_${response.status}`);
-      if (!response.ok) {
+      if (!response.ok || (status !== null && response.status !== status)) {
         lastFailure = `${endpoint}_http_${response.status}`;
         continue;
       }
@@ -142,6 +148,14 @@ export function createTestbedReleaseClient({ env = process.env, fetchImpl = fetc
     async decide(request) {
       if (!ATTEMPT_ID.test(request.attemptId) || !REQUEST_ID.test(request.requestId)) fail("decision_request_invalid");
       return post("release-settings-decision", { attempt_id: request.attemptId, request_id: request.requestId });
+    },
+    /**
+     * The login acceptance input of this attempt (#216): HTTP 200 only (Testbed delivers nothing
+     * before a test target is configured); the caller checks the body. Testbed answers a repeat from
+     * the same job with the same input, so a lost reply is retried like the claim.
+     */
+    async loginAcceptanceInput() {
+      return post("login-acceptance-input", {}, { retry: true, status: 200 });
     },
   };
 }

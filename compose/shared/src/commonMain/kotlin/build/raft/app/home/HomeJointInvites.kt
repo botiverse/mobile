@@ -59,15 +59,12 @@ internal fun rememberHomeJointInvites(
     LaunchedEffect(store, active, serverId, canBeInvited) {
         if (active) store?.dispatch(SharedJointInviteIntent.Load(serverId, canBeInvited))
     }
-    val rateLimitedLater = jointInviteRateLimitedMessage(null)
     val failureCopy =
         JointFailureCopy(
             freeServerLimit = stringResource(raftUpsellCopy(Res.string.joint_limit_free_servers)),
             serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
-            hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
+            hostLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = stringResource(Res.string.joint_invite_accept_failed),
-            // Accepting spends no invite budget; the code only comes from create and invite.
-            inviteRateLimited = { rateLimitedLater },
         )
     val errorStrings = localizedErrorPresentationStrings()
     LaunchedEffect(store, state.effect) {

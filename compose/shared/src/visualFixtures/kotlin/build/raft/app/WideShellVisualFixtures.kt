@@ -20,7 +20,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.InboxFilter
-import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
@@ -31,14 +30,9 @@ import build.raft.app.data.TasksUiState
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
-import build.raft.app.model.ChannelId
-import build.raft.app.model.ConversationKind
-import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
-import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
-import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -122,67 +116,13 @@ private fun WideShellFrame(selectedTab: String, content: @Composable () -> Unit)
 
 // ---- Activity + task ------------------------------------------------------------------------
 
-private val wideTime =
-    RaftTimeContext(
-        localOffsetMinutes = 8 * 60,
-        todayEpochDay = raftEpochDayForDate(2026, 10, 22),
-        nowEpochMillis = 1_792_635_000_000L,
-    )
-
-private val wideInboxRows =
-    listOf(
-        InboxItem(
-            key = "thread:task-4",
-            kind = InboxItemKind.Thread,
-            channelId = ChannelId("task-4"),
-            channelName = "thread",
-            unreadCount = 2,
-            parentChannelId = ChannelId("ship-mobile"),
-            parentChannelName = "ship-mobile",
-            parentChannelKind = ConversationKind.Channel,
-            parentMessagePreview = "Migrate push notifications to the new API",
-            latestActivityPreview = "The new token flow is in; testing on the tablet next.",
-            latestActivitySenderName = "Lagoon",
-            latestActivitySenderId = "agent-lagoon",
-            latestActivitySenderKind = MemberKind.Agent,
-            latestActivityAt = "2026-10-22T01:40:00Z",
-        ),
-        InboxItem(
-            key = "channel:release",
-            kind = InboxItemKind.Channel,
-            channelId = ChannelId("release"),
-            channelName = "release",
-            unreadCount = 1,
-            hasMention = true,
-            lastMessageSenderName = "Volta",
-            lastMessageSenderKind = MemberKind.Agent,
-            lastMessagePreview = "Deployed, and I just tested it again to confirm it still works.",
-            lastMessageAt = "2026-10-22T01:17:00Z",
-        ),
-        InboxItem(
-            key = "channel:design",
-            kind = InboxItemKind.Channel,
-            channelId = ChannelId("design"),
-            channelName = "design",
-            lastMessageSenderName = "Kirby",
-            lastMessageSenderKind = MemberKind.Human,
-            lastMessagePreview = "From 768 a head is one line, by touch too.",
-            lastMessageAt = "2026-10-21T08:17:00Z",
-        ),
-        InboxItem(
-            key = "channel:joint-hands",
-            kind = InboxItemKind.Channel,
-            channelId = ChannelId("joint-hands"),
-            channelName = "joint-hands",
-            channelKind = ConversationKind.Joint,
-            channelType = "joint",
-            unreadCount = 6,
-            lastMessageSenderName = "System",
-            lastMessageSenderKind = MemberKind.System,
-            lastMessagePreview = "1 new task created: task #50 \"Upgrade admin vite to 6.4.4+ (security)\"",
-            lastMessageAt = "2026-10-21T07:26:00Z",
-        ),
-    )
+// The rows, counts and clock of the web side of this case: its MainLayout primes Activity with the shared
+// activityResultsFixture.json (slock packages/visual-testing/shared; the thread in #design, the
+// #android-artifacts channel, the DM with Cindy; 3 conversations, 3 unread) and renders at
+// fixtureData.locale's instant, the same rows and clock the phone's Activity fixture ports
+// ([homeActivityVisualSnapshot], [homeVisualFixtureTimeContext]). The web opens no conversation (its
+// harness serves no task load yet), so no row is selected here either.
+private val wideActivity = homeActivityVisualSnapshot
 
 @Composable
 private fun WideActivityTask() {
@@ -202,12 +142,12 @@ private fun WideActivityTask() {
 private fun WideActivityList() {
     val context =
         ActivityConversationListContext(
-            channelSymbolsByChannelId = mapOf("ship-mobile" to "#", "release" to "#", "design" to "#", "joint-hands" to "git-branch"),
+            channelSymbolsByChannelId = mapOf("channel-design" to "#", "channel-android" to "#"),
         )
     Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         SharedActivityHeader(
-            totalCount = 506,
-            totalUnreadCount = 657,
+            totalCount = wideActivity.totalCount,
+            totalUnreadCount = wideActivity.totalUnreadCount,
             onClose = null,
             topSafeAreaPadding = 0.dp,
             refreshing = false,
@@ -215,12 +155,12 @@ private fun WideActivityList() {
         )
         SharedActivityFilterBar(
             selectedFilter = InboxFilter.All,
-            totalUnreadCount = 657,
+            totalUnreadCount = wideActivity.totalUnreadCount,
             onFilterSelected = {},
             onMarkAllRead = {},
         )
         Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
-            activityConversationListEntries(wideInboxRows, wideTime).forEach { entry ->
+            activityConversationListEntries(wideActivity.items, homeVisualFixtureTimeContext).forEach { entry ->
                 if (entry is ActivityConversationListEntry.DayHeading) {
                     ActivityDayHeading(entry.label, first = entry.first, background = RaftColor.SurfaceWhite)
                     return@forEach
@@ -230,8 +170,8 @@ private fun WideActivityList() {
                     item = item,
                     model = item.activityConversationRowModel(context, InboxFilter.All),
                     divider = entry.divider,
-                    selected = item.key == "thread:task-4",
-                    timeContext = wideTime,
+                    selected = false,
+                    timeContext = homeVisualFixtureTimeContext,
                     agentStatusResolver = EmptyRaftAgentStatusResolver,
                     canMarkDone = true,
                     openGestureKey = item.key,
@@ -239,6 +179,8 @@ private fun WideActivityList() {
                     onOpen = {},
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
+                    // By touch in the wide layout, every row shows its Mark as Done at rest (web InboxRowDone).
+                    onRowDone = {},
                 )
             }
         }

@@ -47,7 +47,10 @@ internal data class CreateAgentRequest(
 internal class SharedCreateAgentCoordinator(
     private val agentsApiClient: RaftAgentsApiClient,
     private val computersApiClient: RaftComputersApiClient,
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    private val onLiveModelDetect: (ServerId) -> Unit = { serverId ->
+        RaftSharedStoreRegistry.currentOrNull()?.refreshServerModelLabelCatalogAfterLiveDetect(serverId.value)
+    }
 ) {
     suspend fun createAgent(request: CreateAgentRequest): DataResult<AgentSummary> {
         val v2 = request.runtimeFormV2
@@ -145,6 +148,9 @@ internal class SharedCreateAgentCoordinator(
                 )
         ) {
             is DataResult.Content -> {
+                // Web `useRuntimeModels` (slock #15780): live detect upserted fresh labels into the
+                // server's model-label catalog, so refresh our copy if we already hold one.
+                onLiveModelDetect(ServerId(normalizedServerId))
                 // Live detection wins; the catalog's list (`modelsSource: fallback`) only fills missing labels.
                 val fallbackById =
                     (RaftRuntimeCatalogNames.entry(normalizedRuntime, normalizedServerId)?.models ?: RUNTIME_MODELS[normalizedRuntime])

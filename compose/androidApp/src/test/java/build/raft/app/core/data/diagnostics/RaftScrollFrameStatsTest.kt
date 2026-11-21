@@ -1,6 +1,7 @@
 package build.raft.app.core.data.diagnostics
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class RaftScrollFrameStatsTest {
@@ -51,5 +52,218 @@ class RaftScrollFrameStatsTest {
         assertEquals(0, summary.frames)
         assertEquals(0L, summary.p95FrameMs)
         assertEquals(0.0, summary.shortestFrameMs, 0.0)
+    }
+
+    @Test
+    fun scrollStartFirstFrameStallCountsAsJankWhileSmoothStartPreservesMinCadence() {
+        // Smooth start (6 ms partial first vsync) does not distort minFrameMs or jankFrames.
+        val smooth = RaftScrollFrameStats(startNanos = 0L, frameIntervalNanos = vsync90)
+        var t = 6_000_000L
+        smooth.onScrollVsync(frameTimeNanos = t, nowNanos = t)
+        repeat(8) {
+            t += vsync90
+            smooth.onScrollVsync(frameTimeNanos = t, nowNanos = t)
+        }
+        val smoothSummary = smooth.summary(nowNanos = t)
+        assertEquals(6L, smoothSummary.firstFrameMs)
+        assertEquals(8, smoothSummary.frames)
+        assertEquals(0, smoothSummary.jankFrames)
+        assertEquals(11L, smoothSummary.longestFrameMs)
+        assertEquals(11.1, smoothSummary.shortestFrameMs, 0.02)
+
+        // Opening frame stalls for 78 ms on main thread -> counted as jank and longestFrameMs.
+        val stalled = RaftScrollFrameStats(startNanos = 0L, frameIntervalNanos = vsync90)
+        var ts = 78_000_000L
+        stalled.onScrollVsync(frameTimeNanos = ts, nowNanos = ts)
+        repeat(5) {
+            ts += vsync90
+            stalled.onScrollVsync(frameTimeNanos = ts, nowNanos = ts)
+        }
+        val stalledSummary = stalled.summary(nowNanos = ts)
+        assertEquals(78L, stalledSummary.firstFrameMs)
+        assertEquals(6, stalledSummary.frames)
+        assertEquals(1, stalledSummary.jankFrames)
+        assertEquals(78L, stalledSummary.longestFrameMs)
+        assertEquals(11.1, stalledSummary.shortestFrameMs, 0.02)
+
+        // Single-frame opening stall (short scroll that stopped right after the hitch): still has valid shortestFrameMs.
+        val singleStall = RaftScrollFrameStats(startNanos = 0L, frameIntervalNanos = vsync90)
+        singleStall.onScrollVsync(frameTimeNanos = 65_000_000L, nowNanos = 65_000_000L)
+        val singleSummary = singleStall.summary(nowNanos = 65_000_000L)
+        assertEquals(65L, singleSummary.firstFrameMs)
+        assertEquals(1, singleSummary.frames)
+        assertEquals(1, singleSummary.jankFrames)
+        assertEquals(65L, singleSummary.longestFrameMs)
+        assertEquals(65.0, singleSummary.shortestFrameMs, 0.02)
+    }
+
+    @Test
+    fun throttleCarriesSkippedJankAndLongestFrameOntoNextLineAndFlushesOnPause() {
+        val throttle = RaftScrollFrameThrottle(minIntervalMillis = 1_000L)
+        val smooth =
+            RaftScrollFrameStats.Summary(
+                durationMs = 300L,
+                frames = 27,
+                jankFrames = 0,
+                longestFrameMs = 11L,
+                shortestFrameMs = 11.1,
+                p95FrameMs = 12L,
+                frameIntervalNanos = vsync90,
+                firstFrameMs = 8L,
+            )
+        val janky1 = smooth.copy(jankFrames = 2, longestFrameMs = 44L)
+        val janky2 = smooth.copy(jankFrames = 1, longestFrameMs = 88L)
+
+        // First scroll emits with zero skipped.
+        val first = throttle.record(nowMillis = 1_000L, list = "thread", summary = smooth)
+        assertEquals(RaftScrollSkippedCarryover(sessions = 0, jankFrames = 0, longestFrameMs = 0L), first)
+        assertEquals(
+            "scroll_frames page=compose_slock_app_shell list=thread reason=stopped firstFrameMs=8 " +
+                "durationMs=300 frames=27 jankFrames=0 longestFrameMs=11 p95FrameMs=12 minFrameMs=11.1 " +
+                "vsyncMs=11.1 vsyncEndMs=11.1 skippedSessions=0",
+            raftScrollFramesLine("compose_slock_app_shell", "thread", "stopped", smooth, vsync90, first!!),
+        )
+
+        // Two rapid scrolls within 1s are throttled, accumulating their jank and worst frame gap.
+        assertNull(throttle.record(nowMillis = 1_400L, list = "thread", summary = janky1))
+        assertNull(throttle.record(nowMillis = 1_850L, list = "thread", summary = janky2))
+
+        // Next scroll after 1s emits and carries both skipped sessions' worst frame and total jank.
+        val next = throttle.record(nowMillis = 2_100L, list = "inbox", summary = smooth)!!
+        assertEquals(2, next.sessions)
+        assertEquals(3, next.jankFrames)
+        assertEquals(88L, next.longestFrameMs)
+        assertEquals(
+            "scroll_frames page=compose_slock_app_shell list=inbox reason=stopped firstFrameMs=8 " +
+                "durationMs=300 frames=27 jankFrames=0 longestFrameMs=11 p95FrameMs=12 minFrameMs=11.1 " +
+                "vsyncMs=11.1 vsyncEndMs=11.1 skippedSessions=2 skippedJankFrames=3 skippedLongestFrameMs=88",
+            raftScrollFramesLine("compose_slock_app_shell", "inbox", "stopped", smooth, vsync90, next),
+        )
+
+        // After emitting, carryover resets; a skipped smooth scroll clears cleanly on pause without flushing.
+        assertNull(throttle.record(nowMillis = 2_500L, list = "thread", summary = smooth))
+        assertNull(throttle.flushAndResetOnPause())
+
+        // A skipped scroll with jank flushes on pause so it is never lost when leaving the screen.
+        assertNull(throttle.record(nowMillis = 2_700L, list = "thread", summary = janky2))
+        val flushed = throttle.flushAndResetOnPause()!!
+        assertEquals(1, flushed.sessions)
+        assertEquals(1, flushed.jankFrames)
+        assertEquals(88L, flushed.longestFrameMs)
+        assertEquals(
+            "scroll_frames page=compose_slock_app_shell list=thread reason=paused_skipped " +
+                "skippedSessions=1 skippedJankFrames=1 skippedLongestFrameMs=88",
+            raftScrollFramesSkippedFlushLine("compose_slock_app_shell", flushed),
+        )
+        assertNull(throttle.flushAndResetOnPause())
+    }
+
+    @Test
+    fun openingStallWithUnclampedFrameTimestampDoesNotDoubleCountNextVsync() {
+        val stats = RaftScrollFrameStats(startNanos = 0L, frameIntervalNanos = vsync90)
+        // Main thread blocked 78 ms; Choreographer passed the earlier scheduled vsync (11.1 ms).
+        stats.onScrollVsync(frameTimeNanos = vsync90, nowNanos = 78_000_000L)
+        // Next frame arrives on cadence at 8 * vsync90 (~88.9 ms).
+        stats.onScrollVsync(frameTimeNanos = 8 * vsync90, nowNanos = 8 * vsync90)
+        val summary = stats.summary(nowNanos = 8 * vsync90)
+
+        assertEquals(78L, summary.firstFrameMs)
+        assertEquals(2, summary.frames)
+        assertEquals(1, summary.jankFrames)
+        assertEquals(78L, summary.longestFrameMs)
+        assertEquals(11.1, summary.shortestFrameMs, 0.02)
+    }
+
+    @Test
+    fun zeroCallbacksReportsNegativeFirstFrameAndOmitsWireField() {
+        val stats = RaftScrollFrameStats(startNanos = 10_000_000L, frameIntervalNanos = vsync90)
+        val summary = stats.summary(nowNanos = 25_000_000L)
+
+        assertEquals(-1L, summary.firstFrameMs)
+        assertEquals(0, summary.frames)
+        assertEquals(0, summary.jankFrames)
+        assertEquals(0.0, summary.shortestFrameMs, 0.0)
+        assertEquals(
+            "scroll_frames page=compose_slock_app_shell list=thread reason=stopped " +
+                "durationMs=15 frames=0 jankFrames=0 longestFrameMs=0 p95FrameMs=0 minFrameMs=0.0 " +
+                "vsyncMs=11.1 vsyncEndMs=11.1 skippedSessions=0",
+            raftScrollFramesLine("compose_slock_app_shell", "thread", "stopped", summary, vsync90),
+        )
+    }
+
+    @Test
+    fun jankyOpeningFrameFollowedByLongerStallStillSetsMinFrameMs() {
+        val stats = RaftScrollFrameStats(startNanos = 0L, frameIntervalNanos = vsync90)
+        // Opening frame stalled at 25 ms (>= 1.75x vsync90), followed by an even longer 100 ms stall.
+        stats.onScrollVsync(frameTimeNanos = 25_000_000L, nowNanos = 25_000_000L)
+        stats.onScrollVsync(frameTimeNanos = 125_000_000L, nowNanos = 125_000_000L)
+        val summary = stats.summary(nowNanos = 125_000_000L)
+
+        assertEquals(25L, summary.firstFrameMs)
+        assertEquals(2, summary.frames)
+        assertEquals(2, summary.jankFrames)
+        assertEquals(100L, summary.longestFrameMs)
+        assertEquals(25.0, summary.shortestFrameMs, 0.02)
+    }
+
+    @Test
+    fun negativeMonotonicTimestampsAndOutOfOrderVsyncDoNotCorruptAnchor() {
+        val start = -5_000_000_000L
+        val stats = RaftScrollFrameStats(startNanos = start, frameIntervalNanos = vsync90)
+        var t = start + 6_000_000L
+        stats.onScrollVsync(frameTimeNanos = t, nowNanos = t)
+        repeat(4) {
+            t += vsync90
+            stats.onScrollVsync(frameTimeNanos = t, nowNanos = t)
+        }
+        // Out-of-order earlier timestamp clamps to 0 ms without rewinding the anchor for the next frame.
+        stats.onScrollVsync(frameTimeNanos = t - 5_000_000L, nowNanos = t)
+        t += vsync90
+        stats.onScrollVsync(frameTimeNanos = t, nowNanos = t)
+        val summary = stats.summary(nowNanos = t)
+
+        assertEquals(6L, summary.firstFrameMs)
+        assertEquals(6, summary.frames)
+        assertEquals(0, summary.jankFrames)
+        assertEquals(11L, summary.longestFrameMs)
+
+        // Negative elapsedMillis on first emit must not throttle the very first scroll.
+        val throttle = RaftScrollFrameThrottle(minIntervalMillis = 1_000L)
+        val emitted = throttle.record(nowMillis = -500L, list = "thread", summary = summary)
+        assertEquals(RaftScrollSkippedCarryover(), emitted)
+    }
+
+    @Test
+    fun pausedSkippedAttributesWorstJankyListInsteadOfSubsequentSmoothList() {
+        val throttle = RaftScrollFrameThrottle(minIntervalMillis = 1_000L)
+        val smooth =
+            RaftScrollFrameStats.Summary(
+                durationMs = 200L,
+                frames = 18,
+                jankFrames = 0,
+                longestFrameMs = 11L,
+                shortestFrameMs = 11.1,
+                p95FrameMs = 12L,
+                frameIntervalNanos = vsync90,
+                firstFrameMs = 6L,
+            )
+        val jankyThread = smooth.copy(jankFrames = 2, longestFrameMs = 88L)
+
+        // Seed emission at t=1000.
+        throttle.record(nowMillis = 1_000L, list = "thread", summary = smooth)
+        // Janky scroll on thread is throttled, followed by a smooth scroll on inbox before pause.
+        assertNull(throttle.record(nowMillis = 1_300L, list = "thread", summary = jankyThread))
+        assertNull(throttle.record(nowMillis = 1_600L, list = "inbox", summary = smooth))
+
+        val flushed = throttle.flushAndResetOnPause()!!
+        assertEquals(2, flushed.sessions)
+        assertEquals(2, flushed.jankFrames)
+        assertEquals(88L, flushed.longestFrameMs)
+        assertEquals("thread", flushed.lastList)
+        assertEquals(
+            "scroll_frames page=compose_slock_app_shell list=thread reason=paused_skipped " +
+                "skippedSessions=2 skippedJankFrames=2 skippedLongestFrameMs=88",
+            raftScrollFramesSkippedFlushLine("compose_slock_app_shell", flushed),
+        )
     }
 }

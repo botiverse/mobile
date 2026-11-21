@@ -927,6 +927,7 @@ private fun MembersListRow(
     val tag = membersRowTag(member, isSelf)
     // botiverse/slock #11273 `MemberAgentRow`: an App Bot's name carries the Bot badge.
     val appBot = remember(member) { member.appBotIdentityOrNull() }
+    if (member.kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(member.serverId?.value)
     val subtitle =
         when {
             member.kind == MemberKind.Agent && runtimeLine -> {

@@ -15,6 +15,7 @@ import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
@@ -76,6 +77,8 @@ internal data class SharedConversationDirectoryProjection(
     val hasExternalRelation: Boolean = false,
     /** A joint channel's `jointRole` (`host`, ...) from the Home channel row; only channels carry one. */
     val jointRole: String? = null,
+    /** Connected servers of a joint channel (`jointServers[]`, slock #15809) with each server's logo. */
+    val jointServers: List<MemberServerRef> = emptyList(),
     /** Agent Lounge v0: the agent this channel is the Lounge of (from its canonical row). */
     val loungeAgentId: String? = null,
     /** The row names a last message (web `channelActivity[channelId]`): the channel has messages. */
@@ -543,7 +546,16 @@ private fun sharedConversationDirectoryStateFromProjections(
     logger: (String) -> Unit
 ): SharedConversationDirectoryState {
     val claimed = projections.filter { it.canonicalChannelId.isNotBlank() }
-    val byCanonicalId = claimed.associateBy { it.canonicalChannelId }
+    val byCanonicalId = LinkedHashMap<String, SharedConversationDirectoryProjection>()
+    for (projection in claimed) {
+        val existing = byCanonicalId[projection.canonicalChannelId]
+        byCanonicalId[projection.canonicalChannelId] =
+            if (existing != null && projection.jointServers.isEmpty() && existing.jointServers.isNotEmpty()) {
+                projection.copy(jointServers = existing.jointServers)
+            } else {
+                projection
+            }
+    }
     // Two projections self-attesting the SAME canonical id remain last-wins. Keep the
     // evidence bounded: Home/Activity merge rebuilds this directory frequently, and logging
     // every duplicate claim on every rebuild produced thousands of identical JSONL rows.
@@ -650,6 +662,7 @@ internal fun HomeConversationRow.toSharedConversationDirectoryProjection(
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
         jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),
+        jointServers = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) emptyList() else jointServers,
         loungeAgentId = if (kind == ConversationKind.Channel) loungeAgentId?.takeIf { it.isNotBlank() } else null,
         hasMessages = !lastMessageAt.isNullOrBlank() || lastMessageId != null
     )

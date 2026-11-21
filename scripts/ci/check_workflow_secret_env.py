@@ -118,8 +118,10 @@ STEP_ALLOWLIST = {
          "0a60acff7a5fd1b36afaafcaa0157ebbff6638e059f2aee1046f133197b40121"),
     ("qa-acceptance.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
         ("STAMP_DIRECT_ANDROID_APK is an input-derived boolean. The existing token and bootstrap boolean env/output writes are unchanged; "
-         "skipped in the release-prelogin lane, which claims through testbed_release_settings.mjs without $GITHUB_ENV/$GITHUB_OUTPUT.",
-         "d9c2d9609e205380365b4f36f2f35ee301d84fb18c20035f2fadfcbc502576d5"),
+         "#216 adds only the claimed_case output: the claim's case_id from the spec, written only when it matches "
+         "^[a-z0-9][a-z0-9-]{0,63}$ (else empty), no credential. "
+         "Skipped in the release-prelogin lane, which claims through testbed_release_settings.mjs without $GITHUB_ENV/$GITHUB_OUTPUT.",
+         "be5e416c13507ba41f0329e4cb683249f0ca368648635138c4e87e1b29ae6570"),
     ("qa-acceptance-ios.yml", "acceptance", "Claim Stamp run case and resolve auth mode"):
         ("STAMP_TOKEN is used by stamp_report.sh; writes only bootstrap_required / STAMP_BOOTSTRAP_REQUIRED (true|false)",
          "862107c03608e2090a1a91a7ad9d2dd0da85bf2f228d379ca90e183917d096a8"),

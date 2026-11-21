@@ -111,19 +111,18 @@ internal enum class RaftUpgradeGate(val wire: String) {
 
 /**
  * The server answered with a plan limit: which gate it is (null: not a plan limit). Web
- * `MessageInput` (`FILE_UPLOAD_QUOTA_EXCEEDED`), `CreateJointChannelDialog`
- * (`joint_channel_free_limit_reached` → host limit, `joint_free_server_limit` → free cap),
- * `AgentMigrationSection` (`MIGRATION_PRO_PLAN_REQUIRED`), the seat limits of an invite or a
- * created agent (server `CapacityLimitError`).
+ * `MessageInput` (`FILE_UPLOAD_QUOTA_EXCEEDED`), `AgentMigrationSection`
+ * (`MIGRATION_PRO_PLAN_REQUIRED`), the seat limits of an invite or a created agent (server
+ * `CapacityLimitError`).
  */
 internal fun raftUpgradeGateForErrorCode(code: String?): RaftUpgradeGate? =
-    when (code?.trim()) {
-        "FILE_UPLOAD_QUOTA_EXCEEDED" -> RaftUpgradeGate.UploadMonthlyQuota
-        "joint_channel_free_limit_reached" -> RaftUpgradeGate.JointChannelHostLimit
-        "joint_free_server_limit" -> RaftUpgradeGate.JointChannelFreeCap
+    when (code?.trim()?.lowercase()) {
+        "file_upload_quota_exceeded",
+        "upload_quota_exceeded" -> RaftUpgradeGate.UploadMonthlyQuota
+        "external_limit_frozen" -> RaftUpgradeGate.ExternalChannelFrozen
         // server externalChannelLimitService ExternalChannelLimitError (paywallHit.ts → this gate).
         "free_external_limit" -> RaftUpgradeGate.ExternalChannelFreeLimit
-        "MIGRATION_PRO_PLAN_REQUIRED" -> RaftUpgradeGate.AgentMigration
+        "migration_pro_plan_required" -> RaftUpgradeGate.AgentMigration
         // shared AGENT_LIMIT_REACHED_CODE / HUMAN_SEAT_LIMIT_REACHED_CODE (planService CapacityLimitError).
         "agent_limit_reached" -> RaftUpgradeGate.SeatLimitAgentCreate
         "human_seat_limit_reached" -> RaftUpgradeGate.SeatLimitInvite
@@ -636,7 +635,7 @@ internal fun RaftUpgradeDialog(
  */
 @Composable
 private fun RaftUpgradeBenefitList(benefits: List<RaftUpgradeBenefit>, firstIsHit: Boolean) {
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         benefits.forEachIndexed { index, benefit ->
             val hit = firstIsHit && index == 0
             Row(

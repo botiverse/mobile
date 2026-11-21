@@ -1,10 +1,13 @@
 package build.raft.app.data
 
+import build.raft.app.reportProjectionRowDropped
 import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.strictProjectionDiagnosticsLogger
+import kotlin.time.Instant
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 /*
  * Upgrading and installing a Computer's runtimes from its page, as the web does: botiverse/slock
@@ -24,6 +27,15 @@ import kotlinx.serialization.json.JsonElement
  * `computer_offline` / `computer_upgrade_required`, 429 `rate_limited`, 504 `computer_timeout`.
  * `:runtime` is the runtime's sign-in id ([RuntimeAuthRuntime.wire]). Raft never upgrades or installs
  * on its own: only on a person's press, and an install only after its plan was shown.
+ *
+ * The update check (botiverse/slock #15429 9523be7fc7, read at staging 5881c7b53ca7b447e4d4ac391390c68453cba952;
+ * contract §6d "Update check"): with `upgradableRuntimes` the read also carries `runtimeUpdates`
+ * (runtimeAuthRoutes.ts `offeredRuntimeUpdates`, only for the runtimes Upgrade is offered for), the
+ * Computer's read-only check by runtime id (packages/shared/src/runtimeAuth.ts `runtimeUpdatesSchema`,
+ * packages/shared/src/runtimeUpgrade.ts `runtimeUpdateCheckSchema`):
+ *   `{"claude":{"kind":"ok","installed":"2.0.5","latest":"2.0.5","updateAvailable":false,"checkedAt":"…"},
+ *     "grok":{"kind":"unavailable","reason":"lookup_failed","checkedAt":"…"}}`
+ * Absent from an older server or Computer, and no entry for a runtime not checked yet: Upgrade as before.
  */
 
 /** slock `RUNTIME_UPGRADE_RELAY_BUDGET_MS`. */
@@ -76,6 +88,52 @@ internal sealed interface RuntimeUpgradeResult {
     data object NotInstalled : RuntimeUpgradeResult
 
     data class Error(val code: RuntimeOperationErrorCode) : RuntimeUpgradeResult
+}
+
+/**
+ * slock `RUNTIME_UPDATE_CHECK_MAX_AGE_MS`: an update check older than this (by its `checkedAt`) counts
+ * as none, and the card offers Upgrade as before (web `runtimeUpdateOf`).
+ */
+internal const val RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS = 24 * 60 * 60_000L
+
+/**
+ * slock `RUNTIME_UPDATE_CHECK_UNAVAILABLE_REASONS` (OAR's `UpdateCheckUnavailableReason`): why a check
+ * could not name the version the runtime's own updater would install. [managedElsewhere]: one of slock
+ * `RUNTIME_UPDATE_CHECK_MANAGED_ELSEWHERE_REASONS`, a deliberate choice (a package manager, updates
+ * turned off) rather than a failed lookup.
+ */
+internal enum class RuntimeUpdateCheckUnavailableReason(val wire: String, val managedElsewhere: Boolean = false) {
+    UnsupportedInstallation("unsupported_installation", managedElsewhere = true),
+    PackageManager("package_manager", managedElsewhere = true),
+    UnmanagedInstallation("unmanaged_installation", managedElsewhere = true),
+    UpdatesDisabled("updates_disabled", managedElsewhere = true),
+
+    /** Also a check that threw or timed out on the Computer, and a reason this app does not know. */
+    LookupFailed("lookup_failed"),
+    VersionUnreadable("version_unreadable");
+
+    companion object {
+        fun fromWire(value: String?): RuntimeUpdateCheckUnavailableReason? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/** slock `RuntimeUpdateCheck`: one runtime's read-only update check as the Computer reported it. */
+internal sealed interface RuntimeUpdateCheck {
+    /** `checkedAt`: when the Computer ran the check, in epoch milliseconds. */
+    val checkedAtMillis: Long
+
+    /** The installed version, the one the runtime's own updater would install, and its verdict on whether that is an update. */
+    data class Ok(
+        val installed: String,
+        val latest: String,
+        val updateAvailable: Boolean,
+        override val checkedAtMillis: Long,
+    ) : RuntimeUpdateCheck
+
+    data class Unavailable(
+        val reason: RuntimeUpdateCheckUnavailableReason,
+        override val checkedAtMillis: Long,
+    ) : RuntimeUpdateCheck
 }
 
 /** slock `RUNTIME_INSTALL_UNSUPPORTED_REASONS`: why OAR will not run the installer on this Computer. */
@@ -170,6 +228,89 @@ internal fun JsonElement.toRuntimeUpgradeResult(diagnostics: (String) -> Unit = 
         }
     }
 }
+
+/**
+ * One `runtimeUpdates` entry on the wire (slock `runtimeUpdateCheckSchema`): every variant's fields,
+ * read by `kind`. Not strict, as slock's: a key this app does not know is ignored.
+ */
+@Serializable
+private data class RuntimeUpdateCheckDto(
+    val kind: String? = null,
+    val installed: String? = null,
+    val latest: String? = null,
+    val updateAvailable: Boolean? = null,
+    val reason: String? = null,
+    val checkedAt: String? = null,
+)
+
+/**
+ * The read's `runtimeUpdates` (slock `runtimeUpdatesSchema`) by runtime; null when it is not an object
+ * (an older server or Computer sends none). As in slock, a runtime this app does not know and an entry
+ * that does not read are dropped on their own (one entry never costs the others), each logged. A
+ * `kind` this app does not know reads as no check (the card offers Upgrade as before); an
+ * `unavailable` reason it does not know as `lookup_failed`, as slock reads a newer Computer's.
+ */
+internal fun JsonElement.toRuntimeUpdates(
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): Map<RuntimeAuthRuntime, RuntimeUpdateCheck>? {
+    val record = this as? JsonObject ?: return null
+    return record.mapNotNull { (key, value) ->
+        val runtime =
+            RuntimeAuthRuntime.fromWire(key)
+                ?: run {
+                    reportUnknownTypeDropped(RuntimeUpdatesSource, "runtime", key, diagnostics = diagnostics)
+                    return@mapNotNull null
+                }
+        value.toRuntimeUpdateCheck(diagnostics)?.let { runtime to it }
+    }.toMap()
+}
+
+private const val RuntimeUpdatesSource = "runtime_updates"
+
+private fun JsonElement.toRuntimeUpdateCheck(diagnostics: (String) -> Unit): RuntimeUpdateCheck? {
+    val dto = runCatching { runtimeOperationJson.decodeFromJsonElement(RuntimeUpdateCheckDto.serializer(), this) }.getOrNull()
+    if (dto == null) {
+        reportProjectionRowDropped(RuntimeUpdatesSource, "decode_failed", diagnostics = diagnostics)
+        return null
+    }
+    val checkedAtMillis = dto.checkedAt?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
+    val check =
+        when (dto.kind) {
+            "ok" -> {
+                val installed = dto.installed.runtimeUpdateCheckVersion()
+                val latest = dto.latest.runtimeUpdateCheckVersion()
+                val updateAvailable = dto.updateAvailable
+                if (installed != null && latest != null && updateAvailable != null && checkedAtMillis != null) {
+                    RuntimeUpdateCheck.Ok(installed, latest, updateAvailable, checkedAtMillis)
+                } else {
+                    null
+                }
+            }
+            "unavailable" -> {
+                val reason = dto.reason?.takeIf { it.length <= 64 }
+                if (reason != null && checkedAtMillis != null) {
+                    val known =
+                        RuntimeUpdateCheckUnavailableReason.fromWire(reason)
+                            ?: RuntimeUpdateCheckUnavailableReason.LookupFailed.also {
+                                reportUnknownTypeDropped(RuntimeUpdatesSource, "reason", reason, fallback = it.wire, diagnostics = diagnostics)
+                            }
+                    RuntimeUpdateCheck.Unavailable(known, checkedAtMillis)
+                } else {
+                    null
+                }
+            }
+            null -> null
+            else -> {
+                reportUnknownTypeDropped(RuntimeUpdatesSource, "kind", dto.kind, fallback = "no_update_check", diagnostics = diagnostics)
+                return null
+            }
+        }
+    if (check == null) reportProjectionRowDropped(RuntimeUpdatesSource, "decode_failed", diagnostics = diagnostics)
+    return check
+}
+
+/** slock `runtimeVersionSchema` as the check carries it: exactly a release version (`2.0.14`), never a path, not trimmed. */
+private fun String?.runtimeUpdateCheckVersion(): String? = this?.takeIf { it.length <= 64 && RuntimeVersionShape.matches(it) }
 
 /** slock `installStepSchema` (1..2 000 characters), 1..10 of them. */
 private fun List<String>?.installSteps(): List<String>? =

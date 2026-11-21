@@ -58,4 +58,4 @@ while IFS= read -r file; do
   local_sum="$(shasum -a 256 "$file" | cut -d' ' -f1)"
   [ "$remote" = "$local_sum" ] || { echo "upload: read-back mismatch for $path" >&2; exit 1; }
   echo "verified $path"
-done < <(find . -type f \( -name '*.pom' -o -name '*.module' -o -name '*.klib' \) | sort)
+done < <(find . -type f \( -name '*.pom' -o -name '*.module' -o -name '*.klib' -o -name '*.aar' \) | sort)

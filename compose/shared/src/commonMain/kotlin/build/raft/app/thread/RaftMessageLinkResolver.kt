@@ -8,7 +8,9 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.isRaftMessageContextHistoryLimited
 import build.raft.app.data.parseRaftMessageLinkChannelProbe
+import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.data.parseSharedMessageContext
+import build.raft.app.data.raftPublicServerPath
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
@@ -28,11 +30,23 @@ internal sealed interface RaftMessageLinkResolution {
     ) : RaftMessageLinkResolution
 
     /**
-     * {slug} is not one of the account's servers: the link opens the read-only public preview
+     * {slug} is not one of the account's servers, and its public card lists the link's channel
+     * among those a stranger may read, or could not be read now (a transient failure never decides
+     * "not found"): the link opens the read-only public preview
      * ([RaftPublicConversationPreviewStore]), which reads it through the anonymous public routes
      * and shows the same not-found state when a stranger may not read it either.
      */
     data class PublicPreview(val link: RaftMessageLink) : RaftMessageLinkResolution
+
+    /**
+     * {slug} is not one of the account's servers, and its public card says there is nothing here
+     * for a stranger: no such server or not public (400/403/404), or public without the link's
+     * channel among those listed, or a DM link (the public routes serve channels only). The shell
+     * opens the neutral "Message not found" page ([openRaftMessageLinkNotFoundPage]), as the web
+     * shows its not-found page instead of the public page; never the conversation-unavailable page,
+     * which is for a conversation on one of the account's servers.
+     */
+    data class PublicNotFound(val reason: String) : RaftMessageLinkResolution
 
     /**
      * The conversation/message is not there or not for this reader (400/403/404: no access,
@@ -46,7 +60,8 @@ internal sealed interface RaftMessageLinkResolution {
  * Resolves a link for the signed-in account: {slug} against the account's servers, then the
  * conversation (`GET /api/channels/:id`) and the message (`GET /api/messages/context/:id`) on that
  * server. Only what the API returns for this reader becomes identity; ids from the link that the
- * API did not confirm are never opened.
+ * API did not confirm are never opened. A {slug} that is not one of the account's servers is
+ * asked whether it is public first (`GET /api/public/servers/:slug`, see [resolveOutsideAccount]).
  *
  * A transient failure (5xx, 408/429, timeout, offline, DNS) never decides "not found": the
  * link opens and the conversation page shows its own load/retry/offline state, as a
@@ -64,10 +79,7 @@ internal class RaftMessageLinkResolver(
     suspend fun resolve(link: RaftMessageLink, servers: List<StoredAuthServer>): RaftMessageLinkResolution {
         val server =
             servers.firstOrNull { it.slug?.equals(link.serverSlug, ignoreCase = true) == true }
-                ?: run {
-                    diagnosticsLogger("message_link_resolved result=public_preview")
-                    return RaftMessageLinkResolution.PublicPreview(link)
-                }
+                ?: return resolveOutsideAccount(link)
         val serverId = ServerId(server.id)
         val focusMessageId = link.focusMessageId
         // Before the requests: the page's revision and head epoch must predate its fetch.
@@ -88,21 +100,77 @@ internal class RaftMessageLinkResolver(
                 channel.await() to context?.await()
             }
 
+        val channelProbe =
+            if (channelResponse.linkOutcome() == RaftLinkProbeOutcome.Found) {
+                parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
+            } else {
+                null
+            }
+        var threadRedirect: ThreadChannelRedirect? = null
         val conversationKind =
             when (channelResponse.linkOutcome()) {
                 RaftLinkProbeOutcome.Found -> {
-                    val probe = parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
                     when {
-                        probe == null -> link.routeKind
-                        probe.id != link.channelId -> return notFound("channel_identity_mismatch")
-                        else -> link.routeKind.confirmedBy(probe.type) ?: return notFound("route_kind_mismatch")
+                        channelProbe == null -> link.routeKind
+                        channelProbe.id != link.channelId -> return notFound("channel_identity_mismatch")
+                        channelProbe.type == "thread" -> {
+                            // slock #15879 (`useTaskConversationRedirect` + `threadConversationPlace`):
+                            // `/channel/<threadChannelId>[?msg=…]` redirects to the parent conversation
+                            // with the thread open instead of showing "not found" or a bare thread page.
+                            // Never allow `/dm/<threadId>`, nested `?thread=` on a thread channel id, or
+                            // a thread row missing its parent channel/message ids.
+                            if (link.routeKind == ConversationKind.DirectMessage || link.isThread) {
+                                return notFound("route_kind_mismatch")
+                            }
+                            val parentChannelId = channelProbe.parentChannelId ?: return notFound("route_kind_mismatch")
+                            val parentMessageId = channelProbe.parentMessageId ?: return notFound("route_kind_mismatch")
+                            // Probe the parent channel so `parentConversationKind` is server-confirmed
+                            // even when the parent is absent from Home's directory (archived channels,
+                            // Agent Lounges, or cold server switches).
+                            val parentResponse = request(serverId, path = "channels/$parentChannelId")
+                            val parentConversationKind =
+                                when (parentResponse.linkOutcome()) {
+                                    RaftLinkProbeOutcome.Found -> {
+                                        val parentProbe = parseRaftMessageLinkChannelProbe(parentResponse?.bodyText)
+                                        when {
+                                            parentProbe == null -> null
+                                            parentProbe.id != parentChannelId -> return notFound("channel_identity_mismatch")
+                                            else -> parentProbe.type.toParentConversationKind() ?: return notFound("route_kind_mismatch")
+                                        }
+                                    }
+                                    RaftLinkProbeOutcome.NotFound -> return notFound("parent_channel_${parentResponse?.code}")
+                                    RaftLinkProbeOutcome.Unavailable -> null
+                                }
+                            threadRedirect =
+                                ThreadChannelRedirect(
+                                    threadChannelId = channelProbe.id,
+                                    parentChannelId = parentChannelId,
+                                    parentMessageId = parentMessageId,
+                                    parentConversationKind = parentConversationKind,
+                                )
+                            ConversationKind.Thread
+                        }
+                        else -> link.routeKind.confirmedBy(channelProbe.type) ?: return notFound("route_kind_mismatch")
                     }
                 }
                 RaftLinkProbeOutcome.NotFound ->
                     return openThroughOtherServer(link, server, servers) ?: notFound("channel_${channelResponse?.code}")
                 RaftLinkProbeOutcome.Unavailable -> link.routeKind
             }
-        if (focusMessageId == null) return open(server.id, link, conversationKind, threadChannelId = null)
+        if (focusMessageId == null) {
+            val redirect = threadRedirect
+            return if (redirect != null) {
+                open(
+                    serverId = server.id,
+                    link = link.redirectedToThread(redirect, messageId = null),
+                    conversationKind = ConversationKind.Thread,
+                    parentConversationKind = redirect.parentConversationKind,
+                    threadChannelId = redirect.threadChannelId,
+                )
+            } else {
+                open(server.id, link, conversationKind, threadChannelId = null)
+            }
+        }
 
         val resolution = when (contextResponse.linkOutcome()) {
             RaftLinkProbeOutcome.Found -> {
@@ -113,7 +181,28 @@ internal class RaftMessageLinkResolver(
                 // the lookup answers the full one, which is what the conversation is opened with
                 // (a short id never reaches the thread or message reads, which want the full id).
                 val lookedUp = context.targetMessageId?.value?.takeIf { raftMessageIdMatches(focusMessageId, it) } ?: focusMessageId
+                val redirect = threadRedirect
                 when {
+                    // slock #15879: `/channel/<threadChannelId>?msg=<reply>` opens the thread on its
+                    // parent conversation focused at the resolved reply.
+                    redirect != null ->
+                        if (
+                            target != null && (
+                                targetParentId == null ||
+                                    !raftMessageIdMatches(redirect.parentMessageId, targetParentId) ||
+                                    (target.channelId != null && target.channelId.value != redirect.parentChannelId)
+                                )
+                        ) {
+                            notFound("thread_reply_mismatch")
+                        } else {
+                            open(
+                                serverId = server.id,
+                                link = link.redirectedToThread(redirect, messageId = lookedUp),
+                                conversationKind = ConversationKind.Thread,
+                                parentConversationKind = redirect.parentConversationKind,
+                                threadChannelId = target?.threadChannelId?.value?.takeIf(String::isNotBlank) ?: redirect.threadChannelId,
+                            )
+                        }
                     // A reply link: the reply must sit in the named thread of this channel.
                     link.isThread && link.messageId != null && link.messageId != link.threadParentMessageId ->
                         if (target == null || targetParentId == null || !raftMessageIdMatches(link.threadParentMessageId, targetParentId)) {
@@ -149,30 +238,95 @@ internal class RaftMessageLinkResolver(
                     else -> open(server.id, link.copy(messageId = lookedUp), conversationKind, threadChannelId = null)
                 }
             }
-            RaftLinkProbeOutcome.NotFound ->
-                if (
+            RaftLinkProbeOutcome.NotFound -> {
+                val redirect = threadRedirect
+                when {
                     contextResponse?.code == 404 &&
-                    isRaftMessageContextHistoryLimited(contextResponse.bodyText ?: contextResponse.errorBodyText)
-                ) {
-                    // Readable but behind the plan's history window: open on the paywall.
-                    open(server.id, link, conversationKind, threadChannelId = null)
-                } else {
-                    notFound("message_${contextResponse?.code}")
+                        isRaftMessageContextHistoryLimited(contextResponse.bodyText ?: contextResponse.errorBodyText) ->
+                        // Readable but behind the plan's history window: open on the paywall.
+                        if (redirect != null) {
+                            open(
+                                serverId = server.id,
+                                link = link.redirectedToThread(redirect, messageId = focusMessageId),
+                                conversationKind = ConversationKind.Thread,
+                                parentConversationKind = redirect.parentConversationKind,
+                                threadChannelId = redirect.threadChannelId,
+                            )
+                        } else {
+                            open(server.id, link, conversationKind, threadChannelId = null)
+                        }
+                    redirect != null && raftMessageIdMatches(focusMessageId, redirect.parentMessageId) ->
+                        // `?msg=` names the thread's own parent message (which lives in parentChannelId,
+                        // so `messages/context/:id?channelId=<threadId>` 404s even though the thread
+                        // probe already confirmed this parent message).
+                        open(
+                            serverId = server.id,
+                            link = link.redirectedToThread(redirect, messageId = redirect.parentMessageId),
+                            conversationKind = ConversationKind.Thread,
+                            parentConversationKind = redirect.parentConversationKind,
+                            threadChannelId = redirect.threadChannelId,
+                        )
+                    else -> notFound("message_${contextResponse?.code}")
                 }
-            RaftLinkProbeOutcome.Unavailable -> open(server.id, link, conversationKind, threadChannelId = null)
+            }
+            RaftLinkProbeOutcome.Unavailable -> {
+                val redirect = threadRedirect
+                if (redirect != null) {
+                    open(
+                        serverId = server.id,
+                        link = link.redirectedToThread(redirect, messageId = focusMessageId),
+                        conversationKind = ConversationKind.Thread,
+                        parentConversationKind = redirect.parentConversationKind,
+                        threadChannelId = redirect.threadChannelId,
+                    )
+                } else {
+                    open(server.id, link, conversationKind, threadChannelId = null)
+                }
+            }
         }
         if (resolution is RaftMessageLinkResolution.Open && contextResponse.linkOutcome() == RaftLinkProbeOutcome.Found) {
-            val probe = parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
             // A forum channel never writes segments.
-            if (probe?.threadSort != CHANNEL_THREAD_SORT_ACTIVITY) {
+            if (channelProbe?.threadSort != CHANNEL_THREAD_SORT_ACTIVITY) {
                 contextResponse?.bodyText?.let { body ->
                     // The probe names the link's channel. The page's scope is the response's, so the type only helps
                     // when they are the same conversation; the sink checks.
-                    pendingContextPage?.offer(body, channelId = link.channelId, channelType = probe?.type)
+                    pendingContextPage?.offer(body, channelId = link.channelId, channelType = channelProbe?.type)
                 }
             }
         }
         return resolution
+    }
+
+    /**
+     * {slug} is not one of the account's servers. The public preview opens only once
+     * `GET /api/public/servers/:slug` says the server is public and lists the link's channel among
+     * those a stranger may read, as the web reads that card before it shows its public page
+     * (botiverse/slock@0ea95d1cd packages/web/src/pages/PublicServerPage.tsx,
+     * packages/server/src/routes/publicServer.ts). One request, whatever it answers:
+     *
+     * - 400/403/404 (no such server, deleted, not public), or 2xx for a DM link (the public routes
+     *   serve ordinary channels only) or without the link's channel: [RaftMessageLinkResolution.PublicNotFound];
+     * - 2xx listing the channel (a thread link names its parent channel): the preview;
+     * - no answer (offline, timeout, DNS), 401, 408, 429, 5xx, or a 2xx body that is not the card:
+     *   the preview as well, whose own Retry handles it. A temporary failure never decides "not found".
+     */
+    private suspend fun resolveOutsideAccount(link: RaftMessageLink): RaftMessageLinkResolution {
+        // The public routes are anonymous: no server of the account is named.
+        val response = request(serverId = null, path = raftPublicServerPath(link.serverSlug))
+        return when (response.linkOutcome()) {
+            RaftLinkProbeOutcome.NotFound -> publicNotFound("public_server_${response?.code}")
+            RaftLinkProbeOutcome.Unavailable -> publicPreview(link, reason = "public_server_${response?.code ?: "transport"}")
+            RaftLinkProbeOutcome.Found -> {
+                if (link.routeKind != ConversationKind.Channel) return publicNotFound("public_route_kind_mismatch")
+                val card = parseRaftPublicServerCard(response?.bodyText) ?: return publicPreview(link, reason = "public_server_unreadable")
+                // Channel ids are UUIDs: a link may spell one in either case.
+                if (card.channelIds.none { it.equals(link.channelId, ignoreCase = true) }) {
+                    publicNotFound("public_channel_not_listed")
+                } else {
+                    publicPreview(link, reason = "public_channel_listed")
+                }
+            }
+        }
     }
 
     /**
@@ -226,8 +380,9 @@ internal class RaftMessageLinkResolver(
         return null
     }
 
+    /** [serverId] null: no server binding (the anonymous public routes). */
     private suspend fun request(
-        serverId: ServerId,
+        serverId: ServerId?,
         path: String,
         query: List<Pair<String, String>> = emptyList(),
     ): HomeNetworkResponse? =
@@ -250,6 +405,7 @@ internal class RaftMessageLinkResolver(
         link: RaftMessageLink,
         conversationKind: ConversationKind,
         threadChannelId: String?,
+        parentConversationKind: ConversationKind? = conversationKind,
     ): RaftMessageLinkResolution.Open {
         diagnosticsLogger(
             "message_link_resolved result=open kind=${conversationKind.name} thread=${link.isThread} " +
@@ -257,7 +413,12 @@ internal class RaftMessageLinkResolver(
         )
         return RaftMessageLinkResolution.Open(
             serverId = serverId,
-            sourceIdentity = link.toConversationOpenSourceMessageIdentity(conversationKind, threadChannelId),
+            sourceIdentity =
+                link.toConversationOpenSourceMessageIdentity(
+                    conversationKind = conversationKind,
+                    threadChannelId = threadChannelId,
+                    parentConversationKind = parentConversationKind,
+                ),
         )
     }
 
@@ -265,7 +426,42 @@ internal class RaftMessageLinkResolver(
         diagnosticsLogger("message_link_resolved result=not_found reason=$reason")
         return RaftMessageLinkResolution.NotFound(reason)
     }
+
+    private fun publicNotFound(reason: String): RaftMessageLinkResolution.PublicNotFound {
+        diagnosticsLogger("message_link_resolved result=not_found reason=$reason")
+        return RaftMessageLinkResolution.PublicNotFound(reason)
+    }
+
+    private fun publicPreview(link: RaftMessageLink, reason: String): RaftMessageLinkResolution.PublicPreview {
+        diagnosticsLogger("message_link_resolved result=public_preview reason=$reason")
+        return RaftMessageLinkResolution.PublicPreview(link)
+    }
 }
+
+private data class ThreadChannelRedirect(
+    val threadChannelId: String,
+    val parentChannelId: String,
+    val parentMessageId: String,
+    val parentConversationKind: ConversationKind?,
+)
+
+private fun String.toParentConversationKind(): ConversationKind? =
+    when (this) {
+        "dm" -> ConversationKind.DirectMessage
+        "joint" -> ConversationKind.Joint
+        "thread", RaftTaskConversationChannelKind -> null
+        else -> ConversationKind.Channel
+    }
+
+private fun RaftMessageLink.redirectedToThread(
+    redirect: ThreadChannelRedirect,
+    messageId: String?,
+): RaftMessageLink =
+    copy(
+        channelId = redirect.parentChannelId,
+        messageId = messageId,
+        threadParentMessageId = redirect.parentMessageId,
+    )
 
 internal enum class RaftLinkProbeOutcome { Found, NotFound, Unavailable }
 
@@ -284,10 +480,11 @@ internal fun HomeNetworkResponse?.linkOutcome(): RaftLinkProbeOutcome =
 
 /**
  * The route kind the channel's own `type` confirms: `/dm/` only for a DM, `/channel/` for any
- * other conversation (a joint channel opens as one). Null when the link names the wrong kind, or a
- * thread's own channel id. A task's own conversation (`type = 'task'`; a task message's Copy link,
- * the app's and Saved's) opens as the task, never as a bare channel page with a Join the server
- * refuses (slock #14960 `useTaskConversationRedirect`).
+ * other top-level conversation (a joint channel opens as one; a thread channel id is redirected
+ * above via `parentChannelId` / `parentMessageId` per slock #15879). Null when the link names the
+ * wrong kind. A task's own conversation (`type = 'task'`; a task message's Copy link, the app's
+ * and Saved's) opens as the task, never as a bare channel page with a Join the server refuses
+ * (slock #14960 `useTaskConversationRedirect`).
  */
 private fun ConversationKind.confirmedBy(type: String): ConversationKind? =
     when (this) {
@@ -305,6 +502,7 @@ private fun ConversationKind.confirmedBy(type: String): ConversationKind? =
 internal fun RaftMessageLink.toConversationOpenSourceMessageIdentity(
     conversationKind: ConversationKind = routeKind,
     threadChannelId: String? = null,
+    parentConversationKind: ConversationKind? = conversationKind,
 ): ConversationOpenSourceMessageIdentity {
     val parentMessageId = threadParentMessageId
     return if (parentMessageId != null) {
@@ -317,7 +515,7 @@ internal fun RaftMessageLink.toConversationOpenSourceMessageIdentity(
             parentChannelId = channelId,
             parentMessageId = parentMessageId,
             conversationKind = ConversationKind.Thread,
-            parentConversationKind = conversationKind,
+            parentConversationKind = parentConversationKind,
         )
     } else {
         ConversationOpenSourceMessageIdentity(

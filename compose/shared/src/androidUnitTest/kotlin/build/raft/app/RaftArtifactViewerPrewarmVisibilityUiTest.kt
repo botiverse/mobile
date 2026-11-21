@@ -1,0 +1,290 @@
+package build.raft.app
+
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.ComposeUiTest
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.Pager
+import build.raft.app.data.AuthSessionEvent
+import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftAuthSessionEventSource
+import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
+import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import org.junit.Rule
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+/**
+ * #wg-mobile-feedback:#257 (Hands 45eccbd9): Activity's Artifact viewer prewarm must run only
+ * while Activity itself is active, its hosting pager is appeared, and the app is foregrounded.
+ * Previously `SharedInboxPanel` omitted `active`, so when a 43-minute background resume refreshed
+ * the access token while the user was in a Thread, the covered Activity tab constructed and loaded
+ * a hidden `raft-app-warm` WebView on the main thread right as the user started scrolling.
+ */
+@OptIn(ExperimentalTestApi::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class RaftArtifactViewerPrewarmVisibilityUiTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
+    private class Owner : LifecycleOwner {
+        val registry = LifecycleRegistry.createUnsafe(this)
+        override val lifecycle: Lifecycle get() = registry
+    }
+
+    private class RefreshableAuthStore(
+        initialSession: StoredAuthSession,
+        private val inner: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(initialSession),
+    ) : RaftAuthSessionStore by inner,
+        RaftAuthSessionEventSource {
+        private val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
+        private var generation = 1L
+
+        override val authSessionEvents: SharedFlow<AuthSessionEvent> = events.asSharedFlow()
+
+        suspend fun rotateAccessToken(nextAccessToken: String) {
+            val current = checkNotNull(inner.readSession())
+            inner.saveSession(current.copy(accessToken = nextAccessToken))
+            generation += 1L
+            events.emit(AuthSessionEvent.TokensRotated(generation))
+        }
+    }
+
+    @AfterTest
+    fun tearDown() {
+        RaftArtifactViewerMemory.clear()
+    }
+
+    /**
+     * With `mainClock.autoAdvance = false`, state writes from outside composition (test thread /
+     * coroutines) only reach the recomposer once global snapshot apply notifications are flushed.
+     */
+    private fun ComposeUiTest.advance(millis: Long) {
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeByFrame()
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeBy(millis)
+        Snapshot.sendApplyNotifications()
+        mainClock.advanceTimeByFrame()
+        waitForIdle()
+    }
+
+    @Test
+    fun hiddenActivityTokenRefreshDoesNotBuildPrewarmWebView() =
+        runRobolectricComposeUiTest {
+            mainClock.autoAdvance = false
+            val owner = Owner().apply { registry.currentState = Lifecycle.State.RESUMED }
+            val pager = object : Pager() {}
+            pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject())
+            val authStore = RefreshableAuthStore(testSession("tok-1"))
+            val scope =
+                RaftArtifactViewerScope(
+                    webOrigin = "https://app.raft.build",
+                    environmentId = "https://api.raft.build/api",
+                    accountId = "user-1",
+                    serverId = "server-1",
+                )
+            val objectItems =
+                listOf(
+                    InboxItem(
+                        key = "object:art-1",
+                        kind = InboxItemKind.Object,
+                        channelId = ChannelId("ch-1"),
+                        channelName = "general",
+                    )
+                )
+
+            var active by mutableStateOf(false)
+            var keptWebView = false
+            val prewarmedConfigs = mutableListOf<RaftWebViewConfig>()
+
+            setContent {
+                CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                    RaftArtifactViewerPrewarmRuntime(
+                        enabled = sharedInboxShouldPrewarmArtifactViewer(active = active, items = objectItems),
+                        pager = pager,
+                        authStore = authStore,
+                        processAuthEvents = authStore,
+                        webBaseUrl = "https://app.raft.build",
+                        scope = scope,
+                        conversationId = null,
+                        desktopModeOverride = false,
+                        keptDocumentPresent = { keptWebView },
+                        prewarmEffect = { config ->
+                            LaunchedEffect(config) {
+                                if (config != null) {
+                                    prewarmedConfigs += config
+                                    keptWebView = true
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            // 1. Activity starts hidden behind a Thread: even past settle + token refresh, no WebView is created.
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-2") }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(0, prewarmedConfigs.size, "inactive Activity must not prewarm WebView on token refresh")
+            assertFalse(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-2", null))
+
+            // 2. Returning to Activity (active = true) prewarms once after the settle delay.
+            runOnIdle { active = true }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(1, prewarmedConfigs.size, "active Activity prewarms once after settling")
+            assertTrue(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-2", null))
+
+            // 3. Reproduce Hands 45eccbd9: open a Thread (active = false), parked WebView expires
+            //    after 5 minutes, then resume refreshes the expired access token ("tok-2" -> "tok-3").
+            runOnIdle {
+                active = false
+                keptWebView = false
+                RaftArtifactViewerMemory.clear()
+            }
+            advance(16L)
+            kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-3") }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(
+                1,
+                prewarmedConfigs.size,
+                "token refresh while covered by a Thread must not construct a new WebView",
+            )
+            assertFalse(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-3", null))
+
+            // 4. Returning to Activity prewarms cleanly with the refreshed token.
+            runOnIdle { active = true }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(2, prewarmedConfigs.size, "active Activity prewarms again once visible")
+            assertTrue(RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, "tok-3", null))
+        }
+
+    @Test
+    fun coveredPagerOrBackgroundLifecycleBlocksPrewarmAcrossFullLifecycleTransitions() =
+        runRobolectricComposeUiTest {
+            mainClock.autoAdvance = false
+            val owner = Owner().apply { registry.currentState = Lifecycle.State.CREATED }
+            val pager = object : Pager() {}
+            // Pager appeared while app is still in background (CREATED) -> foreground gate blocks prewarm.
+            pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject())
+            val authStore = RefreshableAuthStore(testSession("tok-a"))
+            val scope =
+                RaftArtifactViewerScope(
+                    webOrigin = "https://app.raft.build",
+                    environmentId = "https://api.raft.build/api",
+                    accountId = "user-1",
+                    serverId = "server-1",
+                )
+            var keptWebView = false
+            val prewarmedConfigs = mutableListOf<RaftWebViewConfig>()
+
+            setContent {
+                CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                    RaftArtifactViewerPrewarmRuntime(
+                        enabled = true,
+                        pager = pager,
+                        authStore = authStore,
+                        processAuthEvents = authStore,
+                        webBaseUrl = "https://app.raft.build",
+                        scope = scope,
+                        desktopModeOverride = false,
+                        keptDocumentPresent = { keptWebView },
+                        prewarmEffect = { config ->
+                            LaunchedEffect(config) {
+                                if (config != null) {
+                                    prewarmedConfigs += config
+                                    keptWebView = true
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            // 1. Pager appeared, but lifecycle is CREATED (background) -> token refresh does nothing.
+            kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-b") }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(0, prewarmedConfigs.size, "background lifecycle must block prewarm even when pager is appeared")
+
+            // 2. App returns to foreground (RESUMED) while pager is appeared -> prewarms #1.
+            runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(1, prewarmedConfigs.size)
+
+            // 3. Another page covers this pager (DID_DISAPPEAR), app backgrounds (CREATED) and kept WebView expires,
+            //    then app resumes (RESUMED) while still covered and rotates access token -> blocked!
+            runOnIdle {
+                pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_DISAPPEAR, JSONObject())
+                owner.registry.currentState = Lifecycle.State.CREATED
+                keptWebView = false
+                RaftArtifactViewerMemory.clear()
+            }
+            advance(16L)
+            runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            advance(16L)
+            kotlinx.coroutines.runBlocking { authStore.rotateAccessToken("tok-c") }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(1, prewarmedConfigs.size, "covered pager must block prewarm on foreground token refresh")
+
+            // 4. Pager re-appears while foregrounded -> prewarms #2 with tok-c.
+            runOnIdle { pager.onReceivePagerEvent(Pager.PAGER_EVENT_DID_APPEAR, JSONObject()) }
+            advance(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS + 500L)
+            assertEquals(2, prewarmedConfigs.size)
+        }
+
+    @Test
+    fun inboxPrewarmGateRequiresActiveAndArtifactRow() {
+        val messageRow =
+            InboxItem(
+                key = "channel:ch-1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("ch-1"),
+                channelName = "general",
+            )
+        val objectRow =
+            InboxItem(
+                key = "object:art-1",
+                kind = InboxItemKind.Object,
+                channelId = ChannelId("ch-1"),
+                channelName = "general",
+            )
+
+        assertFalse(sharedInboxShouldPrewarmArtifactViewer(active = false, items = listOf(objectRow)))
+        assertFalse(sharedInboxShouldPrewarmArtifactViewer(active = true, items = listOf(messageRow)))
+        assertTrue(sharedInboxShouldPrewarmArtifactViewer(active = true, items = listOf(messageRow, objectRow)))
+    }
+
+    private fun testSession(accessToken: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "user-1@example.test"),
+            accessToken = accessToken,
+            refreshToken = "refresh-1",
+            selectedServerId = "server-1",
+            selectedServerSlug = "server-1",
+            servers = listOf(StoredAuthServer(id = "server-1", name = "server-1", slug = "server-1")),
+        )
+}

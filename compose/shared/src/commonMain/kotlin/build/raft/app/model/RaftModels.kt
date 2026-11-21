@@ -163,6 +163,8 @@ data class ConversationSummary(
     val jointPeerServerName: String? = null,
     val jointPeerServerSlug: String? = null,
     val jointPeerStatus: String? = null,
+    /** Connected servers of a joint channel (`jointServers[]`, slock #15809) with each server's logo. */
+    val jointServers: List<MemberServerRef> = emptyList(),
     val jointBillingLocked: Boolean? = null,
     val jointOverLimitGraceEndsAt: String? = null,
     val externalFreezeAt: String? = null,
@@ -424,6 +426,8 @@ data class MemberServerRef(
     val id: String,
     val name: String = "",
     val slug: String = "",
+    /** The server's logo as the server sent it (`servers[].avatarUrl` or `jointServers[].serverAvatarUrl`); null when absent. */
+    val avatarUrl: String? = null,
 )
 
 /**
@@ -626,6 +630,13 @@ data class MemberProfile(
     @Transient
     val configApply: build.raft.app.data.AgentConfigApply? = null,
     /**
+     * Only on the answer of an agent profile update (`PATCH /agents/:id` `configApplyNewSession`,
+     * botiverse/slock #15669): whether the server decided the saved change starts a new session.
+     * Never stored or cached; stores drop it with [withoutConfigApply].
+     */
+    @Transient
+    val configApplyNewSession: Boolean? = null,
+    /**
      * Only on the answer of an agent profile update (`PATCH /agents/:id` `warnings`, botiverse/slock
      * #15236): links in a new description some of its readers can't open; the save stands. For the
      * editor that saved; stores drop it with [withoutConfigApply], like [configApply].
@@ -633,10 +644,10 @@ data class MemberProfile(
     @Transient
     val descriptionLinkWarnings: List<build.raft.app.data.DescriptionLinkWarning> = emptyList(),
 ) {
-    /** This profile as stored: without the update answer's [configApply] and [descriptionLinkWarnings]. */
+    /** This profile as stored: without the update answer's [configApply], [configApplyNewSession], and [descriptionLinkWarnings]. */
     fun withoutConfigApply(): MemberProfile =
-        if (configApply == null && descriptionLinkWarnings.isEmpty()) this
-        else copy(configApply = null, descriptionLinkWarnings = emptyList())
+        if (configApply == null && configApplyNewSession == null && descriptionLinkWarnings.isEmpty()) this
+        else copy(configApply = null, configApplyNewSession = null, descriptionLinkWarnings = emptyList())
 }
 
 /**

@@ -14,11 +14,16 @@ import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.RuntimeInstallUnsupportedReason
+import build.raft.app.data.RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS
 import build.raft.app.data.RuntimeOperationErrorCode
+import build.raft.app.data.RuntimeUpdateCheck
+import build.raft.app.data.RuntimeUpdateCheckUnavailableReason
 import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.RuntimeUpgradeUnsupportedReason
 import build.raft.app.resources.*
+import kotlin.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -231,11 +236,184 @@ class ComputerRuntimeOperationsTest {
             ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported, upgradeOffered = false),
             ComputerRuntimeAuthCardState("claude", RuntimeAuthRuntime.Claude, view).action(),
         )
-        // Signed in with no sign-out (Qoder): the card still has Upgrade to show.
+        // Signed in with no sign-out (Qoder): no action row; Upgrade is the version line's link (slock #15482).
         val qoder = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qoder to RuntimeAuthStatus.LoggedIn()), upgradableRuntimes = listOf(RuntimeAuthRuntime.Qoder))
         assertNull(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder).action())
-        assertTrue(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = offer).hasActions)
-        assertFalse(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder).hasActions)
+        assertFalse(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = offer).hasActions)
+    }
+
+    @Test
+    fun upgradeIsOfferedAgainOnlyAfterAFailureAnotherPressMayFix() {
+        // Web `upgradeAgainAfter` (slock #15482): an outcome takes the version line; the link comes back
+        // only where a second press may help.
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.Failed)))
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerOffline)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerTimeout)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.RateLimited)))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerUpgradeRequired)))
+        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.Internal))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.InProgress))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Upgraded(from = "1.0.0", to = "1.1.0"))))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Idle))
+        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Running))
+    }
+
+    /**
+     * slock #15429 (staging 5881c7b53c): web runtimeUpgradeOutcomeCopy.ts `runtimeUpdateCheckCopy` and
+     * `runtimeUpgradeButtonShown`, the cases of tests/runtimeUpgrade.behavior.test.tsx. The line stands in
+     * for the version; Upgrade shows only for a newer version, or where the Computer reported no check.
+     */
+    @Test
+    fun theCardSaysWhatTheUpdateCheckFoundAndOffersUpgradeOnlyForANewerVersion() {
+        fun card(
+            update: RuntimeUpdateCheck?,
+            status: RuntimeAuthStatus = RuntimeAuthStatus.LoggedIn(),
+            state: ComputerRuntimeUpgradeState = ComputerRuntimeUpgradeState.Idle,
+        ) = ComputerRuntimeAuthCardState(
+            "claude",
+            RuntimeAuthRuntime.Claude,
+            UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Claude to status)),
+            upgrade = ComputerRuntimeUpgradeOffer(state) {},
+            update = update,
+        )
+        data class Case(val name: String, val update: RuntimeUpdateCheck?, val version: String?, val line: ComputerRuntimeUpdateCheckCopy?, val upgrade: Boolean)
+        listOf(
+            Case(
+                "a newer version",
+                RuntimeUpdateCheck.Ok("1.5.10", "1.5.11", updateAvailable = true, checkedAtMillis = CHECKED_AT_MILLIS),
+                "1.5.10",
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_update_available, listOf("1.5.10", "1.5.11")),
+                upgrade = true,
+            ),
+            Case(
+                "already the latest: no button to press just to ask",
+                RuntimeUpdateCheck.Ok("1.5.11", "1.5.11", updateAvailable = false, checkedAtMillis = CHECKED_AT_MILLIS),
+                "1.5.11",
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_latest, listOf("1.5.11")),
+                upgrade = false,
+            ),
+            Case(
+                "updates managed outside Raft",
+                RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.PackageManager, CHECKED_AT_MILLIS),
+                "2.0.5",
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_managed_elsewhere_version, listOf("2.0.5")),
+                upgrade = false,
+            ),
+            Case(
+                "updates managed outside Raft, no version reported",
+                RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.UpdatesDisabled, CHECKED_AT_MILLIS),
+                null,
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_managed_elsewhere),
+                upgrade = false,
+            ),
+            Case(
+                "the check failed",
+                RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.LookupFailed, CHECKED_AT_MILLIS),
+                "1.5.10",
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_check_unavailable_version, listOf("1.5.10")),
+                upgrade = false,
+            ),
+            Case(
+                "the check failed, no version reported",
+                RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.VersionUnreadable, CHECKED_AT_MILLIS),
+                " ",
+                ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_check_unavailable),
+                upgrade = false,
+            ),
+            Case("no check (an older Computer or server): the version line and Upgrade as before", null, "1.5.10", null, upgrade = true),
+        ).forEach { case ->
+            val shown = card(case.update)
+            assertEquals(case.line, shown.updateCheckCopy(case.version), case.name)
+            assertEquals(case.upgrade, shown.upgradeButtonShown, case.name)
+        }
+        // Each reason slock calls a deliberate choice reads as managed outside Raft; the others as a failed check.
+        val managedElsewhere =
+            setOf(
+                RuntimeUpdateCheckUnavailableReason.PackageManager,
+                RuntimeUpdateCheckUnavailableReason.UpdatesDisabled,
+                RuntimeUpdateCheckUnavailableReason.UnmanagedInstallation,
+                RuntimeUpdateCheckUnavailableReason.UnsupportedInstallation,
+            )
+        RuntimeUpdateCheckUnavailableReason.entries.forEach { reason ->
+            val unavailable = RuntimeUpdateCheck.Unavailable(reason, CHECKED_AT_MILLIS)
+            assertEquals(
+                if (reason in managedElsewhere) {
+                    Res.string.settings_computers_runtime_upgrade_managed_elsewhere_version
+                } else {
+                    Res.string.settings_computers_runtime_upgrade_check_unavailable_version
+                },
+                card(unavailable).updateCheckCopy("2.0.5")?.message,
+                reason.wire,
+            )
+            assertFalse(card(unavailable).upgradeButtonShown, reason.wire)
+        }
+
+        // A CLI too old to sign in (`version_unsupported`) keeps Upgrade whatever the check says; one that runs stays busy.
+        val tooOld = RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported)
+        val latest = RuntimeUpdateCheck.Ok("1.5.11", "1.5.11", updateAvailable = false, checkedAtMillis = CHECKED_AT_MILLIS)
+        assertTrue(card(RuntimeUpdateCheck.Unavailable(RuntimeUpdateCheckUnavailableReason.PackageManager, CHECKED_AT_MILLIS), status = tooOld).upgradeButtonShown)
+        assertTrue(card(latest, status = tooOld).upgradeButtonShown)
+        assertTrue(card(latest, state = ComputerRuntimeUpgradeState.Running).upgradeButtonShown)
+        // An outcome stays once the check says latest, without the button (web: "Upgraded … from 1.5.10 to 1.5.11.").
+        val upgraded = card(latest, state = ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Upgraded("1.5.10", "1.5.11")))
+        assertFalse(upgraded.upgradeButtonShown)
+        assertNotNull(upgraded.upgrade?.state?.let(::computerRuntimeUpgradeCopy))
+
+        // Not offered here, or to a viewer who may not act: neither the line nor the button.
+        assertNull(card(latest).copy(upgrade = null).updateCheckCopy("1.5.11"))
+        assertFalse(card(null).copy(upgrade = null).upgradeButtonShown)
+        assertFalse(card(null).copy(view = UPGRADE_VIEW.copy(canAct = false)).upgradeButtonShown)
+
+        // Qoder has no sign-out: no action row either way; Upgrade and its outcome are the version line's (slock #15482).
+        val qoder = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qoder to RuntimeAuthStatus.LoggedIn()), upgradableRuntimes = listOf(RuntimeAuthRuntime.Qoder))
+        fun qoderCard(state: ComputerRuntimeUpgradeState) =
+            ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = ComputerRuntimeUpgradeOffer(state) {}, update = latest)
+        assertFalse(qoderCard(ComputerRuntimeUpgradeState.Idle).hasActions)
+        assertFalse(qoderCard(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Current("1.5.11"))).hasActions)
+    }
+
+    /**
+     * Web `runtimeUpdateOf` on the card: the controller reads the check only for a runtime Upgrade is
+     * offered for, and only while it is under a day old by the Computer's `checkedAt` (virtual time
+     * drives the wall clock); a stale "Latest" is no answer, so Upgrade is offered as before.
+     */
+    @Test
+    fun theCardReadsTheUpdateCheckOnlyForAnOfferedRuntimeAndOnlyWhileItIsUnderADayOld() = runTest {
+        val latest = RuntimeUpdateCheck.Ok("2.0.5", "2.0.5", updateAvailable = false, checkedAtMillis = CHECKED_AT_MILLIS)
+        val ops =
+            FakeUpgradeOps(
+                UPGRADE_VIEW.copy(
+                    status = mapOf(RuntimeAuthRuntime.Claude to RuntimeAuthStatus.LoggedIn()),
+                    runtimeUpdates = mapOf(RuntimeAuthRuntime.Claude to latest, RuntimeAuthRuntime.Codex to latest),
+                )
+            )
+        // The card is read a minute after the Computer ran its check.
+        val now = { CHECKED_AT_MILLIS + 60_000L + testScheduler.currentTime }
+        val controller = ComputerRuntimeAuthController("s1", "m1", "claude", RuntimeAuthRuntime.Claude, ops, backgroundScope, nowEpochMillis = now)
+        assertNull(controller.cardState, "nothing to draw before the read")
+        controller.read()
+        runCurrent()
+        val card = assertNotNull(controller.cardState)
+        assertEquals(latest, card.update)
+        assertEquals(ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_latest, listOf("2.0.5")), card.updateCheckCopy("2.0.5"))
+        assertFalse(card.upgradeButtonShown)
+
+        // Codex is not offered on this Computer: its check is never read.
+        val codex = ComputerRuntimeAuthController("s1", "m1", "codex", RuntimeAuthRuntime.Codex, ops, backgroundScope, nowEpochMillis = now)
+        codex.read()
+        runCurrent()
+        assertNull(codex.updateCheck)
+        assertNull(codex.cardState?.upgrade)
+
+        // A day after the check it still counts; a moment later it is no answer: the version line and Upgrade as before.
+        advanceTimeBy(RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS - 60_000L)
+        assertEquals(latest, controller.updateCheck)
+        advanceTimeBy(1L)
+        val stale = assertNotNull(controller.cardState)
+        assertNull(stale.update)
+        assertNull(stale.updateCheckCopy("2.0.5"))
+        assertTrue(stale.upgradeButtonShown)
+        assertEquals(listOf("view", "view"), ops.calls, "the age is read from the clock, never by asking the Computer again")
     }
 
     private class FakeInstallOps(
@@ -260,13 +438,13 @@ class ComputerRuntimeOperationsTest {
         }
     }
 
-    private class FakeUpgradeOps : ComputerRuntimeAuthOps {
+    private class FakeUpgradeOps(private val answer: RuntimeAuthView = UPGRADE_VIEW) : ComputerRuntimeAuthOps {
         val calls = mutableListOf<String>()
         val upgrade = CompletableDeferred<RuntimeAuthCall<RuntimeUpgradeResult>>()
 
         override suspend fun view(force: Boolean): RuntimeAuthView {
             calls += if (force) "view force" else "view"
-            return UPGRADE_VIEW
+            return answer
         }
 
         override suspend fun upgrade(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeUpgradeResult> {
@@ -292,6 +470,9 @@ class ComputerRuntimeOperationsTest {
     }
 
     private companion object {
+        /** slock runtimeUpgrade.behavior.test.tsx `CHECKED_AT`, 2026-11-18T10:00:00.000Z. */
+        val CHECKED_AT_MILLIS = Instant.parse("2026-11-18T10:00:00.000Z").toEpochMilliseconds()
+
         val UPGRADE_VIEW =
             RuntimeAuthView(
                 canAct = true,

@@ -653,6 +653,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
+        prewarmActive = active,
         externalSelectedThreadId = externalSelectedThreadId,
         externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
@@ -682,6 +683,9 @@ internal fun resolveActivityStableOrderEnabled(
                 serverId = serverId,
             ),
     ).finalEffective
+
+internal fun sharedInboxShouldPrewarmArtifactViewer(active: Boolean, items: List<InboxItem>): Boolean =
+    active && items.any { it.kind == InboxItemKind.Object }
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: Boolean = true): Boolean =
     routeVisibleTick > 0 && active
@@ -1001,7 +1005,8 @@ private fun SharedActivityPanelContent(
     channelMute: ActivityChannelMuteControl? = null,
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
     conversationListPending: Boolean = false,
-    scrollToTopRequest: Int = 0
+    scrollToTopRequest: Int = 0,
+    prewarmActive: Boolean = true,
 ) {
     val refreshPresentation = activityRefreshPresentation(state.headerRefreshing, state.pullRefreshing)
     // Delayed and held so a quick reload never flashes; a pull hides it at once.
@@ -1085,6 +1090,7 @@ private fun SharedActivityPanelContent(
                 if (state.snapshot != null && !conversationListPending) {
                     SharedActivityBodyContent(
                         active = true,
+                        prewarmActive = prewarmActive,
                         state = state,
                         onOpenItem = onOpenItem,
                         onIntent = onIntent,
@@ -1154,6 +1160,7 @@ private fun SharedActivityBodyContent(
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
+    prewarmActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -1217,6 +1224,7 @@ private fun SharedActivityBodyContent(
             else ->
                 SharedActivityList(
                     active = active,
+                    prewarmActive = prewarmActive,
                     snapshot = remember(snapshot, draftProjection) {
                         snapshot.withComposerDraftProjection(draftProjection)
                     },
@@ -1484,7 +1492,8 @@ internal fun SharedActivityList(
      */
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
-    channelMute: ActivityChannelMuteControl? = null
+    channelMute: ActivityChannelMuteControl? = null,
+    prewarmActive: Boolean = true,
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1895,8 +1904,13 @@ internal fun SharedActivityList(
     // when no page can open from here. Activity is no conversation: no `hostConversation`.
     val activityArtifactOpener =
         rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
-    // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap.
-    RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object }, conversationId = null)
+    // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap — only while
+    // Activity itself is active, so a token refresh while covered by a Thread does not construct
+    // and load a hidden WebView on the main thread (#wg-mobile-feedback:#257, Hands 45eccbd9).
+    RaftArtifactViewerPrewarm(
+        enabled = sharedInboxShouldPrewarmArtifactViewer(active = active && prewarmActive, items = presentedItemsState.value),
+        conversationId = null,
+    )
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
     // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
@@ -2122,9 +2136,9 @@ internal fun SharedActivityList(
         swipeOpenRow = swipeOpenRow.close()
         runRowAction(currentItem, actionId)
     }
-    // The row's hover Done button (mouse / trackpad, web ThreadsInbox `InboxItemActions reveal="hover"`):
+    // The row's Done button (web InboxRowDone: on hover with a mouse or trackpad, at rest in the wide layout by touch):
     // the menu's Done, with the same Undo toast, as on the web.
-    fun hoverRowDone(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
+    fun rowDoneButton(renderedItemKey: String) = accessibilityRowAction(renderedItemKey, "done")
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)
         swipeEndUndo = transition.state
@@ -2252,7 +2266,7 @@ internal fun SharedActivityList(
                                     onOpen = { openRow(item.key) },
                                     onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
                                     onSwipeDone = { swipeRowDone(item.key) },
-                                    onHoverDone = { hoverRowDone(item.key) },
+                                    onRowDone = { rowDoneButton(item.key) },
                                     swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                     onSwipeEnd = { swipeRowEnd(item.key) },
                                     onSwipeToggleRead = { swipeRowToggleRead(item.key) },

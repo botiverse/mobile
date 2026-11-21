@@ -18,6 +18,27 @@ val raftVisualFixturesEnabled =
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
         .map { it.equals("true", ignoreCase = true) }
         .getOrElse(false)
+// iOS link probe (.github/workflows/ios-link-probe.yml), the only build that sets these. They change
+// the iOS framework binaries only (cocoapods `framework {}` below); unset, the framework gets exactly
+// the arguments it always had.
+//   raft.iosLinkProbe.disablePhases=A,B   more K/N phases to disable, merged into the framework's ONE
+//                                         -Xdisable-phases argument (never a second one)
+//   raft.iosLinkProbe.smallBinary=true    binaryOption("smallBinary", "true")
+//   raft.iosLinkProbe.profilePhases=true  -Xprofile-phases (per-phase compiler timings in the log)
+val raftIosLinkProbeDisablePhases: List<String> =
+    providers.gradleProperty("raft.iosLinkProbe.disablePhases").orNull
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        .orEmpty()
+val raftIosLinkProbeSmallBinary =
+    providers.gradleProperty("raft.iosLinkProbe.smallBinary")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+val raftIosLinkProbeProfilePhases =
+    providers.gradleProperty("raft.iosLinkProbe.profilePhases")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
 // App strings and bundled files: Compose Multiplatform resources (src/commonMain/composeResources),
 // generated as the internal `build.raft.app.resources.Res`. Read strings through the Raft string
 // layer (build.raft.app.resources.stringResource / StringDesc), which follows the in-app language.
@@ -120,10 +141,15 @@ kotlin {
             // Kotlin 2.1.21 builds an unbounded full-program call graph for this
             // optimization and exhausts the release runner heap. Keeping the
             // initializer calls is semantically conservative and bounds linking.
+            // The iOS link probe's phases (raft.iosLinkProbe.*, top of file) join this one value.
+            val disabledPhases =
+                (raftIosLinkProbeDisablePhases + "RemoveRedundantCallsToStaticInitializersPhase").distinct()
             freeCompilerArgs =
                 freeCompilerArgs +
                     getCommonCompilerArgs() +
-                    "-Xdisable-phases=RemoveRedundantCallsToStaticInitializersPhase"
+                    "-Xdisable-phases=${disabledPhases.joinToString(",")}" +
+                    listOfNotNull("-Xprofile-phases".takeIf { raftIosLinkProbeProfilePhases })
+            if (raftIosLinkProbeSmallBinary) binaryOption("smallBinary", "true")
             isStatic = true
             license = "MIT"
             // Compose Multiplatform pages: Swift/ObjC reach RaftCmpIos (view controller factory,
@@ -207,10 +233,10 @@ kotlin {
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
                 // by the library's Compose Multiplatform renderer (mermaid-compose, built against
                 // CMP 1.8; the app's newer CMP wins resolution) inside RaftMermaidViewport.
-                implementation("build.raft.mermaid:mermaid-core:0.1.17")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.17")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.17")
-                implementation("build.raft.mermaid:mermaid-compose:0.1.17")
+                implementation("build.raft.mermaid:mermaid-core:0.1.18")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.18")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.18")
+                implementation("build.raft.mermaid:mermaid-compose:0.1.18")
             }
         }
         val commonTest by getting {
@@ -291,9 +317,9 @@ kotlin {
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
                 implementation(libs.androidx.recyclerview)
                 implementation(libs.androidx.core.ktx)
-                implementation("build.raft.mermaid:mermaid-core:0.1.17")
-                implementation("build.raft.mermaid:mermaid-layout-api:0.1.17")
-                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.17")
+                implementation("build.raft.mermaid:mermaid-core:0.1.18")
+                implementation("build.raft.mermaid:mermaid-layout-api:0.1.18")
+                implementation("build.raft.mermaid:mermaid-layout-simple:0.1.18")
                 // Screenshot compare / record / report (RaftRobolectricScreenshot); the capture
                 // stays ours. AwtRoboCanvas is runtime-only in roborazzi, hence roborazzi-painter.
                 implementation(libs.roborazzi.android)
