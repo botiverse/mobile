@@ -234,6 +234,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -1943,9 +1944,9 @@ internal open class RaftCmpActivity :
                 // A tapped conversation notification auto-cancels and lands here; drop its server's
                 // summary if it was the last one.
                 AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(appContext)
-                kotlinx.coroutines.ensureActive()
+                coroutineContext.ensureActive()
                 SlockActivityWidgetProvider.refreshAllWidgets(appContext)
-                kotlinx.coroutines.ensureActive()
+                coroutineContext.ensureActive()
                 SlockAgentStatusWidgetProvider.refreshAllWidgets(appContext)
                 withContext(Dispatchers.Main.immediate) {
                     AndroidRealtimeKeepAliveController.start(
