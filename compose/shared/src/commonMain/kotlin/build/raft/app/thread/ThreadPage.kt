@@ -30,7 +30,6 @@ import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
-import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
@@ -81,7 +80,6 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
-import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpRepository
@@ -2847,12 +2845,14 @@ private fun SharedThreadRouteContentContent(
         rememberUpdatedState(currentSession?.currentServerId?.takeIf { it.isNotBlank() })
     val createAgentComputerServerResolvedState =
         rememberUpdatedState(producerContextCaptured || currentSession != null)
-    var attachmentOpenStates by remember(threadInstanceKey) {
+    val attachmentOpenStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
-    var attachmentOperationTokens by remember(threadInstanceKey) {
+    var attachmentOpenStates by attachmentOpenStatesHolder
+    val attachmentOperationTokensState = remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentOperationToken>>(emptyMap())
     }
+    var attachmentOperationTokens by attachmentOperationTokensState
     LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
         val currentOwner = attachmentOwner
         val hasForeign = attachmentOperationTokens.values.any { it.owner != currentOwner }
@@ -2861,10 +2861,11 @@ private fun SharedThreadRouteContentContent(
             attachmentOpenStates = emptyMap()
         }
     }
-    var nextAttachmentDownloadGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
-    var inlineVideoPreviewStates by remember(threadInstanceKey) {
+    val nextAttachmentDownloadGenerationState = remember(threadInstanceKey) { mutableStateOf(0L) }
+    val inlineVideoPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())
     }
+    var inlineVideoPreviewStates by inlineVideoPreviewStatesHolder
     val inlineVideoPreviewJobs = remember(threadInstanceKey) { mutableMapOf<String, Job>() }
     // attachmentId to wake one waiting retry, null to wake all of them (a realtime timeline update).
     val inlineVideoPreviewRetryNudges =
@@ -2879,12 +2880,14 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    var inlineAudioPreviewStates by remember(threadInstanceKey) {
+    val inlineAudioPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineAudioPreviewUiState>>(emptyMap())
     }
-    var attachmentUploadFilesByLocalId by remember(threadInstanceKey) {
+    var inlineAudioPreviewStates by inlineAudioPreviewStatesHolder
+    val attachmentUploadFilesByLocalIdState = remember(threadInstanceKey) {
         mutableStateOf<Map<ThreadAttachmentUploadAttemptIdentity, PlatformFile>>(emptyMap())
     }
+    var attachmentUploadFilesByLocalId by attachmentUploadFilesByLocalIdState
     val threadDirectUploadClientRequestIds = remember(threadInstanceKey) {
         ThreadComposerDirectUploadClientRequestIds()
     }
@@ -2904,7 +2907,8 @@ private fun SharedThreadRouteContentContent(
     var externalShareExpectedAuthority by remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
     }
-    var composerImageActionCounter by remember(threadInstanceKey) { mutableStateOf(0) }
+    val composerImageActionCounterState = remember(threadInstanceKey) { mutableStateOf(0) }
+    var composerImageActionCounter by composerImageActionCounterState
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
     // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
     // duplicate cannot race the complete N/N handoff.
@@ -2915,60 +2919,6 @@ private fun SharedThreadRouteContentContent(
         }
     val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
         ThreadComposerImageEventSessionTracker()
-    }
-    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean {
-        var registeredSessionId = ""
-        var registrationRejected = false
-        val opened =
-            pager.openRaftFilePreviewPage(
-                payload,
-                onEphemeralSessionRegistered = { sessionId ->
-                    registeredSessionId = sessionId
-                    val accepted = registerThreadComposerImagePreviewSession(
-                        sessionId = sessionId,
-                        tracker = composerImageEventSessionTracker,
-                        abort = { rejectedSessionId ->
-                            registrationRejected = true
-                            // The preview opener may race page disposal between registry admission
-                            // and its callback. Retire the process-owned row immediately; returning
-                            // false alone is not enough if the opener has already crossed its open
-                            // boundary.
-                            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(rejectedSessionId)
-                            if (cleanupRefs.isNotEmpty()) {
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = rejectedSessionId,
-                                    fileRefs = cleanupRefs.toList()
-                                )
-                            }
-                        }
-                    )
-                    accepted
-                }
-            )
-        if ((registrationRejected || !opened) && registeredSessionId.isNotBlank()) {
-            // The preview opener retires its registry/ledger on a failed route open; this page
-            // still owns the local tracker witness and must release it as well.
-            composerImageEventSessionTracker.release(registeredSessionId)
-        }
-        if (opened && registeredSessionId.isNotBlank() &&
-            composerImageEventSessionTracker.isClosed() &&
-            !composerImageEventSessionTracker.owns(registeredSessionId) &&
-            !composerImageEventSessionTracker.isHandoffStarted(registeredSessionId)
-        ) {
-            // Disposal can close the tracker immediately after the opener callback returns but
-            // before the router reports success. Do a second ownership check after the boundary
-            // so a successfully opened preview can never retain an ownerless registry row.
-            val cleanupRefs = raftFilePreviewAbortComposerImageEventSession(registeredSessionId)
-            if (cleanupRefs.isNotEmpty()) {
-                bridge.retireFilePreviewTemporaryFiles(
-                    sessionId = registeredSessionId,
-                    fileRefs = cleanupRefs.toList()
-                )
-            }
-            composerImageEventSessionTracker.release(registeredSessionId)
-            return false
-        }
-        return opened
     }
     val chatLayoutPreferenceStore =
         remember(pager) {
@@ -2985,29 +2935,6 @@ private fun SharedThreadRouteContentContent(
         )
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
-    val commentsUnavailableLabel = labels.commentsUnavailableLabel
-    val unableToSendCommentLabel = labels.unableToSendCommentLabel
-    val unableToResolveCommentLabel = labels.unableToResolveCommentLabel
-    val unableToOpenAttachmentLabel = labels.unableToOpenAttachmentLabel
-    val unableToDownloadAttachmentLabel = labels.unableToDownloadAttachmentLabel
-    val attachmentOpenResultTerms = labels.attachmentOpenResultTerms
-    val attachmentSavedToDownloadsLabel = labels.attachmentSavedToDownloadsLabel
-    val attachmentSavedToFilesLabel = labels.attachmentSavedToFilesLabel
-    val attachmentSavedToPhotosLabel = labels.attachmentSavedToPhotosLabel
-    val attachmentDownloadedLabel = labels.attachmentDownloadedLabel
-    val attachmentSavedLabel =
-        raftFilePreviewSavedMessage(
-            exportPrivateDownload = false,
-            toPhotos = false,
-            supportsPublicDownloadReadback = raftPlatformSupportsPublicAttachmentDownloadReadback(),
-            supportsPrivateAttachmentExport = raftPlatformSupportsPrivateAttachmentExport(),
-            downloadSaved = attachmentSavedToDownloadsLabel,
-            privateDownloadSaved = attachmentDownloadedLabel,
-            fileExportSaved = attachmentSavedToFilesLabel,
-            imageSavedToPhotos = attachmentSavedToPhotosLabel
-        )
-    val attachmentUploadFailedLabel = labels.attachmentUploadFailedLabel
-    val preparingAttachmentPreviewLabel = labels.preparingAttachmentPreviewLabel
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val attachmentLimitUnavailableLabel = labels.attachmentLimitUnavailableLabel
     val attachmentTooLargeTemplate = labels.attachmentTooLargeTemplate
@@ -4183,9 +4110,10 @@ private fun SharedThreadRouteContentContent(
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
     }
-    var inlineImageFallbackState by remember(threadInstanceKey) {
+    val inlineImageFallbackStateHolder = remember(threadInstanceKey) {
         mutableStateOf(ThreadInlineImageFallbackState())
     }
+    var inlineImageFallbackState by inlineImageFallbackStateHolder
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -4273,221 +4201,6 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         }
-    // Attachment comments are on for every server (web, end of June); the server still decides who may comment.
-    val attachmentCommentsEnabled = true
-    fun threadWritesEnabledNow(): Boolean = threadViewModel.state.value.writeActionsEnabled
-
-    fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
-        attachmentCommentsDialogState =
-            attachmentCommentsDialogState
-                ?.takeIf { current -> current.attachment.id == next.attachment.id }
-                ?.let { next }
-    }
-
-    fun loadAttachmentCommentsIntoDialog(state: ThreadAttachmentCommentsDialogState) {
-        coroutineScope.launch {
-            val nextState =
-                when (val result = dataSource.loadAttachmentComments(state.attachment.id)) {
-                    is DataResult.Content ->
-                        state.copy(
-                            status = "loaded",
-                            page = result.data,
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).clearAttachmentCommentsError()
-                    is DataResult.Empty ->
-                        state.copy(
-                            status = "loaded",
-                            page = ThreadAttachmentCommentsPage(comments = emptyList(), threadChannelId = null, viewer = null),
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).clearAttachmentCommentsError()
-                    is DataResult.Error ->
-                        state.copy(
-                            status = "error",
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).withAttachmentCommentsError(
-                            errorCode = result.error.code,
-                            serverMessage = result.error.serverMessage
-                        )
-                    is DataResult.NoPermission -> {
-                        if (routeAuthRequired(result)) return@launch
-                        state.copy(
-                            status = "error",
-                            sending = false,
-                            resolvingCommentIds = emptySet()
-                        ).withAttachmentCommentsError(
-                            errorCode = result.blocker.code,
-                            serverMessage = null
-                        )
-                    }
-                }
-            setAttachmentCommentsState(nextState)
-        }
-    }
-
-    fun openAttachmentComments(attachmentId: String) {
-        if (!threadWritesEnabledNow() || !attachmentCommentsEnabled) return
-        val target = renderedTimelineSlice.findAttachmentCommentTarget(attachmentId)
-        if (target == null) {
-            bridge.toast(commentsUnavailableLabel)
-            return
-        }
-        if (!target.attachment.supportsThreadAttachmentComments()) return
-        target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
-            pager.openRaftFilePreviewPage(previewPayload)
-            return
-        }
-        val state =
-            ThreadAttachmentCommentsDialogState(
-                attachment = target.attachment,
-                status = "loading",
-                pendingAnchorLabel = target.attachment.name
-            )
-        attachmentCommentsDialogState = state
-        loadAttachmentCommentsIntoDialog(state)
-    }
-
-    fun reloadAttachmentComments() {
-        val current = attachmentCommentsDialogState ?: return
-        val state = current.copy(status = "loading").clearAttachmentCommentsError()
-        attachmentCommentsDialogState = state
-        loadAttachmentCommentsIntoDialog(state)
-    }
-
-    fun sendAttachmentComment() {
-        if (!threadWritesEnabledNow()) {
-            attachmentCommentsDialogState = null
-            return
-        }
-        val current = attachmentCommentsDialogState ?: return
-        val cleanDraft = current.draft.text.trim()
-        if (cleanDraft.isBlank() || current.sending) return
-        attachmentCommentsDialogState = current.copy(sending = true).clearAttachmentCommentsError()
-        coroutineScope.launch {
-            when (
-                val result =
-                    runThreadWriteActionIfEnabled(
-                        writeActionsEnabled = ::threadWritesEnabledNow,
-                        blockedCode = "thread_attachment_comment_write_disabled"
-                    ) {
-                        dataSource.sendAttachmentComment(current.attachment.id, cleanDraft)
-                    }
-            ) {
-                is DataResult.Content -> {
-                    val loadingState =
-                        current.withAttachmentCommentDraftProjection("").copy(
-                            status = "loading",
-                            sending = false,
-                            pendingQuoteLabel = null
-                        ).clearAttachmentCommentsError()
-                    attachmentCommentsDialogState = loadingState
-                    loadAttachmentCommentsIntoDialog(loadingState)
-                }
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
-                        attachmentCommentsDialogState = null
-                        return@launch
-                    }
-                    val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_send_failed"
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false)
-                            ?.withAttachmentCommentsError(
-                                errorCode = code,
-                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
-                            )
-                    bridge.toast(unableToSendCommentLabel)
-                }
-                is DataResult.NoPermission -> {
-                    if (routeAuthRequired(result)) return@launch
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(sending = false)
-                            ?.withAttachmentCommentsError(
-                                errorCode = result.blocker.code,
-                                serverMessage = null
-                            )
-                    bridge.toast(unableToSendCommentLabel)
-                }
-            }
-        }
-    }
-
-    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem) {
-        if (!threadWritesEnabledNow()) {
-            attachmentCommentsDialogState = null
-            return
-        }
-        val current = attachmentCommentsDialogState ?: return
-        if (comment.id.isBlank() || comment.isThreadAttachmentCommentResolved()) return
-        if (comment.id in current.resolvingCommentIds) return
-        attachmentCommentsDialogState =
-            current.copy(resolvingCommentIds = current.resolvingCommentIds + comment.id)
-                .clearAttachmentCommentsError()
-        coroutineScope.launch {
-            when (
-                val result =
-                    runThreadWriteActionIfEnabled(
-                        writeActionsEnabled = ::threadWritesEnabledNow,
-                        blockedCode = "thread_attachment_comment_write_disabled"
-                    ) {
-                        dataSource.setMessageReaction(comment.id, "✅", selected = true)
-                    }
-            ) {
-                is DataResult.Content -> {
-                    val loadingState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.copy(status = "loading", resolvingCommentIds = emptySet())
-                            ?.clearAttachmentCommentsError()
-                            ?: return@launch
-                    attachmentCommentsDialogState = loadingState
-                    loadAttachmentCommentsIntoDialog(loadingState)
-                }
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    if ((result as? DataResult.Error)?.error?.code == "thread_attachment_comment_write_disabled") {
-                        attachmentCommentsDialogState = null
-                        return@launch
-                    }
-                    val code = (result as? DataResult.Error)?.error?.code ?: "thread_attachment_comment_resolve_failed"
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.let { state ->
-                                state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
-                                ).withAttachmentCommentsError(
-                                    errorCode = code,
-                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
-                                )
-                            }
-                    bridge.toast(unableToResolveCommentLabel)
-                }
-                is DataResult.NoPermission -> {
-                    if (routeAuthRequired(result)) return@launch
-                    attachmentCommentsDialogState =
-                        attachmentCommentsDialogState
-                            ?.takeIf { it.attachment.id == current.attachment.id }
-                            ?.let { state ->
-                                state.copy(
-                                    resolvingCommentIds = state.resolvingCommentIds - comment.id
-                                ).withAttachmentCommentsError(
-                                    errorCode = result.blocker.code,
-                                    serverMessage = null
-                                )
-                            }
-                    bridge.toast(unableToResolveCommentLabel)
-                }
-            }
-        }
-    }
-
     LaunchedEffect(
         renderedThread.status,
         renderedThread.errorCode,
@@ -4506,230 +4219,66 @@ private fun SharedThreadRouteContentContent(
     // The desktop / wide image lightbox (RaftImageLightbox.kt): open while non-null.
     val imageLightboxWindowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val imageLightboxEnabled = raftImageLightboxEnabled(raftPlatformHasFinePointer(), imageLightboxWindowWidthDp)
-    var imageLightboxRequest by remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    val imageLightboxRequestState = remember(threadInstanceKey) { mutableStateOf<RaftImageLightboxRequest?>(null) }
+    var imageLightboxRequest by imageLightboxRequestState
     // The image being edited from the image viewer (RaftViewerImageEdit.kt); null: none.
     var viewerImageEditAttachment by remember(threadInstanceKey) { mutableStateOf<RaftThreadAttachmentItem?>(null) }
-    fun requestInlineImageFallback(attachmentId: String) {
-        val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
-        inlineImageFallbackState = nextState
-        if (!shouldRequest) return
-        bridge.log("thread_inline_image_fallback status=start attachmentId=${attachmentId.take(8)}")
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    inlineImageFallbackState =
-                        inlineImageFallbackState.resolve(attachmentId, response.data.url)
-                    bridge.log("thread_inline_image_fallback status=resolved attachmentId=${attachmentId.take(8)}")
-                }
-                is ThreadApiResult.Failure -> {
-                    bridge.log(
-                        "thread_inline_image_fallback status=failed attachmentId=${attachmentId.take(8)} " +
-                            "code=${response.code} contractCode=${response.contractCode.orEmpty()}"
-                    )
-                }
-            }
-        }
-    }
-    /**
-     * Desktop and wide windows open images in the lightbox over the app (artin 10-29); phones
-     * keep the full-page viewer. [conversationWide]: step through every loaded image of the
-     * conversation (a click in the timeline) rather than only [group] (the Files tab's list).
-     */
-    fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true) {
-        if (group.images.isEmpty()) return
-        val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
-        val attachment = group.images[currentIndex]
-        if (imageLightboxEnabled) {
-            imageLightboxRequest =
-                (if (conversationWide) {
-                    raftImageLightboxRequestFor(
-                        messages = listOfNotNull(renderedTimelineSlice.originMessage) + renderedTimelineSlice.messages,
-                        attachmentId = attachment.id,
-                        isImage = { it.isImageAttachment() }
-                    )
-                } else {
-                    null
-                }) ?: RaftImageLightboxRequest(group.images.map { RaftImageLightboxItem(it) }, currentIndex)
-            bridge.log("thread_image_lightbox status=open count=${imageLightboxRequest?.items?.size ?: 0}")
-            return
-        }
-        RaftViewerImageEditOpener.threadKey = threadInstanceKey
-        pager.openRaftFilePreviewPage(
-            attachment.toThreadAttachmentLazyPreviewPayload(
-                kind = "image",
-                imageGallery = group.images,
-                imageGalleryIndex = currentIndex,
-                attachmentCommentsEnabled = attachmentCommentsEnabled
-            )
+    // The attachment open and comment actions (ThreadRouteAttachmentActions.kt), built every
+    // composition by a local function (a method of its own, so this one only loads what it captures
+    // for the call). The route still calls them by these local functions' names.
+    fun buildThreadRouteAttachmentActions(): ThreadRouteAttachmentActions =
+        ThreadRouteAttachmentActions(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            pager = pager,
+            coroutineScope = coroutineScope,
+            threadViewModel = threadViewModel,
+            composerDraftViewModel = composerDraftViewModel,
+            renderedTimelineSlice = renderedTimelineSlice,
+            threadInstanceKey = threadInstanceKey,
+            attachmentOwner = attachmentOwner,
+            labels = labels,
+            imageLightboxEnabled = imageLightboxEnabled,
+            attachmentCommentsDialogStateHolder = attachmentCommentsDialogStateHolder,
+            inlineImageFallbackStateHolder = inlineImageFallbackStateHolder,
+            imageLightboxRequestState = imageLightboxRequestState,
+            attachmentOpenStatesHolder = attachmentOpenStatesHolder,
+            attachmentOperationTokensState = attachmentOperationTokensState,
+            nextAttachmentDownloadGenerationState = nextAttachmentDownloadGenerationState,
+            inlineVideoPreviewStatesHolder = inlineVideoPreviewStatesHolder,
+            inlineVideoPreviewJobs = inlineVideoPreviewJobs,
+            inlineVideoPreviewRetryNudges = inlineVideoPreviewRetryNudges,
+            inlineAudioPreviewStatesHolder = inlineAudioPreviewStatesHolder,
+            attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+            composerImageActionCounterState = composerImageActionCounterState,
+            composerImageEventSessionTracker = composerImageEventSessionTracker,
+            routeAuthRequiredForCodeFn = { code -> routeAuthRequired(code) },
+            routeAuthRequiredFn = { result -> routeAuthRequired(result) },
+            currentComposerPayloadFn = { currentComposerPayload() },
         )
-    }
-    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
-        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val owner = attachmentOwner ?: return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
-        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
-        coroutineScope.launch {
-            val result =
-                openSharedThreadAttachment(
-                    bridge = bridge,
-                    dataSource = dataSource,
-                    attachment = attachment,
-                    owner = owner,
-                    downloadId = downloadId,
-                    onProgress = { progress ->
-                        val token = attachmentOperationTokens[attachment.id]
-                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
-                            return@openSharedThreadAttachment
-                        }
-                        val current = attachmentOpenStates[attachment.id]
-                        if (current?.downloadId != downloadId) return@openSharedThreadAttachment
-                        val reduced =
-                            reduceAttachmentDownloadProgress(
-                                current = current.progress,
-                                incoming = progress,
-                                expectedDownloadId = downloadId
-                            )
-                        if (reduced === current.progress) return@openSharedThreadAttachment
-                        attachmentOpenStates =
-                            attachmentOpenStates +
-                                (attachment.id to current.copy(
-                                    status = if (reduced?.status == "paused") "paused" else "downloading",
-                                    progress = reduced
-                                ))
-                    }
-                )
-            val token = attachmentOperationTokens[attachment.id]
-            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
-            if (result.status == "opened" || result.status == "save_cancelled") {
-                attachmentOpenStates = attachmentOpenStates - attachment.id
-                attachmentOperationTokens = attachmentOperationTokens - attachment.id
-            } else {
-                attachmentOpenStates =
-                    attachmentOpenStates +
-                        (attachment.id to ThreadAttachmentOpenUiState(
-                            status = result.status,
-                            downloadId = downloadId
-                        ))
-                if (result.status != "cancelled") {
-                    bridge.toast(
-                        raftAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
-                            ?: unableToOpenAttachmentLabel
-                    )
-                }
-                attachmentOperationTokens = attachmentOperationTokens - attachment.id
-            }
-        }
-    }
-    fun saveAttachmentExternally(attachment: RaftThreadAttachmentItem) {
-        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
-        val owner = attachmentOwner ?: return
-        nextAttachmentDownloadGeneration += 1L
-        val downloadId = attachment.threadAttachmentDownloadId(nextAttachmentDownloadGeneration)
-        val operation = AttachmentOperationToken(owner, downloadId, downloadId)
-        attachmentOperationTokens = attachmentOperationTokens + (attachment.id to operation)
-        attachmentOpenStates =
-            attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(
-                    status = "downloading",
-                    downloadId = downloadId,
-                    progress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
-                ))
-        coroutineScope.launch {
-            val result =
-                saveSharedThreadAttachment(
-                    bridge = bridge,
-                    dataSource = dataSource,
-                    attachment = attachment,
-                    owner = owner,
-                    downloadId = downloadId,
-                    onProgress = { progress ->
-                        val token = attachmentOperationTokens[attachment.id]
-                        if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {
-                            return@saveSharedThreadAttachment
-                        }
-                        val current = attachmentOpenStates[attachment.id]
-                        if (current?.downloadId != downloadId) return@saveSharedThreadAttachment
-                        val reduced =
-                            reduceAttachmentDownloadProgress(
-                                current = current.progress,
-                                incoming = progress,
-                                expectedDownloadId = downloadId
-                            )
-                        if (reduced === current.progress) return@saveSharedThreadAttachment
-                        attachmentOpenStates =
-                            attachmentOpenStates +
-                                (attachment.id to current.copy(
-                                    status = if (reduced?.status == "paused") "paused" else "downloading",
-                                    progress = reduced
-                                ))
-                    }
-                )
-            val token = attachmentOperationTokens[attachment.id]
-            if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) return@launch
-            when (result.status) {
-                "saved" -> {
-                    attachmentOpenStates = attachmentOpenStates - attachment.id
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                    bridge.toast(
-                        raftThreadAttachmentSavedMessage(
-                            nativeMessage = attachmentSavedLabel,
-                            fallbackMessage = attachmentDownloadedLabel
-                        )
-                    )
-                }
-                "cancelled" -> {
-                    attachmentOpenStates = attachmentOpenStates - attachment.id
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                }
-                else -> {
-                    attachmentOpenStates =
-                        attachmentOpenStates +
-                            (attachment.id to ThreadAttachmentOpenUiState(
-                                status = result.status,
-                                downloadId = downloadId
-                            ))
-                    val failure =
-                        raftAttachmentSaveFailure(result.status, RaftAttachmentSaveDestination.Downloads)
-                            ?: RaftAttachmentSaveFailure.UnableToDownload
-                    bridge.log(
-                        "thread_attachment_save_failed attachment=${attachment.id.take(8)} " +
-                            "status=${raftAttachmentOpenDiagnosticStatus(result.status)} " +
-                            "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
-                            "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
-                    )
-                    bridge.toast(
-                        when (failure) {
-                            RaftAttachmentSaveFailure.DownloadFailed -> attachmentOpenResultTerms.downloadFailed
-                            RaftAttachmentSaveFailure.StorageUnavailable -> attachmentOpenResultTerms.storageUnavailable
-                            else -> unableToDownloadAttachmentLabel
-                        }
-                    )
-                    attachmentOperationTokens = attachmentOperationTokens - attachment.id
-                }
-            }
-        }
-    }
-    /** True when the file page opened. */
-    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem): Boolean {
-        if (attachment.id.isBlank()) return false
-        // A tap never downloads in the conversation: previewable files open their preview, any
-        // other file its file page, where Download shows progress (task #75).
-        return pager.openRaftFilePreviewPage(
-            attachment.toThreadAttachmentLazyPreviewPayload(
-                kind = attachment.threadAttachmentOpenRoute().requestedPreviewKind,
-                attachmentCommentsEnabled = attachmentCommentsEnabled
-            )
-        )
-    }
+    val threadRouteAttachmentActions = buildThreadRouteAttachmentActions()
+    fun requestInlineImageFallback(attachmentId: String): Unit =
+        threadRouteAttachmentActions.requestInlineImageFallback(attachmentId)
+    fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true): Unit =
+        threadRouteAttachmentActions.openImagePreview(group, conversationWide)
+    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem): Unit =
+        threadRouteAttachmentActions.openAttachmentExternally(attachment)
+    fun saveAttachmentExternally(attachment: RaftThreadAttachmentItem): Unit =
+        threadRouteAttachmentActions.saveAttachmentExternally(attachment)
+    fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem): Boolean =
+        threadRouteAttachmentActions.openAttachmentNoPreview(attachment)
+    fun reloadAttachmentComments(): Unit = threadRouteAttachmentActions.reloadAttachmentComments()
+    fun sendAttachmentComment(): Unit = threadRouteAttachmentActions.sendAttachmentComment()
+    fun resolveAttachmentComment(comment: ThreadAttachmentCommentItem): Unit =
+        threadRouteAttachmentActions.resolveAttachmentComment(comment)
+    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false): Unit =
+        threadRouteAttachmentActions.requestInlineAudioPreview(attachmentId, force)
+    fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false): Unit =
+        threadRouteAttachmentActions.requestInlineVideoPreview(attachmentId, force)
+    fun openComposerAttachmentPreview(attachmentId: String): Boolean =
+        threadRouteAttachmentActions.openComposerAttachmentPreview(attachmentId)
+    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean =
+        threadRouteAttachmentActions.openTrackedComposerImagePreview(payload)
     imageLightboxRequest?.let { request ->
         RaftImageLightbox(
             request = request,
@@ -4747,190 +4296,6 @@ private fun SharedThreadRouteContentContent(
             onOpenWith = { attachment -> openAttachmentExternally(attachment) },
             onEdit = { attachment -> viewerImageEditAttachment = attachment }
         )
-    }
-    fun requestInlineAudioPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
-        if (inlineAudioPreviewStates[attachmentId]?.status == ThreadInlineAudioPreviewStatus.Loading) return
-        if (!force && !inlineAudioPreviewStates.canRequestInlineAudioPreview(attachmentId)) return
-        inlineAudioPreviewStates =
-            inlineAudioPreviewStates +
-                (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                is ThreadApiResult.Success -> {
-                    val url = response.data.url.trim()
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to
-                                if (url.isNotBlank()) {
-                                    ThreadInlineAudioPreviewUiState(
-                                        status = ThreadInlineAudioPreviewStatus.Ready,
-                                        url = url,
-                                        expiresAt = response.data.expiresAt
-                                    )
-                                } else {
-                                    ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error)
-                                })
-                }
-                is ThreadApiResult.Failure -> {
-                    inlineAudioPreviewStates =
-                        inlineAudioPreviewStates +
-                            (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Error))
-                    if (response.code == 401) {
-                        routeAuthRequired("auth_required")
-                    }
-                }
-            }
-        }
-    }
-    fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false) {
-        if (attachmentId.isBlank()) return
-        val running = inlineVideoPreviewJobs[attachmentId]?.isActive == true
-        if (running) {
-            // A retry is waiting out its backoff: a forced request (tap, realtime update) runs it now.
-            if (force) inlineVideoPreviewRetryNudges.tryEmit(attachmentId)
-            return
-        }
-        if (!force && !inlineVideoPreviewStates.canRequestInlineVideoPreview(attachmentId)) return
-        inlineVideoPreviewJobs[attachmentId] =
-            coroutineScope.launch {
-                val outcome =
-                    runThreadInlineVideoPreviewFetch(
-                        policy = ThreadInlineVideoRetryPolicy.Default,
-                        fetch = {
-                            dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
-                        },
-                        awaitRetry = { delayMs ->
-                            withTimeoutOrNull(delayMs) {
-                                inlineVideoPreviewRetryNudges.first { it == attachmentId || it == null }
-                            }
-                        },
-                        onState = { state ->
-                            inlineVideoPreviewStates = inlineVideoPreviewStates + (attachmentId to state)
-                        }
-                    )
-                if (outcome is ThreadInlineVideoFetchOutcome.Failed && outcome.code == 401) {
-                    routeAuthRequired("auth_required")
-                }
-            }
-    }
-
-    /** True when a page (the preview, the image editor) opened over the conversation. */
-    fun openComposerAttachmentPreview(attachmentId: String): Boolean {
-        val composerPayload = currentComposerPayload()
-        val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return false
-        val currentDraftState = composerDraftViewModel.state.value
-        val name = attachment.fileName.ifBlank { "Attachment" }
-        val meta = attachment.displaySizeLabel()
-        if (!attachment.isReadyThreadAttachmentForSend()) {
-            return pager.openRaftFilePreviewPage(
-                RaftFilePreviewPayload(
-                    kind = if (attachment.status == "failed") "error" else "loading",
-                    requestedKind = "composer_attachment",
-                    title = name,
-                    subtitle = meta,
-                    name = name,
-                    path = name,
-                    meta = meta,
-                    message =
-                        when (attachment.status) {
-                            "failed" ->
-                                listOf(
-                                    attachmentUploadFailedLabel,
-                                    threadFailureReasonLabel(attachment.errorCode)
-                                ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
-                            else -> preparingAttachmentPreviewLabel
-                        },
-                    messageDesc = null,
-                    error =
-                        if (attachment.status == "failed") {
-                            "attachment_upload_failed"
-                        } else {
-                            null
-                        },
-                    externalFileName = name,
-                    externalMimeType = attachment.mimeType.orEmpty()
-                )
-            )
-        }
-        val threadAttachment =
-            RaftThreadAttachmentItem(
-                id = attachment.id,
-                name = name,
-                mimeType = attachment.mimeType.orEmpty(),
-                sizeLabel = attachment.sizeLabel,
-                sizeBytes = attachment.sizeBytes,
-                thumbnailUrl = attachment.previewUri
-        )
-        val composerImageGroup = composerPayload.pendingAttachments.composerPendingImageAttachmentGroup(attachmentId)
-        // RaftPendingAttachmentItem is intentionally a render-only projection and therefore
-        // does not carry the platform file handle. Resolve each gallery item back to the
-        // session-owned draft/upload descriptor before opening an editable preview; otherwise
-        // the gallery payload would contain only thumbnails and the Done/session registry could
-        // never admit the resulting events.
-        val draftAttachmentsById = currentDraftState.uploadedAttachments.associateBy { it.id }
-        val currentDraftKey = normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
-        fun composerImageFileFor(id: String): PlatformFile? =
-            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, currentDraftKey)
-                ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
-                ?: draftAttachmentsById[id]
-                    ?.toComposerImagePlatformFile()
-                    ?.takeIf { file -> !file.fileRef.isNullOrBlank() }
-        return if (composerImageGroup != null && composerImageGroup.images.size > 1) {
-            val galleryFiles =
-                composerImageGroup.images.mapNotNull { image -> composerImageFileFor(image.id) }
-            // A ready tile without a local file ref is not safely editable. Keep it as an
-            // ordinary preview rather than creating a composer session whose Done action can
-            // never produce a deliverable event.
-            if (galleryFiles.size != composerImageGroup.images.size || galleryFiles.isEmpty()) {
-                return pager.openRaftFilePreviewPage(
-                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
-                        kind = "image",
-                        imageGallery = composerImageGroup.images,
-                        imageGalleryIndex = composerImageGroup.currentIndex
-                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
-                )
-            }
-            composerImageActionCounter += 1
-            val baseActionId =
-                "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${attachmentId.take(12)}"
-            openTrackedComposerImagePreview(
-                threadComposerUploadedImagePreviewPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = baseActionId,
-                    files = galleryFiles,
-                    replacementAttachmentIds = composerImageGroup.images.map { it.id },
-                    selectedIndex = composerImageGroup.currentIndex,
-                    originalImage = currentDraftState.originalImage
-                ) ?: return false
-            )
-        } else if (threadAttachment.isImageAttachment()) {
-            composerImageActionCounter += 1
-            val composerImageActionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${threadAttachment.id.take(12)}"
-            val composerImageFile = composerImageFileFor(attachment.id)
-            // A server-ready tile can still be previewable after its local picker ref has been
-            // retired.  It is not safely editable/compressible in that state, so keep it a plain
-            // read-only preview instead of creating a Done session that can never emit an event.
-            if (composerImageFile == null) {
-                return pager.openRaftFilePreviewPage(
-                    threadAttachment.toThreadAttachmentLazyPreviewPayload(
-                        kind = "image"
-                    ).copy(imageUrl = attachment.previewUri?.takeIf { it.isNotBlank() })
-                )
-            }
-            openTrackedComposerImagePreview(
-                threadComposerUploadedImagePreviewPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = composerImageActionId,
-                    files = listOf(composerImageFile),
-                    replacementAttachmentIds = listOf(attachment.id),
-                    selectedIndex = 0,
-                    originalImage = currentDraftState.originalImage
-                ) ?: return false
-            )
-        } else {
-            openAttachmentNoPreview(threadAttachment)
-        }
     }
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
@@ -7349,10 +6714,10 @@ private fun SharedThreadRouteContentContent(
             actionCardStepUp = actionCardStepUp,
             installAppDialogStore = installAppDialogStore,
             actionCardSpecHost = actionCardSpecHost,
-            openAttachmentCommentsFn = { attachmentId -> openAttachmentComments(attachmentId) },
-            openImagePreviewFn = { group -> openImagePreview(group) },
-            saveAttachmentExternallyFn = { attachment -> saveAttachmentExternally(attachment) },
-            openAttachmentNoPreviewFn = { attachment -> openAttachmentNoPreview(attachment) },
+            openAttachmentCommentsFn = { attachmentId -> threadRouteAttachmentActions.openAttachmentComments(attachmentId) },
+            openImagePreviewFn = { group -> threadRouteAttachmentActions.openImagePreview(group) },
+            saveAttachmentExternallyFn = { attachment -> threadRouteAttachmentActions.saveAttachmentExternally(attachment) },
+            openAttachmentNoPreviewFn = { attachment -> threadRouteAttachmentActions.openAttachmentNoPreview(attachment) },
             sendPendingLocalMessageFn = { localMessageId, context, startedFromComposer, authority ->
                 sendPendingLocalMessage(
                     localMessageId = localMessageId,
@@ -8809,12 +8174,6 @@ private fun RaftThreadScreenPayload.threadComposerMentionScopeChannelId(): Strin
 }
 
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
-private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long): String =
-    listOf("attempt-$generation", "thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
-        .joinToString(":")
-        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
-        .take(160)
-        .ifBlank { "thread-attachment-download" }
 
 /**
  * Typed text is written in the background within ~40 ms (task #246); going to the background, like

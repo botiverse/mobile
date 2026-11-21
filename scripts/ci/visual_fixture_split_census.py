@@ -71,6 +71,7 @@ PRODUCTION = tuple(
         "ThreadPageTabs.kt",
         "ThreadPageVisualScreens.kt",
         "ThreadReactions.kt",
+        "ThreadRouteAttachmentActions.kt",
         "ThreadRouteBannerSubtrees.kt",
         "ThreadRouteDialogs.kt",
         "ThreadRouteEventHandler.kt",
