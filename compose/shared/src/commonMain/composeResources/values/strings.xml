@@ -4452,6 +4452,12 @@
     <string name="artifacts_activity_published_version">%1$s published v%2$d</string>
     <string name="artifacts_activity_published">%1$s published a new version</string>
     <string name="artifacts_activity_updated">%1$s updated it</string>
+    <string name="artifacts_activity_settled">%1$s settled it</string>
+    <string name="artifacts_activity_unsettled">%1$s unsettled it</string>
+    <string name="artifacts_activity_published_version_since_settled">%1$s published v%2$d, a new version since it was settled</string>
+    <string name="artifacts_settled_tag">Settled</string>
+    <string name="artifacts_settled_tag_detail">: %1$s</string>
+    <string name="artifacts_settled_line">%1$s settled it on %2$s (v%3$d)</string>
     <string name="artifacts_activity_someone">Someone</string>
     <string name="artifacts_activity_untitled">Untitled Artifact</string>
     <string name="artifacts_viewer_more">More Actions</string>

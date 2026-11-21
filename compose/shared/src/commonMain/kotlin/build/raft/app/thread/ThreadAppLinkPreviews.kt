@@ -106,6 +106,8 @@ internal data class ThreadArtifactLinkHost(
     val webBaseUrl: String,
     /** The cards' screenshots (in memory for this viewer); null where none are read (fixtures). */
     val screenshots: SharedArtifactScreenshotStore? = null,
+    /** The signed-in person (a user id): their own settle reads "You" (web `useArtifactReaderId`). */
+    val readerId: String? = null,
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */

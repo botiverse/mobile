@@ -4258,6 +4258,12 @@
     <string name="artifacts_activity_published_version">%1$s님이 v%2$d을(를) 게시했어요</string>
     <string name="artifacts_activity_published">%1$s님이 새 버전을 게시했어요</string>
     <string name="artifacts_activity_updated">%1$s님이 업데이트했어요</string>
+    <string name="artifacts_activity_settled">%1$s님이 확정했어요</string>
+    <string name="artifacts_activity_unsettled">%1$s님이 확정을 취소했어요</string>
+    <string name="artifacts_activity_published_version_since_settled">%1$s님이 확정 후 새 버전 v%2$d을(를) 게시했어요</string>
+    <string name="artifacts_settled_tag">확정됨</string>
+    <string name="artifacts_settled_tag_detail">: %1$s</string>
+    <string name="artifacts_settled_line">%1$s 님이 %2$s에 확정했어요 (v%3$d)</string>
     <string name="artifacts_activity_someone">요청자</string>
     <string name="artifacts_activity_untitled">제목 없는 Artifact</string>
     <string name="artifacts_viewer_more">더 보기</string>

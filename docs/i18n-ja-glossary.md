@@ -38,6 +38,7 @@ new product concept gets a Japanese rendering.
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |
 | Artifact / Artifacts | Artifact / Artifacts | Workspace Artifacts; kept in English as the web ja catalog does (「無題の Artifact」); the app name is always "Artifacts" |
+| Settled / Settle / Unsettle (an Artifact marked done) | 確定済み / 確定にする / 確定を取り消す | The Settled tag after an Artifact card's version and its Activity lines (「{name} が確定しました」, 「{name} が確定を取り消しました」, 「確定後の新しいバージョン v{n}」); Working = 作業中. Copied from the web ja catalog `artifacts.settled.*`, `artifacts.activity.settled` (botiverse/slock #15654) |
 | Saved | 保存済み | Bookmark feature |
 | Pinned / Pin | ピン留め | Unpin = ピン留めを解除 |
 | Follow (thread) | フォロー | Unfollow = フォロー解除 |
