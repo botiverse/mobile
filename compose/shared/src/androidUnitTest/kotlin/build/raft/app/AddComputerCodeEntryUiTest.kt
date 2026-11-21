@@ -103,10 +103,14 @@ class AddComputerCodeEntryUiTest {
         assertEquals(SharedSettingsIntent.SubmitAddComputerCode, intents.last())
 
         // A refusal the device login page can help with says so in the field, with the page offered.
+        // The link is a node of its own (RaftLinkedText) while the sentence's node holds the whole
+        // text, link words included: the link is found by its exact words, and pressing it asks
+        // the store to open the page.
         code = code.copy(error = AddComputerCodeError(AddComputerCodeProblem.KindUnsupported, serverCode = "grant_kind_unsupported"))
         waitForIdle()
         onNodeWithText("This kind of device login isn't supported here", substring = true).assertExists()
-        onNodeWithText("Open the device login page", substring = true).assertExists()
+        onNodeWithText("Open the device login page").performClick()
+        assertEquals(SharedSettingsIntent.OpenAddComputerDeviceLoginPage, intents.last())
     }
 
     private val confirming = AddComputerCodeState(open = true, code = "vswa-7m58", step = AddComputerCodeStep.Confirm(request, thisServer))
@@ -168,6 +172,8 @@ class AddComputerCodeEntryUiTest {
 
         onNodeWithText("Approve device login").assertExists()
         onNodeWithText("This code isn’t for adding a computer", substring = true).assertExists()
+        // The device login page instead: the link's own node, by its exact words.
+        onNodeWithText("Open the device login page").assertExists()
         onNodeWithText("Add to server").assertDoesNotExist()
         onNodeWithText("Deny").assertDoesNotExist()
         onNodeWithText("Enter a different code").assertExists()
