@@ -840,9 +840,9 @@ internal open class RaftCmpActivity :
     // Instance-owned: onNewIntent may replace the Intent before this instance is destroyed.
     private var loginTransitionToken: String? = null
     private var homeColdStartSplashGate: HomeColdStartSplashGate? = null
-    /** The canvas last painted behind the page, and the one last given to the recents task. */
+    /** The canvas last painted behind the page, and the deferred recents task colour updater. */
     private var hostCanvasArgb: Int? = null
-    private var recentsTaskColorArgb: Int? = null
+    private val recentsTaskColor = DeferredRecentsTaskColor()
     private var homeColdStartSplashTimeoutLogged = false
     private var homeColdStartUsesNativeHold = false
     private var homeColdStartHoldView: View? = null
@@ -1398,9 +1398,9 @@ internal open class RaftCmpActivity :
         findViewById<View?>(R.id.raft_root)?.setBackgroundColor(argb)
         hostCanvasArgb = argb
         // The recents card when the system has no snapshot: the canvas, not the theme's white.
-        if (recentsTaskColorArgb != argb && RaftRecentsTaskColor.apply(this, argb)) {
-            recentsTaskColorArgb = argb
-        }
+        // Deferred via decorView.post so Activity.setTaskDescription Binder IPC never stalls
+        // onCreate, config changes, or page-transition Frame 1.
+        recentsTaskColor.schedule(this, argb)
     }
 
     /**
@@ -1669,6 +1669,7 @@ internal open class RaftCmpActivity :
         postFirstFrameResumeCoordinator.cancel()
         postFirstFrameResumeJob?.cancel()
         postFirstFrameResumeJob = null
+        recentsTaskColor.cancel()
         if (adaptivePaneHostDelegate.isInitialized()) {
             adaptivePaneHost.stop()
         }
@@ -1717,7 +1718,7 @@ internal open class RaftCmpActivity :
     }
 
     override fun onStop() {
-        RaftRecentsTaskColor.recordStop(this, pageName, hostCanvasArgb, recentsTaskColorArgb)
+        RaftRecentsTaskColor.recordStop(this, pageName, hostCanvasArgb, recentsTaskColor.appliedArgb)
         screenshotFeedbackListeningGate.stop()
         screenCaptureObserver?.stop()
         hideScreenshotFeedbackAction()
@@ -1948,12 +1949,11 @@ internal open class RaftCmpActivity :
                 SlockActivityWidgetProvider.refreshAllWidgets(appContext)
                 coroutineContext.ensureActive()
                 SlockAgentStatusWidgetProvider.refreshAllWidgets(appContext)
-                withContext(Dispatchers.Main.immediate) {
-                    AndroidRealtimeKeepAliveController.start(
-                        context = appContext,
-                        source = "activity_on_resume"
-                    )
-                }
+                coroutineContext.ensureActive()
+                AndroidRealtimeKeepAliveController.start(
+                    context = appContext,
+                    source = "activity_on_resume"
+                )
             }
     }
 
@@ -3080,7 +3080,7 @@ internal open class RaftCmpActivity :
     }
 
     private fun androidHostExcludesNavigationBar(): Boolean =
-            androidHostExcludesNavigationBarForMode(androidNavigationMode())
+            androidHostExcludesNavigationBarForMode(null)
 
     // When the status bar is hidden (immersive / FLAG_FULLSCREEN / legacy
     // systemUiVisibility), pageData.statusBarHeight still reports the bar's
@@ -3100,18 +3100,6 @@ internal open class RaftCmpActivity :
         }
         @Suppress("DEPRECATION")
         return decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_FULLSCREEN == 0
-    }
-
-    private fun androidNavigationMode(): Int? {
-        val fromSettings =
-                runCatching {
-                            Settings.Secure.getInt(contentResolver, NAVIGATION_MODE_SETTING)
-                        }
-                        .getOrNull()
-        if (fromSettings != null) return fromSettings
-        val resourceId = resources.getIdentifier(NAVIGATION_MODE_RESOURCE, "integer", "android")
-        if (resourceId == 0) return null
-        return runCatching { resources.getInteger(resourceId) }.getOrNull()
     }
 
     // Ported from the upstream Kuikly demo host (KuiklyRenderActivity
@@ -3522,9 +3510,6 @@ internal open class RaftCmpActivity :
         // are written as string px values by withAndroidRuntimeWindowInsets(); they map
         // to JSONObject params.safeAreaPx keys in shared/shell/RaftAppSafeArea.kt.
         private const val EVENT_WINDOW_INSETS_CHANGED = "slockWindowInsetsChanged"
-        private const val NAVIGATION_MODE_SETTING = "navigation_mode"
-        private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
-        private const val NAVIGATION_MODE_GESTURAL = 2
         private const val THREAD_SURFACE_CHANNEL = "channel"
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
         private const val THREAD_SURFACE_REPLY_THREAD = "thread"

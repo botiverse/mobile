@@ -1,5 +1,9 @@
 package build.raft.app.shared
 
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+
 /**
  * When the process keeps its default-network callback registered (Hands a8cd6426, fe049641).
  *
@@ -127,5 +131,72 @@ internal class AndroidHiddenNetworkCallbackCounter(
     private fun resetLocked() {
         windowStartMillis = null
         counts.fill(0)
+    }
+}
+
+/**
+ * Serializes default-network callback registration/unregistration, active-network queries, and
+ * background keep-alive transition checks off the main thread onto a single-lane IO dispatcher.
+ *
+ * Ordering and leak safety:
+ * - Every operation runs sequentially on [ioScope] (backed by a single-lane dispatcher in
+ *   production), so `register` and `unregister` never overlap concurrently.
+ * - Each sync re-reads [isWanted] live on the IO lane, so rapid foreground <-> background
+ *   transitions always converge to the latest visibility/keep-alive state and never leak a
+ *   registered callback after backgrounding.
+ * - [visibilityGeneration] fences foreground status queries and background transitions so a
+ *   superseded edge skips stale IPC work.
+ */
+internal class AndroidAsyncNetworkCallbackCoordinator(
+    private val ioScope: CoroutineScope,
+    private val registration: AndroidDefaultNetworkCallbackRegistration,
+    private val isWanted: () -> Boolean,
+    private val queryOnline: () -> Boolean,
+    private val onOnlineStatus: (online: Boolean, source: String) -> Unit,
+    private val onAppBackgrounded: () -> Unit,
+    private val onTransition: (transition: AndroidNetworkCallbackTransition, source: String) -> Unit,
+) {
+    private val visibilityGeneration = AtomicLong(0L)
+
+    fun sync(source: String) {
+        ioScope.launch {
+            syncNow(source)
+        }
+    }
+
+    fun queryStatus(source: String) {
+        ioScope.launch {
+            val online = queryOnline()
+            onOnlineStatus(online, source)
+        }
+    }
+
+    fun onForeground(source: String) {
+        val generation = visibilityGeneration.incrementAndGet()
+        ioScope.launch {
+            syncNow(source)
+            if (visibilityGeneration.get() != generation) return@launch
+            val online = queryOnline()
+            if (visibilityGeneration.get() != generation) return@launch
+            onOnlineStatus(online, source)
+        }
+    }
+
+    fun onBackground(source: String) {
+        val generation = visibilityGeneration.incrementAndGet()
+        ioScope.launch {
+            try {
+                if (visibilityGeneration.get() == generation) {
+                    onAppBackgrounded()
+                }
+            } finally {
+                syncNow(source)
+            }
+        }
+    }
+
+    private fun syncNow(source: String) {
+        val transition = registration.sync(isWanted())
+        onTransition(transition, source)
     }
 }

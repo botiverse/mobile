@@ -214,6 +214,15 @@ class RaftApplication : Application() {
                 override fun onActivityDestroyed(activity: Activity) = Unit
             },
         )
+        // Debug-only StrictMode guardrail (log-only): installed after intentional cold-start
+        // setup so accidental main-thread disk I/O or slow calls surface in logcat without
+        // crashing debug builds or ever running in release/Play builds.
+        if (BuildConfig.DEBUG) {
+            RaftStrictMode.installIfDebug(
+                buildConfigDebug = BuildConfig.DEBUG,
+                appDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
+            )
+        }
     }
 }
 

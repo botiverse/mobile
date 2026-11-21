@@ -29,7 +29,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.DateFormat
@@ -91,14 +90,9 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     )
                 if (appWidgetIds.isEmpty()) return@launch
                 val cache = RaftAgentWidgetCache(appContext)
-                val cachedViews =
-                    appWidgetIds.map { widgetId ->
-                        widgetId to buildRemoteViews(appContext, widgetId, cache.read(widgetId, refreshing = true))
-                    }
-                withContext(Dispatchers.Main) {
-                    cachedViews.forEach { (widgetId, views) ->
-                        appWidgetManager.updateAppWidget(widgetId, views)
-                    }
+                appWidgetIds.forEach { widgetId ->
+                    val views = buildRemoteViews(appContext, widgetId, cache.read(widgetId, refreshing = true))
+                    appWidgetManager.updateAppWidget(widgetId, views)
                 }
                 refreshWidgetsOnIo(appContext, appWidgetManager, appWidgetIds)
             }
@@ -125,9 +119,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
                 cache.write(appWidgetId, state)
                 val views = buildRemoteViews(context, appWidgetId, state)
-                withContext(Dispatchers.Main) {
-                    appWidgetManager.updateAppWidget(appWidgetId, views)
-                }
+                appWidgetManager.updateAppWidget(appWidgetId, views)
             }
         }
 

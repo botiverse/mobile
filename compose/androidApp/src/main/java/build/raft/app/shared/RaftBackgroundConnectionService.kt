@@ -36,64 +36,71 @@ class RaftBackgroundConnectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val systemRestart = intent == null
-        if (intent != null && intent.action != ACTION_STOP) {
-            // This command answers one startForegroundService request.
-            pendingStarts.updateAndGet { (it - 1).coerceAtLeast(0) }
-        }
-        val hasSession = AndroidAppScopeRealtimeOwner.hasRealtimeOwnerSession()
-        val decision =
-            runCatching { AndroidRealtimeKeepAliveController.currentBackgroundConnectionDecision(applicationContext) }
-                .getOrElse { RaftBackgroundConnectionPolicy.Decision.Stop("decision_failed") }
-        val outcome =
-            RaftBackgroundConnectionPolicy.startCommandOutcome(
-                isSystemRestart = systemRestart,
-                hasRealtimeSession = hasSession,
-                stopRequested = intent?.action == ACTION_STOP,
-                decision = decision,
-            )
-        if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.StopWithoutForeground) {
-            // A sticky restart lands in a fresh process: only the UI opens the realtime connection (the shared
-            // realtime authority that grants it lives in the UI-hosted store), so there is nothing to keep alive
-            // even when a session is stored. Stop before startForeground (a restart is not a foreground-service
-            // start); the next activity resume or background transition requests the service again.
-            // has_session is the in-memory realtime owner, stored_session the persisted sign-in.
-            val storedSession =
-                runCatching { AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(applicationContext) }
-                    .getOrDefault(false)
+        val isStartRequest = intent != null && intent.action != ACTION_STOP
+        try {
+            val hasSession = AndroidAppScopeRealtimeOwner.hasRealtimeOwnerSession()
+            val decision =
+                runCatching { AndroidRealtimeKeepAliveController.currentBackgroundConnectionDecision(applicationContext) }
+                    .getOrElse { RaftBackgroundConnectionPolicy.Decision.Stop("decision_failed") }
+            val outcome =
+                RaftBackgroundConnectionPolicy.startCommandOutcome(
+                    isSystemRestart = systemRestart,
+                    hasRealtimeSession = hasSession,
+                    stopRequested = intent?.action == ACTION_STOP,
+                    decision = decision,
+                )
+            if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.StopWithoutForeground) {
+                // A sticky restart lands in a fresh process: only the UI opens the realtime connection (the shared
+                // realtime authority that grants it lives in the UI-hosted store), so there is nothing to keep alive
+                // even when a session is stored. Stop before startForeground (a restart is not a foreground-service
+                // start); the next activity resume or background transition requests the service again.
+                // has_session is the in-memory realtime owner, stored_session the persisted sign-in.
+                val storedSession =
+                    runCatching { AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(applicationContext) }
+                        .getOrDefault(false)
+                RaftAppLog.w(
+                    LOG_TAG,
+                    "background_connection_service_restart_stop has_session=$hasSession stored_session=$storedSession " +
+                        "decision=$decision"
+                )
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            // A startForegroundService start is pending: startForeground must come first, before anything that
+            // could decide to stop, or Android kills the app ("did not then call Service.startForeground()").
+            if (!promoteToForeground()) {
+                // Residual risk: if startForeground itself threw, the system may still raise the foreground
+                // timeout crash for this start; nothing else can satisfy it.
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.PromoteThenStop) {
+                RaftAppLog.w(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
+                AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(outcome.reason)
+                if (stopSelfResult(startId)) {
+                    running = false
+                }
+                return START_NOT_STICKY
+            }
+            running = true
             RaftAppLog.w(
                 LOG_TAG,
-                "background_connection_service_restart_stop has_session=$hasSession stored_session=$storedSession " +
-                    "decision=$decision"
+                "background_connection_service_started restart=$systemRestart has_session=$hasSession " +
+                    "source=${intent?.getStringExtra(EXTRA_SOURCE).orEmpty()}"
             )
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        // A startForegroundService start is pending: startForeground must come first, before anything that
-        // could decide to stop, or Android kills the app ("did not then call Service.startForeground()").
-        if (!promoteToForeground()) {
-            // Residual risk: if startForeground itself threw, the system may still raise the foreground
-            // timeout crash for this start; nothing else can satisfy it.
-            stopSelf(startId)
-            return START_NOT_STICKY
-        }
-        if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.PromoteThenStop) {
-            RaftAppLog.w(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
-            if (stopSelfResult(startId)) {
-                running = false
+            AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
+                context = applicationContext,
+                source = "background_connection_service"
+            )
+            return START_STICKY
+        } finally {
+            if (isStartRequest) {
+                // This command answers one startForegroundService request. Decremented after
+                // promoteToForeground and running=true so concurrent stop() never sees both
+                // startPending and running false during the onStartCommand transition window.
+                pendingStarts.updateAndGet { (it - 1).coerceAtLeast(0) }
             }
-            return START_NOT_STICKY
         }
-        running = true
-        RaftAppLog.w(
-            LOG_TAG,
-            "background_connection_service_started restart=$systemRestart has_session=$hasSession " +
-                "source=${intent?.getStringExtra(EXTRA_SOURCE).orEmpty()}"
-        )
-        AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(
-            context = applicationContext,
-            source = "background_connection_service"
-        )
-        return START_STICKY
     }
 
     /** Posts the foreground notification. Never throws; false when the service could not be promoted. */
@@ -210,9 +217,11 @@ class RaftBackgroundConnectionService : Service() {
         }
 
         internal fun stop(context: Context, reason: String) {
-            val appContext = context.applicationContext
-            val wasRunning = running
+            // Read startPending before running (reverse of onStartCommand's write order:
+            // running = true before pendingStarts decrement) so a concurrent stop() never
+            // observes both false across the onStartCommand handoff window.
             if (startPending) {
+                val appContext = context.applicationContext
                 stopQueued = true
                 // stopService now would destroy the service before it called startForeground, which crashes
                 // the app. Queue a stop action behind the pending start instead: onStartCommand promotes to
@@ -236,12 +245,25 @@ class RaftBackgroundConnectionService : Service() {
                 RaftAppLog.w(LOG_TAG, "background_connection_service_stop_pending reason=$reason requested=$requested")
                 return
             }
+            if (!running) {
+                return
+            }
+            val appContext = context.applicationContext
             runCatching {
                 appContext.stopService(Intent(appContext, RaftBackgroundConnectionService::class.java))
             }
-            if (wasRunning) {
-                RaftAppLog.w(LOG_TAG, "background_connection_service_stop reason=$reason")
-            }
+            RaftAppLog.w(LOG_TAG, "background_connection_service_stop reason=$reason")
+        }
+
+        internal fun setRunningForTests(value: Boolean) {
+            running = value
+        }
+
+        internal fun resetForTests() {
+            running = false
+            pendingStarts.set(0)
+            stopQueued = false
+            declared = null
         }
 
         internal fun ensureChannel(context: Context) {

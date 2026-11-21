@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
@@ -30,6 +31,12 @@ internal class RaftAppScopeApiEnvironmentHolder(
             checkNotNull(store)
         }
 
+    fun reloadIfLoaded() {
+        synchronized(lock) {
+            store?.reload()
+        }
+    }
+
     private fun ensureCreated() {
         if (store != null) return
         val created = createBinding()
@@ -39,6 +46,7 @@ internal class RaftAppScopeApiEnvironmentHolder(
 }
 
 internal object RaftAppScopeApiEnvironment {
+    @Volatile
     private var holder = newHolder()
 
     private fun newHolder() =
@@ -57,4 +65,13 @@ internal object RaftAppScopeApiEnvironment {
     fun binding(): RaftSharedKeyValueStoreBinding = holder.binding()
 
     fun store(): SharedApiEnvironmentStore = holder.store()
+
+    fun reloadIfLoaded() {
+        holder.reloadIfLoaded()
+    }
+}
+
+/** Re-reads the process-wide [SharedApiEnvironmentStore] from storage if it has already been loaded. */
+fun reloadRaftAppScopeApiEnvironmentIfLoaded() {
+    RaftAppScopeApiEnvironment.reloadIfLoaded()
 }

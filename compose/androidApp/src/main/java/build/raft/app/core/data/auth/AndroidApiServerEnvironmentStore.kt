@@ -4,6 +4,7 @@ import android.content.Context
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
+import build.raft.app.data.reloadRaftAppScopeApiEnvironmentIfLoaded
 
 data class AndroidApiServerEnvironment(
     val key: String,
@@ -23,11 +24,15 @@ class AndroidApiServerEnvironmentStore(context: Context) {
         sharedStore.current().toAndroidEnvironment()
 
     fun select(key: String): AndroidApiServerEnvironment? {
-        return sharedStore.select(key)?.toAndroidEnvironment()
+        return sharedStore.select(key)
+            ?.also { reloadRaftAppScopeApiEnvironmentIfLoaded() }
+            ?.toAndroidEnvironment()
     }
 
     fun save(environment: AndroidApiServerEnvironment): AndroidApiServerEnvironment? {
-        return sharedStore.save(environment.toSharedRequest())?.toAndroidEnvironment()
+        return sharedStore.save(environment.toSharedRequest())
+            ?.also { reloadRaftAppScopeApiEnvironmentIfLoaded() }
+            ?.toAndroidEnvironment()
     }
 
     fun rewriteApiUrl(url: String): String =

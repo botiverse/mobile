@@ -1,5 +1,10 @@
 package build.raft.app.shared
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -104,5 +109,226 @@ class AndroidDefaultNetworkCallbackLifecycleTest {
             counter.flush(65_000L),
         )
         assertNull("nothing left to report", counter.flush(70_000L))
+    }
+
+    @Test
+    fun asyncCoordinatorRunsForegroundAndBackgroundOffCallerThreadInOrder() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            val statuses = mutableListOf<Pair<Boolean, String>>()
+            var foreground = false
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = { events += "register" },
+                    unregister = { events += "unregister" },
+                )
+            val coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = { foreground },
+                    queryOnline = {
+                        events += "query"
+                        true
+                    },
+                    onOnlineStatus = { online, source -> statuses += online to source },
+                    onAppBackgrounded = { events += "backgrounded" },
+                    onTransition = { transition, source -> events += "transition:${transition.name}:$source" },
+                )
+
+            foreground = true
+            coordinator.onForeground("app_shown")
+            assertTrue("foreground sync must not run synchronously on caller thread", events.isEmpty())
+
+            testScheduler.advanceUntilIdle()
+            assertEquals(listOf("register", "transition:Registered:app_shown", "query"), events)
+            assertEquals(listOf(true to "app_shown"), statuses)
+            assertTrue(registration.registered)
+
+            events.clear()
+            foreground = false
+            coordinator.onBackground("app_hidden")
+            assertTrue("background sync must not run synchronously on caller thread", events.isEmpty())
+
+            testScheduler.advanceUntilIdle()
+            assertEquals(listOf("backgrounded", "unregister", "transition:Unregistered:app_hidden"), events)
+            assertFalse(registration.registered)
+        } finally {
+            ioScope.cancel()
+        }
+    }
+
+    @Test
+    fun rapidForegroundThenBackgroundSkipsStaleRegisterAndQueryAndLeaksNoCallback() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            val statuses = mutableListOf<Pair<Boolean, String>>()
+            var foreground = false
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = { events += "register" },
+                    unregister = { events += "unregister" },
+                )
+            val coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = { foreground },
+                    queryOnline = {
+                        events += "query"
+                        true
+                    },
+                    onOnlineStatus = { online, source -> statuses += online to source },
+                    onAppBackgrounded = { events += "backgrounded" },
+                    onTransition = { _, _ -> },
+                )
+
+            foreground = true
+            coordinator.onForeground("app_shown")
+            foreground = false
+            coordinator.onBackground("app_hidden")
+
+            testScheduler.advanceUntilIdle()
+            assertFalse(registration.registered)
+            assertEquals(listOf("backgrounded"), events)
+            assertTrue(statuses.isEmpty())
+        } finally {
+            ioScope.cancel()
+        }
+    }
+
+    @Test
+    fun backgroundWhileRegisterInFlightStillUnregistersAndNeverLeaks() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            val statuses = mutableListOf<Pair<Boolean, String>>()
+            var foreground = false
+            lateinit var coordinator: AndroidAsyncNetworkCallbackCoordinator
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = {
+                        events += "register"
+                        // Simulate Main thread transitioning to background while register is in flight.
+                        foreground = false
+                        coordinator.onBackground("app_hidden")
+                    },
+                    unregister = { events += "unregister" },
+                )
+            coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = { foreground },
+                    queryOnline = {
+                        events += "query"
+                        true
+                    },
+                    onOnlineStatus = { online, source -> statuses += online to source },
+                    onAppBackgrounded = { events += "backgrounded" },
+                    onTransition = { _, _ -> },
+                )
+
+            foreground = true
+            coordinator.onForeground("app_shown")
+            testScheduler.advanceUntilIdle()
+
+            assertFalse("callback registered before rapid background must be unregistered", registration.registered)
+            assertEquals(listOf("register", "backgrounded", "unregister"), events)
+            assertTrue("superseded foreground status query must be skipped", statuses.isEmpty())
+        } finally {
+            ioScope.cancel()
+        }
+    }
+
+    @Test
+    fun rapidBackgroundThenForegroundSkipsStaleBackgroundTransitionAndKeepsCallbackRegistered() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            var foreground = true
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = { events += "register" },
+                    unregister = { events += "unregister" },
+                )
+            val coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = { foreground },
+                    queryOnline = {
+                        events += "query"
+                        true
+                    },
+                    onOnlineStatus = { _, _ -> },
+                    onAppBackgrounded = { events += "backgrounded" },
+                    onTransition = { _, _ -> },
+                )
+
+            coordinator.onForeground("app_shown")
+            testScheduler.advanceUntilIdle()
+            events.clear()
+
+            foreground = false
+            coordinator.onBackground("app_hidden")
+            foreground = true
+            coordinator.onForeground("app_shown")
+
+            testScheduler.advanceUntilIdle()
+            assertTrue(registration.registered)
+            assertEquals(listOf("query"), events)
+        } finally {
+            ioScope.cancel()
+        }
+    }
+
+    @Test
+    fun backgroundKeepAliveStartedDuringOnAppBackgroundedKeepsCallbackRegistered() = runTest {
+        val ioScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        try {
+            val events = mutableListOf<String>()
+            var foreground = true
+            var serviceActive = false
+            val registration =
+                AndroidDefaultNetworkCallbackRegistration(
+                    register = { events += "register" },
+                    unregister = { events += "unregister" },
+                )
+            val coordinator =
+                AndroidAsyncNetworkCallbackCoordinator(
+                    ioScope = ioScope,
+                    registration = registration,
+                    isWanted = {
+                        AndroidDefaultNetworkCallbackPolicy.shouldBeRegistered(
+                            foreground = foreground,
+                            backgroundKeepAliveEnabled = false,
+                            backgroundConnectionServiceActive = serviceActive,
+                        )
+                    },
+                    queryOnline = { true },
+                    onOnlineStatus = { _, _ -> },
+                    onAppBackgrounded = {
+                        events += "backgrounded"
+                        serviceActive = true
+                    },
+                    onTransition = { _, _ -> },
+                )
+
+            coordinator.onForeground("app_shown")
+            testScheduler.advanceUntilIdle()
+            events.clear()
+
+            foreground = false
+            coordinator.onBackground("app_hidden")
+            testScheduler.advanceUntilIdle()
+
+            assertTrue("keep-alive service started in onAppBackgrounded must keep callback registered", registration.registered)
+            assertEquals(listOf("backgrounded"), events)
+        } finally {
+            ioScope.cancel()
+        }
     }
 }
