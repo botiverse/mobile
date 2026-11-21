@@ -16,6 +16,7 @@ class RaftPluralsTest {
             {
               "thread_message_count": { "one": "%1${'$'}d сообщение", "few": "%1${'$'}d сообщения", "many": "%1${'$'}d сообщений" },
               "settings_billing_vo_count_seats": { "few": "%1${'$'}d · %2${'$'}s места" },
+              "seats_rule": { "arg": 1, "one": "%1${'$'}s место (1 на %2${'$'}d)", "many": "%1${'$'}s мест (1 на %2${'$'}d)" },
               "thread_history_paywall_replies_title": { "many": "%1${'$'}s ответов старше %2${'$'}d дней" }
             }
             """.trimIndent(),
@@ -77,6 +78,16 @@ class RaftPluralsTest {
         assertEquals("1,200 ответов старше 30 дней", ru("thread_history_paywall_replies_title_other", "1,200", 30))
         // "arg" names the count when it is not the first number.
         assertEquals("в 3 года", raftPluralFormFor(parseRaftPluralForms("""{"k":{"arg":2,"few":"в %2${'$'}d года"}}"""), "ru", "k_other", listOf(99, 3)))
+    }
+
+    @Test
+    fun aDecimalIsNoCountSoItKeepsTheOtherText() {
+        listOf("1.5", "0.3", "1,5", "12.34").forEach { assertNull(raftPluralCount(listOf(it)), it) }
+        assertEquals(1200L, raftPluralCount(listOf("1.200")))
+        // 1.5 seats is CLDR `other` ("1.5 места", the catalog's _other text), not the many form of 15.
+        assertNull(ru("seats_rule_other", "1.5", 10))
+        assertEquals("5 мест (1 на 10)", ru("seats_rule_other", "5", 10))
+        assertEquals("21 место (1 на 10)", ru("seats_rule_other", "21", 10))
     }
 
     @Test

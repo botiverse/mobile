@@ -119,5 +119,24 @@ class SettingsBillingViewOnlyModelTest {
         assertEquals("4.2", settingsBillingFormatSeats(4.2))
         assertEquals("5", settingsBillingFormatSeats(5.0))
         assertEquals("1.2", settingsBillingFormatSeats(12 * 0.1))
+        // In tenths, as shared seatTenths counts them: 1 person and 19 agents are 2.9, not 2.9000000000000004.
+        mapOf(0L to "0", 3L to "0.3", 10L to "1", 15L to "1.5", 29L to "2.9", 40L to "4").forEach { (tenths, text) ->
+            assertEquals(text, settingsBillingFormatSeatTenths(tenths), "$tenths tenths")
+        }
+        assertEquals(29L, settingsBillingSeatTenths(humans = 1, agents = 19))
+    }
+
+    /** Web SeatsBreakdown (botiverse/slock 16f5f8bc40): people, then agents in tenths of a seat; no agents row without agents. */
+    @Test
+    fun theSeatsBreakdownHasPeopleThenAgentsCountedInTenths() {
+        val people = SettingsBillingSeatHolder.People
+        val agents = SettingsBillingSeatHolder.Agents
+        mapOf(
+            (4 to 15) to listOf(SettingsBillingSeatsBreakdownRow(people, 4, 40), SettingsBillingSeatsBreakdownRow(agents, 15, 15)),
+            (2 to 10) to listOf(SettingsBillingSeatsBreakdownRow(people, 2, 20), SettingsBillingSeatsBreakdownRow(agents, 10, 10)),
+            (6 to 0) to listOf(SettingsBillingSeatsBreakdownRow(people, 6, 60)),
+        ).forEach { (usage, rows) ->
+            assertEquals(rows, settingsBillingSeatsBreakdown(humans = usage.first, agents = usage.second), "$usage")
+        }
     }
 }

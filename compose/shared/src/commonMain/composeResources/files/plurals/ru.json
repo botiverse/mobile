@@ -5,11 +5,30 @@
   "many": "%1$d мест",
   "other": "%1$d места"
  },
- "settings_billing_vo_count_seats": {
-  "one": "%1$d · %2$s место",
-  "few": "%1$d · %2$s места",
-  "many": "%1$d · %2$s мест",
-  "other": "%1$d · %2$s места"
+ "settings_billing_vo_usage_people_count": {
+  "one": "%1$d человек",
+  "few": "%1$d человека",
+  "many": "%1$d человек",
+  "other": "%1$d человека"
+ },
+ "settings_billing_vo_usage_agents_count": {
+  "one": "%1$d агент",
+  "few": "%1$d агента",
+  "many": "%1$d агентов",
+  "other": "%1$d агента"
+ },
+ "settings_billing_vo_usage_seats_value": {
+  "one": "%1$s место",
+  "few": "%1$s места",
+  "many": "%1$s мест",
+  "other": "%1$s места"
+ },
+ "settings_billing_vo_usage_agent_seats_value": {
+  "arg": 1,
+  "one": "%1$s место (1 на %2$d агентов)",
+  "few": "%1$s места (1 на %2$d агентов)",
+  "many": "%1$s мест (1 на %2$d агентов)",
+  "other": "%1$s места (1 на %2$d агентов)"
  },
  "settings_billing_vo_people_count": {
   "one": "%1$d человек",

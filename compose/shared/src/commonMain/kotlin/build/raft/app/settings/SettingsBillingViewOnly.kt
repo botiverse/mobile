@@ -74,8 +74,8 @@ internal const val SettingsBillingFreeUploadBytes = 100L * 1024 * 1024
 private const val SettingsBillingDowngradeGraceDays = 7
 private const val SettingsBillingDayMillis = 24L * 60 * 60 * 1000
 
-/** Shared PRO_AGENT_SEAT_FRACTION: an agent takes a tenth of a seat. */
-private const val SettingsBillingAgentSeatFraction = 0.1
+/** Shared PRO_AGENT_SEAT_BLOCK_SIZE: ten agents take one seat, so an agent takes a tenth of one. */
+internal const val SettingsBillingAgentSeatBlock = 10
 
 internal enum class SettingsBillingViewOnlyPlan { Free, Pro, Founder, Partner, AppSumo, Other }
 
@@ -272,11 +272,70 @@ internal fun settingsBillingYearMonth(month: String): Pair<Int, Int>? {
 }
 
 /** Seats with at most one decimal (web `formatNumber(…, { maximumFractionDigits: 1 })`). */
-internal fun settingsBillingFormatSeats(value: Double): String {
-    val tenths = (value * 10).roundToLong()
+internal fun settingsBillingFormatSeats(value: Double): String = settingsBillingFormatSeatTenths((value * 10).roundToLong())
+
+/** Seats counted in tenths, with at most one decimal: 15 is "1.5", 40 is "4". */
+internal fun settingsBillingFormatSeatTenths(tenths: Long): String {
     val whole = tenths / 10
     val fraction = kotlin.math.abs(tenths % 10)
     return if (fraction == 0L) whole.toString() else "$whole.$fraction"
+}
+
+/**
+ * Shared `seatTenths`: seats in tenths, as an integer (a person is 10, an agent 1). Seat math
+ * counts these, never the 0.1 share itself, which drifts in floating point.
+ */
+internal fun settingsBillingSeatTenths(humans: Int, agents: Int): Long =
+    max(0, humans).toLong() * SettingsBillingAgentSeatBlock + max(0, agents)
+
+/** Who takes the seats of a [SettingsBillingSeatsBreakdownRow]. */
+internal enum class SettingsBillingSeatHolder { People, Agents }
+
+/** One row of the seats breakdown: [count] people or agents and the seats they take, in tenths. */
+internal data class SettingsBillingSeatsBreakdownRow(val holder: SettingsBillingSeatHolder, val count: Int, val seatTenths: Long)
+
+/**
+ * What a server's seats in use are made of, one row per kind (web SeatsBreakdown, botiverse/slock
+ * 16f5f8bc40 `packages/web/src/components/billing/SeatsBreakdown.tsx`): the people, then the
+ * agents, with no agents row when there are none. Agent seats are counted in tenths, as the rest
+ * of seat math (`seatsFromTenths(seatTenths(0, agents))`): 15 agents take 1.5 seats.
+ */
+internal fun settingsBillingSeatsBreakdown(humans: Int, agents: Int): List<SettingsBillingSeatsBreakdownRow> =
+    buildList {
+        add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.People, humans, settingsBillingSeatTenths(humans, 0)))
+        if (agents > 0) {
+            add(SettingsBillingSeatsBreakdownRow(SettingsBillingSeatHolder.Agents, agents, settingsBillingSeatTenths(0, agents)))
+        }
+    }
+
+/** The row's label, who takes the seats: "4 people", "15 agents" (web `planBilling.usage.peopleCount` / `agentsCount`). */
+internal fun SettingsBillingSeatsBreakdownRow.termDesc(): StringDesc =
+    when (holder) {
+        SettingsBillingSeatHolder.People ->
+            (if (count == 1) Res.string.settings_billing_vo_usage_people_count_one else Res.string.settings_billing_vo_usage_people_count_other)
+                .format(count)
+        SettingsBillingSeatHolder.Agents ->
+            (if (count == 1) Res.string.settings_billing_vo_usage_agents_count_one else Res.string.settings_billing_vo_usage_agents_count_other)
+                .format(count)
+    }
+
+/**
+ * The seats the row takes: "4 seats"; for agents with the rule beside them, "1.5 seats (1 per 10
+ * agents)" (web `planBilling.usage.seatsValue` / `agentSeatsValue`). Exactly one seat is singular
+ * ("1 seat (1 per 10 agents)" for ten agents); any other number, a fraction too, plural. Russian's
+ * few / many come from files/plurals/ru.json, where a fraction keeps the `other` form.
+ */
+internal fun SettingsBillingSeatsBreakdownRow.valueDesc(): StringDesc {
+    val oneSeat = seatTenths == 10L
+    val seats = settingsBillingFormatSeatTenths(seatTenths)
+    return when (holder) {
+        SettingsBillingSeatHolder.People ->
+            (if (oneSeat) Res.string.settings_billing_vo_usage_seats_value_one else Res.string.settings_billing_vo_usage_seats_value_other)
+                .format(seats)
+        SettingsBillingSeatHolder.Agents ->
+            (if (oneSeat) Res.string.settings_billing_vo_usage_agent_seats_value_one else Res.string.settings_billing_vo_usage_agent_seats_value_other)
+                .format(seats, SettingsBillingAgentSeatBlock)
+    }
 }
 
 @Composable
@@ -560,18 +619,8 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
                                 settingsBillingFormatSeats(seats.capacity),
                             ),
                     )
-                    RaftDescriptionList(direction = RaftDescriptionListDirection.Inline) {
-                        Item(
-                            term = stringResource(Res.string.settings_billing_vo_people),
-                            value = settingsBillingCountSeats(seats.humans, seats.humans.toDouble()),
-                            copyable = false,
-                        )
-                        Item(
-                            term = stringResource(Res.string.settings_billing_vo_agents),
-                            value = settingsBillingCountSeats(seats.agents, seats.agents * SettingsBillingAgentSeatFraction),
-                            copyable = false,
-                        )
-                    }
+                    // Under "n of m used": what the seats in use are made of.
+                    SettingsBillingSeatsBreakdown(seats.humans, seats.agents)
                 }
             }
             model.appSumo?.let { appSumo ->
@@ -655,14 +704,19 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
     }
 }
 
-/** "3 · 3 seats": a count and the seats it takes. */
+/**
+ * web SeatsBreakdown (botiverse/slock 16f5f8bc40, #15505; cindyz option 2): what the seats in use
+ * are made of, in two columns, one row per kind, label then seats: "4 people | 4 seats",
+ * "15 agents | 1.5 seats (1 per 10 agents)" ([settingsBillingSeatsBreakdown]).
+ */
 @Composable
-private fun settingsBillingCountSeats(count: Int, seats: Double): String =
-    stringResource(
-        if (seats == 1.0) Res.string.settings_billing_vo_count_seats_one else Res.string.settings_billing_vo_count_seats_other,
-        count,
-        settingsBillingFormatSeats(seats),
-    )
+private fun SettingsBillingSeatsBreakdown(humans: Int, agents: Int) {
+    RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+        settingsBillingSeatsBreakdown(humans, agents).forEach { row ->
+            Item(term = row.termDesc().localized(), value = row.valueDesc().localized(), copyable = false)
+        }
+    }
+}
 
 /** One AppSumo allowance: what is used of the license's limit (web UsageMeter). */
 @Composable
@@ -686,8 +740,10 @@ private fun SettingsBillingViewOnlyLoading() {
     }
     RaftCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            repeat(3) { row ->
-                RaftSkeleton(Modifier.fillMaxWidth(if (row == 2) 0.6f else 0.9f), variant = RaftSkeletonVariant.Line)
+            // The meter, then the seats breakdown's two rows, people and agents, as the web's
+            // skeleton draws them (botiverse/slock 16f5f8bc40), so the card grows less when billing loads.
+            listOf(0.9f, 0.9f, 0.6f, 0.6f).forEach { width ->
+                RaftSkeleton(Modifier.fillMaxWidth(width), variant = RaftSkeletonVariant.Line)
             }
         }
     }

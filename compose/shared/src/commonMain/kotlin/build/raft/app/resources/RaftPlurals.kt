@@ -61,17 +61,20 @@ private val PluralSuffixes = listOf("_one", "_many", "_other")
 internal fun raftPluralBaseKey(resourceKey: String): String =
     PluralSuffixes.firstOrNull { resourceKey.endsWith(it) }?.let { resourceKey.removeSuffix(it) } ?: resourceKey
 
+/** A whole number as text: plain digits, or digits grouped in threes ("1,200", "1.200"). */
+private val RaftCountText = Regex("""\d+|\d{1,3}(?:[,.]\d{3})+""")
+
 /**
  * The count a string formats: the 1-based argument [position] when given, else the first argument
- * that is an integer or reads as a grouped number ("1,200", a count the call site formatted).
+ * that is an integer or reads as a grouped number ("1,200", a count the call site formatted). A
+ * decimal ("1.5 seats") is no count: CLDR puts a fraction in `other`, so the string keeps the
+ * `_other` text the call site chose (Russian "1.5 места", not the "мест" of 15).
  */
 internal fun raftPluralCount(args: List<Any>, position: Int? = null): Long? {
     fun Any?.asCount(): Long? =
         when (this) {
             is Int, is Long, is Short, is Byte -> (this as Number).toLong()
-            is String ->
-                takeIf { text -> text.isNotEmpty() && text.all { it.isDigit() || it == ',' || it == '.' } }
-                    ?.filter(Char::isDigit)?.toLongOrNull()
+            is String -> takeIf { RaftCountText.matches(it) }?.filter(Char::isDigit)?.toLongOrNull()
             else -> null
         }
     if (position != null) return args.getOrNull(position - 1).asCount()
