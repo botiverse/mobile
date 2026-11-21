@@ -134,11 +134,13 @@ internal data class RaftScrollSkippedCarryover(
 internal class RaftScrollFrameThrottle(
     private val minIntervalMillis: Long = 1_000L,
 ) {
-    private var lastLineAtMillis: Long = -minIntervalMillis
+    private var hasEmitted: Boolean = false
+    private var lastLineAtMillis: Long = 0L
     private var skippedSessions: Int = 0
     private var skippedJankFrames: Int = 0
     private var skippedLongestFrameMs: Long = 0L
     private var skippedLastList: String = ""
+    private var skippedWorstJankLongestFrameMs: Long = -1L
 
     /**
      * Records a finished scroll [summary] at [nowMillis]. Returns null when throttled (folding
@@ -149,15 +151,23 @@ internal class RaftScrollFrameThrottle(
         list: String,
         summary: RaftScrollFrameStats.Summary,
     ): RaftScrollSkippedCarryover? {
-        if (nowMillis - lastLineAtMillis < minIntervalMillis) {
+        if (hasEmitted && nowMillis - lastLineAtMillis < minIntervalMillis) {
             skippedSessions += 1
             skippedJankFrames += summary.jankFrames
             if (summary.longestFrameMs > skippedLongestFrameMs) {
                 skippedLongestFrameMs = summary.longestFrameMs
             }
-            skippedLastList = list
+            if (summary.jankFrames > 0) {
+                if (skippedWorstJankLongestFrameMs < 0L || summary.longestFrameMs >= skippedWorstJankLongestFrameMs) {
+                    skippedWorstJankLongestFrameMs = summary.longestFrameMs
+                    skippedLastList = list
+                }
+            } else if (skippedWorstJankLongestFrameMs < 0L) {
+                skippedLastList = list
+            }
             return null
         }
+        hasEmitted = true
         lastLineAtMillis = nowMillis
         val carried =
             RaftScrollSkippedCarryover(
@@ -195,6 +205,7 @@ internal class RaftScrollFrameThrottle(
         skippedJankFrames = 0
         skippedLongestFrameMs = 0L
         skippedLastList = ""
+        skippedWorstJankLongestFrameMs = -1L
     }
 }
 
@@ -236,7 +247,8 @@ internal class RaftScrollFrameStats(
     private val frameIntervalNanos: Long,
 ) {
     private val histogram = IntArray(HistogramBuckets)
-    private var lastVsyncNanos = -1L
+    private var hasAnchor = false
+    private var lastVsyncNanos = 0L
     private var firstFrameGapNanos = -1L
     private var frames = 0
     private var jankFrames = 0
@@ -246,15 +258,16 @@ internal class RaftScrollFrameStats(
     /**
      * Scroll-session callback: anchors on the first callback and measures the scroll-start ->
      * first-frame latency (`nowNanos - startNanos`). If that opening frame already missed a vsync
-     * (>= 1.75x interval), it counts as a jank frame and updates [longestGapNanos] / p95 instead
-     * of being silently dropped. Normal sub-vsync partial first intervals are not fed into
-     * [shortestGapNanos] so `minFrameMs` keeps reflecting steady vsync cadence.
+     * (>= 1.75x interval), it counts as a jank frame and updates [longestGapNanos] / [shortestGapNanos] /
+     * p95 instead of being silently dropped. Normal sub-vsync partial first intervals are not fed
+     * into [shortestGapNanos] so `minFrameMs` keeps reflecting steady vsync cadence.
      */
     fun onScrollVsync(frameTimeNanos: Long, nowNanos: Long) {
-        if (lastVsyncNanos >= 0L) {
+        if (hasAnchor) {
             onVsync(frameTimeNanos)
             return
         }
+        hasAnchor = true
         val firstGap = (nowNanos - startNanos).coerceAtLeast(0L)
         firstFrameGapNanos = firstGap
         // If Choreographer handed us an un-clamped pre-stall vsync timestamp, advance the anchor
@@ -271,15 +284,22 @@ internal class RaftScrollFrameStats(
             frames += 1
             jankFrames += 1
             if (firstGap > longestGapNanos) longestGapNanos = firstGap
+            if (firstGap < shortestGapNanos) shortestGapNanos = firstGap
             histogram[(firstGap / 1_000_000L).toInt().coerceIn(0, HistogramBuckets - 1)] += 1
         }
     }
 
     fun onVsync(frameTimeNanos: Long) {
-        val previous = lastVsyncNanos
-        lastVsyncNanos = frameTimeNanos
         // The first callback only anchors the cadence; its gap to the scroll start is not a frame.
-        if (previous < 0L) return
+        if (!hasAnchor) {
+            hasAnchor = true
+            lastVsyncNanos = frameTimeNanos
+            return
+        }
+        val previous = lastVsyncNanos
+        if (frameTimeNanos > previous) {
+            lastVsyncNanos = frameTimeNanos
+        }
         val gap = (frameTimeNanos - previous).coerceAtLeast(0L)
         frames += 1
         if (gap > longestGapNanos) longestGapNanos = gap
@@ -289,24 +309,17 @@ internal class RaftScrollFrameStats(
         histogram[(gap / 1_000_000L).toInt().coerceIn(0, HistogramBuckets - 1)] += 1
     }
 
-    fun summary(nowNanos: Long): Summary {
-        val shortestMs =
-            when {
-                shortestGapNanos != Long.MAX_VALUE -> shortestGapNanos / 1_000_000.0
-                frames > 0 && firstFrameGapNanos >= 0L -> firstFrameGapNanos / 1_000_000.0
-                else -> 0.0
-            }
-        return Summary(
+    fun summary(nowNanos: Long): Summary =
+        Summary(
             durationMs = (nowNanos - startNanos).coerceAtLeast(0L) / 1_000_000L,
             frames = frames,
             jankFrames = jankFrames,
             longestFrameMs = longestGapNanos / 1_000_000L,
-            shortestFrameMs = shortestMs,
+            shortestFrameMs = if (shortestGapNanos != Long.MAX_VALUE) shortestGapNanos / 1_000_000.0 else 0.0,
             p95FrameMs = percentileMs(95),
             frameIntervalNanos = frameIntervalNanos,
             firstFrameMs = if (firstFrameGapNanos >= 0L) firstFrameGapNanos / 1_000_000L else -1L,
         )
-    }
 
     /** Upper edge (ms) of the histogram bucket holding the [percent]th frame; 0 with no frames. */
     private fun percentileMs(percent: Int): Long {
