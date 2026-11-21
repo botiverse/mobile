@@ -858,6 +858,8 @@ class RaftAttachmentUploadTelemetryTest {
         assertEquals(1, fetches)
         assertEquals("legacy", attrs.text("route"))
         assertEquals(120L, attrs.getValue("control_ms").jsonPrimitive.long)
+        // The probe is the whole wait before the POST: none of it is preparation.
+        assertEquals(0L, attrs.getValue("prepare_ms").jsonPrimitive.long)
         assertEquals(1_020L, attrs.getValue("duration_ms").jsonPrimitive.long)
     }
 
@@ -892,6 +894,7 @@ class RaftAttachmentUploadTelemetryTest {
         assertEquals("ok", attrs.text("outcome"))
         // probe 100 + create 200 + first complete 300; the retry's 450 and the PUT's 1000 are not in it.
         assertEquals(600L, attrs.getValue("control_ms").jsonPrimitive.long)
+        assertEquals(0L, attrs.getValue("prepare_ms").jsonPrimitive.long)
         assertEquals(2_050L, attrs.getValue("duration_ms").jsonPrimitive.long)
     }
 
@@ -998,5 +1001,65 @@ class RaftAttachmentUploadTelemetryTest {
         assertEquals("cancelled", attrs.text("outcome"))
         assertEquals("draft_cleared", attrs.text("cancel_reason"))
         assertEquals(250L, attrs.getValue("control_ms").jsonPrimitive.long)
+    }
+
+    /** As on the web, the parts are disjoint: what they leave of duration_ms is resends and polling. */
+    @Test
+    fun theProbeIsControlMsNotPrepareMsAndThePartsNeverExceedTheTotal() = runTest {
+        val clock = ControlClock()
+        val emitted = mutableListOf<Emitted>()
+        val upload = attempt(emitted = emitted, elapsedMs = { clock.now })
+        val cache = AttachmentUploadCapabilitiesCache(nowMillis = { 0L })
+
+        withContext(upload.recorder) {
+            clock.spend(40L) // local work
+            cache.getOrFetch(controlAuthority) {
+                clock.spend(120L)
+                DataResult.Content(AttachmentUploadCapabilities(maxBytes = 10_000L))
+            }
+            clock.spend(60L) // waiting for an upload slot, reading the size
+            upload.recorder.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
+            clock.spend(1_000L)
+            upload.recorder.transferFinished(
+                RaftAttachmentUploadRouteLegacy,
+                RaftUploadWireFacts(requestBytes = 100L, connectMs = 50L, requestBodyMs = 600L, responseWaitMs = 250L),
+            )
+            // A legacy body resend after a token refresh is in no part.
+            clock.spend(300L)
+        }
+        upload.settle(DataResult.Content(Unit))
+        upload.report()
+
+        val attrs = emitted.single().attrs
+        fun ms(name: String) = attrs.getValue(name).jsonPrimitive.long
+        assertEquals(100L, ms("prepare_ms"), "40 + 60 of local work, the 120 probe excluded")
+        assertEquals(120L, ms("control_ms"))
+        val parts = listOf("prepare_ms", "control_ms", "connect_ms", "request_body_ms", "response_wait_ms").sumOf(::ms)
+        assertEquals(1_520L, ms("duration_ms"))
+        assertTrue(parts <= ms("duration_ms"), "parts=$parts")
+        assertEquals(400L, ms("duration_ms") - parts, "the remainder: what the parts do not cover")
+
+        // A probe made before the attempt (a prefetch) and a cache hit in it add to neither part.
+        val cachedClock = ControlClock()
+        val cached = attempt(emitted = emitted, elapsedMs = { cachedClock.now })
+        withContext(cached.recorder) {
+            cachedClock.spend(70L)
+            cache.getOrFetch(controlAuthority) { error("cached") }
+            cached.recorder.uploadRequestStarting(RaftAttachmentUploadRouteLegacy)
+        }
+        cached.settle(DataResult.Content(Unit))
+        cached.report()
+        assertEquals(70L, emitted.last().attrs.getValue("prepare_ms").jsonPrimitive.long)
+        assertNull(emitted.last().attrs["control_ms"])
+
+        // The app's clock and the engine's disagree: each part is capped by what is left, never below 0.
+        val phases =
+            raftAttachmentUploadPhases(
+                durationMs = 1_000L,
+                prepareMs = 300L,
+                facts = RaftUploadWireFacts(connectMs = 100L, requestBodyMs = 500L, responseWaitMs = 400L),
+                controlMs = 200L,
+            )
+        assertEquals(RaftAttachmentUploadPhases(300L, 100L, 400L, 0L, controlMs = 200L), phases)
     }
 }
