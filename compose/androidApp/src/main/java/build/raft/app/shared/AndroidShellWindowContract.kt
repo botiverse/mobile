@@ -25,7 +25,7 @@ internal const val ANDROID_DOCUMENT_SHELL_KEY = "slockDocumentShell"
 // shared/shell/RaftShellStoreLaunch.kt (made public so androidApp reads them).
 private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = RAFT_ROUTE_ENVIRONMENT_ID
 private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = RAFT_ROUTE_ACCOUNT_ID
-private const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
+internal const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
 
 /**
  * Canonical document-shell identity: the authenticated route owner the shell
