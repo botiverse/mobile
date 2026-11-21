@@ -3691,6 +3691,11 @@
     <string name="member_activity_overview_outcome_interrupted">Detenido</string>
     <string name="member_activity_overview_outcome_unknown">Terminó, resultado desconocido</string>
     <string name="member_activity_overview_outcome_no_message">Sin mensajes enviados</string>
+    <string name="member_activity_overview_retries_usage_limit_until">Límite de uso alcanzado · se restablece %1$s · %2$d intentos</string>
+    <string name="member_activity_overview_retries_usage_limit">Límite de uso alcanzado · %1$d intentos</string>
+    <string name="member_activity_overview_retries_failed">%1$d turnos seguidos terminaron con error, sin usar herramientas ni enviar mensajes</string>
+    <string name="member_activity_overview_retries_show">Mostrar cada turno</string>
+    <string name="member_activity_overview_retries_hide">Ocultar turnos</string>
     <string name="member_activity_overview_action_run_command_one">ejecutó un comando</string>
     <string name="member_activity_overview_action_run_command_other">ejecutó %1$d comandos</string>
     <string name="member_activity_overview_action_read_file_one">leyó un archivo</string>

@@ -3870,6 +3870,11 @@
     <string name="member_activity_overview_outcome_interrupted">已停止</string>
     <string name="member_activity_overview_outcome_unknown">已结束，结局未知</string>
     <string name="member_activity_overview_outcome_no_message">未发消息</string>
+    <string name="member_activity_overview_retries_usage_limit_until">额度已用完 · %1$s 恢复 · 共尝试 %2$d 次</string>
+    <string name="member_activity_overview_retries_usage_limit">额度已用完 · 共尝试 %1$d 次</string>
+    <string name="member_activity_overview_retries_failed">连续 %1$d 轮出错结束，都没调用工具，也没发消息</string>
+    <string name="member_activity_overview_retries_show">展开每一轮</string>
+    <string name="member_activity_overview_retries_hide">收起</string>
     <string name="member_activity_overview_action_run_command_one">跑了 1 条命令</string>
     <string name="member_activity_overview_action_run_command_other">跑了 %1$d 条命令</string>
     <string name="member_activity_overview_action_read_file_one">看了 1 次文件</string>

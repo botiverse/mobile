@@ -3691,6 +3691,11 @@
     <string name="member_activity_overview_outcome_interrupted">Остановлен</string>
     <string name="member_activity_overview_outcome_unknown">Завершён, результат неизвестен</string>
     <string name="member_activity_overview_outcome_no_message">Без сообщений</string>
+    <string name="member_activity_overview_retries_usage_limit_until">Лимит исчерпан · сброс %1$s · %2$d попытки</string>
+    <string name="member_activity_overview_retries_usage_limit">Лимит исчерпан · %1$d попытки</string>
+    <string name="member_activity_overview_retries_failed">%1$d хода подряд завершились ошибкой: без вызова инструментов и без сообщений</string>
+    <string name="member_activity_overview_retries_show">Показать каждый ход</string>
+    <string name="member_activity_overview_retries_hide">Скрыть ходы</string>
     <string name="member_activity_overview_action_run_command_one">1 команда</string>
     <string name="member_activity_overview_action_run_command_other">команд: %1$d</string>
     <string name="member_activity_overview_action_read_file_one">1 чтение файла</string>

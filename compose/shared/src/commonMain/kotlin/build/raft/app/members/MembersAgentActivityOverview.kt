@@ -76,6 +76,15 @@ import androidx.compose.ui.platform.testTag
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.repeatWhileProcessForeground
 import build.raft.designsystem.components.RaftStepStatus
+import androidx.compose.runtime.key
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.LayoutDirection
+import build.raft.app.data.AgentActivityQuietFailureItem
+import build.raft.app.data.groupAgentActivityQuietFailures
+import build.raft.designsystem.tokens.RaftStroke
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -278,12 +287,20 @@ internal fun MembersAgentActivityOverview(
     val timeline = remember(chronological, state.operatorEvents, runningStart) {
         agentActivityOverviewTimeline(chronological, state.operatorEvents, runningStart)
     }
+    // Each run of two or more retries that did nothing is one entry, never across an operator
+    // event (web TurnsWithQuietFailureRuns per run of turns, botiverse/slock #13050); one list per
+    // segment, empty for an events segment.
+    val segmentItems = remember(timeline) {
+        timeline.segments.map { segment ->
+            (segment as? AgentActivityOverviewSegment.Turns)?.let { groupAgentActivityQuietFailures(it.turns) }.orEmpty()
+        }
+    }
     val showTurns = loaded && (finished.isNotEmpty() || running != null)
     val listState = remember(state.agentId) { LazyListState() }
     val lastIndex = (if (state.next != null) 1 else 0) +
-        timeline.segments.sumOf { segment ->
-            when (segment) {
-                is AgentActivityOverviewSegment.Turns -> segment.turns.size
+        timeline.segments.indices.sumOf { index ->
+            when (timeline.segments[index]) {
+                is AgentActivityOverviewSegment.Turns -> segmentItems[index].size
                 is AgentActivityOverviewSegment.Events -> 1
             }
         } +
@@ -391,18 +408,25 @@ internal fun MembersAgentActivityOverview(
                         }
                     }
                 }
-                timeline.segments.forEach { segment ->
+                timeline.segments.forEachIndexed { index, segment ->
                     when (segment) {
                         is AgentActivityOverviewSegment.Turns ->
-                            items(segment.turns, key = { "activity-overview-turn-${it.key}" }) { turn ->
-                                MembersAgentActivityTurnSection(
-                                    turn = turn,
-                                    replies = state.replies,
-                                    timeContext = timeContext,
-                                    onIntent = binding.onIntent,
-                                    onOpenUrl = onOpenUrl,
-                                    onOpenMessage = onOpenMessage,
-                                )
+                            items(segmentItems[index], key = { it.membersActivityOverviewItemKey() }) { entry ->
+                                val turnSection: @Composable (AgentActivityTurn) -> Unit = { turn ->
+                                    MembersAgentActivityTurnSection(
+                                        turn = turn,
+                                        replies = state.replies,
+                                        timeContext = timeContext,
+                                        onIntent = binding.onIntent,
+                                        onOpenUrl = onOpenUrl,
+                                        onOpenMessage = onOpenMessage,
+                                    )
+                                }
+                                when (entry) {
+                                    is AgentActivityQuietFailureItem.Turn -> turnSection(entry.turn)
+                                    is AgentActivityQuietFailureItem.Run ->
+                                        MembersAgentActivityQuietFailureRun(entry, timeContext, turnSection)
+                                }
                             }
                         is AgentActivityOverviewSegment.Events ->
                             item(key = "activity-overview-operator-${segment.events.first().id}") {
@@ -612,7 +636,10 @@ private fun MembersAgentActivityTurnSection(
     val duration = membersActivityOverviewDuration(turn.endedAtEpochMillis - turn.startedAtEpochMillis)
     val trigger = membersActivityOverviewTriggerText(turn.trigger.describe())
     val triggerMessage = turn.trigger.openableMessage()
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(MembersAgentActivityTurnSectionTag),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -696,6 +723,103 @@ private fun MembersAgentActivityTurnSection(
         }
     }
 }
+
+/** The overview list's key for an entry: a turn keeps its own, a run of retries takes its first turn's. */
+private fun AgentActivityQuietFailureItem.membersActivityOverviewItemKey(): String =
+    when (this) {
+        is AgentActivityQuietFailureItem.Turn -> "activity-overview-turn-${turn.key}"
+        is AgentActivityQuietFailureItem.Run -> "activity-overview-retries-${turns.first().key}"
+    }
+
+/**
+ * Web ActivityQuietFailureRuns `QuietFailureRun` (botiverse/slock f273c7d6ff #13050, #13091): two
+ * or more turns in a row that failed having done nothing, as one entry. Their span (the first
+ * start to the last end, each time as the overview's clock writes it) with the last turn's badges,
+ * then "Usage limit reached · resets … · N attempts" ("Usage limit reached · N attempts" when no
+ * reset was reported) or "N turns in a row ended with an error, with no tools used and no message
+ * sent", and Show each turn / Hide turns, which lists every turn ([turnSection]) under a hairline
+ * rule (web `border-l pl-4`). The reset time is [membersActivityOverviewClock]'s, as every time
+ * in the overview (a date only when not today), where the web writes a short date and time.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MembersAgentActivityQuietFailureRun(
+    run: AgentActivityQuietFailureItem.Run,
+    timeContext: RaftTimeContext,
+    turnSection: @Composable (AgentActivityTurn) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val first = run.turns.first()
+    val last = run.turns.last()
+    val count = run.turns.size
+    var open by rememberSaveable(first.key) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag(MembersAgentActivityQuietFailureRunTag),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RaftText(
+                text = stringResource(
+                    Res.string.member_activity_overview_turn_range,
+                    membersActivityOverviewClock(first.startedAtEpochMillis, timeContext),
+                    membersActivityOverviewClock(last.endedAtEpochMillis, timeContext),
+                ),
+                style = typography.monoCode.copy(fontWeight = FontWeight.Bold),
+                color = colors.foreground,
+                modifier = Modifier.align(Alignment.CenterVertically),
+            )
+            MembersAgentActivityTurnBadges(last, Modifier.align(Alignment.CenterVertically))
+        }
+        val resetsAt = run.resetsAtEpochMillis
+        RaftText(
+            // A run is two turns or more: the count is never one.
+            text = when {
+                !run.endedOnUsageLimit -> stringResource(Res.string.member_activity_overview_retries_failed, count)
+                resetsAt != null ->
+                    stringResource(
+                        Res.string.member_activity_overview_retries_usage_limit_until,
+                        membersActivityOverviewClock(resetsAt, timeContext),
+                        count,
+                    )
+                else -> stringResource(Res.string.member_activity_overview_retries_usage_limit, count)
+            },
+            style = typography.callout,
+            color = colors.foregroundMuted,
+        )
+        RaftTextLink(
+            text = stringResource(
+                if (open) Res.string.member_activity_overview_retries_hide else Res.string.member_activity_overview_retries_show
+            ),
+            onClick = { open = !open },
+            style = typography.caption,
+        )
+        if (open) {
+            val rule = colors.lineHairline
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        // On the start edge, with the padding.
+                        val width = RaftStroke.Hairline.toPx()
+                        val x = if (layoutDirection == LayoutDirection.Rtl) size.width - width else 0f
+                        drawRect(rule, topLeft = Offset(x, 0f), size = Size(width, size.height))
+                    }
+                    .padding(start = RaftAppSpacing.Md),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
+            ) {
+                run.turns.forEach { turn -> key(turn.key) { turnSection(turn) } }
+            }
+        }
+    }
+}
+
+/** A turn's section and a run's entry, for tests (web `activity-overview-turn` / `activity-overview-retries`). */
+internal const val MembersAgentActivityTurnSectionTag = "activity-overview-turn"
+internal const val MembersAgentActivityQuietFailureRunTag = "activity-overview-retries"
 
 /**
  * The agent's own account of the turn, which went to no one (web TurnOutput). It must never read as

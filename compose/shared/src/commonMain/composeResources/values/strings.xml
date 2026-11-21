@@ -3871,6 +3871,11 @@
     <string name="member_activity_overview_outcome_interrupted">Stopped</string>
     <string name="member_activity_overview_outcome_unknown">Ended, outcome unknown</string>
     <string name="member_activity_overview_outcome_no_message">No message sent</string>
+    <string name="member_activity_overview_retries_usage_limit_until">Usage limit reached · resets %1$s · %2$d attempts</string>
+    <string name="member_activity_overview_retries_usage_limit">Usage limit reached · %1$d attempts</string>
+    <string name="member_activity_overview_retries_failed">%1$d turns in a row ended with an error, with no tools used and no message sent</string>
+    <string name="member_activity_overview_retries_show">Show each turn</string>
+    <string name="member_activity_overview_retries_hide">Hide turns</string>
     <string name="member_activity_overview_action_run_command_one">ran a command</string>
     <string name="member_activity_overview_action_run_command_other">ran %1$d commands</string>
     <string name="member_activity_overview_action_read_file_one">read a file</string>

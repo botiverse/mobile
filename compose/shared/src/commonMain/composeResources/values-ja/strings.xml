@@ -3870,6 +3870,11 @@
     <string name="member_activity_overview_outcome_interrupted">停止</string>
     <string name="member_activity_overview_outcome_unknown">終了（結果不明）</string>
     <string name="member_activity_overview_outcome_no_message">メッセージ送信なし</string>
+    <string name="member_activity_overview_retries_usage_limit_until">利用上限に達しました · %1$s にリセット · %2$d 回試行</string>
+    <string name="member_activity_overview_retries_usage_limit">利用上限に達しました · %1$d 回試行</string>
+    <string name="member_activity_overview_retries_failed">%1$d ターン続けてエラーで終了（ツール呼び出しなし、メッセージ送信なし）</string>
+    <string name="member_activity_overview_retries_show">各ターンを表示</string>
+    <string name="member_activity_overview_retries_hide">閉じる</string>
     <string name="member_activity_overview_action_run_command_one">コマンドを 1 回実行</string>
     <string name="member_activity_overview_action_run_command_other">コマンドを %1$d 回実行</string>
     <string name="member_activity_overview_action_read_file_one">ファイルを 1 回読んだ</string>
