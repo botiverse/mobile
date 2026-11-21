@@ -3614,8 +3614,11 @@ class KmpVisualScreenshotCaptureTest {
      */
     /** Logs whether this app holds Play services' FontsProvider (see RaftCmpActivity.onCmpFirstFrame). */
     private fun logRuntimeFormPickerFontsProvider(caseId: String, step: String) {
-        val providers = readShellCommand("dumpsys activity providers com.google.android.gms/.fonts.provider.FontsProvider")
-        Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app ($step)=${"build.raft.app.connectedtest" in providers}")
+        // The app process's own record lists the providers it is connected to (a provider dump
+        // filtered by name also prints unrelated records, so it cannot say who holds this one).
+        val process = readShellCommand("dumpsys activity processes build.raft.app.connectedtest")
+        val held = process.lineSequence().any { "fonts.provider.FontsProvider" in it }
+        Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app ($step)=$held")
     }
 
     private fun openRuntimeFormPicker(caseId: String) {
