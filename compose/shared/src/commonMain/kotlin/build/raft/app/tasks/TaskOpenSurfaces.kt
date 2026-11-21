@@ -791,6 +791,11 @@ internal fun TaskPendingConversationPage(
                 bottomSafeArea = bottomSafeArea,
             )
         } else {
+            val composerKeyboardLiftPx =
+                rememberThreadComposerKeyboardLiftPx(
+                    bottomSafeArea = bottomSafeArea,
+                    keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                )
             // The conversation page's own composer in its dock: multi-line, paste, its send button.
             ThreadComposerDock(
                 composerModifier =
@@ -804,6 +809,7 @@ internal fun TaskPendingConversationPage(
                     } else {
                         Modifier
                     },
+                keyboardLiftPx = if (useHostSafeArea) composerKeyboardLiftPx else ({ 0f }),
             ) {
                 ThreadComposerContent(
                     payload =

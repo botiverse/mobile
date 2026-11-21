@@ -1,11 +1,17 @@
 package build.raft.app
 
+import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,9 +22,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getAllSemanticsNodes
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
@@ -51,6 +62,7 @@ import build.raft.designsystem.components.raftToastAvoid
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
+import java.time.Duration
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -59,6 +71,7 @@ import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -537,5 +550,139 @@ class RaftToastHoldsPositionUiTest {
             abs(containerCenter - toastCenter) <= 1.5f,
             "toast remains horizontally centered under RTL ($toastCenter vs $containerCenter)",
         )
+    }
+
+    /**
+     * Regression for real-device #242 keyboard open/close check: when the composer sits deep inside
+     * the page tree (much deeper than the root overlay's RaftToastHost Column), Compose's
+     * DepthSortedSet runs RaftToastHost's layout pass before the composer's layout + onPlaced on
+     * an IME frame. Reading `TopEdge.liveKeyboardPx` inside `RaftToastHost`'s layout pass must keep
+     * the toast glued 16dp above the composer on that very first `measureAndLayoutForTest()` pass —
+     * verified directly via `ViewRootForTest.semanticsOwner` without `waitForIdle()` so Frame 2
+     * cannot hide a Frame 1 overlap or mid-air float.
+     */
+    @Test
+    fun deeplyNestedComposerKeyboardOpenAndCloseHasZeroFrameLag() {
+        val activity = activities.launch()
+        val state = RaftToastHostState().apply { show("DeepSync") }
+        var keyboard by mutableStateOf(0.dp)
+        val composerHeight = 90.dp
+        activity.setContent {
+            RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
+                CompositionLocalProvider(LocalRaftToastHostState provides state) {
+                    Box(Modifier.fillMaxSize()) {
+                        RaftToastBottomInsetProvider { keyboard.toPx() }
+                        // Nest the composer 12 levels deep and drive its keyboard lift in the
+                        // layout phase (mirroring ThreadComposerDock's raftThreadComposerLiveKeyboardPadding)
+                        // so Compose's DepthSortedSet runs RaftToastHost's layout pass before the
+                        // composer's layout + onPlaced on an IME frame.
+                        NestedContainer(depth = 12) {
+                            val density = LocalDensity.current
+                            Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .layout { measurable, constraints ->
+                                        val kbPx = keyboard.roundToPx()
+                                        val placeable = measurable.measure(constraints)
+                                        layout(placeable.width, (placeable.height + kbPx).coerceAtMost(constraints.maxHeight)) {
+                                            placeable.place(0, 0)
+                                        }
+                                    }
+                                    .testTag("deep-composer")
+                                    .raftToastAvoid(keyboardPx = { with(density) { keyboard.toPx() } })
+                                    .height(composerHeight),
+                            )
+                        }
+                        RaftToastHost(state)
+                    }
+                }
+            }
+        }
+        val composeRoot = findComposeRoot(activity.window.decorView) ?: error("no compose root")
+        val density = activity.resources.displayMetrics.density
+        val gapPx = 16f * density
+        val openJumpPx = 220f * density
+
+        fun settleHost() {
+            repeat(3) {
+                Snapshot.sendApplyNotifications()
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(250))
+                composeRoot.measureAndLayoutForTest()
+                shadowOf(Looper.getMainLooper()).idle()
+            }
+        }
+
+        fun composerTopPx(): Float =
+            composeRoot.semanticsOwner
+                .getAllSemanticsNodes(mergingEnabled = false)
+                .first { it.config.getOrNull(SemanticsProperties.TestTag) == "deep-composer" }
+                .boundsInRoot
+                .top
+
+        fun toastBottomPx(): Float =
+            composeRoot.semanticsOwner
+                .getAllSemanticsNodes(mergingEnabled = true)
+                .first { node ->
+                    node.config.getOrNull(SemanticsProperties.Text)?.any { it.text == "DeepSync" } == true
+                }
+                .boundsInRoot
+                .bottom
+
+        settleHost()
+        val restingToastBottom = toastBottomPx()
+        val restingComposerTop = composerTopPx()
+        assertTrue(
+            restingToastBottom <= restingComposerTop - gapPx + 1f,
+            "resting toast ($restingToastBottom) sits at least 16dp ($gapPx px) above composer ($restingComposerTop)",
+        )
+
+        // Keyboard opens in one frame: execute ONLY ONE snapshot apply + measureAndLayoutForTest()
+        // pass (no second frame, no waitForIdle). Depth 6 RaftToastHost runs BEFORE Depth 12 composer.
+        keyboard = 220.dp
+        Snapshot.sendApplyNotifications()
+        composeRoot.measureAndLayoutForTest()
+        val openComposerTop = composerTopPx()
+        val openToastBottom = toastBottomPx()
+        assertTrue(
+            openToastBottom <= openComposerTop - gapPx + 1f,
+            "on Frame 1 of keyboard open, toast ($openToastBottom) must already clear composer ($openComposerTop) by 16dp ($gapPx px) without overlapping it",
+        )
+        assertTrue(
+            abs((restingToastBottom - openToastBottom) - openJumpPx) <= 2f * density,
+            "on Frame 1 of keyboard open, toast rose by the full 220dp (${restingToastBottom - openToastBottom} vs $openJumpPx)",
+        )
+
+        // Settle open state, then close keyboard in one frame: execute ONLY ONE layout pass!
+        settleHost()
+        keyboard = 0.dp
+        Snapshot.sendApplyNotifications()
+        composeRoot.measureAndLayoutForTest()
+        val closeComposerTop = composerTopPx()
+        val closeToastBottom = toastBottomPx()
+        assertTrue(
+            abs(closeToastBottom - restingToastBottom) <= 2f * density,
+            "on Frame 1 of keyboard close, toast ($closeToastBottom) must drop back to resting ($restingToastBottom) above composer ($closeComposerTop) without floating mid-air",
+        )
+    }
+
+    private fun findComposeRoot(view: View): ViewRootForTest? {
+        if (view is ViewRootForTest) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) findComposeRoot(view.getChildAt(index))?.let { return it }
+        }
+        return null
+    }
+
+    @Composable
+    private fun NestedContainer(
+        depth: Int,
+        content: @Composable BoxScope.() -> Unit,
+    ) {
+        if (depth <= 0) {
+            Box(Modifier.fillMaxSize(), content = content)
+        } else {
+            Box(Modifier.fillMaxSize()) { NestedContainer(depth - 1, content) }
+        }
     }
 }

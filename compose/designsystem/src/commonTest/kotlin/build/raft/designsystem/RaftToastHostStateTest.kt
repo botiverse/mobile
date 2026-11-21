@@ -251,4 +251,35 @@ class RaftToastHostStateTest {
         // No override registered: falls back to safeDrawing.
         assertEquals(56f, raftToastSafeBottomPx(overridePx = null, safeDrawingBottomPx = 56f))
     }
+
+    @Test
+    fun liveKeyboardReaderUpdatesClearanceBeforeOnPlacedWithoutPollutingHeldHeight() = runTest {
+        val state = host()
+        state.show("Copied")
+        var liveKeyboardPx = 0f
+        val reader = { liveKeyboardPx }
+
+        // Composer settled at resting height 120px (topPx = 680 in an 800px host, keyboard = 0).
+        state.putAvoidance("composer", RaftToastAvoidance.TopEdge(topPx = 680f, keyboardPx = 0f, liveKeyboardPx = reader))
+        assertEquals(120f, state.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 24f))
+        assertEquals(120f, state.currentHeldPageHeightPx)
+
+        // Keyboard opens to 300px on Frame N before the deeply nested composer runs onPlaced:
+        // clearance must immediately include resting (120) + liveKeyboard (300) = 420 without
+        // leaking the keyboard height into heldPageHeightPx.
+        liveKeyboardPx = 300f
+        assertEquals(420f, state.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 300f))
+        assertEquals(120f, state.currentHeldPageHeightPx)
+
+        // Composer finishes onPlaced at topPx = 380 with keyboardPx = 300: clearance stays exact.
+        state.putAvoidance("composer", RaftToastAvoidance.TopEdge(topPx = 380f, keyboardPx = 300f, liveKeyboardPx = reader))
+        assertEquals(420f, state.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 300f))
+        assertEquals(120f, state.currentHeldPageHeightPx)
+
+        // Keyboard closes to 0px on Frame N before the composer's onPlaced runs:
+        // clearance must immediately drop back to resting (120px) with no 1-frame mid-air float.
+        liveKeyboardPx = 0f
+        assertEquals(120f, state.resolveBottomClearancePx(hostBottomPx = 800f, safeBottomPx = 24f))
+        assertEquals(120f, state.currentHeldPageHeightPx)
+    }
 }

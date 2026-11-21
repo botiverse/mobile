@@ -304,7 +304,7 @@ class RaftToastHostState(
 
     /** [avoidedHeightPx] with what the keyboard adds left out: the height a toast may hold on to. */
     internal fun pageAvoidedHeightPx(hostBottomPx: Float): Float =
-        avoidances.values.maxOfOrNull { it.heightAbove(hostBottomPx) - it.keyboardPx }?.coerceAtLeast(0f) ?: 0f
+        avoidances.values.maxOfOrNull { it.restingHeightAbove(hostBottomPx) }?.coerceAtLeast(0f) ?: 0f
 
     /**
      * Resolves the bottom clearance (px, before [RaftToastViewportOffset]) for the current frame's
@@ -332,13 +332,41 @@ class RaftToastHostState(
 internal sealed interface RaftToastAvoidance {
     fun heightAbove(hostBottomPx: Float): Float
 
+    /**
+     * Resting (non-keyboard) height above [hostBottomPx] that a visible toast may hold on to.
+     * Derived from placement-time geometry so live keyboard motion never pollutes
+     * [RaftToastHostState.heldPageHeightPx].
+     */
+    fun restingHeightAbove(hostBottomPx: Float): Float =
+        (heightAbove(hostBottomPx) - keyboardPx).coerceAtLeast(0f)
+
     /** How much of that height is the keyboard under it (a composer rides on the keyboard). */
     val keyboardPx: Float get() = 0f
 
-    /** An element whose top edge is at [topPx] in root coordinates, [keyboardPx] of it from the keyboard. */
-    data class TopEdge(val topPx: Float, override val keyboardPx: Float = 0f) : RaftToastAvoidance {
-        override fun heightAbove(hostBottomPx: Float): Float =
-            if (hostBottomPx.isNaN()) 0f else hostBottomPx - topPx
+    /**
+     * An element whose top edge was placed at [topPx] in root coordinates with [keyboardPx] of
+     * keyboard lift beneath it. When [liveKeyboardPx] is provided, [heightAbove] pairs the
+     * placement-time resting height (`hostBottomPx - topPx - keyboardPx`) with the live frame's
+     * keyboard lift so [RaftToastHost]'s shallower layout pass stays in lockstep with a deeply
+     * nested composer on the very first frame of keyboard open/close before `onPlaced` runs.
+     */
+    data class TopEdge(
+        val topPx: Float,
+        override val keyboardPx: Float = 0f,
+        val liveKeyboardPx: (() -> Float)? = null,
+    ) : RaftToastAvoidance {
+        override fun restingHeightAbove(hostBottomPx: Float): Float {
+            if (hostBottomPx.isNaN()) return 0f
+            val placedKeyboard = keyboardPx.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
+            return (hostBottomPx - topPx - placedKeyboard).coerceAtLeast(0f)
+        }
+
+        override fun heightAbove(hostBottomPx: Float): Float {
+            if (hostBottomPx.isNaN()) return 0f
+            val liveReader = liveKeyboardPx ?: return hostBottomPx - topPx
+            val liveKeyboard = liveReader().takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
+            return restingHeightAbove(hostBottomPx) + liveKeyboard
+        }
     }
 
     /** A band [heightPx] tall on the window's bottom edge (a host-drawn tab bar). */

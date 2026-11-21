@@ -133,11 +133,10 @@ fun RaftToastHost(state: RaftToastHostState, modifier: Modifier = Modifier) {
     var hostBottomPx by remember { mutableFloatStateOf(Float.NaN) }
     val safeDrawing = WindowInsets.safeDrawing
     val horizontalInsets = rememberRaftStableWindowInsets(safeDrawing.only(WindowInsetsSides.Horizontal))
-    // `onPlaced` runs during the parent Box's placement pass, AFTER sibling content's `onPlaced`
-    // (`raftToastAvoid`) and BEFORE this Box places its Column child. Resolving vertical placement
-    // inside `layout { ... }` therefore sees frame-N avoidances, frame-N `hostBottomPx`, and
-    // frame-N IME insets in the same frame (no 1-frame lag, no Frame-1 NaN flash, and zero
-    // recompositions during 120Hz keyboard slides).
+    // `onPlaced` runs during the parent Box's placement pass, so `hostBottomPx` and any avoided bar's
+    // `topPx` are ready before the Column lays out — and `TopEdge.liveKeyboardPx` lets this layout
+    // pass track live keyboard motion in the very same frame even when a deeply nested composer runs
+    // its `onPlaced` after this overlay Column.
     Box(
         modifier.fillMaxSize().onPlaced { coordinates ->
             if (coordinates.size.height > 0) {
@@ -273,8 +272,11 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
  * tab bar): the window's toasts sit 16dp above this element's top edge while it is
  * laid out, [enabled], and [LocalRaftToastAvoidanceActive] is true. Pass `enabled = false` from a
  * page that is composed but not shown (a page under the top one in a stack). [keyboardPx]: the
- * keyboard under an element that rides on it (a composer), read when it is laid out, so a toast
- * does not stay up after the keyboard closes. A no-op outside a [LocalRaftToastHostState].
+ * keyboard under an element that rides on it (a composer), read both on placement (so a toast
+ * does not stay up after the keyboard closes) and live during [RaftToastHost]'s layout pass;
+ * [keyboardPx] must read Compose snapshot state (for example `WindowInsets.ime`,
+ * `LocalRaftHostImeInsets`, or Compose `State`), otherwise keyboard changes will not invalidate
+ * [RaftToastHost] to re-layout on the same frame. A no-op outside a [LocalRaftToastHostState].
  */
 fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = { 0f }): Modifier =
     composed {
@@ -289,12 +291,20 @@ fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = {
             Modifier
         } else {
             val currentKeyboardPx by rememberUpdatedState(keyboardPx)
+            val liveKeyboardReader = remember { { currentKeyboardPx() } }
             Modifier.onPlaced { coordinates ->
                 val size = coordinates.size
                 if (size.width <= 0 || size.height <= 0) {
                     state.removeAvoidance(key)
                 } else {
-                    state.putAvoidance(key, RaftToastAvoidance.TopEdge(coordinates.positionInRoot().y, currentKeyboardPx()))
+                    state.putAvoidance(
+                        key,
+                        RaftToastAvoidance.TopEdge(
+                            topPx = coordinates.positionInRoot().y,
+                            keyboardPx = currentKeyboardPx(),
+                            liveKeyboardPx = liveKeyboardReader,
+                        ),
+                    )
                 }
             }
         }
