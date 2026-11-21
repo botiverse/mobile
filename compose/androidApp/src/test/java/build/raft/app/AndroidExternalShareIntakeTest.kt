@@ -6,6 +6,9 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -158,6 +161,129 @@ class AndroidExternalShareIntakeTest {
             ),
             conflict
         )
+    }
+
+    @Test
+    fun pendingLaunchFastPathSkipsRepeatedDiskReadsWhenNoShareExistsAndInvalidatesOnAdmit() = runTest {
+        val root = Files.createTempDirectory("external-share-fastpath").toFile()
+        var readerCalls = 0
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                tokenFactory = { "fastpath-token-123456" },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file ->
+                    readerCalls += 1
+                    file.readText()
+                }
+            )
+        try {
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertTrue(inbox.isKnownNoPendingLaunch())
+            val readsAfterFirstProbe = readerCalls
+
+            // Repeated probes hit the in-memory negative cache with zero disk reads.
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertEquals(readsAfterFirstProbe, readerCalls)
+
+            // Admitting a new share invalidates the negative cache so recovery sees it.
+            val admitted = inbox.admit(spec("shared-text")) as AndroidExternalShareIntakeResult.Admitted
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(admitted.launch, inbox.pendingLaunchOrNull())
+
+            // Consuming clears the pending file and the next probe re-establishes the negative cache.
+            assertEquals(
+                RaftExternalShareEnvelopeHostMutationResult.Success,
+                inbox.consume(admitted.launch.token, "external-share-consume:${admitted.launch.token}")
+            )
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertTrue(inbox.isKnownNoPendingLaunch())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun pendingLaunchReturnsNullWithoutTouchingReaderWhenInboxDirectoryDoesNotExist() {
+        val parent = Files.createTempDirectory("external-share-missing-root").toFile()
+        val missingRoot = File(parent, "never-created")
+        var readerCalls = 0
+        val inbox =
+            AndroidExternalShareInbox(
+                root = missingRoot,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                atomicReader = { file ->
+                    readerCalls += 1
+                    file.readText()
+                }
+            )
+        try {
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertEquals(0, readerCalls)
+            assertTrue(inbox.isKnownNoPendingLaunch())
+        } finally {
+            parent.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrentPendingLaunchProbeDuringWritePendingTokenNeverPoisonsNegativeCache() {
+        val root = Files.createTempDirectory("external-share-concurrent-write").toFile()
+        val pendingWriteStarted = CountDownLatch(1)
+        val allowPendingWriteFinish = CountDownLatch(1)
+        val inbox =
+            AndroidExternalShareInbox(
+                root = root,
+                source = FakeSource(emptyMap(), emptyMap()),
+                limits = limits(),
+                tokenFactory = { "concurrent-token-123456" },
+                clock = { 1_000L },
+                atomicWriter = { file, bytes ->
+                    if (file.name == AndroidExternalShareInbox.PendingFileName) {
+                        pendingWriteStarted.countDown()
+                        assertTrue(allowPendingWriteFinish.await(5L, TimeUnit.SECONDS))
+                    }
+                    file.parentFile?.mkdirs()
+                    file.writeBytes(bytes)
+                    file.setLastModified(1_000L)
+                },
+                atomicReader = { file -> file.readText() }
+            )
+        val admitted = AtomicReference<AndroidExternalShareIntakeResult?>(null)
+        val writerThread =
+            Thread {
+                admitted.set(inbox.admit(spec("concurrent-share")))
+            }
+        try {
+            writerThread.start()
+            assertTrue(pendingWriteStarted.await(5L, TimeUnit.SECONDS))
+
+            // pending.txt is not renamed into place yet, so the probe observes null,
+            // but it must NOT poison the negative cache while the write is in flight.
+            assertEquals(null, inbox.pendingLaunchOrNull())
+            assertFalse(inbox.isKnownNoPendingLaunch())
+
+            allowPendingWriteFinish.countDown()
+            writerThread.join(5_000L)
+            assertFalse(writerThread.isAlive)
+
+            val launch = (admitted.get() as AndroidExternalShareIntakeResult.Admitted).launch
+            assertFalse(inbox.isKnownNoPendingLaunch())
+            assertEquals(launch, inbox.pendingLaunchOrNull())
+        } finally {
+            allowPendingWriteFinish.countDown()
+            writerThread.join(1_000L)
+            root.deleteRecursively()
+        }
     }
 
     private fun spec(text: String, vararg refs: String): AndroidExternalShareSpec =

@@ -6,6 +6,9 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.platform.SystemFont
+import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -46,8 +49,35 @@ internal const val RaftIosFallbackFontName = "SpaceGrotesk-Regular"
 
 private val RaftFallbackFontResource = raftFontResourceName(RaftIosFallbackFontName)
 
+private val fontPathCacheLock = SynchronizedObject()
+private val fontPathCache = HashMap<String, String?>()
+
+@Volatile
+internal var raftBundleFontPathLookupForTests: ((resourceName: String) -> String?)? = null
+
 private fun raftBundledFontPath(resourceName: String): String? =
-    NSBundle.mainBundle.pathForResource(resourceName, ofType = "ttf")
+    synchronized(fontPathCacheLock) {
+        if (fontPathCache.containsKey(resourceName)) {
+            fontPathCache[resourceName]
+        } else {
+            val lookup = raftBundleFontPathLookupForTests
+            val resolved =
+                if (lookup != null) {
+                    lookup(resourceName)
+                } else {
+                    NSBundle.mainBundle.pathForResource(resourceName, ofType = "ttf")
+                }
+            fontPathCache[resourceName] = resolved
+            resolved
+        }
+    }
+
+internal fun resetRaftBundledFontPathCacheForTests() {
+    synchronized(fontPathCacheLock) {
+        fontPathCache.clear()
+        raftBundleFontPathLookupForTests = null
+    }
+}
 
 @OptIn(BetaInteropApi::class, ExperimentalForeignApi::class)
 private fun raftReadBundledFont(path: String): ByteArray {

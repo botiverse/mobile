@@ -67,8 +67,8 @@ class RaftApplication : Application() {
         build.raft.app.shared.RaftAndroidInstallChannels.install(this)
         // Alpha builds default the Navigation 3 page stack on; set before any window reads it.
         build.raft.app.nav.RaftNav3StackFlag.buildDefaultOn = BuildConfig.NAV3_STACK_DEFAULT_ON
-        // All notification channels up front, independent of permission (see RaftNotificationChannels).
-        build.raft.app.shared.RaftNotificationChannels.ensureAll(this)
+        // All notification channels up front on IO, independent of permission (see RaftNotificationChannels).
+        build.raft.app.shared.RaftNotificationChannels.ensureAllAsync(this)
         // Download centre notifications attach when the centre is first used, not at startup.
         val application = this
         build.raft.app.downloads.RaftDownloadCenterProcess.onCreated = { center ->

@@ -24,8 +24,10 @@ import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -109,13 +111,51 @@ internal class AndroidExternalShareAdmissionOwner<T>(
 
 internal object AndroidExternalShareProcessOwner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var inbox: AndroidExternalShareInbox? = null
     @Volatile private var owner: AndroidExternalShareAdmissionOwner<Intent>? = null
+    @Volatile private var preloadDeferred: Deferred<AndroidExternalShareLaunch?>? = null
+
+    fun peekInboxOrNull(): AndroidExternalShareInbox? = inbox
 
     fun inbox(context: Context): AndroidExternalShareInbox =
         inbox ?: synchronized(this) {
             inbox ?: AndroidExternalShareInbox(context.applicationContext).also { inbox = it }
         }
+
+    /**
+     * Warms the durable pending-share status on [Dispatchers.IO] during process start so a normal
+     * launcher cold start in [MainActivity] does not call `noBackupFilesDir` or read `pending.txt`
+     * on the main thread, and [awaitPendingLaunchOrNull] can join the in-flight probe without a
+     * duplicate disk read.
+     */
+    fun preloadPendingLaunch(context: Context): Deferred<AndroidExternalShareLaunch?> {
+        val appContext = context.applicationContext
+        return preloadDeferred ?: synchronized(this) {
+            preloadDeferred ?: ioScope.async {
+                runCatching { inbox(appContext).pendingLaunchOrNull() }.getOrNull()
+            }.also { preloadDeferred = it }
+        }
+    }
+
+    /**
+     * Resolves any durable pending share off the main thread. Joins an in-flight cold-start
+     * [preloadPendingLaunch] probe instead of issuing a second disk read.
+     */
+    suspend fun awaitPendingLaunchOrNull(context: Context): AndroidExternalShareLaunch? {
+        val appContext = context.applicationContext
+        val readyInbox = inbox
+        if (readyInbox != null && readyInbox.isKnownNoPendingLaunch()) return null
+        val pendingPreload = preloadDeferred
+        if (pendingPreload != null && !pendingPreload.isCompleted) {
+            val preloaded = pendingPreload.await()
+            if (preloaded != null) return preloaded
+            if (inbox?.isKnownNoPendingLaunch() == true) return null
+        }
+        return withContext(Dispatchers.IO) {
+            inbox(appContext).pendingLaunchOrNull()
+        }
+    }
 
     fun admissionOwner(context: Context): AndroidExternalShareAdmissionOwner<Intent> =
         owner ?: synchronized(this) {
@@ -133,6 +173,15 @@ internal object AndroidExternalShareProcessOwner {
                     }
                 ).also { owner = it }
         }
+
+    internal fun resetForTests() {
+        synchronized(this) {
+            preloadDeferred?.cancel()
+            preloadDeferred = null
+            inbox = null
+            owner = null
+        }
+    }
 }
 
 fun installAndroidExternalShareInbox(context: Context) {
@@ -140,6 +189,7 @@ fun installAndroidExternalShareInbox(context: Context) {
     RaftExternalShareEnvelopeHostProvider.installAppScopeHost {
         AndroidExternalShareProcessOwner.inbox(appContext)
     }
+    AndroidExternalShareProcessOwner.preloadPendingLaunch(appContext)
 }
 
 internal class AndroidExternalShareInbox(
@@ -222,7 +272,34 @@ internal class AndroidExternalShareInbox(
         }
     }
 
+    private val pendingStateLock = Any()
+    private var pendingStateKnownAbsent = false
+    private var pendingMutationGeneration = 0L
+    private var pendingMutationsInFlight = 0
+
+    /** True once this process has confirmed no unconsumed pending share is on disk (no I/O). */
+    fun isKnownNoPendingLaunch(): Boolean =
+        synchronized(pendingStateLock) { pendingStateKnownAbsent && pendingMutationsInFlight == 0 }
+
     fun pendingLaunchOrNull(): AndroidExternalShareLaunch? {
+        val generationBefore =
+            synchronized(pendingStateLock) {
+                if (pendingStateKnownAbsent && pendingMutationsInFlight == 0) return null
+                pendingMutationGeneration
+            }
+        val result = readPendingLaunchFromDisk()
+        if (result == null) {
+            synchronized(pendingStateLock) {
+                if (pendingMutationsInFlight == 0 && pendingMutationGeneration == generationBefore) {
+                    pendingStateKnownAbsent = true
+                }
+            }
+        }
+        return result
+    }
+
+    private fun readPendingLaunchFromDisk(): AndroidExternalShareLaunch? {
+        if (!root.isDirectory) return null
         val token = runCatching { atomicReader(pendingFile()).trim() }.getOrNull()
             ?.takeIf(::isSafeToken)
             ?: return null
@@ -428,13 +505,34 @@ internal class AndroidExternalShareInbox(
 
     private fun writePendingToken(token: String) {
         if (!root.exists() && !root.mkdirs()) reject("external_share_storage_unavailable")
-        atomicWriter(pendingFile(), token.toByteArray(Charsets.UTF_8))
+        withPendingFileMutation {
+            atomicWriter(pendingFile(), token.toByteArray(Charsets.UTF_8))
+        }
     }
 
     private fun clearPendingIfMatches(token: String) {
         val pending = pendingFile()
         if (runCatching { atomicReader(pending).trim() }.getOrNull() == token) {
-            pending.delete()
+            withPendingFileMutation {
+                pending.delete()
+            }
+        }
+    }
+
+    private inline fun <T> withPendingFileMutation(block: () -> T): T {
+        synchronized(pendingStateLock) {
+            pendingMutationsInFlight += 1
+            pendingMutationGeneration += 1L
+            pendingStateKnownAbsent = false
+        }
+        return try {
+            block()
+        } finally {
+            synchronized(pendingStateLock) {
+                pendingMutationsInFlight -= 1
+                pendingMutationGeneration += 1L
+                pendingStateKnownAbsent = false
+            }
         }
     }
 

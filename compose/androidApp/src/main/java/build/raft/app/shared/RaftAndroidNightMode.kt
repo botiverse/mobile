@@ -14,7 +14,14 @@ import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import build.raft.app.RaftAppAppearance
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.data.raftDeviceStateKeyValueStore
 import java.util.WeakHashMap
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The window theme follows the app's own light/dark choice (Settings > Appearance: Light, Dark or
@@ -47,8 +54,28 @@ import java.util.WeakHashMap
  */
 internal object RaftAndroidNightMode {
     private const val LOG_TAG = "RaftNightMode"
+    /** Per-install (non-backed-up) marker of the last [UiModeManager.setApplicationNightMode] value persisted to the OS. */
+    private const val KEY_APPLIED_APPLICATION_NIGHT_MODE = "android:applied_application_night_mode"
+
+    private val defaultReconcileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val applyLock = Any()
+    private val applyGeneration = AtomicLong(0L)
 
     private var installed = false
+    private var registeredApplication: Application? = null
+    private var initialHostSyncDone = false
+
+    @Volatile
+    private var lastAppliedNightMode: Int? = null
+
+    @Volatile
+    private var reconcileJob: Job? = null
+
+    internal var systemUiModeProviderForTests: (() -> Int)? = null
+    internal var setApplicationNightModeForTests: ((Int) -> Unit)? = null
+    internal var appliedNightModeMarkerReaderForTests: (() -> Int?)? = null
+    internal var appliedNightModeMarkerWriterForTests: ((Int) -> Unit)? = null
+    internal var reconcileScopeForTests: CoroutineScope? = null
 
     /** API 29-30: the live Activities, updated in place on a switch. Main thread. */
     private val activities = WeakHashMap<Activity, Unit>()
@@ -59,29 +86,140 @@ internal object RaftAndroidNightMode {
     fun install(application: Application) {
         if (installed) return
         installed = true
+        initialHostSyncDone = false
+        lastAppliedNightMode = null
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             application.registerActivityLifecycleCallbacks(LegacyActivityCallbacks)
+            registeredApplication = application
         }
         // Called now with the stored choice and after every change (Settings > Appearance).
         RaftAppAppearanceRuntime.setHostListener { onAppearanceChanged(application) }
     }
 
+    internal fun resetForTests() {
+        reconcileJob?.cancel()
+        reconcileJob = null
+        applyGeneration.incrementAndGet()
+        registeredApplication?.unregisterActivityLifecycleCallbacks(LegacyActivityCallbacks)
+        registeredApplication = null
+        installed = false
+        initialHostSyncDone = false
+        lastAppliedNightMode = null
+        activities.clear()
+        handlesUiModeByClass.clear()
+        systemUiModeProviderForTests = null
+        setApplicationNightModeForTests = null
+        appliedNightModeMarkerReaderForTests = null
+        appliedNightModeMarkerWriterForTests = null
+        reconcileScopeForTests = null
+        RaftAppAppearanceRuntime.setHostListener(null)
+    }
+
     private fun onAppearanceChanged(application: Application) {
+        val isInitialSync = !initialHostSyncDone
+        initialHostSyncDone = true
         val appearance = RaftAppAppearanceRuntime.appearance
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            applyApplicationNightMode(application, appearance)
+            applyApplicationNightMode(application, appearance, isInitialSync = isInitialSync)
         } else {
             activities.keys.toList().forEach { activity -> reconcile(activity, notify = true) }
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
-    private fun applyApplicationNightMode(application: Application, appearance: RaftAppAppearance) {
+    private fun applyApplicationNightMode(
+        application: Application,
+        appearance: RaftAppAppearance,
+        isInitialSync: Boolean,
+    ) {
+        val targetMode = raftApplicationNightMode(appearance)
+        if (!isInitialSync && lastAppliedNightMode == targetMode) return
+        val scope = reconcileScopeForTests ?: defaultReconcileScope
+        if (isInitialSync) {
+            val appUiMode = application.resources.configuration.uiMode
+            val systemUiMode =
+                systemUiModeProviderForTests?.invoke()
+                    ?: Resources.getSystem().configuration.uiMode
+            if (!shouldApplyApplicationNightModeOnColdStart(appearance, appUiMode, systemUiMode)) {
+                // Frame 1 already has the right night bits. Verify off-main against the per-install
+                // non-backed-up marker so steady-state launches skip UiModeManager IPC completely,
+                // while first launches after backup restore or upgrade still persist targetMode
+                // before the next OS light/dark flip.
+                reconcileJob?.cancel()
+                val generation = applyGeneration.incrementAndGet()
+                lastAppliedNightMode = targetMode
+                reconcileJob =
+                    scope.launch {
+                        if (applyGeneration.get() != generation) return@launch
+                        if (readPersistedAppliedNightMode() == targetMode) return@launch
+                        val applied =
+                            synchronized(applyLock) {
+                                if (applyGeneration.get() != generation) return@launch
+                                invokeSetApplicationNightMode(application, targetMode).also { ok ->
+                                    if (ok) lastAppliedNightMode = targetMode
+                                }
+                            }
+                        if (applied && applyGeneration.get() == generation) {
+                            writePersistedAppliedNightMode(targetMode)
+                        }
+                    }
+                return
+            }
+        }
+        reconcileJob?.cancel()
+        reconcileJob = null
+        val generation = applyGeneration.incrementAndGet()
+        val applied =
+            synchronized(applyLock) {
+                invokeSetApplicationNightMode(application, targetMode).also { ok ->
+                    if (ok) lastAppliedNightMode = targetMode
+                }
+            }
+        if (applied) {
+            scope.launch {
+                if (applyGeneration.get() == generation) {
+                    writePersistedAppliedNightMode(targetMode)
+                }
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun invokeSetApplicationNightMode(application: Application, targetMode: Int): Boolean =
         runCatching {
-            application.getSystemService(UiModeManager::class.java)
-                ?.setApplicationNightMode(raftApplicationNightMode(appearance))
+            val override = setApplicationNightModeForTests
+            if (override != null) {
+                override(targetMode)
+                true
+            } else {
+                val manager = application.getSystemService(UiModeManager::class.java)
+                if (manager != null) {
+                    manager.setApplicationNightMode(targetMode)
+                    true
+                } else {
+                    false
+                }
+            }
         }.onFailure { error ->
             Log.w(LOG_TAG, "set_application_night_mode failed errorType=${error::class.simpleName}")
+        }.getOrDefault(false)
+
+    private fun readPersistedAppliedNightMode(): Int? {
+        val reader = appliedNightModeMarkerReaderForTests
+        if (reader != null) return reader()
+        return runCatching {
+            raftDeviceStateKeyValueStore().getString(KEY_APPLIED_APPLICATION_NIGHT_MODE)?.toIntOrNull()
+        }.getOrNull()
+    }
+
+    private fun writePersistedAppliedNightMode(mode: Int) {
+        val writer = appliedNightModeMarkerWriterForTests
+        if (writer != null) {
+            writer(mode)
+            return
+        }
+        runCatching {
+            raftDeviceStateKeyValueStore().putString(KEY_APPLIED_APPLICATION_NIGHT_MODE, mode.toString())
         }
     }
 
@@ -181,3 +319,20 @@ internal fun raftApplicationNightMode(appearance: RaftAppAppearance): Int =
         RaftAppAppearance.Dark -> UiModeManager.MODE_NIGHT_YES
         RaftAppAppearance.System -> UiModeManager.MODE_NIGHT_AUTO
     }
+
+/**
+ * On API 31+, [UiModeManager.setApplicationNightMode] is persisted per package by the system and
+ * already reflected in [appUiMode] before `Application.onCreate` runs. Skip the redundant cold-start
+ * Binder IPC when [appUiMode]'s night bits already match [appearance] (and [systemUiMode] under
+ * [RaftAppAppearance.System]); apply immediately whenever they diverge (e.g. backup restore or
+ * upgrade from a build before per-app night mode).
+ */
+internal fun shouldApplyApplicationNightModeOnColdStart(
+    appearance: RaftAppAppearance,
+    appUiMode: Int,
+    systemUiMode: Int,
+): Boolean {
+    val appNightBits = appUiMode and Configuration.UI_MODE_NIGHT_MASK
+    val expectedNightBits = raftNightBits(appearance, systemUiMode)
+    return appNightBits != expectedNightBits
+}
