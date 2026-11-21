@@ -5876,18 +5876,20 @@ internal class RaftBridgeModule(
                     callback?.invoke(
                             if (stepUp != null) {
                                 // Shared settings opens "Verify it's you" and starts the link again.
-                                mapOf(
-                                        "status" to "error",
-                                        "code" to SECOND_FACTOR_STEP_UP_REQUIRED_CODE,
-                                        "message" to startResult.message,
-                                        "methods" to stepUp.methods.joinToString(",")
-                                )
+                                buildMap {
+                                    put("status", "error")
+                                    put("code", SECOND_FACTOR_STEP_UP_REQUIRED_CODE)
+                                    put("message", startResult.message)
+                                    put("methods", stepUp.methods.joinToString(","))
+                                    startResult.traceId?.let { put("traceId", it) }
+                                }
                             } else {
-                                mapOf(
-                                        "status" to "error",
-                                        "code" to "settings_mobile_oauth_link_start_failed",
-                                        "message" to startResult.message
-                                )
+                                buildMap {
+                                    put("status", "error")
+                                    put("code", "settings_mobile_oauth_link_start_failed")
+                                    put("message", startResult.message)
+                                    startResult.traceId?.let { put("traceId", it) }
+                                }
                             }
                     )
                 }

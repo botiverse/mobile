@@ -18,6 +18,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.RaftWebLoginCompletion
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +62,7 @@ internal fun WebLoginScreen(
             )
         }
     var failed by remember { mutableStateOf(false) }
+    var failedTraceId by remember { mutableStateOf<String?>(null) }
     var staleCallback by remember { mutableStateOf(false) }
     // Why the app came back here (e.g. "Your organization requires single sign-on…"), with the trace id
     // of the server error behind it; shown until the person starts signing in.
@@ -83,6 +85,7 @@ internal fun WebLoginScreen(
     val completion by RaftWebLoginCompletion.status.collectAsState()
     LaunchedEffect(completion) {
         val status = completion
+        val completionTraceId = RaftWebLoginCompletion.errorTraceId.value
         attempt.onCompletion(status)
         when (status) {
             "app_shell", "choose_server" -> {
@@ -92,6 +95,8 @@ internal fun WebLoginScreen(
                     is SharedAuthResult.Success -> pager.openPostAuthRoute(session.data)
                     else -> {
                         failed = true
+                        staleCallback = false
+                        failedTraceId = (session as? SharedAuthResult.Failure)?.traceId
                         attempt.onSessionMissing()
                     }
                 }
@@ -99,10 +104,14 @@ internal fun WebLoginScreen(
             }
             "login_error", "legal_acceptance", "retry" -> {
                 failed = true
+                staleCallback = false
+                failedTraceId = completionTraceId
                 RaftWebLoginCompletion.clear()
             }
             APP_LOGIN_STALE_CALLBACK -> {
+                failed = false
                 staleCallback = true
+                failedTraceId = null
                 RaftWebLoginCompletion.clear()
             }
             APP_LOGIN_BROWSER_CLOSED -> RaftWebLoginCompletion.clear()
@@ -117,7 +126,13 @@ internal fun WebLoginScreen(
                 staleCallback -> stringResource(Res.string.auth_web_login_stale_callback)
                 else -> routeMessage
             },
-        traceId = if (!failed && !staleCallback && routeMessage != null) routeTraceId else null,
+        traceId =
+            when {
+                failed -> failedTraceId
+                staleCallback -> null
+                routeMessage != null -> routeTraceId
+                else -> null
+            },
         hintHost = webLoginHintHost(webUrl),
         onConsentChange = { consentAccepted = it },
         onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
@@ -126,6 +141,7 @@ internal fun WebLoginScreen(
             startWebLoginWithConsent(consentAccepted, attempt.pending) {
                 if (!attempt.tryBegin()) return@startWebLoginWithConsent
                 failed = false
+                failedTraceId = null
                 staleCallback = false
                 routeMessage = null
                 RaftWebLoginCompletion.clear()
@@ -133,6 +149,7 @@ internal fun WebLoginScreen(
                     val result = runCatchingPreservingCancellation { platform.startWebLogin() }.getOrNull()
                     val opened = result is DataResult.Content
                     failed = !opened
+                    failedTraceId = if (opened) null else result?.failureTraceIdOrNull()
                     attempt.onBrowserOpened(opened)
                 }
             }
@@ -167,8 +184,7 @@ internal fun WebLoginContent(
     ) {
         AuthCenterMark(size = 52.dp)
         AuthFormColumn {
-            AuthError(error)
-            if (error != null) RaftTraceIdNote(traceId)
+            AuthError(error, traceId)
             AuthTermsAgreement(
                 checked = consentAccepted,
                 onCheckedChange = onConsentChange,

@@ -81,4 +81,15 @@ class RaftStringDescResolutionTest {
             assertEquals(texts, actual, "locale $tag")
         }
     }
+
+    @Test
+    fun hostErrorWithTraceIdAndCopyActionResolveInAppLanguage() {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+        val formatted = RaftHostStrings.errorWithTraceId("Sign in failed.", traceId)
+        assertTrue(formatted.startsWith("Sign in failed.\n"), formatted)
+        assertTrue("4bf92f35…" in formatted, formatted)
+        assertEquals("Sign in failed.", RaftHostStrings.errorWithTraceId("Sign in failed.", null))
+        assertTrue(RaftHostStrings.traceIdCopyAction().isNotBlank())
+    }
 }

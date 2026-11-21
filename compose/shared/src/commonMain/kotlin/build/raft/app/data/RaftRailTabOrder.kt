@@ -84,14 +84,19 @@ internal data class RailTabOrderAccountDto(
 internal data class RailTabOrderUpdateBody(val railTabOrder: List<String>)
 
 /** `GET/PATCH /api/auth/me`'s answer: the saved order as sent (null: the default), else an error. */
-internal fun parseSharedRailTabOrderAccount(statusCode: Int, bodyText: String?): DataResult<List<String>?> {
+internal fun parseSharedRailTabOrderAccount(
+    statusCode: Int,
+    bodyText: String?,
+    traceId: String? = null,
+): DataResult<List<String>?> {
+    val responseTraceId = if (statusCode == 0) null else build.raft.app.network.raftValidTraceIdOrNull(traceId)
     if (statusCode !in 200..299) {
-        return DataResult.Error(ScreenError(code = "rail_tab_order_http_$statusCode", retryable = statusCode >= 500))
+        return DataResult.Error(ScreenError(code = "rail_tab_order_http_$statusCode", retryable = statusCode >= 500, traceId = responseTraceId))
     }
     val dto =
         bodyText?.takeIf { it.isNotBlank() }?.let { body ->
             runCatching { railTabOrderJson.decodeFromString(RailTabOrderAccountDto.serializer(), body) }.getOrNull()
-        } ?: return DataResult.Error(ScreenError(code = "rail_tab_order_contract_mismatch", retryable = false))
+        } ?: return DataResult.Error(ScreenError(code = "rail_tab_order_contract_mismatch", retryable = false, traceId = responseTraceId))
     return DataResult.Content(dto.railTabOrder)
 }
 
@@ -118,11 +123,15 @@ internal class NetworkRailTabOrderDataSource(private val networkClient: RaftNetw
     private suspend fun networkCall(call: suspend () -> HomeNetworkResponse): DataResult<List<String>?> =
         try {
             val response = call()
-            parseSharedRailTabOrderAccount(response.code, response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText)
+            parseSharedRailTabOrderAccount(
+                response.code,
+                response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
+                traceId = response.traceId,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            DataResult.Error(ScreenError(code = "network_unavailable", retryable = true))
+            DataResult.Error(ScreenError(code = "network_unavailable", retryable = true, traceId = null))
         }
 }
 
@@ -137,6 +146,7 @@ internal data class SharedRailTabOrderState(
     /** Every tab id ([RaftRailTabIds]) in the order the rail draws them. */
     val order: List<String> = RaftRailTabIds,
     val effect: SharedRailTabOrderEffect? = null,
+    val effectTraceId: String? = null,
 )
 
 internal sealed interface SharedRailTabOrderIntent {
@@ -186,7 +196,7 @@ internal class SharedRailTabOrderStore(
             SharedRailTabOrderIntent.Refresh -> refresh()
             is SharedRailTabOrderIntent.Reorder -> reorder(intent.order)
             SharedRailTabOrderIntent.ConsumeEffect ->
-                if (mutableState.value.effect != null) mutableState.value = mutableState.value.copy(effect = null)
+                if (mutableState.value.effect != null) mutableState.value = mutableState.value.copy(effect = null, effectTraceId = null)
         }
     }
 
@@ -240,7 +250,7 @@ internal class SharedRailTabOrderStore(
         refreshJob?.cancel()
         refreshJob = null
         savesInFlight += 1
-        mutableState.value = current.copy(order = order, effect = null)
+        mutableState.value = current.copy(order = order, effect = null, effectTraceId = null)
         logger("rail_tab_order_save_start order=${order.joinToString(",")}")
         scope.launch {
             val result =
@@ -258,7 +268,12 @@ internal class SharedRailTabOrderStore(
                 }
                 else -> {
                     logger("rail_tab_order_save_result result=error")
-                    mutableState.value = mutableState.value.copy(order = previous, effect = SharedRailTabOrderEffect.SaveFailed)
+                    mutableState.value =
+                        mutableState.value.copy(
+                            order = previous,
+                            effect = SharedRailTabOrderEffect.SaveFailed,
+                            effectTraceId = result.failureTraceIdOrNull(),
+                        )
                 }
             }
         }

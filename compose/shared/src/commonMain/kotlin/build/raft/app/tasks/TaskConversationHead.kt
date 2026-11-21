@@ -171,7 +171,7 @@ internal data class TaskHeadHistoryRow(
 internal sealed interface TaskHeadHistory {
     data object Loading : TaskHeadHistory
 
-    data object Failed : TaskHeadHistory
+    data class Failed(val traceId: String? = null) : TaskHeadHistory
 
     data class Rows(val rows: List<TaskHeadHistoryRow>) : TaskHeadHistory
 }
@@ -236,7 +236,7 @@ internal fun TaskSummary.taskConversationHeadModel(
         when (val load = details.history) {
             is TaskDetailLoad.Loaded ->
                 TaskHeadHistory.Rows(load.value.toTaskHistoryRows().map { it.toHeadRow(members, timeContext) })
-            TaskDetailLoad.Failed -> TaskHeadHistory.Failed
+            is TaskDetailLoad.Failed -> TaskHeadHistory.Failed(load.traceId)
             TaskDetailLoad.Idle,
             TaskDetailLoad.Loading -> TaskHeadHistory.Loading
         }
@@ -914,22 +914,25 @@ private fun TaskHeadHistorySection(history: TaskHeadHistory, initiallyOpen: Bool
             Box(Modifier.padding(top = 4.dp).fillMaxWidth()) {
                 when (history) {
                     TaskHeadHistory.Loading -> RaftSkeleton(Modifier.fillMaxWidth().height(16.dp))
-                    TaskHeadHistory.Failed ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            RaftText(
-                                stringResource(Res.string.task_history_error),
-                                Modifier.weight(1f, fill = false),
-                                style = RaftTheme.typography.caption,
-                                color = colors.warningStrong,
-                            )
-                            onRetry?.let { retry ->
-                                RaftButton(
-                                    text = stringResource(Res.string.common_retry),
-                                    onClick = retry,
-                                    variant = RaftButtonVariant.Ghost,
-                                    size = RaftButtonSize.Md,
+                    is TaskHeadHistory.Failed ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RaftText(
+                                    stringResource(Res.string.task_history_error),
+                                    Modifier.weight(1f, fill = false),
+                                    style = RaftTheme.typography.caption,
+                                    color = colors.warningStrong,
                                 )
+                                onRetry?.let { retry ->
+                                    RaftButton(
+                                        text = stringResource(Res.string.common_retry),
+                                        onClick = retry,
+                                        variant = RaftButtonVariant.Ghost,
+                                        size = RaftButtonSize.Md,
+                                    )
+                                }
                             }
+                            RaftTraceIdNote(history.traceId)
                         }
                     is TaskHeadHistory.Rows ->
                         if (history.rows.isEmpty()) {

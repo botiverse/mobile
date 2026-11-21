@@ -581,8 +581,8 @@ class SharedAppLinkPreviewStore internal constructor(
     /** Prepares a `confirm: "prepare"` button: the description Raft's confirmation shows. */
     suspend fun prepareAction(serverId: String, handle: String, businessRevision: String): AppLinkActionResult<AppLinkPrepared> {
         val response = callOrNull("app_link_card_prepare_error") { api.prepareLinkCardAction(serverId, AppLinkPrepareRequestBody(handle, AppLinkPrepareClaim(businessRevision))) }
-            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false)
-        return parseAppLinkPrepareAnswer(response.code, response.bodyText ?: response.errorBodyText)
+            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false, traceId = null)
+        return parseAppLinkPrepareAnswer(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 
     /** Runs a button's action (after its confirmation, when it has one). The same [clientRequestId] repeats the same intent. */
@@ -594,8 +594,8 @@ class SharedAppLinkPreviewStore internal constructor(
     ): AppLinkActionResult<AppLinkExecuted> {
         val body = AppLinkExecuteRequestBody(clientRequestId, handle, prepared?.preparedActionId, prepared?.preparedDigest)
         val response = callOrNull("app_link_card_execute_error") { api.executeLinkCardAction(serverId, body) }
-            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false)
-        return parseAppLinkExecuteAnswer(response.code, response.bodyText ?: response.errorBodyText)
+            ?: return AppLinkActionResult.Failed(null, null, outOfDate = false, traceId = null)
+        return parseAppLinkExecuteAnswer(response.code, response.bodyText ?: response.errorBodyText, response.traceId)
     }
 
     /** Reads an operation's receipt (a `link_card.operation_changed` hint named it). */

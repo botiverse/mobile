@@ -1622,7 +1622,8 @@ private fun RaftHttpExecutorResponse.toAuthNetworkResponse(): AuthNetworkRespons
     AuthNetworkResponse(
         code = code,
         bodyText = bodyText?.takeUnless { it.isBlank() },
-        errorBodyText = errorBodyText?.takeUnless { it.isBlank() }
+        errorBodyText = errorBodyText?.takeUnless { it.isBlank() },
+        responseHeaders = responseHeaders
     )
 
 private fun DataRequestPriority.toNetworkPriority(): RaftRequestPriority =

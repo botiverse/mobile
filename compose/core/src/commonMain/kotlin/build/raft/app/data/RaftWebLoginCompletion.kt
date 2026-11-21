@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.asStateFlow
 object RaftWebLoginCompletion {
     private val mutableStatus = MutableStateFlow<String?>(null)
     val status = mutableStatus.asStateFlow()
-    fun publish(status: String) { mutableStatus.value = status }
-    fun clear() { mutableStatus.value = null }
+    private val mutableErrorTraceId = MutableStateFlow<String?>(null)
+    val errorTraceId = mutableErrorTraceId.asStateFlow()
+    fun publish(status: String, errorTraceId: String? = null) {
+        mutableErrorTraceId.value = errorTraceId
+        mutableStatus.value = status
+    }
+    fun clear() {
+        mutableStatus.value = null
+        mutableErrorTraceId.value = null
+    }
 }

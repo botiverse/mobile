@@ -318,7 +318,11 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 is SharedEmailVerificationResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        RaftHostStrings.errorWithTraceId(result.userMessage.resolve(), result.traceId),
+                        Toast.LENGTH_LONG
+                    ).show()
                     when (emailVerificationNavigation(hasLiveShellInTask, EmailVerificationOutcome.Failure)) {
                         EmailVerificationNavigation.FinishTrampoline -> finish()
                         EmailVerificationNavigation.OpenAuthShell ->
@@ -434,7 +438,11 @@ class MainActivity : ComponentActivity() {
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 is SharedAuthResult.Failure -> {
-                    Toast.makeText(this@MainActivity, result.userMessage.resolve(), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@MainActivity,
+                        RaftHostStrings.errorWithTraceId(result.userMessage.resolve(), result.traceId),
+                        Toast.LENGTH_LONG
+                    ).show()
                     openSettingsAccountAfterMobileOAuthLink()
                 }
                 SharedAuthResult.Unauthenticated -> {

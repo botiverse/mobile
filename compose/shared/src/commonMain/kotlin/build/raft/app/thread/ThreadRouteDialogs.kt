@@ -236,6 +236,7 @@ internal fun ThreadRouteDialogs(
             onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissForm) },
             candidates = candidates,
             formError = threadActionCardSpecErrorText(formState.error),
+            formErrorTraceId = formState.error.traceIdOrNull(),
         )
     }
     // Last of the card dialogs, so it opens over the install confirmation or spec sheet that asked.

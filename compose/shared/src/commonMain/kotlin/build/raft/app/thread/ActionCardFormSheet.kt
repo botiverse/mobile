@@ -152,6 +152,7 @@ internal fun RaftActionCardFormSheet(
     formError: String? = null,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fieldErrorsTraceId: String? = null,
+    formErrorTraceId: String? = null,
 ) {
     RaftDesignSystemTheme {
         val locale = rememberActionCardFormDisplayLocale()
@@ -171,7 +172,19 @@ internal fun RaftActionCardFormSheet(
             onBack = if (state.page > 0) ({ state.back() }) else null,
             backLabel = stringResource(Res.string.action_card_question_back),
         ) {
-            ActionCardFormBody(form, values, onValuesChange, state, submitting, candidates, formError, locale, agentStatusResolver, fieldErrorsTraceId) {
+            ActionCardFormBody(
+                form,
+                values,
+                onValuesChange,
+                state,
+                submitting,
+                candidates,
+                formError,
+                locale,
+                agentStatusResolver,
+                fieldErrorsTraceId,
+                formErrorTraceId,
+            ) {
                 state.commit(values, submitting, onSubmit)
             }
         }
@@ -194,6 +207,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
     /** Next or the submit already tried on that page: a required Choice unanswered says what it lacks. */
     tried: Boolean = false,
     fieldErrorsTraceId: String? = null,
+    formErrorTraceId: String? = null,
 ) {
     val state = rememberActionCardFormSheetState(form, fieldErrors, initialPage = page, initialTried = tried)
     val nextLabel = stringResource(Res.string.action_card_question_next)
@@ -209,7 +223,19 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         onBack = if (state.page > 0) ({}) else null,
         backLabel = stringResource(Res.string.action_card_question_back),
     ) {
-        ActionCardFormBody(form, values, {}, state, submitting, candidates, formError, displayLocale, EmptyRaftAgentStatusResolver, fieldErrorsTraceId) {}
+        ActionCardFormBody(
+            form,
+            values,
+            {},
+            state,
+            submitting,
+            candidates,
+            formError,
+            displayLocale,
+            EmptyRaftAgentStatusResolver,
+            fieldErrorsTraceId,
+            formErrorTraceId,
+        ) {}
     }
 }
 
@@ -333,6 +359,7 @@ private fun ColumnScope.ActionCardFormBody(
     locale: String,
     agentStatusResolver: RaftAgentStatusResolver,
     issuesTraceId: String?,
+    formErrorTraceId: String?,
     onEnter: () -> Unit,
 ) {
     val enabled = !submitting
@@ -353,11 +380,16 @@ private fun ColumnScope.ActionCardFormBody(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         val issueBanners = state.formIssues().map { it.message.render(locale) }
+        val hasFormError = !formError.isNullOrBlank()
         val banners = listOfNotNull(formError?.takeIf { it.isNotBlank() }) + issueBanners
         banners.distinct().forEach { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
         // The 422's trace id, once: under its banners, else under the first field it put an issue under.
         val traceSpot = actionCardTraceIdSpot(issuesTraceId, issueBanners.isNotEmpty(), state.pageFields.map { it.name }, state::serverIssueShown)
-        if (traceSpot == ActionCardTraceIdSpot.UnderBanners) RaftTraceIdNote(issuesTraceId)
+        if (traceSpot == ActionCardTraceIdSpot.UnderBanners) {
+            RaftTraceIdNote(issuesTraceId)
+        } else if (hasFormError) {
+            RaftTraceIdNote(formErrorTraceId)
+        }
         if (state.paged) {
             RaftText(
                 stringResource(Res.string.action_card_question_page, state.page + 1, state.pages.size),

@@ -1324,8 +1324,9 @@ internal fun MembersAgentPermissionsTab(
     var serverSet by remember(member.id, initialScopeSet) { mutableStateOf<AgentScopeSet?>(initialScopeSet) }
     var draft by remember(member.id, initialScopeSet) { mutableStateOf(initialScopeSet?.granted?.toSet()) }
     var loading by remember(member.id, initialScopeSet) { mutableStateOf(initialScopeSet == null) }
-    var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var saving by remember(member.id, initialScopeSet) { mutableStateOf(false) }
+    var error by remember(member.id, initialScopeSet) { mutableStateOf<String?>(null) }
+    var errorTraceId by remember(member.id, initialScopeSet) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val loadPermissionsFailed = stringResource(Res.string.member_error_load_permissions)
     val noPermissionsData = stringResource(Res.string.member_state_no_permissions_data)
@@ -1337,10 +1338,14 @@ internal fun MembersAgentPermissionsTab(
     val resetPermissionsForbidden = stringResource(Res.string.member_error_reset_permissions_forbidden)
 
     suspend fun loadScopes() {
+        loading = true
+        error = null
+        errorTraceId = null
         if (agentsApiClient == null) {
             // Rare: this host wired no agents API client. Simple UX ("Failed to load"), but traced.
             raftLogWarn("RaftMembers", "members_agent_permissions_load_failed reason=no_agents_api_client agentId=${member.id}")
             error = loadPermissionsFailed
+            errorTraceId = null
             loading = false
             return
         }
@@ -1349,12 +1354,20 @@ internal fun MembersAgentPermissionsTab(
                 serverSet = result.data
                 draft = result.data.granted.toSet()
                 error = null
+                errorTraceId = null
             }
             is DataResult.Error -> {
                 error = "$loadPermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
+                errorTraceId = result.error.traceId
             }
-            is DataResult.Empty -> error = noPermissionsData
-            is DataResult.NoPermission -> error = viewPermissionsForbidden
+            is DataResult.Empty -> {
+                error = noPermissionsData
+                errorTraceId = null
+            }
+            is DataResult.NoPermission -> {
+                error = viewPermissionsForbidden
+                errorTraceId = result.blocker.traceId
+            }
         }
         loading = false
     }
@@ -1377,14 +1390,24 @@ internal fun MembersAgentPermissionsTab(
         if (agentsApiClient == null) return
         saving = true
         error = null
+        errorTraceId = null
         when (val result = agentsApiClient.updateAgentScopes(member.id, current.toList())) {
             is DataResult.Content -> {
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "$savePermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
-            is DataResult.Empty -> error = emptyResponse
-            is DataResult.NoPermission -> error = savePermissionsForbidden
+            is DataResult.Error -> {
+                error = "$savePermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
+                errorTraceId = result.error.traceId
+            }
+            is DataResult.Empty -> {
+                error = emptyResponse
+                errorTraceId = null
+            }
+            is DataResult.NoPermission -> {
+                error = savePermissionsForbidden
+                errorTraceId = result.blocker.traceId
+            }
         }
         saving = false
     }
@@ -1393,14 +1416,24 @@ internal fun MembersAgentPermissionsTab(
         if (agentsApiClient == null) return
         saving = true
         error = null
+        errorTraceId = null
         when (val result = agentsApiClient.resetAgentScopes(member.id)) {
             is DataResult.Content -> {
                 serverSet = result.data
                 draft = result.data.granted.toSet()
             }
-            is DataResult.Error -> error = "$resetPermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
-            is DataResult.Empty -> error = emptyResponse
-            is DataResult.NoPermission -> error = resetPermissionsForbidden
+            is DataResult.Error -> {
+                error = "$resetPermissionsFailed: ${result.error.userFacingMessage(errorStrings)}"
+                errorTraceId = result.error.traceId
+            }
+            is DataResult.Empty -> {
+                error = emptyResponse
+                errorTraceId = null
+            }
+            is DataResult.NoPermission -> {
+                error = resetPermissionsForbidden
+                errorTraceId = result.blocker.traceId
+            }
         }
         saving = false
     }
@@ -1422,7 +1455,8 @@ internal fun MembersAgentPermissionsTab(
             ErrorBanner(
                 text = error ?: "",
                 action = stringResource(Res.string.common_retry),
-                onAction = { scope.launch { loadScopes() } }
+                onAction = { scope.launch { loadScopes() } },
+                traceId = errorTraceId,
             )
             return
         }
@@ -1438,25 +1472,31 @@ internal fun MembersAgentPermissionsTab(
         }
 
         if (error != null) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .raftCardSurface(fill = RaftColor.FillMuted)
                     .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                RaftLucideIcon(
-                    RaftLucideIconName.TriangleAlert,
-                    modifier = Modifier.size(16.dp),
-                    color = "#FFD32F2F"
-                )
-                Text(
-                    text = error ?: "",
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = RaftColor.TextBlack,
-                    modifier = Modifier.weight(1f)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.TriangleAlert,
+                        modifier = Modifier.size(16.dp),
+                        color = "#FFD32F2F"
+                    )
+                    Text(
+                        text = error ?: "",
+                        style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextBlack,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                RaftTraceIdNote(errorTraceId)
             }
         }
 

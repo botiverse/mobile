@@ -1682,7 +1682,7 @@ private fun rememberThreadTaskConversationState(
     LaunchedEffect(taskConversationHeaderViewModel) {
         taskConversationHeaderViewModel?.events?.collect { event ->
             when (event) {
-                is TaskConversationHeaderEvent.FollowFailed -> bridge.toast(latestFollowFailedLabel)
+                is TaskConversationHeaderEvent.FollowFailed -> bridge.errorToast(latestFollowFailedLabel, event.traceId)
             }
         }
     }
@@ -1695,7 +1695,7 @@ private fun rememberThreadTaskConversationState(
         taskConversationId?.let { conversationId ->
             viewModel(key = "task-conversation-details-${conversationId.value}") {
                 fun server(): ServerId? = taskConversationDetailsServerId?.let(::ServerId)
-                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true))
+                val noServer = DataResult.Error(ScreenError(code = "task_head_no_server", retryable = true, traceId = null))
                 TaskConversationDetailsViewModel(
                     loadHistory = { taskId ->
                         server()?.let { taskConversationDetailsRepository.loadHistory(it, taskId) } ?: noServer
@@ -5715,10 +5715,10 @@ private fun SharedThreadRouteContentContent(
                 authStore = authStore,
                 tasksDataSource = tasksDataSource,
                 tasksDataStore = tasksDataStore,
-                onFailed = { code ->
+                onFailedWithTrace = { code, traceId ->
                     when {
-                        code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateTaskLabel)
-                        code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.toast(unableToUpdateAssigneeLabel)
+                        code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateTaskLabel, traceId)
+                        code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateAssigneeLabel, traceId)
                     }
                 },
                 log = { bridge.log(it) },
@@ -6077,6 +6077,7 @@ private fun SharedThreadRouteContentContent(
                         conversationId = appLinkPreviewConversationId,
                         toast = { message -> bridge.toast(message) },
                         toastWithIntent = { message, intent -> bridge.toastWithIntent(message, intent) },
+                        errorToast = { message, traceId -> bridge.errorToast(message, traceId) },
                         // Workspace Artifacts links (behind workspace_artifacts_v0, read per message).
                         artifacts =
                             ThreadArtifactLinkHost(

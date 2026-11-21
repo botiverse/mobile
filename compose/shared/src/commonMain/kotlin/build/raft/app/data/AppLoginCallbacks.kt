@@ -105,7 +105,7 @@ object RaftAppLoginBridge {
         completionMarker.browserClosed()
     }
 
-    private val completionMarker = AppLoginCompletionMarker()
+    private val completionMarker = AppLoginCompletionMarker(publishWithTrace = RaftWebLoginCompletion::publish)
 
     fun completeCallback(returnUri: String, requestId: String, code: String, error: String): Boolean {
         if (returnUri !in APP_LOGIN_RETURN_URIS || requestId.isBlank() || code.isBlank() == error.isBlank()) {
@@ -116,19 +116,19 @@ object RaftAppLoginBridge {
         completionMarker.callbackAccepted()
         scope.launch {
             repeat(APP_LOGIN_CALLBACK_RETRIES) { attempt ->
-                val result =
-                    runCatchingPreservingCancellation { RaftAppLogin.complete(returnUri, requestId, code, error) }
+                val outcome =
+                    runCatchingPreservingCancellation { RaftAppLogin.completeWithOutcome(returnUri, requestId, code, error) }
                         .onFailure { raftLogInfo("SlockAppLogin", "app_login_callback_threw type=${it::class.simpleName}") }
-                        .getOrDefault("login_error")
-                if (result != "retry") {
-                    raftLogInfo("SlockAppLogin", "app_login_callback_result result=$result attempt=$attempt")
-                    completionMarker.callbackFinished(result)
+                        .getOrElse { AppLoginCompletionOutcome("login_error", errorTraceId = null) }
+                if (outcome.status != "retry") {
+                    raftLogInfo("SlockAppLogin", "app_login_callback_result result=${outcome.status} attempt=$attempt")
+                    completionMarker.callbackFinished(outcome.status, outcome.errorTraceId)
                     return@launch
                 }
                 delay(APP_LOGIN_CALLBACK_RETRY_DELAY_MS)
             }
             raftLogInfo("SlockAppLogin", "app_login_callback_result result=login_error reason=retries_exhausted")
-            completionMarker.callbackFinished("login_error")
+            completionMarker.callbackFinished("login_error", errorTraceId = null)
         }
         return true
     }
@@ -142,29 +142,34 @@ object RaftAppLoginBridge {
  */
 internal class AppLoginCompletionMarker(
     private val status: () -> String? = { RaftWebLoginCompletion.status.value },
-    private val publish: (String) -> Unit = RaftWebLoginCompletion::publish,
+    private val publish: (String) -> Unit = { RaftWebLoginCompletion.publish(it) },
     private val clear: () -> Unit = RaftWebLoginCompletion::clear,
+    private val publishWithTrace: ((String, String?) -> Unit)? = null,
 ) : SynchronizedObject() {
     private var inFlight = 0
 
     fun callbackAccepted() = synchronized(this) {
         inFlight += 1
         val current = status()
-        if (current == null || current == APP_LOGIN_BROWSER_CLOSED) publish(APP_LOGIN_CALLBACK_RECEIVED)
+        if (current == null || current == APP_LOGIN_BROWSER_CLOSED) publishStatus(APP_LOGIN_CALLBACK_RECEIVED, null)
     }
 
     /** [result] is [AppLoginCoordinator.complete]'s (never "retry"). */
-    fun callbackFinished(result: String) = synchronized(this) {
+    fun callbackFinished(result: String, errorTraceId: String? = null) = synchronized(this) {
         inFlight = (inFlight - 1).coerceAtLeast(0)
         if (result != "ignored") {
-            publish(result)
+            publishStatus(result, errorTraceId)
         } else if (inFlight == 0 && status() == APP_LOGIN_CALLBACK_RECEIVED) {
             clear()
         }
     }
 
     fun browserClosed() = synchronized(this) {
-        if (status() == null) publish(APP_LOGIN_BROWSER_CLOSED)
+        if (status() == null) publishStatus(APP_LOGIN_BROWSER_CLOSED, null)
+    }
+
+    private fun publishStatus(value: String, errorTraceId: String?) {
+        publishWithTrace?.invoke(value, errorTraceId) ?: publish(value)
     }
 }
 

@@ -248,4 +248,5 @@ private fun AuthApiResult.Failure.toNetworkResponse(): HomeNetworkResponse =
         code = code,
         bodyText = null,
         errorBodyText = errorBodyText,
+        responseHeaders = traceId?.let { mapOf("X-Trace-Id" to listOf(it)) } ?: emptyMap(),
     )
