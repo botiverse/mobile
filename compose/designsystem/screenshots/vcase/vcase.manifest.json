@@ -918,6 +918,15 @@
       "divergences": []
     },
     {
+      "id": "ds.segmented-pager.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/SegmentedPagerCases.kt:33",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.selection-toolbar.dock",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/SelectionToolbarCases.kt:76",
