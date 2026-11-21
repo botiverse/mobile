@@ -113,6 +113,8 @@ class RaftButtonAccessibilityTest {
         // (RaftWindowDialogTest); Modal's pages draw their own veil and keyboard padding.
         assertFalse(RaftModalWindowDialogProperties.drawScrim)
         assertTrue(RaftModalWindowDialogProperties.contentHandlesKeyboard)
+        assertTrue(raftModalWindowDialogProperties().platformTransition)
+        assertFalse(raftModalWindowDialogProperties(platformTransition = false).platformTransition)
     }
 }
 

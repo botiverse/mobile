@@ -26,12 +26,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,12 +41,14 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.raftPlatformUnmeasuredWindowWidth
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -195,6 +199,13 @@ object RaftDialogSheetDefaults {
 fun raftDialogSheetCentered(windowWidth: Dp): Boolean = windowWidth >= RaftDialogSheetDefaults.CenteredMinWindowWidth
 
 
+internal fun raftDialogSheetWindowProperties(centered: Boolean): RaftWindowDialogProperties =
+    if (centered) {
+        RaftWindowDialogProperties(drawScrim = true, platformTransition = true)
+    } else {
+        RaftWindowDialogProperties(drawScrim = false, platformTransition = false)
+    }
+
 /**
  * raft-ui Dialog with several fields, a long list or steps.
  *
@@ -229,12 +240,22 @@ fun RaftDialogSheet(
     backLabel: String = "",
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    RaftWindowDialog(onDismissRequest = onDismissRequest) {
+    val hostWindowWidthPx = LocalWindowInfo.current.containerSize.width
+    val hostWindowWidthDp =
+        if (hostWindowWidthPx > 0) {
+            with(LocalDensity.current) { hostWindowWidthPx.toDp() }
+        } else {
+            raftPlatformUnmeasuredWindowWidth()
+        }
+    val windowCentered = hostWindowWidthDp?.let(::raftDialogSheetCentered) ?: true
+    val dialogProperties = raftDialogSheetWindowProperties(centered = windowCentered)
+    RaftWindowDialog(onDismissRequest = onDismissRequest, properties = dialogProperties) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (raftDialogSheetCentered(maxWidth)) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        .then(if (!dialogProperties.drawScrim) Modifier.background(RaftTheme.scrim) else Modifier)
                         // Clear of the system bars, the cutout and the keyboard, then 16dp.
                         .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing))
                         .padding(16.dp),
@@ -273,6 +294,7 @@ fun RaftDialogSheet(
                     closeEnabled = closeEnabled,
                     onBack = onBack,
                     backLabel = backLabel,
+                    drawSyncedScrim = !dialogProperties.drawScrim,
                     content = content,
                 )
             }
@@ -295,45 +317,65 @@ private fun RaftDialogSheetBottom(
     closeEnabled: Boolean,
     onBack: (() -> Unit)?,
     backLabel: String,
+    drawSyncedScrim: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val slide = remember { Animatable(1f) }
-    LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide)) }
+    val reducedMotion = rememberRaftReducedMotion()
+    val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) {
+            slide.snapTo(0f)
+        } else {
+            withFrameNanos { }
+            slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide))
+        }
+    }
     // 90% of the whole window, as raft-ui's `h-[90dvh]` and RaftDialog's sheet; the status bar
     // or a top cutout only caps it (it never reaches under them). Padding the top first made the
     // sheet 90% of what is left below the status bar, so it sat ~4dp per 40dp of bar lower.
     val topInsetPx = WindowInsets.safeDrawing.getTop(LocalDensity.current)
-    Box(
-        Modifier
-            .fillMaxSize()
-            // Never under a side cutout; the bottom is the sheet's own.
-            .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))),
-        contentAlignment = Alignment.BottomCenter,
-    ) {
-        RaftDialogSheetSurfaceImpl(
-            title = title,
-            commitLabel = commitLabel,
-            onCommit = onCommit,
-            onClose = onClose,
-            modifier =
-                modifier
-                    .graphicsLayer { translationY = size.height * slide.value }
-                    .pointerInput(Unit) { detectTapGestures { } }
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(raftDialogSheetConstraints(constraints, topInsetPx))
-                        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                    },
-            commitEnabled = commitEnabled,
-            commitLoading = commitLoading,
-            commitVariant = commitVariant,
-            commitIcon = commitIcon,
-            closeLabel = closeLabel,
-            closeEnabled = closeEnabled,
-            clearNavigationBar = true,
-            onBack = onBack,
-            backLabel = backLabel,
-            content = content,
-        )
+    Box(Modifier.fillMaxSize()) {
+        if (drawSyncedScrim) {
+            val scrim = RaftTheme.scrim
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 1f - slide.value }
+                    .background(scrim),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                // Never under a side cutout; the bottom is the sheet's own.
+                .windowInsetsPadding(rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            RaftDialogSheetSurfaceImpl(
+                title = title,
+                commitLabel = commitLabel,
+                onCommit = onCommit,
+                onClose = onClose,
+                modifier =
+                    modifier
+                        .graphicsLayer { translationY = size.height * slide.value }
+                        .pointerInput(Unit) { detectTapGestures { } }
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(raftDialogSheetConstraints(constraints, topInsetPx))
+                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                        },
+                commitEnabled = commitEnabled,
+                commitLoading = commitLoading,
+                commitVariant = commitVariant,
+                commitIcon = commitIcon,
+                closeLabel = closeLabel,
+                closeEnabled = closeEnabled,
+                clearNavigationBar = true,
+                onBack = onBack,
+                backLabel = backLabel,
+                content = content,
+            )
+        }
     }
 }
 

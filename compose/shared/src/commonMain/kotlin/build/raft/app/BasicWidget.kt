@@ -1453,6 +1453,8 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     /** A menu with no text field over a focused composer: the keyboard stays up (RaftWindowDialogProperties). */
     keepsHostKeyboard: Boolean = false,
+    /** False when the modal content slides itself (phone sheet / side drawer) so iOS doesn't stack its zoom transition. */
+    platformTransition: Boolean = true,
     content: (@Composable () -> Unit)
 ) {
     // The page window's horizontal safe area (what the page shells around this call know), read
@@ -1467,12 +1469,7 @@ fun Modal(
     // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
     RaftWindowDialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties =
-            if (keepsHostKeyboard) {
-                RaftModalWindowDialogProperties.copy(keepsHostKeyboard = true)
-            } else {
-                RaftModalWindowDialogProperties
-            }
+        properties = raftModalWindowDialogProperties(keepsHostKeyboard = keepsHostKeyboard, platformTransition = platformTransition)
     ) {
         // The dialog is its own window with its own keyboard animation; the host's IME report
         // describes the activity window underneath (RaftHostImeInsets).
@@ -1500,6 +1497,15 @@ fun Modal(
  */
 internal val RaftModalWindowDialogProperties =
     RaftWindowDialogProperties(drawScrim = false, contentHandlesKeyboard = true)
+
+internal fun raftModalWindowDialogProperties(
+    keepsHostKeyboard: Boolean = false,
+    platformTransition: Boolean = true,
+): RaftWindowDialogProperties =
+    RaftModalWindowDialogProperties.copy(
+        keepsHostKeyboard = keepsHostKeyboard,
+        platformTransition = platformTransition,
+    )
 
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable

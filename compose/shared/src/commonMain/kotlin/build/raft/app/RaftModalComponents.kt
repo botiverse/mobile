@@ -69,7 +69,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.LayoutDirection
 import build.raft.designsystem.components.RaftSideDrawerDefaults
 import build.raft.designsystem.components.RaftSideDrawerSurface
@@ -537,8 +539,24 @@ internal fun RaftUnifiedDialog(
             variant = commitVariant,
             icon = commitIcon
         )
-    if (hostState == null) {
-        Modal(onWillDismiss = { if (dismissEnabled) closeRelay.close(onDismiss) }) {
+    val renderDialog: @Composable (hostBottomInset: Dp) -> Unit = { resolvedHostBottomInset ->
+        val hostWindowWidthPx = LocalWindowInfo.current.containerSize.width
+        val hostWindowWidthDp =
+            if (hostWindowWidthPx > 0) {
+                with(LocalDensity.current) { hostWindowWidthPx.toDp() }
+            } else {
+                null
+            }
+        val modalPlatformTransition =
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = presentation,
+                hostWindowWidth = hostWindowWidthDp,
+                horizontalSafeArea = LocalRaftWindowHorizontalSafeArea.current,
+            )
+        Modal(
+            onWillDismiss = { if (dismissEnabled) closeRelay.close(onDismiss) },
+            platformTransition = modalPlatformTransition,
+        ) {
             CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
                 RaftUnifiedDialogSurface(
                     title = displayTitle,
@@ -559,7 +577,7 @@ internal fun RaftUnifiedDialog(
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                     topInset = topInset,
-                    hostBottomInset = raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
+                    hostBottomInset = resolvedHostBottomInset,
                     bottomSafeArea = bottomSafeArea,
                     handleBack = false,
                     presentation = presentation,
@@ -569,6 +587,9 @@ internal fun RaftUnifiedDialog(
                 )
             }
         }
+    }
+    if (hostState == null) {
+        renderDialog(raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea))
         return
     }
     val currentDialogContent =
@@ -579,41 +600,12 @@ internal fun RaftUnifiedDialog(
             // underlay; fixing those holes with parent nativeDispatchCapture also blocks precise
             // TextField cursor gestures. ModalView provides the intended two-layer boundary: a
             // full-window native touch barrier below independently interactive dialog content.
-            Modal(onWillDismiss = { if (dismissEnabled) closeRelay.close(onDismiss) }) {
-                CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
-                    RaftUnifiedDialogSurface(
-                        title = displayTitle,
-                        overline = overline,
-                        titleCopyText = titleCopyText,
-                        overlineCopyText = overlineCopyText,
-                        onDismiss = onDismiss,
-                        modifier = modifier,
-                        dismissEnabled = dismissEnabled,
-                        dismissOnOutsideTap = dismissOnOutsideTap,
-                        overlayAlpha = overlayAlpha,
-                        minWidth = minWidth,
-                        maxWidth = maxWidth,
-                        outerPadding = outerPadding,
-                        contentPadding = contentPadding,
-                        headerPadding = headerPadding,
-                        titleMaxLines = titleMaxLines,
-                        contentSpacing = contentSpacing,
-                        keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
-                        topInset = topInset,
-                        hostBottomInset =
-                            raftUnifiedDialogHostBottomInset(
-                                LocalRaftUnifiedDialogHostBottomInset.current,
-                                bottomSafeArea
-                            ),
-                        bottomSafeArea = bottomSafeArea,
-                        handleBack = false,
-                        presentation = presentation,
-                        commit = commit,
-                        closeRelay = closeRelay,
-                        content = content
-                    )
-                }
-            }
+            renderDialog(
+                raftUnifiedDialogHostBottomInset(
+                    LocalRaftUnifiedDialogHostBottomInset.current,
+                    bottomSafeArea
+                )
+            )
         }
     val hostKey = remember { RaftUnifiedDialogHostKey() }
     DisposableEffect(hostState, hostKey, hostRoute) {
@@ -866,8 +858,13 @@ private fun RaftUnifiedDialogPhoneSheet(
     val reducedMotion = rememberRaftReducedMotion()
     // 1: off screen below the window (and the scrim clear); 0: in place.
     val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
-    LaunchedEffect(Unit) {
-        slide.animateTo(0f, tween(RaftUnifiedDialogSheetEnterMillis, easing = RaftMotion.EaseSlide))
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) {
+            slide.snapTo(0f)
+        } else {
+            withFrameNanos { }
+            slide.animateTo(0f, tween(RaftUnifiedDialogSheetEnterMillis, easing = RaftMotion.EaseSlide))
+        }
     }
     val scope = rememberCoroutineScope()
     val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -1002,7 +999,10 @@ internal fun RaftUnifiedSideDrawer(
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val hostState = LocalRaftUnifiedDialogHostState.current
     val drawer: @Composable () -> Unit = {
-        Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+        Modal(
+            onWillDismiss = { if (dismissEnabled) onDismiss() },
+            platformTransition = false,
+        ) {
             CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
                 RaftUnifiedSideDrawerWindow(
                     title = title,
@@ -1064,8 +1064,13 @@ private fun RaftUnifiedSideDrawerWindow(
     val reducedMotion = rememberRaftReducedMotion()
     // 1: off the window's end (and the scrim clear); 0: in place.
     val slide = remember { Animatable(if (reducedMotion) 0f else 1f) }
-    LaunchedEffect(Unit) {
-        slide.animateTo(0f, tween(RaftSideDrawerDefaults.EnterMillis, easing = RaftMotion.EaseSlide))
+    LaunchedEffect(reducedMotion) {
+        if (reducedMotion) {
+            slide.snapTo(0f)
+        } else {
+            withFrameNanos { }
+            slide.animateTo(0f, tween(RaftSideDrawerDefaults.EnterMillis, easing = RaftMotion.EaseSlide))
+        }
     }
     val direction = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
     Box(
@@ -1107,6 +1112,24 @@ private fun RaftUnifiedSideDrawerWindow(
             }
         }
     }
+}
+
+/**
+ * Whether [RaftUnifiedDialog]'s [Modal] should keep Compose's platform dialog transition (iOS
+ * fade+zoom). Returns false whenever [RaftUnifiedDialogSurface] will render the self-sliding phone
+ * sheet, accounting for the horizontal safe-area padding [Modal] applies inside the window so
+ * landscape notch/Dynamic-Island phones match [BoxWithConstraints]'s inner width.
+ */
+internal fun raftUnifiedDialogModalPlatformTransition(
+    presentation: RaftDialogPresentation,
+    hostWindowWidth: Dp?,
+    horizontalSafeArea: RaftHorizontalSafeArea = RaftHorizontalSafeArea.Zero,
+): Boolean {
+    if (hostWindowWidth == null) return true
+    val availableWidth =
+        (hostWindowWidth - horizontalSafeArea.left.coerceAtLeast(0.dp) - horizontalSafeArea.right.coerceAtLeast(0.dp))
+            .coerceAtLeast(0.dp)
+    return !raftUnifiedDialogDrawsSheet(presentation, availableWidth)
 }
 
 /** The phone sheet body's margin (raft-ui: a phone's 16dp page margin). */

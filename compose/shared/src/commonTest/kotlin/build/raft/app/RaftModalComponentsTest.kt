@@ -564,5 +564,42 @@ class RaftModalComponentsTest {
         assertEquals(0, frameCount)
         assertEquals(emptyList(), targets)
     }
+
+    @Test
+    fun unifiedDialogModalDropsPlatformTransitionForPhoneAndLandscapeSafeAreaSheets() {
+        assertFalse(
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = RaftDialogPresentation.Sheet,
+                hostWindowWidth = 390.dp,
+            )
+        )
+        // Landscape Dynamic-Island iPhone: raw width 852dp >= 744dp, inner width 852 - 118 = 734dp < 744dp -> sheet.
+        assertFalse(
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = RaftDialogPresentation.Sheet,
+                hostWindowWidth = 852.dp,
+                horizontalSafeArea = RaftHorizontalSafeArea(left = 59.dp, right = 59.dp),
+            )
+        )
+        assertTrue(
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = RaftDialogPresentation.Sheet,
+                hostWindowWidth = 900.dp,
+                horizontalSafeArea = RaftHorizontalSafeArea(left = 59.dp, right = 59.dp),
+            )
+        )
+        assertTrue(
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = RaftDialogPresentation.Centered,
+                hostWindowWidth = 390.dp,
+            )
+        )
+        assertTrue(
+            raftUnifiedDialogModalPlatformTransition(
+                presentation = RaftDialogPresentation.Sheet,
+                hostWindowWidth = null,
+            )
+        )
+    }
 }
 
