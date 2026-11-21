@@ -1412,6 +1412,13 @@ data class RealtimeRefreshRequired(
      * (`archivedAt` set). Null when the frame did not say (an id-only `{ channelId }` frame).
      */
     val channelArchived: Boolean? = null,
+    /**
+     * `channel:updated` carrying the channel's row with its conversion (slock routes/channels.ts
+     * `emitChannelConversionState` after every phase, `emitChannelConversionCompletion` when the
+     * job ends): [channelId]'s conversion as the row says it. Null when the frame carried none
+     * (an id-only frame, or a row without the conversion fields).
+     */
+    val channelConversion: build.raft.app.data.RaftChannelConversion? = null,
 ) : RealtimeEvent
 
 @Serializable

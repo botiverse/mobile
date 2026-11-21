@@ -6572,6 +6572,19 @@ private fun SharedThreadRouteContentContent(
                 onToggleFocusMode = threadFocusModeToggle,
                 focusModeActive = threadFocusModeActive,
             taskConversationBar = taskConversationBar,
+            // A conversion to an external channel under way: one slot, worked out in
+            // ChannelConversionStrip.kt from values this lambda already captures (JVM size and capture limits).
+            channelConversionStrip =
+                rememberThreadChannelConversionStripSlot(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    bridge = bridge,
+                    serverId = threadMembersServerId,
+                    channelId = threadMembersChannelId,
+                    payload = renderedThread,
+                    session = currentSession,
+                    active = active && threadHostForeground,
+                ),
             // Channel announcements (channel_announcement_v0): the strip on a channel's own page (not a
             // thread, DM or task conversation). Built here from values this lambda already captures:
             // it is at the JVM's 255-capture limit, and one more local breaks it (BootstrapMethodError).
