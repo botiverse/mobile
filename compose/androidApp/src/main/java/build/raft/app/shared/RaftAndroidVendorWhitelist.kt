@@ -30,16 +30,17 @@ internal data class VendorWhitelistTarget(
     val packageUri: Boolean = false,
     val extras: Map<String, String> = emptyMap(),
 ) {
-    fun toIntent(packageName: String, appLabel: String = "Raft"): Intent =
-        Intent().apply {
-            if (action != null) setAction(action)
-            if (componentPackage != null && componentClass != null) {
-                component = ComponentName(componentPackage, componentClass)
+    fun toIntent(packageName: String, appLabel: String = "Raft"): Intent {
+        val target = this
+        return Intent().apply {
+            if (target.action != null) setAction(target.action)
+            if (target.componentPackage != null && target.componentClass != null) {
+                component = ComponentName(target.componentPackage, target.componentClass)
             }
-            if (packageUri) {
+            if (target.packageUri) {
                 data = Uri.parse("package:$packageName")
             }
-            extras.forEach { (key, value) ->
+            target.extras.forEach { (key, value) ->
                 val resolved =
                     when (value) {
                         PACKAGE_NAME_PLACEHOLDER -> packageName
@@ -50,6 +51,7 @@ internal data class VendorWhitelistTarget(
             }
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+    }
 
     companion object {
         const val PACKAGE_NAME_PLACEHOLDER = "\$PACKAGE_NAME"

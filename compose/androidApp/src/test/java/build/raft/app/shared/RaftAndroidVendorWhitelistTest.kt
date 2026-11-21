@@ -145,6 +145,15 @@ class RaftAndroidVendorWhitelistTest {
         assertEquals(pkg, xiaomiPowerkeeper.getStringExtra("package_name"))
         assertEquals("Raft", xiaomiPowerkeeper.getStringExtra("package_label"))
 
+        val huaweiActionIntent =
+            RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Huawei)
+                .first { it.id == "huawei_app_startup_action" }
+                .toIntent(pkg)
+        assertTrue((huaweiActionIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
+        assertEquals("huawei.intent.action.APP_STARTUP_SETTINGS", huaweiActionIntent.action)
+        assertNull(huaweiActionIntent.component)
+        assertNull(huaweiActionIntent.data)
+
         val fallbackIntent = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Generic).single().toIntent(pkg)
         assertTrue((fallbackIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
         assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, fallbackIntent.action)
