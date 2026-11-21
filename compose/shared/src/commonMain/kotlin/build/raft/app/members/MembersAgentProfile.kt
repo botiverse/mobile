@@ -891,7 +891,7 @@ private fun MembersAgentProfileFieldsSection(
     edit: MembersAgentProfileEditInputs,
     sharedAgentDetailStore: SharedAgentDetailStore?,
     storeState: SharedAgentDetailState?,
-    hideEmptyDescription: Boolean = false,
+    showDescriptionWhenNotEditing: Boolean = true,
     /** The profile hero; receives the display-name pencil action (null when not editable). */
     hero: @Composable (onEditDisplayName: (() -> Unit)?) -> Unit
 ) {
@@ -1258,7 +1258,7 @@ private fun MembersAgentProfileFieldsSection(
     // Its `py-3` bottom is 4dp short of the profile column's 16dp section spacing.
     // On a bounded public projection (remote joint-channel agent or `channel_summary` projection),
     // omit the whole section when empty instead of showing "No description".
-    if (editingRole || !hideEmptyDescription || !member.description.isNullOrBlank()) {
+    if (editingRole || showDescriptionWhenNotEditing) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1696,10 +1696,11 @@ internal fun MembersAgentProfileTab(
         // One plain call, no capturing composable lambda here: this function's generated code is
         // shape-sensitive (see the note above MembersAgentRuntimeModelInputs), so the hero slot
         // lambda lives in [MembersAgentProfileIdentity] instead.
-        val hideEmptyDescription =
-            membersAgentIsBoundedPublicProjection(
+        val showDescriptionWhenNotEditing =
+            membersShouldShowAgentDescriptionSection(
                 accessMode = accessMode,
-                profileProjection = summary?.profileProjection ?: member.profileProjection
+                profileProjection = summary?.profileProjection?.takeIf { it.isNotBlank() } ?: member.profileProjection,
+                description = member.description
             )
         MembersAgentProfileIdentity(
             member = member,
@@ -1713,7 +1714,7 @@ internal fun MembersAgentProfileTab(
             memberAvatarResolver = memberAvatarResolver,
             onChangeAvatar = onChangeAvatar,
             lifecycle = lifecycle,
-            hideEmptyDescription = hideEmptyDescription
+            showDescriptionWhenNotEditing = showDescriptionWhenNotEditing
         )
         if (!remoteProfile) {
             MembersAgentInfoSection(
@@ -1809,14 +1810,14 @@ private fun MembersAgentProfileIdentity(
     memberAvatarResolver: RaftMemberAvatarResolver,
     onChangeAvatar: () -> Unit,
     lifecycle: MembersAgentLifecycleInputs,
-    hideEmptyDescription: Boolean = false
+    showDescriptionWhenNotEditing: Boolean = true
 ) {
     MembersAgentProfileFieldsSection(
         member = member,
         edit = edit,
         sharedAgentDetailStore = sharedAgentDetailStore,
         storeState = storeState,
-        hideEmptyDescription = hideEmptyDescription,
+        showDescriptionWhenNotEditing = showDescriptionWhenNotEditing,
         hero = { onEditDisplayName ->
             val toolStuck = membersAgentToolStuck(agentStatusIndicatorState, summary?.toolStuck)
             val spawnFailure =

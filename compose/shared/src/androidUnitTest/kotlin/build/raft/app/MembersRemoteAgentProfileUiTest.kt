@@ -14,6 +14,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.AppLocale
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -21,6 +23,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
+import build.raft.app.resources.StringDesc
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
@@ -45,6 +50,19 @@ import org.robolectric.annotation.Config
 class MembersRemoteAgentProfileUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
+
+    private var previousLocale = StringDesc.localeType
+
+    @BeforeTest
+    fun english() {
+        previousLocale = StringDesc.localeType
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
+    }
+
+    @AfterTest
+    fun restore() {
+        StringDesc.localeType = previousLocale
+    }
 
     private fun sampleMember(
         id: String = "agent-partner-1",
