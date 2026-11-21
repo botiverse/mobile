@@ -15,25 +15,6 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
     <application>
-        <!--
-          No emoji2 EmojiCompatInitializer in the connectedTest carrier. Its default config loads
-          the emoji font through Play services' FontsProvider (com.google.android.gms.fonts), and a
-          process holding that provider dies with it: on CI emulators Play services restarts its
-          persistent process shortly after boot ("ChimeraModuleLdr: Module config changed, forcing
-          restart"), and ActivityManager then kills the app ("depends on provider
-          com.google.android.gms/.fonts.provider.FontsProvider in dying proc", exit reason
-          DEPENDENCY DIED). Visual run 44924992344 lost a capture case that way, with no crash in
-          the log. Release, play, alpha and debug keep the initializer.
-        -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.emoji2.text.EmojiCompatInitializer"
-                tools:node="remove" />
-        </provider>
         <activity
             android:name="build.raft.app.shared.AndroidImeVisibilityProbeActivity"
             android:excludeFromRecents="true"

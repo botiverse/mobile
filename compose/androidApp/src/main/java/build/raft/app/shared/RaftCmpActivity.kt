@@ -1327,7 +1327,9 @@ internal open class RaftCmpActivity :
         releaseHomeColdStartSplashAfterDatabaseLaunch()
         // task #6: warm the WebView provider once the first page has drawn, at the next main
         // idle slot (single shot per process, failure-silent; nothing waits for it).
-        RaftAndroidWebViewWarmup.schedule(applicationContext)
+        // Not on visual pages: the warm WebView binds Play services' FontsProvider, and a capture
+        // process dies with it when Play services restarts (VT run 44924992344).
+        if (!isVisualTestingPage()) RaftAndroidWebViewWarmup.schedule(applicationContext)
     }
 
     /**

@@ -718,6 +718,67 @@ run_instrumentation() {
   fi
 }
 
+# Play services restarts its persistent process shortly after boot ("ChimeraModuleLdr: Module
+# config changed, forcing restart"), and ActivityManager then kills any app holding one of its
+# providers: exit reason DEPENDENCY DIED, "Process crashed." with an empty crash buffer (VT run
+# 44924992344). That is the emulator, not the case, so such a death earns one re-run of what it
+# dropped. Any other death still fails the shard. Prints the exit description and succeeds only when
+# the app's newest exit since $1 (device time, exit-info format) is that one.
+RETRY_LOG="$OUTPUT_DIR/instrumentation/gms-dependency-retries.txt"
+GMS_RETRIES_USED=0
+device_now() {
+  "$ADB_BIN" shell date +'%Y-%m-%d\ %H:%M:%S.000' 2>/dev/null | tr -d '\r'
+}
+gms_dependency_death_since() {
+  "$ADB_BIN" shell dumpsys activity exit-info "$APP_PACKAGE" 2>/dev/null | python3 -c '
+import re, sys
+since, package = sys.argv[1], sys.argv[2]
+for block in re.split(r"ApplicationExitInfo #[0-9]+:", sys.stdin.read())[1:]:
+    if f"process={package} " not in block:
+        continue
+    stamp = re.search(r"timestamp=([0-9-]+ [0-9:.]+)", block)
+    description = re.search(r"description=(.*?) state=", block)
+    if stamp and stamp.group(1) >= since and "reason=12 (DEPENDENCY DIED)" in block and description \
+            and "com.google.android.gms" in description.group(1):
+        print(description.group(1))
+        sys.exit(0)
+    sys.exit(1)
+sys.exit(1)
+' "$1" "$APP_PACKAGE"
+}
+# Methods of the selectors in $1 (comma separated) that TestRunner has not logged as finished.
+unfinished_methods() {
+  local finished
+  finished="$("$ADB_BIN" logcat -d -s TestRunner:I 2>/dev/null | sed -n 's/.*finished: \([A-Za-z0-9_]*\)(.*/\1/p' | sort -u)"
+  local selector
+  IFS=',' read -r -a wanted <<< "$1"
+  for selector in "${wanted[@]}"; do
+    selector="$(printf '%s' "$selector" | xargs)"
+    [[ -n "$selector" ]] || continue
+    grep -qx "${selector##*#}" <<< "$finished" || printf '%s\n' "$selector"
+  done
+}
+# Runs once more, in its own process each, the selectors of $2 that a Play services dependency kill
+# since $1 left unfinished; $3 labels the retry processes.
+retry_after_gms_dependency_death() {
+  local since="$1" selectors="$2" label="$3" reason dropped selector index=0
+  [[ "$GMS_RETRIES_USED" -eq 0 ]] || return 0
+  reason="$(gms_dependency_death_since "$since")" || return 0
+  dropped="$(unfinished_methods "$selectors")"
+  [[ -n "$dropped" ]] || return 0
+  GMS_RETRIES_USED=1
+  local retry_selectors=()
+  mapfile -t retry_selectors <<< "$dropped"
+  # A loop over an array, not over stdin: adb shell would read the rest of a here-string.
+  for selector in "${retry_selectors[@]}"; do
+    printf 'GMS_DEPENDENCY_RETRY: shard=%s method=%s reason=%s\n' "$SHARD_INDEX" "${selector##*#}" "$reason" | tee -a "$RETRY_LOG"
+    run_instrumentation "${label}-retry-${index}" \
+      -e visualResetPublicOutput false \
+      -e class "$selector"
+    index=$((index + 1))
+  done
+}
+
 CURRENT_PHASE="instrumentation"
 INSTRUMENTATION_RC=0
 if [[ "$ONE_CASE_PER_PROCESS" -eq 1 ]]; then
@@ -734,15 +795,19 @@ if [[ "$ONE_CASE_PER_PROCESS" -eq 1 ]]; then
     if [[ "$process_index" -eq 0 ]]; then
       reset_public_output=true
     fi
+    started_at="$(device_now)"
     run_instrumentation "target-${process_index}" \
       -e visualResetPublicOutput "$reset_public_output" \
       -e class "$selector"
+    retry_after_gms_dependency_death "$started_at" "$selector" "target-${process_index}"
     process_index=$((process_index + 1))
   done
 else
+  started_at="$(device_now)"
   run_instrumentation "${EXECUTION_MODE}-${SHARD_INDEX}" \
     -e visualResetPublicOutput true \
     -e class "$METHOD_FILTER"
+  retry_after_gms_dependency_death "$started_at" "$METHOD_FILTER" "${EXECUTION_MODE}-${SHARD_INDEX}"
 fi
 printf '%s\n' "$INSTRUMENTATION_RC" > "$RC_FILE"
 

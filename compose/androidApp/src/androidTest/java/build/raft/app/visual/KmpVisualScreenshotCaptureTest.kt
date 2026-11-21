@@ -3612,7 +3612,7 @@ class KmpVisualScreenshotCaptureTest {
      * does the same (slock react-provider.spec.ts
      * openRuntimeFormPicker: a click, then the query typed into the combobox).
      */
-    /** Logs whether this app holds Play services' FontsProvider (see the connectedTest manifest). */
+    /** Logs whether this app holds Play services' FontsProvider (see RaftCmpActivity.onCmpFirstFrame). */
     private fun logRuntimeFormPickerFontsProvider(caseId: String, step: String) {
         val providers = readShellCommand("dumpsys activity providers com.google.android.gms/.fonts.provider.FontsProvider")
         Log.i(VISUAL_LOG_TAG, "$caseId picker: FontsProvider bound by this app ($step)=${"build.raft.app.connectedtest" in providers}")
@@ -3712,9 +3712,9 @@ class KmpVisualScreenshotCaptureTest {
                 Thread.sleep(250)
             }
             Log.i(VISUAL_LOG_TAG, "$caseId picker: search row shows \"$shown\"")
-            // A text field must not bind Play services' FontsProvider: when Play services restarts
-            // itself, ActivityManager kills every process holding it (run 44924992344). The
-            // connectedTest manifest drops emoji2's initializer for that; this line shows it held.
+            // The capture app must not hold Play services' FontsProvider: when Play services restarts
+            // itself, ActivityManager kills every process holding it (run 44924992344). Visual pages
+            // skip the WebView warmup for that (RaftCmpActivity.onCmpFirstFrame).
             logRuntimeFormPickerFontsProvider(caseId, "after typing")
             require(shown == query) { "$caseId: the ${picker.fieldLabel} search row shows \"$shown\" after typing \"$query\"" }
         }
