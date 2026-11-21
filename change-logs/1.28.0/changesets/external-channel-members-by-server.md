@@ -2,7 +2,7 @@
 type: improved
 area: channels
 platforms: [android, ios, desktop]
-pull_request: 0
+pull_request: 5281
 rollout: full
 ---
 
