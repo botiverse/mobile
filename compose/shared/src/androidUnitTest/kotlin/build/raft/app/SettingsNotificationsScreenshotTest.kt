@@ -95,7 +95,7 @@ class SettingsNotificationsChineseScreenshotTest {
 /** The longer ja titles: each setting's title wraps to a second line instead of truncating. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h2800dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "ja-w390dp-h2800dp-xhdpi")
 class SettingsNotificationsJapaneseScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
