@@ -88,6 +88,14 @@ data class RaftControlMetrics(
     /** `--control-embedded-size`: a chip or a button embedded in a field. */
     val embeddedSize: Dp,
     /**
+     * `--control-radius`: the corners of a control at [height] (a field and a textarea, an input
+     * group, a select trigger, the combobox frames, a Button at `lg` and an icon button at
+     * `icon-lg`), about a quarter of its height: 10 at 44 with a finger, 8 at 34 under a fine
+     * pointer (raft-ui foundation.css). Smaller controls (`md`, `xl`, chips) keep `radius-control`
+     * ([build.raft.designsystem.tokens.RaftRadius.Control], 8).
+     */
+    val controlRadius: Dp,
+    /**
      * The one height medium controls and rows share under a fine pointer (sizing v12, raft-ui
      * 0.65 desktop density): a Button and an icon button at `md`, a tab, a segmented item, a menu
      * option and the menu's search row, a sidebar row. It is [height], so a row lines up with the
@@ -109,8 +117,9 @@ data class RaftControlMetrics(
     /** The glyph in a [barButtonSize] button: 22 with a finger, 16 under a fine pointer. */
     val barIconSize: Dp,
     /**
-     * The corners of a [barButtonSize] button: `radius-control` (8) with a finger; `radius-chip`
-     * (6) for the 28 desktop bar button (sizing v12), as raft-ui rounds its small buttons.
+     * `--bar-button-radius`: the corners of a [barButtonSize] button, about a quarter of its
+     * height: 10 at 44 with a finger; 6 at the 28 desktop bar button under a fine pointer
+     * (raft-ui foundation.css).
      */
     val barButtonRadius: Dp,
     /**
@@ -160,11 +169,12 @@ data class RaftControlMetrics(
                 iconSize = 22.dp,
                 hitInset = 0.dp,
                 embeddedSize = 32.dp,
+                controlRadius = 10.dp,
                 rowHeight = null,
                 headHeight = 56.dp,
                 barButtonSize = 44.dp,
                 barIconSize = 22.dp,
-                barButtonRadius = 8.dp,
+                barButtonRadius = 10.dp,
                 barEdgeInset = 5.dp,
                 topBarHeight = 48.dp,
                 topBarItemSize = 36.dp,
@@ -187,6 +197,7 @@ data class RaftControlMetrics(
                 iconSize = 18.dp,
                 hitInset = 5.dp,
                 embeddedSize = 20.dp,
+                controlRadius = 8.dp,
                 rowHeight = 34.dp,
                 headHeight = 44.dp,
                 barButtonSize = 28.dp,

@@ -133,7 +133,9 @@ fun RaftSelectTrigger(
     val pressed = enabled && isPressed
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    // `rounded-(--control-radius)`: 10, 8 under a fine pointer.
+    val radius = RaftTheme.controls.controlRadius
+    val shape = RoundedCornerShape(radius)
     val field = LocalRaftFieldState.current
     val name = raftFieldSpokenName(label, field.required)
     val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
@@ -150,9 +152,9 @@ fun RaftSelectTrigger(
             .then(if (fit) Modifier.widthIn(min = RaftSelectFitMinWidth, max = RaftSelectFitMaxWidth).width(IntrinsicSize.Max) else Modifier.fillMaxWidth())
             // A minimum, so a large font scale grows the trigger instead of clipping its text.
             .heightIn(min = controlHeight)
-            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftFocusRing(focused, radius, colors)
             .background(look.fill, shape)
-            .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
+            .raftPressOverlay(pressed, look.pressOverlay, radius)
             .border(RaftStroke.Field, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {

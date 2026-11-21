@@ -81,7 +81,7 @@ object RaftSelectionToolbarDefaults {
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.barButtonSize
 
-    /** Their corners (`rounded-(--bar-button-radius)`): 8dp. */
+    /** Their corners (`rounded-(--bar-button-radius)`): 10dp, 6 under a fine pointer. */
     val ButtonRadius: Dp
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.barButtonRadius
