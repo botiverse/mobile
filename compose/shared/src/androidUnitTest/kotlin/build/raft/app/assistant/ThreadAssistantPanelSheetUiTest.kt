@@ -371,18 +371,37 @@ class ThreadAssistantPanelSheetUiTest {
             val head = onNode(hasTestTag(ThreadAssistantPanelHeaderTestTag))
             val seated = panel.getBoundsInRoot()
 
-            // Drag to dismiss while caller refuses dismissal: drawer must stay open and restore.
+            // Drag to dismiss while caller refuses dismissal: drawer must stay open and slide smoothly
+            // back to its snap point over multiple frames rather than snapping in a single frame.
+            mainClock.autoAdvance = false
             head.performTouchInput { swipeDown(startY = centerY, endY = centerY + 560.dp.toPx(), durationMillis = 400) }
-            mainClock.advanceTimeBy(1_000)
+            var settleFrames = 0
+            while (dismissRequests == 0) {
+                assertTrue(++settleFrames < 60, "drag-to-dismiss never requested dismissal")
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            }
+            val dismissedTop = panel.getBoundsInRoot().top.value
+            val recoveryTops = mutableListOf<Float>()
+            repeat(30) {
+                mainClock.advanceTimeByFrame()
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                if (onAllNodes(hasTestTag(ThreadAssistantPanelTestTag)).fetchSemanticsNodes().isNotEmpty()) {
+                    recoveryTops += panel.getBoundsInRoot().top.value
+                }
+            }
             runOnIdle {
                 assertTrue(dismissRequests >= 1, "drag requested dismissal")
                 assertTrue(open, "caller kept the drawer open")
             }
+            assertTrue(
+                recoveryTops.count { it > seated.top.value + 10f && it < dismissedTop - 10f } >= 3,
+                "refused drag slides back over multiple frames instead of snapping (dismissed=$dismissedTop, seated=${seated.top.value}): $recoveryTops",
+            )
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertExists()
-            assertBoundsClose(seated, panel.getBoundsInRoot(), "refused drag clears heldExtent and restores default height")
+            assertBoundsClose(seated, panel.getBoundsInRoot(), "refused drag animates back to default height")
 
             // A subsequent programmatic/scrim close must still play its slide-down instead of snapping out.
-            mainClock.autoAdvance = false
             runOnIdle {
                 allowDismiss = true
                 open = false
