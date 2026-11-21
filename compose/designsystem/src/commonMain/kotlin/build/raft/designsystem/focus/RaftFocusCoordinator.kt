@@ -439,12 +439,20 @@ class RaftFocusCoordinator {
     /**
      * Evaluates a close-restore [ticket] against rules 3, 4, and 5: only restore when focus fell
      * to nowhere, no modal or popover is open, and (for text targets) the host is not touch-only.
+     *
+     * Set [allowNonTextPlatformDetachFallback] only when the closing pane's own focused composer
+     * was still focused at the start of the close composition: on Android in non-touch mode
+     * (hardware keyboard), detaching a focused Compose node causes the Android View root to
+     * immediately dump focus onto the first focusable non-text control in the window without any
+     * user action. Modals, popovers, other text fields, composers, and post-close interactions or
+     * focus moves still block restoration.
      */
     fun evaluateRestoreIfLost(
         ticket: RaftFocusTicket,
         touchPrimary: Boolean = false,
         checkEpochs: Boolean = true,
         consume: Boolean = false,
+        allowNonTextPlatformDetachFallback: Boolean = false,
     ): RaftFocusDecision {
         val latest = isLatest(ticket)
         if (consume && latest) {
@@ -463,7 +471,12 @@ class RaftFocusCoordinator {
         if (openPopovers > 0 && ticket.region != RaftFocusRegion.Modal) {
             return RaftFocusDecision.DropOpenSurface
         }
-        if (anyElementFocused) return RaftFocusDecision.DropFocusNotLost
+        if (otherTextFieldFocused || anyComposerFocused) {
+            return RaftFocusDecision.DropFocusNotLost
+        }
+        if (!allowNonTextPlatformDetachFallback && anyElementFocused) {
+            return RaftFocusDecision.DropFocusNotLost
+        }
         if (touchPrimary && ticket.isText) return RaftFocusDecision.DropTouchPrimary
         return RaftFocusDecision.Allow
     }

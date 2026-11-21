@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -181,6 +182,14 @@ internal class ComposerFocusOnOpen(
      */
     internal var sideThreadHeldFocus: Boolean = false
 
+    /**
+     * True when the side thread's composer still held focus at the moment [yieldsToSideThread]
+     * flipped from true to false (before composition commit detached the closing thread). Used to
+     * distinguish Android's involuntary non-touch fallback focus onto the window's first focusable
+     * from a user who moved focus elsewhere before closing the thread.
+     */
+    internal var sideThreadDetachedWithFocus: Boolean = false
+
     internal var openedConversation: Any? = null
 
     /** The page's current answers; a side thread that stops being shown beside it asks for a restore. */
@@ -190,12 +199,16 @@ internal class ComposerFocusOnOpen(
         yieldsToSideThread: Boolean,
         opensOnMessage: Boolean = false,
         userInitiated: Boolean = false,
+        sideThreadDetachedWithFocus: Boolean = false,
     ) {
         if (this.enabled != enabled) this.enabled = enabled
         if (this.opensOnMessage != opensOnMessage) this.opensOnMessage = opensOnMessage
         if (this.userInitiated != userInitiated) this.userInitiated = userInitiated
         if (this.shown != shown) this.shown = shown
-        if (this.yieldsToSideThread && !yieldsToSideThread) restoreGeneration += 1
+        if (this.yieldsToSideThread && !yieldsToSideThread) {
+            this.sideThreadDetachedWithFocus = sideThreadDetachedWithFocus
+            restoreGeneration += 1
+        }
         if (this.yieldsToSideThread != yieldsToSideThread) this.yieldsToSideThread = yieldsToSideThread
     }
 }
@@ -295,6 +308,7 @@ internal fun rememberComposerFocusOnOpen(
     opensOnMessage: Boolean = false,
     userInitiated: Boolean = false,
 ): ComposerFocusOnOpen {
+    val holders = LocalComposerFocusHolders.current
     val focus =
         remember {
             ComposerFocusOnOpen(
@@ -305,6 +319,14 @@ internal fun rememberComposerFocusOnOpen(
                 userInitiated = userInitiated,
             )
         }
+    // Sample without read observation during composition (before applyChanges detaches the closing
+    // side thread) so we know whether the side thread's composer still owned focus at close time.
+    val sideThreadDetachedWithFocus =
+        if (focus.yieldsToSideThread && !yieldsToSideThread) {
+            Snapshot.withoutReadObservation { holders.holders.any { it !== focus } }
+        } else {
+            false
+        }
     SideEffect {
         focus.update(
             enabled = policy && !yieldsToSideThread,
@@ -312,6 +334,7 @@ internal fun rememberComposerFocusOnOpen(
             yieldsToSideThread = yieldsToSideThread,
             opensOnMessage = opensOnMessage,
             userInitiated = userInitiated,
+            sideThreadDetachedWithFocus = sideThreadDetachedWithFocus,
         )
     }
     return focus
@@ -443,14 +466,19 @@ internal fun ComposerAutofocusOnOpenEffect(
                 withFrameNanos { }
             }
             val threadHadFocus = focus.sideThreadHeldFocus
+            val detachedWithFocus = focus.sideThreadDetachedWithFocus
             focus.sideThreadHeldFocus = false
+            focus.sideThreadDetachedWithFocus = false
             // Rule 4: back only if the focus went with the thread (nothing holds focus now and the
-            // user did not act or move focus during settle).
+            // user did not act or move focus during settle). When the thread's composer detached
+            // while focused on Android in non-touch mode, ignore the involuntary OS fallback onto
+            // the window's first non-text focusable.
             val restoreDecision =
                 coordinator.evaluateRestoreIfLost(
                     ticket = restoreTicket,
                     touchPrimary = !focus.enabled,
                     consume = true,
+                    allowNonTextPlatformDetachFallback = detachedWithFocus,
                 )
             if (
                 threadHadFocus &&

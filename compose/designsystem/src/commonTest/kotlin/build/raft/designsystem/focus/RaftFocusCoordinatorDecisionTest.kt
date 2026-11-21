@@ -367,6 +367,25 @@ class RaftFocusCoordinatorDecisionTest {
                 source = RaftFocusRequestSource.System("side_thread_close_restore"),
             )
         assertEquals(RaftFocusDecision.DropFocusNotLost, keptRegionCoord.evaluateRestoreIfLost(keptRegionTicket))
+        // Non-text platform detach fallback (Android non-touch mode dumping focus onto the first
+        // focusable after a focused closing composer detaches) is ignored only when opted in, and
+        // never overrides a focused text field, another composer, open surface, or newer epoch.
+        assertEquals(
+            RaftFocusDecision.Allow,
+            keptRegionCoord.evaluateRestoreIfLost(keptRegionTicket, allowNonTextPlatformDetachFallback = true),
+        )
+        val keptTextCoord = RaftFocusCoordinator()
+        keptTextCoord.setTextFieldFocused(owner = "members-search", focused = true, region = RaftFocusRegion.SupportingPane)
+        val keptTextTicket =
+            keptTextCoord.request(
+                targetKey = "main",
+                region = RaftFocusRegion.Conversation,
+                source = RaftFocusRequestSource.System("side_thread_close_restore"),
+            )
+        assertEquals(
+            RaftFocusDecision.DropFocusNotLost,
+            keptTextCoord.evaluateRestoreIfLost(keptTextTicket, allowNonTextPlatformDetachFallback = true),
+        )
 
         // An open surface blocks restore -> DropOpenSurface.
         val surfaceCoord = RaftFocusCoordinator()

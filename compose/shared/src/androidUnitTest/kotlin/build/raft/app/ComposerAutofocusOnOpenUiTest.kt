@@ -587,8 +587,10 @@ class ComposerAutofocusOnOpenUiTest {
             var menuOpen by mutableStateOf(true)
             var opened by mutableStateOf(false)
             val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            var coordinator: RaftFocusCoordinator? = null
             setContent {
                 RaftWindowFocusScope {
+                    coordinator = currentRaftFocusCoordinator()
                     Column {
                         LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = menuOpen)
                         Box(Modifier.testTag(TOUCH_TARGET).size(48.dp))
@@ -602,8 +604,15 @@ class ComposerAutofocusOnOpenUiTest {
             }
             mainClock.autoAdvance = false
             runOnIdle { opened = true }
-            mainClock.advanceTimeByFrame()
+            repeat(2) { mainClock.advanceTimeByFrame() }
+            runOnIdle {}
+            assertTrue(outcomes.isEmpty(), "open request should still be settling while menu is open")
+            val epochBeforeClick = checkNotNull(coordinator).interactionEpoch
             onNodeWithTag(TOUCH_TARGET).performTouchInput { click() }
+            assertTrue(
+                checkNotNull(coordinator).interactionEpoch > epochBeforeClick,
+                "real pointer down inside RaftWindowFocusScope should advance interactionEpoch",
+            )
             runOnIdle { menuOpen = false }
             mainClock.autoAdvance = true
             waitForIdle()
@@ -618,30 +627,46 @@ class ComposerAutofocusOnOpenUiTest {
         runRobolectricComposeUiTest {
             var menuOpen by mutableStateOf(true)
             var opened by mutableStateOf(false)
+            val initialControl = FocusRequester()
             val paneControl = FocusRequester()
             val outcomes = mutableListOf<ComposerAutofocusOutcome>()
+            var coordinator: RaftFocusCoordinator? = null
             setContent {
                 RaftWindowFocusScope {
+                    coordinator = currentRaftFocusCoordinator()
                     Column {
                         LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = menuOpen)
+                        // First focusable outside SupportingPane so Robolectric's non-touch default
+                        // focus lands here, leaving CONTROL unfocused until focus explicitly moves.
+                        Box(Modifier.size(1.dp).focusRequester(initialControl).focusable())
                         RaftFocusRegionHost(RaftFocusRegion.SupportingPane) {
                             FocusableControl(CONTROL, paneControl)
                         }
                         if (opened) {
                             RaftFocusRegionHost(RaftFocusRegion.Conversation) {
-                                Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(), outcomes = outcomes)
+                                Composer(COMPOSER, conversation = "ch-1", focus = pageFocus(userInitiated = true), outcomes = outcomes)
                             }
                         }
                     }
                 }
             }
+            runOnIdle { initialControl.requestFocus() }
+            waitForIdle()
+            onNodeWithTag(CONTROL).assertIsNotFocused()
             mainClock.autoAdvance = false
             runOnIdle { opened = true }
-            mainClock.advanceTimeByFrame()
+            repeat(2) { mainClock.advanceTimeByFrame() }
+            runOnIdle {}
+            assertTrue(outcomes.isEmpty(), "open request should still be settling while menu is open")
+            val focusEpochBeforeMove = checkNotNull(coordinator).focusEpoch
             runOnIdle {
                 paneControl.requestFocus()
                 menuOpen = false
             }
+            assertTrue(
+                checkNotNull(coordinator).focusEpoch > focusEpochBeforeMove,
+                "moving focus into SupportingPane should advance focusEpoch",
+            )
             mainClock.autoAdvance = true
             waitForIdle()
             onNodeWithTag(CONTROL).assertIsFocused()
