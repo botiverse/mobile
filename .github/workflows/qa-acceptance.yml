@@ -191,10 +191,11 @@ jobs:
     needs: build
     # Run when build succeeded OR was skipped (pinned-bits inputs replace it).
     if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
-    # id-token: the release settings lane, and the login acceptance input fetch of the claimed case
-    # login-email-password, prove this job's identity to Testbed with a GitHub OIDC token per endpoint
-    # (audience = Testbed origin + exact path). Only testbed_release_settings.mjs requests one (also
-    # through testbed_login_acceptance_input.mjs); the agent runs with the request variables unset.
+    # id-token: the release settings lane, and the login acceptance input fetch and result report of the
+    # claimed case login-email-password, prove this job's identity to Testbed with a GitHub OIDC token per
+    # endpoint (audience = Testbed origin + exact path). Only testbed_release_settings.mjs requests one (also
+    # through testbed_login_acceptance_input.mjs and testbed_login_acceptance_result.mjs); the agent runs
+    # with the request variables unset.
     permissions:
       contents: read
       actions: read
@@ -746,6 +747,21 @@ jobs:
       - name: Remove the login acceptance input
         if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
         run: rm -rf "$RUNNER_TEMP/testbed-login-acceptance"
+
+      # Login acceptance (#216): Testbed's generic /verdict receives only pass or harness, never the
+      # acceptance verdict or its reason code, so this step sends those two to Testbed's
+      # login-acceptance-result endpoint: after the emulator step wrote them into the login record, before
+      # "Report verdict" or the failure handler ends the claim. A record that is missing, not this job's, or
+      # holds a pair login_phase.mjs cannot produce is sent as unknown (record_missing, record_invalidated,
+      # reason_unlisted). A failed report must not stop the verdict report.
+      - name: Report the login acceptance result to Testbed
+        if: ${{ always() && steps.stamp-claim.outputs.claimed_case == 'login-email-password' }}
+        continue-on-error: true
+        env:
+          STAMP_RUN_CASE_ID: ${{ inputs.stamp_run_case_id }}
+          STAMP_URL: ${{ secrets.STAMP_URL }}
+          STAMP_TOKEN: ${{ secrets.STAMP_TOKEN }}
+        run: node scripts/qa/testbed_login_acceptance_result.mjs
 
       - name: Required-marker gate
         if: ${{ always() && inputs.require_markers != '' }}
