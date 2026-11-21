@@ -35,6 +35,7 @@ class RaftRecentServerRefreshCoalescerTest {
                     calls += 1
                     started.complete(Unit)
                     release.await()
+                    true
                 }
             }
         started.await()
@@ -42,6 +43,7 @@ class RaftRecentServerRefreshCoalescerTest {
             async {
                 coalescer.runOrCoalesce(serverId.value, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds) {
                     calls += 1
+                    true
                 }
             }
         runCurrent()
@@ -55,6 +57,7 @@ class RaftRecentServerRefreshCoalescerTest {
         val coalesced =
             coalescer.runOrCoalesce(serverId.value, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds) {
                 calls += 1
+                true
             }
         assertEquals(RaftRecentServerRefreshCoalescer.Outcome.FreshCoalesced, coalesced)
         assertEquals(1, calls)
@@ -63,6 +66,7 @@ class RaftRecentServerRefreshCoalescerTest {
         val forced =
             coalescer.runOrCoalesce(serverId.value, reason = "server_switch") {
                 calls += 1
+                true
             }
         assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, forced)
         assertEquals(2, calls)
@@ -72,6 +76,7 @@ class RaftRecentServerRefreshCoalescerTest {
         val afterExpiry =
             coalescer.runOrCoalesce(serverId.value, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds) {
                 calls += 1
+                true
             }
         assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, afterExpiry)
         assertEquals(3, calls)
@@ -81,6 +86,7 @@ class RaftRecentServerRefreshCoalescerTest {
         val afterInvalidate =
             coalescer.runOrCoalesce(serverId.value, reason = "foreground_reconcile", coalesceFreshWithin = 25.seconds) {
                 calls += 1
+                true
             }
         assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, afterInvalidate)
         assertEquals(4, calls)
@@ -104,8 +110,45 @@ class RaftRecentServerRefreshCoalescerTest {
         val retry =
             coalescer.runOrCoalesce(serverId.value, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds) {
                 calls += 1
+                true
             }
         assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, retry)
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun nonThrowingUnsuccessfulMachineRefreshDoesNotCacheAsFresh() = runTest {
+        var calls = 0
+        val coalescer = RaftRecentServerRefreshCoalescer(scope = backgroundScope, timeSource = testScheduler.timeSource)
+
+        // Simulates SharedComputersStore.reloadMachinesForSyncSucceeded returning false on HTTP error
+        // while keeping its stale cached snapshot visible.
+        val first =
+            coalescer.runOrCoalesce(serverId.value, reason = "foreground_reconcile", coalesceFreshWithin = 25.seconds) {
+                calls += 1
+                false
+            }
+        assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, first)
+        assertEquals(1, calls)
+
+        // Subsequent reconnect refetch within 25 s must NOT be skipped as fresh_coalesced.
+        advanceTimeBy(5_000L)
+        val second =
+            coalescer.runOrCoalesce(serverId.value, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds) {
+                calls += 1
+                true
+            }
+        assertEquals(RaftRecentServerRefreshCoalescer.Outcome.Executed, second)
+        assertEquals(2, calls)
+
+        // Once succeeded, a third caller within 25 s coalesces cleanly.
+        advanceTimeBy(5_000L)
+        val third =
+            coalescer.runOrCoalesce(serverId.value, reason = "agent_status_reconcile", coalesceFreshWithin = 25.seconds) {
+                calls += 1
+                true
+            }
+        assertEquals(RaftRecentServerRefreshCoalescer.Outcome.FreshCoalesced, third)
         assertEquals(2, calls)
     }
 
@@ -166,6 +209,7 @@ class RaftRecentServerRefreshCoalescerTest {
                 refreshMachinesWithCoalesce = { sid, window ->
                     machinesCoalescer.runOrCoalesce(sid, reason = PresenceTransportRosterRefetch.REASON, coalesceFreshWithin = window) {
                         machineCalls += 1
+                        true
                     }
                 },
                 retryScope = backgroundScope,
@@ -189,6 +233,7 @@ class RaftRecentServerRefreshCoalescerTest {
             coalesceFreshWithin = RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW,
         ) {
             machineCalls += 1
+            true
         }
         assertEquals(1, agentCalls)
         assertEquals(1, machineCalls)
@@ -226,5 +271,12 @@ class RaftRecentServerRefreshCoalescerTest {
             core.loadAgents(owner, DataRequestPriority.Background, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds)
         assertFalse(reused.startedByCaller)
         assertEquals(3, agentCalls)
+
+        // Agent profile/avatar edits invalidate recentAgents so a coalesced refresh within 25 s fetches fresh data.
+        core.invalidateRecentAgents(owner, reason = "agent_profile_updated")
+        val afterAgentEdit =
+            core.loadAgents(owner, DataRequestPriority.Background, reason = "presence_transport_connected", coalesceFreshWithin = 25.seconds)
+        assertTrue(afterAgentEdit.startedByCaller)
+        assertEquals(4, agentCalls)
     }
 }

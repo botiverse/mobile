@@ -30,20 +30,22 @@ internal class RaftPostFirstFrameResumeCoordinator {
         fallbackDelayMillis: Long = DEFAULT_FALLBACK_DELAY_MILLIS,
         onReady: () -> Unit,
     ) {
+        val mainHandler = Handler(Looper.getMainLooper())
+        val postMain: (() -> Unit) -> CancelHandle = { task ->
+            val runnable = Runnable(task)
+            mainHandler.post(runnable)
+            CancelHandle { mainHandler.removeCallbacks(runnable) }
+        }
+        val postMainDelayed: (Long, () -> Unit) -> CancelHandle = { delayMs, task ->
+            val runnable = Runnable(task)
+            mainHandler.postDelayed(runnable, delayMs)
+            CancelHandle { mainHandler.removeCallbacks(runnable) }
+        }
         if (decorView == null || !decorView.viewTreeObserver.isAlive) {
-            val mainHandler = Handler(Looper.getMainLooper())
             schedule(
                 attachDrawListener = null,
-                postMain = { task ->
-                    val runnable = Runnable(task)
-                    mainHandler.post(runnable)
-                    CancelHandle { mainHandler.removeCallbacks(runnable) }
-                },
-                postMainDelayed = { delayMs, task ->
-                    val runnable = Runnable(task)
-                    mainHandler.postDelayed(runnable, delayMs)
-                    CancelHandle { mainHandler.removeCallbacks(runnable) }
-                },
+                postMain = postMain,
+                postMainDelayed = postMainDelayed,
                 fallbackDelayMillis = fallbackDelayMillis,
                 onReady = onReady,
             )
@@ -66,18 +68,13 @@ internal class RaftPostFirstFrameResumeCoordinator {
                     if (currentObserver.isAlive) {
                         runCatching { currentObserver.removeOnDrawListener(listener) }
                     }
+                    if (observer !== currentObserver && observer.isAlive) {
+                        runCatching { observer.removeOnDrawListener(listener) }
+                    }
                 }
             },
-            postMain = { task ->
-                val runnable = Runnable(task)
-                decorView.post(runnable)
-                CancelHandle { decorView.removeCallbacks(runnable) }
-            },
-            postMainDelayed = { delayMs, task ->
-                val runnable = Runnable(task)
-                decorView.postDelayed(runnable, delayMs)
-                CancelHandle { decorView.removeCallbacks(runnable) }
-            },
+            postMain = postMain,
+            postMainDelayed = postMainDelayed,
             fallbackDelayMillis = fallbackDelayMillis,
             onReady = onReady,
         )
@@ -109,6 +106,7 @@ internal class RaftPostFirstFrameResumeCoordinator {
 
         fun fireIfCurrent() {
             if (generation != token) return
+            generation += 1L
             cancelPending = null
             cleanup()
             onReady()

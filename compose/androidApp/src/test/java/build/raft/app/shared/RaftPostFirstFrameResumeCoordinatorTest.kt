@@ -171,4 +171,38 @@ class RaftPostFirstFrameResumeCoordinatorTest {
         requireNotNull(harness.postedMain).invoke()
         assertEquals(1, readyCount)
     }
+
+    @Test
+    fun lateFallbackAfterPostDrawDoesNotRunOnReadyTwice() {
+        val coordinator = RaftPostFirstFrameResumeCoordinator()
+        val harness = Harness()
+        var readyCount = 0
+
+        harness.schedule(coordinator) { readyCount += 1 }
+        val staleFallback = requireNotNull(harness.postedFallback)
+        requireNotNull(harness.drawCallback).invoke()
+        requireNotNull(harness.postedMain).invoke()
+        assertEquals(1, readyCount)
+
+        // Even if an already-dispatched fallback message executes after post-draw fired, onReady runs once.
+        staleFallback()
+        assertEquals(1, readyCount)
+    }
+
+    @Test
+    fun lateDrawAndPostAfterFallbackDoesNotRunOnReadyTwice() {
+        val coordinator = RaftPostFirstFrameResumeCoordinator()
+        val harness = Harness()
+        var readyCount = 0
+
+        harness.schedule(coordinator) { readyCount += 1 }
+        val staleDraw = requireNotNull(harness.drawCallback)
+        requireNotNull(harness.postedFallback).invoke()
+        assertEquals(1, readyCount)
+
+        // Even if a late onDraw callback runs after fallback fired, it must not queue or invoke onReady again.
+        staleDraw()
+        assertEquals(null, harness.postedMain)
+        assertEquals(1, readyCount)
+    }
 }

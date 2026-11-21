@@ -969,11 +969,18 @@ internal class RaftSharedStoreProvider private constructor(
                 coalesceFreshWithin = coalesceFreshWithin,
             ) {
                 val stores = syncComputersStores(serverId)
-                stores.forEach { store -> runCatchingPreservingCancellation { store.reloadMachinesForSync(serverId) } }
+                var allSucceeded = true
+                stores.forEach { store ->
+                    val ok =
+                        runCatchingPreservingCancellation { store.reloadMachinesForSyncSucceeded(serverId) }
+                            .getOrDefault(false)
+                    if (!ok) allSucceeded = false
+                }
                 refreshHomeMachineNotifications(serverId, reason)
                 sharedInfoLogger("SlockSync", "sync_changes")(
-                    "sync_machines_refresh serverId=$serverId computersStores=${stores.size} reason=$reason"
+                    "sync_machines_refresh serverId=$serverId computersStores=${stores.size} ok=$allSucceeded reason=$reason"
                 )
+                allSucceeded
             }
         if (outcome != RaftRecentServerRefreshCoalescer.Outcome.Executed) {
             sharedInfoLogger("SlockSync", "sync_changes")(

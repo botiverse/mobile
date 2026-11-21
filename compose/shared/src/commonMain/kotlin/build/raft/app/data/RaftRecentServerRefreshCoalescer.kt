@@ -4,9 +4,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
@@ -25,42 +27,56 @@ internal val RECENT_LIVE_STATUS_REFRESH_COALESCE_WINDOW: Duration = 25.seconds
  * - Joins an already in-flight refresh for the same server instead of superseding/duplicating it.
  * - Optionally skips a fresh refresh when a recent one for the same server succeeded within
  *   [coalesceFreshWithin] and no invalidation occurred since.
- * - Never caches failures, and drops freshness on [invalidate] / [invalidateAll] (server loss,
- *   sign-out, account or environment switch).
+ * - Never caches failures (neither thrown exceptions nor `false` outcomes), and drops freshness on
+ *   [invalidate] / [invalidateAll] (server loss, sign-out, account or environment switch).
  */
 internal class RaftRecentServerRefreshCoalescer(
     private val scope: CoroutineScope,
+    private val maxEntries: Int = 16,
     private val timeSource: TimeSource = TimeSource.Monotonic,
     private val logger: (String) -> Unit = {},
 ) {
+    init {
+        require(maxEntries > 0)
+    }
+
     internal enum class Outcome {
         Executed,
         JoinedInFlight,
         FreshCoalesced,
     }
 
+    private data class Generation(
+        val global: Long,
+        val server: Long,
+    )
+
     private class Flight(
         val token: Any,
-        val generation: Long,
-        val deferred: Deferred<Boolean>,
+        val deferred: Deferred<Result<Boolean>>,
     )
 
     private data class CompletedEntry(
-        val generation: Long,
+        val generation: Generation,
         val completedAt: TimeMark,
     )
 
     private val mutex = Mutex()
     private val activeFlights = mutableMapOf<String, Flight>()
-    private val completed = mutableMapOf<String, CompletedEntry>()
+    private val completed = linkedMapOf<String, CompletedEntry>()
     private val serverGenerations = mutableMapOf<String, Long>()
     private var globalGeneration: Long = 0L
 
+    /**
+     * Runs [block] or coalesces it against an active/recent refresh for [serverId].
+     * [block] returns `true` when the refresh succeeded and may satisfy coalescing callers within
+     * [coalesceFreshWithin], or `false` when it failed/skipped and must not be cached as fresh.
+     */
     suspend fun runOrCoalesce(
         serverId: String,
         reason: String,
         coalesceFreshWithin: Duration = Duration.ZERO,
-        block: suspend () -> Unit,
+        block: suspend () -> Boolean,
     ): Outcome {
         val key = serverId.trim()
         if (key.isEmpty()) return Outcome.FreshCoalesced
@@ -90,35 +106,43 @@ internal class RaftRecentServerRefreshCoalescer(
                     scope.async(start = CoroutineStart.LAZY) {
                         var succeeded = false
                         try {
-                            block()
-                            succeeded = true
-                            true
+                            val ok = block()
+                            succeeded = ok
+                            Result.success(ok)
                         } catch (cancellation: CancellationException) {
                             throw cancellation
+                        } catch (error: Throwable) {
+                            Result.failure(error)
                         } finally {
-                            mutex.withLock {
-                                if (activeFlights[key]?.token === token) {
-                                    activeFlights.remove(key)
-                                }
-                                if (succeeded && generationLocked(key) == gen) {
-                                    completed[key] = CompletedEntry(generation = gen, completedAt = timeSource.markNow())
+                            withContext(NonCancellable) {
+                                mutex.withLock {
+                                    if (activeFlights[key]?.token === token) {
+                                        activeFlights.remove(key)
+                                    }
+                                    if (succeeded && generationLocked(key) == gen) {
+                                        completed.remove(key)
+                                        completed[key] = CompletedEntry(generation = gen, completedAt = timeSource.markNow())
+                                        while (completed.size > maxEntries) {
+                                            completed.remove(completed.keys.first())
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                val flight = Flight(token = token, generation = gen, deferred = deferred)
+                val flight = Flight(token = token, deferred = deferred)
                 activeFlights[key] = flight
                 Decision.Start(flight)
             }
         return when (decision) {
             Decision.Fresh -> Outcome.FreshCoalesced
             is Decision.Join -> {
-                decision.flight.deferred.await()
+                decision.flight.deferred.await().getOrThrow()
                 Outcome.JoinedInFlight
             }
             is Decision.Start -> {
                 decision.flight.deferred.start()
-                decision.flight.deferred.await()
+                decision.flight.deferred.await().getOrThrow()
                 Outcome.Executed
             }
         }
@@ -128,9 +152,13 @@ internal class RaftRecentServerRefreshCoalescer(
         val key = serverId.trim()
         if (key.isEmpty()) return
         mutex.withLock {
-            activeFlights.remove(key)
+            val hadActiveFlight = activeFlights.remove(key) != null
             completed.remove(key)
-            serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
+            if (hadActiveFlight) {
+                serverGenerations[key] = (serverGenerations[key] ?: 0L) + 1L
+            } else {
+                serverGenerations.remove(key)
+            }
         }
     }
 
@@ -143,8 +171,8 @@ internal class RaftRecentServerRefreshCoalescer(
         }
     }
 
-    private fun generationLocked(serverId: String): Long =
-        globalGeneration * 1_000_000L + (serverGenerations[serverId] ?: 0L)
+    private fun generationLocked(serverId: String): Generation =
+        Generation(global = globalGeneration, server = serverGenerations[serverId] ?: 0L)
 
     private sealed interface Decision {
         data object Fresh : Decision

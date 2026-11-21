@@ -2137,6 +2137,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             // The answer's `configApply` is for the caller only; the roster never keeps it.
             seedProfiles(serverId, listOf(result.data.withoutConfigApply()))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_profile_updated")
+            }
         }
         return result
     }
@@ -2214,6 +2217,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             beforePublish(result.data)
             seedProfiles(serverId, listOf(result.data))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_avatar_uploaded")
+            }
         }
         return result
     }

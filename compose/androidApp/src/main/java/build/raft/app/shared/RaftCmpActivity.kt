@@ -1943,7 +1943,9 @@ internal open class RaftCmpActivity :
                 // A tapped conversation notification auto-cancels and lands here; drop its server's
                 // summary if it was the last one.
                 AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(appContext)
+                kotlinx.coroutines.ensureActive()
                 SlockActivityWidgetProvider.refreshAllWidgets(appContext)
+                kotlinx.coroutines.ensureActive()
                 SlockAgentStatusWidgetProvider.refreshAllWidgets(appContext)
                 withContext(Dispatchers.Main.immediate) {
                     AndroidRealtimeKeepAliveController.start(

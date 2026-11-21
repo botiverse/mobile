@@ -269,7 +269,7 @@ internal class ProcessServerMembersCore(
                     scope.async(start = CoroutineStart.LAZY) {
                         produce(directoryOwner, generation, token, priority, force, reason)
                     }
-                val flight = ActiveFlight(token, generation, deferred)
+                val flight = ActiveFlight(token, generation, deferred, startedAt = timeSource.markNow())
                 activeFlights[directoryOwner] = flight
                 logger(
                     "process_members_flight result=start ${directoryOwner.diagnosticsKey} " +
@@ -323,7 +323,7 @@ internal class ProcessServerMembersCore(
                     result = DataResult.Content(snapshot),
                     version = version,
                     terminalRevision = terminalRevision,
-                    createdAt = TimeSource.Monotonic.markNow()
+                    createdAt = timeSource.markNow()
                 )
             trimCache()
             ProcessServerMembersSeedResult(version = version, inserted = true)
@@ -368,6 +368,17 @@ internal class ProcessServerMembersCore(
         }
     }
 
+    suspend fun invalidateRecentAgents(owner: ProcessServerMembersOwner, reason: String) {
+        mutex.withLock {
+            val hadFlight = agentFlights.remove(owner) != null
+            recentAgents.remove(owner)
+            if (hadFlight) {
+                agentGenerations[owner] = (agentGenerations[owner] ?: 0L) + 1L
+            }
+            logger("process_agents_invalidate ${owner.diagnosticsKey} reason=$reason")
+        }
+    }
+
     suspend fun invalidate(owner: ProcessServerMembersOwner, reason: String) {
         mutex.withLock {
             val ownedKeys =
@@ -400,7 +411,7 @@ internal class ProcessServerMembersCore(
         reason: String
     ): ProcessServerMembersLoadResult {
         try {
-            val startedAt = TimeSource.Monotonic.markNow()
+            val startedAt = timeSource.markNow()
             val fetched =
                 try {
                     fetchMembers(priority, ServerId(owner.processOwner.serverId))
@@ -413,7 +424,7 @@ internal class ProcessServerMembersCore(
                     )
                     DataResult.Error(ScreenError(code = "members_exception", retryable = true))
                 }
-            val reduceStartedAt = TimeSource.Monotonic.markNow()
+            val reduceStartedAt = timeSource.markNow()
             val reduced =
                 when (fetched) {
                     is DataResult.Content ->
@@ -444,7 +455,7 @@ internal class ProcessServerMembersCore(
                             result = reduced,
                             version = version,
                             terminalRevision = terminalRevision,
-                            createdAt = TimeSource.Monotonic.markNow()
+                            createdAt = timeSource.markNow()
                         )
                     trimCache()
                 } else if (current && activeCurrent) {

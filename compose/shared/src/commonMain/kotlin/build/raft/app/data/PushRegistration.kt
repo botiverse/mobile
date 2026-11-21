@@ -558,13 +558,20 @@ internal class RaftPushRegistrationCoordinator(
         }
     }
 
-    // The retry loop of the latest device-state change; a newer change replaces it.
+    // The retry loop of the latest device-state change; serialized via mutex so concurrent Main
+    // (onRequestPermissionsResult) and IO (post-first-frame resume) callers cannot orphan a job.
+    private val deviceStateChangeMutex = Mutex()
     private var deviceStateChangeJob: Job? = null
 
     override fun onDeviceStateChanged() {
         if (unbindInProgress) return
-        deviceStateChangeJob?.cancel()
-        deviceStateChangeJob = scope.launch { syncDeviceStateWithRetry() }
+        scope.launch {
+            deviceStateChangeMutex.withLock {
+                if (unbindInProgress) return@withLock
+                deviceStateChangeJob?.cancel()
+                deviceStateChangeJob = scope.launch { syncDeviceStateWithRetry() }
+            }
+        }
     }
 
     /**
