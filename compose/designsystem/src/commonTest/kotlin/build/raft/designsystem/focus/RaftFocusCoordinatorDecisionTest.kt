@@ -470,4 +470,73 @@ class RaftFocusCoordinatorDecisionTest {
         assertFalse(guard.blocksAutofocus)
         assertFalse(guard.otherFieldFocused)
     }
+
+    @Test
+    fun topModalSystemRequestIgnoresHostRegionAndHostTextFieldWhileRespectingInModalTextField() {
+        val coordinator = RaftFocusCoordinator()
+        val bottomModal = Any()
+        val topModal = Any()
+
+        // Host window Conversation region and TopBar search box still report focus when modal opens.
+        coordinator.setRegionFocused(owner = "host-conv", region = RaftFocusRegion.Conversation, focused = true)
+        coordinator.setTextFieldFocused(owner = "host-search", focused = true, region = RaftFocusRegion.TopBar)
+        coordinator.acquireModal(bottomModal)
+
+        // System request targeting the top modal succeeds despite lingering host focus.
+        assertFalse(
+            coordinator.blocksSystemFocus(
+                targetRegion = RaftFocusRegion.Modal,
+                modalToken = bottomModal,
+            ),
+        )
+        val topModalTicket =
+            coordinator.request(
+                targetKey = "modal-field",
+                region = RaftFocusRegion.Modal,
+                source = RaftFocusRequestSource.System("modal_open"),
+                modalToken = bottomModal,
+            )
+        assertEquals(RaftFocusDecision.Allow, coordinator.evaluate(topModalTicket))
+
+        // Single-modal callers without an explicit modalToken also succeed when region == Modal.
+        val implicitSingleModalTicket =
+            coordinator.request(
+                targetKey = "modal-field-implicit",
+                region = RaftFocusRegion.Modal,
+                source = RaftFocusRequestSource.System("modal_open"),
+            )
+        assertEquals(RaftFocusDecision.Allow, coordinator.evaluate(implicitSingleModalTicket))
+
+        // A text field already focused INSIDE the modal still blocks another System request in the modal.
+        coordinator.setTextFieldFocused(owner = "modal-existing", focused = true, region = RaftFocusRegion.Modal)
+        val blockedByInModalField =
+            coordinator.request(
+                targetKey = "modal-second-field",
+                region = RaftFocusRegion.Modal,
+                source = RaftFocusRequestSource.System("modal_open"),
+                modalToken = bottomModal,
+            )
+        assertEquals(RaftFocusDecision.DropOtherTextField, coordinator.evaluate(blockedByInModalField))
+        coordinator.setTextFieldFocused(owner = "modal-existing", focused = false, region = RaftFocusRegion.Modal)
+
+        // Opening a nested modal blocks the buried modal while allowing the new top modal.
+        coordinator.acquireModal(topModal)
+        val buriedTicket =
+            coordinator.request(
+                targetKey = "buried-field",
+                region = RaftFocusRegion.Modal,
+                source = RaftFocusRequestSource.System("buried_modal"),
+                modalToken = bottomModal,
+            )
+        assertEquals(RaftFocusDecision.DropOpenSurface, coordinator.evaluate(buriedTicket))
+
+        val nestedTopTicket =
+            coordinator.request(
+                targetKey = "nested-field",
+                region = RaftFocusRegion.Modal,
+                source = RaftFocusRequestSource.System("nested_modal"),
+                modalToken = topModal,
+            )
+        assertEquals(RaftFocusDecision.Allow, coordinator.evaluate(nestedTopTicket))
+    }
 }

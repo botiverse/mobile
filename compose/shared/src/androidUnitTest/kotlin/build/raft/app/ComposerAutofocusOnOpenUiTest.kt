@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -30,11 +31,16 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftWindowDialog
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
+import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.designsystem.focus.RaftAutofocusGuard
 import build.raft.designsystem.focus.RaftFocusCoordinator
+import build.raft.designsystem.focus.RaftFocusDecision
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.RaftFocusRequestSource
 import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -785,6 +791,63 @@ class ComposerAutofocusOnOpenUiTest {
             assertEquals(listOf(ComposerAutofocusOutcome.Focused), outcomes)
         }
 
+    @Test
+    @Config(qualifiers = "+keysexposed")
+    fun systemFocusRequestInsideOpenModalDialogIsNotBlockedByHostConversationRegion() =
+        runRobolectricComposeUiTest {
+            val hostControl = FocusRequester()
+            val modalField = FocusRequester()
+            var dialogOpen by mutableStateOf(false)
+            var activeCoordinator: RaftFocusCoordinator? = null
+            var modalDecision: RaftFocusDecision? = null
+            setContent {
+                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                    RaftWindowFocusScope {
+                        activeCoordinator = currentRaftFocusCoordinator()
+                        RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                            FocusableControl(CONTROL, hostControl)
+                        }
+                        if (dialogOpen) {
+                            RaftWindowDialog(onDismissRequest = { dialogOpen = false }) {
+                                val coordinator = currentRaftFocusCoordinator()
+                                val region = LocalRaftFocusRegion.current
+                                val modalToken = LocalRaftFocusModalToken.current
+                                var draft by remember { mutableStateOf("") }
+                                LaunchedEffect(Unit) {
+                                    val ticket =
+                                        coordinator.request(
+                                            targetKey = MODAL_FIELD,
+                                            region = region,
+                                            source = RaftFocusRequestSource.System("modal_open"),
+                                            isText = true,
+                                            modalToken = modalToken,
+                                        )
+                                    val decision = coordinator.evaluate(ticket, consume = true)
+                                    modalDecision = decision
+                                    if (decision.isAllowed) {
+                                        modalField.requestFocus()
+                                    }
+                                }
+                                BasicTextField(
+                                    value = draft,
+                                    onValueChange = { draft = it },
+                                    modifier = Modifier.size(120.dp, 40.dp).focusRequester(modalField).testTag(MODAL_FIELD),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            runOnIdle { hostControl.requestFocus() }
+            waitForIdle()
+            assertTrue(RaftFocusRegion.Conversation in checkNotNull(activeCoordinator).activeFocusedRegions)
+
+            runOnIdle { dialogOpen = true }
+            waitForIdle()
+            assertEquals(RaftFocusDecision.Allow, modalDecision)
+            onNodeWithTag(MODAL_FIELD).assertIsFocused()
+        }
+
     private companion object {
         const val COMPOSER = "composer"
         const val CHANNEL = "channel_composer"
@@ -793,5 +856,6 @@ class ComposerAutofocusOnOpenUiTest {
         const val CONTROL = "control"
         const val LIST_ROW = "list_row"
         const val TOUCH_TARGET = "touch_target"
+        const val MODAL_FIELD = "modal_field"
     }
 }

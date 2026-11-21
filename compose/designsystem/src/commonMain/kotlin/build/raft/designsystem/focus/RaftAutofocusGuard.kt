@@ -97,6 +97,8 @@ fun Modifier.raftReportsFocusToAutofocusGuard(): Modifier {
         }
     }
     DisposableEffect(owner, guard) {
+        // `setFieldFocused(owner, false, ...)` removes by `owner` only, so capturing the initial
+        // `region` here has no effect if the field changes regions before disposal.
         onDispose { guard.setFieldFocused(owner, false, region) }
     }
     return if (reports) {

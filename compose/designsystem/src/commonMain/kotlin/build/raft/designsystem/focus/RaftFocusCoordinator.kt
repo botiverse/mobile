@@ -191,7 +191,7 @@ class RaftFocusCoordinator {
                 focusedRegions.isNotEmpty() ||
                 windowFocusOwners.isNotEmpty()
 
-    fun acquireModal(token: Any) {
+    internal fun acquireModal(token: Any) {
         if (token in modalStack) return
         if (modalStack.isEmpty()) {
             preModalRegionOwners = focusedRegions.keys.toSet()
@@ -200,7 +200,7 @@ class RaftFocusCoordinator {
         modalStack = modalStack + token
     }
 
-    fun releaseModal(token: Any) {
+    internal fun releaseModal(token: Any) {
         if (token !in modalStack) return
         val next = modalStack - token
         modalStack = next
@@ -213,22 +213,22 @@ class RaftFocusCoordinator {
 
     /** Marks a modal dialog (`RaftWindowDialog`) as open on [modalStack] while in composition. */
     @Composable
-    fun HoldModal(token: Any, enabled: Boolean = true) {
+    internal fun HoldModal(token: Any, enabled: Boolean = true) {
         DisposableEffect(enabled, token, this) {
             if (enabled) acquireModal(token)
             onDispose { if (enabled) releaseModal(token) }
         }
     }
 
-    fun acquireOpenSurface() {
+    internal fun acquireOpenSurface() {
         openPopovers += 1
     }
 
-    fun releaseOpenSurface() {
+    internal fun releaseOpenSurface() {
         if (openPopovers > 0) openPopovers -= 1
     }
 
-    fun setTextFieldFocused(owner: Any, focused: Boolean, region: RaftFocusRegion? = null) {
+    internal fun setTextFieldFocused(owner: Any, focused: Boolean, region: RaftFocusRegion? = null) {
         val wasFocused = owner in focusedTextFields
         if (focused) {
             if (!wasFocused || focusedTextFields[owner] != region) {
@@ -240,7 +240,7 @@ class RaftFocusCoordinator {
         }
     }
 
-    fun setRegionFocused(owner: Any, region: RaftFocusRegion, focused: Boolean) {
+    internal fun setRegionFocused(owner: Any, region: RaftFocusRegion, focused: Boolean) {
         val wasFocused = owner in focusedRegions
         if (focused) {
             if (!wasFocused || focusedRegions[owner] != region) {
@@ -277,7 +277,7 @@ class RaftFocusCoordinator {
      * window refocus when a dialog dismisses fires `hasFocus = true` at the root without a new
      * focus target being chosen by the user.
      */
-    fun setWindowHasFocus(owner: Any, hasFocus: Boolean) {
+    internal fun setWindowHasFocus(owner: Any, hasFocus: Boolean) {
         val wasFocused = owner in windowFocusOwners
         if (hasFocus) {
             if (!wasFocused) {
@@ -338,14 +338,31 @@ class RaftFocusCoordinator {
             interactionEpoch != ticket.capturedInteractionEpoch ||
             focusEpoch != ticket.capturedFocusEpoch
 
+    private fun isTopModalTarget(region: RaftFocusRegion?, modalToken: Any?): Boolean =
+        region == RaftFocusRegion.Modal && modalOpen && !blockedByModalStack(region, modalToken)
+
+    private fun hasBlockingOtherTextField(targetRegion: RaftFocusRegion?, modalToken: Any?): Boolean {
+        if (!otherTextFieldFocused) return false
+        if (!isTopModalTarget(targetRegion, modalToken)) return true
+        // When targeting the topmost open modal, host-window text fields beneath the dialog that
+        // have not blurred yet must not block the dialog's own auto-focus target; text fields
+        // already focused inside the modal (or untagged) still block.
+        return focusedTextFields.values.any { it == null || it == RaftFocusRegion.Modal }
+    }
+
     /**
      * True while another region (or an untagged non-text control in the window) holds focus that a
      * passive system request for [targetRegion] must not steal (rule 2, audit S6).
      *
      * A focused conversation composer in [RaftFocusRegion.Conversation] does not block its opening
-     * [RaftFocusRegion.SideThread] from taking focus.
+     * [RaftFocusRegion.SideThread] from taking focus. When targeting the topmost open modal
+     * ([RaftFocusRegion.Modal]), host-window focus beneath the dialog does not block it.
      */
-    fun hasBlockingFocusInOtherRegion(targetRegion: RaftFocusRegion?): Boolean {
+    fun hasBlockingFocusInOtherRegion(
+        targetRegion: RaftFocusRegion?,
+        modalToken: Any? = null,
+    ): Boolean {
+        if (isTopModalTarget(targetRegion, modalToken)) return false
         if (focusedRegions.isNotEmpty()) {
             val composerRegions = focusedComposers.values.filterNotNull().toSet()
             val blockedByOtherRegion =
@@ -398,8 +415,8 @@ class RaftFocusCoordinator {
     ): Boolean =
         blockedByModalStack(targetRegion, modalToken) ||
             (openPopovers > 0 && targetRegion != RaftFocusRegion.Modal) ||
-            otherTextFieldFocused ||
-            (!allowCrossRegionFromNonText && hasBlockingFocusInOtherRegion(targetRegion))
+            hasBlockingOtherTextField(targetRegion, modalToken) ||
+            (!allowCrossRegionFromNonText && hasBlockingFocusInOtherRegion(targetRegion, modalToken))
 
     /**
      * Evaluates [ticket] at execution time against rules 1, 2, 3, and 5.
@@ -431,8 +448,13 @@ class RaftFocusCoordinator {
             if (openPopovers > 0 && ticket.region != RaftFocusRegion.Modal) {
                 return RaftFocusDecision.DropOpenSurface
             }
-            if (otherTextFieldFocused) return RaftFocusDecision.DropOtherTextField
-            if (!ticket.source.allowCrossRegionFromNonText && hasBlockingFocusInOtherRegion(ticket.region)) {
+            if (hasBlockingOtherTextField(ticket.region, ticket.modalToken)) {
+                return RaftFocusDecision.DropOtherTextField
+            }
+            if (
+                !ticket.source.allowCrossRegionFromNonText &&
+                hasBlockingFocusInOtherRegion(ticket.region, ticket.modalToken)
+            ) {
                 return RaftFocusDecision.DropOtherRegionFocus
             }
             if (touchPrimary && ticket.isText) return RaftFocusDecision.DropTouchPrimary
