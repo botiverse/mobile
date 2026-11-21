@@ -4411,6 +4411,8 @@
     <string name="settings_notifications_content_section">Conteúdo</string>
     <string name="settings_notifications_mobile_delay_detail">Atrasa os avisos no celular enquanto você está ativo em um computador</string>
     <string name="settings_notifications_servers_section">Servidores</string>
+    <string name="settings_notifications_group_all_servers">Todos os servidores</string>
+    <string name="settings_notifications_group_this_server">Este servidor</string>
     <string name="settings_notifications_servers_current">%1$s (atual)</string>
     <string name="settings_notifications_servers_customized_one">%1$d canal personalizado</string>
     <string name="settings_notifications_servers_customized_other">%1$d canais personalizados</string>

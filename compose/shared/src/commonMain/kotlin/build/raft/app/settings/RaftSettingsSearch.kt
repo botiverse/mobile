@@ -65,9 +65,12 @@ private fun on(rowKey: String): (RaftSettingsSearchContext) -> String? = { conte
 private val Account = on(SettingsDestinationAccount)
 private val LanguageRegion = on(SettingsNativeDetailPage.LanguageRegion.key)
 private val Appearance = on(SettingsNativeDetailPage.Appearance.key)
-private val Notifications = on(SettingsNativeDetailPage.Notifications.key)
+private val PersonalNotifications = on(SettingsNativeDetailPage.Notifications.key)
 private val Theme = on(SettingsNativeDetailPage.Theme.key)
 private val ServerNotifications = on(SettingsNativeDetailPage.ServerNotifications.key)
+
+/** The one Notifications row: On {server} > Notifications with a current server, else Personal's. */
+private val Notifications: (RaftSettingsSearchContext) -> String? = { context -> ServerNotifications(context) ?: PersonalNotifications(context) }
 private val Server = on(SettingsNativeDetailPage.Server.key)
 private val Billing = on(SettingsDestinationBilling)
 private val Administration = on(SettingsDestinationAdministration)

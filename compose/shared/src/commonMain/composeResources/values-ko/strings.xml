@@ -4411,6 +4411,8 @@
     <string name="settings_notifications_content_section">내용</string>
     <string name="settings_notifications_mobile_delay_detail">컴퓨터를 사용하는 동안 휴대폰 알림을 늦춰요</string>
     <string name="settings_notifications_servers_section">서버</string>
+    <string name="settings_notifications_group_all_servers">모든 서버</string>
+    <string name="settings_notifications_group_this_server">이 서버</string>
     <string name="settings_notifications_servers_current">%1$s(현재)</string>
     <string name="settings_notifications_servers_customized_one">채널 %1$d개 맞춤 설정됨</string>
     <string name="settings_notifications_servers_customized_other">채널 %1$d개 맞춤 설정됨</string>

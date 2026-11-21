@@ -4605,6 +4605,8 @@
     <string name="settings_notifications_content_section">Content</string>
     <string name="settings_notifications_mobile_delay_detail">Delay phone alerts while you're active on a computer</string>
     <string name="settings_notifications_servers_section">Servers</string>
+    <string name="settings_notifications_group_all_servers">All servers</string>
+    <string name="settings_notifications_group_this_server">This server</string>
     <string name="settings_notifications_servers_current">%1$s (current)</string>
     <string name="settings_notifications_servers_customized_one">%1$d channel customized</string>
     <string name="settings_notifications_servers_customized_other">%1$d channels customized</string>

@@ -91,7 +91,23 @@ internal val SettingsWideDetailKeys: Set<String> = SettingsWideNativeDetailKeys 
  * is a row that opens in the pane, else the first such row (Account, the web's default).
  */
 internal fun settingsWideDetailKey(picked: String?, rowKeys: List<String>): String? =
-    picked?.takeIf { it in rowKeys && it in SettingsWideDetailKeys } ?: rowKeys.firstOrNull { it in SettingsWideDetailKeys }
+    picked?.let { settingsNotificationsRowKey(it, rowKeys) }?.takeIf { it in rowKeys && it in SettingsWideDetailKeys }
+        ?: rowKeys.firstOrNull { it in SettingsWideDetailKeys }
+
+/**
+ * Notifications is one row, Personal's or On {server}'s ([settingsHomeRowKeys]), and both pages are
+ * the same: a link to either one selects whichever row the list has.
+ */
+internal fun settingsNotificationsRowKey(key: String, rowKeys: List<String>): String {
+    val personal = SettingsNativeDetailPage.Notifications.key
+    val server = SettingsNativeDetailPage.ServerNotifications.key
+    return when {
+        key in rowKeys -> key
+        key == personal && server in rowKeys -> server
+        key == server && personal in rowKeys -> personal
+        else -> key
+    }
+}
 
 /** What picking [key] in the wide Settings list does. */
 internal sealed interface SettingsWidePick {

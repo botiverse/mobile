@@ -105,6 +105,15 @@ class SettingsWideSplitTest {
     }
 
     @Test
+    fun eitherNotificationsPageSelectsTheOneNotificationsRow() {
+        val noServer = settingsHomeRowKeys(hasThemeServer = false)
+        assertEquals(SettingsNativeDetailPage.ServerNotifications.key, settingsWideDetailKey(SettingsNativeDetailPage.Notifications.key, rows))
+        assertEquals(SettingsNativeDetailPage.ServerNotifications.key, settingsWideDetailKey(SettingsNativeDetailPage.ServerNotifications.key, rows))
+        assertEquals(SettingsNativeDetailPage.Notifications.key, settingsWideDetailKey(SettingsNativeDetailPage.ServerNotifications.key, noServer))
+        assertEquals(SettingsNativeDetailPage.Notifications.key, settingsWideDetailKey(SettingsNativeDetailPage.Notifications.key, noServer))
+    }
+
+    @Test
     fun aSectionThatIsNoLongerARowFallsBackToTheDefault() {
         val noTheme = settingsHomeRowKeys(hasThemeServer = false)
         assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsNativeDetailPage.Theme.key, noTheme))
@@ -115,6 +124,8 @@ class SettingsWideSplitTest {
     fun backReturnsToTheDefaultSectionOnlyFromAnother() {
         assertFalse(settingsWideBackReturnsToDefault(null, rows))
         assertFalse(settingsWideBackReturnsToDefault(SettingsDestinationAccount, rows))
+        assertTrue(settingsWideBackReturnsToDefault(SettingsNativeDetailPage.ServerNotifications.key, rows))
+        // A link to the personal Notifications page selects the one Notifications row.
         assertTrue(settingsWideBackReturnsToDefault(SettingsNativeDetailPage.Notifications.key, rows))
         assertTrue(settingsWideBackReturnsToDefault(SettingsDestinationStorage, rows))
     }

@@ -4604,6 +4604,8 @@
     <string name="settings_notifications_content_section">内容</string>
     <string name="settings_notifications_mobile_delay_detail">パソコンで操作している間は、スマートフォンへの通知を遅らせます</string>
     <string name="settings_notifications_servers_section">サーバー</string>
+    <string name="settings_notifications_group_all_servers">すべてのサーバー</string>
+    <string name="settings_notifications_group_this_server">このサーバー</string>
     <string name="settings_notifications_servers_current">%1$s（現在）</string>
     <string name="settings_notifications_servers_customized_one">%1$d 個のチャンネルをカスタマイズ済み</string>
     <string name="settings_notifications_servers_customized_other">%1$d 個のチャンネルをカスタマイズ済み</string>

@@ -4387,6 +4387,8 @@
     <string name="settings_notifications_content_section">Содержимое</string>
     <string name="settings_notifications_mobile_delay_detail">Задерживать уведомления на телефоне, пока вы активны за компьютером</string>
     <string name="settings_notifications_servers_section">Серверы</string>
+    <string name="settings_notifications_group_all_servers">Все серверы</string>
+    <string name="settings_notifications_group_this_server">Этот сервер</string>
     <string name="settings_notifications_servers_current">%1$s (текущий)</string>
     <string name="settings_notifications_servers_customized_one">%1$d канал с особыми настройками</string>
     <string name="settings_notifications_servers_customized_other">Каналов с особыми настройками: %1$d</string>

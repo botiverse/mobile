@@ -4604,6 +4604,8 @@
     <string name="settings_notifications_content_section">内容</string>
     <string name="settings_notifications_mobile_delay_detail">电脑端活跃时，延迟手机上的通知提醒</string>
     <string name="settings_notifications_servers_section">服务器</string>
+    <string name="settings_notifications_group_all_servers">所有服务器</string>
+    <string name="settings_notifications_group_this_server">此服务器</string>
     <string name="settings_notifications_servers_current">%1$s（当前）</string>
     <string name="settings_notifications_servers_customized_one">%1$d 个频道有自定义设置</string>
     <string name="settings_notifications_servers_customized_other">%1$d 个频道有自定义设置</string>
