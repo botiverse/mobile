@@ -30,7 +30,7 @@ class RuntimePickerGuidanceTest {
                 "pi" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.NoSubagents),
                 "qwen" to RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringCompactionUnreported),
                 "qoder" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.CompactionUnreported),
-                "dsh" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.NoSubagentsCompactionUnreported),
+                "dsh" to RuntimePickerGuidance(),
                 // Raft doesn't know it: nothing, and not Limited.
                 "mystery" to RuntimePickerGuidance()
             )
