@@ -11,6 +11,7 @@ import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
@@ -74,7 +75,9 @@ internal data class RaftAgentStatusIndicatorState(
     /** The agent's Computer display name from the roster, for sign-in detail copy. */
     val machineName: String? = null,
     /** The agent's display name (or handle), for sign-in detail copy. */
-    val agentDisplayName: String? = null
+    val agentDisplayName: String? = null,
+    /** Server-composed readiness from `GET /api/agents` (already trimmed per viewer). */
+    val readiness: AgentReadiness? = null,
 )
 
 /** React parity: external agents caption as "External" (agentStore.ts resolveAgentDisplayState). */
@@ -217,7 +220,8 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(): RaftAge
         lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
         paused = paused,
         machineId = machineId,
-        machineName = machineName
+        machineName = machineName,
+        readiness = readiness,
     )
 
 /**
