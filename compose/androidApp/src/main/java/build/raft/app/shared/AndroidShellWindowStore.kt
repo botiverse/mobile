@@ -248,7 +248,7 @@ internal object AndroidShellWindowStore {
                 if (entry.environmentId != env || entry.accountId != acct) continue
                 val taskUriOwner = parseAndroidShellRouteOwnerFromUri(task.baseIntentData)
                 if (!entry.documentShell && taskUriOwner != null) continue
-                if (entry.documentShell && taskUriOwner != null && taskUriOwner.shellCanonicalUri() != entry.shellInstanceId) continue
+                if (entry.documentShell && taskUriOwner?.shellCanonicalUri() != entry.shellInstanceId) continue
                 val owner = AndroidShellRouteOwner(env, acct, entry.serverId).normalizedOrNull() ?: continue
                 kept += entry
                 result[entry.shellInstanceId] =

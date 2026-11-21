@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.RaftRealtimeSessionDemand
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.normalizedOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -336,5 +339,179 @@ class AppShellServerSwitchWindowTest {
         val scope = raw.raftShellStoreScopeOrNull()
         assertNotNull(scope)
         assertEquals("server-b", scope.initialServerId)
+    }
+
+    private fun testSession(selectedServerId: String?): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            selectedServerId = selectedServerId,
+            selectedServerSlug = selectedServerId,
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-a", name = "A", slug = "server-a"),
+                    StoredAuthServer(id = "server-b", name = "B", slug = "server-b"),
+                    StoredAuthServer(id = "server-c", name = "C", slug = "server-c"),
+                ),
+        )
+
+    @Test
+    fun openAppShellForSelectedServerClosesPageWhenPickingSameServerInShell() {
+        var closed = 0
+        var disconnected = 0
+        var opened = 0
+        dispatchOpenAppShellForSelectedServer(
+            readySession = testSession("server-a"),
+            sourceStoreScope = sourceScope,
+            sourceDocumentShell = false,
+            environmentId = "https://api.test/",
+            multiShellHostEnabled = true,
+            fromShell = true,
+            onSameServerInShell = { closed += 1 },
+            disconnectRealtime = { disconnected += 1 },
+            openReplacingCurrentPage = { opened += 1 },
+        )
+
+        assertEquals(1, closed)
+        assertEquals(0, disconnected)
+        assertEquals(0, opened)
+    }
+
+    @Test
+    fun openAppShellForSelectedServerReusesExistingWindowWithoutDisconnectingRealtime() {
+        val serverBScope = RaftShellStoreScope.create("slock://shell/env/user-1/server-b", "server-b")
+        var disconnected = 0
+        val noted = mutableListOf<String>()
+        var openedPageData: build.raft.app.compat.json.JSONObject? = null
+        dispatchOpenAppShellForSelectedServer(
+            readySession = testSession("server-a"),
+            sourceStoreScope = serverBScope,
+            sourceDocumentShell = true,
+            environmentId = "https://api.test/",
+            multiShellHostEnabled = true,
+            fromShell = true,
+            noteServerSelected = { noted += it },
+            shellShowingServer = { serverId, except ->
+                assertEquals("server-a", serverId)
+                assertEquals(serverBScope.shellInstanceId, except)
+                "android-default-app-shell"
+            },
+            nowEpochMillis = { 4242L },
+            disconnectRealtime = { disconnected += 1 },
+            openReplacingCurrentPage = { openedPageData = it },
+        )
+
+        assertEquals(0, disconnected)
+        assertEquals(listOf("server-a"), noted)
+        val data = assertNotNull(openedPageData)
+        assertEquals("android-default-app-shell", data.optString(RAFT_SERVER_SWITCH_WINDOW_ID))
+        assertTrue(data.optBoolean(RAFT_SERVER_SWITCH_KEEP_WINDOW, false))
+        assertEquals(4242L, data.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L))
+        assertEquals("server-a", data.optString(RAFT_ROUTE_SERVER_ID))
+    }
+
+    @Test
+    fun openAppShellForSelectedServerOpensNewDocumentShellOrDisconnectsWhenMultiWindowOff() {
+        // Multi-window ON, no existing window -> document shell, no disconnect.
+        var multiDisconnected = 0
+        var multiOpened: build.raft.app.compat.json.JSONObject? = null
+        dispatchOpenAppShellForSelectedServer(
+            readySession = testSession("server-c"),
+            sourceStoreScope = sourceScope,
+            sourceDocumentShell = false,
+            environmentId = "https://api.test/",
+            multiShellHostEnabled = true,
+            fromShell = true,
+            shellShowingServer = { _, _ -> null },
+            nowEpochMillis = { 7777L },
+            disconnectRealtime = { multiDisconnected += 1 },
+            openReplacingCurrentPage = { multiOpened = it },
+        )
+        assertEquals(0, multiDisconnected)
+        val docData = assertNotNull(multiOpened)
+        assertTrue(docData.optBoolean(RAFT_DOCUMENT_SHELL, false))
+        assertEquals("server-c", docData.optString(RAFT_ROUTE_SERVER_ID))
+        assertEquals(7777L, docData.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L))
+
+        // Multi-window OFF -> disconnects realtime and switches in place.
+        val singleReasons = mutableListOf<String>()
+        var singleOpened: build.raft.app.compat.json.JSONObject? = null
+        dispatchOpenAppShellForSelectedServer(
+            readySession = testSession("server-c"),
+            sourceStoreScope = sourceScope,
+            sourceDocumentShell = false,
+            environmentId = "https://api.test/",
+            multiShellHostEnabled = false,
+            fromShell = true,
+            disconnectRealtime = { singleReasons += it },
+            openReplacingCurrentPage = { singleOpened = it },
+        )
+        assertEquals(listOf("server_changed"), singleReasons)
+        val singleData = assertNotNull(singleOpened)
+        assertFalse(singleData.optBoolean(RAFT_DOCUMENT_SHELL, false))
+        assertEquals("server-c", singleData.optString(RAFT_SHELL_SERVER_ID))
+    }
+
+    @Test
+    fun serverJoinPostAcceptPlanCoversSameServerIsolatedOpenFallbackAndPostLogin() {
+        val loaded = testSession("server-a")
+
+        // Multi-window ON + joined the workspace this window already shows -> close page.
+        assertEquals(
+            ServerJoinPostAcceptPlan.CloseSameWindow,
+            resolveServerJoinPostAcceptPlan(
+                joinedServerId = " server-a ",
+                currentSourceServerId = "server-a",
+                multiShellHostEnabled = true,
+                loadedSession = loaded,
+            ),
+        )
+
+        // Multi-window ON + joined another workspace + session available -> isolated session without mutating stored selection.
+        val openIsolated =
+            resolveServerJoinPostAcceptPlan(
+                joinedServerId = "server-b",
+                currentSourceServerId = "server-a",
+                multiShellHostEnabled = true,
+                loadedSession = loaded,
+            )
+        assertTrue(openIsolated is ServerJoinPostAcceptPlan.OpenWithSession)
+        assertTrue(openIsolated.fromShell)
+        assertEquals("server-b", openIsolated.readySession.selectedServerId)
+        assertEquals("server-b", openIsolated.readySession.selectedServerSlug)
+
+        // Multi-window ON + joined server not yet in loaded session -> falls back to selectServer().
+        assertEquals(
+            ServerJoinPostAcceptPlan.SelectServerThenOpen(fromShell = true),
+            resolveServerJoinPostAcceptPlan(
+                joinedServerId = "server-new",
+                currentSourceServerId = "server-a",
+                multiShellHostEnabled = true,
+                loadedSession = loaded,
+            ),
+        )
+
+        // Multi-window OFF from shell -> selects server in place.
+        assertEquals(
+            ServerJoinPostAcceptPlan.SelectServerThenOpen(fromShell = true),
+            resolveServerJoinPostAcceptPlan(
+                joinedServerId = "server-b",
+                currentSourceServerId = "server-a",
+                multiShellHostEnabled = false,
+                loadedSession = loaded,
+            ),
+        )
+
+        // Pre-shell / no source server -> selects server with fromShell = false.
+        assertEquals(
+            ServerJoinPostAcceptPlan.SelectServerThenOpen(fromShell = false),
+            resolveServerJoinPostAcceptPlan(
+                joinedServerId = "server-b",
+                currentSourceServerId = null,
+                multiShellHostEnabled = true,
+                loadedSession = loaded,
+            ),
+        )
     }
 }

@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Context
+import android.content.Intent
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
@@ -24,7 +25,7 @@ internal const val ANDROID_DOCUMENT_SHELL_KEY = "slockDocumentShell"
 // shared/shell/RaftShellStoreLaunch.kt (made public so androidApp reads them).
 private const val ANDROID_ROUTE_ENVIRONMENT_ID_KEY = RAFT_ROUTE_ENVIRONMENT_ID
 private const val ANDROID_ROUTE_ACCOUNT_ID_KEY = RAFT_ROUTE_ACCOUNT_ID
-private const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
+internal const val ANDROID_ROUTE_SERVER_ID_KEY = RAFT_ROUTE_SERVER_ID
 
 /**
  * Canonical document-shell identity: the authenticated route owner the shell
@@ -384,5 +385,68 @@ private fun JSONObject.explicitAndroidDocumentShell(): Boolean? =
     } else {
         null
     }
+
+internal fun isAndroidIntentLaunchedFromHistory(flags: Int): Boolean =
+    (flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+
+/**
+ * True when [pageData] already names an explicit target server (shell route, document route owner,
+ * notification tap, or desktop shortcut) so launcher server-restoration must not overwrite it.
+ *
+ * Non-document launcher payloads (`postLoginAppShellPageData`, `settingsAccountAppShellPageData`)
+ * carry `slockRouteServerId` as route-owner metadata, which the launcher shell never reads as its
+ * shell server (`RaftShellStoreLaunch.kt` reads `slockRouteServerId` only when `slockDocumentShell`
+ * is true), so a bare route owner must not suppress persisted launcher server restoration.
+ */
+internal fun hasExplicitAndroidShellServer(pageData: JSONObject): Boolean =
+    pageData.optNonNullString(RAFT_SHELL_SERVER_ID).isNotEmpty() ||
+        pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).isNotEmpty() ||
+        (pageData.optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false) &&
+            pageData.optNonNullString(ANDROID_ROUTE_SERVER_ID_KEY).isNotEmpty()) ||
+        pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).isNotEmpty() ||
+        pageData.optNonNullString(RaftDesktopShortcutContract.KeyServerId).isNotEmpty()
+
+/**
+ * Merges a one-shot dead-launcher switch handoff or persisted launcher server into [intent]'s
+ * app-shell page data before cold-start splash gating and strips `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`
+ * once the merged payload is written. Returns true when a stashed switch specifies an explicit tab
+ * destination (so restored Nav3 sub-pages should be cleared).
+ */
+internal fun prepareAndroidAppShellCreateIntent(
+    intent: Intent?,
+    taskId: Int,
+    multiShellHostEnabled: Boolean,
+    currentOwner: () -> AndroidShellRouteOwner?,
+): Boolean {
+    if (intent == null) return false
+    val pendingLauncherLaunch = AndroidPendingLauncherTaskLaunchStore.consume(taskId)
+    if (pendingLauncherLaunch != null) {
+        val merged = JSONObject(RaftCmpActivity.resolvedPageData(intent).text)
+        pendingLauncherLaunch.serverId?.let {
+            merged.put(ANDROID_SHELL_SERVER_ID_KEY, it)
+            merged.put(RAFT_SHELL_SERVER_ID, it)
+        }
+        pendingLauncherLaunch.initialTab?.let { merged.put(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB, it) }
+        if (pendingLauncherLaunch.tapEpochMillis > 0L) {
+            merged.put(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, pendingLauncherLaunch.tapEpochMillis)
+        }
+        intent.putExtra(RaftCmpActivity.KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+        intent.flags = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv()
+        return pendingLauncherLaunch.hasExplicitDestination
+    }
+    val merged = JSONObject(RaftCmpActivity.resolvedPageData(intent).text)
+    if (multiShellHostEnabled && !hasExplicitAndroidShellServer(merged)) {
+        currentOwner()?.let { owner ->
+            AndroidShellWindowStore.persistedLauncherServerId(owner.environmentId, owner.accountId)
+                ?.let { serverId ->
+                    merged.put(ANDROID_SHELL_SERVER_ID_KEY, serverId)
+                    merged.put(RAFT_SHELL_SERVER_ID, serverId)
+                    intent.putExtra(RaftCmpActivity.KEY_PAGE_DATA, RaftPageData.fromJson(merged).text)
+                    intent.flags = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.inv()
+                }
+        }
+    }
+    return false
+}
 
 internal const val DEFAULT_ANDROID_SHELL_INSTANCE_ID = "android-default-app-shell"

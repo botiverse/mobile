@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.compat.json.JSONObject
+
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -193,6 +195,36 @@ internal fun Pager.openAppShellForSelectedServer(
         raftProcessRealtimeSessionDemand::shellShowing,
     nowEpochMillis: () -> Long = ::raftNowEpochMillis,
 ) {
+    dispatchOpenAppShellForSelectedServer(
+        readySession = readySession,
+        sourceStoreScope = sourceStoreScope,
+        sourceDocumentShell = sourceDocumentShell,
+        environmentId = environmentId,
+        multiShellHostEnabled = raftMultiShellHostEnabled(),
+        fromShell = fromShell,
+        onSameServerInShell = onSameServerInShell,
+        noteServerSelected = noteServerSelected,
+        shellShowingServer = shellShowingServer,
+        nowEpochMillis = nowEpochMillis,
+        disconnectRealtime = bridge::realtimeDisconnect,
+        openReplacingCurrentPage = ::openAppShellReplacingCurrentPage,
+    )
+}
+
+internal fun dispatchOpenAppShellForSelectedServer(
+    readySession: StoredAuthSession,
+    sourceStoreScope: RaftShellStoreScope,
+    sourceDocumentShell: Boolean,
+    environmentId: String,
+    multiShellHostEnabled: Boolean,
+    fromShell: Boolean = true,
+    onSameServerInShell: (() -> Unit)? = null,
+    noteServerSelected: (String) -> Unit = {},
+    shellShowingServer: (serverId: String, exceptShellInstanceId: String) -> String? = { _, _ -> null },
+    nowEpochMillis: () -> Long = { 0L },
+    disconnectRealtime: (reason: String) -> Unit,
+    openReplacingCurrentPage: (JSONObject) -> Unit,
+) {
     val selectedServerId = readySession.selectedServerId?.trim()?.takeIf { it.isNotEmpty() }
     if (
         fromShell &&
@@ -203,7 +235,6 @@ internal fun Pager.openAppShellForSelectedServer(
         onSameServerInShell()
         return
     }
-    val multiShellHostEnabled = raftMultiShellHostEnabled()
     val opensDocumentShell =
         fromShell &&
             isMultiShellCrossServerSelection(
@@ -218,7 +249,7 @@ internal fun Pager.openAppShellForSelectedServer(
             null
         }
     if (!opensDocumentShell && windowShowing == null) {
-        bridge.realtimeDisconnect("server_changed")
+        disconnectRealtime("server_changed")
     }
     val pageData =
         appShellPageDataForServerSelection(
@@ -241,9 +272,9 @@ internal fun Pager.openAppShellForSelectedServer(
             serverId = selectedServerId.orEmpty(),
             pageData = pageData,
             noteServerSelected = noteServerSelected,
-            open = ::openAppShellReplacingCurrentPage,
+            open = openReplacingCurrentPage,
         )
     } else {
-        openAppShellReplacingCurrentPage(pageData)
+        openReplacingCurrentPage(pageData)
     }
 }

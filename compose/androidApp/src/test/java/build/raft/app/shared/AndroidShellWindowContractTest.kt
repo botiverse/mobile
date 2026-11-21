@@ -655,4 +655,86 @@ class AndroidShellWindowContractTest {
         assertEquals("srv-1", json.optNonNullString("real"))
     }
 
+    @Test
+    fun recycledLauncherTaskIdDoesNotMatchPersistedDocumentWindowInReconcile() {
+        val backingStore = InMemoryRaftKeyValueStore()
+        val previousProvider = AndroidShellWindowStore.storeProvider
+        AndroidShellWindowStore.storeProvider = { backingStore }
+        try {
+            val ownerA = AndroidShellRouteOwner("https://api.test", "user-1", "server-a")
+            val ownerB = AndroidShellRouteOwner("https://api.test", "user-1", "server-b")
+            val docB =
+                AndroidShellLaunchTarget(
+                    shellInstanceId = ownerB.shellCanonicalUri(),
+                    serverId = "server-b",
+                    documentShell = true,
+                    routeOwner = ownerB,
+                )
+            AndroidShellWindowStore.recordRegistered(docB, taskId = 25, fallbackOwner = null)
+
+            // After reboot, Android reused taskId 25 for a brand-new MainActivity launcher task (no slock://shell URI).
+            val recycledLauncherTask =
+                listOf(
+                    AndroidAppTaskSnapshot(
+                        taskId = 25,
+                        isAlive = true,
+                        baseIntentData = null,
+                        baseActivityClassName = "build.raft.app.MainActivity",
+                    )
+                )
+            val reconciled = AndroidShellWindowStore.reconcile(recycledLauncherTask, "https://api.test", "user-1")
+            assertTrue("recycled launcher task must not masquerade as server B's document window", reconciled.isEmpty())
+
+            // Reusing taskId 25 for a different document URI (server A) must also not match persisted document B.
+            AndroidShellWindowStore.recordRegistered(docB, taskId = 25, fallbackOwner = null)
+            val otherDocumentTask =
+                listOf(
+                    AndroidAppTaskSnapshot(
+                        taskId = 25,
+                        isAlive = true,
+                        baseIntentData = ownerA.shellCanonicalUri(),
+                        baseActivityClassName = "build.raft.app.shared.RaftDocumentShellActivity",
+                    )
+                )
+            val reconciledOther = AndroidShellWindowStore.reconcile(otherDocumentTask, "https://api.test", "user-1")
+            assertEquals(1, reconciledOther.size)
+            assertEquals("server-a", reconciledOther.single().serverId)
+            assertEquals(ownerA.shellCanonicalUri(), reconciledOther.single().shellInstanceId)
+        } finally {
+            AndroidShellWindowStore.storeProvider = previousProvider
+        }
+    }
+
+    @Test
+    fun hasExplicitAndroidShellServerRecognizesShortcutAndShellServerKeys() {
+        assertFalse(hasExplicitAndroidShellServer(JSONObject()))
+        assertFalse(hasExplicitAndroidShellServer(JSONObject().put(RAFT_SHELL_SERVER_ID, JSONObject.NULL)))
+        assertTrue(hasExplicitAndroidShellServer(JSONObject().put(RAFT_SHELL_SERVER_ID, "server-a")))
+        assertTrue(hasExplicitAndroidShellServer(JSONObject().put(ANDROID_SHELL_SERVER_ID_KEY, "server-a")))
+        assertTrue(
+            hasExplicitAndroidShellServer(
+                JSONObject().put(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID, "server-a")
+            )
+        )
+        assertTrue(
+            hasExplicitAndroidShellServer(
+                JSONObject().put(RaftDesktopShortcutContract.KeyServerId, "server-s")
+            )
+        )
+        // Non-document launcher payloads carrying only route-owner metadata must NOT suppress
+        // persisted launcher server restoration; document windows DO honor slockRouteServerId.
+        assertFalse(
+            hasExplicitAndroidShellServer(
+                JSONObject().put(ANDROID_ROUTE_SERVER_ID_KEY, "server-b")
+            )
+        )
+        assertTrue(
+            hasExplicitAndroidShellServer(
+                JSONObject()
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                    .put(ANDROID_ROUTE_SERVER_ID_KEY, "server-b")
+            )
+        )
+    }
+
 }

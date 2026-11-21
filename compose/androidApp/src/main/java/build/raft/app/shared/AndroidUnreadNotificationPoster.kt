@@ -928,19 +928,23 @@ internal object AndroidUnreadNotificationPoster {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-    internal fun unreadNotificationLaunchIntent(context: Context, request: JSONObject): Intent? {
-        val appContext = context.applicationContext
-        val basePageData =
-            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
-        val multiShellHostEnabled =
+    internal fun unreadNotificationLaunchIntent(
+        context: Context,
+        request: JSONObject,
+        multiShellHostEnabled: Boolean =
             runCatching {
                 KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
                     .readMultiShellHostEnabledSync()
-            }.getOrDefault(false)
+            }.getOrDefault(false),
+        currentOwner: AndroidShellRouteOwner? = currentAndroidShellRouteOwner(context.applicationContext),
+        appTasksProvider: () -> List<AndroidAppTaskSnapshot>? = { snapshotAndroidAppTasks(context.applicationContext) },
+    ): Intent? {
+        val appContext = context.applicationContext
+        val basePageData =
+            RaftCmpActivity.buildNotificationTapAppShellPageData(request) ?: return null
         val notificationServerId =
             basePageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).trim().takeIf { it.isNotEmpty() }
                 ?: request.optString("serverId").trim().takeIf { it.isNotEmpty() }
-        val currentOwner = currentAndroidShellRouteOwner(appContext)
         val routeOwner = notificationAndroidShellRouteOwner(currentOwner, notificationServerId)
         val launcherOwnsNotificationServer =
             multiShellHostEnabled &&
@@ -952,7 +956,7 @@ internal object AndroidUnreadNotificationPoster {
                     val effectiveLiveLauncherServer = persistedLauncherServer ?: liveLauncher?.serverId
                     (liveLauncher != null && effectiveLiveLauncherServer == routeOwner.serverId) ||
                         AndroidShellWindowStore.reconcile(
-                            appTasks = snapshotAndroidAppTasks(appContext),
+                            appTasks = appTasksProvider(),
                             environmentId = routeOwner.environmentId,
                             accountId = routeOwner.accountId,
                             prune = false,

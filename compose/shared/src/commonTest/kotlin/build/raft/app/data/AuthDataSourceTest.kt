@@ -1833,6 +1833,35 @@ class AuthDataSourceTest {
         assertEquals(successor, store.readSession())
     }
 
+    @Test
+    fun createServerWithSelectCreatedServerFalseKeepsStoredSelectionUnchanged() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(storedSession())
+        val api =
+            FakeAuthApi(
+                createServerResponse =
+                    AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+                serversResponse =
+                    AuthNetworkResponse(
+                        200,
+                        """[{"id":"server-1","name":"Slock","slug":"slock","role":"owner"},{"id":"server-2","name":"Ops","slug":"ops","role":"owner"}]"""
+                    ),
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.createServer("Ops", selectCreatedServer = false)
+
+        assertTrue(result is SharedAuthResult.Success)
+        // Returned session targets the newly created server so the caller can open it in a new window.
+        assertEquals("server-2", result.data.selectedServerId)
+        assertEquals("ops", result.data.selectedServerSlug)
+        assertEquals(listOf("server-1", "server-2"), result.data.servers.map { it.id })
+        // Process/shell stored selection remains on the original server so the caller's window does not switch.
+        val stored = requireNotNull(store.readSession())
+        assertEquals("server-1", stored.selectedServerId)
+        assertEquals("slock", stored.selectedServerSlug)
+        assertEquals(listOf("server-1", "server-2"), stored.servers.map { it.id })
+    }
+
     private fun storedSession(accessToken: String = "access-token"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),

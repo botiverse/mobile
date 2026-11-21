@@ -472,4 +472,17 @@ class MainActivityLaunchTest {
         // Only Raft apps: none, and openUrl takes its ordinary path.
         assertEquals(null, selectExternalWebHandlerPackage("build.raft.app", null, listOf("build.raft.app", "build.raft.app.alpha")))
     }
+
+    @Test
+    fun launchedFromHistorySkipsMainActivityOneShotIntakeHandlers() {
+        assertTrue(shouldSkipMainActivityOneShotIntake(android.content.Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
+        assertTrue(
+            shouldSkipMainActivityOneShotIntake(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                    android.content.Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY
+            )
+        )
+        assertFalse(shouldSkipMainActivityOneShotIntake(0))
+        assertFalse(shouldSkipMainActivityOneShotIntake(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 }
