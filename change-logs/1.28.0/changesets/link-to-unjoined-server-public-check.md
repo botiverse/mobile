@@ -2,7 +2,7 @@
 type: fixed
 area: navigation
 platforms: [android, ios]
-pull_request: TBD
+pull_request: 5227
 rollout: full
 ---
 
