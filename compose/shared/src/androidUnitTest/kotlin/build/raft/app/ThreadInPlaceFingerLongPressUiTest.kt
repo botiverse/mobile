@@ -78,7 +78,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 // A finger selection shows its handles' magnifier, which Robolectric cannot dismiss.
-@Config(sdk = [34], shadows = [RaftFloatingToolbarAnchorGuardUiTest.NoSurfaceMagnifier::class])
+// Phone width (411dp) ensures the 360dp body box inside the 24dp start-padded row isn't clamped to 296dp.
+@Config(
+    sdk = [34],
+    qualifiers = "w411dp-h891dp-xxhdpi",
+    shadows = [RaftFloatingToolbarAnchorGuardUiTest.NoSurfaceMagnifier::class],
+)
 class ThreadInPlaceFingerLongPressUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
