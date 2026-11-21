@@ -272,8 +272,11 @@ private fun RaftToastHostItem(state: RaftToastHostState, toast: RaftToastData, a
  * tab bar): the window's toasts sit 16dp above this element's top edge while it is
  * laid out, [enabled], and [LocalRaftToastAvoidanceActive] is true. Pass `enabled = false` from a
  * page that is composed but not shown (a page under the top one in a stack). [keyboardPx]: the
- * keyboard under an element that rides on it (a composer), read when it is laid out, so a toast
- * does not stay up after the keyboard closes. A no-op outside a [LocalRaftToastHostState].
+ * keyboard under an element that rides on it (a composer), read both on placement (so a toast
+ * does not stay up after the keyboard closes) and live during [RaftToastHost]'s layout pass;
+ * [keyboardPx] must read Compose snapshot state (for example `WindowInsets.ime`,
+ * `LocalRaftHostImeInsets`, or Compose `State`), otherwise keyboard changes will not invalidate
+ * [RaftToastHost] to re-layout on the same frame. A no-op outside a [LocalRaftToastHostState].
  */
 fun Modifier.raftToastAvoid(enabled: Boolean = true, keyboardPx: () -> Float = { 0f }): Modifier =
     composed {
