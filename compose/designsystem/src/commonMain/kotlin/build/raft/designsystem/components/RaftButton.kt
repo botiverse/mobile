@@ -153,8 +153,13 @@ enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
     internal fun glyphIn(controls: RaftControlMetrics, bar: Boolean = false): Dp =
         if (this == Lg) (if (bar) controls.barIconSize else controls.iconSize) else glyph
 
-    /** The corners under [controls]: an [Lg] bar button takes [RaftControlMetrics.barButtonRadius]; null keeps the default. */
-    internal fun radiusIn(controls: RaftControlMetrics, bar: Boolean): Dp? = if (this == Lg && bar) controls.barButtonRadius else null
+    /**
+     * The corners under [controls]: [Lg] takes `--control-radius` ([RaftControlMetrics.controlRadius]),
+     * or `--bar-button-radius` ([RaftControlMetrics.barButtonRadius]) as a bar button; null keeps
+     * the default.
+     */
+    internal fun radiusIn(controls: RaftControlMetrics, bar: Boolean): Dp? =
+        if (this == Lg) (if (bar) controls.barButtonRadius else controls.controlRadius) else null
 }
 
 /**
@@ -317,7 +322,7 @@ internal fun RaftButtonBox(
      * its own box, since Compose's near-hit ([raftTouchTarget]) loses to a direct hit beneath.
      */
     hitOverhangVertical: Dp = 0.dp,
-    /** Corners in place of `radius-control` (a bar button, [RaftControlMetrics.barButtonRadius]); null keeps it. */
+    /** Corners in place of `radius-control` (`lg`'s `--control-radius`, a bar button's `--bar-button-radius`); null keeps it. */
     cornerRadius: Dp? = null,
     content: @Composable () -> Unit,
 ) {
@@ -615,7 +620,8 @@ fun RaftButton(
             frameless = false,
             colors = RaftTheme.colors,
         )
-    val metrics = raftButtonMetrics(size, variant, RaftTheme.controls)
+    val controls = RaftTheme.controls
+    val metrics = raftButtonMetrics(size, variant, controls)
     val textStyle = raftButtonTextStyle(size, variant, RaftTheme.typography)
     // CSS padding sits inside the 1.5dp border.
     val start = (if (leadingIcon != null) metrics.iconSidePaddingX else metrics.paddingX) + RaftStroke.Control
@@ -629,6 +635,8 @@ fun RaftButton(
         loadingLabel = loadingLabel,
         interactionSource = interactionSource,
         widenTouchTarget = widenTouchTarget,
+        // `lg` rounds at `--control-radius` (10, 8 under a fine pointer); `md` and `xl` keep `radius-control`.
+        cornerRadius = if (size == RaftButtonSize.Lg) controls.controlRadius else null,
     ) {
         Row(
             modifier = Modifier.padding(start = start, end = end),

@@ -791,7 +791,9 @@ fun RaftComboboxChipsTrigger(
     val pressed = enabled && isPressed
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    // `rounded-(--control-radius)`: 10, 8 under a fine pointer.
+    val radius = RaftTheme.controls.controlRadius
+    val shape = RoundedCornerShape(radius)
     val field = LocalRaftFieldState.current
     val name = raftFieldSpokenName(label, field.required)
     val shown = if (chips.isEmpty()) placeholder else chips.joinToString(", ")
@@ -801,9 +803,9 @@ fun RaftComboboxChipsTrigger(
             // A minimum (`min-h-control`: 44dp, 34dp on a desktop): more chips wrap onto more
             // lines and a large font scale grows it.
             .heightIn(min = RaftTheme.controls.height)
-            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftFocusRing(focused, radius, colors)
             .background(look.fill, shape)
-            .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
+            .raftPressOverlay(pressed, look.pressOverlay, radius)
             .border(RaftStroke.Field, look.border, shape)
             .clickable(source, indication = null, enabled = enabled, role = Role.DropdownList, onClick = onClick)
             .semantics {

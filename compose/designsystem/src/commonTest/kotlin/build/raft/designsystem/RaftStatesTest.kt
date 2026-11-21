@@ -11,6 +11,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftPressSurface
 import build.raft.designsystem.components.RaftRowTone
@@ -162,6 +163,18 @@ class RaftButtonLookTest {
         assertEquals(36.dp, raftButtonMetrics(RaftButtonSize.Md, RaftButtonVariant.OnFrame, mobile).height)
     }
 
+    /** raft-ui `icon-lg` rounds at `--control-radius`, a bar button at `--bar-button-radius`; smaller sizes keep their own. */
+    @Test
+    fun iconButtonRadiusFollowsPointer() {
+        val mobile = RaftControlMetrics.Mobile
+        val desktop = RaftControlMetrics.Desktop
+        assertEquals(10.dp, RaftIconButtonSize.Lg.radiusIn(mobile, bar = false))
+        assertEquals(8.dp, RaftIconButtonSize.Lg.radiusIn(desktop, bar = false))
+        assertEquals(10.dp, RaftIconButtonSize.Lg.radiusIn(mobile, bar = true))
+        assertEquals(6.dp, RaftIconButtonSize.Lg.radiusIn(desktop, bar = true))
+        assertEquals(null, RaftIconButtonSize.Md.radiusIn(mobile, bar = false))
+    }
+
     /**
      * The touch metrics are the sizes the components drew before sizing v12, so a finger sees no
      * change; the pointer ones are v12's.
@@ -174,6 +187,9 @@ class RaftButtonLookTest {
             assertEquals(56.dp, headHeight)
             assertEquals(44.dp, barButtonSize)
             assertEquals(22.dp, barIconSize)
+            // raft-ui foundation.css `--control-radius` / `--bar-button-radius` by touch.
+            assertEquals(10.dp, controlRadius)
+            assertEquals(10.dp, barButtonRadius)
             assertEquals(5.dp, barEdgeInset)
             assertEquals(48.dp, topBarHeight)
             assertEquals(36.dp, topBarItemSize)
@@ -191,6 +207,7 @@ class RaftButtonLookTest {
             assertEquals(44.dp, headHeight)
             assertEquals(28.dp, barButtonSize)
             assertEquals(16.dp, barIconSize)
+            assertEquals(8.dp, controlRadius)
             assertEquals(6.dp, barButtonRadius)
             // The 16dp glyph lands on the 16dp content margin.
             assertEquals(16.dp, barEdgeInset + (barButtonSize - barIconSize) / 2)

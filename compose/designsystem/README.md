@@ -95,7 +95,8 @@ use, so a tablet and the Mac at the same width look the same and a finger always
 `cardTitle` 14/22; `footnote`, `caption`, `monoMeta` 12/18; `monoCode` 13/20; hero, display,
 title and label unchanged. `RaftControlMetrics` (`RaftTheme.controls`) carries
 `--control-height` 44 → 32, `--control-height-cta` 52 → 40, `--control-icon-size` 22 → 18,
-`--control-hit-inset` 0 → 6 and `--control-embedded-size` 32 → 20.
+`--control-hit-inset` 0 → 6, `--control-embedded-size` 32 → 20, `--control-radius` 10 → 8
+(`controlRadius`) and `--bar-button-radius` 10 → 6 (`barButtonRadius`).
 
 `RaftTheme(scale = null)` inherits the enclosing theme's scale; the outermost one picks
 `Wide` when the window (`LocalWindowInfo.containerSize`) is at least `RaftScale.WideMinWidth`
@@ -109,7 +110,13 @@ Following the type: Button `md` text (`text-control`) and `RaftPickerTriggerButt
 Following the controls: Button `lg` height (`h-control`), `xl` height
 (`h-control-cta`); `RaftIconButtonSize.Lg` and `RaftIconToggleButton` (`size-control`,
 `size-control-icon`); `RaftTextField` height and `RaftTextFieldAction` (`size-control-embedded`);
-`RaftSelectTrigger`; the combobox trigger, chips, chip remove and clear. `RaftBackButton` and
+`RaftSelectTrigger`; the combobox trigger, chips, chip remove and clear. The corners of a
+control at the control height follow `controlRadius` (raft-ui `rounded-(--control-radius)`):
+Button `lg`, `RaftIconButtonSize.Lg` and `RaftIconToggleButton` outside a bar, the `lg`
+`RaftTextField` and `RaftTextarea`, `RaftSelectTrigger` and `RaftComboboxChipsTrigger`; a bar
+button (`RaftBackButton`, an `icon-lg` button under `LocalRaftBarButtons`, the selection
+toolbar's buttons) follows `barButtonRadius`. Button `md` and `xl`, the `md` text field and the
+pickers keep `radius-control` (8) at every pointer, as on the web. `RaftBackButton` and
 `RaftSideActionColumn` keep 44 / 22 (their placement constants assume it). Screenshot tests pin
 `RaftScale.Compact` and `RaftPointerInput.Touch` (`RaftScreenshot.capture`) except
 `desktop-scale_{light,dark}` (wide + fine) and `wide-touch-scale_{light,dark}` (wide + touch).
