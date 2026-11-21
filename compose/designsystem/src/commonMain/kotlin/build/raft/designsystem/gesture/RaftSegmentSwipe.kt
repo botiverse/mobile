@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -71,6 +72,24 @@ internal fun raftSegmentedPagerDragDecision(
 }
 
 /**
+ * The settle velocity (forward, px/s) for a swipe that started on the segment switch itself (the
+ * header): the switch is much narrower than a page, so a swipe across it would rarely carry the
+ * content past halfway or fast enough to flick. As the sub-tab swipe always did, once it has moved
+ * [decidePx] (2x the slop) it turns to the next segment that way: the settle gets at least
+ * [turnVelocity] in the direction it [travelledPx]. A shorter swipe settles as it is.
+ */
+internal fun raftSegmentSwitchSwipeVelocity(
+    travelledPx: Float,
+    velocity: Float,
+    decidePx: Float,
+    turnVelocity: Float,
+): Float {
+    if (abs(travelledPx) < decidePx) return velocity
+    val direction = if (travelledPx > 0f) 1f else -1f
+    return if (velocity * direction >= turnVelocity) velocity else direction * turnVelocity
+}
+
+/**
  * One gesture's hand-over of horizontal scroll a child scroller left over (the segment track itself,
  * a code block) at its end: the segments get it before the enclosing tab pager, as a nested pager
  * would. The first leftover decides the gesture: toward a segment that exists (and, on a back-swipe
@@ -84,10 +103,23 @@ internal class RaftSegmentNestedDrag {
     private var owner = Owner.Undecided
     private var startsInLeadingEdge = false
 
-    /** A new gesture went down ([startsInLeadingEdge]: in the leading [RaftBackSwipeEdgeWidth] strip). */
-    fun reset(startsInLeadingEdge: Boolean = false) {
+    /** Whether this gesture went down on the segment switch (the header), not on the content. */
+    var startsOnSwitch: Boolean = false
+        private set
+
+    /** The forward scroll this gesture's leftovers drove so far (px). */
+    var travelled: Float = 0f
+        private set
+
+    /**
+     * A new gesture went down ([startsInLeadingEdge]: in the leading [RaftBackSwipeEdgeWidth] strip;
+     * [startsOnSwitch]: on the segment switch).
+     */
+    fun reset(startsInLeadingEdge: Boolean = false, startsOnSwitch: Boolean = false) {
         owner = Owner.Undecided
         this.startsInLeadingEdge = startsInLeadingEdge
+        this.startsOnSwitch = startsOnSwitch
+        travelled = 0f
     }
 
     /** The pointer path claimed the gesture: the rest of it belongs to the segments, driven there. */
@@ -121,7 +153,11 @@ internal class RaftSegmentNestedDrag {
             owner = if (turns) Owner.Drives else Owner.PassThrough
             if (owner == Owner.PassThrough) return 0f
         }
-        if (owner == Owner.Drives) drive(raftForwardScrollDelta(dx, isLtr))
+        if (owner == Owner.Drives) {
+            val forwardDelta = raftForwardScrollDelta(dx, isLtr)
+            travelled += forwardDelta
+            drive(forwardDelta)
+        }
         return dx
     }
 }
@@ -169,6 +205,9 @@ internal class RaftPagerDrive(
     }
 }
 
+/** The least settle velocity of a swipe on the switch that turns a segment (twice the pager's snap threshold). */
+internal val RaftSegmentSwitchTurnVelocity = 800.dp
+
 /**
  * The swipe of a segmented pager ([build.raft.designsystem.components.RaftSegmentedPager]): put it on
  * the element spanning the segment switch and the pages, over a pager backed by [state] whose own
@@ -193,12 +232,15 @@ internal class RaftPagerDrive(
 fun Modifier.raftSegmentedPagerSwipe(
     state: ScrollableState,
     flingBehavior: FlingBehavior,
+    switchHeightPx: () -> Int = { 0 },
 ): Modifier {
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val hostHasBackSwipe = LocalRaftBackSwipeRegions.current != null
     val edgePx = with(LocalDensity.current) { RaftBackSwipeEdgeWidth.toPx() }
     val slop = LocalViewConfiguration.current.touchSlop
     val maxFlingVelocity = LocalViewConfiguration.current.maximumFlingVelocity
+    val turnVelocity = with(LocalDensity.current) { RaftSegmentSwitchTurnVelocity.toPx() }
+    val switchHeight by rememberUpdatedState(switchHeightPx)
     val outerDrags = LocalRaftNestedHorizontalDrags.current
     val scope = rememberCoroutineScope()
     val currentFling = rememberUpdatedState(flingBehavior)
@@ -207,8 +249,11 @@ fun Modifier.raftSegmentedPagerSwipe(
     val coordinates = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val currentHostHasBackSwipe by rememberUpdatedState(hostHasBackSwipe)
     val connection =
-        remember(state, drive, nested, isLtr, maxFlingVelocity) {
+        remember(state, drive, nested, isLtr, maxFlingVelocity, turnVelocity, slop) {
             object : NestedScrollConnection {
+                private fun settleVelocity(velocity: Float): Float =
+                    if (nested.startsOnSwitch) raftSegmentSwitchSwipeVelocity(nested.travelled, velocity, slop * 2, turnVelocity) else velocity
+
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                     // A gesture the segments own keeps its fling leftovers too: passed on, the
                     // enclosing pager's own hand-over would end the child's fling with an exception.
@@ -232,7 +277,7 @@ fun Modifier.raftSegmentedPagerSwipe(
                 override suspend fun onPreFling(available: Velocity): Velocity {
                     if (!nested.owned) return Velocity.Zero
                     if (nested.drives) {
-                        drive.release(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity))
+                        drive.release(settleVelocity(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity)))
                         nested.reset()
                     }
                     return Velocity(available.x, 0f)
@@ -241,7 +286,7 @@ fun Modifier.raftSegmentedPagerSwipe(
                 override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                     // Settles a drive that no pre-fling ended (it always should).
                     if (nested.drives) {
-                        drive.release(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity))
+                        drive.release(settleVelocity(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity)))
                         nested.reset()
                     }
                     return Velocity.Zero
@@ -261,7 +306,8 @@ fun Modifier.raftSegmentedPagerSwipe(
                 // A drive whose child never flung (cancelled) still settles on a page.
                 if (drive.active) drive.release(0f)
                 val startsInLeadingEdge = raftStartsInLeadingEdge(down.position.x, size.width.toFloat(), edgePx, isLtr)
-                nested.reset(startsInLeadingEdge)
+                val startsOnSwitch = down.position.y < switchHeight()
+                nested.reset(startsInLeadingEdge, startsOnSwitch)
                 // Content that decides on horizontal drags itself (registered with the tab pager's
                 // host, as this is) gets to first; this element's own registration makes it slop + 1.
                 val root = coordinates[0]?.takeIf { it.isAttached }
@@ -303,7 +349,8 @@ fun Modifier.raftSegmentedPagerSwipe(
                 }
                 nested.claimedByPointer()
                 drive.start()
-                if (overSlop != 0f) drive.drag(raftForwardScrollDelta(overSlop, isLtr))
+                var travelled = raftForwardScrollDelta(overSlop, isLtr)
+                if (overSlop != 0f) drive.drag(travelled)
                 var finalVelocity = 0f
                 try {
                     while (true) {
@@ -311,17 +358,28 @@ fun Modifier.raftSegmentedPagerSwipe(
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
                         tracker.addPointerInputChange(change)
                         if (!change.pressed) {
-                            finalVelocity =
+                            val velocity =
                                 raftForwardFlingVelocity(
                                     tracker.calculateVelocity().x,
                                     isLtr,
                                     viewConfiguration.maximumFlingVelocity,
                                 )
+                            // From the switch, past 2x the slop of the whole swipe: the next segment.
+                            finalVelocity =
+                                if (startsOnSwitch) {
+                                    raftSegmentSwitchSwipeVelocity(travelled + touchSlop * kotlin.math.sign(travelled), velocity, viewConfiguration.touchSlop * 2, turnVelocity)
+                                } else {
+                                    velocity
+                                }
                             change.consume()
                             break
                         }
                         val dx = change.position.x - change.previousPosition.x
-                        if (dx != 0f) drive.drag(raftForwardScrollDelta(dx, isLtr))
+                        if (dx != 0f) {
+                            val forwardDelta = raftForwardScrollDelta(dx, isLtr)
+                            travelled += forwardDelta
+                            drive.drag(forwardDelta)
+                        }
                         change.consume()
                     }
                 } finally {

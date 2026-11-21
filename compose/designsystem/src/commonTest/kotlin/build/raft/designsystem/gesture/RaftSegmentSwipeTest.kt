@@ -141,4 +141,29 @@ class RaftSegmentSwipeTest {
         assertTrue(t.nested.owned)
         assertFalse(t.nested.drives)
     }
+
+    @Test
+    fun aSwipeOnTheSwitchPastTwiceTheSlopTurnsTheSegmentThatWay() {
+        // Short and slow: still turns forward (or back), at least at the turn velocity.
+        assertEquals(800f, raftSegmentSwitchSwipeVelocity(travelledPx = 40f, velocity = 100f, decidePx = 20f, turnVelocity = 800f))
+        assertEquals(-800f, raftSegmentSwitchSwipeVelocity(travelledPx = -40f, velocity = 0f, decidePx = 20f, turnVelocity = 800f))
+        // A faster flick the same way keeps its own velocity; one flung back the other way turns as swiped.
+        assertEquals(2000f, raftSegmentSwitchSwipeVelocity(travelledPx = 40f, velocity = 2000f, decidePx = 20f, turnVelocity = 800f))
+        assertEquals(800f, raftSegmentSwitchSwipeVelocity(travelledPx = 40f, velocity = -300f, decidePx = 20f, turnVelocity = 800f))
+        // Under twice the slop it settles as it is.
+        assertEquals(100f, raftSegmentSwitchSwipeVelocity(travelledPx = 10f, velocity = 100f, decidePx = 20f, turnVelocity = 800f))
+    }
+
+    @Test
+    fun aGestureKeepsWhetherItStartedOnTheSwitchAndHowFarItsLeftoversDrove() {
+        val t = Leftovers()
+        t.nested.reset(startsInLeadingEdge = false, startsOnSwitch = true)
+        t.leftover(-10f)
+        t.leftover(-15f)
+        assertTrue(t.nested.startsOnSwitch)
+        assertEquals(25f, t.nested.travelled)
+        t.nested.reset()
+        assertFalse(t.nested.startsOnSwitch)
+        assertEquals(0f, t.nested.travelled)
+    }
 }
