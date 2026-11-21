@@ -209,7 +209,7 @@ internal fun threadActionCardSpecErrorDesc(error: ThreadActionCardSpecError?): S
     }
 
 /** An entity's name from the thread's lookup; only for the viewer's own server, else the card's fallback. */
-private fun ThreadActionCardNameLookup.actionCardSpecEntityName(ref: ActionCardSpecEntityRef, serverId: String?, viewerServerId: String?): String? {
+internal fun ThreadActionCardNameLookup.actionCardSpecEntityName(ref: ActionCardSpecEntityRef, serverId: String?, viewerServerId: String?): String? {
     if (serverId != null && viewerServerId != null && serverId != viewerServerId) return null
     val kind =
         when (ref.kind) {
