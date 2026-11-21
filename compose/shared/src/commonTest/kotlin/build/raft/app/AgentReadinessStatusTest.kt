@@ -267,7 +267,7 @@ class AgentReadinessStatusTest {
             )
         val missingSpec = resolveAgentReadinessCopySpec(missingRuntime, null, now)
         assertEquals(Res.string.agent_readiness_runtime_missing_title, missingSpec.title.res)
-        assertEquals("Codex", missingSpec.title.stringArg)
+        assertEquals("Codex CLI", missingSpec.title.stringArg)
         assertEquals("codex", missingRuntime.resolvedRuntimeId("fallback"))
 
         val trimmedNamed =
