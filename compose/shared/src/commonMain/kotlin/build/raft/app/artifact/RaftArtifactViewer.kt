@@ -627,6 +627,12 @@ internal sealed interface RaftArtifactViewerBlockedTarget {
     /** Another Artifact's page: opened in the in-app viewer. */
     data class OpenArtifact(val target: ArtifactLinkTarget) : RaftArtifactViewerBlockedTarget
 
+    /**
+     * A same-origin Raft web page without a native screen: opened in the authenticated in-app
+     * WebView ([SettingsWebViewSurface.WebPage], #proj-mobile:#204).
+     */
+    data class RaftWebPage(val url: String) : RaftArtifactViewerBlockedTarget
+
     data object Ignore : RaftArtifactViewerBlockedTarget
 }
 
@@ -645,6 +651,7 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
     webOrigin: String,
     artifactId: String,
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
+    blockAppStoreBilling: Boolean = raftPlatformFollowsAppStoreBillingRules(),
 ): RaftArtifactViewerBlockedTarget {
     if (url.trim().startsWith("blob:", ignoreCase = true)) return RaftArtifactViewerBlockedTarget.Download
     val origin = raftWebOriginOf(url) ?: return RaftArtifactViewerBlockedTarget.Ignore
@@ -666,15 +673,28 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
     }
     val path = url.substringAfter("://").let { rest -> rest.indexOf('/').let { if (it < 0) "/" else rest.substring(it) } }
     if (path.startsWith("/api/")) return RaftArtifactViewerBlockedTarget.Download
-    // The web's task panel (`task=`): its web page, as a tap in a message opens it.
+    fun sameOriginWebTarget(targetUrl: String): RaftArtifactViewerBlockedTarget =
+        if (
+            raftAuthenticatedOwnWebPageUrlOrNull(
+                rawUrl = targetUrl,
+                activeWebBaseUrl = webOrigin,
+                embedHostShell = false,
+                blockAppStoreBilling = blockAppStoreBilling,
+            ) != null
+        ) {
+            RaftArtifactViewerBlockedTarget.RaftWebPage(targetUrl)
+        } else {
+            RaftArtifactViewerBlockedTarget.SystemBrowser(targetUrl)
+        }
+    // The web's task panel (`task=`): its web page, authenticated on the active origin.
     if (raftOwnLinkRoute(url, webOrigin, appHosts) == RaftOwnLinkRoute.WebPage(RaftOwnLinkWebPageReason.TaskPanel)) {
-        return RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+        return sameOriginWebTarget(url)
     }
     return when (val navigation = raftArtifactViewerNavigation(url, webOrigin, artifactId, appHosts)) {
         is RaftArtifactViewerNavigation.Stay -> RaftArtifactViewerBlockedTarget.Ignore
         is RaftArtifactViewerNavigation.OpenMessage -> RaftArtifactViewerBlockedTarget.OpenMessage(navigation.url)
         is RaftArtifactViewerNavigation.OpenArtifact -> RaftArtifactViewerBlockedTarget.OpenArtifact(navigation.target)
-        else -> RaftArtifactViewerBlockedTarget.SystemBrowser(url)
+        else -> sameOriginWebTarget(url)
     }
 }
 
@@ -685,20 +705,37 @@ internal fun raftArtifactViewerBlockedNavigationTarget(
  * ([RaftArtifactViewerBlockedTarget.OpenArtifact] — e.g. a bare `<a href="/artifacts/…">` in "Linked
  * from", which would reload without the embed contract and latch `NOT_EMBEDDED` for the document's
  * lifetime), an un-embedded full reload of this same Artifact, or a page of a server (`/s/<slug>/<page>`)
- * the app has no screen for (its web page, in the browser). Client-side switches (`history.pushState`
- * from the page's title menu or version picker) never enter this hook. The sign-in pages (`/`, `/login`:
- * the page signing itself out), an embedded load of this Artifact, and the server's own page (`/s/<slug>`)
- * load as before.
+ * the app has no screen for (its web page, authenticated in-app on the active origin or in the browser
+ * otherwise). Client-side switches (`history.pushState` from the page's title menu or version picker)
+ * never enter this hook. The sign-in pages (`/`, `/login`: the page signing itself out), an embedded
+ * load of this Artifact, and the server's own page (`/s/<slug>`) load as before.
  */
 internal fun raftArtifactViewerRoutesDocumentAsLink(
     url: String,
     webOrigin: String,
     artifactId: String,
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
-): Boolean =
-    when (val routed = raftArtifactViewerBlockedNavigationTarget(url, webOrigin, artifactId, appHosts)) {
+    blockAppStoreBilling: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+): Boolean {
+    if (blockAppStoreBilling && raftUrlIsAppStoreRestrictedPurchaseUrl(url, webOrigin, appHosts)) {
+        return true
+    }
+    return when (
+        val routed =
+            raftArtifactViewerBlockedNavigationTarget(
+                url = url,
+                webOrigin = webOrigin,
+                artifactId = artifactId,
+                appHosts = appHosts,
+                blockAppStoreBilling = blockAppStoreBilling,
+            )
+    ) {
         is RaftArtifactViewerBlockedTarget.OpenMessage,
         is RaftArtifactViewerBlockedTarget.OpenArtifact -> true
+        is RaftArtifactViewerBlockedTarget.RaftWebPage ->
+            raftOwnLinkRoute(routed.url, webOrigin, appHosts) is RaftOwnLinkRoute.WebPage &&
+                raftOwnWebLinkPath(routed.url, webOrigin, appHosts)?.path.orEmpty()
+                    .split('/').filter(String::isNotEmpty).let { it.size >= 3 && it[0] == "s" }
         is RaftArtifactViewerBlockedTarget.SystemBrowser ->
             raftOwnLinkRoute(routed.url, webOrigin, appHosts) is RaftOwnLinkRoute.WebPage &&
                 raftOwnWebLinkPath(routed.url, webOrigin, appHosts)?.path.orEmpty()
@@ -708,6 +745,7 @@ internal fun raftArtifactViewerRoutesDocumentAsLink(
                 !raftArtifactViewerHasEmbedContract(url)
         RaftArtifactViewerBlockedTarget.Download -> false
     }
+}
 
 /**
  * Where a top-level address of the viewer's WebView takes the viewer. Under the embed contract the

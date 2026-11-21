@@ -71,6 +71,121 @@ class RaftLinkNavigationTest {
     }
 
     @Test
+    fun raftWebPagesPreferAuthenticatedInAppWebViewUnlessForcedExternal() {
+        val ownPage = "https://app.raft.build/s/hq/apps"
+        val otherEnvPage = "https://staging.raft.build/s/hq/apps"
+        val opened = mutableListOf<String>()
+        fun navigator(mode: LinkOpenMode) =
+            RaftLinkNavigator(
+                modeProvider = { mode },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+                openRaftWebPageInApp = { url ->
+                    if (url == ownPage) {
+                        opened += "auth_web:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, ownPage),
+            navigator(LinkOpenMode.SystemBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPage),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, ownPage),
+            navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPage),
+        )
+        // Unmatched origin falls back cleanly to browser/in-app browser.
+        navigator(LinkOpenMode.SystemBrowser).open(otherEnvPage, RaftLinkOpenIntent.RaftWebPage)
+        // Explicit external intents always bypass authenticated in-app WebView.
+        navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.ForceExternal)
+        navigator(LinkOpenMode.InAppBrowser).open(ownPage, RaftLinkOpenIntent.RaftWebPageInBrowser)
+
+        assertEquals(
+            listOf(
+                "auth_web:$ownPage",
+                "auth_web:$ownPage",
+                "browser:$otherEnvPage",
+                "view:$ownPage",
+                "browser:$ownPage",
+            ),
+            opened,
+        )
+    }
+
+    @Test
+    fun appStoreRestrictedPurchaseUrlsNeverOpenWebViewOrInAppSafari() {
+        val billingUrl = "https://app.raft.build/s/hq/settings/billing"
+        val upgradeUrl = "https://app.raft.build/servers/srv-1/upgrade"
+        val stripeUrl = "https://checkout.stripe.com/c/pay/cs_live_123"
+        val opened = mutableListOf<String>()
+        val navigator =
+            RaftLinkNavigator(
+                modeProvider = { LinkOpenMode.InAppBrowser },
+                openInAppBrowser = { opened += "in_app:$it"; true },
+                openExternalBrowser = { opened += "view:$it" },
+                onRejected = { opened += "rejected:$it" },
+                openRaftWebPageInBrowser = { opened += "browser:$it" },
+                isRaftWebPage = { it == billingUrl || it == upgradeUrl },
+                openRaftWebPageInApp = { opened += "auth_web:$it"; true },
+                isAppStoreRestrictedPurchaseUrl = { url ->
+                    raftUrlIsAppStoreRestrictedPurchaseUrl(url, "https://app.raft.build", emptySet())
+                },
+                openAppStoreRestrictedPurchaseUrl = { url ->
+                    if (raftUrlIsOwnBillingPath(url, "https://app.raft.build", emptySet())) {
+                        opened += "native_billing_view_only:$url"
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+
+        // Own billing path redirects to native view-only Plan & Billing (never SFSafariViewController or WebView).
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, billingUrl),
+            navigator.open(billingUrl, RaftLinkOpenIntent.Ordinary),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppDestination, billingUrl),
+            navigator.open(billingUrl, RaftLinkOpenIntent.RaftWebPage),
+        )
+        // /servers/*/upgrade and Stripe URLs are blocked across every intent (never open browser/in-app).
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.Rejected, rejectReason = RaftLinkRejectReason.RouteUnavailable),
+            navigator.open(upgradeUrl, RaftLinkOpenIntent.Ordinary),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.Rejected, rejectReason = RaftLinkRejectReason.RouteUnavailable),
+            navigator.open(upgradeUrl, RaftLinkOpenIntent.RaftWebPageInBrowser),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.Rejected, rejectReason = RaftLinkRejectReason.RouteUnavailable),
+            navigator.open(stripeUrl, RaftLinkOpenIntent.Ordinary),
+        )
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.Rejected, rejectReason = RaftLinkRejectReason.RouteUnavailable),
+            navigator.open(stripeUrl, RaftLinkOpenIntent.ForceExternal),
+        )
+        assertEquals(
+            listOf(
+                "native_billing_view_only:$billingUrl",
+                "native_billing_view_only:$billingUrl",
+                "rejected:RouteUnavailable",
+                "rejected:RouteUnavailable",
+                "rejected:RouteUnavailable",
+                "rejected:RouteUnavailable",
+            ),
+            opened,
+        )
+    }
+
+    @Test
     fun mailAndTelephoneLinksAlwaysUseTheExternalHandler() {
         assertEquals(
             RaftLinkOpenTarget.ExternalBrowser,

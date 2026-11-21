@@ -178,6 +178,7 @@ class RaftProductPageRoutesTest {
                 SettingsWebViewSurface.Computers to view(RaftPageRoute.Computers),
                 SettingsWebViewSurface.ReleaseNotes to view(RaftPageRoute.ReleaseNotes),
                 SettingsWebViewSurface.Onboarding to null,
+                SettingsWebViewSurface.WebPage to null,
             )
         web.forEach { (surface, expected) ->
             val params = JSONObject().apply { put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName) }

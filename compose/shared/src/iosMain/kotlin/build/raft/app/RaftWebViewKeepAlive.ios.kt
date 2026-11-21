@@ -5,9 +5,12 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import kotlin.time.TimeSource
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSThread
 import platform.Foundation.NSTimer
+import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
@@ -18,7 +21,10 @@ import platform.Foundation.NSError
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
+import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 // No document keep-alive here yet (the Artifact viewer's parked WebView is Android only): every
 // page creates and destroys its own WebView, taking the spare one (RaftIosWebViewSpare) when it can.
@@ -27,6 +33,25 @@ internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocumen
 internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean = false
 
 internal actual fun raftWebViewKeepAliveClear() = Unit
+
+internal actual fun raftClearPlatformWebViewAuthStorage() {
+    val clear = {
+        runCatching { RaftIosWebViewSpare.drop("logout") }
+        runCatching {
+            WKWebsiteDataStore.defaultDataStore().removeDataOfTypes(
+                dataTypes = WKWebsiteDataStore.allWebsiteDataTypes(),
+                modifiedSince = NSDate.dateWithTimeIntervalSince1970(0.0),
+                completionHandler = {},
+            )
+        }
+        Unit
+    }
+    if (NSThread.isMainThread) {
+        clear()
+    } else {
+        dispatch_async(dispatch_get_main_queue(), clear)
+    }
+}
 
 @Composable
 internal actual fun RaftWebViewPrewarmEffect(config: RaftWebViewConfig?) = Unit
@@ -133,7 +158,7 @@ internal object RaftIosWebViewSpare {
         }
     }
 
-    private fun drop(reason: String) {
+    internal fun drop(reason: String) {
         timer?.invalidate()
         timer = null
         if (slot.drop()) raftLogInfo(LOG_TAG, "webview_spare result=dropped reason=$reason")

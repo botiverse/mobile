@@ -7,6 +7,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,11 +30,30 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 
 internal const val RAFT_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
 internal const val RAFT_IN_APP_BROWSER_URL_KEY = "url"
+
+/**
+ * Whether [RaftInAppBrowserScreen] must block loading or navigating to [url] (iOS App Store
+ * Guideline 3.1.1: billing, `/servers/<id>/upgrade`, own-host `?upgrade=...`, and Stripe hosts).
+ */
+internal fun raftInAppBrowserShouldBlockUrl(
+    url: String,
+    activeWebBaseUrl: String?,
+    appStoreBillingRules: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean =
+    appStoreBillingRules &&
+        raftUrlIsAppStoreRestrictedPurchaseUrl(
+            rawUrl = url,
+            activeWebBaseUrl = activeWebBaseUrl,
+            appHosts = appHosts,
+        )
 
 @Page(RAFT_IN_APP_BROWSER_PAGE, supportInLocal = true)
 internal class ComposeRaftInAppBrowserPage : build.raft.app.base.BasePager() {
@@ -52,6 +72,16 @@ private fun RaftInAppBrowserScreen() {
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.raftInAppBrowserUrlOrNull()
         }
+    val appStoreBillingRules = raftPlatformFollowsAppStoreBillingRules()
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    val activeEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
+    val activeWebBaseUrl = activeEnvironment.webUrl
+    val storeScope = remember(pager.pageData.params.toString()) { pager.pageData.params.raftShellStoreScopeOrNull() }
+    val launchBlocked =
+        remember(launchUrl, activeWebBaseUrl, appStoreBillingRules) {
+            launchUrl != null && raftInAppBrowserShouldBlockUrl(launchUrl, activeWebBaseUrl, appStoreBillingRules)
+        }
+    val effectiveLaunchUrl = launchUrl?.takeUnless { launchBlocked }
     val controller = rememberRaftWebViewController()
     val externalNavigator =
         rememberRaftLinkNavigator(
@@ -60,18 +90,19 @@ private fun RaftInAppBrowserScreen() {
             routeScope = RaftInAppBrowserRouteScope.Unscoped,
         )
     var navigationState by
-        remember(launchUrl) {
+        remember(effectiveLaunchUrl) {
             mutableStateOf(
                 RaftWebViewNavigationState(
-                    url = launchUrl.orEmpty(),
-                    isLoading = launchUrl != null,
+                    url = effectiveLaunchUrl.orEmpty(),
+                    isLoading = effectiveLaunchUrl != null,
                 )
             )
         }
-    var loadError by remember(launchUrl) { mutableStateOf<String?>(null) }
-    var webViewAttachReady by remember(launchUrl) { mutableStateOf(false) }
-    LaunchedEffect(launchUrl) {
-        if (launchUrl == null) return@LaunchedEffect
+    var loadError by remember(effectiveLaunchUrl) { mutableStateOf<String?>(null) }
+    var webViewAttachReady by remember(effectiveLaunchUrl) { mutableStateOf(false) }
+    var deflectedPurchase by remember(effectiveLaunchUrl) { mutableStateOf(false) }
+    LaunchedEffect(effectiveLaunchUrl) {
+        if (effectiveLaunchUrl == null) return@LaunchedEffect
         // One rendered frame first: a native view attached in the page's first frame draws over the
         // header until layout settles (task #227, as SettingsWebViewPageScaffold). The load starts then.
         withFrameNanos { }
@@ -82,12 +113,28 @@ private fun RaftInAppBrowserScreen() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
+    fun handleAppStoreRestrictedPurchase(targetUrl: String, closeCurrentPage: Boolean): Boolean {
+        if (!raftInAppBrowserShouldBlockUrl(targetUrl, activeWebBaseUrl, appStoreBillingRules)) return false
+        bridge.logWarn("in_app_browser_appstore_purchase_blocked url=${raftOwnWebUrlForLog(targetUrl)}")
+        if (
+            raftUrlIsOwnBillingPath(targetUrl, activeWebBaseUrl) &&
+            storeScope != null &&
+            settingsBillingOpenTarget() != SettingsBillingOpenTarget.ExternalBrowser
+        ) {
+            pager.openSettingsBillingPage(storeScope, replaceCurrentPage = closeCurrentPage)
+        } else if (closeCurrentPage) {
+            closePage()
+        }
+        return true
+    }
+
     fun goBackOrClose() {
         if (navigationState.canGoBack) controller.goBack() else closePage()
     }
 
     fun openInSystemBrowser() {
-        val target = navigationState.url.takeIf { it.isNotBlank() } ?: launchUrl ?: return
+        val target = navigationState.url.takeIf { it.isNotBlank() } ?: effectiveLaunchUrl ?: return
+        if (handleAppStoreRestrictedPurchase(target, closeCurrentPage = false)) return
         externalNavigator.open(target, RaftLinkOpenIntent.ForceExternal)
     }
 
@@ -102,7 +149,7 @@ private fun RaftInAppBrowserScreen() {
         RaftTopPageHeader(
             title = navigationState.title.ifBlank { stringResource(Res.string.in_app_browser_title) },
             subtitle =
-                (navigationState.url.takeIf { it.isNotBlank() } ?: launchUrl)
+                (navigationState.url.takeIf { it.isNotBlank() } ?: effectiveLaunchUrl)
                     ?.let(::raftInAppBrowserDisplayUrl),
             iconName = RaftLucideIconName.Globe,
             backgroundColor = RaftColor.SurfaceWhite,
@@ -141,7 +188,7 @@ private fun RaftInAppBrowserScreen() {
                         tooltip = stringResource(Res.string.in_app_browser_open_system),
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Md,
-                        enabled = launchUrl != null,
+                        enabled = effectiveLaunchUrl != null,
                     ) {
                         // raft-ui 0.26 (#758): a control that leaves Raft is marked ↗.
                         RaftSlotIcon(RaftLucideIconName.ArrowUpRight)
@@ -151,7 +198,7 @@ private fun RaftInAppBrowserScreen() {
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             when {
-                launchUrl == null -> {
+                effectiveLaunchUrl == null -> {
                     RaftInAppBrowserError(
                         message = stringResource(Res.string.in_app_browser_invalid_link),
                         onRetry = null,
@@ -161,7 +208,7 @@ private fun RaftInAppBrowserScreen() {
                 }
                 webViewAttachReady -> {
                     RaftWebView(
-                        url = launchUrl,
+                        url = effectiveLaunchUrl,
                         modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite),
                         controller = controller,
                         allowScripts = true,
@@ -174,15 +221,37 @@ private fun RaftInAppBrowserScreen() {
                         diagnosticsSurface = "in_app_browser",
                         // Other sites' forms: keep WebKit's field-to-field bar, as Safari does.
                         showsFormAccessoryBar = true,
+                        routesMainFrameNavigation =
+                            if (appStoreBillingRules) {
+                                { candidateUrl ->
+                                    raftInAppBrowserShouldBlockUrl(candidateUrl, activeWebBaseUrl, appStoreBillingRules = true)
+                                }
+                            } else {
+                                null
+                            },
                         onLoadSuccess = { loadError = null },
                         onLoadFailure = { reason ->
                             loadError = reason.ifBlank { "webview_load_failed" }
                             bridge.logWarn("in_app_browser_load_failed")
                         },
                         onNavigationBlocked = { blockedUrl ->
-                            externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
+                            if (!handleAppStoreRestrictedPurchase(blockedUrl, closeCurrentPage = false)) {
+                                externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
+                            }
                         },
                         onNavigationStateChange = { nextState ->
+                            val nextUrl = nextState.url.trim()
+                            if (
+                                nextUrl.isNotEmpty() &&
+                                raftInAppBrowserShouldBlockUrl(nextUrl, activeWebBaseUrl, appStoreBillingRules)
+                            ) {
+                                controller.stop()
+                                if (!deflectedPurchase) {
+                                    deflectedPurchase = true
+                                    handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)
+                                }
+                                return@RaftWebView
+                            }
                             navigationState = nextState
                             if (nextState.isLoading) loadError = null
                         },
@@ -205,7 +274,7 @@ private fun RaftInAppBrowserScreen() {
             // Over the page (not above it), so the page does not jump when the load ends. Always
             // composed: the line plays its own end when the load finishes, and goes at once when it
             // fails or is stopped.
-            if (launchUrl != null) {
+            if (effectiveLaunchUrl != null) {
                 RaftWebPageLoadingBar(
                     raftWebPageLoadState(
                         isLoading = navigationState.isLoading,
