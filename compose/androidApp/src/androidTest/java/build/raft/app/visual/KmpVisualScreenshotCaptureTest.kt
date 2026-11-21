@@ -20,6 +20,7 @@ import android.view.WindowInsets
 import android.view.inspector.WindowInspector
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import build.raft.app.runtimeFormVisualPicker
 import build.raft.app.shared.RaftCmpActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -3575,6 +3576,97 @@ class KmpVisualScreenshotCaptureTest {
             pageData = JSONObject().put("caseId", "components.runtime-form.create.pi"),
             crop = FULL_VIEWPORT_CROP
         )
+    }
+
+    // Runtime form picker cases (visual-cases.v3.json `picker`): the form at rest, then the capture
+    // opens the named choice field and types the query into its list's search (one screen, not full
+    // length: slock sharedCases has no capture.fullLength for them).
+    @Test
+    fun captureRuntimeFormPickerBuiltinProviderOpen() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.picker.builtin.provider-open",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-open"),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") }
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormPickerBuiltinProviderSearch() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.picker.builtin.provider-search",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-search"),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") }
+        )
+    }
+
+    /**
+     * Opens the field of [caseId]'s picker (visual-cases.v3.json `picker`, read through
+     * [runtimeFormVisualPicker]) as a person does: a tap (accessibility click) on the trigger
+     * announced as "<label>[, Required], <value>" (RaftSelectTrigger), then waits for the window the
+     * list opens in (RaftCombobox: over ten options, a sheet with a search row) to take input focus.
+     * A query is set on that window's editable search row (accessibility SetText, as
+     * clearEditableTextField does). Web's capture does the same (slock react-provider.spec.ts
+     * openRuntimeFormPicker: a click, then the query typed into the combobox).
+     */
+    private fun openRuntimeFormPicker(caseId: String) {
+        val picker = requireNotNull(runtimeFormVisualPicker(caseId)) { "$caseId has no picker in visual-cases.v3.json" }
+        awaitFixtureIsActiveInputWindow("the ${picker.fieldLabel} field")
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun descendants(root: android.view.accessibility.AccessibilityNodeInfo?): List<android.view.accessibility.AccessibilityNodeInfo> {
+            val nodes = mutableListOf<android.view.accessibility.AccessibilityNodeInfo>()
+            fun visit(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+                if (node == null || depth > ACCESSIBILITY_TREE_MAX_DEPTH) return
+                nodes += node
+                for (index in 0 until node.childCount) visit(node.getChild(index), depth + 1)
+            }
+            visit(root, 0)
+            return nodes
+        }
+        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
+        var formWindowId = -1
+        var trigger: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (trigger == null) {
+            val root = uiAutomation.rootInActiveWindow
+            formWindowId = root?.windowId ?: -1
+            trigger =
+                descendants(root).firstOrNull { node ->
+                    node.isClickable && node.contentDescription?.toString()?.startsWith("${picker.fieldLabel}, ") == true
+                }
+            if (trigger != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(trigger) { "$caseId: no field trigger announced as \"${picker.fieldLabel}, …\"" }
+        require(trigger.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)) {
+            "$caseId: the ${picker.fieldLabel} trigger rejected the click"
+        }
+        var listRoot: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (listRoot == null) {
+            listRoot = uiAutomation.rootInActiveWindow?.takeIf { it.windowId != formWindowId }
+            if (listRoot != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(listRoot) { "$caseId: tapping ${picker.fieldLabel} opened no list window" }
+        val query = picker.query
+        if (query != null) {
+            val search =
+                requireNotNull(descendants(listRoot).firstOrNull { it.isEditable }) {
+                    "$caseId: the ${picker.fieldLabel} list has no search row to type \"$query\" into"
+                }
+            val typed =
+                search.performAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                    android.os.Bundle().apply {
+                        putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, query)
+                    }
+                )
+            require(typed) { "$caseId: SetText(\"$query\") was rejected by the ${picker.fieldLabel} search row" }
+        }
+        // The sheet slides in (RaftSheetWindow); the stable-frame capture waits for the rest.
+        Thread.sleep(800)
     }
 
     private fun captureMembersCreateAgentStateCase(

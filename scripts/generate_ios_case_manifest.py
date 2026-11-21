@@ -67,8 +67,10 @@ HARNESS = Path(__file__).resolve().parent.parent / (
     "KmpVisualScreenshotCaptureTest.kt"
 )
 
+# openRuntimeFormPicker: opens a runtime form choice field (and types into its search) through
+# UiAutomation before the capture (the runtime form picker cases).
 INTERACTION_MARKERS = re.compile(
-    r"UiAutomation|uiDevice|performClick|executeShellCommand|wm size|injectInputEvent"
+    r"UiAutomation|uiDevice|performClick|executeShellCommand|wm size|injectInputEvent|openRuntimeFormPicker"
 )
 
 PUT_LITERAL = re.compile(
