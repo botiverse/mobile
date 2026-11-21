@@ -39,8 +39,8 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
-import build.raft.designsystem.components.RaftText
 import build.raft.designsystem.components.RaftToastIntent
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
