@@ -1617,7 +1617,7 @@ internal fun ActivityExcerptBesideMarks(
                                                 right = clipRightInBox.toFloat(),
                                                 bottom = (placement.height + slotHeight).toFloat(),
                                             ) {
-                                                drawContent()
+                                                this@drawWithContent.drawContent()
                                             }
                                         }
                                     } else {
