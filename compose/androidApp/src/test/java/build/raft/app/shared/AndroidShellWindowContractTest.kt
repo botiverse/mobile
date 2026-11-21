@@ -721,6 +721,20 @@ class AndroidShellWindowContractTest {
                 JSONObject().put(RaftDesktopShortcutContract.KeyServerId, "server-s")
             )
         )
+        // Non-document launcher payloads carrying only route-owner metadata must NOT suppress
+        // persisted launcher server restoration; document windows DO honor slockRouteServerId.
+        assertFalse(
+            hasExplicitAndroidShellServer(
+                JSONObject().put(ANDROID_ROUTE_SERVER_ID_KEY, "server-b")
+            )
+        )
+        assertTrue(
+            hasExplicitAndroidShellServer(
+                JSONObject()
+                    .put(ANDROID_DOCUMENT_SHELL_KEY, true)
+                    .put(ANDROID_ROUTE_SERVER_ID_KEY, "server-b")
+            )
+        )
     }
 
 }

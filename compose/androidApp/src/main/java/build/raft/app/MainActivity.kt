@@ -65,14 +65,21 @@ class MainActivity : ComponentActivity() {
         }
         externalShareAdmissionOwner = AndroidExternalShareProcessOwner.admissionOwner(applicationContext)
         val launchedFromHistory = isAndroidIntentLaunchedFromHistory(intent?.flags ?: 0)
-        val rawShare = intent.takeUnless { launchedFromHistory }?.takeIf(Intent::isAndroidExternalShareIntent)
-        if (rawShare != null) {
-            setIntent(Intent(this, MainActivity::class.java))
-            externalShareAdmissionOwner.submit(rawShare)
-        } else if (launchedFromHistory && intent?.isAndroidExternalShareIntent() == true) {
-            // Reviving a dead launcher task whose baseIntent was an external share must not re-import it.
-            setIntent(Intent(this, MainActivity::class.java))
-        }
+        val rawShare =
+            when (resolveMainActivityOnCreateShareAction(intent)) {
+                MainActivityOnCreateShareAction.Submit -> {
+                    val shareIntent = checkNotNull(intent)
+                    setIntent(Intent(this, MainActivity::class.java))
+                    externalShareAdmissionOwner.submit(shareIntent)
+                    shareIntent
+                }
+                MainActivityOnCreateShareAction.ClearHistoryShare -> {
+                    // Reviving a dead launcher task whose baseIntent was an external share must not re-import it.
+                    setIntent(Intent(this, MainActivity::class.java))
+                    null
+                }
+                MainActivityOnCreateShareAction.None -> null
+            }
         val resumedExternalShare = externalShareAdmissionOwner.attach(externalShareResultListener)
         RaftAppLog.d(
             "SlockBoot",
@@ -129,23 +136,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleLaunchIntent(intent: Intent?) {
-        if (shouldSkipMainActivityOneShotIntake(intent?.flags ?: 0)) {
-            val cleanLaunch = Intent(this, MainActivity::class.java).also(::setIntent)
-            val pageDataIntent = if (intent.isAppShellPageDataIntent()) intent else cleanLaunch
-            openSharedShell(launchIntent = pageDataIntent, taskPolicyIntent = cleanLaunch)
-            return
-        }
-        if (
-            !handleExternalShareIntent(intent) &&
-            !handleAppLoginCallback(intent) &&
-            !handleMobileOAuthCallback(intent) &&
-            !handleEmailVerificationLink(intent) &&
-            !handleRaftMessageLink(intent) &&
-            !handleUnclaimedAppSchemeLink(intent) &&
-            !handleUnsupportedRaftWebLink(intent)
-        ) {
-            openSharedShell(intent)
-        }
+        dispatchMainActivityLaunchIntent(
+            intent = intent,
+            onHistoryRevival = { historyIntent ->
+                val cleanLaunch = Intent(this, MainActivity::class.java).also(::setIntent)
+                val pageDataIntent = if (historyIntent.isAppShellPageDataIntent()) historyIntent else cleanLaunch
+                openSharedShell(launchIntent = pageDataIntent, taskPolicyIntent = cleanLaunch)
+            },
+            onExternalShare = ::handleExternalShareIntent,
+            onAppLoginCallback = ::handleAppLoginCallback,
+            onMobileOAuthCallback = ::handleMobileOAuthCallback,
+            onEmailVerificationLink = ::handleEmailVerificationLink,
+            onRaftMessageLink = ::handleRaftMessageLink,
+            onUnclaimedAppSchemeLink = ::handleUnclaimedAppSchemeLink,
+            onUnsupportedRaftWebLink = ::handleUnsupportedRaftWebLink,
+            onOpenSharedShell = ::openSharedShell,
+        )
     }
 
     private fun handleExternalShareIntent(intent: Intent?): Boolean {
@@ -356,12 +362,10 @@ class MainActivity : ComponentActivity() {
      * its login page keeps its state; otherwise the shell starts and picks the result up.
      */
     private fun handleAppLoginCallback(intent: Intent?): Boolean {
-        val uri = intent?.data ?: return false
-        if (!uri.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) ||
-            !uri.host.equals("login", ignoreCase = true)
-        ) {
+        if (!intent.isAppLoginCallbackIntent()) {
             return false
         }
+        val uri = checkNotNull(intent?.data)
         val hasLiveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
         // The login page is not a registered app shell, so a login page waiting for this callback shows up
         // only as "this trampoline is not the task root". Restarting the shell there would destroy the
@@ -498,6 +502,56 @@ class MainActivity : ComponentActivity() {
 
 internal fun shouldSkipMainActivityOneShotIntake(flags: Int): Boolean =
     isAndroidIntentLaunchedFromHistory(flags)
+
+internal enum class MainActivityOnCreateShareAction {
+    Submit,
+    ClearHistoryShare,
+    None,
+}
+
+internal fun resolveMainActivityOnCreateShareAction(intent: Intent?): MainActivityOnCreateShareAction {
+    if (intent?.isAndroidExternalShareIntent() != true) return MainActivityOnCreateShareAction.None
+    return if (isAndroidIntentLaunchedFromHistory(intent.flags)) {
+        MainActivityOnCreateShareAction.ClearHistoryShare
+    } else {
+        MainActivityOnCreateShareAction.Submit
+    }
+}
+
+internal fun dispatchMainActivityLaunchIntent(
+    intent: Intent?,
+    onHistoryRevival: (Intent?) -> Unit,
+    onExternalShare: (Intent?) -> Boolean,
+    onAppLoginCallback: (Intent?) -> Boolean,
+    onMobileOAuthCallback: (Intent?) -> Boolean,
+    onEmailVerificationLink: (Intent?) -> Boolean,
+    onRaftMessageLink: (Intent?) -> Boolean,
+    onUnclaimedAppSchemeLink: (Intent?) -> Boolean,
+    onUnsupportedRaftWebLink: (Intent?) -> Boolean,
+    onOpenSharedShell: (Intent?) -> Unit,
+) {
+    if (shouldSkipMainActivityOneShotIntake(intent?.flags ?: 0)) {
+        onHistoryRevival(intent)
+        return
+    }
+    if (
+        !onExternalShare(intent) &&
+        !onAppLoginCallback(intent) &&
+        !onMobileOAuthCallback(intent) &&
+        !onEmailVerificationLink(intent) &&
+        !onRaftMessageLink(intent) &&
+        !onUnclaimedAppSchemeLink(intent) &&
+        !onUnsupportedRaftWebLink(intent)
+    ) {
+        onOpenSharedShell(intent)
+    }
+}
+
+internal fun Intent?.isAppLoginCallbackIntent(): Boolean {
+    val uri = this?.data ?: return false
+    return uri.scheme.equals(BuildConfig.OAUTH_CALLBACK_SCHEME, ignoreCase = true) &&
+        uri.host.equals("login", ignoreCase = true)
+}
 
 internal fun resolveMainActivityShellPageData(
     launchIntent: Intent?,

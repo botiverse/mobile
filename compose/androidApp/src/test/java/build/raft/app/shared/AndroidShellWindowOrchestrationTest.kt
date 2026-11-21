@@ -3,14 +3,26 @@ package build.raft.app.shared
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
+import android.net.Uri
+import build.raft.app.BuildConfig
 import build.raft.app.MainActivity
+import build.raft.app.MainActivityOnCreateShareAction
 import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
 import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
 import build.raft.app.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftDesktopShortcutContract
+import build.raft.app.dispatchMainActivityLaunchIntent
+import build.raft.app.emailVerificationToken
+import build.raft.app.isAndroidExternalShareIntent
+import build.raft.app.isAppLoginCallbackIntent
+import build.raft.app.isRaftMobileOAuthCallback
+import build.raft.app.RaftMessageLinkIngress
+import build.raft.app.postLoginAppShellPageData
+import build.raft.app.resolveMainActivityOnCreateShareAction
 import build.raft.app.resolveMainActivityShellPageData
+import build.raft.app.settingsAccountAppShellPageData
 import build.raft.app.shouldClearTaskForSharedShell
 import org.json.JSONObject
 import org.junit.After
@@ -247,6 +259,124 @@ class AndroidShellWindowOrchestrationTest {
         assertEquals("server-a", historyData.getString(ANDROID_SHELL_SERVER_ID_KEY))
         assertFalse(historyAppShellIntent.shouldClearTaskForSharedShell())
         assertTrue(Intent().shouldClearTaskForSharedShell())
+
+        // Non-document launcher payloads carrying only route-owner metadata (settingsAccount / postLogin)
+        // must still restore the persisted launcher server-a rather than letting server-b overwrite it.
+        listOf(
+            settingsAccountAppShellPageData(ownerB),
+            postLoginAppShellPageData(ownerB),
+        ).forEach { nonDocPayload ->
+            val launcherIntent =
+                Intent().apply {
+                    putExtra(RaftCmpActivity.KEY_PAGE_NAME, RaftCmpActivity.PAGE_APP_SHELL)
+                    putExtra(RaftCmpActivity.KEY_PAGE_DATA, nonDocPayload.toString())
+                }
+            prepareAndroidAppShellCreateIntent(
+                intent = launcherIntent,
+                taskId = 16,
+                multiShellHostEnabled = true,
+                currentOwner = { ownerB },
+            )
+            val resolved = JSONObject(RaftCmpActivity.resolvedPageData(launcherIntent).text)
+            assertEquals("server-a", resolved.getString(RAFT_SHELL_SERVER_ID))
+            assertEquals("server-a", resolved.getString(ANDROID_SHELL_SERVER_ID_KEY))
+        }
+    }
+
+    @Test
+    fun mainActivityHistoryRevivalSkipsAllOneShotIntakeHandlersWhileFreshIntentsDispatchThem() {
+        val scheme = BuildConfig.OAUTH_CALLBACK_SCHEME
+        val cases =
+            listOf(
+                "external_share" to
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, "shared snippet")
+                    },
+                "app_login_callback" to
+                    Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://login/callback?code=abc123")),
+                "mobile_oauth_callback" to
+                    Intent(Intent.ACTION_VIEW, Uri.parse("$scheme://oauth/callback?code=oauth123")),
+                "email_verification" to
+                    Intent(Intent.ACTION_VIEW, Uri.parse("https://app.raft.build/?verify=verify-token")),
+                "raft_message_link" to
+                    Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse(
+                            "https://app.raft.build/s/hq/channel/11111111-1111-4111-8111-111111111111" +
+                                "?msg=22222222-2222-4222-8222-222222222222"
+                        )
+                    ),
+            )
+
+        // Verify onCreate share intake decision directly with and without FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.
+        val shareFresh = cases.first().second
+        val shareHistory = Intent(shareFresh).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+        assertEquals(MainActivityOnCreateShareAction.Submit, resolveMainActivityOnCreateShareAction(shareFresh))
+        assertEquals(MainActivityOnCreateShareAction.ClearHistoryShare, resolveMainActivityOnCreateShareAction(shareHistory))
+        assertEquals(MainActivityOnCreateShareAction.None, resolveMainActivityOnCreateShareAction(Intent(Intent.ACTION_MAIN)))
+
+        fun runDispatch(intent: Intent): List<String> {
+            val invoked = mutableListOf<String>()
+            dispatchMainActivityLaunchIntent(
+                intent = intent,
+                onHistoryRevival = { invoked += "history_revival" },
+                onExternalShare = { candidate ->
+                    if (candidate?.isAndroidExternalShareIntent() == true) {
+                        invoked += "external_share"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onAppLoginCallback = { candidate ->
+                    if (candidate.isAppLoginCallbackIntent()) {
+                        invoked += "app_login_callback"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onMobileOAuthCallback = { candidate ->
+                    if (candidate?.data?.isRaftMobileOAuthCallback() == true) {
+                        invoked += "mobile_oauth_callback"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onEmailVerificationLink = { candidate ->
+                    if (candidate.emailVerificationToken() != null) {
+                        invoked += "email_verification"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onRaftMessageLink = { candidate ->
+                    val uri = candidate?.takeIf { it.action == Intent.ACTION_VIEW }?.data
+                    if (uri != null && RaftMessageLinkIngress.isMessageLink(uri.toString(), "https://app.raft.build")) {
+                        invoked += "raft_message_link"
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onUnclaimedAppSchemeLink = { false },
+                onUnsupportedRaftWebLink = { false },
+                onOpenSharedShell = { invoked += "open_shared_shell" },
+            )
+            return invoked
+        }
+
+        cases.forEach { (expectedHandler, freshIntent) ->
+            // Fresh intent enters its one-shot intake handler.
+            assertEquals(listOf(expectedHandler), runDispatch(freshIntent))
+
+            // Same intent replayed from Recents/history skips ALL one-shot handlers and revives the shell cleanly.
+            val historyIntent = Intent(freshIntent).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+            assertEquals(listOf("history_revival"), runDispatch(historyIntent))
+        }
     }
 
     @Test

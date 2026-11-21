@@ -390,13 +390,19 @@ internal fun isAndroidIntentLaunchedFromHistory(flags: Int): Boolean =
     (flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
 
 /**
- * True when [pageData] already names an explicit target server (shell route, notification tap,
- * or desktop shortcut) so launcher server-restoration must not overwrite it.
+ * True when [pageData] already names an explicit target server (shell route, document route owner,
+ * notification tap, or desktop shortcut) so launcher server-restoration must not overwrite it.
+ *
+ * Non-document launcher payloads (`postLoginAppShellPageData`, `settingsAccountAppShellPageData`)
+ * carry `slockRouteServerId` as route-owner metadata, which the launcher shell never reads as its
+ * shell server (`RaftShellStoreLaunch.kt` reads `slockRouteServerId` only when `slockDocumentShell`
+ * is true), so a bare route owner must not suppress persisted launcher server restoration.
  */
 internal fun hasExplicitAndroidShellServer(pageData: JSONObject): Boolean =
     pageData.optNonNullString(RAFT_SHELL_SERVER_ID).isNotEmpty() ||
         pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).isNotEmpty() ||
-        pageData.optNonNullString(ANDROID_ROUTE_SERVER_ID_KEY).isNotEmpty() ||
+        (pageData.optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false) &&
+            pageData.optNonNullString(ANDROID_ROUTE_SERVER_ID_KEY).isNotEmpty()) ||
         pageData.optNonNullString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID).isNotEmpty() ||
         pageData.optNonNullString(RaftDesktopShortcutContract.KeyServerId).isNotEmpty()
 
