@@ -72,6 +72,7 @@ PRODUCTION = tuple(
         "ThreadPageVisualScreens.kt",
         "ThreadReactions.kt",
         "ThreadRouteAttachmentActions.kt",
+        "ThreadRouteAttachmentUploader.kt",
         "ThreadRouteBannerSubtrees.kt",
         "ThreadRouteDialogs.kt",
         "ThreadRouteEventHandler.kt",
