@@ -6,102 +6,139 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RaftSegmentSwipeTest {
-    private fun decide(dx: Float, dy: Float = 0f, isLtr: Boolean = true, back: Boolean = true, fwd: Boolean = true) =
-        raftSegmentSwipeDecision(dx, dy, decidePx = 20f, isLtr = isLtr, canGoBackward = back, canGoForward = fwd)
+    private fun decide(
+        dx: Float,
+        dy: Float = 0f,
+        isLtr: Boolean = true,
+        back: Boolean = true,
+        fwd: Boolean = true,
+        host: Boolean = false,
+        edge: Boolean = false,
+    ) = raftSegmentedPagerDragDecision(
+        dxPx = dx,
+        dyPx = dy,
+        touchSlopPx = 10f,
+        isLtr = isLtr,
+        hostHasBackSwipe = host,
+        startsInLeadingEdge = edge,
+        canGoBackward = back,
+        canGoForward = fwd,
+    )
 
     @Test
-    fun waitsUntilTheDragHasTravelled() {
-        assertEquals(RaftSegmentSwipeDecision.Undecided, decide(dx = -19f, dy = 5f))
+    fun waitsForTheSlop() {
+        assertEquals(RaftPagingDragDecision.Undecided, decide(dx = -9f, dy = 5f))
     }
 
     @Test
-    fun aDragTowardTheStartTurnsToTheNextSubTabInLtr() {
-        assertEquals(RaftSegmentSwipeDecision.Forward, decide(dx = -24f))
-        assertEquals(RaftSegmentSwipeDecision.Backward, decide(dx = 24f))
+    fun aHorizontalDragTowardASegmentIsClaimedEitherWay() {
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = -12f))
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = 12f))
     }
 
     @Test
-    fun rtlMirrorsTheDirection() {
-        assertEquals(RaftSegmentSwipeDecision.Backward, decide(dx = -24f, isLtr = false))
-        assertEquals(RaftSegmentSwipeDecision.Forward, decide(dx = 24f, isLtr = false))
+    fun atTheFirstOrLastSegmentTheDragGoesToTheOuterPager() {
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = -12f, fwd = false))
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = 12f, back = false))
+        // RTL: toward the end is rightward.
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = 12f, isLtr = false, fwd = false))
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = 12f, isLtr = false, back = false))
     }
 
     @Test
-    fun atTheEdgeTheSwipeGoesToTheOuterPager() {
-        assertEquals(RaftSegmentSwipeDecision.Release, decide(dx = -24f, fwd = false))
-        assertEquals(RaftSegmentSwipeDecision.Release, decide(dx = 24f, back = false))
+    fun verticalDragsAreLeftToTheList() {
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = 2f, dy = 12f))
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = -11f, dy = 12f))
     }
 
     @Test
-    fun verticalAndDiagonalDragsAreLeftToTheList() {
-        assertEquals(RaftSegmentSwipeDecision.Release, decide(dx = 2f, dy = 20f))
-        assertEquals(RaftSegmentSwipeDecision.Release, decide(dx = -30f, dy = 16f))
-    }
-
-    private class Turns {
-        val turns = mutableListOf<Boolean>()
-        val nested = RaftSegmentNestedSwipe(decidePx = 20f)
-
-        fun leftover(dx: Float, back: Boolean = true, fwd: Boolean = true, isLtr: Boolean = true): Float =
-            nested.onLeftover(dx, isLtr, canGoBackward = back, canGoForward = fwd) { turns += it }
-    }
-
-    @Test
-    fun aScrollerLeftoverTowardASubTabTurnsItOnceAndKeepsTheGesture() {
-        val t = Turns()
-        assertEquals(-8f, t.leftover(-8f))
-        assertEquals(emptyList(), t.turns)
-        assertEquals(-14f, t.leftover(-14f))
-        assertEquals(listOf(true), t.turns)
-        // The rest of the gesture (and its fling) stays with the sub-tabs: the outer pager never moves.
-        assertEquals(-40f, t.leftover(-40f))
-        assertEquals(listOf(true), t.turns)
-        assertTrue(t.nested.owned)
-    }
-
-    @Test
-    fun aScrollerLeftoverPastTheLastSubTabGoesToTheOuterPager() {
-        val t = Turns()
-        assertEquals(0f, t.leftover(-30f, fwd = false))
-        assertEquals(0f, t.leftover(-30f, fwd = false))
-        assertEquals(emptyList(), t.turns)
-        assertFalse(t.nested.owned)
-    }
-
-    @Test
-    fun aScrollerLeftoverTowardTheStartTurnsBackInRtlMirrored() {
-        val t = Turns()
-        t.leftover(25f, isLtr = false)
-        assertEquals(listOf(true), t.turns)
-        val back = Turns()
-        back.leftover(25f)
-        assertEquals(listOf(false), back.turns)
-    }
-
-    @Test
-    fun aNewGestureDecidesAfresh() {
-        val t = Turns()
-        t.leftover(-30f, fwd = false)
-        t.nested.reset()
-        assertEquals(30f, t.leftover(30f))
-        assertEquals(listOf(false), t.turns)
-    }
-
-    @Test
-    fun aDragTheSubTabsAlreadyTurnedTakesNoSecondTurn() {
-        val t = Turns()
-        t.nested.claimedByDrag()
-        assertEquals(-50f, t.leftover(-50f))
-        assertEquals(emptyList(), t.turns)
-        assertTrue(t.nested.owned)
+    fun onABackSwipeHostABackDragFromTheLeadingStripIsLeftToThePop() {
+        assertEquals(RaftPagingDragDecision.Release, decide(dx = 30f, host = true, edge = true))
+        // A forward drag from the strip still turns; a back drag elsewhere still turns.
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = -30f, host = true, edge = true))
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = 30f, host = true, edge = false))
+        // Android: Back is an OS gesture, the strip turns segments as anywhere.
+        assertEquals(RaftPagingDragDecision.Claim, decide(dx = 30f, host = false, edge = true))
     }
 
     @Test
     fun aBackSwipeFromTheLeadingStripIsLeftToThePopOnlyOnABackSwipeHost() {
         assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = true))
         assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = false))
-        // Android: Back is an OS gesture, sub-tabs turn from the edge as before.
         assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = false, startsInLeadingEdge = true))
         assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = false, hostHasBackSwipe = false, startsInLeadingEdge = false))
+    }
+
+    private class Leftovers(edge: Boolean = false) {
+        val driven = mutableListOf<Float>()
+        val nested = RaftSegmentNestedDrag().apply { reset(edge) }
+
+        fun leftover(dx: Float, back: Boolean = true, fwd: Boolean = true, isLtr: Boolean = true, host: Boolean = false): Float =
+            nested.onLeftover(dx, isLtr, host, canGoBackward = back, canGoForward = fwd) { driven += it }
+    }
+
+    @Test
+    fun aScrollerLeftoverTowardASegmentMovesTheContentWithTheFinger() {
+        val t = Leftovers()
+        assertEquals(-8f, t.leftover(-8f))
+        assertEquals(-14f, t.leftover(-14f))
+        // Forward scroll deltas: a leftward finger in LTR scrolls toward the next segment.
+        assertEquals(listOf(8f, 14f), t.driven)
+        assertTrue(t.nested.owned)
+        assertTrue(t.nested.drives)
+    }
+
+    @Test
+    fun theFirstLeftoverDecidesTheWholeGesture() {
+        val t = Leftovers()
+        t.leftover(-10f)
+        // Back the other way in the same gesture: still the segments' (the outer pager stays put).
+        assertEquals(30f, t.leftover(30f))
+        assertEquals(listOf(10f, -30f), t.driven)
+    }
+
+    @Test
+    fun aScrollerLeftoverPastTheLastSegmentGoesToTheOuterPager() {
+        val t = Leftovers()
+        assertEquals(0f, t.leftover(-30f, fwd = false))
+        assertEquals(0f, t.leftover(-30f, fwd = true))
+        assertEquals(emptyList(), t.driven)
+        assertFalse(t.nested.owned)
+    }
+
+    @Test
+    fun rtlMirrorsTheLeftover() {
+        val t = Leftovers()
+        t.leftover(25f, isLtr = false)
+        assertEquals(listOf(25f), t.driven)
+    }
+
+    @Test
+    fun aBackLeftoverFromTheLeadingStripPassesThroughOnABackSwipeHost() {
+        val ios = Leftovers(edge = true)
+        assertEquals(0f, ios.leftover(25f, host = true))
+        assertFalse(ios.nested.owned)
+        val android = Leftovers(edge = true)
+        assertEquals(25f, android.leftover(25f, host = false))
+        assertEquals(listOf(-25f), android.driven)
+    }
+
+    @Test
+    fun aNewGestureDecidesAfresh() {
+        val t = Leftovers()
+        t.leftover(-30f, fwd = false)
+        t.nested.reset()
+        assertEquals(30f, t.leftover(30f))
+        assertEquals(listOf(-30f), t.driven)
+    }
+
+    @Test
+    fun aGestureThePointerClaimedTakesLeftoversWithoutDrivingTwice() {
+        val t = Leftovers()
+        t.nested.claimedByPointer()
+        assertEquals(-50f, t.leftover(-50f))
+        assertEquals(emptyList(), t.driven)
+        assertTrue(t.nested.owned)
+        assertFalse(t.nested.drives)
     }
 }

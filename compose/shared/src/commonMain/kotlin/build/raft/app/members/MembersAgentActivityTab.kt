@@ -4,7 +4,11 @@ import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.agentToolLogLabel
 import build.raft.app.data.agentToolSemantic
-import build.raft.designsystem.gesture.raftSwipesBetweenSegments
+import build.raft.designsystem.components.RaftSegmentedPager
+import build.raft.designsystem.components.rememberRaftSegmentedPagerState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import build.raft.designsystem.components.RaftBannerStatus
@@ -77,7 +81,6 @@ internal fun MembersAgentActivityTab(
     /** Stop one running sub-agent from its page; null: the viewer may not (web `canStopSubagents`). */
     subagentStop: MembersAgentSubagentStop? = null
 ) {
-    val errorStrings = localizedErrorPresentationStrings()
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
     var chosenActivityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
@@ -123,182 +126,213 @@ internal fun MembersAgentActivityTab(
     // Web AgentActivityLog: without the Overview flag the tab is the raw log alone, no toolbar
     // (Copy info lives in the profile's Actions and the runtime-error notice, as on the web);
     // behind it, the Overview / Raw Log toolbar heads the tab.
-    // The switch's segments in order: a sideways swipe turns them before the profile's tab pager
-    // takes it, which it does only past the first or last one (nested-pager priority, #148).
+    // The switch's segments in order, each a page of a pager that follows the finger (#257): a
+    // sideways swipe turns them before the profile's tab pager takes it, which it does only past the
+    // first or last one (nested-pager priority, #148), and the switch's sticker slides with it.
     val activityViews =
         listOfNotNull(
             MembersAgentActivityView.Overview.takeIf { overview != null },
             MembersAgentActivityView.Raw,
             MembersAgentActivityView.Subagents.takeIf { showSubagents },
         )
-    val activityViewIndex = activityViews.indexOf(activityView)
-    Column(
+    val activityViewIndex = activityViews.indexOf(activityView).coerceAtLeast(0)
+    val currentActivityViews by rememberUpdatedState(activityViews)
+    val pagerState =
+        key(detail?.agentId) {
+            rememberRaftSegmentedPagerState(initialIndex = activityViewIndex) { currentActivityViews.size }
+        }
+    RaftSegmentedPager(
+        state = pagerState,
+        selectedIndex = activityViewIndex,
+        onSelectedIndexChange = { index -> activityViews.getOrNull(index)?.let(changeView) },
         modifier = modifier
             .fillMaxWidth()
-            .background(RaftTheme.colors.layerCanvas)
-            .raftSwipesBetweenSegments(
-                canGoBackward = activityViewIndex > 0,
-                canGoForward = activityViewIndex in 0 until activityViews.lastIndex,
-                onSwipe = { forward ->
-                    activityViews.getOrNull(activityViewIndex + if (forward) 1 else -1)?.let(changeView)
-                },
-            ),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        if (overview != null || showSubagents) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = MembersPageInset,
-                        vertical = RaftAppSpacing.Sm
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-            ) {
-                // Web AgentActivityLog: Overview / Raw Log, and Subagents (always for a runtime that
-                // can start them, else once the agent has had one).
-                // The switch takes what the button leaves; three segments scroll in their track.
-                Box(Modifier.weight(1f)) {
-                    MembersAgentActivityViewSwitch(
-                        view = activityView,
-                        onViewChange = changeView,
-                        showOverview = overview != null,
-                        subagentCount = if (showSubagents) subagents.size else null,
-                    )
-                }
-                // Copy info heads the tab with the Overview; without it, it lives in the profile.
-                if (overview != null) {
-                    RaftButton(
-                        text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
-                        onClick = onCopyDiagnostics,
-                        enabled = diagnosticActionState?.inProgress != true,
-                        leadingIcon = {
-                            RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
-                        }
-                    )
-                }
-            }
-            MembersDetailSectionDivider()
-        }
-        if (overview != null && activityView == MembersAgentActivityView.Overview) {
-            val summary = detail?.summary
-            MembersAgentActivityOverview(
-                binding = overview,
-                now = MembersAgentActivityNow(
-                    label =
-                        if (heldByOfflineComputer) {
-                            stringResource(Res.string.agent_status_computer_offline)
-                        } else {
-                            membersLiveAgentStatusLabel(
-                                indicatorState = agentStatusIndicatorState,
-                                summaryStatus = summary?.status,
-                                summaryActivity = summary?.activity,
-                                summaryActivityDetail = summary?.activityDetail,
-                                fallback = MembersUnknownAgentStatusLabel
-                            )
-                        },
-                    // Its Computer offline: the offline light, whatever its last activity (web #14585).
-                    indicator =
-                        if (heldByOfflineComputer) {
-                            raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
-                        } else {
-                            agentStatusIndicatorState
-                        },
-                    wakeCrashLoop =
-                        membersAgentActivityWakeCrashLoop(
-                            indicator = agentStatusIndicatorState,
-                            summaryDetailKind = summary?.activityDetailKind,
-                            summaryWakeCrashLoop = summary?.wakeCrashLoop
+            .background(RaftTheme.colors.layerCanvas),
+        header = {
+            if (overview != null || showSubagents) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = MembersPageInset,
+                            vertical = RaftAppSpacing.Sm
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                ) {
+                    // Web AgentActivityLog: Overview / Raw Log, and Subagents (always for a runtime that
+                    // can start them, else once the agent has had one).
+                    // The switch takes what the button leaves; three segments scroll in their track.
+                    Box(Modifier.weight(1f)) {
+                        MembersAgentActivityViewSwitch(
+                            view = activityView,
+                            onViewChange = changeView,
+                            showOverview = overview != null,
+                            subagentCount = if (showSubagents) subagents.size else null,
+                            selectionPosition = { pagerState.position },
                         )
-                ),
-                hasRawActivity = detail?.activity?.isNotEmpty() == true,
-                hasComputer = !summary?.machineId.isNullOrBlank(),
-                timeContext = timeContext,
-                onShowRaw = { changeView(MembersAgentActivityView.Raw) },
-                onOpenComputer = onOpenComputer,
-                onOpenUrl = onOpenUrl,
-                onOpenMessage = { channelId, messageId -> onOpenMessage(channelId, messageId.value) },
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
-            return@Column
-        }
-        if (activityView == MembersAgentActivityView.Subagents) {
-            val contentModifier = Modifier.fillMaxWidth().weight(1f)
-            if (openSubagent != null) {
-                MembersAgentSubagentDetail(
-                    group = openSubagent,
-                    timeContext = timeContext,
-                    stop = subagentStop,
-                    onBack = { openSubagentKey = null },
-                    horizontalInset = MembersPageInset,
-                    modifier = contentModifier,
-                ) { _, entry, last ->
-                    MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
+                    }
+                    // Copy info heads the tab with the Overview; without it, it lives in the profile.
+                    if (overview != null) {
+                        RaftButton(
+                            text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
+                            onClick = onCopyDiagnostics,
+                            enabled = diagnosticActionState?.inProgress != true,
+                            leadingIcon = {
+                                RaftContentLucideIcon(if (copySucceeded) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                            }
+                        )
+                    }
                 }
-            } else {
-                MembersAgentSubagentsList(
-                    groups = subagents,
-                    timeContext = timeContext,
-                    onOpen = { openSubagentKey = it },
-                    contentPadding = PaddingValues(start = MembersPageInset, end = MembersPageInset, bottom = RaftAppSpacing.Md),
-                    modifier = contentModifier,
-                )
+                MembersDetailSectionDivider()
             }
-            return@Column
-        }
-        val rows =
-            remember(activityLog) {
-                // Web isVisibleTrajectoryEntry: a freshness hold says itself in its action row.
-                activityLog.filterNot {
-                    (it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message") ||
-                        (it.type == "status" && it.statusDetailKind == AgentActivityDetailKindFreshnessHold)
+        },
+    ) { index ->
+        Column(Modifier.fillMaxSize()) {
+            when (activityViews.getOrNull(index) ?: MembersAgentActivityView.Raw) {
+                MembersAgentActivityView.Overview ->
+                    if (overview != null) {
+                        val summary = detail?.summary
+                        MembersAgentActivityOverview(
+                            binding = overview,
+                            now = MembersAgentActivityNow(
+                                label =
+                                    if (heldByOfflineComputer) {
+                                        stringResource(Res.string.agent_status_computer_offline)
+                                    } else {
+                                        membersLiveAgentStatusLabel(
+                                            indicatorState = agentStatusIndicatorState,
+                                            summaryStatus = summary?.status,
+                                            summaryActivity = summary?.activity,
+                                            summaryActivityDetail = summary?.activityDetail,
+                                            fallback = MembersUnknownAgentStatusLabel
+                                        )
+                                    },
+                                // Its Computer offline: the offline light, whatever its last activity (web #14585).
+                                indicator =
+                                    if (heldByOfflineComputer) {
+                                        raftAgentStatusIndicatorState(status = AgentStatus.Offline, presence = Presence.Offline, external = false)
+                                    } else {
+                                        agentStatusIndicatorState
+                                    },
+                                wakeCrashLoop =
+                                    membersAgentActivityWakeCrashLoop(
+                                        indicator = agentStatusIndicatorState,
+                                        summaryDetailKind = summary?.activityDetailKind,
+                                        summaryWakeCrashLoop = summary?.wakeCrashLoop
+                                    )
+                            ),
+                            hasRawActivity = detail?.activity?.isNotEmpty() == true,
+                            hasComputer = !summary?.machineId.isNullOrBlank(),
+                            timeContext = timeContext,
+                            onShowRaw = { changeView(MembersAgentActivityView.Raw) },
+                            onOpenComputer = onOpenComputer,
+                            onOpenUrl = onOpenUrl,
+                            onOpenMessage = { channelId, messageId -> onOpenMessage(channelId, messageId.value) },
+                            modifier = Modifier.fillMaxWidth().weight(1f)
+                        )
+                    }
+                MembersAgentActivityView.Subagents -> {
+                    val contentModifier = Modifier.fillMaxWidth().weight(1f)
+                    if (openSubagent != null) {
+                        MembersAgentSubagentDetail(
+                            group = openSubagent,
+                            timeContext = timeContext,
+                            stop = subagentStop,
+                            onBack = { openSubagentKey = null },
+                            horizontalInset = MembersPageInset,
+                            modifier = contentModifier,
+                        ) { _, entry, last ->
+                            MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
+                        }
+                    } else {
+                        MembersAgentSubagentsList(
+                            groups = subagents,
+                            timeContext = timeContext,
+                            onOpen = { openSubagentKey = it },
+                            contentPadding = PaddingValues(start = MembersPageInset, end = MembersPageInset, bottom = RaftAppSpacing.Md),
+                            modifier = contentModifier,
+                        )
+                    }
                 }
+                MembersAgentActivityView.Raw ->
+                    MembersAgentActivityRawLog(
+                        activityLog = activityLog,
+                        loadState = loadState,
+                        resetKey = detail?.agentId,
+                        autoScrollToLatest = autoScrollToLatest,
+                        timeContext = timeContext,
+                        onOpenUrl = onOpenUrl,
+                        subagentLink = subagentLink,
+                    )
             }
-        val hasRows = rows.isNotEmpty()
-        if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
-            MembersAgentActivityLoadNotice(loadState)
         }
-        if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
-            RaftCenteredLoading(
-                message = stringResource(Res.string.member_state_loading_activity),
-                modifier = Modifier.fillMaxWidth().weight(1f)
-            )
-        } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
-            RaftEmptyState(
-                title = stringResource(Res.string.member_error_load_activity),
-                description = loadState.error.userFacingMessage(errorStrings),
-                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
-        } else if (rows.isEmpty()) {
-            RaftEmptyState(
-                title = stringResource(Res.string.member_state_no_activity),
-                description = stringResource(Res.string.member_state_activity_start_agent),
-                icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
-        } else {
-            // Raw log tail (raft-design "Conversation › Following the newest"): opens at the newest,
-            // follows new entries while the reader is at the bottom, otherwise keeps their place
-            // and shows the thread's jump pill. Rows are keyed by the entry's own id.
-            MembersAgentActivityLogList(
-                rows = rows,
-                rowKey = { it.activityTimelineKey() },
-                resetKey = detail?.agentId,
-                followLatest = autoScrollToLatest,
-                // Web: the log's `py-3` plus each entry's `py-1.5` above the first and under the last.
-                contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = MembersActivityLogPaddingY),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) { index, entry ->
-                MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex, subagentLink = subagentLink)
+    }
+}
+
+/** The Raw Log view: the load notice, then the log (or its loading, error or empty state). */
+@Composable
+private fun ColumnScope.MembersAgentActivityRawLog(
+    activityLog: List<AgentActivityEntry>,
+    loadState: MembersAgentActivityLoadState,
+    resetKey: Any?,
+    autoScrollToLatest: Boolean,
+    timeContext: RaftTimeContext,
+    onOpenUrl: (String) -> Unit,
+    subagentLink: MembersAgentActivitySubagentLink?,
+) {
+    val errorStrings = localizedErrorPresentationStrings()
+    val rows =
+        remember(activityLog) {
+            // Web isVisibleTrajectoryEntry: a freshness hold says itself in its action row.
+            activityLog.filterNot {
+                (it.type == "tool_start" && it.toolName?.normalizedMembersToolName() == "send_message") ||
+                    (it.type == "status" && it.statusDetailKind == AgentActivityDetailKindFreshnessHold)
             }
+        }
+    val hasRows = rows.isNotEmpty()
+    if (hasRows && (loadState is MembersAgentActivityLoadState.Refreshing || loadState is MembersAgentActivityLoadState.Error)) {
+        MembersAgentActivityLoadNotice(loadState)
+    }
+    if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
+        RaftCenteredLoading(
+            message = stringResource(Res.string.member_state_loading_activity),
+            modifier = Modifier.fillMaxWidth().weight(1f)
+        )
+    } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
+        RaftEmptyState(
+            title = stringResource(Res.string.member_error_load_activity),
+            description = loadState.error.userFacingMessage(errorStrings),
+            icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
+    } else if (rows.isEmpty()) {
+        RaftEmptyState(
+            title = stringResource(Res.string.member_state_no_activity),
+            description = stringResource(Res.string.member_state_activity_start_agent),
+            icon = { RaftContentLucideIcon(RaftLucideIconName.Activity, size = RaftEmptyStateDefaults.IconSize) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
+    } else {
+        // Raw log tail (raft-design "Conversation › Following the newest"): opens at the newest,
+        // follows new entries while the reader is at the bottom, otherwise keeps their place
+        // and shows the thread's jump pill. Rows are keyed by the entry's own id.
+        MembersAgentActivityLogList(
+            rows = rows,
+            rowKey = { it.activityTimelineKey() },
+            resetKey = resetKey,
+            followLatest = autoScrollToLatest,
+            // Web: the log's `py-3` plus each entry's `py-1.5` above the first and under the last.
+            contentPadding = PaddingValues(horizontal = MembersPageInset, vertical = MembersActivityLogPaddingY),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) { index, entry ->
+            MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = index == rows.lastIndex, subagentLink = subagentLink)
         }
     }
 }
