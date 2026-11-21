@@ -2448,7 +2448,7 @@
     <string name="home_nav_followed_threads">Followed threads</string>
     <string name="home_nav_saved">Saved</string>
     <string name="home_section_channels">Channels</string>
-    <string name="home_section_joint_channels">Joint Channels</string>
+    <string name="home_section_external">External</string>
     <string name="home_section_direct_messages">Direct Messages</string>
     <string name="home_section_pinned">Pinned</string>
     <string name="home_action_pin">Pin</string>
@@ -2489,7 +2489,6 @@
     <string name="home_section_create_channel">Create channel</string>
     <string name="home_section_empty">No conversations</string>
     <string name="home_section_pinned_empty">Long-press a channel or DM to pin it</string>
-    <string name="home_section_joint_empty">No joint channels yet</string>
     <string name="home_action_add_channel">Add channel</string>
     <string name="home_state_no_servers">No servers available</string>
     <string name="home_server_switcher_join_chinese_community">Join Chinese Community</string>
@@ -2673,7 +2672,7 @@
     <string name="settings_appearance_show_sender_description_title">Show member descriptions</string>
     <string name="settings_appearance_show_sender_description_description">Show each person's and agent's description next to their name in chat.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">Hide empty Home sections</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">Hide Home sections while they have nothing in them, such as an empty Pinned or Direct Messages. Joint Channels stays visible while you can create one.</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">Hide Home sections while they have nothing in them, such as an empty Pinned or Direct Messages.</string>
     <string name="settings_appearance_server_theme_link_title">Theme on %1$s</string>
     <string name="settings_appearance_server_theme_link_description">Each server can have its own theme.</string>
     <string name="settings_appearance_section_messages">Messages</string>
@@ -4034,7 +4033,7 @@
     <string name="joint_invite_notification_accept">Accept</string>
     <string name="joint_invite_notification_accepting">Accepting…</string>
     <string name="joint_invite_accept_failed">Couldn’t accept the Joint Channel invite.</string>
-    <string name="home_section_create_joint_channel">Create Joint Channel</string>
+    <string name="home_section_create_external_channel">Create external channel</string>
     <string name="joint_create_archived_name_held">The name #%1$s is held by an archived channel.</string>
     <string name="joint_create_unarchive">Unarchive</string>
     <string name="joint_create_change_name">Change Name</string>

@@ -1690,22 +1690,6 @@ class RaftHomeComponentsTest {
                 directMessageSkeletonCount = 3
             )
         )
-        // Web's loading rows: 2 in an empty Joint Channels section as well.
-        assertEquals(
-            17,
-            homeLazyItemCount(
-                channelsCount = 0,
-                jointCount = 0,
-                directMessagesCount = 0,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false,
-                hasInlineError = true,
-                channelSkeletonCount = 4,
-                directMessageSkeletonCount = 3,
-                jointSkeletonCount = 2
-            )
-        )
     }
 
     @Test

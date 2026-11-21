@@ -2444,7 +2444,7 @@
     <string name="home_nav_followed_threads">已追蹤的討論串</string>
     <string name="home_nav_saved">已儲存</string>
     <string name="home_section_channels">頻道</string>
-    <string name="home_section_joint_channels">聯合頻道</string>
+    <string name="home_section_external">外部</string>
     <string name="home_section_direct_messages">私訊</string>
     <string name="home_section_pinned">已釘選</string>
     <string name="home_action_pin">釘選</string>
@@ -2485,7 +2485,6 @@
     <string name="home_section_create_channel">建立頻道</string>
     <string name="home_section_empty">沒有對話</string>
     <string name="home_section_pinned_empty">長按頻道或私訊即可釘選</string>
-    <string name="home_section_joint_empty">還沒有聯合頻道</string>
     <string name="home_action_add_channel">新增頻道</string>
     <string name="home_state_no_servers">沒有可用的伺服器</string>
     <string name="home_server_switcher_join_chinese_community">加入中文社群</string>
@@ -2669,7 +2668,7 @@
     <string name="settings_appearance_show_sender_description_title">顯示成員描述</string>
     <string name="settings_appearance_show_sender_description_description">在聊天中於每位成員和 Agent 名稱旁顯示其描述。</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">隱藏首頁的空白區段</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">首頁區段沒有內容時（例如空的「已釘選」、「私訊」）會自動隱藏。只要你可以建立聯合頻道，「聯合頻道」區段就會保持顯示。</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">首頁區段沒有內容時（例如空的「已釘選」、「私訊」）會自動隱藏。</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 的主題</string>
     <string name="settings_appearance_server_theme_link_description">每個伺服器可以用不同的主題。</string>
     <string name="settings_appearance_section_messages">訊息</string>
@@ -3854,7 +3853,7 @@
     <string name="joint_invite_notification_accept">接受</string>
     <string name="joint_invite_notification_accepting">正在接受…</string>
     <string name="joint_invite_accept_failed">無法接受聯合頻道邀請。</string>
-    <string name="home_section_create_joint_channel">建立聯合頻道</string>
+    <string name="home_section_create_external_channel">建立外部頻道</string>
     <string name="joint_create_archived_name_held">名稱 #%1$s 已被一個已封存的頻道使用。</string>
     <string name="joint_create_unarchive">取消封存</string>
     <string name="joint_create_change_name">變更名稱</string>

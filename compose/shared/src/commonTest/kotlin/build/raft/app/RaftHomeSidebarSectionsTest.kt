@@ -96,29 +96,36 @@ class RaftHomeSidebarSectionsTest {
     }
 
     @Test
-    fun hideEmptySectionsKeepsAnEmptyJointChannelsSectionWhileOneCanBeCreated() {
-        // Web SidebarChatSections: `canCreateJointChannel || !isEmptySectionHidden(...)`.
-        fun keys(canCreate: Boolean) =
+    fun externalShowsOnlyWhileItHoldsAChannelWhateverHideEmptySections() {
+        // Web SidebarChatSections (slock #15939): `isEmptySectionHidden(jointCount, …, alwaysHide = true)`.
+        // An empty External is not drawn even with empty sections shown, and not for its "+" either.
+        fun keys(hasExternal: Boolean, hide: Boolean) =
             sectionKeys(
                 homeSidebarSectionOrder(
                     sectionOrder = listOf("system:pinned", "system:joint", "system:channels", "system:dms"),
                     customSections = emptyList(),
                     customSectionRows = emptyList(),
-                    hasPinned = false,
-                    hasJointChannels = false,
-                    hasDirectMessages = false,
-                    hideEmptySections = true,
-                    canCreateJointChannel = canCreate
+                    hasPinned = true,
+                    hasJointChannels = hasExternal,
+                    hasDirectMessages = true,
+                    hideEmptySections = hide
                 )
             )
-        assertEquals(listOf("system:joint", "system:channels"), keys(canCreate = true))
-        assertEquals(listOf("system:channels"), keys(canCreate = false))
+        listOf(true, false).forEach { hide ->
+            assertEquals(listOf("system:pinned", "system:channels", "system:dms"), keys(hasExternal = false, hide = hide), "hide=$hide")
+            assertEquals(
+                listOf("system:pinned", "system:joint", "system:channels", "system:dms"),
+                keys(hasExternal = true, hide = hide),
+                "hide=$hide"
+            )
+        }
     }
 
     @Test
-    fun hideEmptySectionsDropsEmptyPinnedJointAndDmsButKeepsChannelsAndCustomSections() {
+    fun hideEmptySectionsDropsEmptyPinnedAndDmsButKeepsChannelsAndCustomSections() {
         // Web sidebarEmptySectionVisibility.ts: the preference hides empty
-        // Pinned / Joint / DMs; Channels and custom sections always render.
+        // Pinned / DMs; Channels and custom sections always render. An empty
+        // External is not drawn either way.
         val a = section("sec-a", "A")
         val empty = section("sec-empty", "Empty")
         val rows = listOf(rowsFor(a).single(), RaftHomeCustomSectionRows(section = empty, items = emptyList()))
@@ -136,7 +143,7 @@ class RaftHomeSidebarSectionsTest {
             )
         assertEquals(listOf("sec-empty", "sec-a", "system:channels"), keys(hide = true))
         assertEquals(
-            listOf("sec-empty", "system:pinned", "sec-a", "system:joint", "system:channels", "system:dms"),
+            listOf("sec-empty", "system:pinned", "sec-a", "system:channels", "system:dms"),
             keys(hide = false)
         )
     }
@@ -296,7 +303,7 @@ class RaftHomeSidebarSectionsTest {
     @Test
     fun moveToSectionMenuListsHomeFirstAndChecksTheCurrentSection() {
         val sections = listOf(section("sec-1", "One"), section("sec-2", "Two"))
-        val labels = RaftHomeShellLabels(channels = "Channels", jointChannels = "Joint Channels", directMessages = "Direct Messages")
+        val labels = RaftHomeShellLabels(channels = "Channels", external = "External", directMessages = "Direct Messages")
         fun menu(pinned: Boolean = false, placed: String? = null, joint: Boolean = false, dm: Boolean = false) =
             raftHomeMoveToSectionMenuItems(
                 ChannelSectionPlacement(sections, pinned = pinned, placementSectionId = placed, joint = joint, directMessage = dm),
@@ -318,7 +325,7 @@ class RaftHomeSidebarSectionsTest {
         assertTrue(pinned.single { it.id == "pinned" }.enabled)
         assertEquals(listOf("home"), menu(placed = "deleted").filter { it.checked }.map { it.id })
         // The home row names the conversation's home section.
-        assertEquals("Joint Channels", menu(joint = true).first().label)
+        assertEquals("External", menu(joint = true).first().label)
         assertEquals("Direct Messages", menu(dm = true).first().label)
     }
 

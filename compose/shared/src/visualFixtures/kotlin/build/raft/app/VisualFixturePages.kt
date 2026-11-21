@@ -101,8 +101,10 @@ private fun HomeLoadingVisualContent() {
             directMessages = emptyList(),
             showLoadingSkeletons = true,
             // web's sidebar keeps empty sections while the lists load (the "Hide empty sidebar
-            // sections" preference is off): Pinned with no hint or rows, Joint Channels with 2
-            // loading rows, Channels 4, Direct Messages 3.
+            // sections" preference is off): Pinned with no hint or rows, Channels 4, Direct
+            // Messages 3. External is not drawn: the web draws it (2 loading rows) unless it
+            // remembers it empty from the last time, then drops it once loaded on a server with
+            // no external channel; the app does not show it to take it away (homeSidebarSectionOrder).
             hideEmptySections = false,
             showBottomBar = true,
             outerPadding = 0.dp

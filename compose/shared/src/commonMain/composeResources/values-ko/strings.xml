@@ -2444,7 +2444,7 @@
     <string name="home_nav_followed_threads">팔로우한 스레드</string>
     <string name="home_nav_saved">저장됨</string>
     <string name="home_section_channels">채널</string>
-    <string name="home_section_joint_channels">공동 채널</string>
+    <string name="home_section_external">외부</string>
     <string name="home_section_direct_messages">다이렉트 메시지</string>
     <string name="home_section_pinned">고정됨</string>
     <string name="home_action_pin">고정</string>
@@ -2485,7 +2485,6 @@
     <string name="home_section_create_channel">채널 만들기</string>
     <string name="home_section_empty">대화가 없어요</string>
     <string name="home_section_pinned_empty">채널이나 DM을 길게 눌러 고정하세요</string>
-    <string name="home_section_joint_empty">아직 공동 채널이 없어요</string>
     <string name="home_action_add_channel">채널 추가</string>
     <string name="home_state_no_servers">사용할 수 있는 서버가 없어요</string>
     <string name="home_server_switcher_join_chinese_community">중국어 커뮤니티 참여</string>
@@ -2669,7 +2668,7 @@
     <string name="settings_appearance_show_sender_description_title">멤버 소개 표시</string>
     <string name="settings_appearance_show_sender_description_description">채팅에서 각 사람과 에이전트 이름 옆에 소개를 표시해요.</string>
     <string name="settings_appearance_hide_empty_sidebar_sections_title">홈의 빈 섹션 숨기기</string>
-    <string name="settings_appearance_hide_empty_sidebar_sections_description">고정됨, 다이렉트 메시지처럼 내용이 없는 홈 섹션을 숨겨요. 공동 채널은 만들 수 있는 동안 계속 표시돼요.</string>
+    <string name="settings_appearance_hide_empty_sidebar_sections_description">고정됨, 다이렉트 메시지처럼 내용이 없는 홈 섹션을 숨겨요.</string>
     <string name="settings_appearance_server_theme_link_title">%1$s 테마</string>
     <string name="settings_appearance_server_theme_link_description">서버마다 다른 테마를 쓸 수 있어요.</string>
     <string name="settings_appearance_section_messages">메시지</string>
@@ -3854,7 +3853,7 @@
     <string name="joint_invite_notification_accept">수락</string>
     <string name="joint_invite_notification_accepting">수락하는 중…</string>
     <string name="joint_invite_accept_failed">공동 채널 초대를 수락하지 못했어요.</string>
-    <string name="home_section_create_joint_channel">공동 채널 만들기</string>
+    <string name="home_section_create_external_channel">외부 채널 만들기</string>
     <string name="joint_create_archived_name_held">#%1$s 이름은 보관된 채널이 사용하고 있어요.</string>
     <string name="joint_create_unarchive">보관 취소</string>
     <string name="joint_create_change_name">이름 변경</string>

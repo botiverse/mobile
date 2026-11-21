@@ -237,7 +237,7 @@ class KmmResourceI18nTest {
             Res.string.home_nav_followed_threads,
             Res.string.home_nav_saved,
             Res.string.home_section_channels,
-            Res.string.home_section_joint_channels,
+            Res.string.home_section_external,
             Res.string.home_section_direct_messages,
             Res.string.home_section_pinned,
             Res.string.home_action_pin,

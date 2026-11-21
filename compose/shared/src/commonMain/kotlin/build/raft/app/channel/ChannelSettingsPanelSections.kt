@@ -22,7 +22,7 @@ import build.raft.designsystem.theme.RaftTheme
 
 /**
  * Where a channel or a DM sits in MY sidebar, as web ChannelSectionSelect models it: its home
- * section (Channels, Joint Channels, or Direct Messages for a DM), Pinned, or one of my custom
+ * section (Channels, External, or Direct Messages for a DM), Pinned, or one of my custom
  * sections.
  */
 internal sealed interface ChannelSectionValue {
@@ -166,7 +166,7 @@ internal fun ChannelSectionSelect(
     val homeLabel =
         when {
             state.directMessage -> stringResource(Res.string.home_section_direct_messages)
-            state.joint -> stringResource(Res.string.home_section_joint_channels)
+            state.joint -> stringResource(Res.string.home_section_external)
             else -> stringResource(Res.string.home_section_channels)
         }
     val pinnedLabel = stringResource(Res.string.home_section_pinned)
