@@ -951,7 +951,13 @@ internal fun resolveThreadAttachmentUploadFailureCode(
             if (result.blocker.isAuthSessionBlocker()) {
                 result.blocker.code
             } else {
-                result.blocker.serverCode?.trim()?.takeIf { it.isNotBlank() } ?: result.blocker.code
+                val structuredServerCode = result.blocker.serverCode?.trim()?.takeIf { it.isNotBlank() }
+                val hasSpecificReason =
+                    structuredServerCode != null &&
+                        threadUserFacingErrorCodeReason(structuredServerCode).let {
+                            it != null && it != ThreadUserFacingErrorReason.Generic
+                        }
+                if (hasSpecificReason) structuredServerCode else result.blocker.code
             }
         is DataResult.Empty,
         is DataResult.Content -> emptyCode

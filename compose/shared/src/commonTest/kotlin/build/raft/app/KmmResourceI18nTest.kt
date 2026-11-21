@@ -42,7 +42,7 @@ class KmmResourceI18nTest {
                 Res.string.error_attachment_too_large,
                 Res.string.upgrade_dialog_upload_quota_title,
                 Res.string.thread_error_reason_channel_read_only,
-                Res.string.thread_feedback_channel_archived,
+                Res.string.thread_archived_notice,
                 Res.string.error_too_many_attempts,
                 Res.string.error_response_unreadable,
                 Res.string.error_generic,

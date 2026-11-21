@@ -2651,7 +2651,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
         413 ->
             DataResult.Error(
                 ScreenError(
-                    code = conversationRouteStructuredErrorCodeOrNull() ?: "attachment_too_large",
+                    code = serverCode ?: "attachment_too_large",
                     retryable = false,
                     serverMessage = serverMessage,
                     serverCode = serverCode,
@@ -2696,7 +2696,8 @@ private fun HomeNetworkResponse.conversationRouteStructuredErrorCodeOrNull(): St
         runCatching {
             conversationRepositoryJson.decodeFromString<ConversationRouteStructuredErrorDto>(payload)
         }.getOrNull()
-    return (dto?.code ?: dto?.errorCode)?.trim()?.takeIf { it.isNotBlank() }
+    return dto?.code?.trim()?.takeIf { it.isNotBlank() }
+        ?: dto?.errorCode?.trim()?.takeIf { it.isNotBlank() }
 }
 
 private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
@@ -2705,7 +2706,8 @@ private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {
         ?: return null
     return runCatching {
         val dto = conversationRepositoryJson.decodeFromString(ConversationRouteErrorDto.serializer(), payload)
-        (dto.error ?: dto.message)?.trim()?.takeIf { it.isNotBlank() }
+        dto.error?.trim()?.takeIf { it.isNotBlank() }
+            ?: dto.message?.trim()?.takeIf { it.isNotBlank() }
     }.getOrNull()
 }
 

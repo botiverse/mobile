@@ -42,7 +42,7 @@ internal fun localizedErrorPresentationStrings(): ErrorPresentationStrings =
             ErrorPresentationKey.AttachmentTooLarge to stringResource(Res.string.error_attachment_too_large),
             ErrorPresentationKey.AttachmentMonthlyQuotaExceeded to stringResource(Res.string.upgrade_dialog_upload_quota_title),
             ErrorPresentationKey.ChannelReadOnly to stringResource(Res.string.thread_error_reason_channel_read_only),
-            ErrorPresentationKey.ChannelArchived to stringResource(Res.string.thread_feedback_channel_archived),
+            ErrorPresentationKey.ChannelArchived to stringResource(Res.string.thread_archived_notice),
             ErrorPresentationKey.TooManyAttempts to stringResource(Res.string.error_too_many_attempts),
             ErrorPresentationKey.ResponseUnreadable to stringResource(Res.string.error_response_unreadable),
             ErrorPresentationKey.ServerVersionIncompatible to stringResource(Res.string.error_server_version_incompatible),

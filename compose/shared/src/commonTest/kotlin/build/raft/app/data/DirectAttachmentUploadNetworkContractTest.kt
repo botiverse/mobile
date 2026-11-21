@@ -867,6 +867,16 @@ class DirectAttachmentUploadNetworkContractTest {
         assertEquals("server_forbidden", uncodedBlocker.code)
         assertNull(uncodedBlocker.serverCode)
         assertEquals("You do not have access to this channel", uncodedBlocker.serverMessage)
+
+        val blankPrimaryFields =
+            uploadWith403(
+                """{"code":" ","errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED","error":" ","message":"Monthly file upload quota exceeded."}"""
+            )
+        val blankPrimaryError = assertIs<DataResult.Error>(blankPrimaryFields).error
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", blankPrimaryError.code)
+        assertEquals("FILE_UPLOAD_QUOTA_EXCEEDED", blankPrimaryError.serverCode)
+        assertEquals("Monthly file upload quota exceeded.", blankPrimaryError.serverMessage)
+        assertFalse(blankPrimaryError.retryable)
     }
 
     private fun client(

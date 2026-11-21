@@ -15,7 +15,7 @@ internal fun englishErrorPresentationStringsForTest(): ErrorPresentationStrings 
             ErrorPresentationKey.AttachmentTooLarge to "The attachment is too large. Choose a smaller file and try again.",
             ErrorPresentationKey.AttachmentMonthlyQuotaExceeded to "This month's uploads are used up",
             ErrorPresentationKey.ChannelReadOnly to "This channel is read-only.",
-            ErrorPresentationKey.ChannelArchived to "Channel archived",
+            ErrorPresentationKey.ChannelArchived to "This channel is archived.",
             ErrorPresentationKey.TooManyAttempts to "Too many attempts. Please wait a moment and try again.",
             ErrorPresentationKey.ResponseUnreadable to "The response could not be read. Please try again.",
             ErrorPresentationKey.Generic to "Something went wrong. Please try again.",

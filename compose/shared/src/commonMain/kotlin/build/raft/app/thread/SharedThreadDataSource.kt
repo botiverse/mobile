@@ -5017,7 +5017,8 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                     )
                 )
             403 -> {
-                val resolvedServerCode = contractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
+                val normalizedContractCode = contractCode?.trim()?.takeIf { it.isNotBlank() }
+                val resolvedServerCode = normalizedContractCode ?: projection.errorCode.takeUnless { it == "http_$code" }
                 if (resolvedServerCode != null && isNonPermissionPlanOrQuota403Code(resolvedServerCode)) {
                     DataResult.Error(
                         ScreenError(
@@ -5030,7 +5031,7 @@ internal fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): Da
                 } else {
                     DataResult.NoPermission(
                         PermissionBlocker(
-                            code = contractCode ?: "thread_forbidden",
+                            code = normalizedContractCode ?: "thread_forbidden",
                             requiredCapability = "thread_access",
                             serverMessage = projection.serverMessage,
                             serverCode = resolvedServerCode

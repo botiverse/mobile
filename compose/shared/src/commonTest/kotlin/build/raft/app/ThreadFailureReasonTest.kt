@@ -305,6 +305,18 @@ class ThreadFailureReasonTest {
             )
         )
         assertEquals(
+            "server_forbidden",
+            resolveThreadAttachmentUploadFailureCode(
+                build.raft.app.data.DataResult.NoPermission(
+                    build.raft.app.data.PermissionBlocker(
+                        code = "server_forbidden",
+                        requiredCapability = "server_access",
+                        serverCode = "channel_membership_required",
+                    )
+                )
+            )
+        )
+        assertEquals(
             "auth_required",
             resolveThreadAttachmentUploadFailureCode(
                 build.raft.app.data.DataResult.NoPermission(
@@ -331,7 +343,7 @@ class ThreadFailureReasonTest {
             ThreadApiResult.Failure(
                 code = 403,
                 errorBodyText = """{"error":"Frozen","code":"external_limit_frozen"}""",
-                contractCode = "external_limit_frozen",
+                contractCode = null,
             ).toThreadDataError("thread_send_failed")
         val frozenError = assertIs<build.raft.app.data.DataResult.Error>(frozen).error
         assertEquals("external_limit_frozen", frozenError.code)
@@ -342,7 +354,7 @@ class ThreadFailureReasonTest {
             ThreadApiResult.Failure(
                 code = 403,
                 errorBodyText = """{"error":"Read-only","code":"channel_read_only"}""",
-                contractCode = "channel_read_only",
+                contractCode = " ",
             ).toThreadDataError("thread_send_failed")
         val readOnlyError = assertIs<build.raft.app.data.DataResult.Error>(readOnly).error
         assertEquals("channel_read_only", readOnlyError.code)

@@ -167,7 +167,7 @@ class DataResultErrorCopyTest {
             ScreenError("channel_read_only", retryable = false).userFacingMessage(errorStrings)
         )
         assertEquals(
-            "Channel archived",
+            "This channel is archived.",
             ScreenError("channel_archived", retryable = false).userFacingMessage(errorStrings)
         )
     }

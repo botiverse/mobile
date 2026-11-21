@@ -176,7 +176,7 @@ internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
         ThreadUserFacingErrorReason.AttachmentNeedsReupload ->
             Res.string.thread_error_reason_attachment_needs_reupload.desc()
         ThreadUserFacingErrorReason.ChannelReadOnly -> Res.string.thread_error_reason_channel_read_only.desc()
-        ThreadUserFacingErrorReason.ChannelArchived -> Res.string.thread_feedback_channel_archived.desc()
+        ThreadUserFacingErrorReason.ChannelArchived -> Res.string.thread_archived_notice.desc()
         ThreadUserFacingErrorReason.RateLimited -> Res.string.thread_error_reason_rate_limited.desc()
         ThreadUserFacingErrorReason.ResponseUnreadable -> Res.string.thread_error_reason_response_unreadable.desc()
         ThreadUserFacingErrorReason.RequestCancelled -> Res.string.thread_error_reason_cancelled.desc()
