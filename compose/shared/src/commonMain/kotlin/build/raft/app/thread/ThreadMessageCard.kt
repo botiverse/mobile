@@ -1088,6 +1088,10 @@ private fun ThreadMessageCardContent(
                                 inPlaceSelection?.let { selection ->
                                     { offset -> selection.bodyContainsRowOffset(offset) }
                                 },
+                            isInPlaceSelectionTaken =
+                                inPlaceSelection?.let { selection ->
+                                    { selection.hasSelection || selection.linkLongPressOwnsGesture }
+                                },
                             onPointerDown =
                                 inPlaceSelection?.let { selection ->
                                     { offset, pointerType ->
@@ -1638,7 +1642,7 @@ private fun ThreadMessageCardContent(
                                                         text = AnnotatedString(bodyForRender).withRaftMarkdownFindMarks(findQuery),
                                                         style = messageBodyTextStyle,
                                                         color = RaftColor.TextBlack,
-                                                        modifier = Modifier
+                                                        modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier
                                                     )
                                                 }
                                             }

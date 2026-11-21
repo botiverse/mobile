@@ -301,6 +301,7 @@ internal fun Modifier.threadMessageLongPressActions(
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onInputReady: ((String) -> Unit)? = null,
     deferLongPressAt: ((Offset) -> Boolean)? = null,
+    isInPlaceSelectionTaken: (() -> Boolean)? = null,
     onPointerDown: ((Offset, PointerType) -> Unit)? = null,
     onDoubleTap: ((RaftPopoverAnchor) -> Unit)? = null,
     consumeSelectionDismissalTap: (() -> Boolean)? = null,
@@ -316,6 +317,7 @@ internal fun Modifier.threadMessageLongPressActions(
                 onShowActions = onShowActions,
                 onInputReady = onInputReady,
                 deferLongPressAt = deferLongPressAt,
+                isInPlaceSelectionTaken = isInPlaceSelectionTaken,
                 onPointerDown = onPointerDown,
                 onDoubleTap = onDoubleTap,
                 consumeSelectionDismissalTap = consumeSelectionDismissalTap,
@@ -548,52 +550,104 @@ internal fun Modifier.threadMessageLongPressActions(
                             pressOnSelectableBody = callbacks.deferLongPressAt?.invoke(localOffset) == true
                         )
                     if (longPressRoute == ThreadMessageLongPressRoute.InPlaceSelection) {
-                        callbacks.diagnosticsLogger(
-                            "thread_message_long_press_deferred_to_selection messageId=$messageId"
-                        )
+                        if (callbacks.isInPlaceSelectionTaken == null || !gestureOwner.lastDownFromTouch) {
+                            callbacks.diagnosticsLogger(
+                                "thread_message_long_press_deferred_to_selection messageId=$messageId"
+                            )
+                            return@detectTapGestures
+                        }
+                        gestureOwner.tapDispatchScope.launch {
+                            // SelectionContainer only starts touch selection when the finger hits a
+                            // BasicText node; both detectors wait longPressTimeoutMillis from the
+                            // same DOWN. Yield one frame so SelectionModifierNode and link long-press
+                            // finish updating ownership, then fall back to the row message menu if
+                            // the press landed in a non-text gap (margin, spacer, divider, etc.).
+                            withFrameNanos { }
+                            if (!gestureOwner.isLeaseActive(compositionLease)) return@launch
+                            if (gestureOwner.tapMovementGate.currentGestureToken() != gestureToken) {
+                                return@launch
+                            }
+                            val latestCallbacks =
+                                gestureOwner.callbacksSnapshot(compositionLease) ?: return@launch
+                            if (latestCallbacks.isInPlaceSelectionTaken?.invoke() == true) {
+                                latestCallbacks.diagnosticsLogger(
+                                    "thread_message_long_press_deferred_to_selection messageId=$messageId"
+                                )
+                                return@launch
+                            }
+                            latestCallbacks.diagnosticsLogger(
+                                "thread_message_long_press_selection_dead_zone_fallback messageId=$messageId"
+                            )
+                            dispatchThreadMessageLongPressMenu(
+                                messageId = messageId,
+                                localOffset = localOffset,
+                                gestureToken = gestureToken,
+                                compositionLease = compositionLease,
+                                gestureOwner = gestureOwner,
+                                callbacks = latestCallbacks,
+                            )
+                        }
                         return@detectTapGestures
                     }
-                    val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
-                    val directPointerMovementDetected =
-                        movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
-                    val dispatchDecision =
-                        decideThreadMessageLongPressDispatch(
-                            detectorAccepted = movementDecision.allowed,
-                            directPointerMovementDetected = directPointerMovementDetected,
-                            isScrollInProgress = callbacks.isScrollInProgress()
-                        )
-                    if (!dispatchDecision.allowed) {
-                        callbacks.diagnosticsLogger(
-                            "thread_message_long_press_rejected messageId=$messageId " +
-                                "reason=${dispatchDecision.reason} movement=${movementDecision.maxDistance} " +
-                                "touchSlop=${movementDecision.touchSlop} pointers=${movementDecision.pointerCount}"
-                        )
-                        return@detectTapGestures
-                    }
-                    callbacks.diagnosticsLogger(
-                        "thread_message_long_press_admitted messageId=$messageId " +
-                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+                    dispatchThreadMessageLongPressMenu(
+                        messageId = messageId,
+                        localOffset = localOffset,
+                        gestureToken = gestureToken,
+                        compositionLease = compositionLease,
+                        gestureOwner = gestureOwner,
+                        callbacks = callbacks,
                     )
-                    val anchor =
-                        gestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(localOffset))
-                    if (anchor == null) {
-                        callbacks.diagnosticsLogger(
-                            "thread_message_long_press_anchor_unavailable messageId=$messageId " +
-                                "scrollInProgress=${dispatchDecision.scrollInProgress}"
-                        )
-                        return@detectTapGestures
-                    }
-                    callbacks.diagnosticsLogger(
-                        "thread_message_long_press_menu_emit messageId=$messageId " +
-                            "scrollInProgress=${dispatchDecision.scrollInProgress}"
-                    )
-                    // The pressed wash belongs to the touch, not to the open menu: clear it
-                    // as the menu appears instead of waiting for the finger to lift.
-                    gestureOwner.hidePressFeedback(compositionLease)
-                    callbacks.onShowActions(anchor)
                 }
             )
         }
+}
+
+private fun dispatchThreadMessageLongPressMenu(
+    messageId: String,
+    localOffset: Offset,
+    gestureToken: ThreadMessageTapGestureToken,
+    compositionLease: ThreadMessageLongPressCompositionLease,
+    gestureOwner: ThreadMessageLongPressGestureOwner,
+    callbacks: ThreadMessageLongPressCallbacks,
+) {
+    val movementDecision = gestureOwner.tapMovementGate.decision(gestureToken)
+    val directPointerMovementDetected =
+        movementDecision.reason == "movement" || movementDecision.reason == "multi_touch"
+    val dispatchDecision =
+        decideThreadMessageLongPressDispatch(
+            detectorAccepted = movementDecision.allowed,
+            directPointerMovementDetected = directPointerMovementDetected,
+            isScrollInProgress = callbacks.isScrollInProgress()
+        )
+    if (!dispatchDecision.allowed) {
+        callbacks.diagnosticsLogger(
+            "thread_message_long_press_rejected messageId=$messageId " +
+                "reason=${dispatchDecision.reason} movement=${movementDecision.maxDistance} " +
+                "touchSlop=${movementDecision.touchSlop} pointers=${movementDecision.pointerCount}"
+        )
+        return
+    }
+    callbacks.diagnosticsLogger(
+        "thread_message_long_press_admitted messageId=$messageId " +
+            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+    )
+    val anchor =
+        gestureOwner.rootAnchor.resolve(RaftPopoverLocalPoint.Exact(localOffset))
+    if (anchor == null) {
+        callbacks.diagnosticsLogger(
+            "thread_message_long_press_anchor_unavailable messageId=$messageId " +
+                "scrollInProgress=${dispatchDecision.scrollInProgress}"
+        )
+        return
+    }
+    callbacks.diagnosticsLogger(
+        "thread_message_long_press_menu_emit messageId=$messageId " +
+            "scrollInProgress=${dispatchDecision.scrollInProgress}"
+    )
+    // The pressed wash belongs to the touch, not to the open menu: clear it
+    // as the menu appears instead of waiting for the finger to lift.
+    gestureOwner.hidePressFeedback(compositionLease)
+    callbacks.onShowActions(anchor)
 }
 
 internal data class ThreadMessageTapMovementDecision(
@@ -630,6 +684,9 @@ internal data class ThreadMessageLongPressCallbacks(
     val onInputReady: ((String) -> Unit)? = null,
     // In-place text selection (New Message Menu toggle): body presses belong to the selection.
     val deferLongPressAt: ((Offset) -> Boolean)? = null,
+    // True once in-place selection or a link long-press actually claimed the body press; if false
+    // after the long-press frame, the press hit a non-text gap and falls back to the row menu.
+    val isInPlaceSelectionTaken: (() -> Boolean)? = null,
     // Every down on the row, with its pointer type (in-place selection: dismissal, and whether a
     // new selection is a finger's long press or a mouse drag).
     val onPointerDown: ((Offset, PointerType) -> Unit)? = null,
