@@ -10,6 +10,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.MembersAgentMachineGroupCollapseStore
 import build.raft.app.data.MembersAgentsGrouping
+import build.raft.app.model.AgentReasoningSetting
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -27,9 +28,11 @@ import org.robolectric.annotation.GraphicsMode
  * JVM screenshots of the server members list (`members.list`, the All tab; `members.list.by-computer`, the
  * Agents tab grouped By computer; `members.list.wide`, the Agents tab in a 1024dp window under the
  * shell's top bar, with the head and its counts): the production
- * [MembersListContent] with agents on two computers (online, working, offline) and humans (the
- * viewer, an owner, a guest), light and dark. Reports land in `build/reports/home-screenshots/`
- * (uploaded by CI as `shared-home-screenshots`); verify / record as [RaftRobolectricScreenshot].
+ * [MembersListContent] with agents on two computers (online, working, offline; on the Agents tab
+ * their runtime lines end with the reasoning effort: a level, Default, none for a runtime that takes
+ * none) and humans (the viewer, an owner, a guest), light and dark. Reports land in
+ * `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record
+ * as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -83,13 +86,23 @@ class MembersListScreenshotTest {
     }
 }
 
-private fun agent(id: String, name: String, description: String?, computerId: String, computerName: String) =
+private fun agent(
+    id: String,
+    name: String,
+    description: String?,
+    computerId: String,
+    computerName: String,
+    runtime: String,
+    reasoningEffort: String?,
+) =
     MemberProfile(
         id = MemberId(id),
         displayName = name,
         handle = name.lowercase(),
         kind = MemberKind.Agent,
         description = description,
+        roleDescription = runtime,
+        agentReasoning = AgentReasoningSetting(runtime, reasoningEffort),
         permissionBadges = listOf("computer:$computerName", "computer-id:$computerId"),
     )
 
@@ -131,9 +144,10 @@ internal fun MembersListVisualContent(
                 showGuests = showGuests,
                 members =
                     listOf(
-                        agent("agent-tenny", "Tenny", "Ships the mobile app", "machine-mbp", "MacBook Pro"),
-                        agent("agent-lagoon", "Lagoon", "Reviews pull requests", "machine-mbp", "MacBook Pro"),
-                        agent("agent-volta", "Volta", null, "machine-daybed", "daybed-earth"),
+                        // On the Agents tab: a set level, Default, and a runtime that takes none.
+                        agent("agent-tenny", "Tenny", "Ships the mobile app", "machine-mbp", "MacBook Pro", "codex", "high"),
+                        agent("agent-lagoon", "Lagoon", "Reviews pull requests", "machine-mbp", "MacBook Pro", "claude", null),
+                        agent("agent-volta", "Volta", null, "machine-daybed", "daybed-earth", "opencode", null),
                         human("human-artin", "artin", description = "Product lead", serverRole = "owner"),
                         human("human-artea", "Artea", serverRole = "admin"),
                         human("human-quill", "Quill", description = "Design partner", serverRole = "guest"),

@@ -8,6 +8,7 @@ import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessFact
 import build.raft.app.model.AgentReadinessResource
+import build.raft.app.model.AgentReasoningSetting
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AvatarReference
@@ -149,6 +150,13 @@ private data class WireAgent(
     val canRemoveFromChannel: Boolean? = null,
     val model: String? = null,
     val reasoningEffort: String? = null,
+    /**
+     * The hydrated `RuntimeConfig`, for viewers who may edit the agent (`withAgentProjection`;
+     * `stripEnvVars` leaves it out for everyone else). Only its version, runtime and level are read
+     * ([toAgentReasoningSetting]), leniently: a shape this client can't read leaves the row to its
+     * own fields instead of dropping it.
+     */
+    val runtimeConfig: JsonElement? = null,
     val executionMode: String? = null,
     val computerId: String? = null,
     val computerName: String? = null,
@@ -1110,6 +1118,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         profileProjection = profileProjection?.trim()?.takeIf { it.isNotBlank() },
         inMemberLists = inMemberLists,
         model = firstNonBlank(model, runtimeProfile?.current?.model),
+        agentReasoning = toAgentReasoningSetting(),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
@@ -1118,6 +1127,22 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
                 ?.let { "computer-id:$it" },
         ),
     )
+}
+
+/**
+ * The agent's runtime and reasoning effort as its profile reads them ([hydrateAgentReasoningSetting]).
+ * A `runtimeConfig` that is not an object of readable fields counts as one of another version.
+ */
+private fun WireAgent.toAgentReasoningSetting(): AgentReasoningSetting {
+    val config =
+        when (val raw = runtimeConfig) {
+            null, JsonNull -> null
+            is JsonObject ->
+                runCatching { memberAgentJson.decodeFromJsonElement(AgentRuntimeConfigReasoningFields.serializer(), raw) }
+                    .getOrDefault(AgentRuntimeConfigReasoningFields())
+            else -> AgentRuntimeConfigReasoningFields()
+        }
+    return hydrateAgentReasoningSetting(config, runtime, reasoningEffort)
 }
 
 private fun WireMemberServer.toMemberServerRef(): MemberServerRef =

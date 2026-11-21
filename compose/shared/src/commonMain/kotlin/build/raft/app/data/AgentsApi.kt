@@ -1255,10 +1255,15 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
                 external = external,
                 runtime = runtimeConfig?.runtime?.takeIf { it.isNotBlank() } ?: runtime ?: currentProfile?.runtime
             ),
-        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm` over the agent's
-        // columns), never `runtimeProfile.current`: a saved Default (null) must not read back as
-        // the last run's effort.
-        reasoning = reasoningEffort,
+        // Web profile shows the saved effort only (`hydrateRuntimeConfigForm`: the saved config's
+        // level, else the agent's column), never `runtimeProfile.current`: a saved Default (null)
+        // must not read back as the last run's effort. The Members list reads it the same way.
+        reasoning =
+            hydrateAgentReasoningSetting(
+                config = runtimeConfig?.let { AgentRuntimeConfigReasoningFields(it.version, it.runtime, it.reasoningEffort) },
+                runtime = runtime,
+                reasoningEffort = reasoningEffort,
+            ).reasoningEffort,
         executionMode = executionMode ?: currentProfile?.executionMode,
         machineId = machineId ?: currentProfile?.machineId,
         machineName = currentProfile?.machineName,
@@ -1359,9 +1364,12 @@ private data class AgentHostedRuntimeErrorWireDto(val code: String? = null, val 
 
 @Serializable
 private data class AgentRuntimeConfigWireDto(
+    val version: Int? = null,
     val runtime: String? = null,
     val provider: AgentRuntimeProviderWireDto? = null,
-    val model: AgentRuntimeModelWireDto? = null
+    val model: AgentRuntimeModelWireDto? = null,
+    /** The saved level (shared `RuntimeConfig.reasoningEffort`); Pi's `off` / `minimal` and Kimi Code's live only here. */
+    val reasoningEffort: String? = null
 )
 
 @Serializable

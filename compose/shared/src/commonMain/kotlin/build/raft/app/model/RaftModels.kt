@@ -517,6 +517,13 @@ data class MemberProfile(
      * never carried a model — the header label stays absent, never a raw id.
      */
     val model: String? = null,
+    /**
+     * The agent's runtime and reasoning effort as its profile reads them, from `GET /agents` and its
+     * sync rows ([build.raft.app.data.hydrateAgentReasoningSetting]): what the Members list's
+     * Reasoning shows (botiverse/slock #15691). Null when the payload carried no agent row (humans,
+     * identity seeds); the list then shows none.
+     */
+    val agentReasoning: AgentReasoningSetting? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val agentDeletedAt: String? = null,
@@ -656,6 +663,18 @@ data class MemberProfile(
         if (configApply == null && configApplyNewSession == null && descriptionLinkWarnings.isEmpty()) this
         else copy(configApply = null, configApplyNewSession = null, descriptionLinkWarnings = emptyList())
 }
+
+/**
+ * An agent's runtime and reasoning effort as shared `hydrateRuntimeConfig` reads them (web
+ * `hydrateRuntimeConfigForm`, which the profile and the Members list read through): built by
+ * [build.raft.app.data.hydrateAgentReasoningSetting].
+ */
+@Serializable
+data class AgentReasoningSetting(
+    val runtime: String,
+    /** The saved level, raw: a shared id (`xhigh`) or a runtime's own (Kimi Code's); null when none is set. */
+    val reasoningEffort: String? = null,
+)
 
 /**
  * Slack-bridge (or future provider) participant projected into a channel's
