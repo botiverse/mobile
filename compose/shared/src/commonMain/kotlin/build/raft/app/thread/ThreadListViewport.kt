@@ -176,6 +176,7 @@ internal class ThreadListViewport(
             raw.scrollToItem(index, scrollOffset)
             return
         }
+        currentCoroutineContext().ensureActive()
         val count = raw.layoutInfo.totalItemsCount
         if (index !in 0 until count) return
         if (layoutInfo.visibleItemsInfo.none { it.index == index }) {
@@ -183,6 +184,7 @@ internal class ThreadListViewport(
             raw.scrollToItem(reversedThreadListIndex(index, count))
             awaitVisible(index)
         }
+        currentCoroutineContext().ensureActive()
         val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
         val delta = forwardScrollToItemDelta(itemOffset = item.offset, scrollOffset = scrollOffset)
         // scrollBy admits again: awaitVisible suspended since the first scroll.
