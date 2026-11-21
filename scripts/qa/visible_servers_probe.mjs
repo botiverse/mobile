@@ -39,6 +39,9 @@ export const REQUIRED_QA_SERVER = "OranixSlockTest";
 // WHOSE visibility produced it. The identity has to come from the login response body
 // (user.id/email), never from the username we asked with: what we sent is what we wanted, what
 // came back is what we got.
+//
+// The receipt names the account by its user id only, never its email: the CI jobs tee this output
+// into the evidence they upload (qa-acceptance*.yml), and the repository is public.
 export function judgeVisibleServers(servers, identity) {
   if (!identity || !identity.id) {
     return { ok: false, code: "unattributable", detail: "no authenticated identity — the reading cannot be bound to an account" };
@@ -67,7 +70,7 @@ export function judgeVisibleServers(servers, identity) {
     return {
       ok: false,
       code: "production_visible",
-      detail: `QA account ${identity.email || identity.id} can see the production server: [${production.join(", ")}] — out of bounds (artin, 2026-08-31)`,
+      detail: `QA account ${identity.id} can see the production server: [${production.join(", ")}] — out of bounds (artin, 2026-08-31)`,
     };
   }
 
@@ -89,7 +92,7 @@ export function judgeVisibleServers(servers, identity) {
   return {
     ok: true,
     code: "clean",
-    detail: `${identity.email || identity.id} sees ${names.length}: ${names.join(", ")}`,
+    detail: `QA account ${identity.id} sees ${names.length}: ${names.join(", ")}`,
   };
 }
 

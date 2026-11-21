@@ -22,6 +22,17 @@ test("clean case: the two QA servers and nothing else", () => {
   assert.equal(v.code, "clean");
 });
 
+test("the receipt names the account by id and never prints its email (it is uploaded as CI evidence)", () => {
+  for (const list of [
+    [qa("OranixSlockTest"), qa("qa-server-b-slock")],
+    [qa("OranixSlockTest"), qa("Raft Android")],
+  ]) {
+    const v = judgeVisibleServers(list, who);
+    assert.ok(v.detail.includes(who.id), v.detail);
+    assert.ok(!v.detail.includes(who.email), `email leaked into: ${v.detail}`);
+  }
+});
+
 // ---- half 1: production must not be visible -------------------------------------------
 test("RED when the production server appears in the list", () => {
   const v = judgeVisibleServers([qa("OranixSlockTest"), qa("Raft Android")], who);
@@ -104,5 +115,6 @@ test("the clean verdict names the account it measured", () => {
   // identity. "2 servers, no production" is therefore meaningless unless it says whose.
   const v = judgeVisibleServers([qa("OranixSlockTest"), qa("qa-server-b-slock")], who);
   assert.equal(v.ok, true);
-  assert.match(v.detail, /qa-probe@example\.test/, "the reading must carry the identity that produced it");
+  // By its user id: the email never goes into a receipt ("the receipt names the account by id ..." above).
+  assert.match(v.detail, /b8b3f81d/, "the reading must carry the identity that produced it");
 });
