@@ -3837,12 +3837,12 @@
     <string name="member_runtime_deprecated_warning">이 에이전트는 지원 중단된 런타임을 사용해요. 계속 실행할 수는 있지만 새 에이전트에서는 이 런타임을 선택할 수 없어요.</string>
     <string name="runtime_picker_recommended">추천</string>
     <string name="runtime_picker_limited">기능 제한</string>
-    <string name="runtime_capability_hint_no_subagents">May take longer on complex tasks in Raft, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_compaction_unreported">May use more tokens in Raft than recommended runtimes for the same work.</string>
-    <string name="runtime_capability_hint_no_subagents_compaction_unreported">May take longer and may use more tokens in Raft than recommended runtimes, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_compaction_unreported">May use more tokens in Raft, and can't take new instructions until it finishes the current task.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents">May be harder to correct in Raft: it can't take new instructions mid-task or split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">May be harder to correct and may use more tokens in Raft: it can't take new instructions mid-task or work in parallel.</string>
+    <string name="runtime_capability_hint_no_subagents">작업을 나눠 병렬로 처리할 수 없어서, Raft에서 복잡한 작업에 시간이 더 걸릴 수 있어요.</string>
+    <string name="runtime_capability_hint_compaction_unreported">같은 작업을 해도 Raft에서 추천 런타임보다 토큰을 더 많이 쓸 수 있어요.</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">작업을 나눠 병렬로 처리할 수 없어서, Raft에서 추천 런타임보다 시간이 더 걸리고 토큰을 더 많이 쓸 수 있어요.</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">Raft에서 토큰을 더 많이 쓸 수 있고, 현재 작업을 마칠 때까지 새 지시를 받을 수 없어요.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">Raft에서 방향을 바로잡기 더 어려울 수 있어요: 작업 도중에 새 지시를 받거나 작업을 나눠 병렬로 처리할 수 없어요.</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">Raft에서 방향을 바로잡기 더 어렵고 토큰을 더 많이 쓸 수 있어요: 작업 도중에 새 지시를 받거나 병렬로 작업할 수 없어요.</string>
     <string name="auth_private_deployment_title">자체 호스팅 서버</string>
     <string name="auth_private_deployment_hint">자체 호스팅 Raft 서버의 웹 주소와 API 주소를 입력하세요. 서버 버전이 1.13.0 이상이어야 해요.</string>
     <string name="auth_private_deployment_web_label">웹 주소</string>
@@ -4777,7 +4777,7 @@
     <string name="upgrade_dialog_eyebrow">Pro 기능</string>
     <string name="upgrade_dialog_eyebrow_seats">시트</string>
     <string name="upgrade_dialog_history_title">전체 대화 기록 보기</string>
-    <string name="upgrade_dialog_history_hint">무료 요금제는 최근 30일 동안의 메시지만 보관해요. Pro에서는 %1$s 서버의 모든 기록을 보고 검색할 수 있어요.</string>
+    <string name="upgrade_dialog_history_hint">무료 요금제에서는 나와 내 에이전트 모두 최근 30일 동안의 메시지만 읽을 수 있고, Pro에서는 %1$s 서버의 모든 기록을 보고 검색할 수 있어요.</string>
     <string name="upgrade_dialog_upload_quota_title">이번 달 업로드 한도를 다 썼어요</string>
     <string name="upgrade_dialog_upload_quota_hint">무료 요금제는 매달 100 MB까지 업로드할 수 있어요. Pro는 월 한도가 없어요.</string>
     <string name="upgrade_dialog_file_size_title">더 큰 파일 업로드</string>

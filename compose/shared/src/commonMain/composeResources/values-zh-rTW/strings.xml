@@ -2291,7 +2291,7 @@
     <string name="auth_action_sign_out">登出</string>
     <string name="auth_action_retry">重試</string>
     <string name="auth_server_loading">正在載入你的伺服器…</string>
-    <string name="auth_server_create_hint">建立你要進入的工作空間。之後可以在「設定」中重新命名。</string>
+    <string name="auth_server_create_hint">建立你要進入的工作區。之後可以在「設定」中重新命名。</string>
     <string name="auth_label_server_name">伺服器名稱</string>
     <string name="auth_label_server_slug">URL 代稱</string>
     <string name="auth_state_creating_server">建立中…</string>
@@ -3598,7 +3598,7 @@
     <string name="settings_developer_nav3_stack">Navigation 3 頁面堆疊</string>
     <string name="settings_developer_nav3_stack_detail">已遷移的頁面會在 App 視窗內開啟（Android）。下次啟動 App 時生效。</string>
     <string name="settings_developer_multi_server_realtime">每個視窗都即時更新</string>
-    <string name="settings_developer_multi_server_realtime_detail">開啟「多個應用程式視窗」後，每個視窗的工作空間各自保持即時連線（最多 3 個），在後面的視窗也能收到新訊息。關閉時只有最前面的工作空間保持連線。</string>
+    <string name="settings_developer_multi_server_realtime_detail">開啟「多個應用程式視窗」後，每個視窗的工作區各自保持即時連線（最多 3 個），在後面的視窗也能收到新訊息。關閉時只有最前面的工作區保持連線。</string>
     <string name="settings_mobile_ios_native_nav">iOS 原生導覽</string>
     <string name="settings_mobile_ios_native_nav_detail">頁面的標題和按鈕會顯示在系統導覽列中，並使用系統的滑動返回。下次啟動 App 時生效。</string>
     <string name="settings_developer_presets">預設組合</string>
@@ -3837,12 +3837,12 @@
     <string name="member_runtime_deprecated_warning">這個 Agent 使用的執行環境已淘汰。它可以繼續執行，但新的 Agent 無法選擇這個執行環境。</string>
     <string name="runtime_picker_recommended">推薦</string>
     <string name="runtime_picker_limited">能力有限</string>
-    <string name="runtime_capability_hint_no_subagents">May take longer on complex tasks in Raft, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_compaction_unreported">May use more tokens in Raft than recommended runtimes for the same work.</string>
-    <string name="runtime_capability_hint_no_subagents_compaction_unreported">May take longer and may use more tokens in Raft than recommended runtimes, because it can't split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_compaction_unreported">May use more tokens in Raft, and can't take new instructions until it finishes the current task.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents">May be harder to correct in Raft: it can't take new instructions mid-task or split work into parallel tasks.</string>
-    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">May be harder to correct and may use more tokens in Raft: it can't take new instructions mid-task or work in parallel.</string>
+    <string name="runtime_capability_hint_no_subagents">在 Raft 中處理複雜任務可能會比較久，因為它無法把工作拆成平行任務。</string>
+    <string name="runtime_capability_hint_compaction_unreported">做同樣的工作，在 Raft 中可能比推薦的執行環境消耗更多 token。</string>
+    <string name="runtime_capability_hint_no_subagents_compaction_unreported">在 Raft 中可能比推薦的執行環境更久、消耗更多 token，因為它無法把工作拆成平行任務。</string>
+    <string name="runtime_capability_hint_no_steering_compaction_unreported">在 Raft 中可能消耗更多 token，而且在完成目前任務前無法接收新指示。</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents">在 Raft 中可能比較難及時修正：它無法在任務進行中接收新指示，也無法把工作拆成平行任務。</string>
+    <string name="runtime_capability_hint_no_steering_no_subagents_compaction_unreported">在 Raft 中可能比較難及時修正，也可能消耗更多 token：它無法在任務進行中接收新指示，也無法平行工作。</string>
     <string name="auth_private_deployment_title">自架伺服器</string>
     <string name="auth_private_deployment_hint">請輸入你自架 Raft 伺服器的 Web 與 API 位址。伺服器版本需為 1.13.0 或更新版本。</string>
     <string name="auth_private_deployment_web_label">Web 位址</string>
@@ -4777,7 +4777,7 @@
     <string name="upgrade_dialog_eyebrow">Pro 功能</string>
     <string name="upgrade_dialog_eyebrow_seats">席位</string>
     <string name="upgrade_dialog_history_title">查看完整聊天記錄</string>
-    <string name="upgrade_dialog_history_hint">免費版只保留最近 30 天的訊息。升級到 Pro 後，就能查看和搜尋 %1$s 的所有歷史記錄。</string>
+    <string name="upgrade_dialog_history_hint">免費版中你和你的 Agent 只能讀到最近 30 天的訊息，升級到 Pro 就能查看和搜尋 %1$s 的所有歷史記錄。</string>
     <string name="upgrade_dialog_upload_quota_title">本月的上傳額度已用完</string>
     <string name="upgrade_dialog_upload_quota_hint">免費版每月最多可上傳 100 MB。Pro 沒有每月上限。</string>
     <string name="upgrade_dialog_file_size_title">上傳更大的檔案</string>
@@ -5459,7 +5459,7 @@
     <string name="external_agent_create_keep">繼續設定</string>
     <string name="external_agent_create_discard">捨棄</string>
     <string name="external_agent_create_discard_failed">Raft 無法捨棄這個 Agent。請再試一次，或到它的頁面上刪除。</string>
-    <string name="external_agent_create_prompt_intro">Raft 是人和 AI Agent 一起在頻道、私訊和任務裡協作的工作空間。你將以 %1$s 的身分加入，這裡的人可以傳訊息給你、指派工作給你。</string>
+    <string name="external_agent_create_prompt_intro">Raft 是人和 AI Agent 一起在頻道、私訊和任務裡協作的工作區。你將以 %1$s 的身分加入，這裡的人可以傳訊息給你、指派工作給你。</string>
     <string name="external_agent_create_prompt_install">1. 安裝或更新 Raft CLI：</string>
     <string name="external_agent_create_prompt_login">2. 以這個 Agent 的身分登入：</string>
     <string name="external_agent_create_prompt_credential">它要求輸入 Agent 憑證時，請向我索取。切勿把憑證放進指令、檔案，或傳給其他任何人的訊息中。</string>
