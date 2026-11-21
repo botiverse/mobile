@@ -91,6 +91,8 @@ internal data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     /** Task v2: the task conversation's status / assignee / follow bar under the header; null elsewhere. */
     val taskConversationBar: (@Composable () -> Unit)? = null,
+    /** A conversion to an external channel under way: its strip, before the announcement (ChannelConversionStrip.kt); null where none can show. */
+    val channelConversionStrip: (@Composable () -> Unit)? = null,
     /** Channel announcements: the strip above the timeline (ChannelAnnouncementHost.kt); null where none can show. */
     val channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     /** Task v2: the top bar's task title and More menu rows; null elsewhere or before the task is known. */
@@ -216,6 +218,7 @@ fun ThreadPageContent(
     lounge: ThreadPageLounge? = null,
     agentFollowersHeader: @Composable () -> Unit = {},
     taskConversationBar: (@Composable () -> Unit)? = null,
+    channelConversionStrip: (@Composable () -> Unit)? = null,
     channelAnnouncementStrip: (@Composable () -> Unit)? = null,
     taskConversationChrome: TaskConversationHeaderChrome? = null,
     taskConversationHead: TaskHeadScrollState? = null,
@@ -336,6 +339,7 @@ fun ThreadPageContent(
                 lounge = lounge,
                 agentFollowersHeader = agentFollowersHeader,
                 taskConversationBar = taskConversationBar,
+                channelConversionStrip = channelConversionStrip,
                 channelAnnouncementStrip = channelAnnouncementStrip,
                 taskConversationChrome = taskConversationChrome,
                 taskConversationHead = taskConversationHead,
@@ -1349,6 +1353,9 @@ private fun ThreadPageContentContent(
             if (conversationLounge != null) {
                 AgentLoungeAudienceNotice(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             }
+            // A conversion to an external channel under way: before the announcement, which stays next
+            // to the messages; not in a Lounge (web ChatPanel `!isLounge`).
+            if (conversationLounge == null) data.channelConversionStrip?.invoke()
             // The channel's announcement: last of the top regions, right above the timeline (raft-design channel.md).
             data.channelAnnouncementStrip?.invoke()
             val threadTabContent: @Composable ColumnScope.() -> Unit = {

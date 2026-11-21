@@ -591,6 +591,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
     private val shellRuntimeAccountUsageStores = RaftShellScopedStoreCache<SharedRuntimeAccountUsageStore>()
     private val shellChannelAnnouncementStores = RaftShellScopedStoreCache<SharedChannelAnnouncementStore>()
+    private val shellChannelConversionStores = RaftShellScopedStoreCache<SharedChannelConversionStore>()
     private val shellMyAssistantStores = RaftShellScopedStoreCache<SharedMyAssistantStore>()
     private val shellComputersRackToolbarStores = RaftShellScopedStoreCache<RaftComputersRackToolbarStore>()
 
@@ -2619,6 +2620,19 @@ internal class RaftSharedStoreProvider private constructor(
             )
         }
 
+    /**
+     * Channel conversions of this shell scope (SharedChannelConversionStore.kt): the conversation's
+     * conversion strip, one slice per channel shown.
+     */
+    internal fun channelConversionStore(scope: RaftShellStoreScope): SharedChannelConversionStore =
+        shellChannelConversionStores.getOrPut(scope) {
+            SharedChannelConversionStore(
+                repository = ChannelConversionRepository(NetworkRaftChannelConversionApi(networkClient(scope))),
+                scope = threadSendScope,
+                logger = sharedInfoLogger("RaftChannelConversion", "shared_channel_conversion"),
+            )
+        }
+
     internal fun runtimeAccountUsageStore(scope: RaftShellStoreScope): SharedRuntimeAccountUsageStore =
         shellRuntimeAccountUsageStores.getOrPut(scope) {
             SharedRuntimeAccountUsageStore(
@@ -3357,6 +3371,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellRuntimeAccountUsageStores.remove(scope)
         shellChannelAnnouncementStores.remove(scope)?.dispatch(ChannelAnnouncementIntent.Reset)
+        shellChannelConversionStores.remove(scope)?.dispatch(ChannelConversionIntent.Reset)
         shellMyAssistantStores.remove(scope)
         shellComputersRackToolbarStores.remove(scope)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()

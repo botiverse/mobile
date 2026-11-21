@@ -14,6 +14,7 @@ import build.raft.app.data.isAppLinkObjectKeySha256
 import build.raft.app.data.agentToolStartHiddenInActivityLog
 import build.raft.app.data.TaskSourceMessageIdAbsent
 import build.raft.app.data.reportedSourceMessageId
+import build.raft.app.data.parseRaftChannelConversionRow
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
@@ -521,7 +522,8 @@ class RealtimeEventMapper(
      * publishChannelUpdate / emitJointProjectionUpdates: archive, unarchive, edits) or an id-only
      * `{ channelId }` (routes/channels.ts: joint disconnect, external relation). The row's `id`
      * names the channel and its `archivedAt` says whether it is archived, so an open page can
-     * follow an archive without reloading.
+     * follow an archive without reloading. The conversion worker's rows also carry the channel's
+     * conversion (ChannelConversionApi.kt), which the conversation's strip follows.
      */
     private fun decodeChannelUpdated(element: JsonObject): RealtimeRefreshRequired {
         val base = decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
@@ -536,6 +538,7 @@ class RealtimeEventMapper(
                     archivedAt is JsonPrimitive && archivedAt.isString -> archivedAt.content.isNotBlank()
                     else -> null
                 },
+            channelConversion = parseRaftChannelConversionRow(row),
         )
     }
 
