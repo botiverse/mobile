@@ -42,7 +42,9 @@ real iPhone with the system keyboard and a CJK/predictive IME:
 Remove this when upstream releases a stable Compose Multiplatform version with the fix (PR
 [#3622](https://github.com/JetBrains/compose-multiplatform-core/pull/3622) or a successor) and the
 app upgrades to it. Then delete the app's pin of the two artifacts, delete this directory and the
-workflow, and stop publishing `1.12.2-raft.N`.
+workflow, and stop publishing `1.12.2-raft.N`. `upload_maven_dir.sh` is also used by
+`.github/workflows/compose-foundation-patch.yml`: while `third_party/compose-foundation-1.12.1`
+exists, move the script there instead of deleting it.
 
 ## How the build works
 
