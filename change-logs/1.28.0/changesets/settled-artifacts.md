@@ -5,8 +5,8 @@ platforms:
   - android
   - ios
   - desktop
-pull_request: null
-rollout: flag  # behind the server flag artifact_settled_v0 (off by default); nothing shows while it is off
+pull_request: TBD
+rollout: flag
 ---
 
 ## zh-CN
