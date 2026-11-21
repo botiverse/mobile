@@ -157,6 +157,18 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
                 {(reviewed.path, reviewed.literal, reviewed.context): reviewed},
             )
 
+    def test_stale_allowlist_entry_is_reported_not_fatal(self) -> None:
+        findings = self.scan(".kt", 'Text("Live label")')
+        live = scanner.ReviewedException(path="SettingsPage.kt", literal="Live label", reason="kept")
+        gone = scanner.ReviewedException(path="SettingsPage.kt", literal="Removed label", reason="code deleted")
+        allowlist = {(e.path, e.literal, e.context): e for e in (live, gone)}
+        resolved = scanner.resolve_allowlist_occurrences(findings, allowlist)
+        self.assertEqual(1, len(resolved))
+        self.assertEqual([gone], scanner.stale_allowlist_entries(findings, allowlist))
+        report = scanner.markdown_report([], 1, 1, [gone])
+        self.assertIn("Stale allowlist entries: 1", report)
+        self.assertIn("Removed label", report)
+
     def test_mr_value_index_maps_existing_translation_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "strings.xml"
