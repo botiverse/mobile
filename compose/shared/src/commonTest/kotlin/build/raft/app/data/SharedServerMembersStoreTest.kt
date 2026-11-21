@@ -3426,38 +3426,60 @@ class SharedServerMembersStoreTest {
                     id = "msg-1",
                     authorId = "ext-user-1",
                     authorName = "Alice",
-                    authorKind = "user",
+                    authorKind = "human",
                     avatarWireValue = null,
-                )
+                ),
+                RaftThreadMessageItem(
+                    id = "msg-2",
+                    authorId = "ext-agent-1",
+                    authorName = "Volta",
+                    authorKind = "agent",
+                    avatarWireValue = null,
+                ),
             ),
             source = "history",
         )
-        assertNull(store.state.value.memberProfile(serverId, "ext-user-1")?.servers)
+        val seededHuman = assertNotNull(store.state.value.memberProfile(serverId, "ext-user-1"))
+        assertNull(seededHuman.servers)
+        assertEquals(serverId, store.state.value.memberProfile(serverId, "ext-agent-1")?.serverId)
 
-        // First authoritative channel member load gives ServerA (no logo) + ServerB (logo).
-        repository.channelMembersByChannel[channelId.value] =
-            listOf(
-                member("ext-user-1", "Alice").copy(
-                    serverId = ServerId("server-a"),
-                    inViewerServer = false,
-                    servers = listOf(serverAWithoutLogo, serverBWithLogo),
-                )
+        // First authoritative profile + mention suggestion gives ServerA (no logo) + ServerB (logo),
+        // and updates the bare-serverId external agent's serverId over the viewer-server seed.
+        val extHumanFirst =
+            member("ext-user-1", "Alice").copy(
+                serverId = ServerId("server-a"),
+                inViewerServer = false,
+                servers = listOf(serverAWithoutLogo, serverBWithLogo),
             )
-        store.loadChannelMembers(serverId, channelId, force = true)
+        val extAgent =
+            member("ext-agent-1", "Volta").copy(
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-b"),
+            )
+        repository.channelMembersByChannel[channelId.value] = listOf(extHumanFirst, extAgent)
+        store.seedProfiles(serverId, listOf(extHumanFirst, extAgent))
+        store.ensureMemberSuggestionsForServer(
+            serverId = serverId,
+            mentionChannelId = channelId.value,
+            memberScopedMentions = true,
+            force = true,
+        )
         val cachedFirst = assertNotNull(store.state.value.memberProfile(serverId, "ext-user-1"))
         assertEquals(false, cachedFirst.inViewerServer)
         assertEquals(listOf(serverAWithoutLogo, serverBWithLogo), cachedFirst.servers)
+        assertEquals(ServerId("server-b"), store.state.value.memberProfile(serverId, "ext-agent-1")?.serverId)
 
-        // Second authoritative channel load upgrades ServerA with its avatarUrl while ServerB already had one.
-        repository.channelMembersByChannel[channelId.value] =
-            listOf(
-                member("ext-user-1", "Alice").copy(
-                    serverId = ServerId("server-a"),
-                    inViewerServer = false,
-                    servers = listOf(serverAWithLogo, serverBWithLogo),
-                )
-            )
-        store.loadChannelMembers(serverId, channelId, force = true)
+        // Patching with an upgraded ServerA logo while ServerB already had a logo updates both
+        // profile cache and mention suggestion originServers per server id.
+        val extHumanSecond = extHumanFirst.copy(servers = listOf(serverAWithLogo, serverBWithLogo))
+        store.seedProfiles(serverId, listOf(extHumanSecond))
+        store.patchMentionChannelMemberSuggestion(
+            serverId = serverId,
+            mentionChannelId = channelId.value,
+            memberScopedMentions = true,
+            member = extHumanSecond,
+            inMentionChannel = true,
+        )
         val cachedSecond = assertNotNull(store.state.value.memberProfile(serverId, "ext-user-1"))
         assertEquals(listOf(serverAWithLogo, serverBWithLogo), cachedSecond.servers)
         val suggestion =

@@ -199,12 +199,18 @@ class RaftMemberOriginPartsTest {
         val richItem = richSuggestion.toRaftComposerMemberItem(inThread = true, knownServers = listOf(peerWithLogo))
         assertEquals(listOf(rowLogoPeer), richItem.mentionOriginServers())
 
-        // Local member never receives an external badge even if jointServers has entries.
+        // Local member never receives an external badge even if jointServers has entries,
+        // while preserving any extra server label (e.g. a local member who also shares another server).
         val localItem =
             bareSuggestion
-                .copy(sourceServerId = viewer, isLocalServer = true, originServers = listOf(rowLogoPeer))
+                .copy(
+                    sourceServerId = viewer,
+                    isLocalServer = true,
+                    sourceServerLabel = "Peer Labs",
+                    originServers = listOf(rowLogoPeer),
+                )
                 .toRaftComposerMemberItem(inThread = false, knownServers = listOf(peerWithLogo))
-        assertNull(localItem.sourceServerLabel)
+        assertEquals("Peer Labs", localItem.sourceServerLabel)
         assertEquals(emptyList(), localItem.mentionOriginServers())
     }
 
@@ -213,19 +219,23 @@ class RaftMemberOriginPartsTest {
         val peerWithLogo = peer.copy(avatarUrl = "/peer-logo.webp")
         val jointProjection =
             SharedConversationDirectoryProjection(
+                serverId = viewer,
                 canonicalChannelId = "joint-ch",
-                aliases = listOf("joint-ch"),
+                aliases = setOf("joint-ch"),
                 conversationKind = ConversationKind.Joint,
                 surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "joint",
                 title = "partner-sync",
                 jointServers = listOf(peerWithLogo),
             )
         val threadProjection =
             SharedConversationDirectoryProjection(
+                serverId = viewer,
                 canonicalChannelId = "reply-stream",
-                aliases = listOf("reply-stream"),
+                aliases = setOf("reply-stream"),
                 conversationKind = ConversationKind.Thread,
                 surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = "thread",
                 title = "Reply",
                 parentChannelId = "joint-ch",
                 jointServers = emptyList(),

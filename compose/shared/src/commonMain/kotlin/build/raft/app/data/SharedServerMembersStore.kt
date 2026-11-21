@@ -16,6 +16,7 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberPresenceUpdated
@@ -4600,9 +4601,12 @@ private fun MemberProfile.withoutVolatileStatus(): MemberProfile =
 private fun MemberProfile.mergeAuthoritativeProfile(incoming: MemberProfile): MemberProfile {
     val merged =
         mergeSeedProfile(incoming).copy(
-            // Authoritative hydration may advance/replace `servers` (including `avatarUrl`) and
-            // `inViewerServer`, while a sparse incoming profile (`servers == null`) preserves what
-            // the cache already learned.
+            // Authoritative hydration may advance/replace origin metadata (`serverId`, `serverName`,
+            // `serverSlug`, `servers` including `avatarUrl`, `inViewerServer`), while a sparse
+            // incoming profile preserves what the cache already learned.
+            serverId = incoming.serverId ?: serverId,
+            serverName = incoming.serverName ?: serverName,
+            serverSlug = incoming.serverSlug ?: serverSlug,
             servers = incoming.servers ?: servers,
             inViewerServer = incoming.inViewerServer ?: inViewerServer,
         )

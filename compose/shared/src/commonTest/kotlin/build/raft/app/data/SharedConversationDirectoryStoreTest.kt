@@ -8,6 +8,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
@@ -448,8 +449,8 @@ class SharedConversationDirectoryStoreTest {
                     )
             ).toSharedConversationDirectoryState()
 
-        val homeThenInbox = homeState.merge(inboxState)
-        val inboxThenHome = inboxState.merge(homeState)
+        val homeThenInbox = listOf(homeState, inboxState).mergedSharedConversationDirectoryState()
+        val inboxThenHome = listOf(inboxState, homeState).mergedSharedConversationDirectoryState()
         assertEquals(listOf(peer), homeThenInbox.resolve("joint-1")?.jointServers)
         assertEquals(listOf(peer), inboxThenHome.resolve("joint-1")?.jointServers)
     }

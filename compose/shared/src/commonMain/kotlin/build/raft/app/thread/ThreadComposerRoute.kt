@@ -1191,7 +1191,7 @@ internal fun SharedMembersMemberSuggestion.toRaftComposerMemberItem(
         }
     val resolvedServerLabel =
         if (isLocalServer) {
-            null
+            sourceServerLabel
         } else {
             sourceServerLabel?.trim()?.takeIf { it.isNotEmpty() }
                 ?: resolvedOriginServers.firstOrNull()?.originLabel()?.takeIf { it.isNotEmpty() }
