@@ -2004,7 +2004,12 @@ class SharedServerMembersStore internal constructor(
      * generation: the late rows are then dropped (the presence projection, fenced on its own,
      * still applies). A roster not loaded (or only durable-seeded) takes the full forced load.
      */
-    internal suspend fun refreshAgents(serverId: ServerId, reason: String): DataResult<Unit> {
+    internal suspend fun refreshAgents(
+        serverId: ServerId,
+        reason: String,
+        coalesceFreshWithin: Duration = Duration.ZERO,
+        notStartedBefore: kotlin.time.ComparableTimeMark? = null,
+    ): DataResult<Unit> {
         val key = serverId.value.normalizedServerMembersId()
             ?: return DataResult.Error(ScreenError(code = "server_missing", retryable = false))
         val owner = processOwner(ServerId(key)) ?: return authSessionRequiredResult()
@@ -2022,7 +2027,14 @@ class SharedServerMembersStore internal constructor(
             presenceWrite(ServerId(key))
                 ?.takeIf { it.owner == owner }
                 ?.let { write -> presenceRegistry.captureRosterProjectionRequest(write.owner, write.writeGeneration) }
-        val loadResult = processCore.loadAgents(owner, DataRequestPriority.Background, reason)
+        val loadResult =
+            processCore.loadAgents(
+                owner = owner,
+                priority = DataRequestPriority.Background,
+                reason = reason,
+                coalesceFreshWithin = coalesceFreshWithin,
+                notStartedBefore = notStartedBefore,
+            )
         val agents =
             (loadResult.result as? DataResult.Content)?.data ?: run {
                 logger("shared_server_members_agents_refresh serverId=$key result=not_content reason=$reason")
@@ -2127,6 +2139,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             // The answer's `configApply` is for the caller only; the roster never keeps it.
             seedProfiles(serverId, listOf(result.data.withoutConfigApply()))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_profile_updated")
+            }
         }
         return result
     }
@@ -2204,6 +2219,9 @@ class SharedServerMembersStore internal constructor(
         if (result is DataResult.Content) {
             beforePublish(result.data)
             seedProfiles(serverId, listOf(result.data))
+            processOwner(serverId)?.let { owner ->
+                processCore.invalidateRecentAgents(owner, reason = "agent_avatar_uploaded")
+            }
         }
         return result
     }
