@@ -8,18 +8,40 @@ import com.android.uiautomator.testrunner.UiAutomatorTestCase;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 
 /** Runs only on the job-owned Android emulator. Input stays on stdin and in the browser form. */
 public final class RaftQaLoginForm extends UiAutomatorTestCase {
     private static final String CHROME = "com.android.chrome";
 
-    private static final class ChromeNode extends UiObject {
-        ChromeNode(String resourceId) {
-            super(new UiSelector().packageName(CHROME).resourceId(resourceId));
+    private static final class ChromeLayout extends UiObject {
+        ChromeLayout() {
+            super(new UiSelector().packageName(CHROME).resourceId(CHROME + ":id/coordinator"));
         }
 
-        AccessibilityNodeInfo current() {
-            return findAccessibilityNodeInfo(0);
+        AccessibilityNodeInfo control(String resourceId) {
+            // Legacy UiAutomator can write the selected node, including its text, to logcat.
+            // Select only Chrome's native layout. Keep form values out of selector diagnostics.
+            AccessibilityNodeInfo layout = findAccessibilityNodeInfo(0);
+            if (layout == null) return null;
+            ArrayDeque<AccessibilityNodeInfo> pending = new ArrayDeque<>();
+            pending.add(layout);
+            AccessibilityNodeInfo match = null;
+            int visited = 0;
+            while (!pending.isEmpty()) {
+                AccessibilityNodeInfo node = pending.removeFirst();
+                if (++visited > 512) return null;
+                if (!CHROME.equals(node.getPackageName()) || node.getWindowId() != layout.getWindowId()) continue;
+                if (resourceId.equals(node.getViewIdResourceName()) && node.isVisibleToUser()) {
+                    if (match != null) return null;
+                    match = node;
+                }
+                for (int i = 0; i < node.getChildCount(); i++) {
+                    AccessibilityNodeInfo child = node.getChild(i);
+                    if (child != null) pending.addLast(child);
+                }
+            }
+            return match;
         }
     }
 
@@ -32,7 +54,7 @@ public final class RaftQaLoginForm extends UiAutomatorTestCase {
 
     // Compare the native toolbar to the configured QA site. Chrome can elide the scheme and path.
     private boolean atExpectedSite(int window) {
-        AccessibilityNodeInfo address = new ChromeNode(CHROME + ":id/url_bar").current();
+        AccessibilityNodeInfo address = new ChromeLayout().control(CHROME + ":id/url_bar");
         if (address == null || address.getWindowId() != window || address.getText() == null || inWebContent(address)) return false;
         Uri expected = Uri.parse(getParams().getString("origin"));
         String displayed = address.getText().toString().trim();
@@ -41,7 +63,7 @@ public final class RaftQaLoginForm extends UiAutomatorTestCase {
     }
 
     private boolean fill(String id, boolean password, String value) {
-        AccessibilityNodeInfo field = new ChromeNode(id).current();
+        AccessibilityNodeInfo field = new ChromeLayout().control(id);
         if (field == null || !field.isEditable() || !field.isEnabled() || !field.isVisibleToUser()
                 || field.isPassword() != password || !inWebContent(field)) return false;
         if (!atExpectedSite(field.getWindowId())) {
@@ -57,9 +79,8 @@ public final class RaftQaLoginForm extends UiAutomatorTestCase {
         // Chrome updates the accessibility tree asynchronously after accepting the input action.
         long deadline = SystemClock.uptimeMillis() + 3000;
         do {
-            AccessibilityNodeInfo populated = new ChromeNode(id).current();
-            if (populated != null && populated.refresh() && populated.getWindowId() == field.getWindowId()
-                    && populated.getText() != null && value.contentEquals(populated.getText())) return true;
+            if (field.refresh() && id.equals(field.getViewIdResourceName()) && field.isEditable()
+                    && !field.isPassword() && field.getText() != null && value.contentEquals(field.getText())) return true;
             SystemClock.sleep(100);
         } while (SystemClock.uptimeMillis() < deadline);
         return false;
