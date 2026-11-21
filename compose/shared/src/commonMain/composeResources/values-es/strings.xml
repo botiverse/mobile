@@ -2725,6 +2725,12 @@
     <string name="settings_notifications_battery_optimization_detail">Desactiva la optimización de batería para Raft para que el sistema no detenga la conexión en segundo plano. En algunos teléfonos también hay que permitir Raft en la configuración de inicio de apps o de actividad en segundo plano.</string>
     <string name="settings_notifications_battery_optimization_allowed">Permitidas</string>
     <string name="settings_notifications_battery_optimization_request">Permitir</string>
+    <string name="background_kill_notice_title">Raft se detuvo en segundo plano</string>
+    <string name="background_kill_notice_body_huawei">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. En Inicio de aplicaciones, cambia Raft a Gestión manual y permite Inicio automático, Inicio secundario y Ejecución en segundo plano.</string>
+    <string name="background_kill_notice_body_lenovo">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Permite que Raft se inicie automáticamente y siga ejecutándose en segundo plano en la configuración de gestión en segundo plano del dispositivo.</string>
+    <string name="background_kill_notice_body_vendor">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Permite que Raft se inicie automáticamente y se ejecute sin restricciones en segundo plano en los ajustes del sistema.</string>
+    <string name="background_kill_notice_body_app_details">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Abre Información de la aplicación, ve a Batería y establece Raft en Sin restricciones.</string>
+    <string name="background_kill_notice_action_open_settings">Abrir ajustes</string>
     <string name="settings_notifications_offline_computers_title">Alertas de computadoras sin conexión</string>
     <string name="settings_notifications_offline_computers_detail">Muestra una alerta en Inicio cuando una computadora registrada está sin conexión. Desactivado de forma predeterminada.</string>
     <string name="settings_notifications_test_title">Enviar una notificación de prueba</string>

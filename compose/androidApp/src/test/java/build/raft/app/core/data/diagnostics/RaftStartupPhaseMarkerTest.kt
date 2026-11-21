@@ -113,4 +113,126 @@ class RaftStartupPhaseMarkerTest {
             filesDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun v3EncodingRoundTripsMonotonicActivityOffsetAndStickyFlagAndDecodesV1AndV2() {
+        val v3 =
+            StartupPhaseRecord(
+                pid = 33637,
+                processStartMillis = 1_000L,
+                processName = "build.raft.app:a|b",
+                phase = Phase.FirstFrame,
+                phaseAtMillis = 2_500L,
+                firstActivityAtMillis = 1_800L,
+                firstActivityAfterStartMs = 800L,
+                stickyServiceRestart = true,
+            )
+        val encoded = v3.encode()
+        assertTrue(encoded.startsWith("3|"))
+        assertEquals(v3, StartupPhaseRecord.decode(encoded))
+
+        val v2Decoded = StartupPhaseRecord.decode("2|33637|1000|first_frame|2500|1800|1|build.raft.app:a|b")
+        assertEquals(
+            StartupPhaseRecord(
+                pid = 33637,
+                processStartMillis = 1_000L,
+                processName = "build.raft.app:a|b",
+                phase = Phase.FirstFrame,
+                phaseAtMillis = 2_500L,
+                firstActivityAtMillis = 1_800L,
+                firstActivityAfterStartMs = -1L,
+                stickyServiceRestart = true,
+            ),
+            v2Decoded,
+        )
+
+        val v1Decoded = StartupPhaseRecord.decode("1|33637|1000|first_frame|2500|build.raft.app:a|b")
+        assertEquals(
+            StartupPhaseRecord(
+                pid = 33637,
+                processStartMillis = 1_000L,
+                processName = "build.raft.app:a|b",
+                phase = Phase.FirstFrame,
+                phaseAtMillis = 2_500L,
+                firstActivityAtMillis = -1L,
+                firstActivityAfterStartMs = -1L,
+                stickyServiceRestart = false,
+            ),
+            v1Decoded,
+        )
+
+        // Reject malformed v2/v3 fields (invalid sticky flag, invalid offsets, truncated).
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-1|2|x"))
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-2|0|x"))
+        assertNull(StartupPhaseRecord.decode("2|1|2|attach_base_context|3|-1|0"))
+        assertNull(StartupPhaseRecord.decode("3|1|2|attach_base_context|3|-1|-2|0|x"))
+        assertNull(StartupPhaseRecord.decode("3|1|2|attach_base_context|3|-1|-1|2|x"))
+        assertNull(StartupPhaseRecord.decode("3|1|2|attach_base_context|3|-1|-1|0"))
+    }
+
+    @Test
+    fun firstActivityAtMillisAndMonotonicOffsetAreCapturedOnceAndPreservedThroughFirstFrame() {
+        val initial = record(pid = 42, start = 1_000L, phase = Phase.AttachBaseContext, at = 1_010L)
+        val appCreated = initial.advanceTo(Phase.ApplicationCreated, nowMillis = 1_200L)!!
+        assertEquals(-1L, appCreated.firstActivityAtMillis)
+        assertEquals(-1L, appCreated.firstActivityAfterStartMs)
+
+        val activityCreated =
+            appCreated.advanceTo(
+                Phase.ActivityCreated,
+                nowMillis = 1_500L,
+                elapsedSinceProcessStartMillis = 480L,
+            )!!
+        assertEquals(1_500L, activityCreated.firstActivityAtMillis)
+        assertEquals(480L, activityCreated.firstActivityAfterStartMs)
+        assertEquals(Phase.ActivityCreated, activityCreated.phase)
+        assertEquals(1_500L, activityCreated.phaseAtMillis)
+
+        // Repeated ActivityCreated is a no-op and keeps the first timestamp and offset.
+        assertNull(activityCreated.advanceTo(Phase.ActivityCreated, nowMillis = 1_900L, elapsedSinceProcessStartMillis = 900L))
+
+        // FirstFrame advances phase and phaseAtMillis without overwriting firstActivityAtMillis or offset.
+        val firstFrame = activityCreated.advanceTo(Phase.FirstFrame, nowMillis = 2_400L)!!
+        assertEquals(Phase.FirstFrame, firstFrame.phase)
+        assertEquals(2_400L, firstFrame.phaseAtMillis)
+        assertEquals(1_500L, firstFrame.firstActivityAtMillis)
+        assertEquals(480L, firstFrame.firstActivityAfterStartMs)
+    }
+
+    @Test
+    fun markStickyServiceRestartPersistsV3RecordOffCallingThreadWithoutLosingPhases() {
+        val filesDir = Files.createTempDirectory("startup-phases-sticky").toFile()
+        try {
+            RaftStartupPhaseMarker.startForTest(
+                filesDir = filesDir,
+                pid = 777,
+                processStartMillis = 10_000L,
+                processName = "build.raft.app",
+                nowMillis = 10_050L,
+            )
+            RaftStartupPhaseMarker.reached(Phase.ApplicationCreated, nowMillis = 10_200L)
+            RaftStartupPhaseMarker.markStickyServiceRestart()
+            RaftStartupPhaseMarker.flushPendingWritesForTest()
+            RaftStartupPhaseMarker.reached(
+                Phase.ActivityCreated,
+                nowMillis = 50_000L,
+                elapsedSinceProcessStartMillis = 40_000L,
+            )
+            RaftStartupPhaseMarker.reached(Phase.FirstFrame, nowMillis = 50_800L)
+            RaftStartupPhaseMarker.flushPendingWritesForTest()
+
+            val current = RaftStartupPhaseMarker.current()!!
+            assertTrue(current.stickyServiceRestart)
+            assertEquals(50_000L, current.firstActivityAtMillis)
+            assertEquals(40_000L, current.firstActivityAfterStartMs)
+            assertEquals(Phase.FirstFrame, current.phase)
+            assertEquals(50_800L, current.phaseAtMillis)
+
+            val persisted = RaftStartupPhaseMarker.readAll(filesDir).single()
+            assertEquals(current, persisted)
+        } finally {
+            RaftStartupPhaseMarker.resetForTest()
+            filesDir.deleteRecursively()
+        }
+    }
 }

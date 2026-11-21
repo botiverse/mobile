@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import build.raft.app.R
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -50,6 +51,9 @@ class RaftBackgroundConnectionService : Service() {
                     decision = decision,
                 )
             if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.StopWithoutForeground) {
+                if (systemRestart) {
+                    RaftStartupPhaseMarker.markStickyServiceRestart()
+                }
                 // A sticky restart lands in a fresh process: only the UI opens the realtime connection (the shared
                 // realtime authority that grants it lives in the UI-hosted store), so there is nothing to keep alive
                 // even when a session is stored. Stop before startForeground (a restart is not a foreground-service

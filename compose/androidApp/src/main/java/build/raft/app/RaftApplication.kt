@@ -10,6 +10,7 @@ import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.AndroidSystemKillReporter
+import build.raft.app.core.data.diagnostics.RaftAndroidBackgroundKillNoticeHost
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftHandsLaunchUploads
 import build.raft.app.core.data.diagnostics.RaftStartupPhaseMarker
@@ -79,6 +80,8 @@ class RaftApplication : Application() {
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
         // Finished in-app update APKs for installed versions: drop them and their system notification.
         build.raft.app.shared.HandsUpdateDownloadCleanup.start(this)
+        // Local Android background-kill whitelist guidance host (registered before diagnostics evaluates).
+        RaftAndroidBackgroundKillNoticeHost.install(this)
         // task #6 WebView warm-up is scheduled from the first CMP frame (RaftCmpActivity), not
         // here: from onCreate it ran before the launch activity existed and lengthened cold start.
         RaftAndroidLocalDiagnostics.init(this)

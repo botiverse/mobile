@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangedIgnoreConsumed
@@ -143,6 +144,8 @@ internal fun RaftAppShellSurface(
     leadingNavigation: (@Composable () -> Unit)? = null,
     /** The wide layout's top bar, above [leadingNavigation] and the content (web AppTopBar). */
     topNavigation: (@Composable () -> Unit)? = null,
+    /** Optional signed-in notice banner (under [topNavigation] on wide layouts; via body top banner on compact). */
+    topNoticeBanner: (@Composable () -> Unit)? = null,
     /** Drawn over the whole shell, top bar and rail included (the top bar's server panel). */
     shellOverlay: (@Composable () -> Unit)? = null,
     /** D1a: draws the bar's current-server tab (see [RaftBottomTabBar]). */
@@ -155,11 +158,13 @@ internal fun RaftAppShellSurface(
     val imeVisible = raftImeVisible()
     val bottomTabsShown = raftAppShellBottomTabsShown(showBottomTabs, imeVisible)
     val effectiveModalHostState = modalHostState ?: ownedModalHostState
+    val effectiveTopNoticeBanner: (@Composable () -> Unit)? =
+        if (networkStatus == RaftAppShellNetworkStatus.Offline) null else topNoticeBanner
     val bodyTopBanner: (@Composable () -> Unit)? =
-        if (networkStatus == RaftAppShellNetworkStatus.Offline) {
-            { RaftAppShellNetworkBanner() }
-        } else {
-            null
+        when {
+            networkStatus == RaftAppShellNetworkStatus.Offline -> ({ RaftAppShellNetworkBanner() })
+            topNavigation == null -> effectiveTopNoticeBanner
+            else -> null
         }
     RaftInputFocusDismissHost { focusDismissModifier ->
         val drawerOpenGesture = LocalRaftHomeDrawerOpenGesture.current
@@ -196,6 +201,16 @@ internal fun RaftAppShellSurface(
                             )
                 ) {
                     topNavigation?.invoke()
+                    if (topNavigation != null && effectiveTopNoticeBanner != null) {
+                        effectiveTopNoticeBanner()
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(RaftAppStroke.Thin)
+                                    .background(RaftColor.BorderSeam.compositeOver(RaftColor.Canvas))
+                        )
+                    }
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
                             leadingNavigation?.invoke()
