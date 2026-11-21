@@ -1057,7 +1057,7 @@
     <string name="thread_action_card_plan_trial_mobile_line">You can try Pro for free. Start it from Raft on your computer.</string>
     <string name="thread_action_card_reconfirm">重新確認</string>
     <string name="thread_action_card_reconfirm_failed">重新確認失敗</string>
-    <string name="thread_action_card_blocked_target_server">這個操作會在 %1$s 上執行，請切換到 %1$s 後再執行。</string>
+    <string name="thread_action_card_blocked_target_server">只有 %1$s 的成員可以使用這張卡片。</string>
     <string name="thread_action_card_runs_on_server">將在 %1$s 上執行</string>
     <string name="thread_action_card_blocked_source_workspace">這是歷史副本，只有來源工作區能執行這個操作。</string>
     <string name="thread_action_card_field_description">說明</string>
