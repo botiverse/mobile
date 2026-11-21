@@ -23,11 +23,11 @@ import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.transfer.RaftTransferProgress
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -74,9 +74,9 @@ internal object RaftDownloadNotifications {
     @Volatile
     private var channelEnsuredContext: Context? = null
 
-    private class CachedLaunchTemplate(val appContext: Context, val intent: Intent?)
+    private class CachedLaunchTemplate(val appContext: Context, val intent: Intent)
 
-    private class CachedProgressPendingIntent(val appContext: Context, val pendingIntent: PendingIntent?)
+    private class CachedProgressPendingIntent(val appContext: Context, val pendingIntent: PendingIntent)
 
     private val launchIntentLock = Any()
 
@@ -89,22 +89,8 @@ internal object RaftDownloadNotifications {
     /** Attaches once (from `RaftDownloadCenterProcess.onCreated`); collects & notifies off-main on a serialized IO lane. */
     fun attach(context: Context, center: RaftDownloadCenter) {
         if (!attached.compareAndSet(false, true)) return
-        attachOnDispatcher(context, center, notificationDispatcher)
-    }
-
-    internal fun attachForTest(
-        context: Context,
-        center: RaftDownloadCenter,
-        dispatcher: CoroutineDispatcher,
-    ): Job = attachOnDispatcher(context, center, dispatcher)
-
-    private fun attachOnDispatcher(
-        context: Context,
-        center: RaftDownloadCenter,
-        dispatcher: CoroutineDispatcher,
-    ): Job {
         val appContext = context.applicationContext
-        return CoroutineScope(SupervisorJob() + dispatcher).launch {
+        CoroutineScope(SupervisorJob() + notificationDispatcher).launch {
             var previous: Map<String, RaftDownloadStatus> = center.state.value.entries.associate { it.id to it.status }
             center.state
                 .map { it.entries }
@@ -224,7 +210,7 @@ internal object RaftDownloadNotifications {
         cachedProgressPendingIntent?.takeIf { it.appContext === appContext }?.let { return it.pendingIntent }
         synchronized(launchIntentLock) {
             cachedProgressPendingIntent?.takeIf { it.appContext === appContext }?.let { return it.pendingIntent }
-            val created = launchAppIntent(appContext, PROGRESS_NOTIFICATION_ID)
+            val created = launchAppIntent(appContext, PROGRESS_NOTIFICATION_ID) ?: return null
             cachedProgressPendingIntent = CachedProgressPendingIntent(appContext, created)
             return created
         }
@@ -232,16 +218,16 @@ internal object RaftDownloadNotifications {
 
     private fun resolveLaunchIntent(context: Context): Intent? {
         val appContext = context.applicationContext
-        cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return it.intent?.let(::Intent) }
+        cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return Intent(it.intent) }
         synchronized(launchIntentLock) {
-            cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return it.intent?.let(::Intent) }
+            cachedLaunchTemplate?.takeIf { it.appContext === appContext }?.let { return Intent(it.intent) }
             val resolved =
                 appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)?.apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
                     putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
-                }
+                } ?: return null
             cachedLaunchTemplate = CachedLaunchTemplate(appContext, resolved)
-            return resolved?.let(::Intent)
+            return Intent(resolved)
         }
     }
 
@@ -291,6 +277,10 @@ internal object RaftDownloadNotifications {
     internal fun progressLaunchAppIntentForTest(context: Context): PendingIntent? =
         progressLaunchAppIntent(context)
 
+    internal fun setHasActiveDownloadsForTests(active: Boolean) {
+        hasActiveDownloads = active
+    }
+
     internal fun resetCachesForTests() {
         channelEnsuredContext = null
         cachedLaunchTemplate = null
@@ -315,58 +305,82 @@ internal object RaftDownloadNotifications {
  * service stops itself after promoting when nothing is active.
  */
 class RaftDownloadForegroundService : Service() {
+    @Volatile
+    private var lastStartId: Int = -1
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startPending = false
-        val promoted =
-            try {
-                val notification = RaftDownloadNotifications.currentProgressNotification(this)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(
-                        RaftDownloadNotifications.PROGRESS_NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                    )
-                } else {
-                    startForeground(RaftDownloadNotifications.PROGRESS_NOTIFICATION_ID, notification)
+        var clearedStartPending = false
+        try {
+            val promoted =
+                try {
+                    val notification = RaftDownloadNotifications.currentProgressNotification(this)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        startForeground(
+                            RaftDownloadNotifications.PROGRESS_NOTIFICATION_ID,
+                            notification,
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } else {
+                        startForeground(RaftDownloadNotifications.PROGRESS_NOTIFICATION_ID, notification)
+                    }
+                    true
+                } catch (error: Exception) {
+                    RaftAppLog.w(LOG_TAG, "download_service_start_failed errorType=${error::class.simpleName}")
+                    false
                 }
-                true
-            } catch (error: Exception) {
-                RaftAppLog.w(LOG_TAG, "download_service_start_failed errorType=${error::class.simpleName}")
-                false
+            if (!promoted) {
+                startPending = false
+                clearedStartPending = true
+                stopSelf(startId)
+                return START_NOT_STICKY
             }
-        if (!promoted) {
-            stopSelf()
+            // Publish instance before clearing startPending (reverse of ensureRunning()'s read
+            // order: startPending then instance) and before reading hasActiveDownloads (reverse of
+            // render()'s write order: hasActiveDownloads = false before stopIfIdle() reads instance)
+            // so neither ensureRunning() nor stopIfIdle() can observe a gap across the handoff.
+            lastStartId = startId
+            instance.set(this)
+            startPending = false
+            clearedStartPending = true
+            if (!RaftDownloadNotifications.hasActiveDownloads) {
+                if (instance.compareAndSet(this, null)) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf(startId)
+                    // A new download may have set hasActiveDownloads = true while instance was
+                    // still published (so its ensureRunning returned early). Re-request if active.
+                    if (RaftDownloadNotifications.hasActiveDownloads) {
+                        ensureRunning(applicationContext)
+                    }
+                }
+                return START_NOT_STICKY
+            }
             return START_NOT_STICKY
+        } finally {
+            if (!clearedStartPending) {
+                startPending = false
+            }
         }
-        // Publish instance before reading hasActiveDownloads (reverse of render()'s write order:
-        // hasActiveDownloads = false before stopIfIdle() reads instance) so a download finishing
-        // on the IO notification lane never races past onStartCommand and leaks the FGS.
-        instance = this
-        if (!RaftDownloadNotifications.hasActiveDownloads) {
-            if (instance === this) instance = null
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        return START_NOT_STICKY
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
         RaftAppLog.w(LOG_TAG, "download_service_timeout")
-        stopSelf()
+        instance.compareAndSet(this, null)
+        stopSelf(startId)
     }
 
     override fun onDestroy() {
-        if (instance === this) instance = null
+        instance.compareAndSet(this, null)
         super.onDestroy()
     }
 
     companion object {
         private const val LOG_TAG = "RaftDownloadService"
 
-        @Volatile
-        private var instance: RaftDownloadForegroundService? = null
+        private val instance = AtomicReference<RaftDownloadForegroundService?>(null)
+
+        private val startLock = Any()
 
         @Volatile
         private var startPending = false
@@ -384,8 +398,15 @@ class RaftDownloadForegroundService : Service() {
         /** Downloads start from the visible app, where a foreground-service start is allowed. */
         internal fun ensureRunning(context: Context) {
             val appContext = context.applicationContext
-            if (instance != null || startPending || !isDeclared(appContext)) return
-            startPending = true
+            // Check startPending before instance (reverse of onStartCommand's write order:
+            // instance.set(this) before startPending = false) so we never observe both false
+            // during promotion.
+            if (startPending || instance.get() != null) return
+            if (!isDeclared(appContext)) return
+            synchronized(startLock) {
+                if (startPending || instance.get() != null) return
+                startPending = true
+            }
             runCatching {
                 ContextCompat.startForegroundService(appContext, Intent(appContext, RaftDownloadForegroundService::class.java))
             }.onFailure { error ->
@@ -396,12 +417,22 @@ class RaftDownloadForegroundService : Service() {
 
         /** A pending start stops itself in onStartCommand once it has promoted. */
         internal fun stopIfIdle() {
-            val running = instance ?: return
+            val running = instance.get() ?: return
             if (RaftDownloadNotifications.hasActiveDownloads) return
+            // Atomically clear instance before stopping so a back-to-back download starting before
+            // onDestroy() issues startForegroundService() instead of seeing a stale instance, and
+            // stopSelf(lastStartId) avoids cancelling a newer start request.
+            if (!instance.compareAndSet(running, null)) return
             runCatching {
                 running.stopForeground(STOP_FOREGROUND_REMOVE)
-                running.stopSelf()
+                running.stopSelf(running.lastStartId)
             }
+        }
+
+        internal fun resetForTests() {
+            instance.set(null)
+            startPending = false
+            declared = null
         }
     }
 }

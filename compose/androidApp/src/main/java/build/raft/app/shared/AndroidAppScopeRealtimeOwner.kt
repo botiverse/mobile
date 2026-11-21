@@ -471,6 +471,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         val appContext = context.applicationContext
         scope.launch {
+            if (!backgroundKeepAliveEnabled) return@launch
             syncRealtimeReconnectPolicy()
             RaftAppLog.d(
                 LOG_TAG,

@@ -76,6 +76,7 @@ class RaftBackgroundConnectionService : Service() {
             }
             if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.PromoteThenStop) {
                 RaftAppLog.w(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
+                AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(outcome.reason)
                 if (stopSelfResult(startId)) {
                     running = false
                 }
