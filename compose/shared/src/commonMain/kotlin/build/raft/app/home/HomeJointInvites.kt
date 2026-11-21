@@ -81,7 +81,7 @@ internal fun rememberHomeJointInvites(
             }
             is SharedJointInviteEffect.AcceptFailed -> {
                 val failure = effect.result.toJointChannelFailure()
-                bridge.toast(
+                bridge.errorToast(
                     if (failure == null) {
                         failureCopy.fallback
                     } else {
@@ -91,7 +91,8 @@ internal fun rememberHomeJointInvites(
                                 is JointChannelFailure.Blocked -> value.blocker.userFacingMessage(errorStrings)
                             }
                         }
-                    }
+                    },
+                    effect.result,
                 )
             }
             null -> Unit

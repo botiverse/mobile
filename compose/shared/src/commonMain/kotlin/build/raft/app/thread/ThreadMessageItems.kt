@@ -310,7 +310,8 @@ internal data class ThreadAttachmentCommentsDialogState(
     /** The structural anchor the next comment is sent with (a video timestamp); its chip is [pendingAnchorLabel]. */
     val pendingAnchor: build.raft.app.data.ThreadAttachmentCommentAnchor? = null,
     val errorCode: String? = null,
-    val errorServerMessage: String? = null
+    val errorServerMessage: String? = null,
+    val errorTraceId: String? = null
 )
 
 internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentEditorValue(
@@ -345,15 +346,17 @@ internal fun ThreadAttachmentCommentsDialogState.withQuotedAttachmentComment(
 
 internal fun ThreadAttachmentCommentsDialogState.clearAttachmentCommentsError():
     ThreadAttachmentCommentsDialogState =
-    copy(errorCode = null, errorServerMessage = null)
+    copy(errorCode = null, errorServerMessage = null, errorTraceId = null)
 
 internal fun ThreadAttachmentCommentsDialogState.withAttachmentCommentsError(
     errorCode: String?,
-    serverMessage: String?
+    serverMessage: String?,
+    traceId: String? = null
 ): ThreadAttachmentCommentsDialogState =
     copy(
         errorCode = errorCode?.trim()?.takeIf { it.isNotBlank() },
-        errorServerMessage = serverMessage?.takeIf { it.isNotBlank() }
+        errorServerMessage = serverMessage?.takeIf { it.isNotBlank() },
+        errorTraceId = traceId?.trim()?.takeIf { it.isNotBlank() }
     )
 
 internal fun attachmentCommentsVisibleErrorMessage(
@@ -517,6 +520,7 @@ internal data class ThreadTimelineRenderConfig(
     val backgroundRefreshing: Boolean,
     val errorCode: String?,
     val errorServerMessage: String? = null,
+    val errorTraceId: String? = null,
     val originPreview: String?,
     val originErrorCode: String?,
     val timeContext: RaftTimeContext,
@@ -528,6 +532,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineRenderConfig(): ThreadTimel
         backgroundRefreshing = backgroundRefreshing,
         errorCode = errorCode,
         errorServerMessage = errorServerMessage,
+        errorTraceId = errorTraceId,
         originPreview = originPreview,
         originErrorCode = originErrorCode,
         timeContext = toRaftTimeContext(),

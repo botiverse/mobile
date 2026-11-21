@@ -190,6 +190,7 @@ private fun AttachmentCommentsList(
                     style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundMuted
                 )
+                RaftTraceIdNote(state.errorTraceId)
                 build.raft.designsystem.components.RaftButton(
                     text = stringResource(Res.string.common_retry),
                     onClick = onRetry
@@ -399,19 +400,22 @@ private fun AttachmentCommentsDock(
                 onSend = onSend
             )
             state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
-                RaftText(
-                    text =
-                        attachmentCommentsVisibleErrorMessage(
-                            errorCode = code,
-                            serverMessage = state.errorServerMessage,
-                            labels = threadUserFacingErrorLabels(),
-                            genericMessage = stringResource(Res.string.common_error)
-                        ),
-                    style = RaftTheme.typography.caption.withRaftTextRendering(),
-                    color = colors.dangerStrong,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        text =
+                            attachmentCommentsVisibleErrorMessage(
+                                errorCode = code,
+                                serverMessage = state.errorServerMessage,
+                                labels = threadUserFacingErrorLabels(),
+                                genericMessage = stringResource(Res.string.common_error)
+                            ),
+                        style = RaftTheme.typography.caption.withRaftTextRendering(),
+                        color = colors.dangerStrong,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    RaftTraceIdNote(state.errorTraceId)
+                }
             }
         }
     }

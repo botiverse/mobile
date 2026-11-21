@@ -1396,9 +1396,10 @@ internal fun MemberDetailPageContent(
                                                     source = "member_detail_user_reorder_save_error_rollback",
                                                     logger = { message -> bridge.log(message) }
                                                 )
-                                                bridge.toast(
+                                                bridge.errorToast(
                                                     tabOrderSaveErrorTemplate
-                                                        .membersFormat(result.error.userFacingMessage(errorStrings))
+                                                        .membersFormat(result.error.userFacingMessage(errorStrings)),
+                                                    result.error,
                                                 )
                                             }
                                             is DataResult.NoPermission -> {
@@ -1408,7 +1409,7 @@ internal fun MemberDetailPageContent(
                                                     source = "member_detail_user_reorder_save_blocked_rollback",
                                                     logger = { message -> bridge.log(message) }
                                                 )
-                                                bridge.toast(tabOrderPermissionError)
+                                                bridge.errorToast(tabOrderPermissionError, result.blocker)
                                             }
                                         }
                                     }

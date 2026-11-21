@@ -98,7 +98,7 @@ internal fun threadEmptyStandInAwaitsFirstLoad(
 ): Boolean = status == "empty" && durableLastKnown && !mainLoadFailed
 
 @Composable
-internal fun ThreadStateMessage(title: String, detail: String?) {
+internal fun ThreadStateMessage(title: String, detail: String?, traceId: String? = null) {
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
@@ -119,6 +119,7 @@ internal fun ThreadStateMessage(title: String, detail: String?) {
                     color = RaftColor.TextMutedGray
                 )
             }
+            RaftTraceIdNote(traceId)
         }
     }
 }
@@ -163,7 +164,8 @@ internal fun ThreadStateActionMessage(
     title: String,
     detail: String?,
     actionLabel: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    traceId: String? = null,
 ) {
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
@@ -185,6 +187,7 @@ internal fun ThreadStateActionMessage(
                     color = RaftColor.TextMutedGray
                 )
             }
+            RaftTraceIdNote(traceId)
             ThreadHeaderAction(label = actionLabel, onClick = onClick)
         }
     }

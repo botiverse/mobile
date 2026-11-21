@@ -977,7 +977,7 @@ internal class SharedThreadStore(
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
-                    routeContextPayload.copy(status = "loading", errorCode = null)
+                    routeContextPayload.copy(status = "loading", errorCode = null, errorServerMessage = null, errorTraceId = null)
                 }
         // artin 10-26: a seed message whose Activity preview was cut shows the full copy when either
         // route-matched local frame already holds that message.
@@ -1012,6 +1012,8 @@ internal class SharedThreadStore(
                     routeContextPayload.copy(
                         status = if (threadId == null) routeContextPayload.status else "loading",
                         errorCode = null,
+                        errorServerMessage = null,
+                        errorTraceId = null,
                     )
                 val seedHoldsAnchor = activitySeedBodies.any { it.id == anchorId }
                 val candidateSource =
@@ -1467,7 +1469,7 @@ internal class SharedThreadStore(
             if (hasRenderableContent || existing.isDurableEmptyStandIn()) {
                 existing.withRouteContext(basePayload).copy(backgroundRefreshing = true)
             } else {
-                basePayload.copy(status = "loading", backgroundRefreshing = false, errorCode = null)
+                basePayload.copy(status = "loading", backgroundRefreshing = false, errorCode = null, errorServerMessage = null, errorTraceId = null)
             }
         diagnosticsLogger?.invoke(
             "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
@@ -1596,7 +1598,8 @@ internal class SharedThreadStore(
         val nextPayload =
             when (result) {
                 is DataResult.Content ->
-                    visiblePayload ?: result.data.withRouteContext(basePayload).asLoadedEmptyReplyThreadPayload()
+                    (visiblePayload ?: result.data.withRouteContext(basePayload).asLoadedEmptyReplyThreadPayload())
+                        .copy(errorCode = null, errorServerMessage = null, errorTraceId = null)
                 is DataResult.Empty ->
                     if (result.reason == EmptyReason.NoMessages) {
                         latest.asRefreshEmpty(basePayload)
@@ -1606,13 +1609,18 @@ internal class SharedThreadStore(
                 is DataResult.Error ->
                     // Hands 7e198cab: an anchored open still waiting at its anchor falls back to the
                     // local frame it held back (offline keeps showing what this device has).
-                    errorBase.asRefreshFailed(result.error.code)
+                    errorBase.asRefreshFailed(result.error.code, result.error.traceId)
                 is DataResult.NoPermission -> {
                     // Canonical fetch says we can no longer read this thread:
                     // the cached first-frame candidate is unrecoverable-stale
                     // (permission/visibility change) — drop it. Transient
                     // network errors deliberately keep the warm cache.
-                    latest.asRefreshNoPermission(basePayload, result.blocker.code, result.blocker.serverMessage)
+                    latest.asRefreshNoPermission(
+                        basePayload,
+                        result.blocker.code,
+                        result.blocker.serverMessage,
+                        result.blocker.traceId
+                    )
                 }
             }.copy(
                 backgroundRefreshing = false,
@@ -4833,6 +4841,8 @@ internal class SharedThreadStore(
                                                     .sortedByThreadTimeline(),
                                             status = "content",
                                             errorCode = null,
+                                            errorServerMessage = null,
+                                            errorTraceId = null,
                                             canLoadMoreAfter = false,
                                             newerMessagesStatus = "idle",
                                             olderMessagesStatus = "idle",

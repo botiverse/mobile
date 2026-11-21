@@ -109,6 +109,8 @@ internal data class RaftThreadScreenPayload(
     val newerMessagesStatus: String = "idle",
     val errorCode: String? = null,
     val errorServerMessage: String? = null,
+    @Transient
+    val errorTraceId: String? = null,
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
     val composer: RaftThreadComposerPayload = RaftThreadComposerPayload(),

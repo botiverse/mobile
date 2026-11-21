@@ -101,7 +101,6 @@ import build.raft.app.data.COMPUTER_ACTION_RENAME
 import build.raft.app.data.COMPUTER_ACTION_OWNER
 import build.raft.app.model.MemberProfile
 import build.raft.app.data.SettingsComputerOwnerRequest
-import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionStore
@@ -3084,7 +3083,7 @@ private fun RaftComputerDetailBody(
     val ownerAction = currentAction?.takeIf { it.action == COMPUTER_ACTION_OWNER }
     val ownerSaving = ownerAction?.inProgress == true
     val ownerFailed = ownerAction != null && !ownerAction.inProgress && ownerAction.hasComputerActionError()
-    val toastHost = LocalRaftToastHostState.current
+    val showErrorToast = rememberRaftErrorToast()
     val makeMineFailed = stringResource(Res.string.settings_computers_owner_make_mine_failed)
     LaunchedEffect(ownerSaving, ownerFailed) {
         if (ownerSaving) return@LaunchedEffect
@@ -3092,7 +3091,10 @@ private fun RaftComputerDetailBody(
         if (transferOwnerOpen && transferSubmitted && ownerAction != null && !ownerFailed) transferOwnerOpen = false
         if (claimingOwner) {
             claimingOwner = false
-            if (ownerFailed) toastHost?.show(makeMineFailed, intent = RaftToastIntent.Error)
+            if (ownerFailed) {
+                val traceId = ownerAction.screenError?.traceId ?: ownerAction.permissionBlocker?.traceId
+                showErrorToast(makeMineFailed, traceId, RaftToastIntent.Error)
+            }
         }
     }
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()

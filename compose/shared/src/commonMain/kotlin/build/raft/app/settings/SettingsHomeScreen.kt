@@ -145,7 +145,8 @@ internal fun sharedHomeSearchErrorDisplay(
 @Composable
 private fun localizedSharedHomeErrorDisplay(
     code: String,
-    serverMessage: String? = null
+    serverMessage: String? = null,
+    traceId: String? = null
 ): RaftHomeInlineError =
     RaftHomeInlineError(
         title =
@@ -169,7 +170,8 @@ private fun localizedSharedHomeErrorDisplay(
                 else -> stringResource(Res.string.home_error_load_detail)
             },
         code = code,
-        actionLabel = stringResource(Res.string.common_retry)
+        actionLabel = stringResource(Res.string.common_retry),
+        traceId = traceId
     )
 
 /**
@@ -501,7 +503,11 @@ internal fun SharedHomeScreen(
                     topSafeAreaOverride = topSafeAreaOverride,
                     bottomContentPadding = bottomContentPadding,
                     inlineError =
-                        localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage),
+                        localizedSharedHomeErrorDisplay(
+                            current.code,
+                            serverMessage = current.serverMessage,
+                            traceId = current.traceId
+                        ),
                     onInlineErrorAction = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -521,13 +527,18 @@ internal fun SharedHomeScreen(
                 )
             } else {
                 val error =
-                    localizedSharedHomeErrorDisplay(current.code, serverMessage = current.serverMessage)
+                    localizedSharedHomeErrorDisplay(
+                        current.code,
+                        serverMessage = current.serverMessage,
+                        traceId = current.traceId
+                    )
                 PageErrorContent(
                     title = stringResource(Res.string.tab_home),
                     subtitle = stringResource(Res.string.settings_navigation_section_workspace),
                     iconName = RaftLucideIconName.House,
                     message = error.title,
                     code = current.code,
+                    traceId = current.traceId,
                     onRetry = { onIntent(SharedHomeIntent.Refresh) }
                 )
             }

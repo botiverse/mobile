@@ -652,15 +652,21 @@ internal fun AuthTextLink(text: String, onClick: () -> Unit, enabled: Boolean = 
 }
 
 @Composable
-internal fun AuthError(message: String?) {
+internal fun AuthError(message: String?, traceId: String? = null) {
     if (!message.isNullOrBlank()) {
         // Web LoginPage: the error is a `Banner intent="warning"` (text-callout 14/20).
         RaftDesignSystemTheme {
-            RaftBanner(
-                description = message,
-                status = RaftBannerStatus.Warning,
-                modifier = Modifier.fillMaxWidth().authStaticTextFocus(),
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                RaftBanner(
+                    description = message,
+                    status = RaftBannerStatus.Warning,
+                    modifier = Modifier.fillMaxWidth().authStaticTextFocus(),
+                )
+                RaftTraceIdNote(traceId)
+            }
         }
     }
 }

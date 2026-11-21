@@ -2185,7 +2185,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                             resolvingCommentIds = emptySet()
                         ).withAttachmentCommentsError(
                             errorCode = failure.errorCode,
-                            serverMessage = failure.serverMessage
+                            serverMessage = failure.serverMessage,
+                            traceId = failure.traceId
                         )
                     }
                     null -> {
@@ -2259,9 +2260,10 @@ private fun RaftFilePreviewStandalonePageContent() {
                             ?.copy(sending = false)
                             ?.withAttachmentCommentsError(
                                 errorCode = failure.errorCode,
-                                serverMessage = failure.serverMessage
+                                serverMessage = failure.serverMessage,
+                                traceId = failure.traceId
                             )
-                    bridge.toast(unableToSendComment)
+                    bridge.errorToast(unableToSendComment, result.traceId)
                 }
                 null -> {
                     payload = payload.withFilePreviewAuthorityRejected()

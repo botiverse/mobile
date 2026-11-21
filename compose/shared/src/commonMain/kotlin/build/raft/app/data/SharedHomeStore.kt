@@ -2887,7 +2887,8 @@ internal class SharedHomeStore(
                     )
                     _state.value.content.asRefreshFailed(
                         dataResult.error.code,
-                        serverMessage = dataResult.error.serverMessage
+                        serverMessage = dataResult.error.serverMessage,
+                        traceId = dataResult.error.traceId
                     )
                 }
                 is DataResult.NoPermission -> {
@@ -2896,7 +2897,8 @@ internal class SharedHomeStore(
                     )
                     _state.value.content.asRefreshFailed(
                         dataResult.blocker.code,
-                        serverMessage = dataResult.blocker.serverMessage
+                        serverMessage = dataResult.blocker.serverMessage,
+                        traceId = dataResult.blocker.traceId
                     )
                 }
             }
@@ -6486,7 +6488,8 @@ sealed interface SharedHomeContentState {
     data class Error(
         val code: String,
         val session: StoredAuthSession? = null,
-        val serverMessage: String? = null
+        val serverMessage: String? = null,
+        val traceId: String? = null
     ) : SharedHomeContentState
     data class Content(
         val snapshot: HomeSnapshot,
@@ -6528,15 +6531,16 @@ private fun SharedHomeContentState.asRefreshing(
 
 private fun SharedHomeContentState.asRefreshFailed(
     code: String,
-    serverMessage: String? = null
+    serverMessage: String? = null,
+    traceId: String? = null
 ): SharedHomeContentState =
     when (this) {
         is SharedHomeContentState.Content -> copy(contentRefreshing = false)
         is SharedHomeContentState.Empty ->
-            SharedHomeContentState.Error(code, session, serverMessage = serverMessage)
+            SharedHomeContentState.Error(code, session, serverMessage = serverMessage, traceId = traceId)
         is SharedHomeContentState.Loading ->
-            SharedHomeContentState.Error(code, session, serverMessage = serverMessage)
-        is SharedHomeContentState.Error -> copy(code = code, serverMessage = serverMessage)
+            SharedHomeContentState.Error(code, session, serverMessage = serverMessage, traceId = traceId)
+        is SharedHomeContentState.Error -> copy(code = code, serverMessage = serverMessage, traceId = traceId)
     }
 
 private fun SharedHomeContentState.sessionOrNull(): StoredAuthSession? =

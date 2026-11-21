@@ -4,6 +4,7 @@ import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
@@ -190,7 +191,8 @@ internal class ThreadRouteAttachmentActions(
                             resolvingCommentIds = emptySet()
                         ).withAttachmentCommentsError(
                             errorCode = result.error.code,
-                            serverMessage = result.error.serverMessage
+                            serverMessage = result.error.serverMessage,
+                            traceId = result.error.traceId
                         )
                     is DataResult.NoPermission -> {
                         if (routeAuthRequired(result)) return@launch
@@ -200,7 +202,8 @@ internal class ThreadRouteAttachmentActions(
                             resolvingCommentIds = emptySet()
                         ).withAttachmentCommentsError(
                             errorCode = result.blocker.code,
-                            serverMessage = null
+                            serverMessage = null,
+                            traceId = result.blocker.traceId
                         )
                     }
                 }
@@ -279,9 +282,10 @@ internal class ThreadRouteAttachmentActions(
                             ?.copy(sending = false)
                             ?.withAttachmentCommentsError(
                                 errorCode = code,
-                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                                serverMessage = (result as? DataResult.Error)?.error?.serverMessage,
+                                traceId = result.failureTraceIdOrNull()
                             )
-                    bridge.toast(unableToSendCommentLabel)
+                    bridge.errorToast(unableToSendCommentLabel, result)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -291,9 +295,10 @@ internal class ThreadRouteAttachmentActions(
                             ?.copy(sending = false)
                             ?.withAttachmentCommentsError(
                                 errorCode = result.blocker.code,
-                                serverMessage = null
+                                serverMessage = null,
+                                traceId = result.blocker.traceId
                             )
-                    bridge.toast(unableToSendCommentLabel)
+                    bridge.errorToast(unableToSendCommentLabel, result.blocker)
                 }
             }
         }
@@ -345,10 +350,11 @@ internal class ThreadRouteAttachmentActions(
                                     resolvingCommentIds = state.resolvingCommentIds - comment.id
                                 ).withAttachmentCommentsError(
                                     errorCode = code,
-                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage
+                                    serverMessage = (result as? DataResult.Error)?.error?.serverMessage,
+                                    traceId = result.failureTraceIdOrNull()
                                 )
                             }
-                    bridge.toast(unableToResolveCommentLabel)
+                    bridge.errorToast(unableToResolveCommentLabel, result)
                 }
                 is DataResult.NoPermission -> {
                     if (routeAuthRequired(result)) return@launch
@@ -360,10 +366,11 @@ internal class ThreadRouteAttachmentActions(
                                     resolvingCommentIds = state.resolvingCommentIds - comment.id
                                 ).withAttachmentCommentsError(
                                     errorCode = result.blocker.code,
-                                    serverMessage = null
+                                    serverMessage = null,
+                                    traceId = result.blocker.traceId
                                 )
                             }
-                    bridge.toast(unableToResolveCommentLabel)
+                    bridge.errorToast(unableToResolveCommentLabel, result.blocker)
                 }
             }
         }
@@ -480,9 +487,10 @@ internal class ThreadRouteAttachmentActions(
                             downloadId = downloadId
                         ))
                 if (result.status != "cancelled") {
-                    bridge.toast(
+                    bridge.errorToast(
                         raftAttachmentOpenResultMessage(result.status, attachmentOpenResultTerms)
-                            ?: unableToOpenAttachmentLabel
+                            ?: unableToOpenAttachmentLabel,
+                        result.traceId
                     )
                 }
                 attachmentOperationTokens = attachmentOperationTokens - attachment.id
@@ -566,13 +574,14 @@ internal class ThreadRouteAttachmentActions(
                             "errorKind=${raftAttachmentOpenDiagnosticErrorKind(result.errorKind)} " +
                             "failure=${failure.name} message=${raftAttachmentHostMessageForLog(result.message)}"
                     )
-                    bridge.toast(
-                        when (failure) {
-                            RaftAttachmentSaveFailure.DownloadFailed -> attachmentOpenResultTerms.downloadFailed
-                            RaftAttachmentSaveFailure.StorageUnavailable -> attachmentOpenResultTerms.storageUnavailable
-                            else -> unableToDownloadAttachmentLabel
-                        }
-                    )
+                    when (failure) {
+                        RaftAttachmentSaveFailure.DownloadFailed ->
+                            bridge.errorToast(attachmentOpenResultTerms.downloadFailed, result.traceId)
+                        RaftAttachmentSaveFailure.StorageUnavailable ->
+                            bridge.toast(attachmentOpenResultTerms.storageUnavailable)
+                        else ->
+                            bridge.errorToast(unableToDownloadAttachmentLabel, result.traceId)
+                    }
                     attachmentOperationTokens = attachmentOperationTokens - attachment.id
                 }
             }

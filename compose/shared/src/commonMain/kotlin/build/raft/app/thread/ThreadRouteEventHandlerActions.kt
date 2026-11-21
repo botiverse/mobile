@@ -59,11 +59,11 @@ internal fun ThreadRouteEventHandler.handleCommitActionCard(itemId: String): Uni
                                             // The server refused it as expired (409): the card says so itself.
                                             threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
                                         } else {
-                                            bridge.toast(actionCardReconfirmFailedLabel)
+                                            bridge.errorToast(actionCardReconfirmFailedLabel, result.error)
                                         }
                                     is DataResult.NoPermission -> {
                                         if (routeAuthRequired(result)) return@launch
-                                        bridge.toast(actionCardReconfirmFailedLabel)
+                                        bridge.errorToast(actionCardReconfirmFailedLabel, result.blocker)
                                     }
                                 }
                             } finally {
@@ -136,12 +136,12 @@ internal fun ThreadRouteEventHandler.handleCommitActionCard(itemId: String): Uni
                                         // The server refused it as expired (409): the card says so itself.
                                         threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, actionCard.markedExpired()))
                                     } else {
-                                        bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                        bridge.errorToast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel, result.error)
                                     }
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel)
+                                    bridge.errorToast(actionCardFailureLabels[actionCard.type] ?: genericActionCardFailureLabel, result.blocker)
                                 }
                             }
                             // Web CreateChannelDialog `finish`: the new channel opens; marking the card doesn't hold it.
@@ -198,14 +198,14 @@ internal fun ThreadRouteEventHandler.handleToggleReaction(itemId: String, tab: S
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast(unableToUpdateReactionLabel)
+                                    bridge.errorToast(unableToUpdateReactionLabel, result)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyMessageReactions(itemId, previousReactions)
                                     )
-                                    bridge.toast(unableToUpdateReactionLabel)
+                                    bridge.errorToast(unableToUpdateReactionLabel, result.blocker)
                                 }
                             }
                         } finally {
@@ -661,7 +661,8 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownRef(action: String, itemI
                                                 result.sharedReferenceFailure(),
                                                 refToastTarget,
                                                 unableToOpenRefLabel
-                                            )
+                                            ),
+                                            result.blocker
                                         )
                                     }
                                 }
@@ -700,7 +701,7 @@ internal fun ThreadRouteEventHandler.handleSubmitAddMember(itemId: String, tab: 
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast(unableToAddMemberLabel)
+                                bridge.errorToast(unableToAddMemberLabel, result)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -708,7 +709,7 @@ internal fun ThreadRouteEventHandler.handleSubmitAddMember(itemId: String, tab: 
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.SetAddMemberStatus(status = "failed", errorCode = errorCode)
                                 )
-                                bridge.toast(unableToAddMemberLabel)
+                                bridge.errorToast(unableToAddMemberLabel, result.blocker)
                             }
                         }
                     }
@@ -747,7 +748,7 @@ internal fun ThreadRouteEventHandler.handleRemoveMember(itemId: String) {
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast(unableToRemoveMemberLabel)
+                                bridge.errorToast(unableToRemoveMemberLabel, result)
                             }
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
@@ -759,7 +760,7 @@ internal fun ThreadRouteEventHandler.handleRemoveMember(itemId: String) {
                                         errorCode = errorCode
                                     )
                                 )
-                                bridge.toast(unableToRemoveMemberLabel)
+                                bridge.errorToast(unableToRemoveMemberLabel, result.blocker)
                             }
                         }
                     }
@@ -774,10 +775,10 @@ internal fun ThreadRouteEventHandler.handleArchiveChannel() {
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast(unableToArchiveChannelLabel)
+                            is DataResult.Error -> bridge.errorToast(unableToArchiveChannelLabel, result)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast(unableToArchiveChannelLabel)
+                                bridge.errorToast(unableToArchiveChannelLabel, result.blocker)
                             }
                         }
                     }
@@ -792,10 +793,10 @@ internal fun ThreadRouteEventHandler.handleDeleteChannel() {
                                 onBack()
                             }
                             is DataResult.Empty,
-                            is DataResult.Error -> bridge.toast(unableToDeleteChannelLabel)
+                            is DataResult.Error -> bridge.errorToast(unableToDeleteChannelLabel, result)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast(unableToDeleteChannelLabel)
+                                bridge.errorToast(unableToDeleteChannelLabel, result.blocker)
                             }
                         }
                     }
@@ -846,11 +847,11 @@ internal fun ThreadRouteEventHandler.handleConvertMessageToTask(itemId: String):
                                 }
                                 is DataResult.Empty,
                                 is DataResult.Error -> {
-                                    bridge.toast(unableToConvertMessageLabel)
+                                    bridge.errorToast(unableToConvertMessageLabel, result)
                                 }
                                 is DataResult.NoPermission -> {
                                     if (routeAuthRequired(result)) return@launch
-                                    bridge.toast(unableToConvertMessageLabel)
+                                    bridge.errorToast(unableToConvertMessageLabel, result.blocker)
                                 }
                             }
                         } finally {

@@ -498,7 +498,8 @@ internal fun ThreadAttachmentCommentsContent(
                             genericMessage = stringResource(Res.string.common_error)
                         ),
                     actionLabel = stringResource(Res.string.common_retry),
-                    onClick = onRetry
+                    onClick = onRetry,
+                    traceId = state.errorTraceId
                 )
             else ->
                 RaftModalListShell(height = commentsListHeight) {
@@ -528,19 +529,22 @@ internal fun ThreadAttachmentCommentsContent(
                 }
         }
         state.errorCode?.takeIf { state.status != "error" && it.isNotBlank() }?.let { code ->
-            Text(
-                text =
-                    attachmentCommentsVisibleErrorMessage(
-                        errorCode = code,
-                        serverMessage = state.errorServerMessage,
-                        labels = userFacingErrorLabels,
-                        genericMessage = stringResource(Res.string.common_error)
-                    ),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text =
+                        attachmentCommentsVisibleErrorMessage(
+                            errorCode = code,
+                            serverMessage = state.errorServerMessage,
+                            labels = userFacingErrorLabels,
+                            genericMessage = stringResource(Res.string.common_error)
+                        ),
+                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
+                    color = RaftColor.AccentRed,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                RaftTraceIdNote(traceId = state.errorTraceId)
+            }
         }
         ThreadAttachmentCommentComposer(
             state = state,
