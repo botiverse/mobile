@@ -91,6 +91,8 @@ internal data class ThreadAppLinkPreviewHost(
     val artifacts: ThreadArtifactLinkHost? = null,
     /** The batched link-card read (App link cards v2); false: always the GET (fixtures). */
     val batchedRead: Boolean = false,
+    /** False when another page covers this thread: stops hidden Artifact WebView prewarm on token refresh. */
+    val active: Boolean = true,
 )
 
 /**
@@ -309,8 +311,8 @@ internal fun ThreadAppLinkPreviewScope(
         cards = cards,
         actions = actionHost,
     )
-    // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
-    RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())
+    // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap while this thread is active.
+    RaftArtifactViewerPrewarm(enabled = host.active && artifacts.summaries.isNotEmpty())
     val prompt = asking
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent

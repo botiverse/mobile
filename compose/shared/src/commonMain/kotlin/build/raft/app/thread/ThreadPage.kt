@@ -6018,7 +6018,7 @@ private fun SharedThreadRouteContentContent(
         val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
         val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
         val appLinkPreviewHost =
-            remember(sharedStores, appLinkPreviewViewerId, currentServerId, appLinkPreviewConversationId) {
+            remember(sharedStores, appLinkPreviewViewerId, currentServerId, appLinkPreviewConversationId, active) {
                 val viewerId = appLinkPreviewViewerId
                 val serverId = currentServerId
                 if (viewerId == null || serverId == null) {
@@ -6042,6 +6042,7 @@ private fun SharedThreadRouteContentContent(
                             ),
                         // The batched link-card read (App link cards v2).
                         batchedRead = true,
+                        active = active,
                     )
                 }
             }

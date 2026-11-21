@@ -19,6 +19,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -308,7 +312,8 @@ internal fun rememberRaftArtifactOpener(
 /**
  * Prewarm (an Artifact card or Activity row on screen): after the page settles, a WebView boots
  * the web app on the viewer's route with no Artifact, signed in, and is kept for the viewer.
- * Nothing is read or marked read. No-op without keep-alive (iOS, desktop) or a known subject.
+ * Nothing is read or marked read. No-op without keep-alive (iOS, desktop) or a known subject, or
+ * while the hosting page is covered (`!pager.isAppeared`) or the app is in the background.
  * Booted for [conversationId] (`hostConversation`, latched by the page), the one the cards on screen
  * open from; a kept document of another conversation is not reused for them.
  */
@@ -317,7 +322,48 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
     if (!enabled) return
     val host = rememberRaftArtifactViewerHost(LocalRaftArtifactOpenStoreScope.current) ?: return
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
-    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
+    RaftArtifactViewerPrewarmRuntime(
+        enabled = true,
+        pager = host.pager,
+        authStore = authStore,
+        processAuthEvents = host.sharedStores.authStore,
+        webBaseUrl = host.webBaseUrl,
+        scope = host.scope(),
+        conversationId = conversationId,
+    )
+}
+
+@Composable
+internal fun RaftArtifactViewerPrewarmRuntime(
+    enabled: Boolean,
+    pager: Pager?,
+    authStore: build.raft.app.data.RaftAuthSessionStore,
+    processAuthEvents: build.raft.app.data.RaftAuthSessionEventSource,
+    webBaseUrl: String,
+    scope: RaftArtifactViewerScope?,
+    conversationId: String? = null,
+    desktopMode: Boolean =
+        raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true },
+    keptDocumentPresent: (String) -> Boolean = { key -> raftWebViewKeptDocument(key) != null },
+    prewarmEffect: @Composable (RaftWebViewConfig?) -> Unit = { config -> RaftWebViewPrewarmEffect(config) },
+) {
+    if (!enabled) return
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val pagerAppeared = rememberRaftPagerAppeared(pager)
+    var foreground by remember(lifecycleOwner) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(lifecycleOwner) {
+        foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+        val observer =
+            LifecycleEventObserver { _, _ ->
+                foreground = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    if (!pagerAppeared || !foreground) return
+    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, processAuthEvents)
     val controller = rememberRaftWebViewController()
     val binding = rememberSettingsWebViewHostAuthBinding(snapshot, controller)
     var settled by remember { mutableStateOf(false) }
@@ -325,21 +371,18 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
         kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS)
         settled = true
     }
-    val scope = host.scope()
-    // Booted as the viewer will show it, so the kept document is not reloaded when it opens.
-    val desktopMode = raftArtifactViewerOffersDesktopModeHere() && remember { raftArtifactViewerDesktopModePreference()?.read() == true }
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     val config =
         remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
-            } else if (raftWebViewKeptDocument(scope.keepAliveKey) != null) {
+            } else if (keptDocumentPresent(scope.keepAliveKey)) {
                 null
             } else {
                 RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation)
                 raftArtifactViewerWebViewConfig(
-                    url = raftArtifactViewerWarmUrl(host.webBaseUrl, conversation),
+                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation),
                     scope = scope,
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
@@ -347,10 +390,10 @@ internal fun RaftArtifactViewerPrewarm(enabled: Boolean, conversationId: String?
                 )
             }
         }
-    RaftWebViewPrewarmEffect(config)
+    prewarmEffect(config)
 }
 
-private const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
+internal const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
 
 /** After this long without the document shown, the viewer logs where its load stands. */
 internal const val RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS = 10_000L

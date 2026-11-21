@@ -683,6 +683,9 @@ internal fun resolveActivityStableOrderEnabled(
             ),
     ).finalEffective
 
+internal fun sharedInboxShouldPrewarmArtifactViewer(active: Boolean, items: List<InboxItem>): Boolean =
+    active && items.any { it.kind == InboxItemKind.Object }
+
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: Boolean = true): Boolean =
     routeVisibleTick > 0 && active
 
@@ -1895,8 +1898,13 @@ internal fun SharedActivityList(
     // when no page can open from here. Activity is no conversation: no `hostConversation`.
     val activityArtifactOpener =
         rememberRaftArtifactOpener(conversationId = null) { openArtifactWebPage(artifactWebUrl(activityObjectWebBaseUrl, it)) }
-    // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap.
-    RaftArtifactViewerPrewarm(enabled = presentedItemsState.value.any { it.kind == InboxItemKind.Object }, conversationId = null)
+    // An Artifact row on screen: boot the in-app viewer's web page ahead of a tap — only while
+    // Activity itself is active, so a token refresh while covered by a Thread does not construct
+    // and load a hidden WebView on the main thread (#wg-mobile-feedback:#257, Hands 45eccbd9).
+    RaftArtifactViewerPrewarm(
+        enabled = sharedInboxShouldPrewarmArtifactViewer(active = active, items = presentedItemsState.value),
+        conversationId = null,
+    )
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
     // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
