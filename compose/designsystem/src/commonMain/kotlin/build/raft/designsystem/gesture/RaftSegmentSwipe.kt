@@ -210,7 +210,9 @@ fun Modifier.raftSegmentedPagerSwipe(
         remember(state, drive, nested, isLtr, maxFlingVelocity) {
             object : NestedScrollConnection {
                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
-                    if (source != NestedScrollSource.UserInput) return Offset.Zero
+                    // A gesture the segments own keeps its fling leftovers too: passed on, the
+                    // enclosing pager's own hand-over would end the child's fling with an exception.
+                    if (source != NestedScrollSource.UserInput) return if (nested.owned) Offset(available.x, 0f) else Offset.Zero
                     val taken =
                         nested.onLeftover(
                             dx = available.x,
@@ -225,13 +227,24 @@ fun Modifier.raftSegmentedPagerSwipe(
                     return Offset(taken, 0f)
                 }
 
-                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // The child at its end has nothing to fling: the segments take the whole fling and
+                // settle with it, before the child (or anything above) may spend it.
+                override suspend fun onPreFling(available: Velocity): Velocity {
                     if (!nested.owned) return Velocity.Zero
                     if (nested.drives) {
                         drive.release(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity))
                         nested.reset()
                     }
                     return Velocity(available.x, 0f)
+                }
+
+                override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                    // Settles a drive that no pre-fling ended (it always should).
+                    if (nested.drives) {
+                        drive.release(raftForwardFlingVelocity(available.x, isLtr, maxFlingVelocity))
+                        nested.reset()
+                    }
+                    return Velocity.Zero
                 }
             }
         }
