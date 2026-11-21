@@ -278,7 +278,7 @@ class ComputersParityUiTest {
     @Test
     fun theComputerCardSaysItWaitsForThisServersAgentsThenUpgrades() = runRobolectricComposeUiTest {
         showDetail(detail(computer(upgradeRequest = draining("a1", "a2"))))
-        onNodeWithText("Waiting for 2 agents on this server to finish their work, then upgrading to v1.0.53 (up to 10 min).").assertIsDisplayed()
+        onNodeWithText("Giving 2 agents on this server a few seconds to finish, then upgrading to v1.0.53. Turns still running are interrupted.").assertIsDisplayed()
     }
 
     @Test
@@ -286,6 +286,7 @@ class ComputersParityUiTest {
         showDetail(detail(computer(upgradeRequest = draining().copy(phase = "installing"))))
         onNodeWithText("Upgrading to v1.0.53. The Computer will disconnect briefly.").assertIsDisplayed()
         assertEquals(0, count("Waiting for", substring = true))
+        assertEquals(0, count("a few seconds to finish", substring = true))
     }
 
     private fun ComposeUiTest.count(text: String, substring: Boolean = false): Int =
