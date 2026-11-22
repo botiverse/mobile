@@ -66,6 +66,7 @@ private fun WideShellVisualContent() {
         LocalRaftAppShellTopBar provides remember { RaftAppShellTopBarState() },
         LocalRaftPaneGridStore provides grid,
         LocalThreadHeaderMenuEventBus provides WideShellQuietEventBus,
+        LocalActivityAvatarSource provides visualFixtureAvatarSource,
     ) {
         RaftDesignSystemTheme {
             when (scene) {
@@ -168,7 +169,7 @@ private fun WideActivityList() {
                 val item = (entry as ActivityConversationListEntry.Row).item
                 ActivityConversationListRow(
                     item = item,
-                    model = item.activityConversationRowModel(context, InboxFilter.All),
+                    model = item.activityConversationRowModel(context, InboxFilter.All, visualFixtureSenderProfiles),
                     divider = entry.divider,
                     selected = false,
                     timeContext = homeVisualFixtureTimeContext,
