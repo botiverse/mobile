@@ -150,6 +150,7 @@ internal suspend fun openSharedThreadAttachment(
     attachment: RaftThreadAttachmentItem,
     owner: AttachmentOwnerLease,
     downloadId: String? = null,
+    share: Boolean = false,
     onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
     val attachmentId = attachment.id.takeIf { it.isNotBlank() }
@@ -164,6 +165,7 @@ internal suspend fun openSharedThreadAttachment(
                     owner = owner,
                     mimeType = attachment.mimeType,
                     downloadId = downloadId,
+                    share = share,
                     onProgress = onProgress
                 )
             val nativeErrorKind = nativeResult?.optString("errorKind").orEmpty()

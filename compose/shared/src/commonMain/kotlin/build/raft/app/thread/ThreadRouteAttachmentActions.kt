@@ -461,7 +461,7 @@ internal class ThreadRouteAttachmentActions(
             )
         )
     }
-    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
+    fun openAttachmentExternally(attachment: RaftThreadAttachmentItem, share: Boolean = false) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
         val owner = attachmentOwner ?: return
         nextAttachmentDownloadGeneration += 1L
@@ -483,6 +483,7 @@ internal class ThreadRouteAttachmentActions(
                     attachment = attachment,
                     owner = owner,
                     downloadId = downloadId,
+                    share = share,
                     onProgress = { progress ->
                         val token = attachmentOperationTokens[attachment.id]
                         if (token != operation || !attachmentOperationCommitAllowed(operation, token.operationId)) {

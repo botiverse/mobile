@@ -143,23 +143,6 @@ internal fun RaftFilePreviewPdfState.onPdfRenderError(error: RaftPdfDocumentErro
 internal val RaftFilePreviewPdfState.canRetry: Boolean
     get() = this is RaftFilePreviewPdfState.Failed && reason == RaftFilePreviewPdfFailure.Download
 
-/**
- * Share in the PDF preview menu: delegates to [raftFilePreviewOverflowShowsShare] so PDFs follow
- * the same all-type overflow share rule while waiting for an active preview preparation unless the
- * file is already saved to Downloads.
- */
-internal fun raftFilePreviewPdfShowsShareAction(
-    canOpenWith: Boolean,
-    downloadState: RaftFilePreviewDownloadUiState?,
-    pdfState: RaftFilePreviewPdfState
-): Boolean =
-    raftFilePreviewOverflowShowsShare(
-        canOpenWith = canOpenWith,
-        downloadState = downloadState,
-        supportsAttachmentShare = true,
-        previewPreparing = pdfState is RaftFilePreviewPdfState.Downloading
-    )
-
 /** "3 / 12" for a zero-based [currentPage], or null before the page count is known. */
 internal fun raftFilePreviewPdfPageIndicatorArgs(currentPage: Int, pageCount: Int): Pair<String, String>? =
     if (pageCount <= 0) null else ((currentPage.coerceIn(0, pageCount - 1) + 1).toString() to pageCount.toString())

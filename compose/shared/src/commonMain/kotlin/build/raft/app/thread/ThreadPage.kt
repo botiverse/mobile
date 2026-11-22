@@ -4298,6 +4298,12 @@ private fun SharedThreadRouteContentContent(
                 },
                 onDismiss = { imageLightboxRequest = null },
                 onDownload = { attachment -> saveAttachmentExternally(attachment) },
+                onShare =
+                    if (raftPlatformSupportsPublicAttachmentDownloadReadback()) {
+                        { attachment -> threadRouteAttachmentActions.openAttachmentExternally(attachment, share = true) }
+                    } else {
+                        null
+                    },
                 onOpenWith = { attachment -> openAttachmentExternally(attachment) },
                 onEdit = { attachment -> viewerImageEditAttachment = attachment }
             )

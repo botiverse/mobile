@@ -74,4 +74,60 @@ class RaftFilePreviewOverflowDownloadTest {
             )
         )
     }
+
+    @Test
+    fun localFeedbackDraftUrisAreNotEligibleForRemoteShare() {
+        assertEquals(
+            true,
+            raftFilePreviewPayloadSupportsRemoteShare(
+                RaftFilePreviewPayload(
+                    source = RaftFilePreviewSourceThreadAttachment,
+                    attachmentId = "att-123",
+                    kind = "video",
+                    name = "demo.mp4"
+                )
+            )
+        )
+        assertEquals(
+            true,
+            raftFilePreviewPayloadSupportsRemoteShare(
+                RaftFilePreviewPayload(
+                    kind = "markdown",
+                    name = "notes.md",
+                    externalUrl = "https://files.raft.build/signed/notes.md"
+                )
+            )
+        )
+        // Feedback draft previews populate externalUrl with a local file:// or content:// URI.
+        assertEquals(
+            false,
+            raftFilePreviewPayloadSupportsRemoteShare(
+                RaftFilePreviewPayload(
+                    kind = "image",
+                    name = "screenshot.png",
+                    externalUrl = "file:///data/user/0/build.raft.app/cache/feedback.png"
+                )
+            )
+        )
+        assertEquals(
+            false,
+            raftFilePreviewPayloadSupportsRemoteShare(
+                RaftFilePreviewPayload(
+                    kind = "image",
+                    name = "screenshot.png",
+                    externalUrl = "content://media/external/images/media/42"
+                )
+            )
+        )
+        assertEquals(
+            false,
+            raftFilePreviewPayloadSupportsRemoteShare(
+                RaftFilePreviewPayload(
+                    source = RaftFilePreviewSourceAgentWorkspace,
+                    kind = "text",
+                    name = "README.md"
+                )
+            )
+        )
+    }
 }
