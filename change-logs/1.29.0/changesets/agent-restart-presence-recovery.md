@@ -1,6 +1,6 @@
 ---
 type: fixed
-area: presence
+area: agents
 platforms:
   - android
   - ios

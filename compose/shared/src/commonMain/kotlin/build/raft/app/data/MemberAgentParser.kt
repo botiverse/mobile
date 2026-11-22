@@ -484,6 +484,9 @@ private data class WireActivityEntry(
     val subagent: WireSubagentLineage? = null,
 )
 
+private val WireActivityEntry.resolvedActivity: String?
+    get() = activityKind?.takeIf { it.isNotBlank() } ?: activity
+
 /** slock `SubagentLineage.subagent` (packages/shared/src/index.ts); `reportChars` is not read. */
 @Serializable
 private data class WireSubagentLineage(
@@ -629,8 +632,9 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
         // Web RawActivityLog renders nothing for a finished turn's summary: the Overview reads those.
         "turn_summary" -> null
         "status", "agent_status" -> {
+            val resolvedActivity = entry.resolvedActivity
             val display = resolveTrajectoryStatusDisplay(
-                activity = entry.activityKind ?: entry.activity,
+                activity = resolvedActivity,
                 detail = entry.detail.orEmpty(),
                 detailKind = entry.detailKind,
             )
@@ -639,7 +643,7 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 type = "status",
                 title = display.first,
                 body = display.second.takeIf { it.isNotBlank() },
-                statusActivity = entry.activityKind ?: entry.activity,
+                statusActivity = resolvedActivity,
                 statusDetail = entry.detail,
                 statusDetailKind = entry.detailKind,
                 isSubagent = entry.subagent != null,
@@ -652,7 +656,7 @@ private fun WireActivityLogEntry.toDomain(rowKey: String): AgentActivityEntry? =
                 rowKey = rowKey,
                 type = entry.kind,
                 title = (entry.summary as? JsonPrimitive)?.takeIf { it.isString }?.content
-                    ?: entry.activity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
+                    ?: entry.resolvedActivity?.toAgentActivityTitle() ?: entry.kind.toAgentActivityTitle(),
                 body = entry.detail ?: entry.message ?: entry.text ?: entry.toolName ?: entry.name,
                 details = listOfNotNull(
                     (entry.detail ?: entry.message ?: entry.text)?.let { "Detail" to it },
@@ -906,7 +910,7 @@ fun parseSharedChannelMemberSnapshot(
             decoded.agents
                 // Only activity that resolves to a runtime status: the lifecycle word
                 // `active` (or an unknown value) writes no fact, so it must not count.
-                .filter { normalizedAgentRuntimeStatus(activity = it.activity, lifecycleStatus = null) != null }
+                .filter { normalizedAgentRuntimeStatus(activity = it.resolvedActivity, lifecycleStatus = null) != null }
                 .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
                 .toSet(),
     )

@@ -9,12 +9,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Folds a burst of `agent:updated` (or `machine:status`) events into one agents re-read per server
- * (Tenny, #3948 review): one server-wide change, e.g. renaming an app identity or many Computers
- * reconnecting after a server restart, sends one event per bound bot or Computer. The first event
+ * Folds a burst of `agent:updated` into one agents re-read per server (Tenny, #3948 review): one
+ * server-wide change, e.g. renaming an app identity, sends one event per bound bot. The first event
  * schedules a read [windowMillis] later; events before it fires join that read. An event after the
  * read has started schedules the next one, so the last change is never missed. Safe to call from
- * any thread: [pending] is only touched under [lock].
+ * any thread: [pending] and [active] are only touched under [lock].
  */
 internal class AgentProfileRefreshCoalescer(
     private val scope: CoroutineScope,
@@ -23,42 +22,51 @@ internal class AgentProfileRefreshCoalescer(
 ) {
     private val lock = SynchronizedObject()
     private val pending = mutableMapOf<String, Job>()
+    private val active = mutableMapOf<String, MutableSet<Job>>()
 
     fun request(serverId: String) {
         val toStart =
             synchronized(lock) {
-                if (pending[serverId]?.isPendingOrActive() == true) return
-                lateinit var scheduled: Job
-                scheduled =
-                    scope.launch(start = CoroutineStart.LAZY) {
-                        var shouldRun = false
-                        try {
-                            delay(windowMillis)
-                            shouldRun =
+                if (pending[serverId]?.isPendingOrActive() == true) {
+                    null
+                } else {
+                    lateinit var scheduled: Job
+                    scheduled =
+                        scope.launch(start = CoroutineStart.LAZY) {
+                            var promotedToActive = false
+                            try {
+                                delay(windowMillis)
                                 synchronized(lock) {
-                                    if (pending[serverId] === scheduled) {
+                                    if (scheduled.isActive && pending[serverId] === scheduled) {
                                         pending.remove(serverId)
-                                        true
-                                    } else {
-                                        false
+                                        active.getOrPut(serverId) { mutableSetOf() }.add(scheduled)
+                                        promotedToActive = true
                                     }
                                 }
-                        } finally {
-                            if (!shouldRun) {
+                                if (promotedToActive) refresh(serverId)
+                            } finally {
                                 synchronized(lock) {
                                     if (pending[serverId] === scheduled) {
                                         pending.remove(serverId)
+                                    }
+                                    if (promotedToActive) {
+                                        val activeForServer = active[serverId]
+                                        if (activeForServer != null) {
+                                            activeForServer.remove(scheduled)
+                                            if (activeForServer.isEmpty()) {
+                                                active.remove(serverId)
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                        if (shouldRun) refresh(serverId)
+                    if (scheduled.isPendingOrActive()) {
+                        pending[serverId] = scheduled
+                        scheduled
+                    } else {
+                        null
                     }
-                if (scheduled.isPendingOrActive()) {
-                    pending[serverId] = scheduled
-                    scheduled
-                } else {
-                    null
                 }
             }
         toStart?.start()
@@ -67,16 +75,27 @@ internal class AgentProfileRefreshCoalescer(
     private fun Job.isPendingOrActive(): Boolean = !isCompleted && !isCancelled
 
     fun cancel(serverId: String) {
-        val job = synchronized(lock) { pending.remove(serverId) }
-        job?.cancel()
+        val jobsToCancel =
+            synchronized(lock) {
+                buildList {
+                    pending.remove(serverId)?.let(::add)
+                    active.remove(serverId)?.let(::addAll)
+                }
+            }
+        jobsToCancel.forEach { it.cancel() }
     }
 
     fun cancelAll() {
-        val jobs =
+        val jobsToCancel =
             synchronized(lock) {
-                pending.values.toList().also { pending.clear() }
+                buildList {
+                    addAll(pending.values)
+                    pending.clear()
+                    active.values.forEach(::addAll)
+                    active.clear()
+                }
             }
-        jobs.forEach { it.cancel() }
+        jobsToCancel.forEach { it.cancel() }
     }
 
     companion object {

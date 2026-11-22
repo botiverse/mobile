@@ -1751,7 +1751,7 @@ private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityStatu
 private fun JsonObject.toAgentActivityProjection(): AgentActivityStatusProjection? =
     projectAgentActivityStatus(
         kind = stringValue("kind"),
-        activity = stringValue("activityKind") ?: stringValue("activity"),
+        activity = resolvedActivityValue(),
         detail = stringValue("detail"),
         text = stringValue("text"),
         toolName = stringValue("toolName"),
@@ -1899,7 +1899,7 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
         // Web RawActivityLog renders nothing for a finished turn's summary (the Overview reads it).
         "turn_summary" -> null
         "status", "agent_status" -> {
-            val activity = stringValue("activityKind") ?: stringValue("activity")
+            val activity = resolvedActivityValue()
             val detail = stringValue("detail").orEmpty()
             val display = resolveTrajectoryStatusDisplay(
                 activity = activity,
@@ -1922,7 +1922,7 @@ private fun JsonObject.toRealtimeAgentActivityEntry(
             entry(
                 type = normalizedKind,
                 title = stringValue("summary")
-                    ?: stringValue("activity")?.toAgentActivityTitle()
+                    ?: resolvedActivityValue()?.toAgentActivityTitle()
                     ?: normalizedKind.toAgentActivityTitle(),
                 body = stringValue("detail")
                     ?: stringValue("message")
@@ -2023,6 +2023,9 @@ private fun resolveTrajectoryStatusDisplay(
 
 private fun JsonObject.stringValue(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun JsonObject.resolvedActivityValue(): String? =
+    stringValue("activityKind")?.takeIf { it.isNotBlank() } ?: stringValue("activity")
 
 private fun JsonObject.subagentType(): String? =
     (this["subagent"] as? JsonObject)

@@ -336,12 +336,19 @@ internal enum class ProcessPresenceProjectionSource(
 ) {
     Historical(authorityRank = 0, isCurrent = false, replacesSequencedFact = false),
     /**
+     * Incremental sync (`/api/sync/changes`) agent row projection: arrives without a fetch-start
+     * mutation fence, so it writes only for absent or carried-over slots and ranks below a
+     * request-fenced [RosterCurrent] or [DetailCurrent] REST read captured from the same base
+     * while still blocking [Historical] trajectory snapshots from rolling it backwards.
+     */
+    SyncedCurrent(authorityRank = 1, isCurrent = true, replacesSequencedFact = false),
+    /**
      * Replaces a seq-carrying fact only when [ProcessPresenceProjectionRequest.freshRoster]: a
      * `/agents` (or roster) read this caller started on the network after capturing the request
      * (web `loadAgents` parity, slock `agentStore.ts`). A cached or joined read keeps filling gaps only.
      */
-    RosterCurrent(authorityRank = 1, isCurrent = true, replacesSequencedFact = false),
-    DetailCurrent(authorityRank = 2, isCurrent = true, replacesSequencedFact = true)
+    RosterCurrent(authorityRank = 2, isCurrent = true, replacesSequencedFact = false),
+    DetailCurrent(authorityRank = 3, isCurrent = true, replacesSequencedFact = true)
 }
 
 private data class ProcessPresenceCurrentProjectionStamp(
@@ -1012,10 +1019,12 @@ internal class ProcessMemberPresenceRegistry(
      * rows arrive without a fetch-start mutation fence, this writes ONLY when the member has no
      * live fact yet — either absent or holding only a lowest-precedence carried-over fact from
      * before the last transport advance — so it can never clobber a newer live socket push or
-     * current REST projection. Recording a [ProcessPresenceProjectionSource.RosterCurrent] stamp
-     * prevents older in-flight roster reads or historical trajectory snapshots from rolling the
-     * synced presence backwards, while still letting realtime pushes, concurrent detail reads, and
-     * later roster refreshes supersede it.
+     * current REST projection. Recording a [ProcessPresenceProjectionSource.SyncedCurrent] stamp
+     * (rank 1, below [ProcessPresenceProjectionSource.RosterCurrent] rank 2 and
+     * [ProcessPresenceProjectionSource.DetailCurrent] rank 3) prevents historical trajectory
+     * snapshots from rolling the synced presence backwards while still letting a concurrent or
+     * in-flight `machine:status` / reconnect `/agents` read, concurrent detail reads, later
+     * refreshes, and realtime pushes supersede it.
      */
     fun applySyncedAgentProjection(
         owner: ProcessServerMembersOwner,
@@ -1045,7 +1054,7 @@ internal class ProcessMemberPresenceRegistry(
                                     (
                                         memberId to
                                             ProcessPresenceCurrentProjectionStamp(
-                                                source = ProcessPresenceProjectionSource.RosterCurrent,
+                                                source = ProcessPresenceProjectionSource.SyncedCurrent,
                                                 requestVersion = requestVersion,
                                                 baseRequestVersion = null
                                             )

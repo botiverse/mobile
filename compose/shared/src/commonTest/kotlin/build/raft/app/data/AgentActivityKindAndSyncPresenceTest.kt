@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
@@ -24,11 +25,13 @@ import kotlin.test.assertTrue
 /**
  * `#proj-mobile:#68` item 6 (web `a.activityKind ?? a.activity` + `/api/sync/changes` agent row
  * presence projection parity):
- * - Wire agent parsers and realtime `agent:activity` decode `activityKind` ahead of `activity`.
+ * - Wire agent parsers and realtime `agent:activity` decode `activityKind` ahead of `activity`
+ *   (falling back cleanly to `activity` when `activityKind` is blank/whitespace).
  * - Incremental sync `agent` rows project their server-resolved `activity` / `activityKind` into
  *   [ProcessMemberPresenceRegistry] for missing or stale carried-over slots without clobbering
- *   live socket pushes or current REST projections, and without letting older roster/historical
- *   snapshots roll the synced presence backwards.
+ *   live socket pushes or current REST projections, blocking historical trajectory snapshots from
+ *   rolling the synced presence backwards while letting concurrent/in-flight roster reads, detail
+ *   reads, and realtime pushes supersede it.
  */
 class AgentActivityKindAndSyncPresenceTest {
     private val serverId = ServerId("server-1")
@@ -112,10 +115,55 @@ class AgentActivityKindAndSyncPresenceTest {
         val currentEntries = assertNotNull(parseSharedCurrentAgentActivityEntries(json, MemberId("kind-wins")))
         assertEquals(1, currentEntries.size)
         assertEquals("working", currentEntries.single().statusActivity)
+
+        val blankFallbackEntries = assertNotNull(parseSharedCurrentAgentActivityEntries(json, MemberId("blank-kind")))
+        assertEquals(1, blankFallbackEntries.size)
+        assertEquals("online", blankFallbackEntries.single().statusActivity)
     }
 
     @Test
-    fun realtimeAgentActivityMapperPrefersActivityKindOverActivity() {
+    fun channelMemberSnapshotAndActivityLogPreferActivityKindAndFallBackWhenBlank() {
+        val channelMembersJson =
+            """
+            {
+              "humans": [],
+              "agents": [
+                {"id":"kind-only","name":"k1","status":"active","activityKind":"online","serverId":"server-1"},
+                {"id":"kind-wins","name":"k2","status":"active","activity":"offline","activityKind":"working","serverId":"server-1"},
+                {"id":"blank-kind","name":"k3","status":"active","activity":"online","activityKind":"   ","serverId":"server-1"},
+                {"id":"active-only","name":"k4","status":"active","serverId":"server-1"}
+              ]
+            }
+            """.trimIndent()
+        val snapshot = assertNotNull(parseSharedChannelMemberSnapshot(channelMembersJson, ChannelId("ch-1")))
+        val byId = snapshot.members.associateBy { it.id.value }
+        assertEquals(AgentStatus.Online, byId.getValue("kind-only").agentStatus)
+        assertEquals(AgentStatus.Working, byId.getValue("kind-wins").agentStatus)
+        assertEquals(AgentStatus.Online, byId.getValue("blank-kind").agentStatus)
+        assertNull(byId.getValue("active-only").agentStatus)
+        assertEquals(setOf("kind-only", "kind-wins", "blank-kind"), snapshot.liveActivityAgentIds)
+
+        val activityLogJson =
+            """
+            [
+              {"timestamp":100,"entry":{"kind":"status","activity":"offline","activityKind":"working","detail":"Running"}},
+              {"timestamp":101,"entry":{"kind":"status","activity":"online","activityKind":"   ","detail":"Ready"}},
+              {"timestamp":102,"entry":{"kind":"custom_event","activity":"online","activityKind":"   "}},
+              {"timestamp":103,"entry":{"kind":"custom_event","activity":"offline","activityKind":"working"}}
+            ]
+            """.trimIndent()
+        val log = assertNotNull(parseSharedAgentActivity(activityLogJson, MemberId("agent-1")))
+        assertEquals(4, log.activity.size)
+        assertEquals("working", log.activity[0].statusActivity)
+        assertEquals("Working", log.activity[0].title)
+        assertEquals("online", log.activity[1].statusActivity)
+        assertEquals("Idle", log.activity[1].title)
+        assertEquals("Online", log.activity[2].title)
+        assertEquals("Working", log.activity[3].title)
+    }
+
+    @Test
+    fun realtimeAgentActivityMapperPrefersActivityKindOverActivityAndFallsBackWhenBlank() {
         val mapper = RealtimeEventMapper()
         val topLevel =
             assertIs<MemberPresenceUpdated>(
@@ -136,6 +184,40 @@ class AgentActivityKindAndSyncPresenceTest {
             )
         assertEquals(AgentStatus.Thinking, statusEntry.agentStatus)
         assertEquals(Presence.Active, statusEntry.presence)
+        assertEquals("thinking", statusEntry.activityEntries.single().statusActivity)
+        assertEquals("Thinking", statusEntry.activityEntries.single().title)
+
+        val topLevelBlankKind =
+            assertIs<MemberPresenceUpdated>(
+                mapper.map(
+                    RealtimeSocketEvents.AgentActivity,
+                    """{"agentId":"agent-1","activity":"online","activityKind":"   ","detail":"Ready","serverSeq":6}""",
+                )
+            )
+        assertEquals(AgentStatus.Online, topLevelBlankKind.agentStatus)
+        assertEquals(Presence.Active, topLevelBlankKind.presence)
+
+        val entryBlankKind =
+            assertIs<MemberPresenceUpdated>(
+                mapper.map(
+                    RealtimeSocketEvents.AgentActivity,
+                    """{"agentId":"agent-1","serverSeq":7,"entries":[{"kind":"status","activity":"thinking","activityKind":"  ","detail":"Planning"}]}""",
+                )
+            )
+        assertEquals(AgentStatus.Thinking, entryBlankKind.agentStatus)
+        assertEquals(Presence.Active, entryBlankKind.presence)
+        assertEquals("thinking", entryBlankKind.activityEntries.single().statusActivity)
+        assertEquals("Thinking", entryBlankKind.activityEntries.single().title)
+
+        val customEntries =
+            assertIs<MemberPresenceUpdated>(
+                mapper.map(
+                    RealtimeSocketEvents.AgentActivity,
+                    """{"agentId":"agent-1","activity":"online","serverSeq":8,"entries":[{"kind":"custom_state","activity":"working","activityKind":"   "},{"kind":"custom_state","activity":"offline","activityKind":"thinking"}]}""",
+                )
+            )
+        assertEquals(AgentStatus.Online, customEntries.agentStatus)
+        assertEquals(listOf("Working", "Thinking"), customEntries.activityEntries.map { it.title })
     }
 
     @Test
@@ -214,33 +296,44 @@ class AgentActivityKindAndSyncPresenceTest {
     }
 
     @Test
-    fun syncedAgentProjectionBlocksOlderRosterAndHistoricalRollbackButYieldsToNewerAuthority() = runTest {
+    fun syncedAgentProjectionBlocksHistoricalRollbackAndYieldsToConcurrentRosterDetailAndRealtime() = runTest {
         val registry = ProcessMemberPresenceRegistry()
-        val store = storeWithMembers(registry, listOf(syncedAgent("agent-1", activity = null)))
+        val store =
+            storeWithMembers(
+                registry,
+                listOf(
+                    syncedAgent("agent-1", activity = null),
+                    syncedAgent("agent-2", activity = null),
+                    syncedAgent("agent-3", activity = null),
+                ),
+            )
         registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
         store.refreshMembers(serverId, force = true, reason = "initial")
         assertNull(registry.factFor(owner, "agent-1"))
+        assertNull(registry.factFor(owner, "agent-2"))
+        assertNull(registry.factFor(owner, "agent-3"))
 
-        // Capture a roster request and a detail request BEFORE sync arrives.
-        val olderRosterReq = assertNotNull(registry.captureRosterProjectionRequest(owner, registry.writeGeneration))
-        val concurrentDetailReq = assertNotNull(registry.captureDetailProjectionRequest(owner, "agent-1", registry.writeGeneration))
+        // Capture concurrent /agents roster and detail requests BEFORE incremental sync lands.
+        val concurrentRosterReq = assertNotNull(registry.captureRosterProjectionRequest(owner, registry.writeGeneration))
+        val concurrentDetailReq = assertNotNull(registry.captureDetailProjectionRequest(owner, "agent-3", registry.writeGeneration))
 
-        // Sync arrives with server-resolved Online.
+        // Incremental sync lands with SyncedCurrent (authorityRank = 1): agent-1 Online,
+        // agent-2 Offline (stale sync row while /agents recovery is in flight), agent-3 Online.
         store.applySyncedRosterRows(
             serverId = serverId,
-            upserts = listOf(syncedAgent("agent-1", activity = "online")),
+            upserts =
+                listOf(
+                    syncedAgent("agent-1", activity = "online"),
+                    syncedAgent("agent-2", activity = "offline"),
+                    syncedAgent("agent-3", activity = "online"),
+                ),
             deletes = emptyList(),
         )
         assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-2")?.agentStatus)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-3")?.agentStatus)
 
-        // 1. Stale pre-sync roster read answering Offline cannot roll back synced Online.
-        registry.applyProjection(
-            request = assertNotNull(olderRosterReq.memberRequest("agent-1", freshRoster = true)),
-            event = presenceEvent("agent-1", AgentStatus.Offline),
-        )
-        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
-
-        // 2. Historical trajectory snapshot cannot roll back synced Online.
+        // 1. Historical trajectory snapshot (rank 0) cannot roll back SyncedCurrent (rank 1).
         store.applyAgentActivitySnapshotForTest(
             serverId = serverId,
             agentId = MemberId("agent-1"),
@@ -258,12 +351,25 @@ class AgentActivityKindAndSyncPresenceTest {
         )
         assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
 
-        // 3. Concurrent higher-authority DetailCurrent supersedes synced RosterCurrent.
+        // 2. Concurrent / in-flight RosterCurrent (rank 2) supersedes SyncedCurrent (rank 1),
+        // so an in-flight machine:status / reconnect /agents read wins over a stale sync row.
         registry.applyProjection(
-            request = concurrentDetailReq,
+            request = assertNotNull(concurrentRosterReq.memberRequest("agent-1", freshRoster = true)),
             event = presenceEvent("agent-1", AgentStatus.Working),
         )
+        registry.applyProjection(
+            request = assertNotNull(concurrentRosterReq.memberRequest("agent-2", freshRoster = true)),
+            event = presenceEvent("agent-2", AgentStatus.Online),
+        )
         assertEquals(AgentStatus.Working, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-2")?.agentStatus)
+
+        // 3. Concurrent higher-authority DetailCurrent (rank 3) supersedes SyncedCurrent (rank 1).
+        registry.applyProjection(
+            request = concurrentDetailReq,
+            event = presenceEvent("agent-3", AgentStatus.Thinking),
+        )
+        assertEquals(AgentStatus.Thinking, registry.factFor(owner, "agent-3")?.agentStatus)
 
         // 4. Subsequent realtime push supersedes as well.
         registry.apply(owner, presenceEvent("agent-1", AgentStatus.Online, serverSeq = 1L), registry.writeGeneration, transport1)

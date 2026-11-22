@@ -1850,7 +1850,7 @@ class SharedServerMembersStore internal constructor(
 
     internal fun hasLoadedNonDurableRoster(serverId: ServerId): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return false
-        val owner = processOwner(ServerId(key)) ?: return false
+        val owner = presenceOwner(ServerId(key)) ?: return false
         val binding = currentDirectoryOwnerBinding(ServerId(key))?.takeIf { it.matches(owner) } ?: return false
         return _state.value.entriesByServerId[key]?.let {
             it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded && !it.seededFromDurable

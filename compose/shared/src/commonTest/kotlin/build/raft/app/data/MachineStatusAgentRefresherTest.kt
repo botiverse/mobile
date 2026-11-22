@@ -42,19 +42,26 @@ class MachineStatusAgentRefresherTest {
     ) : MemberRepository by PresenceNoopMemberRepository {
         var memberCalls = 0
         var agentCalls = 0
+        val membersJsonByServerId = mutableMapOf<String, String>()
+        val agentsJsonByServerId = mutableMapOf<String, String>()
+        val startedByServerId = mutableMapOf<String, CompletableDeferred<Unit>>()
+        val gatesByServerId = mutableMapOf<String, CompletableDeferred<Unit>>()
         var nextAgentsGate: CompletableDeferred<Unit>? = null
         var nextAgentsStarted: CompletableDeferred<Unit>? = null
 
         override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
             memberCalls += 1
-            val members = assertNotNull(parseSharedSettingsAgentsAsMembers(membersJson))
+            val snapshot = membersJsonByServerId[serverId.value] ?: membersJson
+            val members = assertNotNull(parseSharedSettingsAgentsAsMembers(snapshot))
             return DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Raft"), members))
         }
 
         override suspend fun getServerAgents(priority: DataRequestPriority, serverId: ServerId): DataResult<List<MemberProfile>> {
             agentCalls += 1
-            val snapshot = agentsJson
+            val snapshot = agentsJsonByServerId[serverId.value] ?: agentsJson
+            startedByServerId.remove(serverId.value)?.complete(Unit)
             nextAgentsStarted?.also { nextAgentsStarted = null }?.complete(Unit)
+            gatesByServerId.remove(serverId.value)?.await()
             nextAgentsGate?.also { nextAgentsGate = null }?.await()
             val agents = assertNotNull(parseSharedSettingsAgentsAsMembers(snapshot))
             return DataResult.Content(agents)
@@ -452,5 +459,318 @@ class MachineStatusAgentRefresherTest {
             ),
             received,
         )
+    }
+
+    @Test
+    fun cancelAndCancelAllCancelInFlightRefreshAndDropTimestamps() = runTest {
+        val offlineS1 =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"offline","serverId":"server-1"}]"""
+        val onlineS1 =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val offlineS2 =
+            """[{"id":"agent-2","name":"a2","status":"active","activity":"offline","serverId":"server-2"}]"""
+        val onlineS2 =
+            """[{"id":"agent-2","name":"a2","status":"active","activity":"online","serverId":"server-2"}]"""
+        val otherOwner = ProcessServerMembersOwner("local", "local", otherServerId.value)
+        val registry = ProcessMemberPresenceRegistry()
+        val repository =
+            ScriptedAgentsRepository(membersJson = offlineS1, agentsJson = onlineS1).apply {
+                membersJsonByServerId[serverId.value] = offlineS1
+                membersJsonByServerId[otherServerId.value] = offlineS2
+                agentsJsonByServerId[serverId.value] = onlineS1
+                agentsJsonByServerId[otherServerId.value] = onlineS2
+            }
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = repository::getMembers,
+                fetchAgents = repository::getServerAgents,
+                scope = backgroundScope,
+                timeSource = testScheduler.timeSource,
+            )
+        val store1 = createStore(repository, registry, core)
+        val store2 = createStore(repository, registry, core)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        registry.rebaselineTransport(otherOwner, registry.writeGeneration, transport)
+        store1.refreshMembers(serverId, force = true, reason = "initial_s1")
+        store2.refreshMembers(otherServerId, force = true, reason = "initial_s2")
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Offline, registry.factFor(otherOwner, "agent-2")?.agentStatus)
+
+        val refresher =
+            MachineStatusAgentRefresher(
+                scope = backgroundScope,
+                storesForActiveServer = { id ->
+                    when (id) {
+                        serverId.value -> listOf(store1)
+                        otherServerId.value -> listOf(store2)
+                        else -> emptyList()
+                    }
+                },
+                windowMillis = 1_500L,
+                timeSource = testScheduler.timeSource,
+            )
+
+        // Start in-flight /agents refreshes on both servers.
+        val started1 = CompletableDeferred<Unit>()
+        val gate1 = CompletableDeferred<Unit>()
+        val started2 = CompletableDeferred<Unit>()
+        val gate2 = CompletableDeferred<Unit>()
+        repository.startedByServerId[serverId.value] = started1
+        repository.gatesByServerId[serverId.value] = gate1
+        repository.startedByServerId[otherServerId.value] = started2
+        repository.gatesByServerId[otherServerId.value] = gate2
+
+        refresher.onMachineStatus(serverId.value)
+        refresher.onMachineStatus(otherServerId.value)
+        advanceTimeBy(1_501L)
+        runCurrent()
+        started1.await()
+        started2.await()
+        assertEquals(2, repository.agentCalls)
+
+        // Queue a pending follow-up on server-1, then cancel(server-1): cancels both the active
+        // in-flight refresh and the pending follow-up (dropping its timestamp) without touching server-2.
+        advanceTimeBy(100L)
+        refresher.onMachineStatus(serverId.value)
+        refresher.cancel(serverId.value)
+        runCurrent()
+
+        gate1.complete(Unit)
+        gate2.complete(Unit)
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Online, registry.factFor(otherOwner, "agent-2")?.agentStatus)
+
+        // Start another in-flight /agents refresh on server-1 (new timestamp > prior flight's start)
+        // and cancel via cancelAll(): in-flight refresh aborts and never applies Online.
+        val started1b = CompletableDeferred<Unit>()
+        val gate1b = CompletableDeferred<Unit>()
+        repository.startedByServerId[serverId.value] = started1b
+        repository.gatesByServerId[serverId.value] = gate1b
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_501L)
+        runCurrent()
+        started1b.await()
+        assertEquals(3, repository.agentCalls)
+
+        refresher.cancelAll()
+        runCurrent()
+        gate1b.complete(Unit)
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(3, repository.agentCalls)
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-1")?.agentStatus)
+
+        // A new machine:status after cancellation recovers cleanly.
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_501L)
+        runCurrent()
+        assertEquals(4, repository.agentCalls)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
+    }
+
+    @Test
+    fun concurrentBurstBeforeDebounceUpdatesNotStartedBeforeWithoutDuplicate() = runTest {
+        val offlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"offline","serverId":"server-1"}]"""
+        val onlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = ScriptedAgentsRepository(membersJson = offlineJson, agentsJson = offlineJson)
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = repository::getMembers,
+                fetchAgents = repository::getServerAgents,
+                scope = backgroundScope,
+                timeSource = testScheduler.timeSource,
+            )
+        val store = createStore(repository, registry, core)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "initial")
+        assertEquals(AgentStatus.Offline, store.currentMemberStatus(serverId, "agent-1")?.status)
+
+        val refresher =
+            MachineStatusAgentRefresher(
+                scope = backgroundScope,
+                storesForActiveServer = { id -> if (id == serverId.value) listOf(store) else emptyList() },
+                windowMillis = 1_500L,
+                timeSource = testScheduler.timeSource,
+            )
+
+        // t=0: first machine:status schedules one debounce at t=1500.
+        refresher.onMachineStatus(serverId.value)
+        // t=500: an unrelated /agents fetch completes with Offline (startedAt=t=500, cached for 25s).
+        advanceTimeBy(500L)
+        store.refreshAgents(serverId, reason = "foreground_reconcile")
+        assertEquals(1, repository.agentCalls)
+        assertEquals(AgentStatus.Offline, store.currentMemberStatus(serverId, "agent-1")?.status)
+
+        // t=1000: another machine:status arrives before debounce fires; it must advance
+        // notStartedBefore to t=1000 without scheduling a second refresh job.
+        advanceTimeBy(500L)
+        refresher.onMachineStatus(serverId.value)
+        repository.agentsJson = onlineJson
+
+        // t=1501: single refresh runs with notStartedBefore=t=1000 > t=500, so it does NOT reuse
+        // the cached t=500 Offline answer and recovers Online in one fresh read.
+        advanceTimeBy(501L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Online, store.currentMemberStatus(serverId, "agent-1")?.status)
+
+        // No duplicate follow-up runs afterwards.
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+    }
+
+    @Test
+    fun eventArrivingWhileRefreshIsInFlightSchedulesFollowUpWithOwnTimestamp() = runTest {
+        val offlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"offline","serverId":"server-1"}]"""
+        val onlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val registry = ProcessMemberPresenceRegistry()
+        val repository = ScriptedAgentsRepository(membersJson = offlineJson, agentsJson = offlineJson)
+        val core =
+            ProcessServerMembersCore(
+                fetchMembers = repository::getMembers,
+                fetchAgents = repository::getServerAgents,
+                scope = backgroundScope,
+                timeSource = testScheduler.timeSource,
+            )
+        val store = createStore(repository, registry, core)
+        val transport = ProcessPresenceTransportEpoch("family-1", 1L)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport)
+        store.refreshMembers(serverId, force = true, reason = "initial")
+
+        val refresher =
+            MachineStatusAgentRefresher(
+                scope = backgroundScope,
+                storesForActiveServer = { id -> if (id == serverId.value) listOf(store) else emptyList() },
+                windowMillis = 1_500L,
+                timeSource = testScheduler.timeSource,
+            )
+
+        // t=0: first machine:status; at t=1500 flight 1 starts with Offline and stays in flight.
+        val flight1Started = CompletableDeferred<Unit>()
+        val flight1Gate = CompletableDeferred<Unit>()
+        repository.nextAgentsStarted = flight1Started
+        repository.nextAgentsGate = flight1Gate
+        refresher.onMachineStatus(serverId.value)
+        advanceTimeBy(1_501L)
+        runCurrent()
+        flight1Started.await()
+        assertEquals(1, repository.agentCalls)
+
+        // t=1700: a second machine:status arrives while flight 1 is still in flight; it schedules
+        // a follow-up with arrival timestamp t=1700 (> flight 1's startedAt t=1500).
+        advanceTimeBy(199L)
+        refresher.onMachineStatus(serverId.value)
+
+        // t=1800: flight 1 finishes Offline (caching startedAt=t=1500 inside coalesceFreshWithin).
+        advanceTimeBy(100L)
+        repository.agentsJson = onlineJson
+        flight1Gate.complete(Unit)
+        runCurrent()
+        assertEquals(1, repository.agentCalls)
+        assertEquals(AgentStatus.Offline, registry.factFor(owner, "agent-1")?.agentStatus)
+
+        // t=3201: the follow-up fires with notStartedBefore=t=1700 > t=1500, issuing a fresh read
+        // instead of reusing flight 1's cached Offline answer.
+        advanceTimeBy(1_401L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+        assertEquals(AgentStatus.Online, registry.factFor(owner, "agent-1")?.agentStatus)
+        assertEquals(AgentStatus.Online, store.currentMemberStatus(serverId, "agent-1")?.status)
+
+        advanceTimeBy(2_000L)
+        runCurrent()
+        assertEquals(2, repository.agentCalls)
+    }
+
+    @Test
+    fun hasLoadedNonDurableRosterUsesPresenceOwnerAndExcludesDurableSeeds() = runTest {
+        val onlineJson =
+            """[{"id":"agent-1","name":"a1","status":"active","activity":"online","serverId":"server-1"}]"""
+        val storage =
+            object : RaftServerMembersDurableStorage {
+                private val rows = linkedMapOf<String, String>()
+
+                override suspend fun read(id: String): String? = rows[id]
+
+                override suspend fun write(id: String, value: String) {
+                    rows[id] = value
+                }
+
+                override suspend fun delete(id: String) {
+                    rows.remove(id)
+                }
+
+                override suspend fun ids(): List<String> = rows.keys.toList()
+            }
+        val durable = RaftServerMembersDurableStore(storage = storage, scope = backgroundScope)
+        val repository = ScriptedAgentsRepository(membersJson = onlineJson, agentsJson = onlineJson)
+
+        // Seed durable storage from an initial process store.
+        val seedStore =
+            SharedServerMembersStore(
+                memberRepository = repository,
+                processCore =
+                    ProcessServerMembersCore(
+                        fetchMembers = repository::getMembers,
+                        fetchAgents = repository::getServerAgents,
+                        scope = backgroundScope,
+                        timeSource = testScheduler.timeSource,
+                    ),
+                durableStore = durable,
+            )
+        assertEquals(DataResult.Content(Unit), seedStore.refreshMembers(serverId, force = true, reason = "seed"))
+        runCurrent()
+
+        // Second store with a mutable presenceOwner (while processOwner stays fixed on "local")
+        // proves hasLoadedNonDurableRoster resolves synchronously via presenceOwner.
+        var activePresenceAccount: String? = "local"
+        val store =
+            SharedServerMembersStore(
+                memberRepository = repository,
+                processCore =
+                    ProcessServerMembersCore(
+                        fetchMembers = repository::getMembers,
+                        fetchAgents = repository::getServerAgents,
+                        scope = backgroundScope,
+                        timeSource = testScheduler.timeSource,
+                    ),
+                processOwner = { id -> ProcessServerMembersOwner("local", "local", id.value) },
+                presenceOwner = { id ->
+                    activePresenceAccount?.let { account -> ProcessServerMembersOwner("local", account, id.value) }
+                },
+                durableStore = durable,
+            )
+
+        assertFalse(store.hasLoadedNonDurableRoster(serverId))
+        assertFalse(store.hasLoadedNonDurableRoster(ServerId("   ")))
+
+        // Hydrated from durable cache only: still NOT a non-durable loaded roster.
+        assertTrue(store.hydrateFromDurable(serverId))
+        assertFalse(store.hasLoadedNonDurableRoster(serverId))
+
+        // Authoritative network load flips it to true.
+        assertEquals(DataResult.Content(Unit), store.refreshMembers(serverId, force = true, reason = "network"))
+        assertTrue(store.hasLoadedNonDurableRoster(serverId))
+
+        // Retiring or switching presenceOwner (even while processOwner still points at "local")
+        // synchronously reports false until presenceOwner matches again.
+        activePresenceAccount = null
+        assertFalse(store.hasLoadedNonDurableRoster(serverId))
+        activePresenceAccount = "other-account"
+        assertFalse(store.hasLoadedNonDurableRoster(serverId))
+        activePresenceAccount = "local"
+        assertTrue(store.hasLoadedNonDurableRoster(serverId))
     }
 }

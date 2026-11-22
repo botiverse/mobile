@@ -993,6 +993,9 @@ internal fun AppShellRealtimeSinkAndNetworkEffects(
             )
         }
     }
+    DisposableEffect(agentProfileRefreshCoalescer) {
+        onDispose { agentProfileRefreshCoalescer.cancelAll() }
+    }
     DisposableEffect(
         appShellRealtimeDomainEventOwner,
         homeShellStore,
