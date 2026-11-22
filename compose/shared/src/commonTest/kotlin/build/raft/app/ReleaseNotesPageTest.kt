@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.AppLocale
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsAboutSnapshot
@@ -64,6 +65,26 @@ class ReleaseNotesPageTest {
             "https://hands.build/notes/raft-ohos?version_code=1060000&lang=ja",
             sharedSettingsReleaseNotesUrlForLocaleWithSlug("raft-ohos", "1060000", "ja")
         )
+    }
+
+    @Test
+    fun followingTheSystemLanguageTheNotesUrlStillNamesIt() {
+        // Android reads the notes page through the app's document cache, whose request has no
+        // Accept-Language: with "follow system" the URL itself must carry the system's language.
+        assertEquals(
+            "https://hands.build/notes/raft-ios?version_code=12800007&lang=zh-CN",
+            sharedSettingsReleaseNotesUrlForLocaleWithSlug("raft-ios", "12800007", releaseNotesLocaleTag(AppLocale.System, "zh-Hans-CN"))
+        )
+        assertEquals("zh-CN", releaseNotesLocaleTag(AppLocale.System, "zh-CN"))
+        assertEquals("zh-TW", releaseNotesLocaleTag(AppLocale.System, "zh-Hant-HK"))
+        assertEquals("ja", releaseNotesLocaleTag(AppLocale.System, "ja-JP"))
+        assertEquals("es", releaseNotesLocaleTag(AppLocale.System, "es-ES"))
+        assertEquals("pt-BR", releaseNotesLocaleTag(AppLocale.System, "pt-BR"))
+        // A language the app has no notes in, or none at all: English, as the page would fall back.
+        assertEquals("en", releaseNotesLocaleTag(AppLocale.System, "fr-FR"))
+        assertEquals("en", releaseNotesLocaleTag(AppLocale.System, null))
+        // An explicit app language wins over the system's.
+        assertEquals("ja", releaseNotesLocaleTag(AppLocale.Japanese, "zh-Hans-CN"))
     }
 
     @Test
