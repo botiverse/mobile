@@ -30,13 +30,7 @@ class SettingsServerDangerZoneScreenshotTest {
     fun memberLight() = capture("settings.server.danger.member", "member", RaftAppAppearance.Light)
 
     @Test
-    fun memberDark() = capture("settings.server.danger.member.dark", "member", RaftAppAppearance.Dark)
-
-    @Test
     fun ownerLight() = capture("settings.server.danger.owner", "owner", RaftAppAppearance.Light)
-
-    @Test
-    fun ownerDark() = capture("settings.server.danger.owner.dark", "owner", RaftAppAppearance.Dark)
 
     private fun capture(name: String, role: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

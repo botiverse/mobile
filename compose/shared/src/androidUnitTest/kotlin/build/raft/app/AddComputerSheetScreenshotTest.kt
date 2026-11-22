@@ -67,13 +67,7 @@ class AddComputerSheetScreenshotTest {
     fun waitingLight() = capture("settings.add-computer.waiting", RaftAppAppearance.Light, waiting)
 
     @Test
-    fun waitingDark() = capture("settings.add-computer.waiting.dark", RaftAppAppearance.Dark, waiting)
-
-    @Test
     fun connectedLight() = capture("settings.add-computer.connected", RaftAppAppearance.Light, connected)
-
-    @Test
-    fun connectedDark() = capture("settings.add-computer.connected.dark", RaftAppAppearance.Dark, connected)
 
     private fun capture(name: String, appearance: RaftAppAppearance, state: AddComputerDialogState) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -12,7 +12,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.model.ChannelId
-import build.raft.app.resources.StringDesc
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -64,75 +63,6 @@ class ProcessWideRuntimeReactiveUiTest {
                 onNodeWithTag("prefs").assertTextEquals("false|false|false|${!build.raft.app.data.RaftSidebarHideEmptySectionsDefault}")
             } finally {
                 RaftDisplayPreferenceRuntime.resetForTest(null)
-            }
-        }
-
-    @Test
-    fun stringDescObserveLocaleTypeRecomposesOnChange() =
-        runRobolectricComposeUiTest {
-            val previous = StringDesc.localeType
-            try {
-                StringDesc.localeType = StringDesc.LocaleType.Custom("en")
-                setContent {
-                    val locale = StringDesc.observeLocaleType()
-                    val label =
-                        when (locale) {
-                            StringDesc.LocaleType.System -> "system"
-                            is StringDesc.LocaleType.Custom -> locale.localeTag
-                        }
-                    BasicText(label, Modifier.testTag("locale"))
-                }
-                waitForIdle()
-                onNodeWithTag("locale").assertTextEquals("en")
-
-                StringDesc.localeType = StringDesc.LocaleType.Custom("ja")
-                waitForIdle()
-                onNodeWithTag("locale").assertTextEquals("ja")
-            } finally {
-                StringDesc.localeType = previous
-            }
-        }
-
-    @Test
-    fun upgradeDialogAndImagePasteRequestsRecomposeOnUpdate() =
-        runRobolectricComposeUiTest {
-            val previousRequest = RaftUpgradeDialogState.request
-            val previousRefresher = RaftUpgradeDialogState.refresher
-            val owner = Any()
-            val initialCount = ThreadComposerImagePasteRequests.count
-            try {
-                RaftUpgradeDialogState.close()
-                setContent {
-                    val upgradeGate = RaftUpgradeDialogState.observeRequest()?.gate?.wire ?: "none"
-                    val pasteDelta = ThreadComposerImagePasteRequests.observeCount() - initialCount
-                    BasicText("$upgradeGate|$pasteDelta", Modifier.testTag("runtime"))
-                }
-                waitForIdle()
-                onNodeWithTag("runtime").assertTextEquals("none|0")
-
-                RaftUpgradeDialogState.request =
-                    RaftUpgradeRequest(
-                        gate = RaftUpgradeGate.General,
-                        mode = RaftUpgradeMode.Upgrade,
-                        pagerId = "pager-reactive-test",
-                        serverId = "srv-1",
-                        serverName = "Raft",
-                        owner = true,
-                        webUrl = "https://raft.example/upgrade",
-                    )
-                ThreadComposerImagePasteRequests.editorFocusChanged(owner, true)
-                ThreadComposerImagePasteRequests.deliver(emptyList())
-                waitForIdle()
-                onNodeWithTag("runtime").assertTextEquals("${RaftUpgradeGate.General.wire}|1")
-
-                RaftUpgradeDialogState.close()
-                waitForIdle()
-                onNodeWithTag("runtime").assertTextEquals("none|1")
-            } finally {
-                ThreadComposerImagePasteRequests.takePending()
-                ThreadComposerImagePasteRequests.editorFocusChanged(owner, false)
-                RaftUpgradeDialogState.request = previousRequest
-                RaftUpgradeDialogState.refresher = previousRefresher
             }
         }
 

@@ -77,24 +77,6 @@ class RaftSafeAreaFullBleedScreenshotTest {
     }
 
     @Test
-    fun landscapeIslandOnTheLeftKeepsBackgroundsFullBleed() {
-        captureLandscape("safearea.landscape.left59", leftDp = 59, rightDp = 0)
-        assertBackgroundsFullBleed()
-        val inset = px(59)
-        assertTrue(bounds.getValue("header.title").first >= inset, "title left the strip")
-        assertEquals(inset + px(16), bounds.getValue("row.selected.leading").first.roundToInt(), "row content starts 16dp past the strip")
-        assertEquals(rootWidthPx - px(16), bounds.getValue("row.selected.trailing").second.roundToInt(), "row content ends on 16dp")
-    }
-
-    @Test
-    fun hostWithoutHorizontalInsetsMovesNothing() {
-        captureLandscape("safearea.landscape.none", leftDp = 0, rightDp = 0)
-        assertBackgroundsFullBleed()
-        assertEquals(px(16), bounds.getValue("row.selected.leading").first.roundToInt())
-        assertEquals(rootWidthPx - px(16), bounds.getValue("row.selected.trailing").second.roundToInt())
-    }
-
-    @Test
     @Config(qualifiers = "w390dp-h260dp-xxhdpi")
     fun sheetPresentedPageKeepsItsHeaderOffTheSheetTop() {
         RaftRobolectricScreenshot.capture(

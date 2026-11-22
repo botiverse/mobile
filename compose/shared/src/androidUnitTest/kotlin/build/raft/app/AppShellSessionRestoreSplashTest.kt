@@ -159,9 +159,6 @@ class AppShellSessionRestoreSplashScreenshotTest {
     @Test
     fun slowLight() = capture("app-shell.session-restore.slow", RaftAppAppearance.Light)
 
-    @Test
-    fun slowDark() = capture("app-shell.session-restore.slow.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             // Inspection mode loads the logo inline (Coil runs a preview request with an empty

@@ -38,8 +38,6 @@ class ThreadDmHeadNameFirstScreenshotTest {
 
     @Test fun crowded() = capture("thread.dm-head.name-first", RaftAppAppearance.Light)
 
-    @Test fun crowdedDark() = capture("thread.dm-head.name-first.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

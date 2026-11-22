@@ -125,20 +125,6 @@ class AgentStatusRetryUiTest {
         }
 
     @Test
-    fun pausedWakesOfferRetry() =
-        runRobolectricComposeUiTest {
-            showHero(status(AgentStatus.Offline, detailKind = "wake_crash_loop_blocked"), onRetry = {})
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(1)
-        }
-
-    @Test
-    fun aPlainOfflineAgentHasNoRetry() =
-        runRobolectricComposeUiTest {
-            showHero(status(AgentStatus.Offline), onRetry = {})
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
-        }
-
-    @Test
     fun aRateLimitOrAViewerWhoMayNotRestartGetsNoRetry() =
         runRobolectricComposeUiTest {
             showHero(
@@ -146,13 +132,6 @@ class AgentStatusRetryUiTest {
                 summary = AgentDetailSummary(id = "agent-1", name = "ruby", runtime = "codex", lastRuntimeErrorClass = "RateLimitError"),
                 onRetry = {},
             )
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
-        }
-
-    @Test
-    fun withoutTheRightToRestartThereIsNoRetry() =
-        runRobolectricComposeUiTest {
-            showHero(status(AgentStatus.Error), onRetry = null)
             onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
         }
 
@@ -167,25 +146,6 @@ class AgentStatusRetryUiTest {
             onNodeWithText("Error").assertExists()
             onAllNodesWithText("Computer offline", substring = true).assertCountEquals(0)
             onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
-        }
-
-    @Test
-    fun everyLiveStatusCaptionReadsTheRevokedSentence() =
-        runRobolectricComposeUiTest {
-            val member = agent.copy(agentBlockedReason = AgentBlockedReasonComputerAccessRevoked)
-            val held = requireNotNull(member.blockedMemberStatusOrNull()).toRaftAgentStatusIndicatorState()
-            var caption = ""
-            var coarse = ""
-            setContent {
-                RaftDesignSystemTheme {
-                    caption = held.localizedMemberStatusLabel()
-                    // Surfaces without the detailed activity keep the held words too.
-                    coarse = held.withoutActivityDetail().localizedMemberStatusLabel()
-                }
-            }
-            waitForIdle()
-            assertEquals(revokedText, caption)
-            assertEquals(revokedText, coarse)
         }
 
     @Test

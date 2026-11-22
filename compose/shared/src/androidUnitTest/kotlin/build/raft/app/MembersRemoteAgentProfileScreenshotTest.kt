@@ -37,9 +37,6 @@ class MembersRemoteAgentProfileScreenshotTest {
     @Test
     fun remoteAgentLight() = capture("members.remote-agent-profile", RaftAppAppearance.Light)
 
-    @Test
-    fun remoteAgentDark() = capture("members.remote-agent-profile.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(
             name,

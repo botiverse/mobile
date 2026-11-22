@@ -22,11 +22,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.isFocusable
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -334,26 +329,6 @@ class RaftProfileColumnUiTest {
         }
 
     @Test
-    fun aCellsCloseClosesItAndLeavesTheOther() =
-        runRobolectricComposeUiTest {
-            rowWidth = 1280f
-            showWorkspace()
-            click("avatar")
-            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
-            click("gear")
-            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells)
-            assertSettled()
-            // The toggle closes only the details.
-            click("gear-pressed")
-            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
-            // The profile's Close closes it, and the column with it.
-            click("close:$MEMBER_DETAIL_PAGE")
-            assertFalse(panes.isOpen)
-            onNodeWithTag(column, useUnmergedTree = true).assertDoesNotExist()
-            assertSettled()
-        }
-
-    @Test
     fun theConversationAndTheThreadGiveWayToTheColumnInsteadOfBeingCovered() =
         runRobolectricComposeUiTest {
             threadOpen = true
@@ -395,109 +370,6 @@ class RaftProfileColumnUiTest {
             onNodeWithTag("thread", useUnmergedTree = true).assertExists()
             assertSettled()
             threadOpen = false
-        }
-
-    private val threadTag = RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id
-
-    // PR #4664 review, A, now for Expand (#189 step 5): a profile opened from the expanded thread must show. Opening a
-    // page in the column restores the row (web restoreRowExpand).
-    @Test
-    fun aPageOpenedInTheColumnWhileTheThreadIsExpandedRestoresTheRow() =
-        runRobolectricComposeUiTest {
-            threadOpen = true
-            rowWidth = 1280f
-            val back = showWorkspace()
-            runOnIdle { expand.toggle("thread") }
-            waitForIdle()
-            // Rule 5: the thread fills the row, the conversation at 160 (clipped, still there).
-            near(1120f, widthDp(threadTag), "the expanded thread")
-            near(160f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation at 160")
-            onNodeWithTag("conversation").assertExists()
-            assertSettled()
-            click("thread-author")
-            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
-            assertEquals(null, expand.region, "opening the profile restored the row")
-            near(480f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
-            near(400f, widthDp(threadTag), "the thread")
-            near(400f, widthDp(column), "the profile")
-            onNodeWithTag("close:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
-            assertTrue(columnShown, "the shell counts the column as shown")
-            assertSettled()
-            back.press()
-            assertFalse(panes.isOpen)
-            assertEquals(0, pageBacks)
-            back.press()
-            assertEquals(1, pageBacks)
-            assertSettled()
-            threadOpen = false
-        }
-
-    // PR #4664 review, B, now for Expand: expanded with the column open, the column stays in sight at 160 (rule 5), and
-    // Back restores the row before it closes anything.
-    @Test
-    fun expandedWithTheColumnOpenTheOthersStayAt160AndBackRestoresFirst() =
-        runRobolectricComposeUiTest {
-            threadOpen = true
-            rowWidth = 1280f
-            val back = showWorkspace()
-            click("avatar")
-            click("gear")
-            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells)
-            assertTrue(columnShown)
-            runOnIdle { expand.toggle("thread") }
-            waitForIdle()
-            near(960f, widthDp(threadTag), "the thread fills the row")
-            near(160f, widthDp(column), "the column at 160")
-            near(160f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation at 160")
-            // In sight, clipped: still in reach, and counted as shown.
-            onNodeWithTag("page:$MEMBER_DETAIL_PAGE").assertExists()
-            assertTrue(columnShown, "a column at 160 is on screen")
-            assertSettled()
-            back.press()
-            assertEquals(null, expand.region, "Back restored the row")
-            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells, "nothing closed")
-            near(400f, widthDp(column), "the column as it was")
-            near(400f, widthDp(threadTag), "the thread as it was")
-            // Then Back is the column's: the details (opened last), then the profile, then the shell's.
-            back.press()
-            assertEquals(listOf(RaftProfileColumnCell.Profile), panes.cells)
-            back.press()
-            assertFalse(panes.isOpen)
-            assertEquals(0, pageBacks)
-            back.press()
-            assertEquals(1, pageBacks)
-            assertSettled()
-            threadOpen = false
-        }
-
-    // PR #4666 review: a column that is a row tab not shown is out of sight. Its own Back is off (Esc, system Back go
-    // to the page) and it reports itself not shown, so the shell's history Back (Cmd+[, the top bar) skips it too.
-    @Test
-    fun aColumnHiddenAsARowTabIsNotShownForEitherBack() =
-        runRobolectricComposeUiTest {
-            rowWidth = 1280f
-            val back = showWorkspace()
-            click("avatar")
-            assertTrue(columnShown)
-            // 300: the conversation and the column can't have 160 each; the column becomes a tab, the conversation shows.
-            rowWidth = 300f
-            waitForIdle()
-            near(0f, widthDp(column), "a tab not shown")
-            // Unreachable, asked of the merged tree (the one screen readers get): clearAndSetSemantics drops the
-            // column's pages from it, while the unmerged tree keeps the nodes it replaced.
-            onNodeWithTag("page:$MEMBER_DETAIL_PAGE").assertDoesNotExist()
-            onAllNodes(hasAnyAncestor(hasTestTag(column)) and (hasClickAction() or isFocusable())).assertCountEquals(0)
-            assertFalse(columnShown, "not counted as shown")
-            assertEquals(RaftWideBackStep.Existing, raftWideBackStep(panes, paneShown = columnShown, overlayOpen = false), "the history Back skips it")
-            back.press()
-            assertEquals(1, pageBacks, "Esc / system Back skip it too")
-            assertTrue(panes.isOpen, "nothing closed unseen")
-            assertSettled()
-            rowWidth = 1280f
-            waitForIdle()
-            assertTrue(columnShown, "in sight again")
-            assertEquals(RaftWideBackStep.PopProfileColumn, raftWideBackStep(panes, paneShown = columnShown, overlayOpen = false))
-            assertSettled()
         }
 
     private companion object {

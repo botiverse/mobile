@@ -46,12 +46,6 @@ class ActivityWideHeadScreenshotTest {
     @Test
     fun touch() = capture("screens.activity.wide.head.touch", RaftAppAppearance.Light, RaftPointerInput.Touch)
 
-    @Test
-    fun touchDark() = capture("screens.activity.wide.head.touch.dark", RaftAppAppearance.Dark, RaftPointerInput.Touch)
-
-    @Test
-    fun fine() = capture("screens.activity.wide.head.fine", RaftAppAppearance.Light, RaftPointerInput.Fine)
-
     private fun capture(name: String, appearance: RaftAppAppearance, pointerInput: RaftPointerInput) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

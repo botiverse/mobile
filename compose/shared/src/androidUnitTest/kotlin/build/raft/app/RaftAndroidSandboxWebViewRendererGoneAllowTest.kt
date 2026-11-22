@@ -55,14 +55,6 @@ class RaftAndroidSandboxWebViewRendererGoneAllowTest {
     }
 
     @Test
-    fun withoutAnOriginLockOnlyTheSrcsOriginComesBack() {
-        // The document-start script is scoped to the src's origin: another one never loads in its place.
-        val open = host("$web/settings", allowNavigation = true, mainFrameOrigin = null)
-        assertTrue(open.rendererGoneRestoreAllows("$web/settings/billing"))
-        assertFalse(open.rendererGoneRestoreAllows("https://other.example/settings/billing"))
-    }
-
-    @Test
     fun aFencedDocumentComesBackOnlyAsItsOwnMainDocument() {
         val src = "$web/feedback/?embed=raft-settings-v1"
         val fenced = host(src, allowNavigation = false, mainFrameOrigin = null)

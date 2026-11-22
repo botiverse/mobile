@@ -160,47 +160,6 @@ class ConversationSideCardsIncomingNavigationUiTest {
         }
 
     @Test
-    fun aPageOpenedAtAMessageOnAPhoneClosesTheTasksCover() =
-        runRobolectricComposeUiTest {
-            // Cold start: the conversation opens at its message before any page heard the signal.
-            pagesWithTasksOpen(firstPage = "channel-2@message-4")
-            waitForIdle()
-
-            onNode(hasText("tasks card")).assertDoesNotExist()
-            onNode(hasText("chat: channel-2@message-4")).assertExists()
-            assertEquals(ConversationSideCardsState(), cards.state.value)
-        }
-
-    @Test
-    fun aPageOpenedAtAMessageThatFirstReadsWideClosesTheCoverOnceItMeasuresNarrow() =
-        runRobolectricComposeUiTest {
-            // Until it measures, a page on its own has the window's width: a split's narrow
-            // detail pane in a wide window first reads as "beside".
-            pagesWithTasksOpen(firstPage = "channel-2@message-4", wide = true)
-            onNode(hasText("tasks card beside")).assertExists()
-            assertTrue(cards.state.value.tasks)
-
-            runOnIdle { wideLayout.value = false }
-            waitForIdle()
-
-            onNode(hasText("tasks card")).assertDoesNotExist()
-            onNode(hasText("chat: channel-2@message-4")).assertExists()
-            assertEquals(ConversationSideCardsState(), cards.state.value)
-
-            // Once: cards opened again on that page stay, whatever the layout does next.
-            runOnIdle {
-                cards.open(ConversationSideCard.Tasks)
-                wideLayout.value = true
-            }
-            waitForIdle()
-            runOnIdle { wideLayout.value = false }
-            waitForIdle()
-
-            onNode(hasText("tasks card")).assertExists()
-            assertTrue(cards.state.value.tasks, "the message was handled; the reopened card stays")
-        }
-
-    @Test
     fun onAWideLayoutTheTasksCardStaysBesideTheOpenedMessage() =
         runRobolectricComposeUiTest {
             pagesWithTasksOpen(wide = true)

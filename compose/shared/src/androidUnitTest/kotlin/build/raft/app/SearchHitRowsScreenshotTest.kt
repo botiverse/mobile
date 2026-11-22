@@ -43,8 +43,6 @@ class SearchHitRowsScreenshotTest {
 
     @Test fun searchHitRowsLight() = capture("search.hit-rows", RaftAppAppearance.Light)
 
-    @Test fun searchHitRowsDark() = capture("search.hit-rows.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

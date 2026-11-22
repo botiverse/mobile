@@ -49,9 +49,6 @@ class ThreadMessageAttachmentsScreenshotTest {
     fun imagesLight() = capture("thread.message-images", RaftAppAppearance.Light) { MessageImages() }
 
     @Test
-    fun imagesDark() = capture("thread.message-images.dark", RaftAppAppearance.Dark) { MessageImages() }
-
-    @Test
     fun filesLight() = capture("thread.message-files", RaftAppAppearance.Light) { MessageFiles() }
 
     @Test

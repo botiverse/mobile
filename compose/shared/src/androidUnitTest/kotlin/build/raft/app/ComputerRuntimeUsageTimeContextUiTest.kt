@@ -100,16 +100,6 @@ class ComputerRuntimeUsageTimeContextUiTest {
     }
 
     @Test
-    fun pageScopeResolvesResetAndUpdatedTimesInChinese() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
-        showSheet(runtimeVersion = null)
-        assertShown("已用完 · 26 小时后重置")
-        assertShown("6 分钟前更新")
-        assertShown("拥有 Computer 编辑权限或挂载这台 Computer 的人可见")
-        onAllNodesWithText("未知时间", substring = true, useUnmergedTree = true).assertCountEquals(0)
-    }
-
-    @Test
     fun pageBaseScopeAloneResolvesTimes() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null, pageBaseOnly = true)

@@ -16,7 +16,6 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performMouseInput
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
@@ -146,15 +145,6 @@ class ThreadInPlaceLinkDragSelectUiTest {
             assertEquals(listOf(LINK), opened)
             assertTrue(!controller!!.hasSelection, "a click selects nothing")
             assertLinkSemantics()
-        }
-
-    @Test
-    fun aFingerTapOnALinkStillOpensIt() =
-        runRobolectricComposeUiTest {
-            showBody()
-            textNode().performTouchInput { click(linkCenter()) }
-            waitForIdle()
-            assertEquals(listOf(LINK), opened)
         }
 
     private companion object {

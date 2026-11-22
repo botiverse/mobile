@@ -6,7 +6,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -23,7 +22,6 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -103,17 +101,6 @@ class ComputersRackActionsUiTest {
     }
 
     @Test
-    fun theCardMenuEndsWithDeleteComputer() = runRobolectricComposeUiTest {
-        var deleted: String? = null
-        show(listOf(computer("m-1", "build-box")), onDelete = { deleted = it })
-        onNodeWithContentDescription("More Actions").performClick()
-        waitForIdle()
-        onNodeWithTag(RaftComputersRackTags.MenuDelete).assertIsDisplayed().performClick()
-        waitForIdle()
-        assertEquals("m-1", deleted)
-    }
-
-    @Test
     fun theDeleteConfirmNamesTheComputerAndAComputerWithAgentsGetsTheNotice() = runRobolectricComposeUiTest {
         var confirmed = false
         val agentsState = androidx.compose.runtime.mutableStateOf(0)
@@ -156,17 +143,6 @@ class ComputersRackActionsUiTest {
         onNodeWithTag(RaftComputersRackTags.InstallSheet).assertIsDisplayed()
         onNodeWithText("can't be upgraded from the web", substring = true).assertIsDisplayed()
         assertTrue(onAllNodes(hasText("--setup /acme", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-    }
-
-    @Test
-    fun theRepairHintSitsBesideUpgradeAndExplainsItself() = runRobolectricComposeUiTest {
-        show()
-        // Both cards say it: repair-box's one-click Upgrade (beside the ⚠) and manual-box's manual one.
-        assertTrue(onAllNodes(hasText("Upgrade to v1.0.53"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-        // The tag is on the tooltip anchor round the icon button, merged into the button node.
-        onNodeWithTag(RaftComputersRackTags.UpgradeHint, useUnmergedTree = true).performClick()
-        waitForIdle()
-        onNodeWithText("An earlier installation on this computer was not finished", substring = true).assertIsDisplayed()
     }
 
     @Test

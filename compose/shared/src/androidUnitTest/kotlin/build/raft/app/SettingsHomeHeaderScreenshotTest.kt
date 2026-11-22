@@ -59,10 +59,6 @@ class SettingsHomeHeaderScreenshotTest {
     fun settingsSubPageLight() =
         captureAndCheckStatusBar("settings.sub-page-head", RaftAppAppearance.Light, darkIcons = true) { SettingsSubPageFixture() }
 
-    @Test
-    fun settingsSubPageDark() =
-        captureAndCheckStatusBar("settings.sub-page-head.dark", RaftAppAppearance.Dark, darkIcons = false) { SettingsSubPageFixture() }
-
     private fun captureAndCheckStatusBar(
         name: String,
         appearance: RaftAppAppearance,

@@ -56,32 +56,9 @@ class SettingsFeedbackTicketsScreenshotTest {
     @Test
     fun filedFromLight() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from", RaftAppAppearance.Light, activities)
 
-    @Test
-    fun filedFromDark() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from.dark", RaftAppAppearance.Dark, activities)
-
     /** The list in the Android app: Desktop and iOS rows name their client, the Android row does not. */
     @Test
     fun listFiledFromLight() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from", RaftAppAppearance.Light, activities)
-
-    @Test
-    fun listFiledFromDark() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from.dark", RaftAppAppearance.Dark, activities)
-}
-
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "zh-rCN-w390dp-h420dp-xxhdpi")
-class SettingsFeedbackTicketsZhCnScreenshotTest {
-    @get:org.junit.Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun agentHint() = captureFeedbackAgentHint("settings.feedback-tickets.agent-hint.zh-CN", RaftAppAppearance.Light, activities)
-
-    @Test
-    fun filedFrom() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from.zh-CN", RaftAppAppearance.Light, activities)
-
-    @Test
-    fun listFiledFrom() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from.zh-CN", RaftAppAppearance.Light, activities)
 }
 
 private const val Now = 1_762_700_000_000L

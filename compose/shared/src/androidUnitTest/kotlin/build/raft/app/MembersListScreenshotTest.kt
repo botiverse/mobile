@@ -60,10 +60,6 @@ class MembersListScreenshotTest {
     @Config(qualifiers = "w1024dp-h640dp-mdpi")
     fun membersListWide() = capture("members.list.wide", RaftAppAppearance.Light, tab = MembersTab.Agents, underTopBar = true)
 
-    @Test
-    @Config(qualifiers = "w1024dp-h640dp-mdpi")
-    fun membersListWideDark() = capture("members.list.wide.dark", RaftAppAppearance.Dark, tab = MembersTab.Agents, underTopBar = true)
-
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,

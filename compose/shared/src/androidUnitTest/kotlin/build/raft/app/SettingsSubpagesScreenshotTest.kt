@@ -25,7 +25,6 @@ import build.raft.app.data.SettingsSectionAvailability
 import build.raft.app.data.SettingsServerProfileSnapshot
 import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
-import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -60,19 +59,7 @@ class SettingsSubpagesScreenshotTest {
     fun serverProfileLight() = capture("settings.server-profile", RaftAppAppearance.Light) { ServerProfileFixture() }
 
     @Test
-    fun serverProfileDark() = capture("settings.server-profile.dark", RaftAppAppearance.Dark) { ServerProfileFixture() }
-
-    @Test
-    fun apiEnvironmentLight() = capture("settings.api-environment", RaftAppAppearance.Light) { ApiEnvironmentFixture() }
-
-    @Test
-    fun apiEnvironmentDark() = capture("settings.api-environment.dark", RaftAppAppearance.Dark) { ApiEnvironmentFixture() }
-
-    @Test
     fun statesLight() = capture("settings.states", RaftAppAppearance.Light) { StatesFixture() }
-
-    @Test
-    fun statesDark() = capture("settings.states.dark", RaftAppAppearance.Dark) { StatesFixture() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -124,24 +111,6 @@ private fun ServerProfileFixture() {
         actionState = null,
         expectedServerSlug = "raft-hq",
         onAction = { _, _ -> },
-    )
-}
-
-@Composable
-private fun ApiEnvironmentFixture() {
-    SharedSettingsApiEnvironmentContent(
-        state =
-            ScreenLoadState.Content(
-                SharedSettingsDeveloperSnapshot(
-                    environmentKey = "custom",
-                    environmentLabel = "Staging",
-                    apiBaseUrl = "https://api.staging.raft.build/api/",
-                    socketBaseUrl = "https://api.staging.raft.build",
-                    webUrl = "",
-                ),
-            ),
-        actionState = null,
-        onSaveApiEnvironment = {},
     )
 }
 

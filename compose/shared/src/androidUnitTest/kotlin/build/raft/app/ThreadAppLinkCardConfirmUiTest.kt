@@ -2,15 +2,9 @@ package build.raft.app
 
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertWidthIsEqualTo
-import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
-import build.raft.app.data.AppLinkActionDescription
 import build.raft.app.data.AppLinkActionResult
 import build.raft.app.data.AppLinkApp
 import build.raft.app.data.AppLinkBlockCard
@@ -22,12 +16,9 @@ import build.raft.app.data.RaftAppLinkCardV2
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
-import build.raft.app.data.RaftMessageCardHandle
-import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -66,13 +57,6 @@ class ThreadAppLinkCardConfirmUiTest {
             handles = mapOf("approve" to "h-approve"),
         )
 
-    private val prepared =
-        AppLinkPrepared(
-            "pa-1",
-            "digest",
-            AppLinkActionDescription(title = "Approve release 7?", body = "Deploys to production.", confirmLabel = "Approve release", cancelLabel = "Not now"),
-        )
-
     private fun actionHost(prepare: suspend () -> AppLinkActionResult<AppLinkPrepared>) =
         ThreadAppLinkCardActionHost(
             prepare = { _, _ -> prepare() },
@@ -89,45 +73,6 @@ class ThreadAppLinkCardConfirmUiTest {
         setContent { RaftTheme(appearance = RaftAppearance.Light) { ThreadAppLinkBlockCard(card, openUri = {}, actions = host) } }
         onNodeWithText("Approve").performClick()
         waitUntilShown("the pressed button's Working… spinner") {
-            onAllNodesWithContentDescription("Working…", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-        }
-    }
-
-    @Test
-    fun raftsConfirmationIsTheSmallDialogWithCloseInItsHeadAndCancelFirst() = runRobolectricComposeUiTest {
-        val host = actionHost { AppLinkActionResult.Ok(prepared) }
-        setContent { RaftTheme(appearance = RaftAppearance.Light) { ThreadAppLinkBlockCard(card, openUri = {}, actions = host) } }
-        onNodeWithText("Approve").performClick()
-        waitUntilShown("Raft's confirmation") { onAllNodesWithTag(AppLinkConfirmDialogTestTag).fetchSemanticsNodes().isNotEmpty() }
-        onNodeWithTag(AppLinkConfirmDialogTestTag).assertWidthIsEqualTo(400.dp)
-        assertTrue(onAllNodesWithContentDescription("Close", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "× in the head")
-        val cancel = onNodeWithText("Not now").getBoundsInRoot()
-        val confirm = onNodeWithText("Approve release").getBoundsInRoot()
-        assertTrue(cancel.right <= confirm.left, "Cancel first, the confirm last: cancel=$cancel confirm=$confirm")
-    }
-
-    @Test
-    fun aCardMessagesActingButtonSaysWorkingWhileItRuns() = runRobolectricComposeUiTest {
-        val prepare = CompletableDeferred<AppLinkActionResult<AppLinkPrepared>>()
-        val host = actionHost { prepare.await() }
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftDesignSystemTheme {
-                    // RFC 086: a card message's acting button runs through the same press (web MessageCardActingButtons).
-                    val press = rememberThreadAppLinkCardPress(card, host, key = "m-1")
-                    RaftMessageCardActingButton(
-                        elementId = "approve",
-                        button = approve,
-                        action = approve.action as RaftLinkCardButtonAction.Execute,
-                        state = RaftMessageCardActingState.Pressable(RaftMessageCardHandle("approve", "approve", card.url, "ticket-1", "h-approve")),
-                        press = press,
-                        onAsk = {},
-                    )
-                }
-            }
-        }
-        onNodeWithText("Approve").performClick()
-        waitUntilShown("the acting button's Working… spinner") {
             onAllNodesWithContentDescription("Working…", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
         }
     }

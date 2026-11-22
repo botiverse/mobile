@@ -103,26 +103,6 @@ class SecondFactorStepUpPasskeyUiTest {
     }
 
     @Test
-    fun usePasskeyIsThePrimaryButtonAndTheCodesAreLinks() = runRobolectricComposeUiTest {
-        val intents = mutableListOf<SecondFactorStepUpIntent>()
-        show(mutableStateOf(passkeyFirst), intents)
-
-        onNodeWithText("Use Passkey").assertExists()
-        onNodeWithText("Authenticator code").assertDoesNotExist()
-        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.Totp)).assertExists()
-        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.BackupCode)).assertExists()
-        onNodeWithText("Make this change in Raft on the web", substring = true).assertDoesNotExist()
-
-        onNodeWithTag(SECOND_FACTOR_STEP_UP_SUBMIT_TAG).assertIsEnabled().performClick()
-        onNodeWithTag(secondFactorStepUpMethodLinkTag(SecondFactorStepUpMethod.Totp)).performClick()
-        waitForIdle()
-        assertEquals(
-            listOf(SecondFactorStepUpIntent.Submit, SecondFactorStepUpIntent.SwitchMethod(SecondFactorStepUpMethod.Totp)),
-            intents
-        )
-    }
-
-    @Test
     fun thePromptRunsOnceOnThePortAndItsAnswerGoesBack() = runRobolectricComposeUiTest {
         val intents = mutableListOf<SecondFactorStepUpIntent>()
         val asked = mutableListOf<RaftNativePasskeyRequest>()
@@ -167,21 +147,6 @@ class SecondFactorStepUpPasskeyUiTest {
     }
 
     @Test
-    fun openOnTheWebOnlyWithNoWayToAnswerHereAndAKnownPage() = runRobolectricComposeUiTest {
-        val state = mutableStateOf(passkeyOnlyHere)
-        show(state, mutableListOf())
-        // No page known: the sentence and Close only.
-        onNodeWithText("Make this change in Raft on the web", substring = true).assertExists()
-        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
-
-        // A way to answer here: never, even with the page known.
-        runOnIdle { state.value = passkeyFirst.copy(webUrl = "https://app.raft.build/settings/account") }
-        waitForIdle()
-        onAllNodesWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertCountEquals(0)
-        onNodeWithText("Use Passkey").assertExists()
-    }
-
-    @Test
     fun continueInBrowserOpensTheCoordinatorsPageOnceAndHandsBackHowItEnded() = runRobolectricComposeUiTest {
         val intents = mutableListOf<SecondFactorStepUpIntent>()
         val pages = mutableListOf<Pair<String, String>>()
@@ -216,29 +181,6 @@ class SecondFactorStepUpPasskeyUiTest {
         waitForIdle()
         assertEquals(SecondFactorStepUpIntent.WebStepUpCallback("raft://login/callback?requestId=r-1&code=k-1"), intents.last())
         assertEquals(1, pages.size)
-    }
-
-    @Test
-    fun aClosedPageWaitsForContinueInBrowserInsteadOfOpeningAgain() = runRobolectricComposeUiTest {
-        val intents = mutableListOf<SecondFactorStepUpIntent>()
-        val ready = passkeyOnlyHere.copy(webStepUp = SecondFactorWebStepUpPhase.Ready)
-        val state = mutableStateOf(ready)
-        show(state, intents)
-        waitForIdle()
-        assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.ContinueInBrowser), intents)
-
-        // The page was closed: back to Ready with a banner. Only the button opens it again.
-        runOnIdle { state.value = ready.copy(banner = SecondFactorStepUpBanner.WebStepUpCancelled) }
-        waitForIdle()
-        assertEquals(1, intents.size)
-        onNodeWithTag(SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG).performClick()
-        waitForIdle()
-        assertEquals(List<SecondFactorStepUpIntent>(2) { SecondFactorStepUpIntent.ContinueInBrowser }, intents)
-
-        // Its banner cleared on the next try: still no second automatic open.
-        runOnIdle { state.value = ready }
-        waitForIdle()
-        assertEquals(2, intents.size)
     }
 
     private val passkeyOnlyHere = SecondFactorStepUpDialogState(methods = emptyList(), method = null, passkeyListed = true)

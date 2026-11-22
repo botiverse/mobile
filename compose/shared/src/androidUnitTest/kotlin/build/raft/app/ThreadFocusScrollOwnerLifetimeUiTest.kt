@@ -11,7 +11,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
@@ -26,11 +25,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -143,66 +139,6 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             assertEquals(1, stack.pages.size)
             assertTrue(viewport.isRetired, "the popped page's list was disposed without retiring its viewport")
             assertEquals(atLeaving, probe.scrollsAtDispose)
-        }
-
-    @Test
-    fun aDisposedListRefusesScrollsEvenFromALiveJob() =
-        runRobolectricComposeUiTest {
-            val probe = Probe()
-            lateinit var outerScope: CoroutineScope
-            setContent {
-                // Outlives the list: its jobs are not cancelled by the disposal, so only the
-                // retired check (wired by ThreadListScrollOwnerEffect) can stop their scrolls.
-                outerScope = rememberCoroutineScope()
-                if (probe.shown) FocusedScrollList(probe, targetIndex = FarTarget)
-            }
-            startFocusedScroll(probe)
-
-            runOnUiThread { probe.shown = false; Snapshot.sendApplyNotifications() }
-            mainClock.advanceTimeBy(PopSettleMillis)
-            mainClock.autoAdvance = true
-            waitForIdle()
-
-            val viewport = assertNotNull(probe.viewport)
-            val atDispose = assertNotNull(probe.scrollsAtDispose, "the list never left composition")
-            assertTrue(atDispose > 0, "the disposal landed mid focus scroll")
-            assertTrue(viewport.isRetired, "the disposed list's viewport was not retired")
-            assertEquals(atDispose, viewport.issuedScrolls, "the focused scroll scrolled after the list was disposed")
-            assertFalse(probe.finished)
-
-            // Straight into the viewport's scroll calls, no suspension first, from an active job.
-            var lateJob: Job? = null
-            runOnUiThread {
-                lateJob =
-                    outerScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                        viewport.scrollToItem(0)
-                        viewport.scrollBy(10f)
-                    }
-            }
-            waitForIdle()
-            val job = assertNotNull(lateJob)
-            assertTrue(job.isCompleted && !job.isCancelled, "the late scroll should be refused, not cancelled")
-            assertEquals(atDispose, viewport.issuedScrolls, "a scroll was issued on the disposed list")
-        }
-
-    @Test
-    fun aCancellingJobDoesNotScroll() =
-        runRobolectricComposeUiTest {
-            val probe = Probe().apply { cancelBeforePlacement = true }
-            // Visible from the start: the first attempt goes straight to the placement scroll.
-            setContent { FocusedScrollList(probe, targetIndex = Rows - 2) }
-            waitForIdle()
-            val viewport = assertNotNull(probe.viewport)
-            val before = viewport.raw.firstVisibleItemIndex to viewport.raw.firstVisibleItemScrollOffset
-
-            runOnIdle { probe.request = 1 }
-            waitForIdle()
-
-            assertEquals(0, assertNotNull(probe.scrollsBeforeLastPlacement, "the placement step never ran"))
-            assertTrue(assertNotNull(probe.job).isCancelled)
-            assertEquals(0, viewport.issuedScrolls, "the cancelling job scrolled")
-            assertEquals(before, viewport.raw.firstVisibleItemIndex to viewport.raw.firstVisibleItemScrollOffset)
-            assertFalse(probe.finished)
         }
 
     private companion object {

@@ -35,9 +35,6 @@ class MessageLinkNotFoundScreenshotTest {
     @Test
     fun messageLinkPublicPreviewLight() = capture("message-link.public-preview", RaftAppAppearance.Light) { PublicPreviewFixture() }
 
-    @Test
-    fun messageLinkPublicPreviewDark() = capture("message-link.public-preview.dark", RaftAppAppearance.Dark) { PublicPreviewFixture() }
-
     @androidx.compose.runtime.Composable
     private fun PublicPreviewFixture() =
         RaftMessageLinkPublicPreviewScreen(

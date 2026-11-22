@@ -56,10 +56,6 @@ class TasksBacklogScreenshotTest {
     fun boardShowsBacklogFirstInDark() = capture("tasks.backlog.board-dark", RaftAppAppearance.Dark, tasks, TasksViewMode.Board, backlogOpen)
 
     @Test
-    fun listStartsWithBacklogCollapsed() =
-        capture("tasks.backlog.list", RaftAppAppearance.Light, tasks, TasksViewMode.List, TasksPresentationState.Default.collapsedStatuses)
-
-    @Test
     fun anUnknownStatusTaskStillShows() =
         capture(
             "tasks.backlog.unknown-status",

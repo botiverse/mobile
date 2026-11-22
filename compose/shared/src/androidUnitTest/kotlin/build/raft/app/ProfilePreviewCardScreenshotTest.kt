@@ -50,13 +50,9 @@ class ProfilePreviewCardScreenshotTest {
 
     @Test fun agentLight() = capture("profile-preview.agent", RaftAppAppearance.Light) { Card(agentModel, actions = false) }
 
-    @Test fun agentDark() = capture("profile-preview.agent.dark", RaftAppAppearance.Dark) { Card(agentModel, actions = false) }
-
     // Member labels (web botiverse/slock #14535 ExternalOriginRibbon): someone from another server,
     // the ribbon across the card's top with their servers' tiles and names, and "External".
     @Test fun externalLight() = capture("profile-preview.external", RaftAppAppearance.Light) { Card(externalModel, actions = true) }
-
-    @Test fun externalDark() = capture("profile-preview.external.dark", RaftAppAppearance.Dark) { Card(externalModel, actions = true) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

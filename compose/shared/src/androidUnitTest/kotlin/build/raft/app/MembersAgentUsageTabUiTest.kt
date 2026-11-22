@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,8 +12,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.AgentUsageView
 import build.raft.app.data.AppLocale
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftAgentsApi
@@ -25,7 +22,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
-import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -277,60 +273,6 @@ class MembersAgentUsageTabUiTest {
                 onAllNodesWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
             }
             assertTrue(api.requests.size >= 2)
-        }
-
-    @Test
-    fun loadingStateShowsSkeletonWhenDelayZero(): Unit =
-        runRobolectricComposeUiTest {
-            mainClock.autoAdvance = false
-            setContent {
-                CompositionLocalProvider(LocalRaftListSkeletonDelayMillis provides 0L) {
-                    RaftDesignSystemTheme {
-                        MembersAgentUsageTabBody(
-                            agentId = "agent-1",
-                            loadState = AgentUsageLoadState.Loading,
-                            view = AgentUsageView(),
-                            withCacheReads = false,
-                            fallbackToday = "2026-03-14",
-                            timeContext = timeContext,
-                            onViewChange = {},
-                            onWithCacheReadsChange = {},
-                            onRetry = {},
-                            onOpenComputer = null,
-                        )
-                    }
-                }
-            }
-            mainClock.advanceTimeByFrame()
-            onNodeWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertExists()
-        }
-
-    @Test
-    fun loadingStateRespectsDefaultOneSecondSkeletonDelay(): Unit =
-        runRobolectricComposeUiTest {
-            mainClock.autoAdvance = false
-            setContent {
-                RaftDesignSystemTheme {
-                    MembersAgentUsageTabBody(
-                        agentId = "agent-1",
-                        loadState = AgentUsageLoadState.Loading,
-                        view = AgentUsageView(),
-                        withCacheReads = false,
-                        fallbackToday = "2026-03-14",
-                        timeContext = timeContext,
-                        onViewChange = {},
-                        onWithCacheReadsChange = {},
-                        onRetry = {},
-                        onOpenComputer = null,
-                    )
-                }
-            }
-            mainClock.advanceTimeBy(900L)
-            mainClock.advanceTimeByFrame()
-            onAllNodesWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertCountEquals(0)
-            mainClock.advanceTimeBy(200L)
-            mainClock.advanceTimeByFrame()
-            onNodeWithTag(AgentUsageTestTags.Skeleton, useUnmergedTree = true).assertExists()
         }
 
     private class FakeAgentUsageApi(

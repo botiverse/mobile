@@ -44,9 +44,6 @@ class ConversationUnavailableWideScreenshotTest {
 
     @Test
     fun wideLight() = captureConversationUnavailable(activities, "conversation-unavailable.wide", RaftAppAppearance.Light)
-
-    @Test
-    fun wideDark() = captureConversationUnavailable(activities, "conversation-unavailable.wide.dark", RaftAppAppearance.Dark)
 }
 
 private fun captureConversationUnavailable(

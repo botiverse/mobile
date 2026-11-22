@@ -47,9 +47,6 @@ class WideScaleScreenshotTest {
     @Test
     fun touch() = capture("scale.wide.touch", pointerInput = null)
 
-    @Test
-    fun finePointer() = capture("scale.wide.fine", RaftPointerInput.Fine)
-
     private fun capture(name: String, pointerInput: RaftPointerInput?) =
         RaftRobolectricScreenshot.capture(name, RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

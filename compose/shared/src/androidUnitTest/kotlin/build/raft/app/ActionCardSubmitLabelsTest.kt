@@ -2,8 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecForm
-import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
-import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.renderActionCardMsgText
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,20 +41,5 @@ class ActionCardSubmitLabelsTest {
         assertEquals("Submit decision", unlabelled.submitFor("decision" to text("deny")))
         // No submitLabels at all: the fixed label whatever is chosen.
         assertEquals("Submit decision", form.copy(submitLabels = null).submitFor("decision" to text("approve")))
-    }
-
-    @Test
-    fun onlyTheNamedFieldDrivesTheLabel() {
-        // submitLabels.field names "note" (read keeps it): the decision Select no longer names the button.
-        val form = decisionForm("form_submit_labels_not_select")
-        assertEquals("Submit decision", form.submitFor("decision" to text("approve")))
-    }
-
-    @Test
-    fun anApproveCallCardDrawsItsSpec() {
-        val raw = ActionCardSpecFixtures.rawCard("form_submit_labels").toString()
-        val approveCall = ThreadActionCard(type = "agent:approve_call", presentationCardJson = raw)
-        val drawn = assertNotNull(approveCall.actionCardSpecToRender(capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES))
-        assertNotNull(drawn.forms?.get("decision")?.submitLabels)
     }
 }

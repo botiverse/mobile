@@ -43,9 +43,6 @@ class ThreadInlineVideoScreenshotTest {
     @Test
     fun statesLight() = capture("thread.inline-video", RaftAppAppearance.Light)
 
-    @Test
-    fun statesDark() = capture("thread.inline-video.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

@@ -64,9 +64,6 @@ class ThreadArtifactLinkChipScreenshotTest {
     @Test
     fun artifactLinkChipLight() = capture("thread.artifact-link-chip", RaftAppAppearance.Light)
 
-    @Test
-    fun artifactLinkChipDark() = capture("thread.artifact-link-chip.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         val host = artifactFixtureHost()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

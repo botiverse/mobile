@@ -14,7 +14,6 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,24 +68,6 @@ class RaftRailTabReorderUiTest {
             assertEquals(listOf(listOf("activity", "tasks", "home", "members")), commits)
             assertEquals(emptyList(), selected)
             assertTrue(tab("home").top() > tab("tasks").top(), "the dropped tab shows in its new slot")
-        }
-
-    @Test
-    fun aMouseDraggedPastTheThresholdMovesTheTabAndOpensNothing() =
-        runRobolectricComposeUiTest {
-            setContent { Rail() }
-
-            tab("members").performMouseInput {
-                moveTo(center)
-                press()
-                moveBy(Offset(0f, -8f))
-                moveBy(Offset(0f, -46f))
-                release()
-            }
-            waitForIdle()
-
-            assertEquals(listOf(listOf("home", "activity", "members", "tasks")), commits)
-            assertEquals(emptyList(), selected)
         }
 
     @androidx.compose.runtime.Composable

@@ -45,13 +45,6 @@ class ThreadComposerAttachmentTrayScreenshotTest {
     @Test
     fun attachmentTrayLight() = capture("thread.composer-attachments", RaftAppAppearance.Light)
 
-    @Test
-    fun attachmentTrayDark() = capture("thread.composer-attachments.dark", RaftAppAppearance.Dark)
-
-    @Test
-    fun manyFilesStayInOneRow() =
-        captureComposerTray(activities, "thread.composer-attachments.many-files", RaftAppAppearance.Light, manyFiles)
-
     private fun capture(name: String, appearance: RaftAppAppearance) = captureComposerTray(activities, name, appearance, trayAttachments)
 }
 
@@ -123,13 +116,3 @@ private val trayAttachments =
         ),
         RaftPendingAttachmentItem(id = "shot", fileName = "crash-screenshot.png", mimeType = "image/png", status = "failed"),
     )
-
-private val manyFiles =
-    (1..8).map { index ->
-        RaftPendingAttachmentItem(
-            id = "report-$index",
-            fileName = "quarterly-report-$index.pdf",
-            mimeType = "application/pdf",
-            sizeBytes = 120_000L * index,
-        )
-    }

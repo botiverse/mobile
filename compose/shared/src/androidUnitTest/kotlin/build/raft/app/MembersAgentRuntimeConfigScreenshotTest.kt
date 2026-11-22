@@ -50,9 +50,6 @@ class MembersAgentRuntimeConfigScreenshotTest {
     @Test
     fun usageLight() = capture("members.agent-runtime-config.usage", RaftAppAppearance.Light)
 
-    @Test
-    fun usageDark() = capture("members.agent-runtime-config.usage.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

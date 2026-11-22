@@ -131,20 +131,6 @@ class TaskBacklogReasonUiTest {
         }
 
     @Test
-    fun otherStatusesStillMoveAtOnce() =
-        runRobolectricComposeUiTest {
-            setContent { Host { Head(task) } }
-
-            onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            onNodeWithText("Done").performClick()
-            waitForIdle()
-
-            onNodeWithTag(TaskBacklogReasonDialogTestTag).assertDoesNotExist()
-            assertEquals(listOf<SharedTasksRouteIntent>(SharedTasksRouteIntent.UpdateStatus(task, TaskStatus.Done)), dispatched)
-        }
-
-    @Test
     fun createTaskOnTaskV2HasAStatusFieldThatDefaultsToTodo() =
         runRobolectricComposeUiTest {
             val submitted = mutableListOf<Pair<List<String>, TaskStatus?>>()

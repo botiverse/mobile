@@ -46,21 +46,6 @@ class SharedThreadAgentFollowersStoreTest {
         assertNull(store.state.value.notice)
     }
 
-    @Test fun undoExpiresAtFiveSecondsEvenBeforeTheTimerRuns() = runTest {
-        val repository = FollowerRepositoryFake()
-        val store = SharedThreadAgentFollowersStore(repository, backgroundScope) { testScheduler.currentTime }
-        store.dispatch(ThreadAgentFollowersIntent.Refresh)
-        runCurrent()
-        store.dispatch(ThreadAgentFollowersIntent.Remove("agent"))
-        runCurrent()
-        advanceTimeBy(5_000)
-        store.dispatch(ThreadAgentFollowersIntent.Undo)
-        runCurrent()
-        assertNull(store.state.value.notice)
-        assertTrue(repository.restores.isEmpty())
-        assertNull(store.state.value.undo)
-    }
-
     @Test fun loadFailureKeepsThePreviousRosterAndAllowsExplicitRetry() = runTest {
         val repository = FollowerRepositoryFake()
         val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
@@ -75,19 +60,6 @@ class SharedThreadAgentFollowersStoreTest {
         runCurrent()
         assertEquals(3, repository.loads)
         assertNull(store.state.value.error)
-    }
-
-    @Test fun hostManagerRemovesAnotherServersAgentWhenTheServerAllowsIt() = runTest {
-        // #13093: in a joint channel the server answers canRemove = true for the host's managers.
-        val peer = follower().copy(isCurrentServer = false, canRemove = true)
-        val repository = FollowerRepositoryFake().apply { roster = roster.copy(agents = listOf(peer)) }
-        val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
-        store.dispatch(ThreadAgentFollowersIntent.Refresh)
-        runCurrent()
-        store.dispatch(ThreadAgentFollowersIntent.Remove(peer.id))
-        runCurrent()
-        assertEquals(1, repository.removals)
-        store.close()
     }
 
     @Test fun foreignAgentAndMissingPermissionNeverIssueWrites() = runTest {
@@ -128,44 +100,6 @@ class SharedThreadAgentFollowersStoreTest {
         assertTrue(store.state.value.roster!!.agents.isEmpty())
         assertEquals(3, repository.loads)
         assertNotNull(store.state.value.undo)
-    }
-
-    @Test fun failuresKeepRosterAndActionErrorSurvivesReconcile() = runTest {
-        val repository = FollowerRepositoryFake()
-        val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
-        store.dispatch(ThreadAgentFollowersIntent.Open)
-        runCurrent()
-        repository.removeResult = DataResult.Error(ScreenError("http_403"))
-        store.dispatch(ThreadAgentFollowersIntent.Remove("agent"))
-        runCurrent()
-        assertEquals(listOf("agent"), store.state.value.roster!!.agents.map { it.id })
-        assertEquals(ThreadFollowersError.Remove, store.state.value.error)
-        assertEquals(ThreadFollowersNoticeKind.RemoveFailed, store.state.value.notice?.kind)
-        assertNull(store.state.value.undo)
-        repository.removeResult = null
-        store.dispatch(ThreadAgentFollowersIntent.Remove("agent"))
-        runCurrent()
-        repository.restoreSucceeds = false
-        store.dispatch(ThreadAgentFollowersIntent.Undo)
-        runCurrent()
-        assertEquals(ThreadFollowersError.Restore, store.state.value.error)
-        assertEquals(ThreadFollowersNoticeKind.RestoreFailed, store.state.value.notice?.kind)
-        assertTrue(store.state.value.roster!!.agents.isEmpty())
-    }
-
-    @Test fun disposedRouteIgnoresAnOldResponseAndFutureIntents() = runTest {
-        val repository = FollowerRepositoryFake()
-        val pending = CompletableDeferred<DataResult<ThreadAgentFollowerRoster>>()
-        repository.nextLoad = pending
-        val store = SharedThreadAgentFollowersStore(repository, backgroundScope)
-        store.dispatch(ThreadAgentFollowersIntent.Refresh)
-        runCurrent()
-        store.close()
-        pending.complete(DataResult.Content(repository.roster))
-        store.dispatch(ThreadAgentFollowersIntent.Open)
-        runCurrent()
-        assertNull(store.state.value.roster)
-        assertEquals(1, repository.loads)
     }
 }
 

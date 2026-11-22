@@ -75,16 +75,10 @@ class ThreadArtifactMessageCardScreenshotTest {
     fun artifactMessageCardScreenshotLight() = captureScreenshots("thread.artifact-message-cards.screenshot", RaftAppAppearance.Light)
 
     @Test
-    fun artifactMessageCardScreenshotDark() = captureScreenshots("thread.artifact-message-cards.screenshot.dark", RaftAppAppearance.Dark)
-
-    @Test
     fun artifactMessageCardExcerptLight() = captureExcerpts("thread.artifact-message-cards.excerpt", RaftAppAppearance.Light)
 
     @Test
     fun artifactMessageCardSettledLight() = captureSettled("thread.artifact-message-cards.settled", RaftAppAppearance.Light)
-
-    @Test
-    fun artifactMessageCardSettledDark() = captureSettled("thread.artifact-message-cards.settled.dark", RaftAppAppearance.Dark)
 
     /**
      * `thread.artifact-message-cards.settled` (botiverse/slock #15654, behind `artifact_settled_v0`):

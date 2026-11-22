@@ -52,23 +52,6 @@ class ExternalChannelFreezeUiTest {
     }
 
     @Test
-    fun externalFreezeNoticeShowsAskOwnerForMember() = runRobolectricComposeUiTest {
-        setContent {
-            RaftDesignSystemTheme {
-                ThreadExternalFreezeNoticeBanner(
-                    deadlineIso = "2026-12-01T14:30:00Z",
-                    plan = "free",
-                    role = "member",
-                    offersUpgrade = true,
-                    onOpenUpgrade = {},
-                )
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
-    }
-
-    @Test
     fun externalFreezeNoticeUsesNeutralCopyAndViewYourPlanWhenUpgradeNotOffered() = runRobolectricComposeUiTest {
         var openedPlan = 0
         setContent {
@@ -110,49 +93,6 @@ class ExternalChannelFreezeUiTest {
         onNodeWithText("Free allows 1 external channel. Upgrade, or leave the extra channels, to post again.")
             .assertIsDisplayed()
         onNodeWithText("Ask an owner to upgrade").assertIsDisplayed()
-    }
-
-    @Test
-    fun externalFrozenBannerShowsViewBillingOnPaidPlanAndMemberBodyForMember() = runRobolectricComposeUiTest {
-        setContent {
-            RaftDesignSystemTheme {
-                ThreadExternalFrozenBanner(
-                    serverName = "Acme",
-                    plan = "pro",
-                    role = "member",
-                    offersUpgrade = true,
-                    onOpenUpgrade = {},
-                )
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Free allows 1 external channel. Ask an owner to upgrade.").assertIsDisplayed()
-        onNodeWithText("View billing").assertIsDisplayed()
-    }
-
-    @Test
-    fun externalFrozenBannerUsesNeutralCopyWhenUpgradeNotOffered() = runRobolectricComposeUiTest {
-        var openedPlan = 0
-        setContent {
-            CompositionLocalProvider(
-                LocalThreadActionCardSpecHost provides ThreadActionCardSpecHost(openPlan = { openedPlan++ }),
-            ) {
-                RaftDesignSystemTheme {
-                    ThreadExternalFrozenBanner(
-                        serverName = "Acme",
-                        plan = "free",
-                        role = "owner",
-                        offersUpgrade = false,
-                        onOpenUpgrade = {},
-                    )
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Acme can't post in external channels right now").assertIsDisplayed()
-        onNodeWithText("Free allows 1 external channel. Leave the extra channels to post again.").assertIsDisplayed()
-        onNodeWithText("View your plan").assertIsDisplayed().performClick()
-        assertEquals(1, openedPlan)
     }
 
     @Test

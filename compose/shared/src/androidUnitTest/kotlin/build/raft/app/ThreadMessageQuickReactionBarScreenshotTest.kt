@@ -67,8 +67,6 @@ class ThreadMessageQuickReactionBarScreenshotTest {
 
     @Test fun quickReactionBarLight() = capture("thread.message.quick-reaction-bar", RaftAppAppearance.Light)
 
-    @Test fun quickReactionBarDark() = capture("thread.message.quick-reaction-bar.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val atlas =

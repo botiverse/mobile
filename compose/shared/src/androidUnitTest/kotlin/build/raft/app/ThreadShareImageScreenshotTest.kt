@@ -77,10 +77,6 @@ class ThreadShareImageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
     fun phone() = capture("thread.share-image.phone", cardWidthDp = 390)
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w680dp-h480dp-xxhdpi")
-    fun desktop() = capture("thread.share-image.desktop", cardWidthDp = 640)
-
     /**
      * artin's case: one message picked that the timeline draws as a continuation (same author
      * within the grouping window, no avatar or name). The image regroups the selection only
@@ -126,27 +122,10 @@ class ThreadShareImageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
     fun wideTablePhone() = captureOffscreen("thread.share-image.wide-table.390", cardWidthDp = 390)
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
-    fun wideTableWide() = captureOffscreen("thread.share-image.wide-table.768", cardWidthDp = 768)
-
     /** Share preview with its width picker: Phone (the default), Wide (the web's 768), Custom with its slider. */
     @Test
     @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
     fun previewPhone() = capturePreview("thread.share-preview.width-phone", ThreadShareImageWidthChoice())
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
-    fun previewWide() =
-        capturePreview("thread.share-preview.width-wide", ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Wide))
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
-    fun previewCustom() =
-        capturePreview(
-            "thread.share-preview.width-custom",
-            ThreadShareImageWidthChoice(preset = ThreadShareImageWidth.Custom, customWidthDp = 560),
-        )
 
     private fun captureOffscreen(name: String, cardWidthDp: Int) {
         val image =

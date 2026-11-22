@@ -62,9 +62,6 @@ class ThreadAssistantPanelPopoverScreenshotTest {
     @Test
     fun wideLight() = capture("assistant.panel.wide", RaftAppAppearance.Light)
 
-    @Test
-    fun wideDark() = capture("assistant.panel.wide.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

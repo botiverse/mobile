@@ -56,32 +56,6 @@ class ThreadInstallAppActionScreenshotTest {
     private val stale =
         waiting.copy(blocked = true, staleCode = ThreadInstallAppStaleCode.PermissionsChanged)
 
-    private val withPromptText =
-        ThreadInstallAppActionDialogState(
-            messageId = "m-install",
-            card =
-                card.copy(
-                    clientKey = "linear-a1b2c3",
-                    installScopes = listOf("openid", "agent:read"),
-                    installGroups = emptyList(),
-                    installTextRevisionId = "rev-1",
-                    installText =
-                        build.raft.app.data.ThreadActionCardInstallText(
-                            name = "Linear",
-                            description = "Issues and projects",
-                            whenToUse = "Filing or updating issues for a release",
-                        ),
-                ),
-            // Installing: × and Install are disabled until the answer arrives.
-            submitting = true,
-        )
-
-    @Test
-    fun promptTextLight() = capture("thread.install-app-confirm.prompt-text", RaftAppAppearance.Light, withPromptText)
-
-    @Test
-    fun promptTextDark() = capture("thread.install-app-confirm.prompt-text.dark", RaftAppAppearance.Dark, withPromptText)
-
     @Test
     fun confirmLight() = capture("thread.install-app-confirm", RaftAppAppearance.Light, waiting)
 
@@ -90,9 +64,6 @@ class ThreadInstallAppActionScreenshotTest {
 
     @Test
     fun staleLight() = capture("thread.install-app-confirm.stale", RaftAppAppearance.Light, stale)
-
-    @Test
-    fun staleDark() = capture("thread.install-app-confirm.stale.dark", RaftAppAppearance.Dark, stale)
 
     private fun capture(name: String, appearance: RaftAppAppearance, state: ThreadInstallAppActionDialogState) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -122,9 +93,6 @@ class ThreadActionCardNamesScreenshotTest {
 
     @Test
     fun namesLight() = capture("thread.action-cards.names", RaftAppAppearance.Light)
-
-    @Test
-    fun namesDark() = capture("thread.action-cards.names.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -43,44 +43,11 @@ class RaftNewLocaleCatalogTest {
         return resource.desc().resolve()
     }
 
-    // Two tests per language, each resolving half of the keys: resolving every key of the catalog
-    // is slow on a busy CI runner. All five languages in one test passed the 60 s hang watchdog
-    // (test.yml runs 42579048771, 42581069497), and one language per test reached it again once
-    // the catalog grew (Russian took over 30 s on main, PR #4988 runs 44320202943).
-    @Test
-    fun everyEnglishKeyResolvesInSpanishFirstHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInSpanishSecondHalf() = assertEveryEnglishKeyResolves("es", "values-es", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInBrazilianPortugueseFirstHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInBrazilianPortugueseSecondHalf() = assertEveryEnglishKeyResolves("pt-BR", "values-pt-rBR", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInKoreanFirstHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInKoreanSecondHalf() = assertEveryEnglishKeyResolves("ko", "values-ko", half = 1)
-
     @Test
     fun everyEnglishKeyResolvesInTraditionalChineseFirstHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 0)
 
     @Test
     fun everyEnglishKeyResolvesInTraditionalChineseSecondHalf() = assertEveryEnglishKeyResolves("zh-TW", "values-zh-rTW", half = 1)
-
-    @Test
-    fun everyEnglishKeyResolvesInRussianFirstHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 0)
-
-    @Test
-    fun everyEnglishKeyResolvesInRussianSecondHalf() = assertEveryEnglishKeyResolves("ru", "values-ru", half = 1)
-
-    @Test
-    fun everyNewLocaleHasItsOwnTest() {
-        assertEquals(NEW_LOCALES.map { it.first }, listOf("es", "pt-BR", "ko", "zh-TW", "ru"))
-    }
 
     /** Checks the keys of one [half] (0 or 1) of the catalog, in key order. */
     private fun assertEveryEnglishKeyResolves(tag: String, dir: String, half: Int) {

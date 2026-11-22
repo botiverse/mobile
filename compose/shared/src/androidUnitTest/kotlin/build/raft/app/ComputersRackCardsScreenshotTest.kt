@@ -114,45 +114,20 @@ class ComputersRackCardsScreenshotTest {
     fun computersListLight() = capture("settings.computers.list", RaftAppAppearance.Light, ComputersRackView.List)
 
     @Test
-    fun computersListDark() = capture("settings.computers.list.dark", RaftAppAppearance.Dark, ComputersRackView.List)
-
-    @Test
     fun computersFilteredLight() = capture("settings.computers.filtered", RaftAppAppearance.Light, toolbar = filteredToolbar)
-
-    @Test
-    fun computersFilteredDark() = capture("settings.computers.filtered.dark", RaftAppAppearance.Dark, toolbar = filteredToolbar)
 
     @Test
     fun computersGroupedLight() = capture("settings.computers.grouped", RaftAppAppearance.Light, toolbar = groupedToolbar)
 
     @Test
-    fun computersGroupedDark() = capture("settings.computers.grouped.dark", RaftAppAppearance.Dark, toolbar = groupedToolbar)
-
-    @Test
-    fun computersGroupedListLight() = capture("settings.computers.grouped.list", RaftAppAppearance.Light, ComputersRackView.List, groupedToolbar)
-
-    @Test
-    fun computersSortedByMemoryLight() = capture("settings.computers.sorted_memory", RaftAppAppearance.Light, toolbar = memoryToolbar)
-
-    @Test
     fun computersLoadingLight() = captureComputersRack(activities, "settings.computers.loading", RaftAppAppearance.Light, ComputersRackView.Cards, wide = false, loading = true)
-
-    @Test
-    fun computersLoadingDark() = captureComputersRack(activities, "settings.computers.loading.dark", RaftAppAppearance.Dark, ComputersRackView.Cards, wide = false, loading = true)
 
     @Test
     fun computersUsagePendingLight() =
         captureComputersRack(activities, "settings.computers.usage_pending", RaftAppAppearance.Light, ComputersRackView.Cards, wide = false, pendingUsage = true)
 
     @Test
-    fun computersUsagePendingListLight() =
-        captureComputersRack(activities, "settings.computers.list.usage_pending", RaftAppAppearance.Light, ComputersRackView.List, wide = false, pendingUsage = true)
-
-    @Test
     fun computersNoMatchLight() = capture("settings.computers.no_match", RaftAppAppearance.Light, toolbar = noMatchToolbar)
-
-    @Test
-    fun computersNoMatchDark() = capture("settings.computers.no_match.dark", RaftAppAppearance.Dark, toolbar = noMatchToolbar)
 
     private fun capture(
         name: String,

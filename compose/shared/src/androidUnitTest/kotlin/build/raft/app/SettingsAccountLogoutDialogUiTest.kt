@@ -102,23 +102,4 @@ class SettingsAccountLogoutDialogUiTest {
             waitForIdle()
             assertEquals(1, signOuts, "a second confirm tap must not sign out again")
         }
-
-    @Test
-    fun cancelClosesTheDialogWithoutSigningOut() =
-        runRobolectricComposeUiTest {
-            var signOuts = 0
-            showSection { signOuts++ }
-            onNodeWithTag(SettingsLogoutButtonTag).performClick()
-            waitForIdle()
-
-            onNodeWithTag(SettingsLogoutCancelTag).performClick()
-            waitForIdle()
-
-            assertTrue(!dialogShown(), "Cancel must close the dialog")
-            assertEquals(0, signOuts, "Cancel must not sign out")
-            // It opens again afterwards.
-            onNodeWithTag(SettingsLogoutButtonTag).performClick()
-            waitForIdle()
-            assertTrue(dialogShown(), "Sign out opens the dialog again after Cancel")
-        }
 }

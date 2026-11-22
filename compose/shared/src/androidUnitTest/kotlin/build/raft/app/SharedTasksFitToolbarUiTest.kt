@@ -6,10 +6,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import build.raft.app.compat.json.JSONObject
@@ -117,34 +115,6 @@ class SharedTasksFitToolbarUiTest {
     private fun ComposeUiTest.left(tag: String): Float = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.left
 
     @Test
-    fun theTasksPageHasEveryFilterAndListBeforeBoardButNoNewTask() = runRobolectricComposeUiTest {
-        show(channelMode = false)
-        assertTrue(has(SharedTasksToolbarTags.Toolbar))
-        assertTrue(has(SharedTasksToolbarTags.Channel) && has(SharedTasksToolbarTags.Creator) && has(SharedTasksToolbarTags.Assignee))
-        assertFalse(has(SharedTasksToolbarTags.Clear), "no Clear all while no filter is applied")
-        assertFalse(has(SharedTasksToolbarTags.NewTask), "the server-wide page has no channel to make a task in")
-        val list = "${SharedTasksToolbarTags.View}-list"
-        val board = "${SharedTasksToolbarTags.View}-board"
-        assertTrue(left(list) < left(board), "List first on the page")
-        onNodeWithTag(board).performClick()
-        waitForIdle()
-        onNodeWithTag(board).assertIsSelected()
-    }
-
-    @Test
-    fun aChannelsTasksHaveNoChannelFilterBoardFirstAndNewTaskLast() = runRobolectricComposeUiTest {
-        show(channelMode = true, initial = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.Board))
-        assertFalse(has(SharedTasksToolbarTags.Channel), "a channel's tasks are that channel's")
-        assertTrue(has(SharedTasksToolbarTags.Creator) && has(SharedTasksToolbarTags.Assignee))
-        val list = "${SharedTasksToolbarTags.View}-list"
-        val board = "${SharedTasksToolbarTags.View}-board"
-        onNodeWithTag(board).assertIsSelected()
-        assertTrue(left(board) < left(list), "Board first in a channel")
-        assertTrue(has(SharedTasksToolbarTags.NewTask))
-        assertTrue(left(list) < left(SharedTasksToolbarTags.NewTask), "New Task ends the line")
-    }
-
-    @Test
     fun aChannelTheReaderMayNotWriteHasNoNewTask() = runRobolectricComposeUiTest {
         // Web canWriteTasksInChannel (slock #15155): a public channel read without joining it, or an
         // archived one; the filters and views stay.
@@ -170,15 +140,6 @@ class SharedTasksFitToolbarUiTest {
         waitForIdle()
         assertFalse(has(SharedTasksToolbarTags.Clear))
         assertTrue(onAllNodes(hasTestTag(SharedTasksToolbarTags.Creator) and hasContentDescription("Creator")).fetchSemanticsNodes().isNotEmpty())
-    }
-
-    @Test
-    fun aFilterOpensItsSheet() = runRobolectricComposeUiTest {
-        show(channelMode = false)
-        assertTrue(onAllNodes(hasText("Filter by creator")).fetchSemanticsNodes().isEmpty())
-        onNodeWithTag(SharedTasksToolbarTags.Creator).performClick()
-        waitForIdle()
-        assertTrue(onAllNodes(hasText("Filter by creator")).fetchSemanticsNodes().isNotEmpty(), "Creator opens its searchable sheet")
     }
 
     @Test

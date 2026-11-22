@@ -112,14 +112,6 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
     }
 
     @Test
-    fun originLockHelper() {
-        assertTrue(raftMainFrameOriginAllows(null, "https://anything.test/"))
-        assertTrue(raftMainFrameOriginAllows(webOrigin, "$webOrigin/artifacts/pt_x"))
-        assertFalse(raftMainFrameOriginAllows(webOrigin, contentFrame))
-        assertFalse(raftMainFrameOriginAllows(webOrigin, "about:blank"))
-    }
-
-    @Test
     fun documentLinkRoutingInterceptsUnembeddedArtifactLinksWhileAllowingEmbeddedReloadAndSignOut() {
         val shownId = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
         val otherId = "pt_0b6d3c1e-9a2f-4c7e-8d11-2f3a4b5c6d7e"

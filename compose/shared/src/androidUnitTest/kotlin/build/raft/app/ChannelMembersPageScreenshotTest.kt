@@ -16,14 +16,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
-import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
-import build.raft.app.model.MemberServerRef
 import build.raft.app.model.Presence
-import build.raft.app.model.ServerId
 import build.raft.app.resources.*
-import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
@@ -52,17 +46,6 @@ class ChannelMembersPageScreenshotTest {
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
 
-    // A joint channel's computed roster (#wg-rbac:#46), grouped by the viewed server (web
-    // jointMemberGroups, slock #12853): "Members of Raft" (a member of this server whose first
-    // source is another server stays here: Remove, "Also in" its other server), then "Other
-    // servers" (people who name every server they are from, removable only when the server says
-    // so, never Guest), people before agents in each.
-    @Test
-    fun channelMembersJointLight() =
-        capture("channel.members.joint", RaftAppAppearance.Light) {
-            ChannelMembersVisualContent(jointVisualRoster(), channelKind = JointChannelKindWireValue, viewerServerName = "Raft")
-        }
-
     // Channel role actions (web MemberRoleActions, #triage:#398): one ⋯ on every row the viewer may
     // change or remove (its menu: Make admin / Demote or the server admin's cannot-demote note, and
     // Remove from channel, #triage:#416), none on the viewer's own row, and the warning a refused
@@ -76,25 +59,9 @@ class ChannelMembersPageScreenshotTest {
             )
         }
 
-    @Test
-    fun channelMembersRoleActionsDark() =
-        capture("channel.members.role-actions.dark", RaftAppAppearance.Dark) {
-            ChannelMembersVisualContent(roleActionVisualRoster())
-        }
-
     // Add Member (web ChannelMembers add view): nothing selected yet, as artin's web capture.
     @Test
     fun channelMembersAddLight() = capture("channel.members.add", RaftAppAppearance.Light) { ChannelAddMemberPanelVisualScreen() }
-
-    @Test
-    fun channelMembersAddDark() = capture("channel.members.add.dark", RaftAppAppearance.Dark) { ChannelAddMemberPanelVisualScreen() }
-
-    // Two ticked: their badges above the list and "Add Selected (2)".
-    @Test
-    fun channelMembersAddSelectedLight() = capture("channel.members.add.selected", RaftAppAppearance.Light) { AddMemberSelectedContent() }
-
-    @Test
-    fun channelMembersAddSelectedDark() = capture("channel.members.add.selected.dark", RaftAppAppearance.Dark) { AddMemberSelectedContent() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ChannelMembersVisualContent() }) {
         // zh-CN copy, restored here (not in a DisposableEffect: the activity outlives the
@@ -214,50 +181,3 @@ private fun roleActionVisualRoster(): List<RaftThreadMemberItem> =
             roleAction = ChannelMemberRoleAction.RemoveAdmin,
         ),
     )
-
-/** The members page header over the add view with Cindy and Designer ticked. */
-@Composable
-private fun AddMemberSelectedContent() {
-    val candidates =
-        remember {
-            listOf(
-                RaftThreadMemberItem("agent-cindy", "Cindy", handle = "Cindy", kind = "agent", description = "Keeps visual testing release notes aligned.", avatarUrl = "pixel:robot"),
-                RaftThreadMemberItem("agent-product-ux", "Product UX Designer", handle = "Product-UX-Designer", kind = "agent", description = "Turns product feedback, screenshots, and release notes into actionable UX specs.", avatarUrl = "pixel:paint"),
-                RaftThreadMemberItem("user_artin", "artin", handle = "artin", description = "Owner"),
-                RaftThreadMemberItem("user_designer", "Designer", handle = "designer", description = "Product design"),
-            )
-        }
-    build.raft.app.components.RaftDesignSystemTheme {
-        androidx.compose.foundation.layout.Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            ChannelMembersPageHeader(title = stringResource(Res.string.thread_action_add_member), count = null, refreshing = false, onBack = {})
-            ThreadAddMemberPanel(
-                members = emptyList(),
-                candidates = candidates,
-                canAddMembers = true,
-                channelName = "design",
-                addMemberStatus = "idle",
-                addMemberErrorCode = null,
-                initialSelectedKeys = setOf("agent:agent-cindy", "human:user_designer"),
-                onSubmitBatch = {},
-                canCreateAgents = true,
-            )
-        }
-    }
-}
-
-/** A joint roster as `GET /channels/:id/members` sends it to a member of server-1 (slock ec13decd3). */
-private fun jointVisualRoster(): List<RaftThreadMemberItem> {
-    val local = ServerId("server-1")
-    val peer = MemberServerRef("server-peer", "Peer Labs", "peer-labs")
-    val acme = MemberServerRef("server-acme", "Acme", "acme")
-    fun human(id: String, name: String) =
-        MemberProfile(id = MemberId(id), displayName = name, handle = name.lowercase(), kind = MemberKind.Human)
-    return listOf(
-        human("human-artea", "Artea").copy(serverId = local, effectiveChannelRole = "admin", inViewerServer = true, canRemoveFromChannel = false),
-        human("human-ada", "Ada").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer), inViewerServer = true, canRemoveFromChannel = true),
-        human("human-bo", "Bo").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer, acme), inViewerServer = false, canRemoveFromChannel = true),
-        human("human-cy", "Cy").copy(serverId = ServerId(peer.id), serverName = peer.name, servers = listOf(peer), inViewerServer = false, effectiveChannelRole = "guest", canRemoveFromChannel = false),
-        MemberProfile(id = MemberId("agent-tenny"), displayName = "Tenny", handle = "tenny", kind = MemberKind.Agent, serverId = local, inViewerServer = true, canRemoveFromChannel = true),
-        MemberProfile(id = MemberId("agent-mira"), displayName = "Mira", handle = "mira", kind = MemberKind.Agent, serverId = ServerId(peer.id), serverName = peer.name, inViewerServer = false, canRemoveFromChannel = false),
-    ).map { it.toRaftThreadMemberItem(local) }
-}

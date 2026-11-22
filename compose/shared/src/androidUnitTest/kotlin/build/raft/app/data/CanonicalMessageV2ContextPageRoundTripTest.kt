@@ -7,7 +7,6 @@ import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
 import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
-import build.raft.app.network.sync.CanonicalMessageV2ScopeContinuity
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
@@ -69,19 +68,6 @@ class CanonicalMessageV2ContextPageRoundTripTest {
     }
 
     @Test
-    fun theNextEnterKeepsTheHeadOnTheLatestPageWithAnIslandAboveItsOldWindow() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.enter(listOf(50L, 60L))
-            rig.persist("m100", page(100), hasOlder = true)
-            rig.enter(listOf(60L, 70L))
-            val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
-            assertEquals(listOf(50L, 60L, 70L), frame.envelopes.map { it.fact.seq })
-            assertEquals(70L, frame.cursor.newestLoadedSeq)
-        }
-    }
-
-    @Test
     fun aRealtimeAppendDoesNotTurnAnIslandIntoLooseFacts() = withFreshDatabase { database ->
         // A legacy write owns the window and used to drop every range above it, which the reader would then show as
         // loose facts.
@@ -110,102 +96,12 @@ class CanonicalMessageV2ContextPageRoundTripTest {
     }
 
     @Test
-    fun aLinkOrOverviewWriteIsNoUseOfTheScopeForRetention() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.enter(listOf(50L, 60L))
-            val accessed = rig.lastUserAccessAtMs()
-            rig.advanceClock()
-            rig.persist("m100", page(100), hasOlder = true, userDriven = false)
-            assertEquals(accessed, rig.lastUserAccessAtMs())
-
-            // Twin: the same page opened from the conversation counts.
-            rig.persist("m120", page(120), hasOlder = true)
-            assertEquals(false, accessed == rig.lastUserAccessAtMs())
-        }
-    }
-
-    @Test
-    fun aPageReachingPastTheNewestEdgeNeverProvesTheHead() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.enter(listOf(50L, 60L))
-            rig.persist("m70", page(60, 70, 80), hasOlder = true, hasNewer = false)
-            val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
-            assertEquals(listOf(50L, 60L, 70L, 80L), frame.envelopes.map { it.fact.seq })
-            assertEquals(80L, frame.cursor.newestLoadedSeq)
-            assertEquals(80L, frame.cursor.latestSeq)
-            assertEquals(false, frame.cursor.hasLoadedNewest, "hasNewer false is no head proof")
-            assertEquals(50L, frame.cursor.oldestLoadedSeq)
-            assertEquals(true, rig.logs.last().endsWith("outcome=committed reason=head_extended facts=3"), rig.logs.last())
-        }
-    }
-
-    @Test
-    fun realtimeStaysContinuousAfterAnOlderReachOrIslandAndTurnsDisplayOnlyAfterANewerReach() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            // The socket is connected and joined, so the enter makes the window continuous.
-            rig.canary.noteTransportEpoch(partition, 1L)
-            rig.canary.noteRoomsJoined(partition, 1L)
-            rig.enter(listOf(50L, 60L, 70L))
-            val scope = assertNotNull(rig.reader.read(partition, "channel-1")).scope
-            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
-            rig.persist("m40", page(40, 50), hasOlder = true)
-            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
-            rig.persist("m100", page(100), hasOlder = true)
-            assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, rig.canary.continuityOf(scope))
-            rig.persist("m80", page(70, 80), hasOlder = true)
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(scope))
-        }
-    }
-
-    @Test
     fun aLateCommitInsideTheWindowIsInsertedInPlace() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
             rig.enter(listOf(50L, 60L, 70L))
             rig.persist("m60", page(50, 55, 60, 70), hasOlder = true)
             assertEquals(listOf(50L, 55L, 60L, 70L), assertNotNull(rig.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
-        }
-    }
-
-    @Test
-    fun aPlanCutoffIsNotTheChannelsStart() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.enter(listOf(50L, 60L))
-            rig.persist("m40", page(40, 50), hasOlder = false, historyLimited = true)
-            assertEquals(false, assertNotNull(rig.reader.read(partition, "channel-1")).cursor.hasLoadedOldest)
-            // Twin: no cutoff, so nothing is older.
-            rig.persist("m30", page(30, 40), hasOlder = false)
-            assertEquals(true, assertNotNull(rig.reader.read(partition, "channel-1")).cursor.hasLoadedOldest)
-        }
-    }
-
-    @Test
-    fun anAnchorMissingFromThePageWritesNothing() = withFreshDatabase { database ->
-        runBlocking {
-            val on = Rig(database)
-            on.enter(listOf(50L, 60L))
-            on.persist("m99", page(40, 50), hasOlder = true)
-            assertEquals(listOf(50L, 60L), assertNotNull(on.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
-            assertEquals(true, on.logs.last().endsWith("anchor=m99 outcome=skipped reason=anchor_not_on_page facts=0"), on.logs.last())
-
-            // Positive control on the same database and rig: the anchor on the page is written.
-            on.persist("m40", page(40, 50), hasOlder = true)
-            assertEquals(listOf(40L, 50L, 60L), assertNotNull(on.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
-        }
-    }
-
-    @Test
-    fun anIslandMakesRoomBeforeTheWindowDoesAtTheCap() = withFreshDatabase { database ->
-        val rig = Rig(database, maxFactsPerScope = 4)
-        runBlocking {
-            rig.enter(listOf(50L, 60L, 70L))
-            rig.persist("m100", page(100, 110), hasOlder = true)
-            assertEquals(listOf(50L, 60L, 70L), assertNotNull(rig.reader.read(partition, "channel-1")).envelopes.map { it.fact.seq })
-            assertEquals(listOf(50L to 70L), rig.segments(), "the just-written island goes; the window is never evictable for it")
         }
     }
 

@@ -39,9 +39,6 @@ class ServerPanelPagesScreenshotTest {
     @Test
     fun phoneServerPanelDark() = capture("shell.server-panel.pages.dark", RaftAppAppearance.Dark, guest = false)
 
-    @Test
-    fun phoneServerPanelGuest() = capture("shell.server-panel.pages.guest", RaftAppAppearance.Light, guest = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, guest: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

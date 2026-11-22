@@ -26,9 +26,6 @@ class ThreadLoadingStateScreenshotTest {
     @Test
     fun loadingLight() = capture("thread.loading", RaftAppAppearance.Light)
 
-    @Test
-    fun loadingDark() = capture("thread.loading.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {

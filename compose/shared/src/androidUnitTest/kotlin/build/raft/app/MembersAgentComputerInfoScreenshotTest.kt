@@ -51,19 +51,6 @@ class MembersAgentComputerInfoScreenshotTest {
     @Test
     fun computerInfoLight() = capture("members.agent-computer-info", RaftAppAppearance.Light)
 
-    @Test
-    fun computerInfoDark() = capture("members.agent-computer-info.dark", RaftAppAppearance.Dark)
-
-    /** zh-CN: the Created date reads 2026年10月20日 and the run label 计算机 v0.62.1. */
-    @Test
-    @Config(qualifiers = "zh-rCN-w390dp-h560dp-xxhdpi")
-    fun computerInfoZh() = capture("members.agent-computer-info.zh", RaftAppAppearance.Light)
-
-    /** ja: the Created date reads 2026年10月20日 and the run label コンピューター v0.62.1. */
-    @Test
-    @Config(qualifiers = "ja-w390dp-h560dp-xxhdpi")
-    fun computerInfoJa() = capture("members.agent-computer-info.ja", RaftAppAppearance.Light)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

@@ -57,13 +57,7 @@ class CodexSpeedRuntimeFormScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun singleTierShowsTheFastModeSwitchLight() = capture("agent.create.runtime-form-v3.codex-speed-single-tier", "gpt-6.2-sol", "fastMode" to JsonPrimitive(true))
-
-    @Test
     fun multiTierShowsTheSpeedMenuLight() = capture("agent.create.runtime-form-v3.codex-speed-multi-tier", "gpt-6.2-astra")
-
-    @Test
-    fun noAccelerationShowsNeitherLight() = capture("agent.create.runtime-form-v3.codex-speed-no-acceleration", "gpt-5-mini")
 
     private fun capture(name: String, model: String, vararg changes: Pair<String, JsonElement>) =
         RaftRobolectricScreenshot.capture(

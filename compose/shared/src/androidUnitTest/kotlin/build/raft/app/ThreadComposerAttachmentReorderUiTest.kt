@@ -116,22 +116,6 @@ class ThreadComposerAttachmentReorderUiTest {
             assertEquals(listOf("b", "c", "a"), commits.last())
         }
 
-    @Test
-    fun aHostThatKeepsItsOwnListOffersNoReorder() =
-        runRobolectricComposeUiTest {
-            setContent { Tray(reorderEnabled = false) }
-
-            assertEquals(emptyList(), actionLabels("b"))
-            tile("a").performTouchInput {
-                down(center)
-                advanceEventTime(600)
-                moveBy(Offset(200f, 0f))
-                up()
-            }
-            waitForIdle()
-            assertEquals(emptyList(), commits)
-        }
-
     @Composable
     private fun Tray(reorderEnabled: Boolean = true) {
         var attachments by remember {

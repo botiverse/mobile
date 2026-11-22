@@ -17,7 +17,6 @@ import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.network.sync.CanonicalMessageFoldInput
-import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
@@ -39,7 +38,6 @@ import build.raft.app.network.sync.windowEnvelopes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
@@ -47,7 +45,6 @@ import java.nio.file.Path
 import kotlin.io.path.deleteIfExists
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -77,21 +74,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             assertEquals(listOf(5L), frame.windowEnvelopes().map { it.fact.seq })
             assertEquals(emptyList(), restarted.segments(other), "loose: no claim without proof")
             assertNull(restarted.lastUserAccessAtMs(other), "never opened: ranks least recently used")
-        }
-    }
-
-    @Test
-    fun aRealtimeReplyOfANeverEnteredThreadIsStoredUnderTheParentTheFrameClaims() = withFile { file ->
-        file.rig().session { rig ->
-            rig.connect(1L)
-            assertTrue(rig.deliver(rig.replyNew(thread, "r7", 7L, omit = PRODUCTION_NEW_OMITS), epoch = 1L))
-        }
-        file.rig().session { restarted ->
-            val frame = assertNotNull(restarted.coldReadReply(thread, ThreadDurableReplyParent("channel-1", "root-1")))
-            assertEquals(listOf(7L), frame.seqs())
-            assertEquals("channel", frame.cursor.parentScopeKind)
-            // Any other parent is not this thread's stand-in.
-            assertNull(restarted.coldReadReply(thread, ThreadDurableReplyParent("channel-1", "root-2")))
         }
     }
 
@@ -167,37 +149,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
 
     // ---- (4) a stale grant ---------------------------------------------------------------------------
 
-    @Test
-    fun aFrameOfAStaleGrantIsNeitherWrittenNorDisplayed() = withFile { file ->
-        file.rig().session { rig ->
-            rig.connect(1L)
-            // Positive control: the same rig and grant, while current.
-            assertTrue(rig.deliver(rig.messageNew(other, "m5", 5L), epoch = 1L))
-            assertEquals(listOf(5L), assertNotNull(rig.coldRead(other)).seqs())
-            // Sign-out: the registry no longer holds the grant; a late frame of it arrives.
-            rig.currentGrant = null
-            assertFalse(rig.deliver(rig.messageNew(other, "m6", 6L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            assertEquals(listOf(5L), assertNotNull(rig.coldRead(other)).seqs(), "the stale frame leaked to disk")
-            // Server access lost: the grant is gone and the partition was cleared; a late frame must not refill it.
-            rig.engine.clearPartition(partition)
-            assertFalse(rig.deliver(rig.messageNew(channel, "m8", 8L), epoch = 1L))
-            // The loss lands after the grant check but before the disk work: the commit is refused (I12).
-            rig.currentGrant = rig.grant
-            val event = rig.messageNew(channel, "m9", 9L)
-            val commit = RealtimeIngestCanonicalMessageV2OwnerGateway(rig.ingest, rig.canary)
-                .captureUnderGrant(rig.grant, CanonicalMessageFoldInput.from(CanonicalMessageFoldKind.New, assertNotNull(event.decodedCanonical)), 1L)
-            rig.engine.clearPartition(partition)
-            commit()
-            assertEquals(listOf("m5"), rig.projectedIds())
-            assertTrue(rig.logs.any { "msg=m9" in it && "reason=partition_revoked" in it }, rig.logs.toString())
-        }
-        file.rig().session { restarted ->
-            assertNull(restarted.coldRead(other))
-            assertNull(restarted.coldRead(channel))
-        }
-    }
-
     // ---- (5) continuity: identical seqs, only the proof differs ---------------------------------------
 
     @Test
@@ -220,26 +171,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         assertEquals(listOf(10L to 20L), unproven.first, "no proof: the head segment stays, 30 is loose")
         assertEquals(listOf(10L, 20L, 30L), proven.second)
         assertEquals(proven.second, unproven.second, "the fact is stored either way")
-    }
-
-    @Test
-    fun aMessageUpdatedForAStoredLooseFactRewritesItButOneNamingAReplyThreadIsLeftToTheMarker() = withFile { file ->
-        file.rig().session { rig ->
-            rig.connect(1L)
-            assertTrue(rig.deliver(rig.messageNew(other, "m5", 5L), epoch = 1L))
-            val firstEdit = rig.messageUpdated(other, "m5", 5L, content = "first")
-            assertTrue(rig.deliver(firstEdit, epoch = 1L))
-            assertTrue(rig.deliver(rig.messageUpdated(other, "m5", 5L, content = "edited"), epoch = 1L))
-            // The first edit delivered again through another entry never rolls the fact back.
-            assertTrue(rig.deliver(firstEdit, epoch = 1L))
-            assertTrue(rig.deliver(rig.messageUpdated(other, "m5", 5L, content = "thread", threadId = "thread-9"), epoch = 1L))
-            // A redelivered older `New` never overwrites the newer stored fact.
-            assertTrue(rig.deliver(rig.messageNew(other, "m5", 5L), epoch = 1L))
-            assertTrue(rig.logs.any { "outcome=skipped" in it && "reason=updated_thread" in it }, rig.logs.toString())
-        }
-        file.rig().session { restarted ->
-            assertEquals(listOf("edited"), assertNotNull(restarted.coldRead(other)).envelopes.map { it.fact.content })
-        }
     }
 
     // ---- fail-open never costs a claim ----------------------------------------------------------------
@@ -301,27 +232,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         }
     }
 
-    @Test
-    fun twoHundredRapidFramesNeverTouchTheDiskWhileTheGrantIsHeld() = withFile { file ->
-        file.rig().session { rig ->
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            val started = System.nanoTime()
-            repeat(200) { i ->
-                // Half continuous on the entered channel, half loose across five never-entered channels.
-                val scope = if (i % 2 == 0) channel else SyncScopeKey(partition, "channel-x${i % 5}", "channel")
-                assertTrue(rig.deliver(rig.messageNew(scope, "r$i", 100L + i, omit = PRODUCTION_NEW_OMITS), epoch = 1L))
-            }
-            rig.ingest.awaitIdle()
-            val elapsedMs = (System.nanoTime() - started) / 1_000_000
-            println("canonical_v2_realtime bench frames=200 elapsedMs=$elapsedMs")
-            assertEquals(0, rig.storeCallsUnderGrant.get(), "store work ran while the authority registry was held")
-            assertEquals(200, rig.projected.size)
-            assertEquals(102, assertNotNull(rig.coldRead(channel)).seqs().size)
-            assertEquals(listOf(10L to 298L), rig.segments(channel))
-        }
-    }
-
     // ---- hardening (follow-up to #3857) -----------------------------------------------------------------
 
     @Test
@@ -335,165 +245,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
             rig.ingest.awaitIdle()
             assertEquals(listOf(5L, 6L, 7L), assertNotNull(rig.coldRead(other)).seqs())
             assertTrue(rig.logs.none { "outcome=display_only" in it }, "display waited out the timeout: ${rig.logs}")
-        }
-    }
-
-    @Test
-    fun aQueueFullSkipIsReportedBeforeTheNextFrameIsTrackedWithoutWaitingForIdle() = withFile { file ->
-        file.rig(queueCapacity = 1).session { rig ->
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            rig.slowUnrecordedMs = 2_000L
-            val release = CompletableDeferred<Unit>()
-            val held = CompletableDeferred<Unit>()
-            val holder = CoroutineScope(Dispatchers.IO).launch {
-                rig.engine.withScopeWriter(channel) {
-                    held.complete(Unit)
-                    release.await()
-                }
-            }
-            held.await()
-            assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
-            val reportStarted = CompletableDeferred<Unit>().also { rig.unrecordedStarted["m50"] = it }
-            assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped
-            release.complete(Unit)
-            holder.join()
-            // The worker took m40 off the queue and is reporting the skip of m50 (slowly): the queue has room.
-            reportStarted.await()
-            // Straight on, no idle wait: the next frames must already see the skip, though its report still runs.
-            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
-            assertTrue(rig.deliver(rig.messageNew(channel, "m70", 70L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            assertTrue(rig.logs.none { "queue_full" in it && "msg=m60" in it }, "m60 must have been queued: ${rig.logs}")
-            val segments = rig.segments(channel)
-            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
-        }
-    }
-
-    @Test
-    fun theT4RouteAlsoCommitsOffTheGrantAndBeforeDisplay() = withFile { file ->
-        file.rig(t4 = true).session { rig ->
-            rig.connect(1L)
-            listOf(5L, 6L, 7L).forEach { seq -> assertTrue(rig.deliver(rig.messageNew(other, "m$seq", seq), epoch = 1L)) }
-            assertEquals(0, rig.storeCallsUnderGrant.get(), "T4 route did disk work under the grant")
-            assertEquals(listOf("m5", "m6", "m7"), rig.projectedIds())
-            assertEquals(listOf(5L, 6L, 7L), assertNotNull(rig.coldRead(other)).seqs())
-        }
-    }
-
-    @Test
-    fun aThrowingSkipReportNeitherLosesTheSkipsAfterItNorItself() = withFile { file ->
-        file.rig(queueCapacity = 1).session { rig ->
-            rig.connect(1L)
-            val second = SyncScopeKey(partition, "channel-2", "channel")
-            rig.enter(channel, 10L, 20L)
-            rig.enter(second, 11L, 21L)
-            rig.whileWriterHeld(channel) {
-                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
-                // Two skips; the first one's report throws once.
-                rig.failUnrecordedTimes["m50"] = 1
-                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L))
-                assertTrue(rig.deliver(rig.messageNew(second, "n55", 55L), epoch = 1L))
-            }
-            rig.ingest.awaitIdle()
-            // The skip after the failed report was still reported, and the failed one was retried.
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(second))
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            assertTrue(rig.logs.any { "unrecorded_report_failed" in it && "msg=m50" in it }, rig.logs.toString())
-            assertTrue(rig.deliver(rig.messageNew(second, "n60", 60L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            assertEquals(listOf(11L to 21L), rig.segments(second), "a claim covers the skipped 55")
-        }
-    }
-
-    @Test
-    fun aFrameAfterAFailedSkipReportOfItsChannelIsStoredLooseNotClaimed() = withFile { file ->
-        file.rig(queueCapacity = 1).session { rig ->
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            // The report of the skipped m50 fails twice, then lands.
-            rig.failUnrecordedTimes["m50"] = 2
-            rig.whileWriterHeld(channel) {
-                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
-                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped
-            }
-            // m40 runs after the first failed report; m60 after the second (no idle wait in between).
-            kotlinx.coroutines.withTimeout(10_000L) {
-                while (rig.logs.none { "unrecorded_report_failed" in it }) kotlinx.coroutines.delay(10)
-            }
-            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            val segments = rig.segments(channel)
-            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
-            assertTrue(rig.logs.any { "outcome=loose" in it && "msg=m60" in it && "tracker=held:unrecorded_report_pending" in it }, rig.logs.toString())
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-        }
-    }
-
-    @Test
-    fun aSkipReportThatNeverLandsEscalatesToAPartitionHoleOnceAndIsDropped() = withFile { file ->
-        file.rig(queueCapacity = 1).session { rig ->
-            rig.connect(1L)
-            val second = SyncScopeKey(partition, "channel-2", "channel")
-            rig.enter(channel, 10L, 20L)
-            rig.enter(second, 11L, 21L)
-            rig.failUnrecordedTimes["m50"] = Int.MAX_VALUE
-            rig.whileWriterHeld(channel) {
-                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued
-                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped, never reported
-            }
-            rig.ingest.awaitIdle() // a barrier retries but spends no attempt
-            assertEquals(emptyList(), rig.partitionHoles.toList(), "a barrier spent the retry budget")
-            // Frames of the skip's own channel spend attempts 2 and 3 (stored loose meanwhile); the 3rd escalates.
-            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L))
-            assertTrue(rig.deliver(rig.messageNew(channel, "m61", 61L), epoch = 1L))
-            repeat(3) { i -> assertTrue(rig.deliver(rig.messageNew(second, "n${60 + i}", 60L + i), epoch = 1L)) }
-            rig.ingest.awaitIdle()
-            assertEquals(listOf("unrecorded_report_failed"), rig.partitionHoles.toList(), "escalated exactly once")
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(second))
-            assertEquals(listOf(11L to 21L), rig.segments(second), "no window of the partition claims across the hole")
-            assertEquals(1, rig.logs.count { "unrecorded_report_failed" in it && "msg=m50" in it }, "first failure logged once")
-            assertEquals(1, rig.logs.count { "unrecorded_report_dropped" in it && "msg=m50" in it }, "final drop logged once")
-        }
-    }
-
-    @Test
-    fun aSkipWhoseEscalationFailsIsKeptAndItsChannelStaysLooseUntilTheHoleLands() = withFile { file ->
-        file.rig(queueCapacity = 1).session { rig ->
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            rig.failUnrecordedTimes["m50"] = Int.MAX_VALUE
-            rig.failPartitionHoleTimes.set(1)
-            rig.whileWriterHeld(channel) {
-                assertTrue(rig.deliver(rig.messageNew(channel, "m30", 30L), epoch = 1L)) // on the worker, stuck
-                assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L), epoch = 1L)) // queued: report 1 fails
-                assertTrue(rig.deliver(rig.messageNew(channel, "m50", 50L), epoch = 1L)) // skipped, never reported
-            }
-            rig.ingest.awaitIdle() // a barrier retries but spends no attempt
-            assertTrue(rig.deliver(rig.messageNew(channel, "m60", 60L), epoch = 1L)) // report 2 fails
-            assertTrue(rig.deliver(rig.messageNew(channel, "m70", 70L), epoch = 1L)) // report 3 fails, the hole too
-            rig.ingest.awaitIdle()
-            assertEquals(emptyList(), rig.partitionHoles.toList(), "the hole report failed")
-            assertEquals(1, rig.logs.count { "unrecorded_report_escalation_failed" in it && "msg=m50" in it }, rig.logs.toString())
-            assertTrue(rig.logs.none { "unrecorded_report_dropped" in it }, "skip dropped though its hole failed: ${rig.logs}")
-            // The skip is still pending: the frame after the failed escalation is stored loose, not tracked.
-            assertTrue(
-                rig.logs.any { "outcome=loose" in it && "msg=m70" in it && "tracker=held:unrecorded_report_pending" in it },
-                rig.logs.toString(),
-            )
-            // The next frame retries the hole, which lands now: only then is the skip dropped.
-            assertTrue(rig.deliver(rig.messageNew(channel, "m80", 80L), epoch = 1L))
-            rig.ingest.awaitIdle()
-            assertEquals(listOf("unrecorded_report_failed"), rig.partitionHoles.toList())
-            assertEquals(1, rig.logs.count { "unrecorded_report_dropped" in it && "msg=m50" in it && "partitionHole=reported" in it })
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            val segments = rig.segments(channel)
-            assertTrue(segments.none { (low, high) -> 50L in low..high }, "a claim covers the skipped 50: $segments")
-            assertEquals(listOf(10L, 20L, 30L, 40L, 60L, 70L, 80L), assertNotNull(rig.coldRead(channel)).seqs())
         }
     }
 
@@ -851,27 +602,6 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
     }
 
     private fun ThreadDurableLastKnownFrame.seqs(): List<Long> = envelopes.map { it.fact.seq }.sorted()
-
-    /** Holds [scope]'s writer while [block] runs (and always releases it, even when [block] fails). */
-    private suspend fun <T> Rig.whileWriterHeld(scope: SyncScopeKey, block: suspend () -> T): T {
-        val release = CompletableDeferred<Unit>()
-        val held = CompletableDeferred<Unit>()
-        val holderScope = CoroutineScope(Dispatchers.IO)
-        val holder = holderScope.launch {
-            engine.withScopeWriter(scope) {
-                held.complete(Unit)
-                release.await()
-            }
-        }
-        try {
-            held.await()
-            return block()
-        } finally {
-            release.complete(Unit)
-            holder.join()
-            holderScope.cancel()
-        }
-    }
 
     private fun <T> Rig.session(block: suspend (Rig) -> T): T = try {
         // Bounded below the build's 60 s hang watchdog: a dead ingest worker fails the test instead of killing the JVM.

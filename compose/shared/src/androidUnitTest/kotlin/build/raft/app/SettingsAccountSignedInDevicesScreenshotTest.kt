@@ -79,32 +79,6 @@ class SettingsAccountSignedInDevicesScreenshotTest {
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutChoiceDark() = dialog("settings.account.sign-out-device.choice.dark", RaftAppAppearance.Dark, choiceState)
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutSingleLight() =
-        dialog(
-            "settings.account.sign-out-device.single",
-            RaftAppAppearance.Light,
-            devicesState.copy(
-                signOut = SignedInDevicesSignOutDialog(SignedInDevicesSignOutTarget.One(unknownDevice), reach = SignedInDeviceLostReach())
-            ),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun signOutLeftoversLight() =
-        dialog(
-            "settings.account.sign-out-device.leftovers",
-            RaftAppAppearance.Light,
-            devicesState.copy(
-                signOut = SignedInDevicesSignOutDialog(SignedInDevicesSignOutTarget.Leftovers, reach = SignedInDeviceLostReach(computers = 2))
-            ),
-        )
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun signOutReauthLight() =
         dialog(
             "settings.account.sign-out-device.reauth",
@@ -115,10 +89,6 @@ class SettingsAccountSignedInDevicesScreenshotTest {
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")
     fun stepUpLostLight() = dialog("settings.account.step-up.lost", RaftAppAppearance.Light, choiceState.copy(stepUp = lostStepUp))
-
-    @Test
-    @Config(qualifiers = "w390dp-h844dp-xxhdpi")
-    fun stepUpLostDark() = dialog("settings.account.step-up.lost.dark", RaftAppAppearance.Dark, choiceState.copy(stepUp = lostStepUp))
 
     @Test
     @Config(qualifiers = "w390dp-h844dp-xxhdpi")

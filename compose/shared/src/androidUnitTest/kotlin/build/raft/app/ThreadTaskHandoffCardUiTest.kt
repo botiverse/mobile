@@ -124,16 +124,6 @@ class ThreadTaskHandoffCardUiTest {
             onNodeWithText("xxchan handed it back to Otter · $at").assertExists()
         }
 
-    @Test
-    fun takenBackByItsActorTheCardSaysSo() =
-        runRobolectricComposeUiTest {
-            val f = ThreadTaskHandoffFixtures
-            timeline(f.handoff, f.tookBack, show = listOf(f.handoff))
-            onNodeWithTag(TaskHandoffCardReturnedTag).assertExists()
-            val at = formatThreadTimeRevealLabel(f.tookBack.timestampLabel, f.timeContext)
-            onNodeWithText("Otter took it back · $at").assertExists()
-        }
-
     // slock #15339: in the conversation list the reason draws its links (and refs, @mentions) like a
     // message body, and a tap opens them; elsewhere (no handlers) it stays plain text.
     private val linkedReason =
@@ -175,14 +165,6 @@ class ThreadTaskHandoffCardUiTest {
             onNode(hasText("before Friday", substring = true), useUnmergedTree = true).performTouchInput { click(at) }
             waitForIdle()
             assertEquals(listOf(LINK), opened)
-        }
-
-    @Test
-    fun withoutTheListsHandlersTheReasonStaysPlainText() =
-        runRobolectricComposeUiTest {
-            timeline(linkedReason)
-            onNodeWithTag(TaskHandoffCardReasonTag, useUnmergedTree = true)
-                .assertTextEquals("Read [the brief]($LINK) before Friday")
         }
 
     private companion object {

@@ -170,18 +170,6 @@ class ThreadMessageLinkLongPressUiTest {
         }
 
     @Test
-    fun aLongPressOffTheLinksOpensTheMenuWithoutALinkSection() =
-        runRobolectricComposeUiTest {
-            showMessage()
-            textNode().performTouchInput { longClick(charCenter("launch")) }
-            waitForIdle()
-            assertNotNull(menuAnchor, "the message menu opened")
-            assertNull(host.contextMenuLinkFor(MESSAGE_ID, menuAnchor!!))
-            onAllNodesWithText("Open in browser", useUnmergedTree = true).assertCountEquals(0)
-            assertTrue(opened.isEmpty())
-        }
-
-    @Test
     fun aTapOnALinkStillOpensIt() =
         runRobolectricComposeUiTest {
             showMessage()

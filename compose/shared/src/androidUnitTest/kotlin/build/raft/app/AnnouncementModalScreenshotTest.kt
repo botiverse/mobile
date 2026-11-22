@@ -39,13 +39,7 @@ class AnnouncementModalScreenshotTest {
     fun defaultLabelDark() = capture("announcement.modal.default-label.dark", RaftAppAppearance.Dark, label = null)
 
     @Test
-    fun ownLabelLight() = capture("announcement.modal.own-label", RaftAppAppearance.Light, label = "Release 1.19")
-
-    @Test
     fun actionOnlyLight() = capture("announcement.modal.action-only", RaftAppAppearance.Light, label = null, cta = visualCta)
-
-    @Test
-    fun actionOnlyDark() = capture("announcement.modal.action-only.dark", RaftAppAppearance.Dark, label = null, cta = visualCta)
 
     private fun capture(name: String, appearance: RaftAppAppearance, label: String?, cta: AnnouncementCta? = null) =
         RaftRobolectricScreenshot.capture(

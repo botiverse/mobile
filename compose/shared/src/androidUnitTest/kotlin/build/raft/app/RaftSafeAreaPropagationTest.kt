@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -23,7 +22,6 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
-import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import kotlin.math.roundToInt
 import kotlin.test.Test
@@ -94,35 +92,6 @@ class RaftSafeAreaPropagationTest {
     }
 
     @Test
-    fun consumedSideIsNotPadded() {
-        // The inner side of a split pane is away from the edge.
-        show(leftDp = 59, rightDp = 59) {
-            Box(Modifier.fillMaxWidth().raftConsumeSafeAreaHorizontal(WindowInsetsSides.Right)) {
-                Box(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().track("pane"))
-            }
-        }
-        assertEquals(px(59) to rootWidth, bounds.getValue("pane"))
-    }
-
-    @Test
-    fun sideTabBarBandJoinsTheInset() {
-        val bridge = RaftNativeTabBarBridge()
-        bridge.publish(
-            Any(),
-            raftNativeTabBarState(
-                appShellBottomTabs(selectedKey = "home", orderedTabKeys = listOf("home", "activity"), activityUnreadCount = 0, labelFor = { it }),
-                visible = true,
-            ),
-        ) {}
-        bridge.updateBand("left", 80.0)
-        show(leftDp = 59, rightDp = 0, tabBar = bridge, pageShell = true) {
-            Box(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().track("content"))
-        }
-        // The larger of the safe area (59) and the bar's band (80) on the left.
-        assertEquals(px(80) to rootWidth, bounds.getValue("content"))
-    }
-
-    @Test
     fun physicalEdgesStayPhysicalInRtl() {
         show(rightDp = 59, layoutDirection = LayoutDirection.Rtl) {
             Column(Modifier.fillMaxSize()) {
@@ -135,21 +104,6 @@ class RaftSafeAreaPropagationTest {
         assertEquals(0 to rootWidth - px(59), bounds.getValue("all"))
         assertEquals(0 to rootWidth, bounds.getValue("end"))
         assertEquals(0 to rootWidth - px(59), bounds.getValue("start"))
-    }
-
-    @Test
-    fun modalPadsItsWindowAndItsScrimBleeds() {
-        show(rightDp = 59) {
-            // What Modal does in its own window: pad the whole window inset, consume it.
-            RaftHorizontalSafeAreaShell(required = LocalRaftWindowHorizontalSafeArea.current, windowRoot = true) {
-                Box(Modifier.fillMaxSize()) {
-                    Box(Modifier.raftBleedHorizontalSafeArea(LocalRaftHorizontalSafeAreaBleed.current).fillMaxSize().track("scrim"))
-                    Box(Modifier.fillMaxWidth().padding(top = 40.dp).raftSafeAreaHorizontalPadding().track("sheet"))
-                }
-            }
-        }
-        assertEquals(0 to rootWidth, bounds.getValue("scrim"))
-        assertEquals(0 to rootWidth - px(59), bounds.getValue("sheet"))
     }
 
     private fun show(

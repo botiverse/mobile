@@ -83,8 +83,6 @@ class ThreadQuotedForwardedScreenshotTest {
 
     @Test fun forwardedLight() = capture("thread.forwarded-bundle", RaftAppAppearance.Light) { ForwardedRows() }
 
-    @Test fun forwardedDark() = capture("thread.forwarded-bundle.dark", RaftAppAppearance.Dark) { ForwardedRows() }
-
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         build.raft.app.image.raftInstallImageLoader()

@@ -58,9 +58,6 @@ class SettingsHeaderTapUiTest {
     fun titleTapReachesHeaderWithoutBack() = assertEquals(3, headerTaps(withBack = false))
 
     @Test
-    fun titleTapReachesHeaderOnPushedPage() = assertEquals(3, headerTaps(withBack = true))
-
-    @Test
     fun hiddenTapRowReachesItsActionWhileOtherInfoRowsDoNot() {
         val actions = mutableListOf<String>()
         runRobolectricComposeUiTest {

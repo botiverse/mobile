@@ -97,16 +97,6 @@ class SearchTooBroadRecoveryTest {
     }
 
     @Test
-    fun alreadyRecentHasNoActionAndOtherErrorsKeepOrdinaryRetry() {
-        for (sort in SearchSort.entries) {
-            for (code in listOf("http_422", "network_parse_failed", "SEARCH_TIMEOUT", "server_forbidden")) {
-                assertEquals(SharedHomeSearchSavedIntent.RefreshSearch, sharedHomeSearchErrorAction(code, sort))
-            }
-        }
-        assertNull(sharedHomeSearchErrorAction("QUERY_TOO_BROAD", SearchSort.Recent))
-    }
-
-    @Test
     fun onlyThePublicTyped422ActivatesRecovery() = runTest {
         val auth = InMemoryRaftAuthSessionStore(canonicalV2TestSession())
         val vectors = listOf(

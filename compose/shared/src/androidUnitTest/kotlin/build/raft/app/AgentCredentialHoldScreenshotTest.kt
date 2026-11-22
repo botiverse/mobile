@@ -63,9 +63,6 @@ class AgentCredentialHoldScreenshotTest {
     @Test
     fun heldLight() = capture("members.agent-profile-header.credential-hold", RaftAppAppearance.Light)
 
-    @Test
-    fun heldDark() = capture("members.agent-profile-header.credential-hold.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(
             name,

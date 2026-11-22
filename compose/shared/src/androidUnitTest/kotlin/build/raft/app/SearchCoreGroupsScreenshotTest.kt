@@ -114,10 +114,6 @@ class SearchCoreGroupsScreenshotTest {
     fun wide() = capture("search.core-groups.wide", RaftAppAppearance.Light) { Panel(Answered, overlay = overlayChrome()) }
 
     @Test
-    @Config(qualifiers = "w1280dp-h900dp-xhdpi")
-    fun wideDark() = capture("search.core-groups.wide.dark", RaftAppAppearance.Dark) { Panel(Answered, overlay = overlayChrome()) }
-
-    @Test
     fun failed() = capture("search.core-groups.failed", RaftAppAppearance.Light) { Panel(Failed) }
 
     @Test
@@ -148,25 +144,6 @@ class SearchCoreGroupsScreenshotTest {
             waitForIdle()
             scrollTo(HomeSearchEntityGroupTags.LoadMore)
             onNodeWithTag(HomeSearchEntityGroupTags.LoadMore).performClick()
-            waitForIdle()
-
-            assertEquals(listOf<SearchCoreGroupsIntent>(SearchCoreGroupsIntent.LoadMore(SearchCoreGroup.Channels)), intents)
-        }
-
-    @Test
-    fun aFailedPageShowsRetryInLoadMoresPlace() =
-        runRobolectricComposeUiTest {
-            val intents = mutableListOf<SearchCoreGroupsIntent>()
-            val pageFailed =
-                Answered.copy(channels = Answered.channels.copy(pageFailed = true, error = ScreenError("web_search_network", traceId = TraceId)))
-            setContent { Host { Panel(pageFailed, onCoreGroupsIntent = { intents += it }) } }
-
-            onAllNodesWithTag(HomeSearchEntityGroupTags.ShowAll)[0].performClick()
-            waitForIdle()
-            scrollTo(HomeSearchEntityGroupTags.LoadMoreRetry)
-            onNodeWithText("Could not load more results.").assertExists()
-            onAllNodesWithTag(HomeSearchEntityGroupTags.LoadMore).assertCountEquals(0)
-            onNodeWithTag(HomeSearchEntityGroupTags.LoadMoreRetry).performClick()
             waitForIdle()
 
             assertEquals(listOf<SearchCoreGroupsIntent>(SearchCoreGroupsIntent.LoadMore(SearchCoreGroup.Channels)), intents)

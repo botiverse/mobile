@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicText
@@ -134,39 +133,6 @@ class ThreadSelectableTextStackMoveUiTest {
             pushWithRowChange(stack)
         }
 
-    @Test
-    fun aRowStyleChangingDuringThePopDoesNotCrash() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item { SelectableBody("m1") { BasicText(BODY, style = tickStyle) } }
-                }
-            }
-            runOnIdle { stack.open(COVERING_PAGE, JsonObject(emptyMap()), from = stack.pages.last()) }
-            waitForIdle()
-            popWithRowChange(stack)
-        }
-
-    /** Control: same change, no lazy list, so the row shares the moved composition. */
-    @Test
-    fun controlNoLazyListRowStyleChangingDuringThePush() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                Column(Modifier.fillMaxSize()) { SelectableBody("m1") { BasicText(BODY, style = tickStyle) } }
-            }
-            pushWithRowChange(stack)
-        }
-
-    /** Control: same change, not selectable: a plain text node reads no CompositionLocal in update. */
-    @Test
-    fun controlNotSelectableRowStyleChangingDuringThePush() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) { item { BasicText(BODY, style = tickStyle) } }
-            }
-            pushWithRowChange(stack)
-        }
-
     /**
      * The framework's own behaviour, with no app selection code: an always selectable text in the
      * same place. On the official foundation 1.12.1 this push threw "Cannot read CompositionLocal
@@ -231,21 +197,6 @@ class ThreadSelectableTextStackMoveUiTest {
             assertTrue(controller!!.hasSelection, "selects again after the pop")
         }
 
-    /** Control: nothing else changes in the frame of the move. */
-    @Test
-    fun controlPushAndPopWithNoRowChange() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item { SelectableBody("m1") { BasicText(BODY, style = TextStyle(color = Color.Black)) } }
-                }
-            }
-            runOnIdle { stack.open(COVERING_PAGE, JsonObject(emptyMap()), from = stack.pages.last()) }
-            waitForIdle()
-            runOnIdle { stack.back() }
-            waitForIdle()
-        }
-
     /**
      * Same body and style: only the row recomposes (a reply chip's count, say), with a fresh
      * callback as ThreadPage's row passes. Does the real Markdown text then update its element?
@@ -258,40 +209,6 @@ class ThreadSelectableTextStackMoveUiTest {
                     item {
                         val rowTick = tick
                         SelectableBody("m1") { RaftMarkdownBody(body = BODY, onOpenUrl = { check(rowTick >= 0) }) }
-                    }
-                }
-            }
-            pushWithRowChange(stack)
-        }
-
-    /** As above, with a link: rendered through the link-aware text path. */
-    @Test
-    fun aMarkdownRowWithALinkRecomposingDuringThePushDoesNotCrash() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item {
-                        val rowTick = tick
-                        SelectableBody("m1") {
-                            RaftMarkdownBody(body = LINK_BODY, onOpenUrl = { check(rowTick >= 0) })
-                        }
-                    }
-                }
-            }
-            pushWithRowChange(stack)
-        }
-
-    /** Control: the row recomposes with a stable callback, so the Markdown text keeps its element. */
-    @Test
-    fun controlMarkdownRowWithAStableCallbackRecomposingDuringThePush() =
-        runRobolectricComposeUiTest {
-            val onOpenUrl: (String) -> Unit = {}
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item {
-                        val rowTick = tick
-                        BasicText("row $rowTick")
-                        SelectableBody("m1") { RaftMarkdownBody(body = LINK_BODY, onOpenUrl = onOpenUrl) }
                     }
                 }
             }

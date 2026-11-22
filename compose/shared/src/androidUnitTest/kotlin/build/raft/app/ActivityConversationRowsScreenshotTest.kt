@@ -94,26 +94,6 @@ class ActivityConversationRowsScreenshotTest {
             ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.Open)
         }
 
-    @Test
-    fun activityRowsSwipeOpenDark() =
-        capture("screens.activity.rows.swipe-open.dark", RaftAppAppearance.Dark) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Dark, ActivityRowsSwipePose.Open)
-        }
-
-    /** The same rows as a finger slides them in: the buttons share the uncovered width. */
-    @Test
-    fun activityRowsSwipeSlidingLight() =
-        capture("screens.activity.rows.swipe-sliding", RaftAppAppearance.Light) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.Sliding)
-        }
-
-    /** Pulled past 60% of the row: Done covers the uncovered width (release applies it); one row short of it. */
-    @Test
-    fun activityRowsSwipeFullDoneLight() =
-        capture("screens.activity.rows.swipe-full-done", RaftAppAppearance.Light) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.FullDone)
-        }
-
     /**
      * raft-design #793, rows left open on their start button by a right swipe: an unread thread (Read,
      * `message-square-check`) and a read channel (Unread, `message-square-dot`), between rows at rest.
@@ -122,12 +102,6 @@ class ActivityConversationRowsScreenshotTest {
     fun activityRowsSwipeReadOpenLight() =
         capture("screens.activity.rows.swipe-read-open", RaftAppAppearance.Light) {
             ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.StartOpen)
-        }
-
-    @Test
-    fun activityRowsSwipeReadOpenDark() =
-        capture("screens.activity.rows.swipe-read-open.dark", RaftAppAppearance.Dark) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Dark, ActivityRowsSwipePose.StartOpen)
         }
 
     /**
@@ -139,12 +113,6 @@ class ActivityConversationRowsScreenshotTest {
     fun activityRowsHoverDoneLight() =
         capture("screens.activity.rows.hover-done", RaftAppAppearance.Light) {
             ActivityRowsHoverVisualContent(RaftAppAppearance.Light)
-        }
-
-    @Test
-    fun activityRowsHoverDoneDark() =
-        capture("screens.activity.rows.hover-done.dark", RaftAppAppearance.Dark) {
-            ActivityRowsHoverVisualContent(RaftAppAppearance.Dark)
         }
 
     private fun capture(

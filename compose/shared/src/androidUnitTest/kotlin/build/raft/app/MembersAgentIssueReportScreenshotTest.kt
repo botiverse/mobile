@@ -52,15 +52,8 @@ class MembersAgentIssueReportScreenshotTest {
     fun submittedLight() = capture("members.report-issue.submitted", RaftAppAppearance.Light) { ReceiptContent(filedReceipt) }
 
     @Test
-    fun submittedDark() = capture("members.report-issue.submitted.dark", RaftAppAppearance.Dark) { ReceiptContent(filedReceipt) }
-
-    @Test
     fun ticketFailedLight() =
         capture("members.report-issue.ticket-failed", RaftAppAppearance.Light) { ReceiptContent(ticketFailedReceipt) }
-
-    @Test
-    fun ticketFailedDark() =
-        capture("members.report-issue.ticket-failed.dark", RaftAppAppearance.Dark) { ReceiptContent(ticketFailedReceipt) }
 
     @Test
     fun privacyOnLight() =

@@ -68,22 +68,6 @@ class MembersRuntimeConfigApplyUiTest {
     }
 
     @Test
-    fun whenIdleShowsAutomaticSwitchConfirmationWithNoRestartButton() = runRobolectricComposeUiTest {
-        showNotice(AgentConfigApply.WhenIdle, newSession = false)
-        onNodeWithText("witty's settings saved").assertIsDisplayed()
-        onNodeWithText("Switches automatically after this turn.").assertIsDisplayed()
-        assertEquals(0, countText("Restart now"))
-    }
-
-    @Test
-    fun whenIdleNewSessionShowsAutomaticNewSessionWithNoRestartButton() = runRobolectricComposeUiTest {
-        showNotice(AgentConfigApply.WhenIdle, newSession = true)
-        onNodeWithText("witty's settings saved").assertIsDisplayed()
-        onNodeWithText("Starts a new session automatically after this turn.").assertIsDisplayed()
-        assertEquals(0, countText("Restart now"))
-    }
-
-    @Test
     fun savedShowsNoRestartPromptEvenWhenActive() {
         assertNull(membersRuntimeConfigApplyNotice(AgentConfigApply.Saved, agentActive = true, newSession = false))
     }

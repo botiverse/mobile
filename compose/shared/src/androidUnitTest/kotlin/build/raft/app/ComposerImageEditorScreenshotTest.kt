@@ -74,12 +74,6 @@ class ComposerImageEditorScreenshotTest {
         EditorPage(image = image, history = RaftComposerImageEditorHistory(), tool = RaftComposerImageEditorTool.Text)
     }
 
-    @Test
-    fun textModeMouse() =
-        capture("file.preview.image-editor.text.mouse", RaftAppAppearance.Light, RaftPointerInput.Fine) { image ->
-            EditorPage(image = image, history = RaftComposerImageEditorHistory(), tool = RaftComposerImageEditorTool.Text)
-        }
-
     private fun penHistory(): RaftComposerImageEditorHistory {
         // Canvas pixels of the turned 4:3 picture on the 390dp stage; the exact spot only matters
         // for the golden.

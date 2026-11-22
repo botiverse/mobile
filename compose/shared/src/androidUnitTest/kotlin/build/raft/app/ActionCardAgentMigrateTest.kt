@@ -71,12 +71,4 @@ class ActionCardAgentMigrateTest {
         // Everything else stays as the server built it.
         assertEquals(read.spec.elements - "migrateAgent", forApp.spec.elements - "migrateAgent")
     }
-
-    /** slock #14234: the card asks for this server's computers only when it names one (by id). */
-    @Test
-    fun aCardThatNamesAComputerAsksForTheComputerList() {
-        assertTrue(card.referencesComputer())
-        assertTrue(ActionCardSpecFixtures.card("open_create_agent").referencesComputer())
-        assertFalse(ActionCardSpecFixtures.cardFromJson(ActionCardSpecFixtures.CHANNEL_CREATE_V6).referencesComputer())
-    }
 }

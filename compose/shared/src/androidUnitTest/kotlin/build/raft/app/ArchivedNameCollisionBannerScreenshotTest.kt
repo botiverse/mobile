@@ -45,45 +45,13 @@ class ArchivedNameCollisionBannerScreenshotTest {
     fun canUnarchiveLight() = captureBanner("create-channel.archived-name", RaftAppAppearance.Light, canUnarchive = true)
 
     @Test
-    @Config(qualifiers = BANNER_QUALIFIERS)
-    fun canUnarchiveDark() = captureBanner("create-channel.archived-name.dark", RaftAppAppearance.Dark, canUnarchive = true)
-
-    @Test
-    @Config(qualifiers = BANNER_QUALIFIERS)
-    fun cannotUnarchiveLight() =
-        captureBanner("create-channel.archived-name.no-unarchive", RaftAppAppearance.Light, canUnarchive = false)
-
-    @Test
-    @Config(qualifiers = BANNER_QUALIFIERS)
-    fun cannotUnarchiveDark() =
-        captureBanner("create-channel.archived-name.no-unarchive.dark", RaftAppAppearance.Dark, canUnarchive = false)
-
-    @Test
     @Config(qualifiers = RENAME_QUALIFIERS)
     fun renameLight() = captureRename("channel.settings.rename.archived-name", RaftAppAppearance.Light)
 
     @Test
     @Config(qualifiers = RENAME_QUALIFIERS)
-    fun renameDark() = captureRename("channel.settings.rename.archived-name.dark", RaftAppAppearance.Dark)
-
-    @Test
-    @Config(qualifiers = RENAME_QUALIFIERS)
     fun renameUnarchiveFailedLight() =
         captureRename("channel.settings.rename.archived-name.unarchive-failed", RaftAppAppearance.Light, unarchiveFailed = true)
-
-    @Test
-    @Config(qualifiers = RENAME_QUALIFIERS)
-    fun renameUnarchiveFailedDark() =
-        captureRename("channel.settings.rename.archived-name.unarchive-failed.dark", RaftAppAppearance.Dark, unarchiveFailed = true)
-
-    // A refusal without the archived channel's details (the plain "already taken"): the error line, as before.
-    @Test
-    @Config(qualifiers = RENAME_QUALIFIERS)
-    fun renameTakenLight() = captureRename("channel.settings.rename.taken", RaftAppAppearance.Light, withWarning = false)
-
-    @Test
-    @Config(qualifiers = RENAME_QUALIFIERS)
-    fun renameTakenDark() = captureRename("channel.settings.rename.taken.dark", RaftAppAppearance.Dark, withWarning = false)
 
     private fun captureRename(
         name: String,

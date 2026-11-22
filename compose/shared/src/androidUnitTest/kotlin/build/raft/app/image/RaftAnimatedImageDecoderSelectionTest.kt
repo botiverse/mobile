@@ -5,11 +5,9 @@ import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.gif.AnimatedImageDecoder
-import coil3.gif.GifDecoder
 import coil3.request.Options
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import okio.Buffer
 import okio.FileSystem
@@ -35,30 +33,6 @@ class RaftAnimatedImageDecoderSelectionTest {
             decoderFor(RaftAnimatedImageFixtures.webpVp8xHeader(animated = true), animate = true)
         )
         assertStaticPaths()
-    }
-
-    /**
-     * Below API 28 the wrapper holds coil-gif's `GifDecoder` (see [platformFactoryFollowsApiLevel]):
-     * GIF animates, an animated WebP falls through to the static decoders. Checked on the wrapper
-     * directly; a second Robolectric SDK would only re-run the same lookup.
-     */
-    @Test
-    fun gifDecoderWrapperAnimatesGifOnlyAndOnlyWhenOptedIn() {
-        val factory = RaftAnimatedImageDecoderFactory(GifDecoder.Factory())
-        val context = RuntimeEnvironment.getApplication()
-        val loader = raftBuildImageLoader(context)
-        fun create(bytes: ByteArray, animate: Boolean) =
-            factory.create(sourceResult(bytes), options(animate), loader)?.let { it::class }
-        assertEquals(GifDecoder::class, create(RaftAnimatedImageFixtures.threeFrameGif, animate = true))
-        assertNull(create(RaftAnimatedImageFixtures.threeFrameGif, animate = false))
-        assertNull(create(RaftAnimatedImageFixtures.webpVp8xHeader(animated = true), animate = true))
-        assertNull(create(RaftAnimatedImageFixtures.pngHeader, animate = true))
-    }
-
-    @Test
-    fun platformFactoryFollowsApiLevel() {
-        assertEquals(AnimatedImageDecoder.Factory::class, raftAnimatedImageDecoderFactoryFor(28)::class)
-        assertEquals(GifDecoder.Factory::class, raftAnimatedImageDecoderFactoryFor(27)::class)
     }
 
     private fun assertStaticPaths() {

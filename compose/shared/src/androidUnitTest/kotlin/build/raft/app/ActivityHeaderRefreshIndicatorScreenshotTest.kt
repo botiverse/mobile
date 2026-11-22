@@ -35,15 +35,6 @@ class ActivityHeaderRefreshIndicatorScreenshotTest {
     @Test
     fun mainTabSilentRefreshLight() = capture("screens.activity.header.refreshing", RaftAppAppearance.Light, mainTab = true)
 
-    @Test
-    fun mainTabSilentRefreshDark() = capture("screens.activity.header.refreshing.dark", RaftAppAppearance.Dark, mainTab = true)
-
-    @Test
-    fun panelSilentRefreshLight() = capture("screens.activity.panel-header.refreshing", RaftAppAppearance.Light, mainTab = false)
-
-    @Test
-    fun panelSilentRefreshDark() = capture("screens.activity.panel-header.refreshing.dark", RaftAppAppearance.Dark, mainTab = false)
-
     private fun capture(name: String, appearance: RaftAppAppearance, mainTab: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

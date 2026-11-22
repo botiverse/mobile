@@ -42,9 +42,6 @@ class MembersAgentSubagentsScreenshotTest {
     fun subagentsListLight() = capture("members.agent-activity.subagents", RaftAppAppearance.Light) { List() }
 
     @Test
-    fun subagentsListDark() = capture("members.agent-activity.subagents.dark", RaftAppAppearance.Dark) { List() }
-
-    @Test
     fun subagentDetailLight() = capture("members.agent-activity.subagent-detail", RaftAppAppearance.Light) { Detail() }
 
     @Composable

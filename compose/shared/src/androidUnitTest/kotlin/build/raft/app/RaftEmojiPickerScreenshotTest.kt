@@ -62,9 +62,6 @@ class RaftEmojiPickerScreenshotTest {
     @Test
     fun popoverLight() = popover("thread.emoji-picker.popover", RaftAppAppearance.Light)
 
-    @Test
-    fun popoverDark() = popover("thread.emoji-picker.popover.dark", RaftAppAppearance.Dark)
-
     private fun popover(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             Page {

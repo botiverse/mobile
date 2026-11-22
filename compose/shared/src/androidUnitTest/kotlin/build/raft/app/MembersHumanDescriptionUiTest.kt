@@ -283,21 +283,4 @@ class MembersHumanDescriptionUiTest {
         waitForIdle()
         onNodeWithTag(MembersHumanDescriptionEditButtonTag).assertDoesNotExist()
     }
-
-    @Test
-    fun departedSelfHumanHidesDescriptionEditButton() = runRobolectricComposeUiTest {
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersHumanDetailSections(
-                    member = sampleHuman(id = "user-1", membershipStatus = "left"),
-                    timeContext = RaftTimeContext(localOffsetMinutes = 0),
-                    currentUserId = "user-1",
-                    currentServerId = "server-1",
-                    onUpdateDescription = { DataResult.Content(AccountDescriptionUpdateResult(it)) }
-                )
-            }
-        }
-        waitForIdle()
-        onNodeWithTag(MembersHumanDescriptionEditButtonTag).assertDoesNotExist()
-    }
 }

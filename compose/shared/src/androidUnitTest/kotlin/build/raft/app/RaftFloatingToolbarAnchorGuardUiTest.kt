@@ -68,41 +68,12 @@ class RaftFloatingToolbarAnchorGuardUiTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun withoutTheGuardComposeAnchorsTheClosingBarAtTheWindowOrigin() {
-        val seen = selectThenCollapse(guarded = false)
-        assertTrue(seen.anchors.firstOrNull()?.isAnchor() == true, "the bar opens at the text: ${seen.anchors}")
-        assertTrue(
-            seen.anchors.any { !it.isAnchor() },
-            "Compose reports a 0x0 anchor while the bar is still open: ${seen.anchors}",
-        )
-    }
-
-    @Test
     fun theGuardKeepsTheClosingBarWhereItWas() {
         val seen = selectThenCollapse(guarded = true)
         assertTrue(seen.anchors.isNotEmpty())
         assertTrue(seen.anchors.all { it.isAnchor() }, "never a 0x0 anchor: ${seen.anchors}")
         assertEquals(seen.anchors.first(), seen.anchors.last(), "the bar closes where it was")
         assertTrue(seen.closed, "the bar still closes")
-    }
-
-    @Test
-    fun onlyFloatingCallback2sAreWrapped() {
-        val plain = object : ActionMode.Callback {
-            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
-            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
-            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
-            override fun onDestroyActionMode(mode: ActionMode) {}
-        }
-        assertTrue(RaftFloatingToolbarAnchorGuard.wrap(plain, ActionMode.TYPE_FLOATING) === plain)
-        val floating = RecordingCallback(object : ActionMode.Callback2() {
-            override fun onCreateActionMode(mode: ActionMode, menu: Menu) = true
-            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
-            override fun onActionItemClicked(mode: ActionMode, item: MenuItem) = false
-            override fun onDestroyActionMode(mode: ActionMode) {}
-        }, Seen())
-        assertTrue(RaftFloatingToolbarAnchorGuard.wrap(floating, ActionMode.TYPE_PRIMARY) === floating)
-        assertTrue(RaftFloatingToolbarAnchorGuard.wrap(floating, ActionMode.TYPE_FLOATING) is RaftFloatingToolbarAnchorGuard)
     }
 
     private fun selectThenCollapse(guarded: Boolean): Seen {

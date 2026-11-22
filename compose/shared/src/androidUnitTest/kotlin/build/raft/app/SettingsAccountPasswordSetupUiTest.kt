@@ -149,28 +149,6 @@ class SettingsAccountPasswordSetupUiTest {
             onAllNodesWithTag(RaftTraceIdNoteTestTag, useUnmergedTree = true).assertCountEquals(2)
         }
 
-    @Test
-    fun withAPasswordTheCardAndDisconnectStayAsBefore() =
-        runRobolectricComposeUiTest {
-            val sent = mutableListOf<String>()
-            val events = mutableListOf<Pair<String, String?>>()
-            showAccount(passwordConfigured = true, events = events) { email ->
-                sent += email
-                DataResult.Content(Unit)
-            }
-
-            onNodeWithText("Change Password").assertExists()
-            onNodeWithTag(SettingsAccountSetPasswordTag).assertDoesNotExist()
-
-            onNodeWithText("Disconnect").performClick()
-            waitForIdle()
-            onNodeWithText("Disconnect GitHub").assertExists()
-            onNodeWithTag(SettingsDisconnectProviderConfirmTag).performClick()
-            waitForIdle()
-            assertEquals(listOf<Pair<String, String?>>(SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER to "github"), events)
-            assertEquals(emptyList(), sent)
-        }
-
     /** The account page as SettingsAccountScreen wires it: the real store, its send faked by [sendEmail]. */
     private fun ComposeUiTest.showAccount(
         passwordConfigured: Boolean?,

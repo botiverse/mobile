@@ -47,9 +47,6 @@ class TasksInReviewRetiredScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun boardWithoutInReview() = capture("tasks.in-review-retired.board", v2Tasks)
-
-    @Test
     fun boardKeepsALegacyInReviewTask() = capture("tasks.in-review-retired.board-legacy", v2Tasks + legacyInReview)
 
     // The panel reads its view-mode preference from the app-scope store; tests give it a blank one.

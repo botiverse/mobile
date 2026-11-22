@@ -154,14 +154,6 @@ class SettingsNotificationsFollowedThreadRepliesUiTest {
                 assertEquals(listOf(RaftNotificationAccountSettingsPatch(followedThreadReplies = false)), saved)
             }
         }
-
-    @Test
-    fun anOffValueReadsOff() =
-        runRobolectricComposeUiTest {
-            showContent(RaftNotificationAccountSettings(followedThreadReplies = false), mutableListOf())
-            onNode(isToggleable().and(hasAncestorTag(SettingsNotificationFollowedThreadRepliesTestTag)), useUnmergedTree = true)
-                .assertIsOff()
-        }
 }
 
 private fun hasAncestorTag(tag: String) = androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag(tag))

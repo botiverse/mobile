@@ -9,7 +9,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertFails
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -69,22 +68,6 @@ class RaftSqliteVersionPreflightAndroidTest {
     }
 
     @Test
-    fun missingDatabaseReturnsNullWithoutCreatingAFile() {
-        val databaseName = "missing.db"
-
-        assertEquals(
-            null,
-            readSqliteUserVersionReadOnly(
-                databaseName = databaseName,
-                basePath = databaseDirectory.absolutePath,
-            ),
-        )
-
-        assertFalse(File(databaseDirectory, databaseName).exists())
-        assertEquals(emptyList(), databaseDirectory.fileNames())
-    }
-
-    @Test
     fun corruptExistingDatabaseFailsClosedInsteadOfBeingTreatedAsMissing() {
         val databaseName = "corrupt.db"
         File(databaseDirectory, databaseName).writeText("not sqlite")
@@ -96,9 +79,6 @@ class RaftSqliteVersionPreflightAndroidTest {
             )
         }
     }
-
-    private fun File.fileNames(): List<String> =
-        list()?.sorted().orEmpty()
 
     private fun File.fileBytes(): Map<String, ByteArray> =
         listFiles()

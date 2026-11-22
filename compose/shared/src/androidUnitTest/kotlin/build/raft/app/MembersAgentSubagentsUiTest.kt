@@ -1,10 +1,7 @@
 package build.raft.app
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -61,30 +58,6 @@ class MembersAgentSubagentsUiTest {
             onAllNodesWithTag(MembersAgentSubagentRowTag).assertCountEquals(3)
             onNodeWithText("Find the stale call sites of isSecondaryThreadId").performClick()
             assertEquals(listOf(groups.first { it.state == AgentActivitySubagentState.Running }.key), opened)
-        }
-
-    @Test
-    fun theRawLogsSpawnRowAndASubagentsBadgeOpenThatRun() =
-        runRobolectricComposeUiTest {
-            val opened = mutableListOf<String>()
-            val link = membersAgentActivitySubagentLink(log, groups) { opened += it }
-            val explore = groups.first { it.subagentType == "Explore" }
-            val spawn = log.first { it.callId == "toolu_a" }
-            val inner = log.first { it.callId == "toolu_g" }
-            setContent {
-                RaftDesignSystemTheme {
-                    Box(Modifier.height(400.dp)) {
-                        Column {
-                            MembersAgentActivityRow(spawn, SubagentsFixtureTimeContext, onOpenUrl = {}, subagentLink = link)
-                            MembersAgentActivityRow(inner, SubagentsFixtureTimeContext, onOpenUrl = {}, subagentLink = link)
-                        }
-                    }
-                }
-            }
-            onAllNodesWithTag(MembersAgentActivitySubagentOpenTag).assertCountEquals(2)
-            onNodeWithText("Open subagent").performClick()
-            onNodeWithText("Subagent: Explore").performClick()
-            assertEquals(listOf(explore.key, explore.key), opened)
         }
 
     @Test

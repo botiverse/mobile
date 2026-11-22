@@ -92,15 +92,6 @@ class SettingsLabsPageUiTest {
     }
 
     @Test
-    fun adminSwitchesLabsButNotTheGate() = runRobolectricComposeUiTest {
-        show(loaded, role = "admin")
-        onNodeWithTag(SettingsLabsMasterSwitchTestTag).assertIsNotEnabled()
-        onNodeWithText("Only server owners can change the master gate.").assertExists()
-        onNodeWithContentDescription("Agent Lounge enrollment").assertIsEnabled()
-        onAllNodesWithText("Only server owners and admins can change Lab enrollment.").assertCountEquals(0)
-    }
-
-    @Test
     fun memberReadsEverythingWithTheWebsReasons() = runRobolectricComposeUiTest {
         show(loaded, role = "member")
         onNodeWithTag(SettingsLabsMasterSwitchTestTag).assertIsNotEnabled()

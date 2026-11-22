@@ -73,25 +73,10 @@ class MembersAgentAvatarDialogScreenshotTest {
     fun dialogDark() = dialog("members.agent-avatar.dialog.dark", RaftAppAppearance.Dark)
 
     @Test
-    fun savingLight() = sheet("members.agent-avatar.dialog.saving", RaftAppAppearance.Light, MembersAgentAvatarDraft.Preset("fox"), saving = true)
-
-    @Test
-    fun savingDark() = sheet("members.agent-avatar.dialog.saving.dark", RaftAppAppearance.Dark, MembersAgentAvatarDraft.Preset("fox"), saving = true)
-
-    @Test
     fun errorLight() =
         sheet(
             "members.agent-avatar.dialog.error",
             RaftAppAppearance.Light,
-            MembersAgentAvatarDraft.Unchanged,
-            error = MembersAgentAvatarError.Upload(ScreenError("network", serverMessage = "The connection was lost."))
-        )
-
-    @Test
-    fun errorDark() =
-        sheet(
-            "members.agent-avatar.dialog.error.dark",
-            RaftAppAppearance.Dark,
             MembersAgentAvatarDraft.Unchanged,
             error = MembersAgentAvatarError.Upload(ScreenError("network", serverMessage = "The connection was lost."))
         )

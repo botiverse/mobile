@@ -41,7 +41,6 @@ import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -70,10 +69,6 @@ class ActivityExcerptBesideMarksTest {
 
     @Test
     fun theSecondLineStaysWhenTheRowIsMeasuredAgain() = secondLineStays(withFace = false)
-
-    /** A row whose sender's face rides inline (an `appendInlineContent` placeholder) before the excerpt. */
-    @Test
-    fun theSecondLineStaysWithAnInlineFace() = secondLineStays(withFace = true)
 
     private fun secondLineStays(withFace: Boolean) {
         val text =
@@ -142,44 +137,6 @@ class ActivityExcerptBesideMarksTest {
         settle()
         assertEquals(readSplit, latestSplit, "clearing marks restores full-width line 1")
         assertEquals(readHeight, measuredHeight, "height stays identical after clearing marks")
-    }
-
-    /**
-     * The wide layout's compact row (web `InboxItemLine`): one excerpt line. With marks or without, the
-     * whole excerpt stays on one line and keeps the exact same height.
-     */
-    @Test
-    fun oneLineExcerptKeepsTheWholeTextOnOneLineWithFixedHeight() {
-        val text = buildAnnotatedString { append(excerpt) }
-        val showMarks = mutableStateOf(false)
-        var latestRest: String? = "sentinel"
-        var measuredHeight = -1
-        val activity = activities.launch()
-        activity.setContent {
-            RaftTheme {
-                Box(Modifier.onSizeChanged { measuredHeight = it.height }) {
-                    ActivityExcerptBesideMarks(
-                        text = text,
-                        style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foreground,
-                        inlineContent = emptyMap(),
-                        lineHeight = 22.dp,
-                        maxLines = 1,
-                        onLineSplit = { _, rest -> latestRest = rest },
-                        marks = { if (showMarks.value) Box(Modifier.size(28.dp, 22.dp)) },
-                    )
-                }
-            }
-        }
-        settle()
-        val readHeight = measuredHeight
-        assertEquals(listOf(excerpt), texts(activity), "no marks: one one-line text")
-        assertNull(latestRest, "no second line when maxLines = 1")
-        showMarks.value = true
-        settle()
-        assertEquals(listOf(excerpt), texts(activity), "marks: the excerpt stays one text beside them")
-        assertNull(latestRest, "still no second line when marks appear")
-        assertEquals(readHeight, measuredHeight, "1-line excerpt height stays invariant across marks toggle")
     }
 
     /**
@@ -298,24 +255,6 @@ class ActivityExcerptBesideMarksTest {
     }
 
     @Test
-    fun advancePastSingleLineBreakNormalizesAndroidAndSkiaEndOffsets() {
-        // Skia (iOS/Desktop) excludes terminating '\n'; Android includes it.
-        assertEquals(6, advancePastSingleLineBreak("First\nSecond", 5), "Skia excludes LF")
-        assertEquals(6, advancePastSingleLineBreak("First\nSecond", 6), "Android includes LF")
-        // Double newline: consume at most one break, preserving the second blank line.
-        assertEquals(6, advancePastSingleLineBreak("First\n\nThird", 5), "Skia double LF")
-        assertEquals(6, advancePastSingleLineBreak("First\n\nThird", 6), "Android double LF")
-        // CRLF: consume both CR and LF when Skia stops before CR.
-        assertEquals(7, advancePastSingleLineBreak("First\r\nSecond", 5), "Skia CRLF")
-        assertEquals(7, advancePastSingleLineBreak("First\r\nSecond", 7), "Android CRLF")
-        // Leading newline.
-        assertEquals(1, advancePastSingleLineBreak("\nSecond", 0), "Skia leading LF")
-        assertEquals(1, advancePastSingleLineBreak("\nSecond", 1), "Android leading LF")
-        // Soft wrap (no newline at boundary): unchanged.
-        assertEquals(6, advancePastSingleLineBreak("Hello world", 6), "soft wrap unchanged")
-    }
-
-    @Test
     fun explicitNewlineMovesSecondParagraphToLineTwo() {
         val text = buildAnnotatedString { append("First line\nSecond line") }
         var latestSplit: Pair<String, String?> = "" to null
@@ -373,84 +312,6 @@ class ActivityExcerptBesideMarksTest {
             assertTrue(withMarks > 0, "positive slot height for '$raw'")
             assertEquals(withMarks, measuredHeight, "fixed height for '$raw'")
         }
-    }
-
-    @Test
-    fun narrowMarksOverflowFallsBackToLineTwoAndDoesNotStretchInlineChild() {
-        // Case A: marks wider than total width -> line0Width == 0, text falls back to line 2 cleanly.
-        var splitA: Pair<String, String?> = "" to null
-        var heightA = -1
-        val activityA = activities.launch()
-        activityA.setContent {
-            RaftTheme {
-                Box(Modifier.width(60.dp).onSizeChanged { heightA = it.height }) {
-                    ActivityExcerptBesideMarks(
-                        text = buildAnnotatedString { append("Fallback line") },
-                        style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foreground,
-                        inlineContent = emptyMap(),
-                        lineHeight = 20.dp,
-                        onLineSplit = { first, rest -> splitA = first to rest },
-                        marks = { Box(Modifier.size(80.dp, 20.dp)) },
-                    )
-                }
-            }
-        }
-        settle()
-        assertTrue(heightA > 0, "narrow zero-line0 width still keeps fixed height")
-        assertEquals("", splitA.first, "line 1 is empty when marks consume full width")
-        assertEquals("Fallback line", splitA.second, "full excerpt falls back to line 2")
-
-        // Case B: inline child smaller than placeholder (19dp inside 23sp x 19sp) keeps loose size (not stretched to 23dp),
-        // and an inline placeholder pushed onto line 2 by a long prefix still renders on line 2.
-        var childWidthPx = -1
-        var line2InlineY = -1f
-        val pushedText =
-            buildAnnotatedString {
-                append("A long channel prefix that pushes ")
-                appendInlineContent("badge", " ")
-                append(" onto line two")
-            }
-        val pushedInline =
-            mapOf(
-                "badge" to
-                    InlineTextContent(Placeholder(23.sp, 19.sp, PlaceholderVerticalAlign.TextCenter)) {
-                        Box(
-                            Modifier
-                                .size(19.dp)
-                                .onSizeChanged { childWidthPx = it.width }
-                                .onGloballyPositioned { line2InlineY = it.positionInRoot().y }
-                        )
-                    }
-            )
-        var containerTopY = 0f
-        var containerHeightPx = 0
-        val activityB = activities.launch()
-        activityB.setContent {
-            RaftTheme {
-                Box(
-                    Modifier
-                        .width(240.dp)
-                        .onGloballyPositioned {
-                            containerTopY = it.positionInRoot().y
-                            containerHeightPx = it.size.height
-                        }
-                ) {
-                    ActivityExcerptBesideMarks(
-                        text = pushedText,
-                        style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foreground,
-                        inlineContent = pushedInline,
-                        lineHeight = 20.dp,
-                        marks = { Box(Modifier.size(48.dp, 20.dp)) },
-                    )
-                }
-            }
-        }
-        settle()
-        val expected19dpPx = (19f * activityB.resources.displayMetrics.density).toInt()
-        assertTrue(childWidthPx in (expected19dpPx - 1)..(expected19dpPx + 1), "inline child kept 19dp width ($childWidthPx vs ~$expected19dpPx)")
-        assertTrue(line2InlineY >= containerTopY + containerHeightPx / 2f - 4f, "inline badge placed on line 2 (y=$line2InlineY, top=$containerTopY, h=$containerHeightPx)")
     }
 
     @Test

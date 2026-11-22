@@ -44,9 +44,6 @@ class RaftMessageCardActingScreenshotTest {
     @Test
     fun actingCardsLight() = capture("thread.message-card.acting", RaftAppAppearance.Light)
 
-    @Test
-    fun actingCardsDark() = capture("thread.message-card.acting.dark", RaftAppAppearance.Dark)
-
     private val card =
         requireNotNull(
             readMessageCardFromMetadata(

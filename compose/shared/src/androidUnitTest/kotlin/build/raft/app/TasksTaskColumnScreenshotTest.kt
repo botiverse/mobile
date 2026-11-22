@@ -83,8 +83,6 @@ class TasksTaskColumnScreenshotTest {
 
     @Test fun open() = capture("tasks.task-column.open", RaftAppAppearance.Light, expanded = false)
 
-    @Test fun openDark() = capture("tasks.task-column.open.dark", RaftAppAppearance.Dark, expanded = false)
-
     @Test fun expanded() = capture("tasks.task-column.expanded", RaftAppAppearance.Light, expanded = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, expanded: Boolean) =

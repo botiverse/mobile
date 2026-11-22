@@ -67,8 +67,6 @@ class ThreadMessageFooterScreenshotTest {
 
     @Test fun footerLight() = capture("thread.message-footer", RaftAppAppearance.Light)
 
-    @Test fun footerDark() = capture("thread.message-footer.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = livePager

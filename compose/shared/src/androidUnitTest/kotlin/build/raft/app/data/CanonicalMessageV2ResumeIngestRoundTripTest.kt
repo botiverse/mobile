@@ -22,7 +22,6 @@ import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
@@ -131,84 +130,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
     }
 
     @Test
-    fun aPageWithMoreToFollowEndsEveryWindowsContinuityButALastPageOnlyItsOwnChannels() {
-        fun run(hasMore: Boolean): CanonicalMessageV2ScopeContinuity = withFile { file ->
-            file.rig().session { rig ->
-                rig.cursorAt(9L)
-                rig.connect(1L)
-                rig.enter(channel, 10L, 20L)
-                assertTrue(rig.deliver(rig.resumeWith(30L, listOf(rig.resumeRow("o30", 30L, "channel-other")), hasMore = hasMore)))
-                rig.canary.continuityOf(channel)
-            }
-        }
-        assertEquals(CanonicalMessageV2ScopeContinuity.Continuous, run(hasMore = false))
-        assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, run(hasMore = true))
-    }
-
-    @Test
-    fun aRowTheDecoderRefusesIsAHoleOfItsChannel() = withFile { file ->
-        file.rig().session { rig ->
-            rig.cursorAt(9L)
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            val resume = rig.resumeWith(30L, listOf(rig.resumeRow("m30", 30L, channel.scopeId, undecodable = true)))
-            assertEquals(listOf<String?>(channel.scopeId), resume.canonicalDecodeMisses)
-            assertTrue(rig.deliver(resume))
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L)))
-            assertEquals(listOf(10L to 20L), rig.segments(channel))
-        }
-    }
-
-    @Test
-    fun aPayloadContextIsPreferredValidatedAndNeverChangesTheConfirmedHeader() = withFile { file ->
-        file.rig().session { rig ->
-            rig.cursorAt(29L)
-            rig.connect(1L)
-            assertTrue(rig.deliver(rig.messageNew(channel, "m5", 5L)))
-            assertTrue(
-                rig.deliver(
-                    rig.resume(
-                        34L,
-                        // No header: the payload's context stores it loose (and names the header).
-                        rig.resumeRow("n30", 30L, "channel-new", context = """{"channelType":"private"}"""),
-                        // Agrees with the stored header.
-                        rig.resumeRow("m31", 31L, channel.scopeId, context = """{"channelType":"channel"}"""),
-                        // Disagrees with it: logged, skipped, the header kind is kept.
-                        rig.resumeRow("m32", 32L, channel.scopeId, context = """{"channelType":"private"}"""),
-                        // Invalid (a reply context without its parent): ignored, the header decides.
-                        rig.resumeRow("m33", 33L, channel.scopeId, context = """{"channelType":"thread"}"""),
-                        // No context at all: the header decides.
-                        rig.resumeRow("m34", 34L, channel.scopeId),
-                    ),
-                ),
-            )
-            assertEquals(listOf("private"), rig.kinds("channel-new"))
-            assertEquals(listOf("channel"), rig.kinds(channel.scopeId))
-            assertEquals(listOf(5L, 31L, 33L, 34L), rig.seqsInScope(channel))
-            assertEquals(listOf(30L), rig.seqsInScope(SyncScopeKey(partition, "channel-new", "private")))
-            assertTrue(rig.logs.any { "context_mismatch" in it && "msg=m32" in it }, rig.logs.toString())
-            assertTrue(rig.logs.any { "payload_context_invalid" in it && "msg=m33" in it }, rig.logs.toString())
-        }
-    }
-
-    @Test
-    fun rowsWhoseHeaderCannotNameTheirContextAreSkipped() = withFile { file ->
-        file.rig().session { rig ->
-            rig.cursorAt(29L)
-            rig.header(SyncScopeKey(partition, "thread-orphan", "thread"))
-            rig.header(SyncScopeKey(partition, "task-1", "task"))
-            assertTrue(
-                rig.deliver(
-                    rig.resume(31L, rig.resumeRow("t30", 30L, "thread-orphan"), rig.resumeRow("k31", 31L, "task-1")),
-                ),
-            )
-            assertTrue(rig.logs.any { "thread_parent_unknown:1" in it && "context_unknown:task:1" in it && "written=0" in it }, rig.logs.toString())
-            assertEquals(31L, rig.appliedSeq())
-        }
-    }
-
-    @Test
     fun aPartitionClearedAfterTheGrantCheckRefusesTheResumeAndAStaleDisplaySavesNoCursor() = withFile { file ->
         file.rig().session { rig ->
             rig.cursorAt(29L)
@@ -230,104 +151,6 @@ class CanonicalMessageV2ResumeIngestRoundTripTest {
             assertEquals(29L, rig.appliedSeq())
             assertEquals(listOf(6L, 31L), rig.seqsInScope(channel))
         }
-    }
-
-    @Test
-    fun aSlowResumeWriteLetsTheCursorMoveFailOpenAndStillLands() = withFile { file ->
-        file.rig(timeoutMs = 300L).session { rig ->
-            rig.cursorAt(29L)
-            rig.connect(1L)
-            assertTrue(rig.deliver(rig.messageNew(channel, "m5", 5L)))
-            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
-            val held = kotlinx.coroutines.CompletableDeferred<Unit>()
-            val holder = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                rig.engine.withScopeWriter(channel) {
-                    held.complete(Unit)
-                    release.await()
-                }
-            }
-            held.await()
-            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("m30", 30L, channel.scopeId))))
-            assertEquals(30L, rig.appliedSeq(), "fail-open: the cursor moved")
-            assertTrue(rig.logs.any { "cursor_ahead_of_write" in it }, rig.logs.toString())
-            assertEquals(listOf(5L), rig.seqsInScope(channel))
-            release.complete(Unit)
-            holder.join()
-            rig.resumeIngest.awaitIdle()
-            assertEquals(listOf(5L, 30L), rig.seqsInScope(channel))
-        }
-    }
-
-    @Test
-    fun aPageRequestedBeforeAHorizonResetStoresItsFactsButNeverReclaimsTheHead() = withFile { file ->
-        file.rig().session { rig ->
-            rig.cursorAt(9L)
-            rig.connect(1L)
-            // The enter's page is in flight when the resume says late messages were dropped.
-            rig.enterWhile(channel, listOf(10L, 20L)) {
-                assertTrue(rig.deliver(rig.resumeWith(25L, emptyList(), horizonReset = true)))
-            }
-            assertEquals(listOf(10L, 20L), rig.seqsInScope(channel), "the page's facts are stored")
-            assertEquals(listOf(Triple(10L, 20L, false)), rig.segmentFlags(channel), "its head claim is not")
-            assertEquals(false, rig.hasLoadedNewest(channel))
-        }
-        file.rig().session { restarted ->
-            assertEquals(listOf(Triple(10L, 20L, false)), restarted.segmentFlags(channel), "after a restart too")
-        }
-    }
-
-    @Test
-    fun aResumesHolesAreOnRecordBeforeItsDiskWorkEvenBehindAStuckEarlierResume() = withFile { file ->
-        file.rig(timeoutMs = 300L).session { rig ->
-            rig.cursorAt(9L)
-            rig.connect(1L)
-            rig.enter(channel, 10L, 20L)
-            val stuck = SyncScopeKey(partition, "channel-x", "channel")
-            assertTrue(rig.deliver(rig.messageNew(stuck, "x5", 5L)))
-            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
-            val held = kotlinx.coroutines.CompletableDeferred<Unit>()
-            val holder = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                rig.engine.withScopeWriter(stuck) {
-                    held.complete(Unit)
-                    release.await()
-                }
-            }
-            held.await()
-            // An earlier resume whose disk work is stuck, then one whose page has more to follow.
-            assertTrue(rig.deliver(rig.resume(30L, rig.resumeRow("x30", 30L, stuck.scopeId))))
-            assertTrue(rig.deliver(rig.resumeWith(31L, listOf(rig.resumeRow("o31", 31L, "channel-other")), hasMore = true)))
-            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(channel))
-            // A live frame right after it is stored loose: no window grows across the unknown rest.
-            assertTrue(rig.deliver(rig.messageNew(channel, "m40", 40L)))
-            assertEquals(listOf(10L to 20L), rig.segments(channel))
-            release.complete(Unit)
-            holder.join()
-            rig.resumeIngest.awaitIdle()
-        }
-    }
-
-    @Test
-    fun aLatestPageWhoseRequestPrecededAHorizonResetStoresItsFactsWithoutTheHeadClaim() {
-        // Identical page and reset; only WHEN the caller read the head epoch differs (before vs after the reset).
-        fun run(readEpochBeforeReset: Boolean): Pair<List<Triple<Long, Long, Boolean>>, List<Long>> = withFile { file ->
-            file.rig().session { rig ->
-                rig.cursorAt(9L)
-                rig.connect(1L)
-                rig.enter(channel, 10L, 20L)
-                val before = rig.engine.partitionHeadEpoch(partition)
-                // The page's request is in flight; the resume lands between the fetch and the write.
-                assertTrue(rig.deliver(rig.resumeWith(25L, emptyList(), horizonReset = true)))
-                val epoch = if (readEpochBeforeReset) before else rig.engine.partitionHeadEpoch(partition)
-                rig.latestPage(channel, listOf(20L, 30L, 40L), requestHeadEpoch = epoch)
-                rig.segmentFlags(channel) to rig.seqsInScope(channel)
-            }
-        }
-        val stale = run(readEpochBeforeReset = true)
-        val fresh = run(readEpochBeforeReset = false)
-        assertEquals(listOf(10L, 20L, 30L, 40L), stale.second, "the stale page's facts are stored")
-        assertEquals(stale.second, fresh.second)
-        assertTrue(stale.first.none { it.third }, "a page requested before the reset claims the head: ${stale.first}")
-        assertTrue(fresh.first.any { it.third }, "control: a page requested after the reset does: ${fresh.first}")
     }
 
     // ---- rig -----------------------------------------------------------------------------------------

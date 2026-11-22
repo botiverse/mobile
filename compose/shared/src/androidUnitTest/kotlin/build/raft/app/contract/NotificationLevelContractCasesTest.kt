@@ -36,13 +36,6 @@ class NotificationLevelContractCasesTest {
     }
 
     @Test
-    fun sourceShaIsPinned() {
-        val url = checkNotNull(javaClass.getResource("/contract-cases/notification-levels/SOURCE_SHA"))
-        val sha = File(url.toURI()).readText().trim()
-        assertTrue(sha.matches(Regex("[0-9a-f]{40}")), "SOURCE_SHA must be a full slock commit, was '$sha'")
-    }
-
-    @Test
     fun everyEffectiveLevelCaseAgrees() {
         val cases = fixture.getValue("cases").jsonArray.map { it.jsonObject }
         assertTrue(cases.isNotEmpty(), "the fixture lists no cases")

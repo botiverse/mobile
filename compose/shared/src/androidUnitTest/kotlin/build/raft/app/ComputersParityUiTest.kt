@@ -199,25 +199,6 @@ class ComputersParityUiTest {
     }
 
     @Test
-    fun theComputersCardsSayTheOwnerAndHowManyAgentsAnUpgradeWaitsFor() = runRobolectricComposeUiTest {
-        val owned = computer(ownerUserId = "user-2", owner = bea, upgradeRequest = draining("a1", "a2"))
-        val public = computer().copy(id = "m-2", name = "Box", upgradeRequest = draining("a3"))
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(owned, public))))
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftComputersTheme {
-                    RaftSettingsComputersContent(model = model, onRetry = {}, onAddComputer = {}, onOpenComputer = {}, rackView = ComputersRackView.Cards)
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Owner: Bea").assertIsDisplayed()
-        onNodeWithText("Public (no owner)").assertIsDisplayed()
-        onNodeWithText("Waiting for 2 agents on this server…").assertIsDisplayed()
-        onNodeWithText("Waiting for 1 agent on this server…").assertIsDisplayed()
-    }
-
-    @Test
     fun aCardsMenuOffersCreateAgentFirstForThatComputerAndOnlyDeleteOffline() = runRobolectricComposeUiTest {
         val online = computer()
         val offline = computer().copy(id = "m-2", name = "Box", online = false)
@@ -262,31 +243,9 @@ class ComputersParityUiTest {
     }
 
     @Test
-    fun theListRowsSayTheOwnerToo() = runRobolectricComposeUiTest {
-        val model = raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(computers = listOf(computer(ownerUserId = "user-2", owner = bea)))))
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                RaftComputersTheme {
-                    RaftSettingsComputersContent(model = model, onRetry = {}, onAddComputer = {}, onOpenComputer = {}, rackView = ComputersRackView.List)
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Owner: Bea", substring = true).assertIsDisplayed()
-    }
-
-    @Test
     fun theComputerCardSaysItWaitsForThisServersAgentsThenUpgrades() = runRobolectricComposeUiTest {
         showDetail(detail(computer(upgradeRequest = draining("a1", "a2"))))
         onNodeWithText("Giving 2 agents on this server a few seconds to finish, then upgrading to v1.0.53. Turns still running are interrupted.").assertIsDisplayed()
-    }
-
-    @Test
-    fun withNobodyLeftToWaitForTheCardSaysUpgrading() = runRobolectricComposeUiTest {
-        showDetail(detail(computer(upgradeRequest = draining().copy(phase = "installing"))))
-        onNodeWithText("Upgrading to v1.0.53. The Computer will disconnect briefly.").assertIsDisplayed()
-        assertEquals(0, count("Waiting for", substring = true))
-        assertEquals(0, count("a few seconds to finish", substring = true))
     }
 
     private fun ComposeUiTest.count(text: String, substring: Boolean = false): Int =

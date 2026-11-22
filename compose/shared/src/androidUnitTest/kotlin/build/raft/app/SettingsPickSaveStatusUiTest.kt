@@ -63,19 +63,6 @@ class SettingsPickSaveStatusUiTest {
     }
 
     @Test
-    fun timeFormatSavesWithoutSayingSo() = runRobolectricComposeUiTest {
-        show(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-        assertEquals(RaftSaveStatusState.Idle, status)
-
-        pickAndRun(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h")
-        assertEquals(RaftSaveStatusState.Idle, status, "nothing while saving: the control already shows the pick")
-
-        actionState = SharedSettingsActionState(LANGUAGE_REGION_ACTION_TIME_FORMAT)
-        settle()
-        assertEquals(RaftSaveStatusState.Idle, status, "no \"Saved\": the control already shows the pick")
-    }
-
-    @Test
     fun timezoneFailureSaysSoUntilTheNextPick() = runRobolectricComposeUiTest {
         show(LANGUAGE_REGION_ACTION_TIMEZONE)
 

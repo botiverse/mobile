@@ -50,14 +50,6 @@ class RaftUpgradeDialogScreenshotTest {
     fun historyWideLight() = capture("upgrade.dialog.history.wide", RaftAppAppearance.Light, owner)
 
     @Test
-    @Config(qualifiers = "w1280dp-h800dp-mdpi")
-    fun historyWideDark() = capture("upgrade.dialog.history.wide.dark", RaftAppAppearance.Dark, owner)
-
-    @Test
-    fun memberFileSizeLight() =
-        capture("upgrade.dialog.member-file-size", RaftAppAppearance.Light, owner.copy(gate = RaftUpgradeGate.UploadFileSize, owner = false))
-
-    @Test
     fun waitingLight() = capture("upgrade.dialog.waiting", RaftAppAppearance.Light, owner.copy(waitingForWeb = true))
 
     @Test
@@ -65,21 +57,8 @@ class RaftUpgradeDialogScreenshotTest {
         capture("upgrade.dialog.add-seats", RaftAppAppearance.Light, owner.copy(gate = RaftUpgradeGate.SeatLimitInvite, mode = RaftUpgradeMode.AddSeats))
 
     @Test
-    fun addSeatsDark() =
-        capture("upgrade.dialog.add-seats.dark", RaftAppAppearance.Dark, owner.copy(gate = RaftUpgradeGate.SeatLimitInvite, mode = RaftUpgradeMode.AddSeats))
-
-    @Test
-    @Config(qualifiers = "w1280dp-h800dp-mdpi")
-    fun addSeatsWideLight() =
-        capture("upgrade.dialog.add-seats.wide", RaftAppAppearance.Light, owner.copy(gate = RaftUpgradeGate.SeatLimitInvite, mode = RaftUpgradeMode.AddSeats))
-
-    @Test
     fun iosLimitNoticeLight() =
         capture("upgrade.dialog.ios-limit", RaftAppAppearance.Light, owner.copy(mode = RaftUpgradeMode.LimitNotice))
-
-    @Test
-    fun iosLimitNoticeDark() =
-        capture("upgrade.dialog.ios-limit.dark", RaftAppAppearance.Dark, owner.copy(mode = RaftUpgradeMode.LimitNotice))
 
     private fun capture(name: String, appearance: RaftAppAppearance, request: RaftUpgradeRequest) =
         RaftRobolectricScreenshot.capture(

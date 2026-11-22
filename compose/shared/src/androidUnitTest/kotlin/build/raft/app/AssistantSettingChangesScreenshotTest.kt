@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -10,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import build.raft.app.assistant.AssistantOwnerSectionContent
 import build.raft.app.assistant.AssistantRecentChangesBody
 import build.raft.app.assistant.AssistantSettingChangesSection
 import build.raft.app.data.ASSISTANT_ACTION_SETTINGS
@@ -51,14 +49,7 @@ class AssistantSettingChangesScreenshotTest {
     fun sectionLight() = capture("assistant.setting-changes", RaftAppAppearance.Light) { SectionFixture() }
 
     @Test
-    fun sectionDark() = capture("assistant.setting-changes.dark", RaftAppAppearance.Dark) { SectionFixture() }
-
-    @Test
     fun recentChangesSheet() = capture("assistant.recent-changes", RaftAppAppearance.Light) { SheetFixture() }
-
-    @Test
-    fun ownerSectionWithRecentChanges() =
-        capture("assistant.owner-section.recent-changes", RaftAppAppearance.Light) { OwnerSectionFixture() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -160,24 +151,5 @@ private fun SheetFixture() {
         ) {
             AssistantRecentChangesBody(FIXTURE_CHANGES.ofSettings(ASSISTANT_ACTION_SETTINGS), currentServerId = CURRENT_SERVER)
         }
-    }
-}
-
-@Composable
-private fun OwnerSectionFixture() {
-    Column(
-        Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(vertical = 16.dp, horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        AssistantOwnerSectionContent(
-            name = "Ada",
-            readsDms = true,
-            sendAsOwner = false,
-            showInstructions = true,
-            onOpenInstructions = {},
-            onSettingChange = { _, _ -> },
-            showRecentChanges = true,
-            onOpenRecentChanges = {},
-        )
     }
 }

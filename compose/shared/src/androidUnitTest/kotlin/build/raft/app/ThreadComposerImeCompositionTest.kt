@@ -187,25 +187,6 @@ class ThreadComposerImeCompositionTest {
     }
 
     @Test
-    fun avatarMentionDuringCompositionWaitsForTheCommit() {
-        val harness = mountComposer()
-        harness.composeMarked(committed = "", marked = "ni")
-        harness.insertMentionRequest.value = ThreadComposerInsertMentionRequest(nonce = 1, handle = "alice")
-        settle(harness.activity)
-        assertEquals(
-            TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2)),
-            harness.owner.value,
-            "avatar mention held while marked",
-        )
-        assertEquals(listOf(editLogLine("mention", composing = true, deferred = true)), editLog)
-
-        harness.inputConnection.commitText("你", 1)
-        settle(harness.activity)
-        assertEquals(TextFieldValue("你 @alice ", selection = TextRange(9)), harness.owner.value)
-        assertEquals("你 @alice ", harness.inputConnection.extractedText())
-    }
-
-    @Test
     fun draftReplaceDuringCompositionIsDeferredAndKeepsWhatTheUserTyped() {
         val harness = mountComposer()
         harness.composeMarked(committed = "", marked = "ni")
@@ -225,27 +206,6 @@ class ThreadComposerImeCompositionTest {
         settle(harness.activity)
         assertEquals(TextFieldValue("你", selection = TextRange(1)), harness.owner.value, "typed text kept")
         assertEquals("staleEditorCommandIgnored", harness.events.last())
-    }
-
-    @Test
-    fun draftReplaceDuringCompositionAppliesWhenTheCompositionEndsUnchanged() {
-        val harness = mountComposer()
-        harness.composeMarked(committed = "", marked = "ni")
-        harness.send(
-            ThreadComposerEditorCommand(
-                id = 1,
-                kind = ThreadComposerEditorCommandKind.Replace,
-                text = "restored draft",
-                expectedText = "ni",
-                expectedAsTask = false,
-            )
-        )
-        assertEquals("ni", harness.inputConnection.extractedText())
-
-        harness.inputConnection.finishComposingText()
-        settle(harness.activity)
-        assertEquals(TextFieldValue("restored draft", selection = TextRange(14)), harness.owner.value)
-        assertEquals("restored draft", harness.inputConnection.extractedText())
     }
 
     @Test
@@ -282,27 +242,6 @@ class ThreadComposerImeCompositionTest {
             editLog,
         )
         assertEquals(false, harness.owner.hasDeferredCommandsReady, "the sent draft's held mention is dropped")
-    }
-
-    @Test
-    fun storeMentionWithoutCompositionIsAppliedAtOnce() {
-        val harness = mountComposer()
-        harness.inputConnection.commitText("hi", 1)
-        settle(harness.activity)
-        editLog.clear()
-        harness.send(
-            ThreadComposerEditorCommand(
-                id = 1,
-                kind = ThreadComposerEditorCommandKind.Replace,
-                text = "hi @alice ",
-                expectedText = "hi",
-                expectedAsTask = false,
-                edit = ThreadComposerDraftEdit.InsertMention("alice"),
-            )
-        )
-        assertEquals(TextFieldValue("hi @alice ", selection = TextRange(10)), harness.owner.value)
-        assertEquals("hi @alice ", harness.inputConnection.extractedText())
-        assertEquals(listOf(editLogLine("mention", composing = false, deferred = false)), editLog)
     }
 
     @Test

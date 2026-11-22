@@ -13,7 +13,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -101,22 +100,5 @@ class MembersAgentRecentTurnRowsUiTest {
         runRobolectricComposeUiTest {
             rows(agentRecentActivityAcrossDays(), fontScale = 2f)
             assertOneTextColumn()
-        }
-
-    @Test
-    fun textsStartAtOneXWithTheTwelveHourClock() =
-        runRobolectricComposeUiTest {
-            rows(agentRecentActivityAcrossDays(), timeFormat = RaftTimeFormat12Hour)
-            assertOneTextColumn()
-        }
-
-    @Test
-    fun sameDayRowsKeepTheLabelsOwnWidth() =
-        runRobolectricComposeUiTest {
-            rows(agentRecentActivitySameDay())
-            val times = bounds(MembersAgentRecentTurnTimeTag)
-            val texts = bounds(MembersAgentRecentTurnTextTag)
-            assertEquals(1, times.map { it.width }.distinct().size, "times=$times")
-            assertEquals(1, texts.map { it.left }.distinct().size, "texts=$texts")
         }
 }

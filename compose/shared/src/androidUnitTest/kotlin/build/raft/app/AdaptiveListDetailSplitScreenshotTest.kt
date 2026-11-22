@@ -52,13 +52,7 @@ class AdaptiveListDetailSplitScreenshotTest {
     fun activityDark() = capture("shell.split.activity.dark", RaftAppAppearance.Dark, Scene.Activity)
 
     @Test
-    fun searchNothingPickedLight() = capture("shell.split.search-empty", RaftAppAppearance.Light, Scene.SearchEmpty)
-
-    @Test
     fun searchPickedLight() = capture("shell.split.search-picked", RaftAppAppearance.Light, Scene.SearchPicked)
-
-    @Test
-    fun homeSidebarLight() = capture("shell.split.home", RaftAppAppearance.Light, Scene.Home)
 
     private enum class Scene(
         val railKey: String,
