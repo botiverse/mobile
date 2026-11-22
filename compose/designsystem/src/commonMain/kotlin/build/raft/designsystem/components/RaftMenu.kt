@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -91,6 +92,8 @@ import build.raft.designsystem.theme.LocalRaftSurfaceColor
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftMenuMetrics
 import build.raft.designsystem.tokens.RaftStroke
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 // Menus, and the list of a Select (dropdown-menu.tsx, select.tsx). States > Selected:
 // the highlighted row (pressed, or reached with the keyboard) is `brand-soft` with no
@@ -407,11 +410,18 @@ internal fun RaftSearchRow(
  * focus instead as soon as the popup can hold it, however it was opened (a search row that
  * is there to type in: a combobox that creates values).
  *
+ * A menu whose trigger is scrolled out of view closes, unless people are [typing] in it (its
+ * search row has focus, or the keyboard is up for it): the keyboard shrinks the window (a
+ * centred dialog) and can clip the trigger away under the very search it came up for
+ * ([raftPopupClosesForClippedAnchor]). A tap outside, Back, Escape and a pick still close it.
+ *
  * Acting on one thing goes in a menu; picking a value is a [RaftSelect].
  *
  * The rows go in a scrolling column inside a [RaftMenuSurface]: never a lazy list (the
  * rows already scroll), and without a [width] nothing subcomposed either (see
- * [RaftMenuSurface]).
+ * [RaftMenuSurface]). The one exception is a combobox popup's list of many rows: a lazy list
+ * of a bounded height in a menu of a fixed [width], whose rows keep the keys through
+ * [RaftMenuNav.lazy].
  */
 @Composable
 fun RaftDropdownMenu(
@@ -425,6 +435,7 @@ fun RaftDropdownMenu(
     header: (@Composable () -> Unit)? = null,
     alignEnd: Boolean = false,
     initialFocus: FocusRequester? = null,
+    typing: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val inputModes = LocalInputModeManager.current
@@ -475,10 +486,12 @@ fun RaftDropdownMenu(
     // raft-ui 0.102.6 (`usePopupAnchorDismiss`, elevation.md): a menu whose trigger is scrolled
     // out of its scrolling region, or unmounted, closes the way Back and Escape do, rather than
     // float over unrelated content; one opened with its trigger already out of view closes at once.
+    // Not while people type in it: the keyboard of its search may be what clipped the trigger.
     var closedForAnchor by remember { mutableStateOf(false) }
+    val currentTyping by rememberUpdatedState(typing)
     Box(
         Modifier.raftPopupAnchorClipped { clipped ->
-            if (clipped && !closedForAnchor) {
+            if (raftPopupClosesForClippedAnchor(clipped, currentTyping) && !closedForAnchor) {
                 closedForAnchor = true
                 dismiss()
             }
@@ -498,7 +511,7 @@ fun RaftDropdownMenu(
             } else if (focusable && inputModes.inputMode == InputMode.Keyboard) {
                 // The rows attach their focus targets in the first frame.
                 withFrameNanos { }
-                nav.focus(nav.ordered().firstOrNull())
+                nav.focusFirst()
             }
         }
         // The shadow's room is part of the popup window; a tap there is outside the menu.
@@ -562,6 +575,15 @@ internal fun Modifier.raftPopupAnchorClipped(onChange: (Boolean) -> Unit): Modif
         onChange(raftAnchorClippedOut(anchor))
     }
 
+/**
+ * Whether an open popup closes because its anchor is [clipped] out of view
+ * ([raftPopupAnchorClipped]): yes, unless people are [typing] in it (its search row has focus,
+ * or the keyboard is up for it). The keyboard a popup's search brings up shrinks the window
+ * (a centred dialog) and can clip the field the popup hangs from: closing then would take the
+ * popup away the moment its search is tapped.
+ */
+internal fun raftPopupClosesForClippedAnchor(clipped: Boolean, typing: Boolean): Boolean = clipped && !typing
+
 internal fun raftAnchorClippedOut(anchor: LayoutCoordinates): Boolean {
     if (!anchor.isAttached) return false
     val root = anchor.findRootCoordinates()
@@ -600,6 +622,12 @@ internal class RaftMenuNav {
 
     val entries = mutableListOf<Entry>()
 
+    /**
+     * The menu's rows are a lazy list (a combobox popup's): the keys go over every row of it,
+     * composed or not, instead of over [entries].
+     */
+    var lazy: RaftMenuLazyRows? = null
+
     /** The rows that can take focus, top to bottom. */
     fun ordered(): List<Entry> = entries.filter { it.enabled }.sortedBy { it.top }
 
@@ -608,8 +636,15 @@ internal class RaftMenuNav {
         return runCatching { entry.requester.requestFocus() }.isSuccess
     }
 
+    /** Focuses the first row that can take focus (a menu opened from the keyboard). */
+    fun focusFirst() {
+        val rows = lazy
+        if (rows != null) rows.focusRow(0) else focus(ordered().firstOrNull())
+    }
+
     fun onKey(event: KeyEvent): Boolean {
         if (event.type != KeyEventType.KeyDown) return false
+        lazy?.let { return it.onKey(event) }
         val rows = ordered()
         if (rows.isEmpty()) return false
         val at = rows.indexOfFirst { it.focused }
@@ -639,6 +674,52 @@ internal fun raftMenuKeyTarget(rows: List<String>, at: Int, key: Key, codePoint:
             // The next row after the focused one starting with the letter, wrapping.
             (1..rows.size).map { (at + it) % rows.size }.firstOrNull { rows[it].startsWith(typed, ignoreCase = true) }
         }
+    }
+}
+
+/** A row of a [RaftMenuLazyRows] list that can take focus: its [item] index in the list, and its label (type-ahead). */
+internal data class RaftMenuLazyRow(val item: Int, val text: String)
+
+/**
+ * The keyboard navigation of a menu whose rows are a lazy list ([RaftMenuNav.lazy], a combobox
+ * popup's): [RaftMenuNav]'s keys over every row that can take focus ([rows], top to bottom),
+ * composed or not. A target out of view is scrolled to first ([listState]), then focused through
+ * its item's [requester], which the list puts on each row it composes; [focusedItem] is the item
+ * whose row has focus (-1: none, the search field may have it), which each row keeps.
+ */
+internal class RaftMenuLazyRows(private val listState: LazyListState, private val scope: CoroutineScope) {
+    var rows: List<RaftMenuLazyRow> = emptyList()
+    var focusedItem = -1
+    private val requesters = HashMap<Int, FocusRequester>()
+
+    /** The focus requester of [item]'s row: the list attaches it to the row while it is composed. */
+    fun requester(item: Int): FocusRequester = requesters.getOrPut(item) { FocusRequester() }
+
+    fun onKey(event: KeyEvent): Boolean {
+        if (rows.isEmpty()) return false
+        val at = rows.indexOfFirst { it.item == focusedItem }
+        val target = raftMenuKeyTarget(rows.map { it.text }, at, event.key, event.utf16CodePoint) ?: return false
+        focusRow(target)
+        return true
+    }
+
+    /** Focuses the [at]th row that can take focus; a row out of view is scrolled to (and so composed) first. */
+    fun focusRow(at: Int) {
+        val item = rows.getOrNull(at)?.item ?: return
+        scope.launch {
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == item }) {
+                listState.scrollToItem(item)
+                // The row attaches its focus target once it is composed.
+                withFrameNanos { }
+            }
+            // A row in view: focusing it brings the rest of it into view.
+            runCatching { requester(item).requestFocus() }
+        }
+    }
+
+    /** Focuses [item]'s row, composed (a pointer over it while the keyboard has another row). */
+    fun focusItem(item: Int) {
+        runCatching { requester(item).requestFocus() }
     }
 }
 

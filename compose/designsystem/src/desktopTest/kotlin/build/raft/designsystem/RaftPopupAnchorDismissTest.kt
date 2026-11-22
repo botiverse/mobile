@@ -71,6 +71,39 @@ class RaftPopupAnchorDismissTest {
             onNodeWithText("Rename").assertDoesNotExist()
         }
 
+    /**
+     * #306 review: a popup people are typing in (its search row focused, the keyboard up) stays
+     * open when its trigger is clipped: in a centred dialog that keyboard shrinks the window and
+     * clips the field the popup hangs from.
+     */
+    @Test
+    fun aMenuSomeoneIsTypingInStaysOpenWhenItsTriggerIsScrolledOut() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var dismissals = 0
+            setContent(
+                themed {
+                    Column(Modifier.padding(top = 400.dp).height(200.dp).verticalScroll(rememberScrollState())) {
+                        Spacer(Modifier.height(100.dp))
+                        Box {
+                            RaftText("Trigger")
+                            RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }, typing = true) {
+                                RaftMenuItem("Rename", onClick = {})
+                            }
+                        }
+                        Spacer(Modifier.height(400.dp))
+                        RaftText("Bottom")
+                    }
+                },
+            )
+            waitForIdle()
+            onNodeWithText("Bottom").performScrollTo()
+            waitForIdle()
+            assertTrue(open, "typing in it: the clipped trigger does not close it")
+            assertEquals(0, dismissals)
+            onNodeWithText("Rename").assertExists()
+        }
+
     @Test
     fun closingAMenuDoesNotDismissItAgain() =
         runComposeUiTest {

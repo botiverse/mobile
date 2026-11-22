@@ -1,9 +1,13 @@
 package build.raft.designsystem
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.InputMode
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -12,6 +16,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -21,7 +26,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
@@ -148,6 +156,35 @@ class RaftComboboxSemanticsTest {
             assertEquals("codex", value)
             onAllNodes(hasSetTextAction()).assertCountEquals(0)
             onNodeWithContentDescription("Model, GPT-5 Codex").assertExists()
+        }
+
+    /**
+     * #306 review: the wide popup lists its rows lazily (models and people can be hundreds), and
+     * the keyboard still reaches every one of them: opened from the keyboard its first row has
+     * focus, End takes the last row, out of view below, scrolled to and focused, and Enter picks it.
+     */
+    @Test
+    fun onAWideWindowTheKeyboardReachesEveryRowOfTheLazyList() =
+        runComposeUiTest {
+            var value by mutableStateOf<String?>(null)
+            setContent(
+                themed(RaftScale.Wide) {
+                    val inputModes = LocalInputModeManager.current
+                    SideEffect { inputModes.requestInputMode(InputMode.Keyboard) }
+                    RaftCombobox(value, manyModels, { value = it }, emptyText = noModels, placeholder = "Choose a model", label = "Model")
+                },
+            )
+            val trigger = onNodeWithContentDescription("Model, Choose a model")
+            trigger.requestFocus()
+            trigger.performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            onNode(option("Claude Opus")).assertIsFocused()
+            onNode(option("Claude Opus")).performKeyInput { pressKey(Key.MoveEnd) }
+            waitForIdle()
+            onNode(option("Model $RaftComboboxSheetThreshold")).assertIsFocused()
+            onNode(option("Model $RaftComboboxSheetThreshold")).performKeyInput { pressKey(Key.Enter) }
+            waitForIdle()
+            assertEquals("m$RaftComboboxSheetThreshold", value)
         }
 
     @Test

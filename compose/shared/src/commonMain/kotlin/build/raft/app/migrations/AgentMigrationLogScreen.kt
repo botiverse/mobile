@@ -432,11 +432,15 @@ private fun <T> AgentMigrationLogListFilter(
                 searchPlaceholder = searchPlaceholder,
                 doneLabel = stringResource(Res.string.common_done),
                 clearLabel = stringResource(Res.string.agent_migration_log_filter_clear),
+                width = AgentMigrationLogFilterPopupWidth,
                 optionLeading = optionLeading?.let { leading -> { option -> leading(option.value) } },
             )
         }
     }
 }
+
+/** web MigrationLogPage's `ListFilter`s (`w-[280px]`): the computer and agent filters' popup on a wide window. */
+private val AgentMigrationLogFilterPopupWidth = 280.dp
 
 private val AgentMigrationLogDays = listOf(null, 7, 30)
 

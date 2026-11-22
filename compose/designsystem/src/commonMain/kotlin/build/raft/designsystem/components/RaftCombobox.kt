@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,27 +13,29 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -386,31 +389,27 @@ fun <T> RaftCombobox(
                 width = maxOf(RaftComboboxPopoverWidth, with(density) { triggerWidth.toDp() }),
                 returnFocusTo = trigger,
                 focusSearch = raftComboboxFocusesSearch(creates = create != null),
-            ) {
-                RaftComboboxPopoverRows(
-                    options = remember(options, query) { raftComboboxFilter(options, query) },
-                    query = query,
-                    isSelected = { it == value },
-                    onPick = { option ->
-                        open = false
-                        if (option.value != value) onValueChange(option.value)
+                options = remember(options, query) { raftComboboxFilter(options, query) },
+                isSelected = { it == value },
+                onPick = { option ->
+                    open = false
+                    if (option.value != value) onValueChange(option.value)
+                },
+                emptyText = emptyText,
+                createQuery = if (create != null) raftComboboxCreateQuery(options, query, listOfNotNull(shown)) else null,
+                onCreate =
+                    if (create != null) {
+                        { text ->
+                            open = false
+                            create(text)
+                        }
+                    } else {
+                        null
                     },
-                    emptyText = emptyText,
-                    createQuery = if (create != null) raftComboboxCreateQuery(options, query, listOfNotNull(shown)) else null,
-                    onCreate =
-                        if (create != null) {
-                            { text ->
-                                open = false
-                                create(text)
-                            }
-                        } else {
-                            null
-                        },
-                    createLabel = createLabel,
-                    optionLeading = optionLeading,
-                    listAction = listAction,
-                )
-            }
+                createLabel = createLabel,
+                optionLeading = optionLeading,
+                listAction = listAction,
+            )
         } else if (open) {
             RaftSheetWindow(onDismissRequest = { open = false }) { surfaceModifier ->
                 RaftComboboxSheetSurface(
@@ -533,28 +532,23 @@ fun <T> RaftMultiCombobox(
                 width = maxOf(RaftComboboxPopoverWidth, with(density) { triggerWidth.toDp() }),
                 returnFocusTo = trigger,
                 focusSearch = raftComboboxFocusesSearch(creates = create != null),
-            ) {
-                RaftComboboxPopoverRows(
-                    options = remember(options, query) { raftComboboxFilter(options, query) },
-                    query = query,
-                    isSelected = { it in values },
-                    onPick = { option -> onValuesChange(raftComboboxToggled(values, option.value)) },
-                    emptyText = emptyText,
-                    createQuery = if (create != null) raftComboboxCreateQuery(options, query, chips) else null,
-                    onCreate =
-                        if (create != null) {
-                            { text ->
-                                query = ""
-                                create(text)
-                            }
-                        } else {
-                            null
-                        },
-                    createLabel = createLabel,
-                    optionLeading = optionLeading,
-                    listAction = null,
-                )
-            }
+                options = remember(options, query) { raftComboboxFilter(options, query) },
+                isSelected = { it in values },
+                onPick = { option -> onValuesChange(raftComboboxToggled(values, option.value)) },
+                emptyText = emptyText,
+                createQuery = if (create != null) raftComboboxCreateQuery(options, query, chips) else null,
+                onCreate =
+                    if (create != null) {
+                        { text ->
+                            query = ""
+                            create(text)
+                        }
+                    } else {
+                        null
+                    },
+                createLabel = createLabel,
+                optionLeading = optionLeading,
+            )
         } else if (open) {
             RaftSheetWindow(onDismissRequest = { open = false }) { surfaceModifier ->
                 RaftComboboxSheetSurface(
@@ -759,18 +753,15 @@ fun <T> RaftComboboxPopover(
         clearLabel = clearLabel,
         width = width,
         returnFocusTo = returnFocusTo,
-    ) {
-        RaftComboboxMenuRows(
-            options = remember(options, query) { raftComboboxFilter(options, query) },
-            isSelected = { it == value },
-            onPick = { option ->
-                if (option.value != value) onValueChange(option.value)
-                onDismissRequest()
-            },
-            emptyText = { emptyText(query.trim()) },
-            optionLeading = optionLeading,
-        )
-    }
+        options = remember(options, query) { raftComboboxFilter(options, query) },
+        isSelected = { it == value },
+        onPick = { option ->
+            if (option.value != value) onValueChange(option.value)
+            onDismissRequest()
+        },
+        emptyText = emptyText,
+        optionLeading = optionLeading,
+    )
 }
 
 /**
@@ -809,15 +800,12 @@ fun <T> RaftMultiComboboxPopover(
         clearLabel = clearLabel ?: "",
         width = width,
         returnFocusTo = returnFocusTo,
-    ) {
-        RaftComboboxMenuRows(
-            options = remember(options, query) { raftComboboxFilter(options, query) },
-            isSelected = { it in values },
-            onPick = { option -> onValuesChange(raftComboboxToggled(values, option.value)) },
-            emptyText = { emptyText(query.trim()) },
-            optionLeading = optionLeading,
-        )
-    }
+        options = remember(options, query) { raftComboboxFilter(options, query) },
+        isSelected = { it in values },
+        onPick = { option -> onValuesChange(raftComboboxToggled(values, option.value)) },
+        emptyText = emptyText,
+        optionLeading = optionLeading,
+    )
 }
 
 /**
@@ -943,61 +931,97 @@ fun <T> RaftMultiComboboxPicker(
     }
 }
 
-/**
- * The rows of a [RaftCombobox] / [RaftMultiCombobox] popup on a wide window, as its sheet's
- * list: with [onCreate], the "Use “text”" row ([createLabel], a + glyph) first while
- * [createQuery] is new; then [options] (already filtered) under their group labels
- * ([RaftComboboxMenuRows]); then [listAction] after a separator. [emptyText] of the trimmed
- * [query] only when there is nothing at all to show.
- */
-@Composable
-private fun <T> RaftComboboxPopoverRows(
-    options: List<RaftComboboxOption<T>>,
-    query: String,
-    isSelected: (T) -> Boolean,
-    onPick: (RaftComboboxOption<T>) -> Unit,
-    emptyText: (query: String) -> String,
-    createQuery: String?,
-    onCreate: ((String) -> Unit)?,
-    createLabel: (String) -> String,
-    optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)?,
-    listAction: RaftComboboxListAction?,
-) {
-    val offersCreate = createQuery != null && onCreate != null
-    if (createQuery != null && onCreate != null) {
-        RaftComboboxOptionRow(
-            text = createLabel(createQuery),
-            selected = false,
-            onClick = { onCreate(createQuery) },
-            leading = { RaftGlyphIcon(RaftGlyph.Plus) },
-        )
-    }
-    // ComboboxEmpty: never an empty popup, and never beside a row that is there.
-    if (options.isNotEmpty() || (!offersCreate && listAction == null)) {
-        RaftComboboxMenuRows(
-            options = options,
-            isSelected = isSelected,
-            onPick = onPick,
-            emptyText = { emptyText(query.trim()) },
-            optionLeading = optionLeading,
-        )
-    }
-    if (listAction != null) {
-        if (options.isNotEmpty()) RaftMenuSeparator()
-        RaftComboboxActionRow(listAction)
-    }
+/** One item of a combobox popup's lazy list ([raftComboboxPopoverItems]). */
+internal sealed interface RaftComboboxPopoverItem {
+    /** "Use “text”": the typed [text] offered as a new value. */
+    data class Create(val text: String) : RaftComboboxPopoverItem
+
+    /** A group label over the options that follow it. */
+    data class Group(val label: String) : RaftComboboxPopoverItem
+
+    /** The option at [index] of the filtered options. */
+    data class Option(val index: Int) : RaftComboboxPopoverItem
+
+    /** The rule between the options and the list action. */
+    data object Separator : RaftComboboxPopoverItem
+
+    /** The [RaftComboboxListAction] row. */
+    data object Action : RaftComboboxPopoverItem
+
+    /** Nothing to list: the empty line. */
+    data object Empty : RaftComboboxPopoverItem
 }
+
+/**
+ * The items of a combobox popup's list, top to bottom, as its sheet lists them: the
+ * "Use “text”" row while [createQuery] (typed text that is no option) is offered, then
+ * [options] (already filtered) under their group labels ([raftComboboxRows]), then, with
+ * [hasAction], the list action, after a rule when options are above it. The empty line
+ * (ComboboxEmpty) only when there is nothing else at all.
+ */
+internal fun raftComboboxPopoverItems(options: List<RaftComboboxOption<*>>, createQuery: String?, hasAction: Boolean): List<RaftComboboxPopoverItem> {
+    val entries = ArrayList<RaftComboboxPopoverItem>(options.size + 4)
+    if (createQuery != null) entries += RaftComboboxPopoverItem.Create(createQuery)
+    raftComboboxRows(options).forEach { row ->
+        entries +=
+            when (row) {
+                is RaftComboboxRow.Group -> RaftComboboxPopoverItem.Group(row.label)
+                is RaftComboboxRow.Option -> RaftComboboxPopoverItem.Option(row.index)
+            }
+    }
+    if (hasAction) {
+        if (options.isNotEmpty()) entries += RaftComboboxPopoverItem.Separator
+        entries += RaftComboboxPopoverItem.Action
+    }
+    if (entries.isEmpty()) entries += RaftComboboxPopoverItem.Empty
+    return entries
+}
+
+/**
+ * The items of a popup's list ([raftComboboxPopoverItems]) that take focus, with their labels
+ * for type-ahead: the create row ([createLabel] of its text), every enabled option, the list
+ * action ([actionLabel]). Group labels, the rule and the empty line take none.
+ */
+internal fun raftComboboxPopoverFocusRows(
+    entries: List<RaftComboboxPopoverItem>,
+    options: List<RaftComboboxOption<*>>,
+    createLabel: (String) -> String,
+    actionLabel: String?,
+): List<RaftMenuLazyRow> =
+    entries.mapIndexedNotNull { item, entry ->
+        when (entry) {
+            is RaftComboboxPopoverItem.Create -> RaftMenuLazyRow(item, createLabel(entry.text))
+            is RaftComboboxPopoverItem.Option -> options[entry.index].takeIf { it.enabled }?.let { RaftMenuLazyRow(item, it.label) }
+            RaftComboboxPopoverItem.Action -> actionLabel?.let { RaftMenuLazyRow(item, it) }
+            is RaftComboboxPopoverItem.Group, RaftComboboxPopoverItem.Separator, RaftComboboxPopoverItem.Empty -> null
+        }
+    }
+
+/** The lazy list's content type of an item: rows of one kind reuse each other's composition. */
+private fun raftComboboxPopoverItemType(entry: RaftComboboxPopoverItem): Int =
+    when (entry) {
+        is RaftComboboxPopoverItem.Create, is RaftComboboxPopoverItem.Option -> 0
+        is RaftComboboxPopoverItem.Group -> 1
+        RaftComboboxPopoverItem.Action -> 2
+        RaftComboboxPopoverItem.Separator -> 3
+        RaftComboboxPopoverItem.Empty -> 4
+    }
 
 /**
  * The popup of [RaftComboboxPopover] / [RaftMultiComboboxPopover], and of [RaftCombobox] /
  * [RaftMultiCombobox] on a wide window: a [RaftDropdownMenu] of a fixed [width] whose header
  * is ComboboxHeader (`py-1.5 pr-1.5 pl-4`: the [title], the optional clear) over a hairline
  * (no title: none), then the search row with its own hairline, focused on open only with
- * [focusSearch] (typing a new value is the point); the [rows] scroll inside
- * [RaftComboboxPopoverListMaxHeight].
+ * [focusSearch] (typing a new value is the point), then the rows ([RaftComboboxPopoverList]):
+ * with [onCreate] the "Use “text”" row while [createQuery] is new, the [options] (already
+ * filtered) under their group labels, [listAction] last, or [emptyText] of the trimmed [query].
+ *
+ * While its search row has focus, or the keyboard is up, people are typing in it: its trigger
+ * clipped out of view (the keyboard shrinking a centred dialog under the field) does not close
+ * it ([RaftDropdownMenu]'s `typing`); a tap outside, Back, Escape and a pick still do.
  */
 @Composable
-private fun RaftComboboxPopoverFrame(
+private fun <T> RaftComboboxPopoverFrame(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier,
@@ -1009,11 +1033,25 @@ private fun RaftComboboxPopoverFrame(
     clearLabel: String,
     width: Dp,
     returnFocusTo: FocusRequester?,
+    options: List<RaftComboboxOption<T>>,
+    isSelected: (T) -> Boolean,
+    onPick: (RaftComboboxOption<T>) -> Unit,
+    emptyText: (query: String) -> String,
+    optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)?,
     focusSearch: Boolean = false,
-    rows: @Composable ColumnScope.() -> Unit,
+    createQuery: String? = null,
+    onCreate: ((String) -> Unit)? = null,
+    createLabel: (String) -> String = RaftComboboxDefaultCreateLabel,
+    listAction: RaftComboboxListAction? = null,
 ) {
     val colors = RaftTheme.colors
     val search = remember { FocusRequester() }
+    val searchSource = remember { MutableInteractionSource() }
+    val searchFocused by searchSource.collectIsFocusedAsState()
+    // The keyboard as the trigger's window has it: while it is up, that window may be shrunk under it.
+    val density = LocalDensity.current
+    val ime = WindowInsets.ime
+    val keyboardUp by remember(ime, density) { derivedStateOf { ime.getBottom(density) > 0 } }
     // The popup is a window of its own: a field around the trigger doesn't reach in.
     CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState(), LocalRaftMenuFieldType provides false) {
         RaftDropdownMenu(
@@ -1024,6 +1062,8 @@ private fun RaftComboboxPopoverFrame(
             offset = 4.dp,
             returnFocusTo = returnFocusTo,
             initialFocus = if (focusSearch) search else null,
+            // Read only while open: a closed popup does not follow the keyboard of other fields.
+            typing = expanded && (searchFocused || keyboardUp),
             header = {
                 Column(Modifier.fillMaxWidth()) {
                     if (title != null) {
@@ -1045,22 +1085,166 @@ private fun RaftComboboxPopoverFrame(
                         Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
                     }
                     // Not focused on open unless [focusSearch]: the keyboard comes up only on a tap.
-                    RaftSearchRow(value = query, onValueChange = onQueryChange, placeholder = searchPlaceholder, focusRequester = search)
+                    RaftSearchRow(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        placeholder = searchPlaceholder,
+                        interactionSource = searchSource,
+                        focusRequester = search,
+                    )
                 }
             },
         ) {
-            val listScroll = rememberScrollState()
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = RaftComboboxPopoverListMaxHeight)
-                    // raft-ui 0.60 ScrollArea: a popup list's overlay scrollbar.
-                    .raftScrollbar(listScroll)
-                    .verticalScroll(listScroll),
-                content = rows,
+            RaftComboboxPopoverList(
+                options = options,
+                query = query,
+                isSelected = isSelected,
+                onPick = onPick,
+                emptyText = emptyText,
+                createQuery = createQuery,
+                onCreate = onCreate,
+                createLabel = createLabel,
+                optionLeading = optionLeading,
+                listAction = listAction,
             )
         }
     }
+}
+
+/**
+ * A combobox popup's rows ([raftComboboxPopoverItems]) in a lazy list, as the phone's sheet
+ * lists them: models and members can be hundreds, and only the rows in view compose. The popup
+ * has a fixed width and the list at most [RaftComboboxPopoverListMaxHeight], so it is bounded
+ * inside the menu's scrolling column. The rows keep the menu's keyboard navigation through
+ * [RaftMenuLazyRows] (every row reachable, one out of view scrolled to), group labels are
+ * headings, and the empty line is a polite live region. A new search shows its matches from the
+ * top.
+ */
+@Composable
+private fun <T> RaftComboboxPopoverList(
+    options: List<RaftComboboxOption<T>>,
+    query: String,
+    isSelected: (T) -> Boolean,
+    onPick: (RaftComboboxOption<T>) -> Unit,
+    emptyText: (query: String) -> String,
+    createQuery: String?,
+    onCreate: ((String) -> Unit)?,
+    createLabel: (String) -> String,
+    optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)?,
+    listAction: RaftComboboxListAction?,
+) {
+    val offered = createQuery.takeIf { onCreate != null }
+    val entries = remember(options, offered, listAction != null) { raftComboboxPopoverItems(options, offered, hasAction = listAction != null) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val keys = remember(listState, scope) { RaftMenuLazyRows(listState, scope) }
+    keys.rows = raftComboboxPopoverFocusRows(entries, options, createLabel, listAction?.label)
+    val nav = LocalRaftMenuNav.current
+    if (nav != null) {
+        DisposableEffect(nav, keys) {
+            nav.lazy = keys
+            onDispose { if (nav.lazy === keys) nav.lazy = null }
+        }
+    }
+    LaunchedEffect(query) { listState.scrollToItem(0) }
+    // Not the menu's composed entries: the rows take part in its navigation through [keys].
+    CompositionLocalProvider(LocalRaftMenuNav provides null) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = RaftComboboxPopoverListMaxHeight)
+                // raft-ui 0.60 ScrollArea: a popup list's overlay scrollbar.
+                .raftScrollbar(listState),
+            state = listState,
+        ) {
+            items(entries.size, contentType = { raftComboboxPopoverItemType(entries[it]) }) { item ->
+                when (val entry = entries[item]) {
+                    is RaftComboboxPopoverItem.Create ->
+                        RaftComboboxPopoverFocusRow(keys, item, enabled = true) { rowModifier, source ->
+                            RaftComboboxOptionRow(
+                                text = createLabel(entry.text),
+                                selected = false,
+                                onClick = { onCreate?.invoke(entry.text) },
+                                modifier = rowModifier,
+                                leading = { RaftGlyphIcon(RaftGlyph.Plus) },
+                                interactionSource = source,
+                            )
+                        }
+                    is RaftComboboxPopoverItem.Group -> RaftMenuLabel(entry.label, Modifier.semantics { heading() })
+                    is RaftComboboxPopoverItem.Option -> {
+                        val option = options[entry.index]
+                        RaftComboboxPopoverFocusRow(keys, item, enabled = option.enabled) { rowModifier, source ->
+                            RaftComboboxOptionRow(
+                                text = option.label,
+                                selected = isSelected(option.value),
+                                onClick = { onPick(option) },
+                                modifier = rowModifier,
+                                description = option.description,
+                                enabled = option.enabled,
+                                leading = if (optionLeading != null) { { optionLeading(option) } } else null,
+                                badge = option.badge,
+                                interactionSource = source,
+                                identifier = option.identifier,
+                                badgeAppearance = option.badgeAppearance,
+                                badgeVariant = option.badgeVariant,
+                            )
+                        }
+                    }
+                    RaftComboboxPopoverItem.Separator -> RaftMenuSeparator()
+                    RaftComboboxPopoverItem.Action ->
+                        listAction?.let { action ->
+                            RaftComboboxPopoverFocusRow(keys, item, enabled = true) { rowModifier, source ->
+                                RaftComboboxActionRow(action, modifier = rowModifier, interactionSource = source)
+                            }
+                        }
+                    RaftComboboxPopoverItem.Empty ->
+                        // ComboboxEmpty: never an empty popup; says what found nothing.
+                        RaftText(
+                            emptyText(query.trim()),
+                            Modifier
+                                .fillMaxWidth()
+                                .semantics { liveRegion = LiveRegionMode.Polite }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundHint,
+                        )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A row of [RaftComboboxPopoverList] that takes focus: [row] drawn with the modifier and the
+ * interaction source that tie it to the menu's keyboard navigation ([keys]): the focus
+ * requester of [item] and its focus kept there, and a pointer over it while the keyboard has
+ * another row of the list moving the focus here (one cursor for pointer and keys, as
+ * [RaftMenuPointerCursor]). A disabled row takes no focus from the pointer.
+ */
+@Composable
+private fun RaftComboboxPopoverFocusRow(
+    keys: RaftMenuLazyRows,
+    item: Int,
+    enabled: Boolean,
+    row: @Composable (modifier: Modifier, interactionSource: MutableInteractionSource) -> Unit,
+) {
+    val source = remember { MutableInteractionSource() }
+    val hovered = raftIsHovered(source)
+    LaunchedEffect(keys, item, hovered) {
+        if (enabled && hovered && keys.focusedItem >= 0 && keys.focusedItem != item) keys.focusItem(item)
+    }
+    row(
+        Modifier
+            .focusRequester(keys.requester(item))
+            .onFocusChanged { state ->
+                if (state.isFocused) {
+                    keys.focusedItem = item
+                } else if (keys.focusedItem == item) {
+                    keys.focusedItem = -1
+                }
+            },
+        source,
+    )
 }
 
 /**
@@ -1386,7 +1570,8 @@ internal fun RaftComboboxOptionRow(
  * [RaftMenuSurface]): group labels and [RaftComboboxOptionRow]s, or [emptyText] of an
  * empty query (select.tsx `empty`: `text-callout` `foreground-hint`, 10 x 8dp) when there
  * are no options. Plain rows, no lazy list: the anchored list holds at most
- * [RaftComboboxSheetThreshold], and a [RaftComboboxPopover]'s rows scroll in a column.
+ * [RaftComboboxSheetThreshold]; a searchable popup's rows, which can be hundreds, are a lazy
+ * list ([RaftComboboxPopoverList]).
  */
 @Composable
 internal fun <T> RaftComboboxMenuRows(
@@ -1614,7 +1799,7 @@ private fun <T> RaftComboboxList(
  * padding), `text-callout` medium in `foreground-muted`, `brand-soft` while pressed; a button,
  * not a value, so it has no check and no selected state. Under inline radios it takes the radio
  * rows' metrics instead ([horizontalPadding] 0, [minHeight] 44dp), so its text starts where the
- * rows and their group headings start.
+ * rows and their group headings start. [interactionSource]: the caller's, to follow its hover.
  */
 @Composable
 internal fun RaftComboboxActionRow(
@@ -1623,9 +1808,10 @@ internal fun RaftComboboxActionRow(
     horizontalPadding: Dp = 10.dp,
     minHeight: Dp = 36.dp,
     enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     val colors = RaftTheme.colors
-    val source = remember { MutableInteractionSource() }
+    val source = interactionSource ?: remember { MutableInteractionSource() }
     val isFocused = raftIsFocused(source)
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, enabled = enabled, highlighted = isFocused)
     val style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Medium)
