@@ -2747,6 +2747,7 @@
     <string name="background_kill_notice_body_vendor">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Разрешите Raft автозапуск и работу в фоне без ограничений в системных настройках.</string>
     <string name="background_kill_notice_body_app_details">Устройство остановило Raft в фоне, из-за чего сообщения и уведомления могут приходить с задержкой. Откройте «О приложении», перейдите в раздел «Батарея» и выберите для Raft режим «Без ограничений».</string>
     <string name="background_kill_notice_action_open_settings">Открыть настройки</string>
+    <string name="background_kill_notice_action_dont_show_again">Больше не показывать</string>
     <string name="settings_notifications_offline_computers_title">Оповещения о компьютерах не в сети</string>
     <string name="settings_notifications_offline_computers_detail">Показывать оповещение на «Главной», когда зарегистрированный компьютер не в сети. По умолчанию выключено.</string>
     <string name="settings_notifications_test_title">Отправить тестовое уведомление</string>

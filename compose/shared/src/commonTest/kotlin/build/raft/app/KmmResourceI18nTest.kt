@@ -1199,6 +1199,7 @@ class KmmResourceI18nTest {
             Res.string.background_kill_notice_body_vendor,
             Res.string.background_kill_notice_body_app_details,
             Res.string.background_kill_notice_action_open_settings,
+            Res.string.background_kill_notice_action_dont_show_again,
         ).forEach { resource ->
             assertTrue(
                 resource.desc() is ResourceStringDesc,

@@ -2750,6 +2750,7 @@
     <string name="background_kill_notice_body_vendor">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。システム設定で Raft の自動起動とバックグラウンド実行を許可してください。</string>
     <string name="background_kill_notice_body_app_details">バックグラウンド中に Raft がシステムによって停止されたため、メッセージや通知が遅れることがあります。アプリ情報から「バッテリー」を開き、Raft を「制限なし」に設定してください。</string>
     <string name="background_kill_notice_action_open_settings">設定を開く</string>
+    <string name="background_kill_notice_action_dont_show_again">今後表示しない</string>
     <string name="settings_notifications_offline_computers_title">オフラインのコンピューター通知</string>
     <string name="settings_notifications_offline_computers_detail">登録済みのコンピューターがオフラインのとき、ホームに通知を表示します。デフォルトではオフです。</string>
     <string name="settings_notifications_test_title">テスト通知を送信</string>
