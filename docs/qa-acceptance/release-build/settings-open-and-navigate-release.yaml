@@ -40,7 +40,7 @@ read_only: true   # change nothing: no setting toggled, nothing saved, no sign-o
 forbidden_screens:
   - id: settings-account
     why: "shows the signed-in email (and profile / connected accounts)"
-    markers: ["Save profile", "Connected accounts", "Login & security", "Change Password", "Delete account", "Display name"]
+    markers: ["Save profile", "Connected accounts", "Login & security", "Change password", "Change Password", "Delete account", "Display name"]
   - id: any-screen-showing-account-email
     why: "e.g. Choose server \"Signed in as <email>\"; any page that prints the account email"
     markers: ["Signed in as"]

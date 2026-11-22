@@ -10,7 +10,7 @@
 // (uiautomator), with a screenshot + UI dump for every step:
 //   s1 channel Tasks tab -> open a task -> its task conversation (head + messages) -> reply there
 //   s2 change the assignee (to the QA account itself) and see it on the head
-//   s3 status todo -> in progress -> done; "In Review" must not be offered for a v2 task
+//   s3 status todo -> in progress -> done; "In review" must not be offered for a v2 task
 //   s4 a Backlog task is listed and reads Backlog
 //   s5 a task an old CLI created without a source (the server posted its title as the source
 //      message): from Home, open its channel, find that message, tap its task entry (or the
@@ -312,7 +312,7 @@ export async function run(ctx) {
         });
         await sstep("s1", "open-task-conversation", async () => {
           tapNode(cardTap);
-          const composer = await waitUntil("the task conversation (Message this task)", (l) => hasText(l, (n) => n.text === "Message this task" || n.desc === "Message this task" || n.text === "Join Channel to Reply"), { timeoutMs: 45_000 });
+          const composer = await waitUntil("the task conversation (Message this task)", (l) => hasText(l, (n) => n.text === "Message this task" || n.desc === "Message this task" || n.text === "Join channel to reply"), { timeoutMs: 45_000 });
           await sleep(1500);
           const { list, chip } = await findTaskHead();
           const problems = [];
@@ -423,16 +423,16 @@ export async function run(ctx) {
             tapNode(chip);
             const menu = await waitUntil("the status menu", (l) => hasText(l, "Done") && hasText(l, (n) => n.text === "Todo" || n.text === "Reopen to Todo"), { timeoutMs: 10_000 });
             const list = nodes();
-            const options = ["Backlog", "Todo", "In Progress", "In Review", "Done", "Closed", "Reopen to Todo"].filter((s) => hasText(list, (n) => n.text === s && n.bounds[1] > 0));
+            const options = ["Backlog", "Todo", "In progress", "In review", "Done", "Closed", "Reopen to Todo"].filter((s) => hasText(list, (n) => n.text === s && n.bounds[1] > 0));
             offered[statusOf(chip)] = options;
-            if (options.includes("In Review")) throw new Error(`"In Review" is offered for a task v2 task (menu: ${options.join(", ")})`);
+            if (options.includes("In review")) throw new Error(`"In review" is offered for a task v2 task (menu: ${options.join(", ")})`);
             return { from: statusOf(chip), options, menu_seen: Boolean(menu) };
           });
           await sstep("s3", `pick-${target.toLowerCase().replace(/\s+/g, "-")}`, async () => {
             const option = await waitUntil(`"${target}" in the menu`, (l) => hasText(l, (n) => n.text === target), { timeoutMs: 5_000 });
             tapNode(option);
             await waitUntil(`the head to read ${target}`, (l) => statusOf(statusChip(l)) === target, { timeoutMs: 20_000 });
-            const wire = { "In Progress": "in_progress", Done: "done", Todo: "todo" }[target];
+            const wire = { "In progress": "in_progress", Done: "done", Todo: "todo" }[target];
             await sleep(1500);
             const after = await getTask(task.id, channel.id);
             if (after?.status !== wire) throw new Error(`the server says ${after?.status}, expected ${wire}`);
@@ -442,7 +442,7 @@ export async function run(ctx) {
         // Assigning may already have started it (in_progress); bring it to Todo first through the same menu.
         const current = statusOf((await findTaskHead()).chip);
         if (current !== "Todo") await moveTo("Todo");
-        await moveTo("In Progress");
+        await moveTo("In progress");
         await moveTo("Done");
         return `menus: ${Object.entries(offered).map(([k, v]) => `${k} -> [${v.join(", ")}]`).join("; ")}`;
       });
@@ -461,7 +461,7 @@ export async function run(ctx) {
             if (!title || !title.text.includes(backlog.title.slice(0, 30))) throw new Error(`card row #${backlog.number} does not read the backlog task's title (${title?.text ?? "none"})`);
             // Its status chip, on the row under the title, reads Backlog; and it sits in the Backlog group.
             const chip = list.find((n) => n.pkg === PKG && n.bounds && n.text.trim() === "Backlog" && n.bounds[1] > title.bounds[3] - 5 && n.bounds[1] < title.bounds[3] + 300);
-            const group = list.filter((n) => n.pkg === PKG && n.bounds && n.bounds[0] < 300 && /^(Backlog|Todo|In Progress|Done|Closed|In Review)$/.test(n.text.trim()) && n.bounds[3] <= row.bounds[1]).pop();
+            const group = list.filter((n) => n.pkg === PKG && n.bounds && n.bounds[0] < 300 && /^(Backlog|Todo|In progress|Done|Closed|In review)$/.test(n.text.trim()) && n.bounds[3] <= row.bounds[1]).pop();
             if (!chip) throw new Error(`the backlog task is listed but its row does not read Backlog; on screen: ${visible(list)}`);
             cardTap = row;
             return { listed: true, row_status: chip.text, group: group?.text ?? null, inline_card_in_chat: Boolean(inline), ...opened };
@@ -585,7 +585,7 @@ export async function run(ctx) {
           ?? find(list, (n) => n.pkg === PKG && below(n) && (n.text.trim() === `#${t.number}` || n.desc.includes(`#${t.number}`)));
         if (!target) { via = "message"; target = messageNode; }
         tapNode(target);
-        await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task") || hasText(l, "Join Channel to Reply"), { timeoutMs: 45_000 });
+        await waitUntil("the task conversation", (l) => statusChip(l) || hasText(l, "Message this task") || hasText(l, "Join channel to reply"), { timeoutMs: 45_000 });
         const { chip, list: head } = await findTaskHead();
         if (!chip) throw new Error(`opened something without a task head (via ${via}); on screen: ${visible(head)}`);
         const numbered = find(head, (n) => n.pkg === PKG && (n.text.includes(`:#${t.number}`) || n.text.trim() === `Task #${t.number}`));

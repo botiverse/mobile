@@ -171,8 +171,8 @@ async function ensureReplyFixture(helpers, driver, config) {
   if (!replies.length) {
     await sendMessage(driver, config, smokeText);
     await longPressLatestText(driver, smokeText);
-    await driver.waitFor({ text: "Reply in Thread", role: "button", match: "exact" });
-    await driver.tapElement({ text: "Reply in Thread", role: "button", match: "exact" });
+    await driver.waitFor({ text: "Reply in thread", role: "button", match: "exact" });
+    await driver.tapElement({ text: "Reply in thread", role: "button", match: "exact" });
     await sendMessage(driver, config, smokeText, { reply: true });
     await driver.tapElement({ text: "Back", role: "button", match: "exact" });
     tree = await waitPredicate(driver, (current) => flattenElements(current).some((element) => element.role === "button" && /\b\d+ replies?\b/.test(String(element.label || ""))), "reply fixture");
@@ -221,11 +221,11 @@ async function doubleTapMessageLink(context, helpers) {
   const initial = await driver.uiTree();
   if (!findElements(initial, { text: smokeText, role: "text", match: "exact" }).length) await sendMessage(driver, config, smokeText);
   await longPressLatestText(driver, smokeText);
-  await driver.waitFor({ text: "Copy Link", role: "button", match: "exact" });
-  await driver.tapElement({ text: "Copy Link", role: "button", match: "exact" });
+  await driver.waitFor({ text: "Copy link", role: "button", match: "exact" });
+  await driver.tapElement({ text: "Copy link", role: "button", match: "exact" });
   const clipboard = await driver.clipboardGet();
   const link = String(clipboard?.text || "").trim();
-  if (clipboard?.has_text !== true || !/^https:\/\/\S+$/.test(link)) throw new VPhoneError("Copy Link did not produce an HTTPS message link", { code: "navigation_assertion" });
+  if (clipboard?.has_text !== true || !/^https:\/\/\S+$/.test(link)) throw new VPhoneError("Copy link did not produce an HTTPS message link", { code: "navigation_assertion" });
   evidence.writeJson("message-link.json", { link });
   await sendMessage(driver, config, link);
   const tree = await driver.uiTree();

@@ -511,10 +511,10 @@ async function caseChannelThread({ driver, config, evidence }) {
   await sendMessage(driver, config, SMOKE_TEXT);
   await evidence.capture(driver, "channel-sent");
   await longPressLatestText(driver, SMOKE_TEXT);
-  await driver.waitFor({ text: "Reply in Thread", role: "button", match: "exact" });
+  await driver.waitFor({ text: "Reply in thread", role: "button", match: "exact" });
   await driver.assertText("Save", { role: "button", match: "exact" });
   await evidence.capture(driver, "message-menu");
-  await driver.tapElement({ text: "Reply in Thread", role: "button", match: "exact" });
+  await driver.tapElement({ text: "Reply in thread", role: "button", match: "exact" });
   await driver.waitFor({ text: "Reply in thread", match: "contains" });
   await sendMessage(driver, config, SMOKE_TEXT, { reply: true });
   await evidence.capture(driver, "thread-sent");
@@ -666,7 +666,7 @@ async function caseActivity({ driver, config, evidence }) {
   const { tree } = await driver.waitFor({ text: SMOKE_TEXT, role: "button", match: "contains" }, { timeoutMs: 20_000 });
   const rows = findElements(tree, { text: SMOKE_TEXT, role: "button", match: "contains" });
   if (!rows.length) throw new Error(`Activity has no row containing the exact message ${SMOKE_TEXT}`);
-  const statuses = flattenElements(tree).map((element) => String(element.label || "")).filter((label) => /\b(In Progress|Done|Todo|Backlog|Closed)\b/.test(label));
+  const statuses = flattenElements(tree).map((element) => String(element.label || "")).filter((label) => /\b(In progress|Done|Todo|Backlog|Closed)\b/.test(label));
   if (!statuses.length) throw new Error("Activity has no visible task status");
   evidence.writeJson("activity-observed.json", { exactMessageRows: rows.length, statuses });
   await driver.tapElement({ text: SMOKE_TEXT, role: "button", match: "contains" });
@@ -854,7 +854,7 @@ async function caseAppearanceRelogin({ driver, config, evidence }) {
   await driver.tapElement({ text: "Back", role: "button", match: "exact" });
   await driver.waitFor({ identifier: "settings-search-input", match: "exact" });
   await openSettingsRow(driver, "Feedback");
-  await driver.assertText("New Feedback", { role: "button", match: "exact" });
+  await driver.assertText("New feedback", { role: "button", match: "exact" });
   await evidence.capture(driver, "feedback");
   await driver.tapElement({ text: "Back", role: "button", match: "exact" });
   await openSettings(driver, config);
