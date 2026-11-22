@@ -1166,36 +1166,58 @@ internal fun rememberThreadComposerAutofocusOnOpen(
     opensOnMessage: Boolean,
 ): ComposerFocusOnOpen {
     val policy = rememberComposerAutofocusOnOpen()
-    val yieldsToSideThread =
-        if (adaptiveCloseRequest == null) false else rememberThreadComposerYieldsToSideThread(adaptiveCloseRequest, adaptiveStoreScope)
+    val adaptiveFocusContext =
+        if (adaptiveCloseRequest == null) {
+            ThreadAdaptiveFocusContext(yieldsToSideThread = false, isDefaultLanding = false)
+        } else {
+            rememberThreadAdaptiveFocusContext(adaptiveCloseRequest, adaptiveStoreScope)
+        }
     return rememberComposerFocusOnOpen(
         policy = policy,
         shown = routeActive,
-        yieldsToSideThread = yieldsToSideThread,
+        yieldsToSideThread = adaptiveFocusContext.yieldsToSideThread,
         opensOnMessage = composerAutofocusSkipsMessageOpen(desktopHost = raftPlatformHasFinePointer(), opensOnMessage = opensOnMessage),
+        userInitiated = !adaptiveFocusContext.isDefaultLanding,
     )
 }
 
-/** [composerAutofocusYieldsToSideThread] for the wide detail's page [adaptiveCloseRequest], live. */
+private data class ThreadAdaptiveFocusContext(
+    val yieldsToSideThread: Boolean,
+    val isDefaultLanding: Boolean,
+)
+
+/** [composerAutofocusYieldsToSideThread] and default-landing status for the wide detail's [adaptiveCloseRequest], live. */
 @Composable
-private fun rememberThreadComposerYieldsToSideThread(
+private fun rememberThreadAdaptiveFocusContext(
     adaptiveCloseRequest: RaftAdaptiveDetailCloseRequest,
     adaptiveStoreScope: RaftShellStoreScope,
-): Boolean {
+): ThreadAdaptiveFocusContext {
     val pager = LocalActivity.current.getPager() as Pager
     val workspaceStore =
         remember(pager, adaptiveStoreScope) {
             RaftSharedStoreRegistry.get(Utils.bridgeModule(pager.pagerId)).adaptiveWorkspaceStore(adaptiveStoreScope)
         }
-    val yieldsToSideThread by
+    fun build.raft.app.data.SharedAdaptiveWorkspaceSession.toFocusContext(): ThreadAdaptiveFocusContext {
+        val selection = workspace?.selection
+        val isDefaultLanding =
+            workspace?.selectionIsDefaultLanding == true &&
+                selection != null &&
+                selection.identity.key == adaptiveCloseRequest.identityKey &&
+                selection.generation == adaptiveCloseRequest.generation
+        return ThreadAdaptiveFocusContext(
+            yieldsToSideThread = composerAutofocusYieldsToSideThread(adaptiveCloseRequest),
+            isDefaultLanding = isDefaultLanding,
+        )
+    }
+    val context by
         remember(workspaceStore, adaptiveCloseRequest) {
             workspaceStore.state
-                .map { it.composerAutofocusYieldsToSideThread(adaptiveCloseRequest) }
+                .map { it.toFocusContext() }
                 .distinctUntilChanged()
         }.collectAsState(
-            initial = workspaceStore.snapshot().composerAutofocusYieldsToSideThread(adaptiveCloseRequest)
+            initial = workspaceStore.snapshot().toFocusContext()
         )
-    return yieldsToSideThread
+    return context
 }
 
 /**

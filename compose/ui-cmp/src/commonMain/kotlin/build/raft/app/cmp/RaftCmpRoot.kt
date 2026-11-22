@@ -41,6 +41,8 @@ import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.RaftSystemBarsAppearance
 import build.raft.designsystem.components.raftSystemBarsAppearance
 import build.raft.designsystem.components.rememberRaftStableWindowInsets
+import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
+import build.raft.designsystem.focus.raftObserveFocusInteractions
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import build.raft.designsystem.text.RaftText
@@ -195,9 +197,11 @@ private fun RaftCmpPage(
                 // The window's one toast host, over the page (unless a host already put one
                 // round this root: Android's and the desktop's page stacks).
                 RaftCmpToastLayer(origin = host.capabilities) {
-                    Box(Modifier.fillMaxSize().background(canvas)) {
-                        val content = RaftCmpRouter.content(args.pageName)
-                        if (content != null) content() else UnknownCmpPage(args.pageName)
+                    Box(Modifier.fillMaxSize().background(canvas).raftObserveFocusInteractions()) {
+                        CompositionLocalProvider(LocalRaftFocusInteractionObserverInstalled provides true) {
+                            val content = RaftCmpRouter.content(args.pageName)
+                            if (content != null) content() else UnknownCmpPage(args.pageName)
+                        }
                     }
                 }
             }

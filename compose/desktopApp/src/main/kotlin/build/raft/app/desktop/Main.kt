@@ -19,12 +19,14 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import build.raft.app.RaftWindowFocusScope
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftDesktopComposerTemporaryFiles
 import build.raft.app.data.raftClearLegacyFontPreference
 import build.raft.app.network.installDesktopRaftAppIdentity
+import build.raft.designsystem.focus.RaftFocusCoordinator
 import java.awt.Dimension
 
 /** Desktop entry point: process setup as in RaftApplication (Android), then one window. */
@@ -54,6 +56,7 @@ fun main(args: Array<String>) {
     application {
         val navigator = RaftDesktopNavigator()
         val windowState = rememberWindowState(size = DpSize(1200.dp, 800.dp))
+        val windowFocusCoordinator = remember { RaftFocusCoordinator() }
         // Default 1200x800: wide enough (>= 840dp) for the rail and split panes. Narrower windows
         // get the phone layout, down to a phone-sized minimum.
         // History shortcuts at the window level, after the content: a focused text field or menu that
@@ -64,6 +67,9 @@ fun main(args: Array<String>) {
             title = "Raft",
             // ⌘K / Ctrl+K before the content: the shell opens search even from a text field.
             onPreviewKeyEvent = { event ->
+                if (event.type == KeyEventType.KeyDown) {
+                    windowFocusCoordinator.recordUserInteraction()
+                }
                 raftDesktopSearchShortcut(
                     keyDown = event.type == KeyEventType.KeyDown,
                     key = event.key,
@@ -93,9 +99,11 @@ fun main(args: Array<String>) {
             LaunchedEffect(Unit) { window.exceptionHandler = RaftDesktopCrashReporting.wrapWindowExceptionHandler(window.exceptionHandler) }
             // macOS: the title bar over the app's top bar, traffic lights inside it (web desktop app).
             val titleBar = remember { RaftDesktopTitleBar.install(window) }
-            RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
-                Box(Modifier.fillMaxSize().then(hitTest)) {
-                    RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+            RaftWindowFocusScope(modifier = Modifier.fillMaxSize(), coordinator = windowFocusCoordinator) {
+                RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
+                    Box(Modifier.fillMaxSize().then(hitTest)) {
+                        RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+                    }
                 }
             }
         }

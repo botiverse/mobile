@@ -28,6 +28,7 @@ import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
 import build.raft.app.RaftWindowFocusScope
 import build.raft.app.RaftDatabaseLaunchReadiness
+import build.raft.designsystem.focus.RaftFocusCoordinator
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -811,6 +812,7 @@ internal open class RaftCmpActivity :
         }
     private val bridge by bridgeDelegate
     private val hostEvents = RaftHostEvents()
+    private val windowFocusCoordinator = RaftFocusCoordinator()
     private val adaptivePaneHostDelegate =
         lazy {
             AndroidAdaptivePaneHost(
@@ -1195,7 +1197,7 @@ internal open class RaftCmpActivity :
                     // page's RaftCmpRoot uses it instead of adding its own).
                     // This window's own focus bookkeeping: another app window's dialog or focused
                     // field never decides this window's composer focus (RaftWindowFocusScope).
-                    RaftWindowFocusScope {
+                    RaftWindowFocusScope(coordinator = windowFocusCoordinator) {
                         CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
                             RaftCmpToastLayer {
                                 RaftToastHostImeBottomInset()
@@ -2021,6 +2023,9 @@ internal open class RaftCmpActivity :
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            windowFocusCoordinator.recordUserInteraction()
+        }
         if (handleRaftTextFieldEnterKey(event)) {
             return true
         }

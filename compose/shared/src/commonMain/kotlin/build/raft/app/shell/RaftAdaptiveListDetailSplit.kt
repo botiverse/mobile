@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftPaneGridPlatform
 import build.raft.designsystem.components.RaftPaneSplitter
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_LIST_PANE_DIVIDER_DP
 import build.raft.app.data.RaftListPaneDragSession
@@ -150,14 +152,20 @@ internal fun RaftAdaptiveListDetailSplit(
                             else -> RaftPaneGridLeadingMode.Hidden
                         },
                 ) {
-                    if (dualPane && !listCollapsed) listPane(active)
+                    if (dualPane && !listCollapsed) {
+                        RaftFocusRegionHost(region = RaftFocusRegion.ListPane, modifier = Modifier.fillMaxSize()) {
+                            listPane(active)
+                        }
+                    }
                 },
         ) {
             Box(Modifier.fillMaxSize()) {
                 if (split || listCollapsed || hasSelection) {
                     detailPane(Modifier.fillMaxSize().padding(bottom = detailBottomInset))
                 } else if (!dualPane) {
-                    listPane(active)
+                    RaftFocusRegionHost(region = RaftFocusRegion.ListPane, modifier = Modifier.fillMaxSize()) {
+                        listPane(active)
+                    }
                 }
             }
         }

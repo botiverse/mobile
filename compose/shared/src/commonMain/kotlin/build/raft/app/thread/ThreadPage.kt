@@ -17,6 +17,9 @@ import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.components.raftPaneGridCellExpand
+import build.raft.designsystem.focus.LocalRaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -294,13 +297,24 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
         super.willInit()
         setAuthenticatedContent {
             RaftInputFocusDismissHost { focusDismissModifier ->
-                Box(modifier = focusDismissModifier.fillMaxSize()) {
-                    ThreadPageScreen(
-                        pageVisibleTick = raftPageVisibleResumeTick,
-                        pageVisible = raftPageVisible,
-                        adaptivePaneState = adaptivePaneState,
-                        adaptivePaneEvent = adaptivePaneEvent,
+                val content: @Composable () -> Unit = {
+                    Box(modifier = focusDismissModifier.fillMaxSize()) {
+                        ThreadPageScreen(
+                            pageVisibleTick = raftPageVisibleResumeTick,
+                            pageVisible = raftPageVisible,
+                            adaptivePaneState = adaptivePaneState,
+                            adaptivePaneEvent = adaptivePaneEvent,
+                        )
+                    }
+                }
+                if (LocalRaftFocusRegion.current == null) {
+                    RaftFocusRegionHost(
+                        region = RaftFocusRegion.Conversation,
+                        modifier = Modifier.fillMaxSize(),
+                        content = content,
                     )
+                } else {
+                    content()
                 }
             }
         }

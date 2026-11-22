@@ -17,6 +17,8 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconToggleButton
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
 import build.raft.designsystem.theme.RaftTheme
 
 /*
@@ -162,7 +164,10 @@ internal fun RaftTasksTaskColumnLayout(
                         listOf(
                             RaftPaneGridCell(id = "task") {
                                 CompositionLocalProvider(LocalRaftTaskColumnHead provides currentHead) {
-                                    Box(Modifier.fillMaxSize().testTag(RaftTasksTaskColumnTags.Column)) { currentTask() }
+                                    RaftFocusRegionHost(
+                                        region = RaftFocusRegion.Conversation,
+                                        modifier = Modifier.fillMaxSize().testTag(RaftTasksTaskColumnTags.Column),
+                                    ) { currentTask() }
                                 }
                             }
                         ),
@@ -176,7 +181,10 @@ internal fun RaftTasksTaskColumnLayout(
             // Expanded, or no room beside the list: the task takes the row; the list stays composed.
             fillColumn = RaftPaneGridColumns.Detail.id.takeIf { open && (expandedShown || !beside) },
         ) {
-            Box(Modifier.fillMaxSize().testTag(RaftTasksTaskColumnTags.List)) { list() }
+            RaftFocusRegionHost(
+                region = RaftFocusRegion.ListPane,
+                modifier = Modifier.fillMaxSize().testTag(RaftTasksTaskColumnTags.List),
+            ) { list() }
         }
     }
 }
