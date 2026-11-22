@@ -8,6 +8,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.runTest
  * stands of the failed ones stays to confirm, never retried without Try again. The list lives in a
  * real [SharedAgentDetailStore], as on the profile.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class AgentAppGrantsRevokeStoreTest {
     @Test
     fun revokeAccessAsksFirstThenRevokesEveryGrantOfTheAppOnePostEach() =
