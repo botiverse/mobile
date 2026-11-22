@@ -3,9 +3,11 @@ package build.raft.designsystem.vcase
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
@@ -16,6 +18,7 @@ import build.raft.designsystem.components.RaftSelectionToolbar
 import build.raft.designsystem.components.RaftSelectionToolbarActionSpec
 import build.raft.designsystem.components.RaftSelectionToolbarClose
 import build.raft.designsystem.components.RaftSelectionToolbarDefaults
+import build.raft.designsystem.components.RaftSelectionToolbarDock
 import build.raft.designsystem.components.RaftSelectionToolbarMore
 import build.raft.designsystem.screenshot.AppIcon
 import build.raft.designsystem.screenshot.AppIconImage
@@ -64,6 +67,17 @@ fun SelectionToolbarFit() {
         Box(Modifier.width(330.dp)) { Toolbar(count = 3, hint = "1 will be skipped") }
         Caption("350dp (a 390dp phone's dock) in a thread: select-all, all selected")
         Box(Modifier.width(350.dp)) { Toolbar(count = 12, selectAll = true) }
+    }
+}
+
+/** Docked over the bottom of a 390dp phone conversation, 20dp from its sides and 12dp above its bottom. */
+@VCase("ds.selection-toolbar.dock")
+@Composable
+fun SelectionToolbarDock() {
+    Box(Modifier.width(390.dp).height(160.dp)) {
+        RaftSelectionToolbarDock(modifier = Modifier.align(Alignment.BottomCenter)) {
+            Toolbar(count = 2)
+        }
     }
 }
 

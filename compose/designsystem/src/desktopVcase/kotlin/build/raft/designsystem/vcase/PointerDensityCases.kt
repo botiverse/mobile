@@ -16,6 +16,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftBarButtons
+import build.raft.designsystem.components.RaftAppRail
+import build.raft.designsystem.components.RaftAppRailDefaults
+import build.raft.designsystem.components.RaftAppRailItem
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftButton
@@ -40,6 +43,8 @@ import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTopBar
 import build.raft.designsystem.components.RaftWorkspaceButton
+import build.raft.designsystem.screenshot.AppIcon
+import build.raft.designsystem.screenshot.AppIconImage
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -167,5 +172,31 @@ fun PointerDensityHeads() {
                 }
             },
         )
+    }
+}
+
+/** The rail at any window height is the compact one (48 + the seam, 36dp items) with a 44dp header. */
+@VCase("ds.pointer-density.rail", viewport = ["wide"], pointer = ["fine"])
+@Composable
+fun PointerDensityRail() {
+    Box(Modifier.height(720.dp)) {
+        RaftAppRail(
+            header = {
+                Box(Modifier.size(28.dp).background(RaftUiPalette.selected, RoundedCornerShape(RaftRadius.Sticker)))
+            },
+        ) {
+            RaftAppRailItem(
+                label = "Home",
+                selected = true,
+                onClick = {},
+                icon = { ink -> AppIconImage(AppIcon.House, RaftAppRailDefaults.IconSize, ink) },
+            )
+            RaftAppRailItem(
+                label = "Activity",
+                selected = false,
+                onClick = {},
+                icon = { ink -> AppIconImage(AppIcon.Activity, RaftAppRailDefaults.IconSize, ink) },
+            )
+        }
     }
 }

@@ -61,6 +61,31 @@ fun ChoiceListGallery() {
     }
 }
 
+/** Single choice under group headings (Pi's Add Provider: an account, or an API key). */
+@VCase("ds.choice-list.grouped", maxWidth = 1600)
+@Composable
+fun ChoiceListGrouped() {
+    val items =
+        listOf(
+            RaftChoiceListItem("account:anthropic", "Anthropic (Claude Pro/Max)", listOf(AnnotatedString("Sign in, then paste a code")), group = "account"),
+            RaftChoiceListItem("account:openai-codex", "ChatGPT Plus/Pro (Codex)", listOf(AnnotatedString("Sign in with a device code")), group = "account"),
+            RaftChoiceListItem("key:deepseek", "DeepSeek", group = "key"),
+            RaftChoiceListItem("key:amazon-bedrock", "Amazon Bedrock", listOf(AnnotatedString("Asks for more than a key: set it up on the Computer")), enabled = false, group = "key"),
+        )
+    Column(Modifier.width(358.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        RaftChoiceList(
+            items = items,
+            value = "account:openai-codex",
+            onValueChange = {},
+            searchPlaceholder = "Search providers",
+            clearSearchLabel = "Clear search",
+            noMatchLabel = "No matching providers",
+            emptyLabel = "No providers",
+            groups = listOf(RaftChoiceListGroup("account", "Sign in with an account"), RaftChoiceListGroup("key", "Use an API key")),
+        )
+    }
+}
+
 /**
  * Checkboxes under Agents / Humans headings with avatars and a footer, a search keeping the
  * chosen row first, nothing matching, and no items.

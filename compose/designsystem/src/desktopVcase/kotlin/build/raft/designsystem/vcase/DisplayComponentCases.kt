@@ -980,6 +980,32 @@ fun AvatarListRowStatesGallery() {
     }
 }
 
+// An agent row with a presence light cut out of the card and of the selected wash.
+@VCase("ds.avatar-list-row-presence.gallery")
+@Composable
+fun AvatarListRowPresenceGallery() {
+    Box(Modifier.width(342.dp).background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
+        RaftListRowGroup(Modifier.fillMaxWidth()) {
+            RaftListRow(
+                title = "Wug",
+                subtitle = "@wug · claude-code",
+                onClick = {},
+                leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online) },
+                trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) },
+            )
+            RaftListRow(
+                title = "Bugen",
+                subtitle = "@bugen · codex",
+                onClick = {},
+                divider = true,
+                selected = true,
+                leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline) },
+                trailing = { RaftButton("Open", onClick = {}) },
+            )
+        }
+    }
+}
+
 /**
  * The web members page roster (ChannelMembers presentation="page"): a group heading with
  * the count after a separator ("Humans · 2") and [RaftListRowText.Member] rows (15/20 title,

@@ -5,20 +5,31 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftHoveredPreview
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailItem
+import build.raft.designsystem.components.RaftAvatarEmpty
+import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.components.RaftMessageImageFrame
+import build.raft.designsystem.components.RaftMessageQuotedPreview
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftSidebarChannelItem
@@ -28,11 +39,18 @@ import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTaskCompactList
 import build.raft.designsystem.components.RaftTaskCompactRow
 import build.raft.designsystem.components.RaftTaskStatus
+import build.raft.designsystem.components.RaftTaskStatusBadge
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftToggleGroup
 import build.raft.designsystem.components.RaftToggleGroupItem
+import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.screenshot.AppIcon
 import build.raft.designsystem.screenshot.AppIconImage
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiPalette
 import dev.vcase.VCase
 
 // Pointer hover (raft-ui states.md § Hover and press) on the components that answer a mouse or
@@ -41,11 +59,45 @@ import dev.vcase.VCase
 // to show that they don't respond. Light and dark: the list cell's hover steps up in dark.
 // These replace HoverScreenshotTest (each _light/_dark).
 
+/** Menu items: `brand-soft` under the pointer, as the keyboard highlight; disabled stays plain. */
+@VCase("ds.hover.menu-item")
+@Composable
+fun HoverMenuItem() {
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+        Column(Modifier.width(260.dp)) {
+            Caption("Rest", Modifier.padding(bottom = 8.dp))
+            RaftMenuSurface(Modifier.fillMaxWidth()) { MenuItems() }
+        }
+        Column(Modifier.width(260.dp)) {
+            Caption("Hovered: item, checked item, disabled", Modifier.padding(bottom = 8.dp))
+            RaftMenuSurface(Modifier.fillMaxWidth()) { Hovered { MenuItems() } }
+        }
+    }
+}
+
 @Composable
 private fun MenuItems() {
     RaftMenuItem("Copy Link", {}, leadingIcon = { RaftGlyphIcon(RaftGlyph.Copy) })
     RaftMenuItem("Recent Activity", {}, checked = true)
     RaftMenuItem("Archive Channel", {}, enabled = false)
+}
+
+/**
+ * Rows: a ListRow lays `fill-subtle`; a sidebar row (a list cell) `fill-cell-hover` on its
+ * rounded shape, none when selected; a compact task row `fill-subtle`; a display-only
+ * ListRow nothing.
+ */
+@VCase("ds.hover.list-rows")
+@Composable
+fun HoverListRows() {
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+        listOf(false, true).forEach { hovered ->
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Caption(if (hovered) "Hovered" else "Rest")
+                HoveredIf(hovered) { Rows() }
+            }
+        }
+    }
 }
 
 @Composable
@@ -133,6 +185,75 @@ private fun RailItem(label: String, icon: AppIcon, selected: Boolean = false, en
         icon = { ink -> AppIconImage(icon, RaftAppRailDefaults.IconSize, ink) },
         enabled = enabled,
     )
+}
+
+/**
+ * Clickable text: a TextLink and a link in a sentence underline in their own colour (muted
+ * turns ink), a toast's action underlines; none of them is underlined at rest.
+ */
+@VCase("ds.hover.text-link")
+@Composable
+fun HoverTextLink() {
+    val type = RaftTheme.typography
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        listOf(false, true).forEach { hovered ->
+            Caption(if (hovered) "Hovered: muted, strong, disabled; in a sentence; a toast's action" else "Rest")
+            HoveredIf(hovered) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        RaftTextLink("Forgot Password", {}, variant = RaftTextLinkVariant.Muted, style = type.footnote)
+                        RaftTextLink("Manage Machines", {}, variant = RaftTextLinkVariant.Strong, style = type.footnote)
+                        RaftTextLink("Log Out", {}, style = type.footnote, enabled = false)
+                    }
+                    RaftText(
+                        buildAnnotatedString {
+                            append("Don't have an account? ")
+                            appendRaftTextLink("Create One", onClick = {})
+                        },
+                        style = type.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                    RaftToast("Wug finished reviewing #25.", actionLabel = "View", onAction = {})
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Small controls and readable cards: the quoted preview, the picker trigger (also with a
+ * value), the editable status chip and the empty avatar take the medium tier; a gallery
+ * image dims with `ink-8`.
+ */
+@VCase("ds.hover.controls")
+@Composable
+fun HoverControls() {
+    Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.Top) {
+        listOf(false, true).forEach { hovered ->
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Caption(if (hovered) "Hovered" else "Rest")
+                HoveredIf(hovered) {
+                    RaftMessageQuotedPreview(
+                        authorName = "Alpha",
+                        text = "Rolled back the migration; the error rate is flat again.",
+                        channel = "launch-week",
+                        onClick = {},
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RaftPickerTriggerButton("Assignee", {})
+                        RaftPickerTriggerButton("Status: Open", {}, hasValue = true)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        RaftTaskStatusBadge(RaftTaskStatus.InReview, "In Review", onClick = {})
+                        RaftAvatarEmpty(RaftAvatarSize.Md, contentDescription = "Add Member", onClick = {})
+                        RaftMessageImageFrame(Modifier.size(64.dp), onClick = {}) {
+                            Box(Modifier.fillMaxSize().background(RaftUiPalette.attention400))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

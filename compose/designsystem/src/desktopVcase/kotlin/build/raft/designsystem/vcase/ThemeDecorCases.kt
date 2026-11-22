@@ -71,6 +71,35 @@ fun ThemeDecorTop() {
     }
 }
 
+/**
+ * The raft-ui end-inset rule (#174): Bots with decor on, the trailing region holding an avatar
+ * stack and two icon buttons (about 141dp in from the end with the bar's 12dp end padding):
+ * - 1280dp, no end inset: the strip ends 16dp before the actions (about 157dp from the end);
+ * - 1280dp, a 138dp end inset (Windows caption controls): the frame runs under the inset, the
+ *   actions move in by it and the strip with them (about 295dp);
+ * - 1024dp, no end inset: 157 + 190dp is more than the 332dp after the search field, so no
+ *   strip (never a cut one);
+ * - 1024dp, a 138dp end inset: no strip either.
+ */
+@VCase("ds.theme-decor.top-actions", maxWidth = 1340, settleFrames = 2, frameIntervalMs = 0)
+@Composable
+fun ThemeDecorTopActions() {
+    RaftTheme(appearance = caseAppearance, systemDark = false, raftTheme = RaftThemeId.Bots, decor = true) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(1280.dp to 0.dp, 1280.dp to 138.dp, 1024.dp to 0.dp, 1024.dp to 138.dp).forEach { (width, inset) ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RaftText(
+                        "${width.value.toInt()}dp, end inset ${inset.value.toInt()}dp",
+                        style = RaftTheme.typography.monoMeta,
+                        color = RaftTheme.colors.foregroundHint,
+                    )
+                    DecorTopBar(width = width, endInset = inset) { DecorActions() }
+                }
+            }
+        }
+    }
+}
+
 /** The rail's strip in each theme, then a short rail: the strip is cut from the top, never drawn under an item. */
 @VCase("ds.theme-decor.rail")
 @Composable

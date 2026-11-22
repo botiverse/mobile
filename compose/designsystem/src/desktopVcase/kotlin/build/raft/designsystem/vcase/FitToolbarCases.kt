@@ -58,6 +58,18 @@ fun FitToolbarFilters() {
     Widths { typed -> FiltersToolbar(typed) }
 }
 
+/**
+ * The Computers toolbar with `wrap` (search, Status applied, Runtime, Clear all, Sort, Cards /
+ * List, Add computer): at 1024 every label; Clear all becomes × with the filters' icons and
+ * stays × beside them on their second line; Cards / List shows its icons from the first step
+ * and folds into ⋯ More with Sort.
+ */
+@VCase("ds.fit-toolbar.filters-end-view")
+@Composable
+fun FitToolbarFiltersEndView() {
+    Widths { typed -> FiltersEndViewToolbar(typed) }
+}
+
 /** The toolbar at each width, then at 375dp with text in its search. */
 @Composable
 private fun Widths(toolbar: @Composable (typed: Boolean) -> Unit) {
