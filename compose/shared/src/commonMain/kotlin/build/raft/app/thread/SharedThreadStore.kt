@@ -4,9 +4,6 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.ConversationReadOnSight
 import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.DataResult
-import build.raft.app.data.rwRetryAfterMillis
-import build.raft.app.data.RaftStaleReadRecovery
-import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.appendSharedThreadSentMessageFromPage
 import build.raft.app.data.MarkUnreadOutcome
@@ -19,7 +16,6 @@ import build.raft.app.data.SharedForegroundLoadGate
 import build.raft.app.data.SharedForegroundThreadKey
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadReplySummariesSnapshot
-import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadPendingSendDrainer
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.ThreadPendingSendJournalDrainStore
@@ -67,7 +63,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -81,7 +76,6 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -670,7 +664,7 @@ internal class SharedThreadStore(
                         historyStartFocusRequest = it.historyStartFocusRequest + 1
                     )
                 }
-            is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
+            is SharedThreadIntent.ResolveUnreadThreadParents -> unreadThreadParentLookup.resolve(intent.threadChannelIds)
             is SharedThreadIntent.JumpToMessage -> {
                 jumpToMessage(intent.messageId, intent.switchToTab, intent.unreadThreadPill)
                 intent.prewarmThreadChannelId?.let { threadId -> prewarmUnreadThread(threadId, intent.messageId) }
@@ -6424,106 +6418,15 @@ internal class SharedThreadStore(
         }
     }
 
-    /** Unread-thread ids already asked of the followed-threads list on this page (never re-asked). */
-    private val unreadThreadParentsRequested = mutableSetOf<String>()
-    private var unreadThreadParentsInFlight = false
-    /**
-     * Task #164: while the followed-threads list is overloaded or stale, the ids it could not resolve
-     * are asked again with the shared recovery backoff (foreground only; at once on return or reconnect).
-     */
-    private val unreadThreadParentsRecovery =
-        RaftStaleReadRecovery(
+    /** Parents of unread threads outside the loaded window; see [ThreadUnreadThreadParents]. */
+    private val unreadThreadParentLookup =
+        ThreadUnreadThreadParents(
+            dataSource = dataSource,
             scope = scope,
-            label = "followed_threads",
-            diagnosticsLogger = { line -> diagnosticsLogger?.invoke(line) },
+            diagnosticsLogger = diagnosticsLogger,
+            currentState = { _state.value },
+            reduceState = ::reduceState,
         )
-
-    /** Ids asked for while a lookup was in flight: looked up right after it instead of dropped. */
-    private val unreadThreadParentsQueued = LinkedHashSet<String>()
-
-    private suspend fun resolveUnreadThreadParents(threadChannelIds: Set<String>) {
-        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
-        val channelId = routeIdentity.timelineChannelId?.takeIf { routeIdentity.surfaceKind == RaftThreadSurfaceKind.Channel }
-        if (channelId == null) {
-            unreadThreadParentsRecovery.reset()
-            return
-        }
-        if (unreadThreadParentsInFlight) {
-            // The page asks again only when its id set changes, so a request dropped here was lost
-            // for good and its threads stayed without a target (artin: the pill worked once).
-            unreadThreadParentsQueued += threadChannelIds
-            return
-        }
-        val pending =
-            threadChannelIds.filterTo(LinkedHashSet()) { id ->
-                id.isNotBlank() && id !in unreadThreadParentsRequested && id !in _state.value.unreadThreadParents
-            }
-        if (pending.isEmpty()) {
-            unreadThreadParentsRecovery.reset()
-            return
-        }
-        unreadThreadParentsInFlight = true
-        unreadThreadParentsRequested += pending
-        try {
-            val result = dataSource.fetchUnreadFollowedThreads()
-            if (_state.value.payload.resolveThreadRouteIdentity() != routeIdentity) {
-                diagnosticsLogger?.invoke("thread_unread_thread_parents_drop reason=route_changed")
-                unreadThreadParentsRecovery.reset()
-                return
-            }
-            val threads = (result as? DataResult.Content)?.data?.threads
-            // Task #164: the read warehouse being behind is temporary. Ids it could not resolve
-            // (an overload, or a remembered list that may predate them) may be asked again by the
-            // next trigger; every other answer stays final for this page, as before.
-            val rwStale = result?.isRwOverloadedError == true ||
-                (result as? DataResult.Content)?.data?.staleReason != null
-            if (threads == null) {
-                if (rwStale) {
-                    unreadThreadParentsRequested -= pending
-                    scheduleUnreadThreadParentsRecovery(pending, result)
-                }
-                diagnosticsLogger?.invoke(
-                    "thread_unread_thread_parents_result result=${result?.let { it::class.simpleName } ?: "unavailable"} " +
-                        "requested=${pending.size} rwStale=$rwStale"
-                )
-                return
-            }
-            val resolved = threads.toThreadUnreadThreadParents(channelId)
-            val unresolved = pending.filterNotTo(LinkedHashSet()) { it in resolved }
-            if (rwStale && unresolved.isNotEmpty()) {
-                unreadThreadParentsRequested -= unresolved
-                scheduleUnreadThreadParentsRecovery(unresolved, result)
-            } else {
-                unreadThreadParentsRecovery.reset()
-            }
-            diagnosticsLogger?.invoke(
-                "thread_unread_thread_parents_result result=content requested=${pending.size} " +
-                    "resolved=${pending.count { it in resolved }} channelThreads=${resolved.size}"
-            )
-            val latest = _state.value
-            val merged = latest.unreadThreadParents + resolved
-            if (merged != latest.unreadThreadParents) {
-                reduceState(latest.copy(unreadThreadParents = merged))
-            }
-        } finally {
-            unreadThreadParentsInFlight = false
-            if (unreadThreadParentsQueued.isNotEmpty() && currentCoroutineContext().isActive) {
-                val queued = unreadThreadParentsQueued.toSet()
-                unreadThreadParentsQueued.clear()
-                resolveUnreadThreadParents(queued)
-            }
-        }
-    }
-
-    private fun scheduleUnreadThreadParentsRecovery(ids: Set<String>, result: DataResult<ThreadListSnapshot>?) {
-        val retryAfterMillis =
-            (result as? DataResult.Content)?.data?.staleRetryAfterMillis
-                ?: (result as? DataResult.Error)?.error?.rwRetryAfterMillis
-        unreadThreadParentsRecovery.schedule(retryAfterMillis) {
-            resolveUnreadThreadParents(ids)
-            true
-        }
-    }
 
     /** The one unread-thread jump prewarm of this page (concurrency 1) and the thread it warms. */
     private var unreadThreadPrewarmJob: Job? = null
