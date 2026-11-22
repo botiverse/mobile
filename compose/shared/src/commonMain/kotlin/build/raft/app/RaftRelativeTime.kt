@@ -3,17 +3,21 @@ package build.raft.app
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.format.RaftFormatLocale
+import build.raft.app.format.numericDate
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorDiv
 import build.raft.app.model.formatRaftClock
 import build.raft.app.model.formatRaftTimestampEpochMillis
@@ -207,8 +211,9 @@ internal fun raftDeviceZoneAbsoluteLabel(
  * Shared interactive timestamp used by product surfaces that lead with relative time.
  *
  * A parseable timestamp with a live local time context can toggle its window-level display group.
- * Aggregate surfaces default to relative time; conversation surfaces default to compact local
- * absolute time. Every timestamp in the same group and active activity/window observes the change.
+ * Aggregate surfaces default to relative time; conversation surfaces default to the absolute time a
+ * message row shows ([RaftMessageTimeFormat]). Every timestamp in the same group and active
+ * activity/window observes the change.
  * A newly created window restores both defaults, and the modes are not persisted across restarts.
  */
 @Composable
@@ -233,7 +238,7 @@ internal fun RaftRelativeTimestampText(
     val resolvedMode =
         resolvedRaftTimestampDisplayMode(displayState.displayMode(displayGroup), value, effectiveContext)
     val relativeLabel = raftRelativeTimestampLabel(value, effectiveContext, clampFuture)
-    val absoluteLabel = raftAbsoluteTimestampLabel(value, effectiveContext)
+    val absoluteLabel = raftMessageTimeLabel(value, effectiveContext, rememberRaftMessageTimeFormat())
     val displayLabel =
         if (resolvedMode == RaftTimestampDisplayMode.Absolute) {
             absoluteLabel ?: relativeLabel
@@ -293,6 +298,56 @@ internal fun raftAbsoluteTimestampLabel(
 ): String? =
     if (raftTimestampToggleAvailable(value, timeContext)) {
         formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
+    } else {
+        null
+    }
+
+/**
+ * A message's time as its row shows it, the web's `formatMessageTime`
+ * (`packages/web/src/utils/timeFormatting.ts`, botiverse/slock d7f7f7a2): the clock today,
+ * [yesterdayLabel] and the clock yesterday, else the day in [locale]'s digits ([numericDate]:
+ * `06/22` in English, `22/06` in Portuguese), with the year when it is not this year's, then the
+ * clock. The clock follows the person's 12h/24h choice and the day their time zone (the context's
+ * offset). Get one for the UI language with [rememberRaftMessageTimeFormat].
+ */
+@Immutable
+internal data class RaftMessageTimeFormat(
+    val locale: RaftFormatLocale,
+    val yesterdayLabel: String,
+) {
+    /** [value] (a wire timestamp) in [timeContext]; null when it is not a timestamp or there is no today. */
+    fun format(value: String?, timeContext: RaftTimeContext?): String? {
+        val context = timeContext ?: return null
+        val today = context.resolvedTodayEpochDay() ?: return null
+        val epochMillis = parseRaftTimestampEpochMillisOrNull(value, context.localOffsetMinutes) ?: return null
+        val day = context.localEpochDay(epochMillis)
+        val clock = context.formatClock(epochMillis)
+        if (day == today) return clock
+        if (day == today - 1) return "$yesterdayLabel $clock"
+        val date = civilDateFromEpochDay(day)
+        val withYear = date.year != civilDateFromEpochDay(today).year
+        return "${locale.numericDate(date.year, date.month, date.day, withYear)} $clock"
+    }
+}
+
+/** The [RaftMessageTimeFormat] of the UI language; a language switch recomposes the caller with the new one. */
+@Composable
+internal fun rememberRaftMessageTimeFormat(): RaftMessageTimeFormat {
+    val yesterdayLabel = stringResource(Res.string.thread_message_time_yesterday)
+    val localeTag = rememberRaftUiLocaleTag()
+    return remember(localeTag, yesterdayLabel) {
+        RaftMessageTimeFormat(RaftFormatLocale.forLanguageTag(localeTag), yesterdayLabel)
+    }
+}
+
+/** A timestamp's absolute label in a [RaftRelativeTimestampText]: [messageTime] when the timestamp can toggle, else null. */
+internal fun raftMessageTimeLabel(
+    value: String?,
+    timeContext: RaftTimeContext?,
+    messageTime: RaftMessageTimeFormat,
+): String? =
+    if (raftTimestampToggleAvailable(value, timeContext)) {
+        messageTime.format(value, timeContext)?.takeIf { it.isNotBlank() }
     } else {
         null
     }

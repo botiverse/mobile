@@ -529,7 +529,8 @@ private fun ThreadFilesArtifacts(
     }
 }
 
-// Web `ConversationArtifactRow`: the whole row opens the latest version in the viewer.
+// Web `ConversationArtifactRow`: the whole row opens the latest version in the viewer. When it was
+// last updated as the file rows say it (`formatShortDateTime`).
 @Composable
 private fun ThreadFilesArtifactRow(artifact: ConversationArtifact, divider: Boolean, onClick: () -> Unit) {
     val summary = artifact.summary
@@ -539,7 +540,7 @@ private fun ThreadFilesArtifactRow(artifact: ConversationArtifact, divider: Bool
         onClick = onClick,
         divider = divider,
         subtitle = stringResource(Res.string.artifacts_card_version, summary.latestVersion),
-        meta = raftRelativeTimestampLabel(artifact.updatedAt).takeIf { it.isNotBlank() },
+        meta = raftLocalizedShortDateTime(artifact.updatedAt).takeIf { it.isNotBlank() },
         leading = {
             RaftIconTile(size = RaftIconTileSize.Md) {
                 RaftLucideIcon(summary.kind.lucideIcon(), Modifier.size(RaftIconTileSize.Md.icon), color = raftArgbHex(colors.foregroundMuted))
@@ -711,8 +712,9 @@ private fun ThreadFileMetaLine(item: RaftThreadFileItem) {
                     modifier = Modifier.size(12.dp),
                     color = raftArgbHex(RaftColor.ForegroundHint)
                 )
-                RaftRelativeTimestampText(
-                    value = label,
+                // Web `ChannelFilesPanelFileRow`: when it was shared, `formatShortDateTime` ("Jun 25, 18:24").
+                Text(
+                    text = raftLocalizedShortDateTime(label),
                     style = ThreadFileMetaStyle,
                     color = RaftColor.ForegroundHint,
                     maxLines = 1,
