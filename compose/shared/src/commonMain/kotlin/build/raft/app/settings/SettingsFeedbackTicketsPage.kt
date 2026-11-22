@@ -453,9 +453,14 @@ internal fun SettingsFeedbackTicketsScreen(
     }
 }
 
+/**
+ * The ticket's title and meta take the head's free width, so its status, Copy Link and Close Ticket
+ * sit together at the trailing edge whatever the title's length (artin 11-22: they followed a short
+ * title, leaving the head's end empty).
+ */
 @Composable
 private fun RowScope.FeedbackTicketHeadTitle(ticket: FeedbackTicket) {
-    Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         RaftText(
             ticket.title,
             style = RaftTheme.typography.headline.copy(fontWeight = FontWeight.SemiBold),
