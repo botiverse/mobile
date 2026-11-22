@@ -258,12 +258,16 @@ fun rememberAsyncImageBitmap(model: String?): ImageBitmap? =
  * pixel coordinates matter, never for user content).
  */
 @Composable
-fun rememberAsyncImageBitmap(model: String?, maxDecodeEdgePx: Int): ImageBitmap? {
+fun rememberAsyncImageBitmap(
+    model: String?,
+    maxDecodeEdgePx: Int,
+    diskCacheKey: String? = null,
+): ImageBitmap? {
     val source = model?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val context = LocalPlatformContext.current
     val decodeSize = raftImageDecodeSize(maxDecodeEdgePx)
-    var bitmap by remember(source, decodeSize) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(source, decodeSize) {
+    var bitmap by remember(source, decodeSize, diskCacheKey) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(source, decodeSize, diskCacheKey) {
         raftInstallImageLoader()
         val request =
             ImageRequest.Builder(context)
@@ -271,6 +275,9 @@ fun rememberAsyncImageBitmap(model: String?, maxDecodeEdgePx: Int): ImageBitmap?
                 .size(decodeSize)
                 .scale(Scale.FIT)
                 .precision(Precision.INEXACT)
+                .apply {
+                    diskCacheKey?.trim()?.takeIf { it.isNotEmpty() }?.let { diskCacheKey(it) }
+                }
                 .build()
         val result = SingletonImageLoader.get(context).execute(request)
         bitmap = (result as? SuccessResult)?.image?.toRaftImageBitmap()
