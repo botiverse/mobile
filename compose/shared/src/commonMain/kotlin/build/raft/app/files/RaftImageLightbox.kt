@@ -83,9 +83,10 @@ import net.engawapg.lib.zoomable.zoomable
  *   anywhere outside the image.
  * - The top bar shows who sent it and when (as the message header shows the time), "3 of 12",
  *   and the actions the conversation already has for an attachment: Download and Open with.
- * - By touch (a tablet's wide window opens images here too, #305) it also has what the phone's
- *   full-page viewer has: swipe down to close (RaftImageViewerSwipeDismiss.kt) and Save to Photos.
- *   A mouse or trackpad ([RaftPointerInput.Fine], the input in use) keeps it as described above.
+ * - A tablet's wide window opens images here too (#305), so it also has what the phone's full-page
+ *   viewer has: Save to Photos wherever the device has a photo library (an iPad or Android tablet,
+ *   with a finger or a trackpad), and, by touch, swipe down to close (RaftImageViewerSwipeDismiss.kt).
+ *   A mouse or trackpad ([RaftPointerInput.Fine], the input in use) drags nothing down.
  * - The lightbox covers the whole window, so its top bar is the window's top bar while it is open
  *   (the web's overlay title bar): under a window title bar laid over the app
  *   ([LocalRaftWindowTitleBar], the macOS window) it covers the title bar's band as `RaftTopBar`
@@ -221,7 +222,7 @@ internal fun RaftImageLightbox(
     onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
-    /** Save the image to the device's photo library, offered by touch; null where there is none. */
+    /** Save the image to the device's photo library; null where there is none (desktop). */
     onSaveToPhotos: ((RaftThreadAttachmentItem) -> Unit)? = null,
 ) {
     // The window's top safe area, read in the page (the lightbox covers the whole window).
@@ -260,8 +261,8 @@ internal fun RaftImageLightboxContent(
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
     /**
-     * The phone viewer's Save to Photos, on the bar by touch only (a mouse or trackpad keeps the
-     * desktop bar); null where the device has no photo library.
+     * The phone viewer's Save to Photos, on the bar wherever the device has a photo library, whatever
+     * the input (a tablet with a trackpad keeps its photos too); null where there is none (desktop).
      */
     onSaveToPhotos: ((RaftThreadAttachmentItem) -> Unit)? = null,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
@@ -310,8 +311,7 @@ internal fun RaftImageLightboxContent(
     val shownZoom = remember { mutableStateOf<ZoomState?>(null) }
     RaftDesignSystemTheme(forceDark = true) {
         // A finger drives it (a tablet; the input in use, as for the app's other touch or mouse
-        // choices): the phone viewer's swipe down to close and Save to Photos. A mouse or trackpad
-        // keeps the desktop lightbox as it was.
+        // choices): the phone viewer's swipe down to close. A mouse or trackpad drags nothing down.
         val byTouch = RaftTheme.pointerInput == RaftPointerInput.Touch
         // By touch, the bar and the arrows fade with the backdrop while the image is dragged down.
         val chromeFade = if (byTouch) Modifier.graphicsLayer { alpha = dismissState.backgroundAlpha } else Modifier
@@ -387,7 +387,7 @@ internal fun RaftImageLightboxContent(
                 onShare = onShare?.let { share -> { share(current.attachment) } },
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
                 onEdit = onEdit?.let { edit -> { edit(current.attachment) } },
-                onSaveToPhotos = onSaveToPhotos?.takeIf { byTouch }?.let { save -> { save(current.attachment) } },
+                onSaveToPhotos = onSaveToPhotos?.let { save -> { save(current.attachment) } },
                 onClose = { currentOnDismiss() },
                 padding = barPadding,
                 // The window title bar's hit test sees the bar's events after its buttons.
@@ -549,7 +549,7 @@ private fun RaftImageLightboxTopBar(
     onClose: () -> Unit,
     padding: PaddingValues,
     onEdit: (() -> Unit)? = null,
-    /** By touch: Save to Photos, with the phone viewer's icon and words. */
+    /** Save to Photos (a device with a photo library), with the phone viewer's icon and words. */
     onSaveToPhotos: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {

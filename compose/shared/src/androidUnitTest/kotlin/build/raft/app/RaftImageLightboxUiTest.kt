@@ -50,8 +50,8 @@ import org.robolectric.annotation.Config
 /**
  * The desktop / wide image lightbox on a real composition: Left / Right step through the
  * conversation's images and stop at its ends, Escape closes, a click on the backdrop or on the
- * page outside the image closes, a click on the image does not. By touch (a tablet, #305) it has
- * the phone viewer's swipe down to close and Save to Photos; with a mouse or trackpad neither.
+ * page outside the image closes, a click on the image does not. On a tablet (#305) it has the phone
+ * viewer's Save to Photos with any input, and by touch its swipe down to close.
  * Window: a 1280x800dp desktop.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -133,7 +133,7 @@ class RaftImageLightboxUiTest {
             val calls = Calls()
             showLightbox(calls)
             press(Key.DirectionRight)
-            // The bar's Download button (by touch, Save to Photos sits before it).
+            // The bar's Download button (Save to Photos sits before it where the device has photos).
             onNodeWithTagContentDescription("Download").performMouseInput { click(center) }
             mainClock.advanceTimeBy(500)
             assertEquals(listOf("img-2"), calls.downloads)
@@ -164,21 +164,23 @@ class RaftImageLightboxUiTest {
             assertEquals(1, calls.dismissed, "by touch a swipe down on the image closes, as on a phone")
         }
 
-    /** #305: by touch the bar has the phone viewer's Save to Photos, for the image shown. */
+    /** #305: a tablet's bar has the phone viewer's Save to Photos, for the image shown, with any input. */
     @Test
-    fun saveToPhotosIsOnTheBarByTouchForTheShownImage() =
+    fun saveToPhotosIsOnTheBarForTheShownImageWithATrackpadOrAFinger() =
         runRobolectricComposeUiTest {
             val calls = Calls()
             val input = mutableStateOf(RaftPointerInput.Fine)
             showLightbox(calls, pointerInput = input)
-            onNodeWithTagContentDescription("Save to Photos").assertDoesNotExist()
+            onNodeWithTagContentDescription("Save to Photos").performMouseInput { click(center) }
+            mainClock.advanceTimeBy(500)
+            assertEquals(listOf("img-1"), calls.photoSaves, "a trackpad on a tablet saves to Photos too")
 
             input.value = RaftPointerInput.Touch
             mainClock.advanceTimeBy(500)
             press(Key.DirectionRight)
             onNodeWithTagContentDescription("Save to Photos").performTouchInput { click() }
             mainClock.advanceTimeBy(500)
-            assertEquals(listOf("img-2"), calls.photoSaves)
+            assertEquals(listOf("img-1", "img-2"), calls.photoSaves)
             assertEquals(0, calls.dismissed)
         }
 
