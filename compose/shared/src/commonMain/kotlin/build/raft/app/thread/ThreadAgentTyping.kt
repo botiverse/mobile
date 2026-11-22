@@ -309,10 +309,11 @@ internal fun rememberThreadAgentTyping(
 internal val ThreadAgentTypingLineHeight = 24.dp
 
 /**
- * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. Part of the list's end
+ * web `AgentTypingListEnd` `h-7.5`: the line's slot at the list's end. The list's whole end
  * ([threadBottomSpacerAndAnchorTrailingHeight]) in every conversation that can show the line
- * ([agentTypingLineCanShow]), not only while the line shows, so the line coming or going moves no
- * message.
+ * ([agentTypingLineCanShow]), in place of its 16dp end, not only while the line shows, so the line
+ * coming or going moves no message. It is the line's row ([ThreadAgentTypingLineHeight]) and 6dp
+ * between it and the newest message.
  */
 internal val ThreadAgentTypingListEndHeight = 30.dp
 

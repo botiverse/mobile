@@ -54,7 +54,7 @@ class ThreadAgentTypingTest {
             // The list's end follows the same answer: the slot is there exactly where the line can be.
             assertEquals(expected, payload.toThreadTimelineSlice().agentTypingLineSlot, "$payload")
         }
-        assertEquals(46f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value)
+        assertEquals(30f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value)
         assertEquals(16f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = false).value)
     }
 
