@@ -201,7 +201,12 @@ internal fun memberDetailInitialRouteState(
     identity: MemberDetailIdentity?,
     activeServerId: String?,
     agentDetailState: SharedAgentDetailState,
-    serverMembersState: SharedServerMembersState
+    serverMembersState: SharedServerMembersState,
+    /**
+     * The signed-in account ([MemberDetailRouteProvider.accountBinding]): a person's roster seed
+     * knows the viewer, so their own profile shows "you" and Edit description from the first frame.
+     */
+    currentUserId: String? = null
 ): MemberDetailRouteState? {
     identity ?: return null
     val sourceServerId = identity.sourceServerId?.value?.trim()?.takeIf { it.isNotBlank() }
@@ -239,7 +244,7 @@ internal fun memberDetailInitialRouteState(
         MemberKind.Human ->
             MemberDetailRouteState.Human(
                 server = server,
-                currentUserId = null,
+                currentUserId = currentUserId?.trim()?.takeIf { it.isNotBlank() },
                 member = member.copy(serverId = identity.sourceServerId ?: member.serverId),
                 accessMode = identity.memberDetailAccessMode(activeServer)
             )
@@ -248,6 +253,28 @@ internal fun memberDetailInitialRouteState(
         MemberKind.External -> null
     }
 }
+
+/**
+ * Whether the member-detail route takes the state its load answered ([loaded]) over [shown].
+ *
+ * An agent's answer lands only while its request is still current ([agentRequestCurrent], the
+ * [MembersAgentProfileRequestFence]). That fence never matches a person, so a person's answer is
+ * not gated on it: it lands, and with it the viewer ([MemberDetailRouteState.Human.currentUserId]).
+ * A failed read keeps the person's roster seed already on screen, as a cached agent page keeps
+ * its cache; a cold open shows the failure.
+ */
+internal fun memberDetailAppliesLoadedRoute(
+    identity: MemberDetailIdentity,
+    shown: MemberDetailRouteState,
+    loaded: MemberDetailRouteState,
+    agentRequestCurrent: Boolean
+): Boolean =
+    if (identity.kind == MemberKind.Agent) {
+        agentRequestCurrent
+    } else {
+        loaded !is MemberDetailRouteState.Error ||
+            (shown as? MemberDetailRouteState.Human)?.member?.id != identity.memberId
+    }
 
 internal fun seedRemoteAgentProfile(
     agentDetailStore: SharedAgentDetailStore,
