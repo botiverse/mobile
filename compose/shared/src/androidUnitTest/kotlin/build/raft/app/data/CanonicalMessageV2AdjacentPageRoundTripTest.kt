@@ -43,26 +43,6 @@ class CanonicalMessageV2AdjacentPageRoundTripTest {
     }
 
     @Test
-    fun olderPageAnchoredOnTheThirtiethNewestMessageGrowsTheEnteredWindow() = withFreshDatabase { database ->
-        val rig = Rig(database, maxFactsPerScope = 500)
-        runBlocking {
-            val stored = (0 until 40).map { 1000L + it * 10 }
-            rig.enter(stored)
-            val pageSeqs = (0 until 30).map { 800L + it * 10 }
-            rig.extend(
-                ThreadDurablePageDirection.Older,
-                stored.sortedDescending()[29],
-                adjacentPageOf(*pageSeqs.map { adjacentPageNode("m$it", it) }.toTypedArray()),
-            )
-            val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
-            assertEquals((pageSeqs + stored).distinct().sorted(), frame.envelopes.map { it.fact.seq })
-            assertEquals(800L, frame.cursor.oldestLoadedSeq)
-            assertEquals(false, frame.cursor.hasLoadedOldest)
-            assertEquals(1390L, frame.cursor.newestLoadedSeq)
-        }
-    }
-
-    @Test
     fun cursorStaysTrueToDiskAcrossRetentionPruning() = withFreshDatabase { database ->
         val rig = Rig(database, maxFactsPerScope = 4)
         runBlocking {

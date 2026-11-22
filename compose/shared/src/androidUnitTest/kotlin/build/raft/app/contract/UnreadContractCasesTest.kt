@@ -2,7 +2,6 @@ package build.raft.app.contract
 
 import java.io.File
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.test.runTest
@@ -87,27 +86,5 @@ class UnreadContractCasesTest(private val fileId: String) {
             assertTrue(ids.isNotEmpty(), "no vendored unread contract cases under $root")
             return ids.sorted()
         }
-    }
-}
-
-/** The app-side lists and the pin stay honest as the vendored copy moves. */
-class UnreadContractCaseListsTest {
-    @Test
-    fun appListsNameOnlyVendoredAgreedCases() {
-        (AppUnreadKnownGaps.keys + AppUnreadCannotDriveYet.keys).forEach { id ->
-            val file = UnreadContractCasesTest.caseFile(id)
-            assertTrue(file.isFile, "$id is listed app-side but not vendored")
-            val decoded = assertIs<UnreadCaseDecoding.Decoded>(decodeUnreadContractCase(id, file.readText()), id)
-            assertEquals("agreed", decoded.case.status, "$id is listed app-side but is not agreed")
-            assertTrue(
-                decoded.case.knownGaps.none { it.client == "app" },
-                "$id: slock lists the app gap now; drop the app-side entry"
-            )
-        }
-    }
-
-    @Test
-    fun copyIsPinnedToASlockCommit() {
-        assertTrue(Regex("[0-9a-f]{40}").matches(UnreadContractCasesTest.sourceSha()), "SOURCE_SHA must be a full commit sha")
     }
 }

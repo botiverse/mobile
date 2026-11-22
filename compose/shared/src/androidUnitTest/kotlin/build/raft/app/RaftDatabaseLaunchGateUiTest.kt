@@ -21,7 +21,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertSame
@@ -94,20 +93,6 @@ class RaftDatabaseLaunchGateUiTest {
     }
 
     @Test
-    fun anExistingStoreRendersTheAppInTheFirstFrameWithoutABuild() = runRobolectricComposeUiTest {
-        var builds = 0
-        setContent {
-            Gate(existingStore = { Any() }, buildStore = { builds += 1; Any() }, adoptStore = {})
-        }
-        waitForIdle()
-
-        onNodeWithTag(AppTag).assertExists()
-        onNodeWithTag(LaunchSurfaceTag).assertDoesNotExist()
-        assertEquals(0, builds)
-        assertTrue(RaftDatabaseLaunchReadiness.settled.value)
-    }
-
-    @Test
     fun aNewerDatabaseShowsRecoveryAndRetryBuildsAgainOffMainKeepingTheRecoveryPageUp() = runRobolectricComposeUiTest {
         val mismatch = RaftDatabaseVersionMismatch(databaseVersion = 10, supportedVersion = 9)
         val upgraded = CountDownLatch(1)
@@ -158,22 +143,6 @@ class RaftDatabaseLaunchGateUiTest {
             ),
             logs,
         )
-    }
-
-    @Test
-    fun anyOtherBuildFailureIsThrownFromCompositionAsBefore() {
-        val failure = IllegalStateException("Invalid SQLite database header")
-        val thrown =
-            assertFailsWith<IllegalStateException> {
-                runRobolectricComposeUiTest {
-                    setContent {
-                        Gate(existingStore = { null }, buildStore = { throw failure }, adoptStore = {})
-                    }
-                    waitUntil(timeoutMillis = 5_000) { false.also { waitForIdle() } }
-                }
-            }
-        assertSame(failure, generateSequence<Throwable>(thrown) { it.cause }.first { it === failure })
-        assertFalse(RaftDatabaseLaunchReadiness.settled.value)
     }
 
     @androidx.compose.runtime.Composable

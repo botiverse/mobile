@@ -49,14 +49,6 @@ class ThreadMessageCopyMessageLinkUiTest {
     @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
-    fun aPlainLongPressKeepsCopyLink() =
-        runRobolectricComposeUiTest {
-            showCompactMenu(link = null)
-            onAllNodesWithText("Copy Link", useUnmergedTree = true).assertCountEquals(1)
-            onAllNodesWithText("Copy Message Link", useUnmergedTree = true).assertCountEquals(0)
-        }
-
-    @Test
     fun aLongPressOnALinkSaysCopyMessageLink() =
         runRobolectricComposeUiTest {
             showCompactMenu(

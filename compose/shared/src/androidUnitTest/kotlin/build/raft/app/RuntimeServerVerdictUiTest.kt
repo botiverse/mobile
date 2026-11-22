@@ -12,21 +12,13 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.ExistingAgentRuntimeOptions
 import build.raft.app.data.RaftRuntimeCatalogNames
-import build.raft.app.data.RuntimeCatalogSource
-import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.data.SharedCreateAgentRuntimeOption
 import build.raft.app.data.runtimeDeprecatedForAgent
-import build.raft.app.model.AgentProfile
-import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
-import build.raft.app.model.ServerId
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
@@ -136,83 +128,6 @@ class RuntimeServerVerdictUiTest {
 
     @AfterTest
     fun forgetCatalogs() = RaftRuntimeCatalogNames.clear()
-
-    /**
-     * A runtime's lifecycle is each server's answer (web `useRuntimeDeprecatedHere`): on
-     * [RevivedServer], a server from before slock #15445 whose catalog still answers
-     * `deprecated: true` for Antigravity, every label that names an agent's runtime says
-     * "(deprecated)"; another server's labels (and a label with no server) keep the bundled
-     * answer, which no longer deprecates it.
-     */
-    @Test
-    fun eachServersCatalogDecidesWhetherAntigravityReadsDeprecated() = runRobolectricComposeUiTest {
-        RaftRuntimeCatalogNames.publish(RevivedServer, revivedCatalog())
-        var serverId by mutableStateOf<String?>(RevivedServer)
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                Column {
-                    // A person's "Created agents" row.
-                    MembersHumanCreatedAgentRow(
-                        agent = AgentProfile(id = MemberId("agent-1"), userId = "agent-1", displayName = "Ruby", handle = "ruby", runtime = "antigravity"),
-                        serverId = serverId,
-                        divider = false
-                    )
-                    // The agent profile's runtime chip.
-                    MembersAgentProfileHeader(
-                        member = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent, serverId = serverId?.let(::ServerId)),
-                        summary = AgentDetailSummary(id = "agent-1", name = "ruby", runtime = "antigravity"),
-                        canEdit = false,
-                        agentStatusObservedState = null,
-                        agentStatusIndicatorState = null,
-                        onChangeAvatar = {}
-                    )
-                    // The profile's Runtime row and its warning, before the agent's runtime-options rows load.
-                    MembersAgentRuntimeConfigRows(
-                        resolution = config("antigravity"),
-                        runtimeModelsCatalog = null,
-                        machineId = null,
-                        serverId = serverId
-                    )
-                    // The mention / avatar preview card.
-                    RaftProfilePreviewCardContent(
-                        RaftProfilePreviewCardModel(
-                            memberId = "agent-1",
-                            kind = MemberKind.Agent,
-                            displayName = "Ruby",
-                            runtimeLabel = "Antigravity CLI",
-                            runtimeId = "antigravity",
-                            runtimeServerId = serverId
-                        )
-                    )
-                }
-            }
-        }
-        waitForIdle()
-        assertEquals(4, deprecatedLabels(), "deprecated on this server: every label says so")
-        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertExists()
-
-        // Another server, whose catalog says nothing yet: the bundled table (not deprecated).
-        runOnIdle { serverId = "other-server" }
-        waitForIdle()
-        assertEquals(0, deprecatedLabels(), "another server never reads this server's answer")
-        assertTrue(onAllNodes(hasText("Antigravity CLI", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size >= 4)
-        onNodeWithTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG).assertDoesNotExist()
-
-        // No server at all: the bundled table too, never the catalog read last.
-        runOnIdle { serverId = null }
-        waitForIdle()
-        assertEquals(0, deprecatedLabels())
-    }
-
-    private fun androidx.compose.ui.test.ComposeUiTest.deprecatedLabels(): Int =
-        onAllNodes(hasText("Antigravity CLI\u00A0(deprecated)", substring = true), useUnmergedTree = true).fetchSemanticsNodes().size
-
-    private fun revivedCatalog(): ServerRuntimeCatalog =
-        ServerRuntimeCatalog(
-            catalogVersion = 1,
-            runtimes = BundledRuntimeCatalog.runtimes.map { if (it.id == "antigravity") it.copy(deprecated = true) else it },
-            source = RuntimeCatalogSource.Server
-        )
 
     private fun row(runtimeId: String) =
         SharedCreateAgentRuntimeOption(

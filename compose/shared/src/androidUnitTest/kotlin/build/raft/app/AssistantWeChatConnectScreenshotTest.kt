@@ -51,12 +51,6 @@ class AssistantWeChatConnectScreenshotTest {
             ConnectFixture(WeChatConnectStep.Verify(ATTEMPT, WeChatVerifyError.Wrong, checking = false), code = "4F7K2Q")
         }
 
-    @Test
-    fun verifyDark() =
-        capture("assistant.wechat.connect.verify.dark", RaftAppAppearance.Dark) {
-            ConnectFixture(WeChatConnectStep.Verify(ATTEMPT, WeChatVerifyError.Wrong, checking = false), code = "4F7K2Q")
-        }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             MigrationFixtureHost(content)

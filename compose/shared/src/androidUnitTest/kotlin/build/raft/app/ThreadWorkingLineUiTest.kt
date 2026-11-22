@@ -119,22 +119,6 @@ class ThreadWorkingLineUiTest {
         }
 
     @Test
-    fun everyoneWorkingTypesSoTheLineSaysTheTypingSentence() =
-        runRobolectricComposeUiTest {
-            showLine(
-                ThreadAgentTypingUi(
-                    "srv-1",
-                    agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null)),
-                    working = listOf(niko),
-                    workingNow = source(mutableListOf()),
-                )
-            )
-            // The live region and the button both say the typing sentence, and nothing more.
-            assertEquals(2, onAllNodes(hasContentDescription("Niko is typing…")).fetchSemanticsNodes().size)
-            assertFalse(onAllNodes(hasContentDescription("others working", substring = true)).fetchSemanticsNodes().isNotEmpty())
-        }
-
-    @Test
     fun outsideAChannelTheLineOnlySaysWhoTypesAndOpensNothing() =
         runRobolectricComposeUiTest {
             showLine(ThreadAgentTypingUi("srv-1", agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null))))

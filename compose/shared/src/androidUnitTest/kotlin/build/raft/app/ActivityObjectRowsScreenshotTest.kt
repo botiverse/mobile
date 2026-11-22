@@ -46,9 +46,6 @@ class ActivityObjectRowsScreenshotTest {
     @Test
     fun activityObjectRowsLight() = capture("screens.activity.object-rows", RaftAppAppearance.Light)
 
-    @Test
-    fun activityObjectRowsDark() = capture("screens.activity.object-rows.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

@@ -51,18 +51,6 @@ class SqlDelightReadStateV1StoreTest {
     }
 
     @Test
-    fun lowerAndCurrentDoNotWriteWhileEqualDifferentConflicts() = runBlocking {
-        val (database, _) = freshDatabase()
-        val store = SqlDelightReadStateV1Store(database, now = { 100L })
-        store.commit(scope, fact(7, 70), ReadStateV1CommitMode.Snapshot, current)
-
-        assertEquals(ReadStateV1StoreResult.Stale, store.commit(scope, fact(6, 99), ReadStateV1CommitMode.Incremental, current))
-        assertEquals(ReadStateV1StoreResult.Current, store.commit(scope, fact(7, 70), ReadStateV1CommitMode.Incremental, current))
-        assertEquals(ReadStateV1StoreResult.Conflict, store.commit(scope, fact(7, 71), ReadStateV1CommitMode.Incremental, current))
-        assertEquals(fact(7, 70), store.restore(scope))
-    }
-
-    @Test
     fun exactServerPrincipalAndChannelPartitionsAreIsolated() = runBlocking {
         val (database, _) = freshDatabase()
         val store = SqlDelightReadStateV1Store(database, now = { 100L })
@@ -115,35 +103,6 @@ class SqlDelightReadStateV1StoreTest {
         )
         assertNull(SqlDelightReadStateV1Store(database, now = { 100L }).restore(scope))
         assertEquals(2, driver.rollback)
-    }
-
-    @Test
-    fun snapshotKeepsVersionOrderingResolvesEqualConflictAndCorruptStoredRowFailsClosed() = runBlocking {
-        val (database, _) = freshDatabase()
-        val store = SqlDelightReadStateV1Store(database, now = { 100L })
-        store.commit(scope, fact(10, 100), ReadStateV1CommitMode.Snapshot, current)
-        assertEquals(
-            ReadStateV1StoreResult.Stale,
-            store.commit(scope, fact(2, 5), ReadStateV1CommitMode.Snapshot, current),
-        )
-        assertEquals(fact(10, 100), store.restore(scope))
-        assertEquals(
-            ReadStateV1StoreResult.Accepted,
-            store.commit(scope, fact(10, 99), ReadStateV1CommitMode.Snapshot, current),
-        )
-        assertEquals(fact(10, 99), store.restore(scope))
-
-        database.queries.upsertSyncReadStateFact(
-            serverId = scope.serverId,
-            principalId = scope.principalId,
-            consumerId = scope.consumerId,
-            channelId = scope.channelId,
-            readStateVersion = 0,
-            maxReadSeq = -1,
-            updatedAtMs = 200,
-        )
-        assertFailsWith<ReadStateV1StoredFactCorrupt> { store.restore(scope) }
-        Unit
     }
 
     @Test

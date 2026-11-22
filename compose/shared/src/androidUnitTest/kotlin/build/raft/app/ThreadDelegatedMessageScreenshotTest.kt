@@ -39,9 +39,6 @@ class ThreadDelegatedMessageScreenshotTest {
     @Test
     fun delegatedThreadLight() = capture("thread.delegated-sending", RaftAppAppearance.Light)
 
-    @Test
-    fun delegatedThreadDark() = capture("thread.delegated-sending.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

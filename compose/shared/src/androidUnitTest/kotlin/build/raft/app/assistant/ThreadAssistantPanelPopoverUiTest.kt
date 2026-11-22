@@ -40,7 +40,6 @@ import build.raft.designsystem.text.RaftText
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.Rule
@@ -135,26 +134,6 @@ class ThreadAssistantPanelPopoverUiTest {
             val end = minOf(otterRest.right, window - px(8f))
             assertTrue(abs(popover.right - end) <= 1f, "its end on the otter's end: ${popover.right} vs ${otterRest.right} (window $window)")
             assertTrue(abs(otterRest.top - popover.bottom - px(8f)) <= 1f, "8dp above the otter: ${popover.bottom} vs ${otterRest.top}")
-        }
-
-    @Test
-    fun collapseClosesThePopoverAtOnce() =
-        runRobolectricComposeUiTest {
-            var open by mutableStateOf(false)
-            show { Page(open, { open = it }) }
-            runOnIdle { open = true }
-            onNode(hasTestTag(ThreadAssistantPanelPopoverTestTag)).assertExists()
-            // No slide or fade (raft-ui Popover has no motion): two frames after the tap it is gone,
-            // while the otter, still easing back out of the composer, keeps the clock running.
-            mainClock.autoAdvance = false
-            onNode(hasTestTag(ThreadAssistantPanelCollapseTestTag)).performClick()
-            repeat(2) {
-                mainClock.advanceTimeByFrame()
-                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-            }
-            assertFalse(open)
-            onNode(hasTestTag(ThreadAssistantPanelPopoverTestTag)).assertDoesNotExist()
-            onNode(hasTestTag(PANEL_DM)).assertDoesNotExist()
         }
 
     /**

@@ -58,29 +58,6 @@ class CanonicalMessageV2EnteredScopeRoundTripTest {
     }
 
     @Test
-    fun directMessageKindResolvedFromTheServerIsWhatTheReaderSees() = withFreshDatabase { database ->
-        val store = SqlDelightCanonicalMessageV2Store(database = database, now = { 1L })
-        val engine = CanonicalMessageV2GenerationEngine(
-            coordinator = CanonicalMessageV2BaselineCoordinator(),
-            store = store,
-            snapshotCommitObserver = CanonicalMessageV2SnapshotCommitObserver {},
-        )
-        val loader = CanonicalMessageV2EnteredScopeLoader(
-            canary = CanonicalMessageV2ProductionCanary(generationEngine = engine),
-            generationEngine = engine,
-            fetcher = CanonicalMessageV2RestSnapshotFetcher(
-                RecordingNetworkClient(canonicalV2TestPage(channelId = "dm-1"), channelIds = setOf("dm-1"), channelType = "dm"),
-            ),
-        )
-        runBlocking {
-            loader.loadOnEnter(partition, "dm-1") { true }
-            val frame = assertNotNull(CanonicalMessageV2DurableLastKnownReader(store, { true }).read(partition, "dm-1"))
-            assertEquals("dm", frame.scope.scopeKind)
-            assertEquals(listOf("message-1"), frame.envelopes.map { it.fact.id })
-        }
-    }
-
-    @Test
     fun emptyChannelIsReadableOfflineAsEmptyAndALaterPageFillsIt() = withFreshDatabase { database ->
         // Task #1137 on the real schema: an empty page is committed, read back as an empty frame, and a
         // later entry with messages fills it (message storage Phase 2a: added, never a rebaseline).

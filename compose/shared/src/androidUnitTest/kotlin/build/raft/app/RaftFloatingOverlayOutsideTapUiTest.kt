@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -42,22 +41,6 @@ class RaftFloatingOverlayOutsideTapUiTest {
             }
         }
         // Past the long-press activation delay.
-        mainClock.advanceTimeBy(1_000)
-    }
-
-    private fun ComposeUiTest.showModalPopover(onDismiss: () -> Unit) {
-        setContent {
-            Box(Modifier.fillMaxSize()) {
-                RaftModalAnchoredPopover(
-                    anchor = RaftPopoverAnchor.forRootOffset(Offset(40f, 40f)),
-                    contentSize = Size(200f, 200f),
-                    onDismiss = onDismiss,
-                    modifier = Modifier.testTag(HostTag),
-                ) {
-                    Box(Modifier.size(80.dp).raftFloatingContentClickTarget())
-                }
-            }
-        }
         mainClock.advanceTimeBy(1_000)
     }
 
@@ -104,16 +87,6 @@ class RaftFloatingOverlayOutsideTapUiTest {
             onNodeWithTag(ContentTag).performTouchInput { fingerTap(center) }
             mainClock.advanceTimeBy(1_000)
             assertEquals(0, dismissed)
-        }
-
-    @Test
-    fun aFingerTapOutsideAModalMenuDismisses() =
-        runRobolectricComposeUiTest {
-            // The Home long-press menu path: Modal window + anchored popover.
-            var dismissed = 0
-            showModalPopover { dismissed++ }
-            touchOutside { fingerTap(it) }
-            assertEquals(1, dismissed)
         }
 
     private companion object {

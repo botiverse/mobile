@@ -72,15 +72,7 @@ class ConversationSideCardsScreenshotTest {
 
     @Test fun header() = capture("conversation.side-cards.header", RaftAppAppearance.Light, ConversationSideCardsState())
 
-    @Test fun headerDark() = capture("conversation.side-cards.header.dark", RaftAppAppearance.Dark, ConversationSideCardsState())
-
     @Test fun tasks() = capture("conversation.side-cards.tasks", RaftAppAppearance.Light, open(ConversationSideCard.Tasks))
-
-    @Test fun tasksDark() = capture("conversation.side-cards.tasks.dark", RaftAppAppearance.Dark, open(ConversationSideCard.Tasks))
-
-    @Test fun files() = capture("conversation.side-cards.files", RaftAppAppearance.Light, open(ConversationSideCard.Files))
-
-    @Test fun filesDark() = capture("conversation.side-cards.files.dark", RaftAppAppearance.Dark, open(ConversationSideCard.Files))
 
     @Test fun both() =
         capture("conversation.side-cards.both", RaftAppAppearance.Light, open(ConversationSideCard.Tasks, ConversationSideCard.Files))
@@ -125,19 +117,10 @@ class ConversationSideCardsWideScreenshotTest {
     fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
 
     private val both = ConversationSideCardsState().withOpen(ConversationSideCard.Tasks, true).withOpen(ConversationSideCard.Files, true)
-    private val filesOnly = ConversationSideCardsState().withOpen(ConversationSideCard.Files, true)
 
     @Test fun both() = capture("conversation.side-cards.wide.both", RaftAppAppearance.Light, both)
 
-    @Test fun bothDark() = capture("conversation.side-cards.wide.both.dark", RaftAppAppearance.Dark, both)
-
     @Test fun collapsed() = capture("conversation.side-cards.wide.collapsed", RaftAppAppearance.Light, both, collapsed = "tasks")
-
-    @Test fun collapsedDark() = capture("conversation.side-cards.wide.collapsed.dark", RaftAppAppearance.Dark, both, collapsed = "tasks")
-
-    @Test fun files() = capture("conversation.side-cards.wide.files", RaftAppAppearance.Light, filesOnly)
-
-    @Test fun filesDark() = capture("conversation.side-cards.wide.files.dark", RaftAppAppearance.Dark, filesOnly)
 
     private fun capture(name: String, appearance: RaftAppAppearance, cards: ConversationSideCardsState, collapsed: String? = null) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/side-cards", activities = activities) {

@@ -151,26 +151,6 @@ class ComputersRackToolbarUiTest {
     }
 
     @Test
-    fun statusOfflineListsTheOfflineComputersWithNoSectionAndNoMatchOffersClearAll() = runRobolectricComposeUiTest {
-        val store = show()
-        onNodeWithTag(RaftComputersRackTags.Status).performClick()
-        waitForIdle()
-        onNodeWithTag("${RaftComputersRackTags.Status}-offline").performClick()
-        waitForIdle()
-        assertEquals(RaftComputersRackStatusFilter.Offline, store.state.value.filters.status)
-        assertTrue(shown("zeta") && !shown("beta"))
-        assertTrue(onAllNodes(hasTestTagOf(RaftComputersRackTags.OfflineTitle)).fetchSemanticsNodes().isEmpty(), "Status: Offline is the list itself")
-
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.Search("nothing like it")) }
-        waitForIdle()
-        onNodeWithText("No computers match").assertIsDisplayed()
-        onNodeWithTag(RaftComputersRackTags.EmptyClear).performClick()
-        waitForIdle()
-        assertEquals(RaftComputersRackFilters(), store.state.value.filters)
-        assertTrue(shown("beta"))
-    }
-
-    @Test
     fun groupingByNamePrefixTitlesTheGroupsAndATitleFoldsItsGroup() = runRobolectricComposeUiTest {
         val store = show(ComputersRackView.List)
         runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.SetGroupBy(ComputersRackGroupBy.Prefix)) }

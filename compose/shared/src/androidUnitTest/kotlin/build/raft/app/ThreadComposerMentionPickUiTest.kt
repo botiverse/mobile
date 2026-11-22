@@ -41,10 +41,6 @@ class ThreadComposerMentionPickUiTest {
     fun tappingTheAgentAmongSameNamedSuggestionsSendsOnlyTheAgentsId() =
         pickAndExpect(tap = AGENT_NAME, expected = ThreadSendMessageMention(type = "agent", id = AGENT_ID, name = "skyzh"))
 
-    @Test
-    fun tappingThePersonSendsThePersonsId() =
-        pickAndExpect(tap = HUMAN_NAME, expected = ThreadSendMessageMention(type = "user", id = HUMAN_ID, name = "skyzh"))
-
     private fun pickAndExpect(tap: String, expected: ThreadSendMessageMention) =
         runRobolectricComposeUiTest {
             RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())

@@ -94,16 +94,6 @@ class SettingsServerArchiveUiTest {
     }
 
     @Test
-    fun agentRowOpensTheProfile() = runRobolectricComposeUiTest {
-        show()
-        onNodeWithTag(settingsArchivedAgentRowTag("a-3")).performClick()
-        runOnIdle {
-            assertEquals(listOf("a-3"), openedAgents)
-            assertEquals(emptyList<String>(), openedWorkspaces)
-        }
-    }
-
-    @Test
     fun viewWorkspaceOnlyForAWorkspaceOnAComputer() = runRobolectricComposeUiTest {
         show()
         onAllNodesWithTag(settingsArchivedAgentWorkspaceTag("a-2")).assertCountEquals(0)

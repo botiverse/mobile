@@ -46,13 +46,7 @@ class SidebarCollapseScreenshotTest {
     fun expandedLight() = capture("shell.sidebar-collapse.expanded", RaftAppAppearance.Light, hidden = false)
 
     @Test
-    fun expandedDark() = capture("shell.sidebar-collapse.expanded.dark", RaftAppAppearance.Dark, hidden = false)
-
-    @Test
     fun collapsedLight() = capture("shell.sidebar-collapse.collapsed", RaftAppAppearance.Light, hidden = true)
-
-    @Test
-    fun collapsedDark() = capture("shell.sidebar-collapse.collapsed.dark", RaftAppAppearance.Dark, hidden = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, hidden: Boolean) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

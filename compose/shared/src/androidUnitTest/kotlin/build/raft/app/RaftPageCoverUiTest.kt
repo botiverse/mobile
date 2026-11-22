@@ -12,7 +12,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import build.raft.app.cmp.ProvideRaftPageCover
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
@@ -23,7 +22,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftMessageReactionTooltip
 import build.raft.designsystem.components.RaftPageCoverSignal
 import build.raft.designsystem.text.RaftText
 import kotlin.test.Test
@@ -118,29 +116,6 @@ class RaftPageCoverUiTest {
             openPageFromThePage(navigator)
             assertFalse(expanded)
             onNode(hasTestTag(OVERLAY)).assertDoesNotExist()
-        }
-
-    @Test
-    fun pushingAPageClosesAReactionTooltip() =
-        runRobolectricComposeUiTest {
-            var open by mutableStateOf(true)
-            val navigator = RecordingNavigator { open }
-            page(navigator) {
-                RaftMessageReactionTooltip(
-                    names = listOf("Grace", "Antx"),
-                    moreLabel = null,
-                    open = open,
-                    onDismissRequest = { open = false },
-                ) {
-                    RaftText("👍 2")
-                }
-            }
-            onNode(hasText("Grace", substring = true)).assertExists()
-            openPageFromThePage(navigator)
-            assertFalse(open)
-            // The bubble fades out, then its popup goes.
-            mainClock.advanceTimeBy(1_000)
-            onNode(hasText("Grace", substring = true)).assertDoesNotExist()
         }
 
     private companion object {

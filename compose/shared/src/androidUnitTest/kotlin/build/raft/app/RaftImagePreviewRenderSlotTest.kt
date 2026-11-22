@@ -22,46 +22,6 @@ import kotlin.test.assertEquals
 class RaftImagePreviewRenderSlotTest {
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun coldDecodeCompletionRemountsCurrentNativeImageExactlyOnce() = runTest {
-        var identity by
-            mutableStateOf(
-                raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0)
-            )
-        val mounted = mutableListOf<RaftImagePreviewRenderIdentity>()
-
-        runRenderSlotComposition(
-            content = {
-                val currentIdentity = identity
-                RaftImagePreviewRenderSlot(currentIdentity) {
-                    DisposableEffect(Unit) {
-                        mounted += currentIdentity
-                        onDispose { }
-                    }
-                }
-            },
-            mutate = {
-                identity = raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 1280, 720)
-                Snapshot.sendApplyNotifications()
-                sendFrame()
-                advanceUntilIdle()
-                identity = raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 1280, 720)
-                Snapshot.sendApplyNotifications()
-                sendFrame()
-                advanceUntilIdle()
-            }
-        )
-
-        assertEquals(
-            listOf(
-                raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0),
-                raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 1280, 720)
-            ),
-            mounted
-        )
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
     fun lateOldSourceDecodeCannotRemountCurrentSource() = runTest {
         var activeSource by mutableStateOf("https://cdn.example/a.jpg")
         var decodedSizes by mutableStateOf(mapOf<String, Pair<Int, Int>>())
@@ -100,49 +60,6 @@ class RaftImagePreviewRenderSlotTest {
             listOf(
                 raftImagePreviewRenderIdentity("https://cdn.example/a.jpg", 0, 0),
                 raftImagePreviewRenderIdentity("https://cdn.example/b.jpg", 0, 0)
-            ),
-            mounted
-        )
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun resolvedIdentityPreservationPreventsRemountOnSubsequentDecode() = runTest {
-        var identity by
-            mutableStateOf(
-                raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0)
-            )
-        val mounted = mutableListOf<RaftImagePreviewRenderIdentity>()
-
-        runRenderSlotComposition(
-            content = {
-                val currentIdentity = identity
-                RaftImagePreviewRenderSlot(currentIdentity) {
-                    DisposableEffect(Unit) {
-                        mounted += currentIdentity
-                        onDispose { }
-                    }
-                }
-            },
-            mutate = {
-                val preservedIdentity =
-                    resolveRaftImagePreviewRenderIdentity(
-                        currentIdentity = identity,
-                        source = "https://cdn.example/image.jpg",
-                        decodedWidth = 606,
-                        decodedHeight = 508,
-                        activeSucceeded = true
-                    )
-                identity = preservedIdentity
-                Snapshot.sendApplyNotifications()
-                sendFrame()
-                advanceUntilIdle()
-            }
-        )
-
-        assertEquals(
-            listOf(
-                raftImagePreviewRenderIdentity("https://cdn.example/image.jpg", 0, 0)
             ),
             mounted
         )

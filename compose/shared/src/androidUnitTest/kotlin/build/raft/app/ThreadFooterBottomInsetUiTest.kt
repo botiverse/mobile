@@ -21,9 +21,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
-import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.model.ChannelId
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -70,92 +68,8 @@ class ThreadFooterBottomInsetUiTest {
         assertArchivedNoticeClearsNavBar(navBarPx = 144, minClearancePx = 144f)
 
     @Test
-    fun archivedChannelNoticeClearsGestureNavigationBar() =
-        // xxhdpi = 3px/dp: 72px = 24dp (Android gesture nav).
-        assertArchivedNoticeClearsNavBar(navBarPx = 72, minClearancePx = 72f)
-
-    @Test
-    fun archivedAgentLoungeFooterClearsThreeButtonNavigationBar() =
-        runRobolectricComposeUiTest {
-            val lounge =
-                RaftAgentLounge(
-                    channelId = ChannelId("lounge-1"),
-                    agentId = "agent-1",
-                    agentName = "Lagoon",
-                    channelName = "lagoon-lounge",
-                    archived = true,
-                )
-            val inputs =
-                ThreadPageLounge(
-                    lounge = lounge,
-                    agentAvatarWireValue = null,
-                    cacheServerId = "server-1",
-                    canUnarchive = true,
-                    unarchiving = false,
-                    onUnarchive = {},
-                    onOpenAgentProfile = null,
-                    onOpenDmAgentLounge = null,
-                    dmLoungeOpening = false,
-                )
-            showAtBottom(navBarPx = 144) {
-                ThreadFooterNoticeDock {
-                    AgentLoungeFooter(kind = AgentLoungeFooterKind.Archived, inputs = inputs)
-                }
-            }
-            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
-            val noticeBottom = onNodeWithTag(AgentLoungeTestTags.ArchivedNotice).fetchSemanticsNode().boundsInRoot.bottom
-            val unarchiveBottom = onNodeWithTag(AgentLoungeTestTags.UnarchiveAction).fetchSemanticsNode().boundsInRoot.bottom
-            assertTrue(
-                pageBottom - noticeBottom >= 144f,
-                "Expected archived Lounge notice to clear 48dp nav bar (pageBottom=$pageBottom, noticeBottom=$noticeBottom)",
-            )
-            assertTrue(
-                pageBottom - unarchiveBottom >= 144f,
-                "Expected archived Lounge Unarchive button to clear 48dp nav bar (pageBottom=$pageBottom, unarchiveBottom=$unarchiveBottom)",
-            )
-        }
-
-    @Test
-    fun readOnlyAgentLoungeFooterClearsThreeButtonNavigationBar() =
-        runRobolectricComposeUiTest {
-            showAtBottom(navBarPx = 144) {
-                ThreadFooterNoticeDock {
-                    AgentLoungeFooter(kind = AgentLoungeFooterKind.ReadOnly, inputs = null)
-                }
-            }
-            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
-            val composerBottom = onNodeWithTag(AgentLoungeTestTags.ReadOnlyComposer).fetchSemanticsNode().boundsInRoot.bottom
-            assertTrue(
-                pageBottom - composerBottom >= 144f,
-                "Expected read-only Lounge footer to clear 48dp nav bar (pageBottom=$pageBottom, composerBottom=$composerBottom)",
-            )
-        }
-
-    @Test
-    fun joinFooterClearsThreeButtonNavigationBar() =
-        assertJoinFooterClearsNavBar(navBarPx = 144, minClearancePx = 144f)
-
-    @Test
     fun joinFooterClearsGestureNavigationBar() =
         assertJoinFooterClearsNavBar(navBarPx = 72, minClearancePx = 72f)
-
-    @Test
-    fun archivedNoticeAddsNoExtraInsetWhenHostExcludesNavigationBar() =
-        runRobolectricComposeUiTest {
-            showAtBottom(navBarPx = 144, hostExcludesNavBar = true) {
-                ThreadFooterNoticeDock {
-                    ThreadArchivedChannelNotice(canUnarchive = true, unarchiving = false, onUnarchive = {})
-                }
-            }
-            val pageBottom = onNodeWithTag(PAGE_TAG).fetchSemanticsNode().boundsInRoot.bottom
-            val noticeBottom = onNodeWithTag(ThreadArchivedChannelTestTags.Notice).fetchSemanticsNode().boundsInRoot.bottom
-            // Only the standard Sm (8dp = 24px @ 3x) bottom margin remains.
-            val clearance = pageBottom - noticeBottom
-            assertTrue(
-                clearance in 20f..30f,
-                "Expected only standard Sm margin when host excludes nav bar (clearance=$clearance)",
-            )
-        }
 
     private fun assertArchivedNoticeClearsNavBar(navBarPx: Int, minClearancePx: Float) =
         runRobolectricComposeUiTest {

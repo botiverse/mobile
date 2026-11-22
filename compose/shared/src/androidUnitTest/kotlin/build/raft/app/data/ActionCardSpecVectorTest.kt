@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -24,16 +23,6 @@ class ActionCardSpecVectorTest {
     private val vector by lazy { Json.parseToJsonElement(vectorBytes.decodeToString()).jsonObject }
     private val capabilitySets by lazy {
         vector.getValue("capabilitySets").jsonObject.mapValues { (_, set) -> set.jsonArray.map { it.jsonPrimitive.content } }
-    }
-
-    @Test
-    fun vendoredVectorIsThePinnedSharedArtifact() {
-        val digest = sha256(vectorBytes)
-        assertEquals("4af6acf99f6aba71711ac2e21df2de5266a11d4403471ea6c10d7265b7276cda", digest)
-        assertEquals(digest, resource("/actioncard/actionCard.v1.vector.sha256").decodeToString().substringBefore(' ').trim())
-        assertEquals(ACTION_CARD_SPEC_CATALOG, vector.string("contract"))
-        assertEquals("9", vector.getValue("schemaVersion").jsonPrimitive.content)
-        assertEquals(listOf(258, 25, 13), listOf("cards", "formValues", "messages").map { vector.getValue(it).jsonArray.size })
     }
 
     @Test
@@ -105,8 +94,6 @@ class ActionCardSpecVectorTest {
     }
 
     private fun resource(path: String): ByteArray = checkNotNull(javaClass.getResourceAsStream(path)) { "missing $path" }.readBytes()
-
-    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
 }

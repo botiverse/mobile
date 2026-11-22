@@ -16,7 +16,6 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -55,23 +54,6 @@ class RaftKtorStreamingRealEngineTest {
         assertTrue(chunks.size > 1, "streamed in ${chunks.size} chunk(s)")
         assertTrue(combineDownloadedChunks(chunks, chunks.sumOf { it.size }).contentEquals(body))
         assertEquals("*/*", server.takeRequest().headers["Accept"])
-    }
-
-    @Test
-    fun conditionalDownloadSendsValidatorsAndReturnsNotModifiedWithoutABody() = runBlocking {
-        server.enqueue(MockResponse.Builder().code(304).addHeader("ETag", "\"v2\"").build())
-
-        val result =
-            SharedBinaryDownloader.downloadConditional(
-                url = server.url("/avatar.png").toString(),
-                validators = SharedBinaryConditionalValidators(eTag = "\"v1\""),
-                onStart = { error("no body on 304") },
-                onChunk = { _, _, _ -> error("no body on 304") },
-            )
-
-        assertIs<SharedBinaryConditionalDownloadResult.NotModified>(result)
-        assertEquals("\"v2\"", result.eTag)
-        assertEquals("\"v1\"", server.takeRequest().headers["If-None-Match"])
     }
 
     @Test

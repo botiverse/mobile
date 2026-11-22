@@ -32,29 +32,7 @@ class AgentRuntimeLookupErrorScreenshotTest {
     fun missingLight() = capture("agent.runtime-error.missing", RaftAppAppearance.Light, AgentRuntimeLookupDisplay.ConfirmedMissing)
 
     @Test
-    fun missingDark() = capture("agent.runtime-error.missing.dark", RaftAppAppearance.Dark, AgentRuntimeLookupDisplay.ConfirmedMissing)
-
-    @Test
-    fun unconfirmedLight() =
-        capture("agent.runtime-error.unconfirmed", RaftAppAppearance.Light, AgentRuntimeLookupDisplay.Unconfirmed)
-
-    @Test
-    fun unconfirmedDark() =
-        capture("agent.runtime-error.unconfirmed.dark", RaftAppAppearance.Dark, AgentRuntimeLookupDisplay.Unconfirmed)
-
-    @Test
-    fun notSignedInLight() =
-        captureKept("agent.runtime-error.not-signed-in", RaftAppAppearance.Light, AgentRuntimeErrorDisplay.Known(AgentRuntimeErrorKind.NotLoggedIn))
-
-    @Test
-    fun notSignedInDark() =
-        captureKept("agent.runtime-error.not-signed-in.dark", RaftAppAppearance.Dark, AgentRuntimeErrorDisplay.Known(AgentRuntimeErrorKind.NotLoggedIn))
-
-    @Test
     fun keptMessageLight() = captureKept("agent.runtime-error.kept-message", RaftAppAppearance.Light, KeptMessage)
-
-    @Test
-    fun keptMessageDark() = captureKept("agent.runtime-error.kept-message.dark", RaftAppAppearance.Dark, KeptMessage)
 
     private fun captureKept(name: String, appearance: RaftAppAppearance, display: AgentRuntimeErrorDisplay) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

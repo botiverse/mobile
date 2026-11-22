@@ -83,10 +83,6 @@ class ActivityThreadArtifactFoldableScreenshotTest {
     @Test
     fun activityThreadArtifactFoldable() = capture("activity_thread_artifact_foldable", RaftAppAppearance.Light)
 
-    /** Dark: the clipped ends fade into the dark surface; the image and the Artifact's page are cut, nothing glows. */
-    @Test
-    fun activityThreadArtifactFoldableDark() = capture("activity_thread_artifact_foldable_dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(
             name,

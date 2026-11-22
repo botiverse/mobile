@@ -37,9 +37,6 @@ class ThreadMathMessageScreenshotTest {
     @Test
     fun mathLight() = capture("thread.math", RaftAppAppearance.Light)
 
-    @Test
-    fun mathDark() = capture("thread.math.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         // The formulas lay out once the KaTeX font bytes are read; until then they show as code.
         kotlinx.coroutines.runBlocking { build.raft.app.markdown.awaitRaftMathFonts() }

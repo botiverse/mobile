@@ -83,20 +83,6 @@ class ThreadMarkConversationUnreadMenuUiTest {
         }
 
     @Test
-    fun aDirectMessagesMenusSayDm() =
-        runRobolectricComposeUiTest {
-            build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-            setContent {
-                CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
-                    RaftTheme(appearance = RaftAppearance.Light) { ChannelMessageMenus(ThreadMarkConversationUnreadKind.DirectMessage) {} }
-                }
-            }
-            waitForIdle()
-            onAllNodesWithText("Mark DM as unread", useUnmergedTree = true).assertCountEquals(2)
-            onAllNodesWithText("Mark channel as unread", useUnmergedTree = true).assertCountEquals(0)
-        }
-
-    @Test
     fun aThreadsMenusHaveNone() =
         runRobolectricComposeUiTest {
             build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())

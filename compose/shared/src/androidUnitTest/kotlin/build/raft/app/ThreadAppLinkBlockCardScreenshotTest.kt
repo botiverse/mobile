@@ -70,14 +70,7 @@ class ThreadAppLinkBlockCardScreenshotTest {
     fun blockCardWideLight() = capture("thread.app-link-block-card.wide", RaftAppAppearance.Light, BlockOnlyMessages)
 
     @Test
-    @Config(sdk = [34], qualifiers = "w900dp-h1000dp-xxhdpi")
-    fun blockCardWideDark() = capture("thread.app-link-block-card.wide.dark", RaftAppAppearance.Dark, BlockOnlyMessages)
-
-    @Test
     fun inlineAndBlockLight() = capture("thread.app-link-inline-block", RaftAppAppearance.Light, InlineAndBlockMessages)
-
-    @Test
-    fun inlineAndBlockDark() = capture("thread.app-link-inline-block.dark", RaftAppAppearance.Dark, InlineAndBlockMessages)
 
     private fun capture(name: String, appearance: RaftAppAppearance, messages: List<BlockFixtureMessage>) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

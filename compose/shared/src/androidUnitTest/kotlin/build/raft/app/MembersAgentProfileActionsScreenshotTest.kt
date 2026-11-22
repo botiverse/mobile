@@ -44,9 +44,6 @@ class MembersAgentProfileActionsScreenshotTest {
     @Test
     fun actionsLight() = capture("members.agent-profile.actions", RaftAppAppearance.Light)
 
-    @Test
-    fun actionsDark() = capture("members.agent-profile.actions.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

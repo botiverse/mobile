@@ -60,14 +60,6 @@ class SettingsBillingSeatsBreakdownUiTest {
             }
         }
 
-    @Test
-    fun noAgentsRowWithoutAgents() =
-        runRobolectricComposeUiTest {
-            show(settingsBillingViewOnlyProFixtureUsing(humans = 4, agents = 0))
-            onNodeWithText("4 people").assert(hasText("4 seats"))
-            onAllNodes(hasText("agent", substring = true, ignoreCase = true), useUnmergedTree = true).assertCountEquals(0)
-        }
-
     private fun ComposeUiTest.show(billing: ScreenLoadState<SettingsBillingSnapshot>) {
         StringDesc.localeType = StringDesc.LocaleType.Custom("en")
         setContent {

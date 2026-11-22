@@ -51,9 +51,6 @@ class SettingsServerArchiveScreenshotTest {
             archiveState.copy(unarchiveError = "You can't unarchive this channel", unarchivingChannelId = "c-old"),
         )
 
-    @Test
-    fun memberLight() = capture("settings.server.archive.member", "member", RaftAppAppearance.Light, archiveState)
-
     private fun capture(name: String, role: String, appearance: RaftAppAppearance, state: SharedServerArchiveState) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

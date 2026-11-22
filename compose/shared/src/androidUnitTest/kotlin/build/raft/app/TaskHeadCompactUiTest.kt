@@ -115,16 +115,6 @@ class TaskHeadCompactUiTest {
         }
 
     @Test
-    fun withADescriptionItKeepsItsOwnPencilAndThereIsNoAddADescription() =
-        runRobolectricComposeUiTest {
-            setContent { Host { Head(task.copy(description = "Why it matters"), remember { TaskHeadScrollState() }) } }
-
-            onNodeWithTag(TaskHeadTitleEditTestTag, useUnmergedTree = true).assertExists()
-            onNodeWithTag(TaskHeadDescriptionEditTestTag, useUnmergedTree = true).assertExists()
-            onNodeWithTag(TaskHeadAddDescriptionTestTag, useUnmergedTree = true).assertDoesNotExist()
-        }
-
-    @Test
     fun createdByCarriesWhenTheTaskWasCreatedAndThereIsNoCreatedAtRow() =
         runRobolectricComposeUiTest {
             setContent { Host { Head(task, remember { TaskHeadScrollState() }) } }

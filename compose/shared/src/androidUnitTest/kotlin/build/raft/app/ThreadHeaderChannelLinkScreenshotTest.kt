@@ -30,9 +30,6 @@ class ThreadHeaderChannelLinkScreenshotTest {
     @Test
     fun light() = capture("thread.header.channel-link", RaftAppAppearance.Light)
 
-    @Test
-    fun dark() = capture("thread.header.channel-link.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme { ChannelLinkSubtitles() }

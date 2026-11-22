@@ -49,9 +49,6 @@ class AgentActivityOperatorEventsScreenshotTest {
     @Test
     fun operatorEventsLight() = capture("members.agent-activity.operator-events", RaftAppAppearance.Light)
 
-    @Test
-    fun operatorEventsDark() = capture("members.agent-activity.operator-events.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

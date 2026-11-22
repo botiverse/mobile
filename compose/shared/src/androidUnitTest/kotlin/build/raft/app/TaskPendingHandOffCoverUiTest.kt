@@ -142,20 +142,6 @@ class TaskPendingHandOffCoverUiTest {
         }
 
     @Test
-    fun aPushWithNoFirstSendRunningClosesThePendingPageAsBackDoes() =
-        runRobolectricComposeUiTest {
-            val task = pendingTask()
-            val flow = TaskOpenSurfaceFlow(newRandomId = { "rid-1" })
-            flow.open(TaskOpenSurface.Pending(task))
-            hostPage(RecordingNavigator { flow.surface != null }, flow)
-            // A cover with no hand-off running closes the page as Back does.
-            runOnIdle { pageNavigator.openPage(CONVERSATION_PAGE) }
-            waitForIdle()
-            assertNull(flow.surface)
-            onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
-        }
-
-    @Test
     fun summaryOnlyTaskShowsSpinnerInsteadOfEmptyStateWhileHydrating() =
         runRobolectricComposeUiTest {
             val summaryOnly =

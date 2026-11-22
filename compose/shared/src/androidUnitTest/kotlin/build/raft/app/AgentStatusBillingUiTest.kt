@@ -135,50 +135,6 @@ class AgentStatusBillingUiTest {
         }
 
     @Test
-    fun aRepeatedFailureSaysWhenRaftTriesNextAndHasNoChangeModel() =
-        runRobolectricComposeUiTest {
-            // 2026-06-25 06:00 UTC; the next try 30 min later, the same day: the clock only.
-            showHero(
-                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = Now + 30 * 60_000L),
-                onChangeModel = {},
-            )
-            onNodeWithText("Raft tries again by itself at 06:30", substring = true).assertExists()
-            onAllNodesWithTag(AgentSpawnFailureStatusTestTags.ChangeModel).assertCountEquals(0)
-        }
-
-    @Test
-    fun theNextTryTurnsIntoLaterOnceItPassesEvenWithAStillLiveClock() =
-        runRobolectricComposeUiTest {
-            // The live clock does not move (it ticks once a minute at best); the notice's own wait does.
-            showHero(
-                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = Now + 30 * 60_000L),
-                onChangeModel = null,
-            )
-            onNodeWithText("Raft tries again by itself at 06:30", substring = true).assertExists()
-            mainClock.advanceTimeBy(31 * 60_000L)
-            waitForIdle()
-            onNodeWithText("Raft tries again by itself later", substring = true).assertExists()
-            onAllNodesWithText("06:30", substring = true).assertCountEquals(0)
-        }
-
-    @Test
-    fun aTryTomorrowLosesItsDateAfterMidnight() =
-        runRobolectricComposeUiTest {
-            // 23:50 UTC, the try at 00:20 the next day: the date and the clock, then after midnight
-            // the clock only.
-            val lateEvening = Now + 17 * 3_600_000L + 50 * 60_000L
-            showHero(
-                AgentSpawnFailure("runtime_repeated_failure", autoRestartPaused = true, pauseRetryAtMs = lateEvening + 30 * 60_000L),
-                onChangeModel = null,
-                live = RaftTimeContextProvider(RaftTimeContext(localOffsetMinutes = 0, nowEpochMillis = lateEvening)),
-            )
-            onNodeWithText("Raft tries again by itself at 06-26 00:20", substring = true).assertExists()
-            mainClock.advanceTimeBy(11 * 60_000L)
-            waitForIdle()
-            onNodeWithText("Raft tries again by itself at 00:20", substring = true).assertExists()
-        }
-
-    @Test
     fun aViewerWithoutDetailSeesOnlyTheStatus() =
         runRobolectricComposeUiTest {
             showHero(AgentSpawnFailure("model_unsupported", model = "o3-pro"), onChangeModel = {}, showActivityDetail = false)

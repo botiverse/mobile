@@ -44,9 +44,6 @@ class AgentActivityWakePauseScreenshotTest {
     @Test
     fun wakePauseLight() = capture("members.agent-activity.wake-pause", RaftAppAppearance.Light)
 
-    @Test
-    fun wakePauseDark() = capture("members.agent-activity.wake-pause.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

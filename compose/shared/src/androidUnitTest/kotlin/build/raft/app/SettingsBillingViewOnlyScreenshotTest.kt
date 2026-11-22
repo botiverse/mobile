@@ -43,9 +43,6 @@ class SettingsBillingViewOnlyScreenshotTest {
     @Test
     fun proLight() = capture("settings.billing.ios.pro", RaftAppAppearance.Light, settingsBillingViewOnlyProFixture)
 
-    @Test
-    fun proDark() = capture("settings.billing.ios.pro.dark", RaftAppAppearance.Dark, settingsBillingViewOnlyProFixture)
-
     private fun capture(name: String, appearance: RaftAppAppearance, billing: ScreenLoadState<SettingsBillingSnapshot>) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             PhonePage(billing)

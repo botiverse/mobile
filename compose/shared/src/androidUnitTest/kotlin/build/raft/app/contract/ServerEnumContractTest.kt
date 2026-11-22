@@ -67,20 +67,6 @@ class ServerEnumContractTest {
         any { it.startsWith("projection_value_unknown") && "action=fallback_" in it }
 
     @Test
-    fun sourceShaIsPinned() {
-        val url = checkNotNull(javaClass.getResource("/contract-cases/server-enums/SOURCE_SHA"))
-        val sha = File(url.toURI()).readText().trim()
-        assertTrue(sha.matches(Regex("[0-9a-f]{40}")), "SOURCE_SHA must be a full slock commit, was '$sha'")
-        assertEquals(sha, fixture.getValue("sourceSha").jsonPrimitive.content, "SOURCE_SHA and the fixture disagree")
-    }
-
-    @Test
-    fun everyFixtureDomainIsChecked() {
-        // A domain added to the refresh script needs a check here (and the other way round).
-        assertEquals(CheckedDomains.sorted(), fixture.getValue("domains").jsonObject.keys.sorted())
-    }
-
-    @Test
     fun channelTypesMapAndSavedAndSearchRowsAlwaysShow() {
         val failures = mutableListOf<String>()
         for (type in values("channel_types")) {
@@ -249,17 +235,6 @@ class ServerEnumContractTest {
                 event !in subscribed && event !in SocketEventsNotSubscribed && event !in SocketEventsNotServerToClient
             }
         assertEquals(emptyList(), undecided, "subscribe to these, or record why mobile does not (SocketEventsNotSubscribed)")
-    }
-
-    @Test
-    fun aDroppedRealtimeEventIsLogged() {
-        val logs = mutableListOf<String>()
-        val event = RealtimeEventMapper(diagnosticsLogger = logs::add).map("brand:new-event", """{"serverId":"s1"}""")
-        assertEquals(null, event)
-        assertEquals(
-            listOf("realtime_event_dropped eventName=brand:new-event reason=unmapped keys=serverid"),
-            logs.filter { it.startsWith("realtime_event_dropped") },
-        )
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────────

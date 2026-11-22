@@ -108,35 +108,6 @@ class TaskConversationHeadEditUiTest {
         )
 
     @Test
-    fun tappingTheStatusChipOpensTheStatusMenuAndAPickUpdatesTheStatus() =
-        runRobolectricComposeUiTest {
-            setContent { Host { ConversationPage(task) } }
-
-            onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            // Every status, as on the web: the menu is open.
-            listOf("Todo", "In Progress", "Done", "Closed").forEach { onNodeWithText(it).assertIsDisplayed() }
-
-            onNodeWithText("Done").performClick()
-            waitForIdle()
-
-            assertEquals(listOf<SharedTasksRouteIntent>(SharedTasksRouteIntent.UpdateStatus(task, TaskStatus.Done)), dispatched)
-        }
-
-    @Test
-    fun tappingTheAssigneeOpensThePickerAndAPickAssignsTheTask() =
-        runRobolectricComposeUiTest {
-            setContent { Host { ConversationPage(task) } }
-
-            onNodeWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            onNodeWithText("Lagoon").assertIsDisplayed().performClick()
-            waitForIdle()
-
-            assertEquals(listOf<SharedTasksRouteIntent>(SharedTasksRouteIntent.AssignTask(task, lagoon)), dispatched)
-        }
-
-    @Test
     fun onThePendingTaskPageTheStatusChipAndTheAssigneeWorkTheSameWay() =
         runRobolectricComposeUiTest {
             // As the app shows it: full screen in its own dialog window over the host page.

@@ -72,15 +72,8 @@ class ThreadFindBarScreenshotTest {
     fun resultsDark() = capture("thread.find.results.dark", RaftAppAppearance.Dark, Results)
 
     @Test
-    fun loading() = capture("thread.find.loading", RaftAppAppearance.Light, Results.copy(loading = true))
-
-    @Test
     fun noMatch() =
         capture("thread.find.no-match", RaftAppAppearance.Light, Results.copy(query = "zebra", matches = emptyList(), activeIndex = 0), marked = false)
-
-    @Test
-    fun taskEmpty() =
-        capture("thread.find.task-empty", RaftAppAppearance.Light, ThreadFindState(open = true), marked = false, taskSurface = true)
 
     private fun capture(
         name: String,

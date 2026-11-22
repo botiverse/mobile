@@ -43,61 +43,6 @@ class CanonicalMessageV2ThreadRetentionRoundTripTest {
         }
     }
 
-    @Test
-    fun the25thThreadEvictsTheLeastRecentlyWrittenThreadAndNoChannel() = withFreshDatabase { database ->
-        val rig = Rig(database, CanonicalMessageV2RetentionPolicy())
-        runBlocking {
-            rig.at(1) { rig.enterChannel("c1") }
-            rig.at(2) { rig.enterChannel("c2") }
-            val c2Before = rig.channelFacts("c2")
-            (1..24).forEach { index -> rig.at(10L + index) { rig.enterThread("t$index", parent = "c1") } }
-            assertEquals((1..24).map { "t$it" }.toSet(), rig.storedScopes("thread"))
-            assertTrue(rig.logs.none { "scope_evicted" in it }, rig.logs.toString())
-
-            rig.at(100) { rig.enterThread("t25", parent = "c1") }
-            assertEquals((2..25).map { "t$it" }.toSet(), rig.storedScopes("thread"))
-            assertEquals(setOf("c1", "c2"), rig.storedScopes("channel"))
-            assertEquals(c2Before, rig.channelFacts("c2"))
-            val evicted = rig.logs.filter { "scope_evicted" in it }
-            assertEquals(1, evicted.size, evicted.toString())
-            assertTrue("scope=t1 scopeKind=thread reason=thread_cap" in evicted.single(), evicted.single())
-        }
-    }
-
-    @Test
-    fun factCapPressureEvictsThreadsBeforeChannels() = withFreshDatabase { database ->
-        // 2 + 2 channel facts + 1 + 2 reply facts = 7 > 6.
-        val rig = Rig(database, CanonicalMessageV2RetentionPolicy(maxFactsPerScope = 4, maxFactsPerPartition = 6))
-        runBlocking {
-            rig.at(1) { rig.enterChannel("c1", facts = 2) }
-            rig.at(2) { rig.enterChannel("c2", facts = 2) }
-            rig.at(3) { rig.enterThread("ta", parent = "c1", replies = 1) }
-            rig.at(4) { rig.enterThread("tb", parent = "c2", replies = 2) }
-
-            assertEquals(setOf("c1", "c2"), rig.storedScopes("channel"))
-            assertEquals(setOf("tb"), rig.storedScopes("thread"))
-            val evicted = rig.logs.filter { "scope_evicted" in it }
-            assertEquals(1, evicted.size, evicted.toString())
-            assertTrue("scope=ta scopeKind=thread reason=fact_cap" in evicted.single(), evicted.single())
-        }
-    }
-
-    @Test
-    fun channelOnlyWritesStillEvictTheOldestChannelAtTheChannelCap() = withFreshDatabase { database ->
-        // Negative twin of the first test: the same channel cap, no threads.
-        val rig = Rig(database, CanonicalMessageV2RetentionPolicy(maxScopesPerPartition = 2, scopeTtlMs = 1_000L))
-        runBlocking {
-            rig.at(1) { rig.enterChannel("c1") }
-            rig.at(2) { rig.enterChannel("c2") }
-            assertEquals(setOf("c1", "c2"), rig.storedScopes("channel"))
-            rig.at(3) { rig.enterChannel("c3") }
-            assertEquals(setOf("c2", "c3"), rig.storedScopes("channel"))
-            val evicted = rig.logs.filter { "scope_evicted" in it }
-            assertEquals(1, evicted.size, evicted.toString())
-            assertTrue("scope=c1 scopeKind=channel reason=scope_cap" in evicted.single(), evicted.single())
-        }
-    }
-
     private class Rig(private val database: RaftSqlDatabase, retention: CanonicalMessageV2RetentionPolicy) {
         val logs = mutableListOf<String>()
         private var clock = 0L

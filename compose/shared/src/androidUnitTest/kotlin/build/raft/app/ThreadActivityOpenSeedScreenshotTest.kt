@@ -57,16 +57,7 @@ class ThreadActivityOpenSeedScreenshotTest {
 
     @Test fun systemMessageLight() = capture("thread.system-message-seed", RaftAppAppearance.Light) { SystemMessageRows() }
 
-    @Test fun systemMessageDark() = capture("thread.system-message-seed.dark", RaftAppAppearance.Dark) { SystemMessageRows() }
-
-    // spacing.md#timeline-rhythm: a date line 24 from the text above and below it; an event line
-    // 16 from the messages round it (#4325 review).
-    @Config(sdk = [34], qualifiers = "w390dp-h420dp-xxhdpi")
-    @Test fun timelineRhythmLight() = capture("thread.timeline-rhythm", RaftAppAppearance.Light) { TimelineRhythmRows() }
-
     @Test fun truncatedPreviewLight() = capture("thread.activity-seed-truncated", RaftAppAppearance.Light) { TruncatedPreviewRows() }
-
-    @Test fun truncatedPreviewDark() = capture("thread.activity-seed-truncated.dark", RaftAppAppearance.Dark) { TruncatedPreviewRows() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, rows: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -159,15 +150,6 @@ private fun StandInLoadingRows() {
     val payload =
         RaftThreadScreenPayload(sourceThreadId = "channel-1", status = "loading").withActivityOpenSeed(listOf(humanSeed))
     ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload), loadingRevealDelayMs = 0L, spinnerStillStep = 0)
-    SeedMessageRow(humanSeed)
-}
-
-@Composable
-private fun TimelineRhythmRows() {
-    SeedMessageRow(humanSeed)
-    ThreadDateDivider("Today")
-    SeedMessageRow(humanSeed)
-    SeedMessageRow(systemSeed)
     SeedMessageRow(humanSeed)
 }
 

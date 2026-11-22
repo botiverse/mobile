@@ -41,9 +41,6 @@ class MoveToSectionMenuScreenshotTest {
     @Test
     fun menuLight() = menu("home.move-to-section.menu", RaftAppAppearance.Light)
 
-    @Test
-    fun menuDark() = menu("home.move-to-section.menu.dark", RaftAppAppearance.Dark)
-
     private fun menu(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             Page {

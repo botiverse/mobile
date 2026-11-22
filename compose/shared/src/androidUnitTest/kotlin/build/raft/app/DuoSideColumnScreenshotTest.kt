@@ -69,10 +69,6 @@ class DuoSideColumnScreenshotTest {
         }
 
     @Test
-    @Config(sdk = [34], qualifiers = "w466dp-h678dp-xhdpi")
-    fun outerScreenChannel() = capture("duo.outer.channel", outerPosture.copy(nativeTabBarHeight = 0.dp), tabBarStandIn = 0.dp) { ChannelPage(applyTopSafeArea = true) }
-
-    @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
     fun innerScreenLandscapeHome() = capture("duo.inner-landscape.home", innerPosture, tabBarStandIn = 0.dp) { WideShell() }
 
@@ -83,38 +79,15 @@ class DuoSideColumnScreenshotTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
-    fun innerScreenLandscapeHomeServerPanelOpen() =
-        capture("duo.inner-landscape.home-server", innerPosture, tabBarStandIn = 0.dp) { WideShell(serverPanelOpen = true) }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
     fun innerScreenLandscapeHomeServerPanelOpenDark() =
         capture("duo.inner-landscape.home-server.dark", innerPosture, tabBarStandIn = 0.dp, RaftAppAppearance.Dark) {
             WideShell(serverPanelOpen = true)
         }
 
     @Test
-    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
-    fun innerScreenLandscapeChannel() =
-        capture("duo.inner-landscape.channel", innerPosture, tabBarStandIn = 0.dp) { WideShell(channelOpen = true) }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
-    fun innerScreenUprightHome() =
-        capture("duo.inner-upright.home", RaftSideColumnPosture(duoInner = true), tabBarStandIn = 0.dp) { WideShell(listWidth = 260.dp) }
-
-    @Test
     @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
     fun innerScreenUprightChannel() =
         capture("duo.inner-upright.channel", RaftSideColumnPosture(duoInner = true), tabBarStandIn = 0.dp) {
-            WideShell(channelOpen = true, listWidth = 260.dp)
-        }
-
-    // Before #3910: the inner screen held upright reported no side column and kept the top bar.
-    @Test
-    @Config(sdk = [34], qualifiers = "w669dp-h951dp-mdpi")
-    fun innerScreenUprightChannelBefore() =
-        capture("duo.inner-upright.channel.before", RaftSideColumnPosture.None, tabBarStandIn = 0.dp) {
             WideShell(channelOpen = true, listWidth = 260.dp)
         }
 

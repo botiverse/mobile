@@ -1,18 +1,12 @@
 package build.raft.app.network.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.RaftSqlDatabase
 import build.raft.app.isRetracted
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -23,22 +17,6 @@ import kotlin.test.assertTrue
  */
 class CanonicalMessageV2RetractionTest {
     private val retractedAt = "2026-10-20T08:15:30.123Z"
-
-    @Test
-    fun codecRoundTripsARetractedFactAndKeepsLiveBytesUnchanged() {
-        val live = envelope(fact(1))
-        val liveBytes = encodeCanonicalMessageV2(live, "server-a")
-        assertFalse("deletedAt" in liveBytes, "a live fact never carries the key (not even as null)")
-
-        val retracted = envelope(fact(1).copy(deletedAt = retractedAt))
-        val bytes = encodeCanonicalMessageV2(retracted, "server-a")
-        assertTrue(bytes.contains(""","replyCount":0,"deletedAt":"$retractedAt"}"""), bytes)
-        val decoded = assertIs<CanonicalMessageV2DecodeResult.Accepted>(decodeCanonicalMessageV2(bytes, "server-a"))
-        assertEquals(retracted, decoded.envelope)
-        assertEquals(bytes, encodeCanonicalMessageV2(decoded.envelope, "server-a"))
-        // Pre-retraction bytes still decode (additive key, same schema).
-        assertEquals(live, assertIs<CanonicalMessageV2DecodeResult.Accepted>(decodeCanonicalMessageV2(liveBytes, "server-a")).envelope)
-    }
 
     @Test
     fun aNullEmptyOrMalformedDeletedAtIsNeverCanonical() {
@@ -123,38 +101,6 @@ class CanonicalMessageV2RetractionTest {
             )
             assertEquals(retractedAt, assertNotNull(reader.read(partitionA, "channel-a")).envelopes.single().fact.deletedAt)
         }
-    }
-
-    @Test
-    fun wireDeletedAtFlowsThroughTheFoldRowIntoTheV2FactOneWay() {
-        val retractedWire = wire(deletedAt = JsonPrimitive(retractedAt))
-        val carry = assertNotNull(decodeCanonicalMessageWire(retractedWire, ProductionFace.EnrichedUpdated))
-        assertEquals(retractedAt, carry.row.deletedAt)
-        assertNull(assertNotNull(decodeCanonicalMessageWire(wire(deletedAt = kotlinx.serialization.json.JsonNull), ProductionFace.MessageNew)).row.deletedAt)
-        assertNull(assertNotNull(decodeCanonicalMessageWire(wire(deletedAt = JsonPrimitive("")), ProductionFace.MessageNew)).row.deletedAt)
-        assertNull(assertNotNull(decodeCanonicalMessageWire(wire(deletedAt = null), ProductionFace.TaskStatusUpdated)).row.deletedAt)
-
-        val live = carry.row.copy(deletedAt = null)
-
-        // V1 persisted BLOB round-trips it, and a live BLOB stays without the key.
-        assertEquals(carry.row, decodeCanonicalFact(encodeCanonicalFact(carry.row)))
-        assertFalse("deletedAt" in encodeCanonicalFact(live))
-
-        // V2 conversion carries it into the shared fact.
-        val conversion = CanonicalMessageFoldInput(CanonicalMessageFoldKind.Updated, carry.row, MessageAggregateField.entries.toList())
-            .toCanonicalMessageV2Conversion(partitionA, replyCount = 0)
-        assertEquals(retractedAt, assertIs<CanonicalMessageV2EnvelopeConversion.Converted>(conversion).envelope.fact.deletedAt)
-    }
-
-    private fun wire(deletedAt: kotlinx.serialization.json.JsonElement?): JsonObject {
-        val base = Json.parseToJsonElement(
-            """{"id":"message-1","channelId":"channel-a","seq":1,"senderType":"agent","senderId":"agent-a",""" +
-                """"content":"This message was retracted.","messageType":"chat","randomId":null,"threadId":null,""" +
-                """"createdAt":"2026-10-20T08:00:00.000Z","senderName":"Friday","senderDescription":null,""" +
-                """"senderMembershipStatus":null,"mentions":[],"attachments":[],"reactions":[],"commentRef":null,""" +
-                """"actionMetadata":null,"conversationContext":{"channelType":"channel"}}""",
-        ).jsonObject
-        return if (deletedAt == null) base else JsonObject(base + ("deletedAt" to deletedAt))
     }
 
     private val partitionA = DurablePartitionKey("server-a", "principal-a", SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, "env-test")

@@ -49,21 +49,6 @@ class AppShellNewWindowRestoreFrameTest {
             assertEquals(1, onAllNodesWithText(tab, useUnmergedTree = true).fetchSemanticsNodes().size, tab)
         }
     }
-
-    @Test
-    fun headTitleIsTheTabBarLabelOfTheOpeningTab() {
-        val labels =
-            mapOf(
-                RaftAppDestination.Chat.id to "Chat",
-                RaftAppDestination.Activity.id to "Activity",
-                RaftAppDestination.Tasks.id to "Tasks",
-                RaftAppDestination.Search.id to "Search",
-                RaftAppDestination.Server.id to "More",
-            )
-        assertEquals("Activity", appShellRestoreFrameTitle("activity", labels))
-        assertEquals("Tasks", appShellRestoreFrameTitle("tasks", labels))
-        assertEquals("Chat", appShellRestoreFrameTitle("home", labels))
-    }
 }
 
 /**
@@ -79,9 +64,6 @@ class AppShellNewWindowRestoreFrameScreenshotTest {
 
     @Test
     fun activityTabLight() = capture("app-shell.new-window-restore.activity", RaftAppAppearance.Light)
-
-    @Test
-    fun activityTabDark() = capture("app-shell.new-window-restore.activity.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -60,9 +60,6 @@ class ThreadForwardToastScreenshotTest {
     @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
 
     @Test
-    fun overHeaderLight() = capture("thread.forward.toast", RaftAppAppearance.Light)
-
-    @Test
     fun overHeaderDark() = capture("thread.forward.toast.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =

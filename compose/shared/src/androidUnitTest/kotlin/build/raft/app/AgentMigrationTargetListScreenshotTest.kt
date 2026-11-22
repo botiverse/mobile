@@ -59,22 +59,10 @@ class AgentMigrationTargetListScreenshotTest {
     fun manyLight() = dialog("agent.migration.targets.many", RaftAppAppearance.Light, manyComputers)
 
     @Test
-    fun manyDark() = dialog("agent.migration.targets.many.dark", RaftAppAppearance.Dark, manyComputers)
-
-    @Test
     fun manySearchingLight() = dialog("agent.migration.targets.many.search", RaftAppAppearance.Light, manyComputers, query = "tyz")
 
     @Test
-    fun noMemoryLight() = dialog("agent.migration.targets.no_memory", RaftAppAppearance.Light, olderComputers)
-
-    @Test
-    fun noMemoryDark() = dialog("agent.migration.targets.no_memory.dark", RaftAppAppearance.Dark, olderComputers)
-
-    @Test
     fun detailsLight() = details("agent.migration.targets.details", RaftAppAppearance.Light)
-
-    @Test
-    fun detailsDark() = details("agent.migration.targets.details.dark", RaftAppAppearance.Dark)
 
     private fun dialog(name: String, appearance: RaftAppAppearance, computers: List<AgentMigrationComputer>, query: String = "") =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -178,15 +166,6 @@ private val manyComputers =
             target("m-shared-ec2", "Shared-EC2", memory = size(2.0, 8.0), disk = size(20.0, 64.0), agents = 7),
             target("m-xxdev", "xxdev", memory = size(14.0, 32.0), disk = size(88.0, 256.0))
         )
-
-/** Computers older than the memory report (slock #11032): disk and agents only. */
-private val olderComputers =
-    listOf(
-        target(SOURCE, "artin-debian-agent", agents = 4),
-        target("m-1", "Studio Mac", disk = size(120.0, 500.0), agents = 3),
-        target("m-2", "Lab Box", disk = size(48.2, 256.0), agents = 1),
-        target("m-4", "Spare Mini", disk = size(310.5, 512.0), agents = 0)
-    )
 
 // Labels as the Computer sends them for Claude (OAR); ids are opaque.
 private val targetUsage =

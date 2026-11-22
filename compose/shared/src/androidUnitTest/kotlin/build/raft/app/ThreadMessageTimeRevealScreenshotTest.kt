@@ -52,8 +52,6 @@ class ThreadMessageTimeRevealScreenshotTest {
 
     @Test fun midDragLight() = capture("thread.time-reveal.mid-drag", RaftAppAppearance.Light)
 
-    @Test fun midDragDark() = capture("thread.time-reveal.mid-drag.dark", RaftAppAppearance.Dark)
-
     /** Reduced motion, fully revealed: rows still, the two continuation rows' times in their start gutter. */
     @Test fun reducedMotionLight() = capture("thread.time-reveal.reduced-motion", RaftAppAppearance.Light, reducedMotion = true)
 

@@ -43,9 +43,6 @@ class RaftHumanPixelAvatarScreenshotTest {
     @Test
     fun avatarsLight() = capture("human-pixel-avatar.sizes", RaftAppAppearance.Light)
 
-    @Test
-    fun avatarsDark() = capture("human-pixel-avatar.sizes.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {

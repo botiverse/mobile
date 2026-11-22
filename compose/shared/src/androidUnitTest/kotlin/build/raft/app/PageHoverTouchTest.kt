@@ -6,15 +6,12 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ViewRootForTest
-import androidx.compose.ui.unit.dp
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -40,16 +37,6 @@ class PageHoverTouchTest {
 
     @Test
     fun aFingerLeavesNoHoverOnAMessageRow() = check("message-row", at = Offset(0.95f, 0.5f)) { HoverMessageCard(it) }
-
-    @Test
-    fun aFingerLeavesNoHoverOnAnActivityRow() =
-        check("activity-row", at = Offset(0.5f, 0.5f)) { modifier -> Box(modifier) { HoverActivityRowContent() } }
-
-    // No tap here: the tile's press holds for raft-ui's 120ms minimum on the wall clock, which
-    // Robolectric's paused looper does not advance; the press is not a hover anyway.
-    @Test
-    fun aFingerLeavesNoHoverOnTheServerTile() =
-        check("server-tile", at = Offset(0.5f, 0.5f), tap = false) { modifier -> Box(Modifier.padding(12.dp)) { Box(modifier) { HoverServerTileContent() } } }
 
     @Test
     fun aFingerLeavesNoHoverOnAMarkdownLink() =

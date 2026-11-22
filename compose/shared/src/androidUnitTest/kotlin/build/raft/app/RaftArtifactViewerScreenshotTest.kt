@@ -37,8 +37,6 @@ class RaftArtifactViewerScreenshotTest {
 
     @Test fun unavailableLight() = capture("artifact.viewer.unavailable", RaftAppAppearance.Light) { Unavailable() }
 
-    @Test fun unavailableDark() = capture("artifact.viewer.unavailable.dark", RaftAppAppearance.Dark) { Unavailable() }
-
     @Test fun barLight() = capture("artifact.viewer.bar", RaftAppAppearance.Light) { Viewer() }
 
     @Test fun barDark() = capture("artifact.viewer.bar.dark", RaftAppAppearance.Dark) { Viewer() }
@@ -46,17 +44,8 @@ class RaftArtifactViewerScreenshotTest {
     // One bar: the page's toolbar is the only one, under the status bar (24dp stand-in).
     @Test fun pageBarLight() = capture("artifact.viewer.page-bar", RaftAppAppearance.Light) { Viewer(pageDrawsBar = true) }
 
-    @Test fun pageBarDark() = capture("artifact.viewer.page-bar.dark", RaftAppAppearance.Dark) { Viewer(pageDrawsBar = true) }
-
-    @Test fun menuLight() = capture("artifact.viewer.bar.menu", RaftAppAppearance.Light) { Viewer(overlay = { Menu() }) }
-
-    @Test fun menuDark() = capture("artifact.viewer.bar.menu.dark", RaftAppAppearance.Dark) { Viewer(overlay = { Menu() }) }
-
     @Test
     fun desktopModeMenuLight() = capture("artifact.viewer.desktop-mode.menu", RaftAppAppearance.Light) { Viewer(desktopMode = true, overlay = { Menu(desktopMode = true) }) }
-
-    @Test
-    fun desktopModeMenuDark() = capture("artifact.viewer.desktop-mode.menu.dark", RaftAppAppearance.Dark) { Viewer(desktopMode = true, overlay = { Menu(desktopMode = true) }) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

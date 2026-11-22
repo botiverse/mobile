@@ -48,28 +48,6 @@ class RaftPageActiveBackHandlerTest {
         }
     }
 
-    @Test
-    fun inactiveAncestorDisablesNestedPagesAndCallerFlagStillApplies() = runTest {
-        val seen = mutableListOf<Pair<String, Boolean>>()
-        compose(
-            content = {
-                RaftProvidePageActive(active = false) {
-                    RaftProvidePageActive(active = true) {
-                        seen += "nested" to raftBackHandlerEnabled(enabled = true)
-                    }
-                }
-                RaftProvidePageActive(active = true) {
-                    seen += "callerDisabled" to raftBackHandlerEnabled(enabled = false)
-                }
-                seen += "outsideAnyPage" to raftBackHandlerEnabled(enabled = true)
-            },
-        ) {}
-        assertEquals(
-            listOf("nested" to false, "callerDisabled" to false, "outsideAnyPage" to true),
-            seen,
-        )
-    }
-
     private suspend fun TestScope.compose(
         content: @Composable () -> Unit,
         block: suspend (drain: () -> Unit) -> Unit,

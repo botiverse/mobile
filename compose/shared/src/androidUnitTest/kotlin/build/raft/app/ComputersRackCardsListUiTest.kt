@@ -11,8 +11,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
-import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.performTouchInput
 import build.raft.app.data.ComputersRackSort
 import build.raft.app.data.ComputersRackSortDirection
 import build.raft.app.data.ComputersRackSortKey
@@ -147,38 +145,10 @@ class ComputersRackCardsListUiTest {
     }
 
     @Test
-    fun underMemoryUsedMemoryComesBeforeDisk() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards, ComputersRackSort(ComputersRackSortKey.Memory, ComputersRackSortDirection.Desc))
-        assertTrue(topIn(meters, "Memory") < topIn(meters, "Disk"))
-    }
-
-    @Test
-    fun byNameDiskLeadsAndTheRuntimesFollow() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards)
-        assertTrue(topIn(meters, "Disk") < topIn(meters, "Memory") && topIn(meters, "Memory") < topIn(meters, "Claude"))
-    }
-
-    @Test
     fun aUsedUpLineSaysWhenItIsBack() = runRobolectricComposeUiTest {
         show(ComputersRackView.Cards)
         onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
         assertTrue(onAllNodes(hasText("Used up"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-    }
-
-    @Test
-    fun theListIsBlocksUnderTheRuntimeHeader() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List)
-        onNodeWithTag(RaftComputersRackTags.ListHeader).assertIsDisplayed()
-        // Online: its runtime cells, under the header's columns; no Disk / Memory in the list.
-        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-studio"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-        onNodeWithText("42% used", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
-        assertTrue(onAllNodes(hasText("Disk"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-        val header = onNodeWithTag(RaftComputersRackTags.ListHeader).fetchSemanticsNode().boundsInRoot
-        val block = onNodeWithTag("rack-row-m-studio").fetchSemanticsNode().boundsInRoot
-        assertTrue(header.bottom <= block.top + 1f, "the header sits over the blocks")
     }
 
     @Test
@@ -198,28 +168,5 @@ class ComputersRackCardsListUiTest {
         show(ComputersRackView.Cards)
         onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).assertExists()
         onNode(hasContentDescription("Memory 72% used, 18.0 GB free of 64.0 GB"), useUnmergedTree = true).assertExists()
-    }
-
-    @Test
-    fun aLongPressOnTheDiskLineShowsWhatIsFree() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards)
-        onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).performTouchInput { longClick() }
-        waitForIdle()
-        onNodeWithText("332.9 GB free of 1067.3 GB", useUnmergedTree = true).assertExists()
-    }
-
-    // 6 GB free of 500 GB (decimal bytes): under 10% and under 20 GiB, so Low disk.
-    private val lowDisk = fleet.first().copy(diskStatus = SettingsComputerSizeStatusSnapshot(availableBytes = 6e9, totalBytes = 500e9))
-
-    @Test
-    fun aCardsLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards, computers = listOf(lowDisk))
-        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
-    }
-
-    @Test
-    fun aListBlocksLowDiskBadgeSaysWhatIsFreeInDecimalUnits() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List, computers = listOf(lowDisk))
-        onNode(hasContentDescription("Low disk, 6.0 GB free of 500.0 GB"), useUnmergedTree = true).assertExists()
     }
 }

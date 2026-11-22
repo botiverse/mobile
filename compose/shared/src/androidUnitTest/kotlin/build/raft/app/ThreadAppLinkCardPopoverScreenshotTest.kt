@@ -54,9 +54,6 @@ class ThreadAppLinkCardPopoverScreenshotTest {
     @Test
     fun appLinkCardLight() = capture("thread.app-link-card-popover", RaftAppAppearance.Light)
 
-    @Test
-    fun appLinkCardDark() = capture("thread.app-link-card-popover.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

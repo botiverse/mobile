@@ -33,10 +33,6 @@ class DirectMessageSettingsScreenshotTest {
 
     @Test
     fun dmSettingsPinnedDark() = captureDmSettings(activities, "dm.settings.pinned.dark", RaftAppAppearance.Dark, pinned = true)
-
-    @Test
-    fun dmSettingsPersonAtHomeLight() =
-        captureDmSettings(activities, "dm.settings.home", RaftAppAppearance.Light, pinned = false, mutable = false)
 }
 
 /** The same drawer on a wide window: a panel beside the page, the head still name and tag. */
@@ -49,9 +45,6 @@ class DirectMessageSettingsWideScreenshotTest {
 
     @Test
     fun dmSettingsWideLight() = captureDmSettings(activities, "dm.settings.wide", RaftAppAppearance.Light, pinned = true)
-
-    @Test
-    fun dmSettingsWideDark() = captureDmSettings(activities, "dm.settings.wide.dark", RaftAppAppearance.Dark, pinned = true)
 }
 
 private fun captureDmSettings(

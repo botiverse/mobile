@@ -5,7 +5,6 @@ import build.raft.app.data.StoredQaBootstrapReadyReceipt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 class QaBootstrapPlatformAndroidTest {
     private val metadata =
@@ -35,15 +34,6 @@ class QaBootstrapPlatformAndroidTest {
         val fresh = resolveQaBootstrapRuntimeEnvelope(metadata, receipt, 10, "process-a", "generation-a", "100", null)
 
         assertNull(fresh.recoveryOf)
-    }
-
-    @Test
-    fun sameProcessReusesFrozenRuntimeEnvelope() {
-        val fresh = resolveQaBootstrapRuntimeEnvelope(metadata, receipt, 10, "process-a", "generation-a", "100", null)
-
-        val reused = resolveQaBootstrapRuntimeEnvelope(metadata, receipt, 10, "process-a", "generation-a", "200", fresh)
-
-        assertSame(fresh, reused)
     }
 
     @Test

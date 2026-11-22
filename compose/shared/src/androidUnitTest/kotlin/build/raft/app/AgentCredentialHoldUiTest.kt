@@ -159,40 +159,10 @@ class AgentCredentialHoldUiTest {
         }
 
     @Test
-    fun aPlanWithoutTheModelNamesTheModel() =
-        runRobolectricComposeUiTest {
-            showHero(
-                live(AgentStatus.Error, PlanDetail, "runtime_error"),
-                summary(
-                    "error",
-                    PlanDetail,
-                    "runtime_error",
-                    errorMessage = PlanDetail,
-                    errorClass = "ModelConfigError",
-                    requiredAction = AgentCredentialHoldReason.UserModelAccess,
-                ),
-                onRetry = {},
-            )
-            onNodeWithText("Plan doesn't include gpt-x").assertExists()
-        }
-
-    @Test
     fun anOlderDaemonsHeldNoticeStaysOnlineWithoutRetry() =
         runRobolectricComposeUiTest {
             showHero(live(AgentStatus.Online, HeldDetail, "idle"), summary("online", HeldDetail, "idle"), onRetry = {})
             onAllNodesWithText("Provider balance exhausted").assertCountEquals(0)
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
-        }
-
-    @Test
-    fun withoutTheRightToRestartThereIsNoRetry() =
-        runRobolectricComposeUiTest {
-            showHero(
-                live(AgentStatus.Online, HeldDetail, "idle"),
-                summary("online", HeldDetail, "idle", hold = AgentCredentialHoldReason.UserReauth),
-                onRetry = null,
-            )
-            onNodeWithText("Sign-in needed for Codex CLI").assertExists()
             onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
         }
 

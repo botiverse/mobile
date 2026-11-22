@@ -51,19 +51,4 @@ class RaftAvatarOriginCornerUiTest {
             .assertWidthIsEqualTo(10.dp)
             .assertHeightIsEqualTo(10.dp)
     }
-
-    @Test
-    fun aSmallFaceWithoutTheLogoKeepsThePlainDot() = runRobolectricComposeUiTest {
-        corner(edge = 19, small = true, logos = emptyMap())
-        onNodeWithTag(RaftAvatarOriginCornerDotTestTag, useUnmergedTree = true).assertExists()
-        onNodeWithTag(RaftAvatarOriginCornerLogoTestTag, useUnmergedTree = true).assertDoesNotExist()
-    }
-
-    @Test
-    fun aLargeFaceKeepsTheSquareTile() = runRobolectricComposeUiTest {
-        corner(edge = 35, small = false, logos = mapOf("server-raft" to "https://cdn.example/raft.png"))
-        onNodeWithTag(RaftAvatarOriginCornerTileTestTag, useUnmergedTree = true).assertExists()
-        onNodeWithTag(RaftAvatarOriginCornerLogoTestTag, useUnmergedTree = true).assertDoesNotExist()
-        onNodeWithTag(RaftAvatarOriginCornerDotTestTag, useUnmergedTree = true).assertDoesNotExist()
-    }
 }

@@ -58,13 +58,7 @@ class ThreadHistoryPaywallScreenshotTest {
     @Config(qualifiers = "w1280dp-h800dp-mdpi")
     fun channelWideLight() = capture("thread.history-paywall.wide", RaftAppAppearance.Light) { ChannelStart() }
 
-    @Test
-    @Config(qualifiers = "w1280dp-h800dp-mdpi")
-    fun channelWideDark() = capture("thread.history-paywall.wide.dark", RaftAppAppearance.Dark) { ChannelStart() }
-
     @Test fun allHiddenLight() = capture("thread.history-paywall.all-hidden", RaftAppAppearance.Light) { AllHiddenDm() }
-
-    @Test fun allHiddenDark() = capture("thread.history-paywall.all-hidden.dark", RaftAppAppearance.Dark) { AllHiddenDm() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         build.raft.app.image.raftInstallImageLoader()

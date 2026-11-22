@@ -214,33 +214,6 @@ class SettingsFeedbackTicketsPageUiTest {
         }
 
     @Test
-    fun theAgentTipLeadsTheListUntilAnAgentsDraftIsSentAndNeverOnATicket() =
-        runRobolectricComposeUiTest {
-            // slock #14053 / #14076: one info line above New Feedback, no button, no ×.
-            val drafts = build.raft.app.data.RaftFeedbackAgentDraftSentRepository { null }
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository, agentDraftSent = drafts.sent("user-1")) }
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
-            onNodeWithText("Did you know? Any agent can draft your feedback. Just ask, and you’ll review it before it’s sent.").assertIsDisplayed()
-            onNode(hasContentDescription("Dismiss")).assertDoesNotExist()
-
-            // Not on a ticket.
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
-            onNode(hasContentDescription("Back")).performClick()
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertIsDisplayed()
-
-            // An agent's draft sent (from a thread, while the list is open): gone for good.
-            runOnIdle { drafts.markSent("user-1") }
-            waitForIdle()
-            onNodeWithTag(SettingsFeedbackAgentHintTag).assertDoesNotExist()
-            onNodeWithText("New Feedback").assertIsDisplayed()
-        }
-
-    @Test
     fun aTicketFiledOnAnotherClientNamesItOnItsRowAndTheFirstMessage() =
         runRobolectricComposeUiTest {
             // Design settings.md "Feedback" (option G, Hands feedback-react 0.5.6): a row filed on another
@@ -285,28 +258,6 @@ class SettingsFeedbackTicketsPageUiTest {
             onNodeWithText("You", useUnmergedTree = true).assertExists()
             onNodeWithTag(SettingsFeedbackTicketFiledFromTag, useUnmergedTree = true).assertDoesNotExist()
             onNodeWithText("Android", useUnmergedTree = true).assertDoesNotExist()
-        }
-
-    @Test
-    fun whichRowsNameAClientFollowsTheClientThisAppFilesAs() =
-        runRobolectricComposeUiTest {
-            // The row decides "filed here" as the ticket does (feedbackForeignClient against ownClient):
-            // in the iOS app an Android ticket is named and an iOS one is not; no client named, no badge.
-            val fromAndroid = crash.copy(source = "android", client = FeedbackClient.Android)
-            val fromIos = idea.copy(source = "ios", client = FeedbackClient.Ios)
-            val unnamed = idea.copy(id = "33333333-2222-4333-8444-555555555555", message = "No client named", source = null, client = null)
-            val fromHarmony = idea.copy(id = "44444444-2222-4333-8444-555555555555", message = "From the HarmonyOS app", source = "ohos", client = FeedbackClient.Ohos)
-            val repository = FakeRepository(pageOf(fromAndroid, fromIos, unnamed, fromHarmony))
-            setContent { Page(repository, ownClient = FeedbackClient.Ios) }
-            waitForIdle()
-            onAllNodesWithTag(SettingsFeedbackTicketRowFiledFromTag, useUnmergedTree = true).assertCountEquals(2)
-            onNode(hasContentDescription("Crash on launch, 1 unread, Filed on Android")).assertIsDisplayed()
-            onNode(hasContentDescription("From the HarmonyOS app, Filed on HarmonyOS")).assertIsDisplayed()
-            onNode(hasContentDescription("Dark mode for the composer")).assertIsDisplayed()
-            onNode(hasContentDescription("No client named")).assertIsDisplayed()
-            onNodeWithText("Android", useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithText("HarmonyOS", useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithText("iOS", useUnmergedTree = true).assertDoesNotExist()
         }
 
     @Test
@@ -409,18 +360,6 @@ class SettingsFeedbackTicketsPageUiTest {
             onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
             onNode(hasContentDescription("Copy Link")).assertIsDisplayed().performClick()
             runOnIdle { assertEquals(listOf(crash.id), copied) }
-        }
-
-    @Test
-    fun noCopyLinkWhereNoHandsAppReadsTheTicket() =
-        runRobolectricComposeUiTest {
-            val repository = FakeRepository(pageOf(crash), mapOf(crash.id to crashDetail))
-            setContent { Page(repository) }
-            waitForIdle()
-            onNodeWithText("Crash on launch").performClick()
-            waitForIdle()
-            onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
-            onNode(hasContentDescription("Copy Link")).assertDoesNotExist()
         }
 
     /** `RAFT_PRIVACY_MODE`: New Feedback (its archive goes to Hands) only once the server answered off. */

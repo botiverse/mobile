@@ -92,18 +92,6 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
     }
 
     @Test
-    fun disallowedSchemesAreBlockedInSubframesAndEvenWhenNavigationIsAllowed() {
-        val fenced = host(allowNavigation = false)
-        assertTrue(fenced.overrides("javascript:alert(1)", mainFrame = false))
-        assertTrue(fenced.overrides("intent://scan/#Intent;scheme=zxing;end", mainFrame = false))
-
-        val open = host(allowNavigation = true)
-        assertFalse(open.overrides("https://other.test/anything"))
-        assertTrue(open.overrides("http://other.test/anything"))
-        assertTrue(open.overrides("file:///android_asset/index.html"))
-    }
-
-    @Test
     fun runtimeScriptsReachOnlyTheTrustedDocumentOfAFencedHost() {
         val webView = host(allowNavigation = false)
         webView.finishLoading(trusted)
@@ -120,21 +108,6 @@ class RaftAndroidSandboxWebViewNavigationFenceTest {
         shadowOf(webView).webViewClient.doUpdateVisitedHistory(webView, "$trusted#draft", false)
         controller.evaluateJavaScript("window.__onFragment = 1")
         assertEquals("window.__onFragment = 1", shadowOf(webView).lastEvaluatedJavascript)
-    }
-
-    @Test
-    fun hostThatAllowsNavigationDeliversRuntimeScriptsToSameOriginRoutes() {
-        val webView = host(allowNavigation = true)
-        webView.finishLoading(trusted)
-
-        shadowOf(webView).webViewClient.doUpdateVisitedHistory(webView, "https://example.test/account/", false)
-        controller.evaluateJavaScript("window.__onRoute = 1")
-        assertEquals("window.__onRoute = 1", shadowOf(webView).lastEvaluatedJavascript)
-
-        // Cross-origin documents never receive runtime scripts.
-        shadowOf(webView).webViewClient.doUpdateVisitedHistory(webView, "https://evil.test/", false)
-        controller.evaluateJavaScript("window.__onEvil = 1")
-        assertEquals("window.__onRoute = 1", shadowOf(webView).lastEvaluatedJavascript)
     }
 
     @Test

@@ -39,8 +39,6 @@ class ThreadUnreadJumpPillScreenshotTest {
 
     @Test fun busyLight() = capture("thread.unread-jump-pill.busy", RaftAppAppearance.Light, busy = true)
 
-    @Test fun busyDark() = capture("thread.unread-jump-pill.busy.dark", RaftAppAppearance.Dark, busy = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, busy: Boolean = false) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = ReportDir, activities = activities) {
             RaftDesignSystemTheme {

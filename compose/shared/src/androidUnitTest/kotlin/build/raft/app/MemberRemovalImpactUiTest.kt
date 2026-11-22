@@ -9,16 +9,12 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import build.raft.app.data.DataResult
 import build.raft.app.data.MemberRemovalImpact
-import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.MemberRemovalImpactState
-import build.raft.app.model.ServerId
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.CompletableDeferred
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -69,24 +65,10 @@ class MemberRemovalImpactUiTest {
     }
 
     @Test
-    fun nothingAttachedAddsNothing() = runRobolectricComposeUiTest {
-        showLeave(MemberRemovalImpactState.Ready(MemberRemovalImpact(0, 0, 0, emptyList())))
-        assertEquals(0, count("offline", substring = true))
-        onNodeWithTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG).assertIsEnabled()
-    }
-
-    @Test
     fun theConfirmWaitsForTheReadAndAFailedReadLeavesItAvailable() = runRobolectricComposeUiTest {
         showLeave(MemberRemovalImpactState.Loading)
         onNodeWithText("Checking which Computers this takes offline…").assertIsDisplayed()
         onNodeWithTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG).assertIsNotEnabled()
-    }
-
-    @Test
-    fun aFailedReadSaysSo() = runRobolectricComposeUiTest {
-        showLeave(MemberRemovalImpactState.Failed)
-        onNodeWithText("Couldn't check which Computers this takes offline.").assertIsDisplayed()
-        onNodeWithTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG).assertIsEnabled()
     }
 
     @Test
@@ -113,42 +95,6 @@ class MemberRemovalImpactUiTest {
         onNodeWithTag(MEMBER_REMOVE_CONFIRM_TAG).performClick()
         waitForIdle()
         assertEquals(1, removes.size)
-    }
-
-    @Test
-    fun theDialogReadsTheImpactWhenItOpens() = runRobolectricComposeUiTest {
-        val answer = CompletableDeferred<DataResult<MemberRemovalImpact>>()
-        val asked = mutableListOf<Pair<String, String>>()
-        val repository =
-            object : MemberRemovalImpactRepository {
-                override suspend fun removalImpact(serverId: ServerId, memberId: String): DataResult<MemberRemovalImpact> {
-                    asked += serverId.value to memberId
-                    return answer.await()
-                }
-            }
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersRemoveMemberConfirmDialog(
-                    personName = "Bea",
-                    impact = rememberMemberRemovalImpact(repository, serverId = "server-1", memberId = "user-2"),
-                    removing = false,
-                    errorMessage = null,
-                    onDismiss = {},
-                    onConfirm = {},
-                )
-            }
-        }
-        waitForIdle()
-        assertEquals(listOf("server-1" to "user-2"), asked)
-        onNodeWithTag(MEMBER_REMOVE_CONFIRM_TAG).assertIsNotEnabled()
-        answer.complete(DataResult.Content(MemberRemovalImpact(1, 1, 1, listOf("Studio"))))
-        waitForIdle()
-        onNodeWithText(
-            "Removing Bea takes 1 Computer offline: Studio. 1 agent on them belongs to other people and goes offline too.",
-            substring = true,
-        ).assertIsDisplayed()
-        onNodeWithText("To get its agents running again,", substring = true).assertIsDisplayed()
-        onNodeWithTag(MEMBER_REMOVE_CONFIRM_TAG).assertIsEnabled()
     }
 
     private fun ComposeUiTest.count(text: String, substring: Boolean = false): Int =

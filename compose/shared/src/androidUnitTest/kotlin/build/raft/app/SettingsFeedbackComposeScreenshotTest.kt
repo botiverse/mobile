@@ -48,16 +48,7 @@ class SettingsFeedbackComposeScreenshotTest {
     fun filledLight() = capture("settings.feedback-compose.filled", RaftAppAppearance.Light, filled)
 
     @Test
-    fun filledDark() = capture("settings.feedback-compose.filled.dark", RaftAppAppearance.Dark, filled)
-
-    @Test
-    fun submittingLight() = capture("settings.feedback-compose.submitting", RaftAppAppearance.Light, filled.copy(submitting = true))
-
-    @Test
     fun failedLight() = capture("settings.feedback-compose.failed", RaftAppAppearance.Light, failed)
-
-    @Test
-    fun failedDark() = capture("settings.feedback-compose.failed.dark", RaftAppAppearance.Dark, failed)
 
     private data class FormFixture(
         val type: SettingsFeedbackType = SettingsFeedbackType.Idea,

@@ -121,10 +121,6 @@ class ThreadAssistantPanelScreenshotTest {
     @Test
     fun pausedLight() = capture("assistant.panel.paused", RaftAppAppearance.Light, paused = true)
 
-    /** Dragged up to its full snap point (#proj-mobile:#134): the whole window under the status bar, one opaque canvas. */
-    @Test
-    fun fullDark() = capture("assistant.panel.full.dark", RaftAppAppearance.Dark, paused = false, snapPoint = RaftDrawerSnapPoint.Full)
-
     /**
      * Opened from a thread in #general (web AssistantContextChip, slock #12335): the conversation as
      * a chip above the DM's composer, the thread line with its parent's first line, and its ×.

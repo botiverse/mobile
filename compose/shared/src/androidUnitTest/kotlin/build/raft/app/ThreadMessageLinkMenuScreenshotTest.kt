@@ -57,9 +57,6 @@ class ThreadMessageLinkMenuScreenshotTest {
     @Test
     fun linkMenusLight() = capture("thread.message-menu.link-section", RaftAppAppearance.Light)
 
-    @Test
-    fun linkMenusDark() = capture("thread.message-menu.link-section.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {

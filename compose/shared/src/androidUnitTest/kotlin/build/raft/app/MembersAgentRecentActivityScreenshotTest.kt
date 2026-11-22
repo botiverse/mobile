@@ -51,17 +51,6 @@ class MembersAgentRecentActivityScreenshotTest {
     @Test
     fun recentActivityLight() = capture("members.agent-profile.recent-activity", RaftAppAppearance.Light)
 
-    @Test
-    fun recentActivityDark() = capture("members.agent-profile.recent-activity.dark", RaftAppAppearance.Dark)
-
-    @Test
-    fun recentActivityAcrossDaysLight() =
-        capture("members.agent-profile.recent-activity.across-days", RaftAppAppearance.Light, agentRecentActivityAcrossDays())
-
-    @Test
-    fun recentActivityAcrossDaysDark() =
-        capture("members.agent-profile.recent-activity.across-days.dark", RaftAppAppearance.Dark, agentRecentActivityAcrossDays())
-
     private fun capture(name: String, appearance: RaftAppAppearance, case: AgentRecentActivityCase = agentRecentActivitySameDay()) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

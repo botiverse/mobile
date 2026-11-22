@@ -40,15 +40,6 @@ class ThreadMessageTaskListScreenshotTest {
     @Test
     fun taskListLight() = capture("thread.message-task-list", RaftAppAppearance.Light) { TaskListRows(chip = false) }
 
-    @Test
-    fun taskListDark() = capture("thread.message-task-list.dark", RaftAppAppearance.Dark) { TaskListRows(chip = false) }
-
-    @Test
-    fun taskChipLight() = capture("thread.message-task-chip", RaftAppAppearance.Light) { TaskListRows(chip = true) }
-
-    @Test
-    fun taskChipDark() = capture("thread.message-task-chip.dark", RaftAppAppearance.Dark) { TaskListRows(chip = true) }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

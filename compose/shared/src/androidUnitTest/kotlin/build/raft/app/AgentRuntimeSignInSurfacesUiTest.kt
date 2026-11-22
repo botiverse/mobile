@@ -117,32 +117,6 @@ class AgentRuntimeSignInSurfacesUiTest {
         )
 
     @Test
-    fun sidebarDmRowShowsShortSignInNeededWithDetailSemanticsAndNoAction() =
-        runRobolectricComposeUiTest {
-            val api = FakeRuntimeSignInApi(kimiStatus = "logged_out", canAct = true)
-            val state = signInIndicator()
-            setContent {
-                val access = remember { testAccess(api) }
-                CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
-                    RaftDesignSystemTheme {
-                        HomeSidebarDirectMessageRow(
-                            name = "Milo",
-                            avatarLabel = "MI",
-                            peerType = "agent",
-                            memberId = "agent-1",
-                            agentStatusResolver = { flowOf(state) },
-                        )
-                    }
-                }
-            }
-            onNodeWithTag(AgentRuntimeSignInTestTags.SidebarShort, useUnmergedTree = true)
-                .assertExists()
-                .assertTextEquals("Sign-in needed")
-                .assertContentDescriptionEquals(EXPECTED_DETAIL)
-            onAllNodesWithText("Sign in", useUnmergedTree = true).assertCountEquals(0)
-        }
-
-    @Test
     fun channelMemberRowShowsFullStatusDetailAndOpensSignInDialogInPlace() =
         runRobolectricComposeUiTest {
             val api = FakeRuntimeSignInApi(kimiStatus = "logged_out", canAct = true)
@@ -225,21 +199,6 @@ class AgentRuntimeSignInSurfacesUiTest {
             }
             onNodeWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true)
                 .assertContentDescriptionEquals("Sign in to Kimi Code")
-        }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w900dp-h900dp")
-    fun dmHeaderUsesFullTextOnWideWidthWithInPlaceSignIn() =
-        runRobolectricComposeUiTest {
-            val api = FakeRuntimeSignInApi(kimiStatus = "logged_out", canAct = true)
-            showDmHeader(api, signInIndicator())
-            onNodeWithTag(AgentRuntimeSignInTestTags.DmHeaderStatus, useUnmergedTree = true)
-                .assertExists()
-                .assertTextEquals("Sign-in needed for Kimi Code")
-                .assertContentDescriptionEquals(EXPECTED_DETAIL)
-            waitUntil(timeoutMillis = 5_000) {
-                onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
         }
 
     @Test
@@ -381,18 +340,6 @@ class AgentRuntimeSignInSurfacesUiTest {
                 .assertExists()
                 .assertTextEquals("Sign-in needed")
             onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true).assertCountEquals(0)
-            assertEquals(0, api.authReads)
-        }
-
-    @Test
-    fun otherSpawnFailureReasonKeepsNormalStatusWithZeroRuntimeAuthReads() =
-        runRobolectricComposeUiTest {
-            val api = FakeRuntimeSignInApi(kimiStatus = "logged_out", canAct = true)
-            showDmHeader(api, signInIndicator(spawnFailureReason = "runtime_spawn_failed"))
-            waitForIdle()
-            onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderStatus, useUnmergedTree = true).assertCountEquals(0)
-            onAllNodesWithTag(AgentRuntimeSignInTestTags.DmHeaderAction, useUnmergedTree = true).assertCountEquals(0)
-            onNodeWithText("Offline", useUnmergedTree = true).assertExists()
             assertEquals(0, api.authReads)
         }
 

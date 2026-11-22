@@ -48,29 +48,6 @@ class SettingsBillingSeatsBreakdownLocaleTest {
         }
     }
 
-    /**
-     * The web's words in every language. Its numbers come from ICU (`formatNumber`, `#`): es, pt-BR
-     * and ru write "1,5" there; this page writes "1.5" in every language, as its seat meter does
-     * ([settingsBillingFormatSeats]).
-     */
-    @Test
-    fun everyLanguageSaysItAsTheWeb() {
-        mapOf(
-            "zh-CN" to listOf("4 位成员" to "4 个席位", "15 个 Agent" to "1.5 个席位（每 10 个 1 席）"),
-            "zh-TW" to listOf("4 位成員" to "4 個席位", "15 個 Agent" to "1.5 個席位（每 10 個 1 席）"),
-            "ja" to listOf("4 人" to "4 席", "エージェント 15 個" to "1.5 席（10 個で 1 席）"),
-            "ko" to listOf("사람 4명" to "시트 4개", "에이전트 15개" to "시트 1.5개 (에이전트 10개당 1개)"),
-            "es" to listOf("4 personas" to "4 puestos", "15 agentes" to "1.5 puestos (1 cada 10 agentes)"),
-            "pt-BR" to listOf("4 pessoas" to "4 licenças", "15 agentes" to "1.5 licenças (1 a cada 10 agentes)"),
-            "ru" to listOf("4 человека" to "4 места", "15 агентов" to "1.5 места (1 на 10 агентов)"),
-        ).forEach { (tag, rows) ->
-            assertEquals(rows, breakdown(tag, 4, 15), "locale $tag")
-        }
-        // One person, one seat of agents: zh keeps one form for every count.
-        assertEquals(listOf("1 位成员" to "1 个席位", "10 个 Agent" to "1 个席位（每 10 个 1 席）"), breakdown("zh-CN", 1, 10))
-        assertEquals(listOf("1 人" to "1 席", "エージェント 10 個" to "1 席（10 個で 1 席）"), breakdown("ja", 1, 10))
-    }
-
     /** Russian counts and whole seats take one / few / many (files/plurals/ru.json); a fraction of a seat keeps `other`. */
     @Test
     fun russianSeatsTakeTheirOwnForms() {

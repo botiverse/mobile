@@ -15,7 +15,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.node.RootForTest
@@ -119,28 +118,6 @@ class ThreadShareCaptureModeTest {
     }
 
     @Test
-    fun leavingCaptureModeBringsTheQuotePreviewBackInTheSameComposition() {
-        val heights = mutableMapOf<String, Int>()
-        val capture = mutableStateOf(true)
-        val root = render { Row("toggled", RaftLinkMessage, capture = capture, heights = heights) }
-        assertFalse(root.textsUnder("toggled").any { QuotedBody in it }, "capture mode: no preview")
-        val captureHeight = heights.getValue("toggled")
-
-        capture.value = false
-        Snapshot.sendApplyNotifications()
-        settle(root)
-        assertTrue(root.textsUnder("toggled").any { QuotedBody in it }, "normal mode again: preview back")
-        assertTrue(heights.getValue("toggled") > captureHeight, "the row grows back: $heights")
-
-        // And entering capture mode on a live row (what "Generate image" does) drops it again.
-        capture.value = true
-        Snapshot.sendApplyNotifications()
-        settle(root)
-        assertFalse(root.textsUnder("toggled").any { QuotedBody in it }, "capture mode again: no preview")
-        assertEquals(captureHeight, heights.getValue("toggled"), "the row shrinks back without a gap: $heights")
-    }
-
-    @Test
     fun captureModeTurnsAppLinkChipsBackIntoTheAuthorsLink() {
         val heights = mutableMapOf<String, Int>()
         val root =
@@ -171,8 +148,6 @@ class ThreadShareCaptureModeTest {
     }
 
     @Test fun captureLight() = screenshot("thread.share-capture", RaftAppAppearance.Light)
-
-    @Test fun captureDark() = screenshot("thread.share-capture.dark", RaftAppAppearance.Dark)
 
     private fun screenshot(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

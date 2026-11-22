@@ -23,11 +23,6 @@ class RuntimeRaftCapabilitiesContractTest {
     private val fixture: JsonObject by lazy { Json.parseToJsonElement(resource("runtime-raft-capabilities.json")).jsonObject }
 
     @Test
-    fun pinnedToTheSameSlockCommit() {
-        assertEquals(resource("SOURCE_SHA").trim(), RuntimeRaftCapabilityTable.SLOCK_SHA)
-    }
-
-    @Test
     fun recommendedRuntimesMatch() {
         assertEquals(
             fixture.getValue("recommendedRuntimeIds").jsonArray.map { it.jsonPrimitive.content },

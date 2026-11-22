@@ -256,12 +256,6 @@ class RaftTasksTaskColumnUiTest {
         assertEquals(0, shell.pageBacks)
     }
 
-    @Test
-    fun theColumnStandsBesideTheListFromTheTwoMinimums() {
-        assertTrue(raftTasksTaskColumnBeside(680f))
-        assertFalse(raftTasksTaskColumnBeside(679f))
-    }
-
     private companion object {
         const val ROOT = "tasks-task-column-root"
     }

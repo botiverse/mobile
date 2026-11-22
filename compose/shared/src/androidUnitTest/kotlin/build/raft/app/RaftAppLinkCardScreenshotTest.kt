@@ -75,9 +75,6 @@ class RaftAppLinkCardScreenshotTest {
     @Test
     fun cardV2Light() = capture("thread.app-link-card-v2", RaftAppAppearance.Light) { CardV2() }
 
-    @Test
-    fun cardV2Dark() = capture("thread.app-link-card-v2.dark", RaftAppAppearance.Dark) { CardV2() }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

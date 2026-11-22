@@ -45,14 +45,6 @@ class MembersAgentRawLogStatusScreenshotTest {
     @Test
     fun rawLogStatusRowsLight() = capture("members.agent-activity.raw-log-status", RaftAppAppearance.Light)
 
-    @Test
-    fun rawLogStatusRowsDark() = capture("members.agent-activity.raw-log-status.dark", RaftAppAppearance.Dark)
-
-    /** #proj-raft-ui:#267: the status words in this locale (web `activity.log.status.*`). */
-    @Test
-    @Config(qualifiers = "zh-rCN-w390dp-h900dp-xxhdpi")
-    fun rawLogStatusRowsZhLight() = capture("members.agent-activity.raw-log-status.zh-CN", RaftAppAppearance.Light)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

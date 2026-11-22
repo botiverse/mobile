@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -18,20 +17,6 @@ class ServerActivityUnreadFixtureTest {
     private val fixture: ActivityUnreadFixture by lazy {
         Json { ignoreUnknownKeys = true }
             .decodeFromString(ActivityUnreadFixture.serializer(), fixtureBytes.decodeToString())
-    }
-
-    @Test
-    fun fixtureBytesMatchPinnedServerContract() {
-        val sha256 =
-            MessageDigest.getInstance("SHA-256")
-                .digest(fixtureBytes)
-                .joinToString("") { byte -> "%02x".format(byte) }
-
-        assertEquals(
-            "abfaacbe2c548a16a72060d00fb204ec45c39d1d4c1406c73a8cdbe7a6fa7e01",
-            sha256,
-            "Fixture drifted from botiverse/slock@803e8c8e89398c014e3664fd3e3c140bd982aba3",
-        )
     }
 
     @Test

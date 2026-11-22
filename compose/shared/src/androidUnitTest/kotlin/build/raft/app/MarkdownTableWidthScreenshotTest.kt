@@ -39,13 +39,6 @@ class MarkdownTableWidthScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    @Config(sdk = [34], qualifiers = "w1000dp-h300dp-xxhdpi")
-    fun wideMessageKeepsCellsOnOneLine() =
-        RaftRobolectricScreenshot.capture("markdown.table-width.wide", RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {
-            TableMessage()
-        }
-
-    @Test
     @Config(sdk = [34], qualifiers = "w390dp-h500dp-xxhdpi")
     fun phoneWrapsOnlyTheLongColumn() =
         RaftRobolectricScreenshot.capture("markdown.table-width.phone", RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {

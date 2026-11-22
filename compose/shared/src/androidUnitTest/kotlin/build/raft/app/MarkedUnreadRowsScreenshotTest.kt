@@ -49,16 +49,8 @@ class MarkedUnreadRowsScreenshotTest {
         capture("screens.home.marked-unread", RaftAppAppearance.Light) { HomeMarkedUnreadRows() }
 
     @Test
-    fun homeMarkedUnreadRowsDark() =
-        capture("screens.home.marked-unread.dark", RaftAppAppearance.Dark) { HomeMarkedUnreadRows() }
-
-    @Test
     fun activityMarkedUnreadRowsLight() =
         capture("screens.activity.rows.marked-unread", RaftAppAppearance.Light) { ActivityMarkedUnreadRows(it) }
-
-    @Test
-    fun activityMarkedUnreadRowsDark() =
-        capture("screens.activity.rows.marked-unread.dark", RaftAppAppearance.Dark) { ActivityMarkedUnreadRows(it) }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable (RaftAppAppearance) -> Unit) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

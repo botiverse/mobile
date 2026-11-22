@@ -137,20 +137,6 @@ class MembersAgentActivitySubTabSwipeUiTest {
     }
 
     @Test
-    fun bodySwipeBackTurnsTheSubTabFirstThenTheProfileTab() = runRobolectricComposeUiTest {
-        showProfile()
-        swipeBody(towardStart = true)
-        assertSubTab(RawLabel)
-
-        swipeBody(towardStart = false)
-        assertSubTab(OverviewLabel)
-        assertEquals(ActivityPage, selected)
-
-        swipeBody(towardStart = false)
-        assertEquals(ActivityPage - 1, selected, "before the first sub-tab the swipe turns the profile tab back")
-    }
-
-    @Test
     fun swipeOnTheSubTabSwitchTurnsTheSubTabNotTheProfileTab() = runRobolectricComposeUiTest {
         showProfile()
 

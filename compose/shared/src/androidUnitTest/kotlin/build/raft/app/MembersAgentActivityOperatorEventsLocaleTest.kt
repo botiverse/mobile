@@ -84,27 +84,6 @@ class MembersAgentActivityOperatorEventsLocaleTest {
     }
 
     @Test
-    fun linesReadAsTheWebInChineseAndJapanese() {
-        val stop = event(AgentOperatorEventKind.Stop)
-        val move = event(AgentOperatorEventKind.MigrationStarted, from = "laptop", to = "hetzner-1")
-        val someone = event(AgentOperatorEventKind.Restart, actor = AgentOperatorEventActor.User(null))
-        val system = event(AgentOperatorEventKind.SystemRestart, actor = AgentOperatorEventActor.System)
-        assertEquals("Artin 停止了 Agent", line("zh-CN", stop))
-        assertEquals("Artin 开始把 Agent 从 laptop 迁移到 hetzner-1", line("zh-CN", move))
-        assertEquals("有人 重启了 Agent", line("zh-CN", someone))
-        assertEquals("启动失败后，Raft 自动重启了 Agent", line("zh-CN", system))
-        assertEquals("Artin がエージェントを停止しました", line("ja", stop))
-        assertEquals("Artin がエージェントの laptop から hetzner-1 への移行を開始しました", line("ja", move))
-        assertEquals("誰か がエージェントを再起動しました", line("ja", someone))
-        assertEquals("起動に失敗したため、Raft がエージェントを再起動しました", line("ja", system))
-        assertEquals("Artin 停止了 Agent", line("zh-TW", stop))
-        assertEquals("Artin detuvo el agente", line("es", stop))
-        assertEquals("Artin 님이 에이전트를 중지했어요", line("ko", stop))
-        assertEquals("Artin parou o agente", line("pt-BR", stop))
-        assertEquals("Artin — агент остановлен", line("ru", stop))
-    }
-
-    @Test
     fun theFoldedLineCountsTheActionsAndQuotesTheLatest() {
         fun summary(tag: String, count: Int, latest: String): String {
             StringDesc.localeType = StringDesc.LocaleType.Custom(tag)

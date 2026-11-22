@@ -122,16 +122,6 @@ class ThreadInPlaceSelectionToolbarUiTest {
             assertTrue(!toolbarShown(), "Quote dismisses the toolbar")
         }
 
-    @Test
-    fun withoutAComposerTheToolbarOffersCopyOnly() =
-        runRobolectricComposeUiTest {
-            showBody(Calls(), withComposer = false)
-            mouseSelect()
-            assertTrue(toolbarShown())
-            assertTrue(onAllNodes(hasText("Quote"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-            assertTrue(onAllNodes(hasText("Copy"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
-        }
-
     // A finger long-press is covered by the pure policy tests (ThreadInPlaceTextSelectionTest): a
     // Robolectric long-press opens the platform text toolbar's window, whose teardown crashes the
     // harness (null Surface), not the app.

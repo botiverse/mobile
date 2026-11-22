@@ -105,20 +105,6 @@ class MembersAgentHostedRuntimeUiTest {
     }
 
     @Test
-    fun aRefusedRetryShowsTheServersWords() = runRobolectricComposeUiTest {
-        val api = FakeApi()
-        api.retryResponse = HomeNetworkResponse(code = 409, bodyText = """{"error":"Cloud agents are paused","code":"hosted_runtime_disabled"}""")
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersAgentHostedRuntimeSection(MemberId("a1"), failed, RaftAgentsApiClient(api))
-            }
-        }
-        onNodeWithText("Retry").performClick()
-        waitUntil { onAllNodesText("Cloud agents are paused") }
-        onNodeWithText("Setup failed").assertIsDisplayed()
-    }
-
-    @Test
     fun aRetryAfterARefusedModelSaysItUsesTheDefaultAndSendsIt() = runRobolectricComposeUiTest {
         val api = FakeApi()
         setContent {

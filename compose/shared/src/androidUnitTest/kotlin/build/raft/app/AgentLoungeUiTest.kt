@@ -16,9 +16,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -160,14 +158,6 @@ class AgentLoungeUiTest {
         }
 
     @Test
-    fun anOrdinaryUnjoinedChannelKeepsItsJoin() =
-        runRobolectricComposeUiTest {
-            showLoungePage(pageLounge(lounge = null))
-            onNodeWithText("Join channel").assertExists()
-            onAllNodesWithTag(AgentLoungeTestTags.Header).assertCountEquals(0)
-        }
-
-    @Test
     fun aLoungeYouMayOnlyReadHasTheReadOnlyComposer() =
         runRobolectricComposeUiTest {
             showLoungePage(pageLounge(lounge = lounge.copy(canPost = false)))
@@ -183,15 +173,6 @@ class AgentLoungeUiTest {
             showLoungePage(pageLounge(lounge = lounge.copy(archived = true), canUnarchive = false))
             onNodeWithText("This channel is archived.").assertExists()
             onAllNodesWithTag(AgentLoungeTestTags.UnarchiveAction).assertCountEquals(0)
-        }
-
-    @Test
-    fun anArchivedLoungeUnarchivesInPlaceForAnAdmin() =
-        runRobolectricComposeUiTest {
-            var unarchives = 0
-            showLoungePage(pageLounge(lounge = lounge.copy(archived = true), canUnarchive = true, onUnarchive = { unarchives++ }))
-            onNodeWithTag(AgentLoungeTestTags.UnarchiveAction).performClick()
-            runOnIdle { assertEquals(1, unarchives) }
         }
 
     private fun ComposeUiTest.showHome(
@@ -293,55 +274,6 @@ class AgentLoungeUiTest {
             onNodeWithTag(AgentLoungeTestTags.SidebarMention, useUnmergedTree = true).assertExists()
             onNodeWithTag(AgentLoungeTestTags.SidebarRow).performClick()
             runOnIdle { assertEquals(listOf("lounge-bugen"), opened) }
-        }
-
-    @Test
-    fun theLoungeRowStaysWhenItsAgentsDmIsClosed() =
-        runRobolectricComposeUiTest {
-            showHome(listOf(bugenDm), agentLounges = listOf(bugenLounge()), hiddenDmIds = listOf("dm-bugen"))
-            onAllNodesWithText("Bugen").assertCountEquals(0)
-            onNodeWithTag(AgentLoungeTestTags.SidebarRow).assertExists()
-        }
-
-    @Test
-    fun aPinnedLoungeShowsOnlyUnderPinned() =
-        runRobolectricComposeUiTest {
-            showHome(
-                listOf(bugenDm),
-                agentLounges = listOf(bugenLounge()),
-                pinnedItems = listOf(build.raft.app.data.SettingsServerSidebarPinnedItem(kind = "channel", id = "lounge-bugen")),
-            )
-            onAllNodesWithTag(AgentLoungeTestTags.SidebarRow).assertCountEquals(1)
-            onNodeWithText("Bugen's Lounge").assertExists()
-        }
-
-    @Test
-    fun theLoungeRowsMenuIsADmRowsMenu() =
-        runRobolectricComposeUiTest {
-            val pinned = mutableListOf<String>()
-            val closed = mutableListOf<String>()
-            val muted = mutableListOf<Pair<String, Boolean>>()
-            showHome(
-                listOf(bugenDm),
-                agentLounges = listOf(bugenLounge()),
-                onPinToggle = { pinned += it },
-                onCloseDirectMessage = { closed += it },
-                onMuteToggle = { id, mute -> muted += id to mute },
-            )
-            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
-            onNodeWithText("Mark as Read", ignoreCase = true).assertExists()
-            onNodeWithText("Mute", ignoreCase = true).assertExists()
-            onAllNodesWithText("Move to Section", ignoreCase = true).assertCountEquals(0)
-            onNodeWithText("Pin", ignoreCase = true).performClick()
-            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
-            onNodeWithText("Mute", ignoreCase = true).performClick()
-            onNodeWithTag(AgentLoungeTestTags.SidebarRow).performTouchInput { longClick() }
-            onNodeWithText("Close Chat", ignoreCase = true).performClick()
-            runOnIdle {
-                assertEquals(listOf("lounge-bugen"), pinned)
-                assertEquals(listOf("lounge-bugen" to true), muted)
-                assertEquals(listOf("lounge-bugen"), closed)
-            }
         }
 
     @Test

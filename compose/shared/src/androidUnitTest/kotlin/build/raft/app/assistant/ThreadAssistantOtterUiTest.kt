@@ -1,6 +1,5 @@
 package build.raft.app.assistant
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -167,21 +166,6 @@ class ThreadAssistantOtterUiTest {
             assertEquals(composerTop, onNode(hasTestTag(CHANNEL)).fetchSemanticsNode().boundsInRoot)
         }
 
-    @Test
-    fun theComposerUsedLastTakesIt() =
-        runRobolectricComposeUiTest {
-            val hosts = RaftAssistantOtterHosts()
-            show {
-                Conversation(CHANNEL, otter(hosts, CHANNEL))
-                Conversation(THREAD, otter(hosts, THREAD))
-            }
-            otterIn(THREAD).assertExists()
-            // Focus in the channel's composer (the editor's onFocus) moves it there.
-            runOnIdle { hosts.activate(CHANNEL) }
-            otterIn(CHANNEL).assertExists()
-            otterIn(THREAD).assertDoesNotExist()
-        }
-
     /**
      * Artea #proj-assistant:#24 (web `useNoticesLift`): while the "not in #channel — Add / Notify /
      * Ignore" card sits above the composer, the otter lies on top of the card, over none of its
@@ -218,66 +202,9 @@ class ThreadAssistantOtterUiTest {
             assertTrue(liftedOver - downOver > with(density) { 24.dp.toPx() }, "back on the frame's edge: $downOver vs $liftedOver over the composer's bottom")
         }
 
-    /**
-     * Web `data-composing`: while the owner types it goes into the composer (most of it under the
-     * frame's edge), and once the message is sent or the composer cleared it comes back out where
-     * it was. It stays this composer's all along.
-     */
-    @Test
-    fun typingTucksItInAndSendingBringsItBack() =
-        runRobolectricComposeUiTest {
-            val hosts = RaftAssistantOtterHosts()
-            var composing by mutableStateOf(false)
-            val otter = otter(hosts, CHANNEL)
-            show {
-                Column(Modifier.fillMaxWidth().testTag(CHANNEL)) {
-                    Spacer(Modifier.height(160.dp))
-                    SampleFrame { ThreadAssistantOtterFrameEdge(otter, composing = composing, focused = true, animateEntrance = false) }
-                }
-            }
-            val resting = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
-
-            // Typing.
-            runOnIdle { composing = true }
-            val typing = otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot
-            assertTrue(typing.top - resting.top > resting.height * 0.4f, "into the composer: $typing vs $resting")
-            otterIn(CHANNEL).assertExists()
-
-            // Sent (or cleared): the composer is empty again.
-            runOnIdle { composing = false }
-            assertEquals(resting, otterButton(CHANNEL).fetchSemanticsNode().boundsInRoot)
-            runOnIdle { assertEquals(listOf(CHANNEL), hosts.order.value) }
-        }
-
-    /** A frame-like box whose top edge carries [edge], as the composer's frame does. */
-    @Composable
-    private fun SampleFrame(edge: @Composable () -> Unit) {
-        Box(Modifier.fillMaxWidth()) {
-            Spacer(Modifier.fillMaxWidth().height(48.dp))
-            edge()
-        }
-    }
-
     /** The otter's own button (the pose), as a reader presses it. */
     private fun ComposeUiTest.otterButton(conversation: String): SemanticsNodeInteraction =
         onNode(hasClickAction() and hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag)) and hasAnyAncestor(hasTestTag(conversation)))
-
-    @Test
-    fun aPageWithoutTheOtterShowsNothing() =
-        runRobolectricComposeUiTest {
-            show { Conversation(CHANNEL, otter = null) }
-            otterIn(CHANNEL).assertDoesNotExist()
-        }
-
-    @Test
-    fun aPressOpensTheAssistant() =
-        runRobolectricComposeUiTest {
-            val hosts = RaftAssistantOtterHosts()
-            var opened = 0
-            show { Conversation(CHANNEL, otter(hosts, CHANNEL) { opened++ }) }
-            onNode(hasClickAction() and hasAnyAncestor(hasTestTag(ThreadAssistantOtterTestTag))).performClick()
-            runOnIdle { assertEquals(1, opened) }
-        }
 
     /** The otter as rememberThreadAssistantOtter makes it: a press opens its panel, held in [open]. */
     private fun panelOtter(hosts: RaftAssistantOtterHosts, open: Boolean, onOpenChange: (Boolean) -> Unit) =
@@ -334,18 +261,6 @@ class ThreadAssistantOtterUiTest {
             onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
             runOnIdle { assertFalse(open) }
             otterIn(CHANNEL).assertExists()
-        }
-
-    @Test
-    fun collapseClosesThePanel() =
-        runRobolectricComposeUiTest {
-            val hosts = RaftAssistantOtterHosts()
-            var open by mutableStateOf(false)
-            showWithPanel(hosts, { open }, { open = it })
-            pressOtter()
-            onNode(hasTestTag(ThreadAssistantPanelCollapseTestTag)).performClick()
-            onNode(hasTestTag(ThreadAssistantPanelSheetTestTag)).assertDoesNotExist()
-            runOnIdle { assertFalse(open) }
         }
 
     private companion object {

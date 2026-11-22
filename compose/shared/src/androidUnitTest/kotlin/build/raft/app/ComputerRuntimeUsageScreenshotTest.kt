@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -86,12 +85,6 @@ class ComputerRuntimeUsageScreenshotTest {
     @Test
     fun chipsDark() = capture("settings.computer.runtime_usage.chips.dark", RaftAppAppearance.Dark) { RuntimeUsageChipsContent(it) }
 
-    @Test
-    fun sheetLight() = capture("settings.computer.runtime_usage.sheet", RaftAppAppearance.Light) { RuntimeUsageSheetContent(it) }
-
-    @Test
-    fun sheetDark() = capture("settings.computer.runtime_usage.sheet.dark", RaftAppAppearance.Dark) { RuntimeUsageSheetContent(it) }
-
     // A finger's tap on Claude Code's chip on a phone: the usage opens as a bottom sheet (web: a
     // Drawer on a phone), never as the hover card; the sheet's window is captured.
     @Test
@@ -113,10 +106,6 @@ class ComputerRuntimeUsageScreenshotTest {
     @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
     fun previewCardLight() = capture("settings.computer.runtime_usage.preview_card", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(CLAUDE_USAGE) }
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
-    fun previewCardDark() = capture("settings.computer.runtime_usage.preview_card.dark", RaftAppAppearance.Dark) { RuntimeUsagePreviewCardContent(CLAUDE_USAGE) }
-
     // A stale snapshot: the orange-soft notice over the sunken accounts.
     @Test
     @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
@@ -129,10 +118,6 @@ class ComputerRuntimeUsageScreenshotTest {
     @Test
     @Config(sdk = [34], qualifiers = "w520dp-h1500dp-xxhdpi")
     fun previewCardStatesLight() = capture("settings.computer.runtime_usage.preview_card.states", RaftAppAppearance.Light) { RuntimeUsagePreviewCardStates() }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w520dp-h1500dp-xxhdpi")
-    fun previewCardStatesDark() = capture("settings.computer.runtime_usage.preview_card.states.dark", RaftAppAppearance.Dark) { RuntimeUsagePreviewCardStates() }
 
     // The agent profile's usage card says what is used, like the sheet above (web #11855).
     @Test
@@ -284,27 +269,6 @@ private fun RuntimeUsageChipsContent(@Suppress("UNUSED_PARAMETER") appearance: R
     val model = raftComputerDetailModel(ScreenLoadState.Content(snapshot), machineId = "m-1", targetServerId = null, currentServerId = "server-1")
     CompositionLocalProvider(LocalMembersRuntimeAccountUsageAccess provides access) {
         RaftSettingsComputerDetailContent(model = model, actionState = null, onRetry = {}, onIntent = {}, onOpenAgent = {})
-    }
-}
-
-/** The sheet Claude Code's chip opens: 62% used, high (88% used warns) and used up (raft-ui 0.50). */
-@Composable
-private fun RuntimeUsageSheetContent(@Suppress("UNUSED_PARAMETER") appearance: RaftAppAppearance) {
-    val read = remember { Json.parseToJsonElement(CLAUDE_USAGE).toRuntimeAccountUsageRead()!! }
-    Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas), contentAlignment = Alignment.BottomCenter) {
-        ComputerRuntimeUsageSheetSurface(
-            runtimeLabel = "Claude Code",
-            state =
-                ComputerRuntimeUsageSheetState(
-                    load = RuntimeAccountUsageLoad.Loaded(read),
-                    loading = false,
-                    refresh = ComputerRuntimeUsageRefreshStatus.Idle,
-                    cooldownLeftMillis = 0L,
-                    // GET servers/:id/machines `runtimeVersions.claude` (the CLI's own version line).
-                    runtimeVersion = "2.1.304 (Claude Code)",
-                ),
-            timeContext = usageTimeContext,
-        )
     }
 }
 

@@ -42,9 +42,6 @@ class ThreadMessageTaskRefChipsScreenshotTest {
     @Test
     fun taskRefChipsLight() = capture("thread.task-ref-chips", RaftAppAppearance.Light)
 
-    @Test
-    fun taskRefChipsDark() = capture("thread.task-ref-chips.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/thread-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

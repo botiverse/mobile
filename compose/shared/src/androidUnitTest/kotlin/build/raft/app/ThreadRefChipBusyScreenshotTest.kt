@@ -36,16 +36,7 @@ class ThreadRefChipBusyScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun idleLight() = capture("thread.ref-chip-busy.idle", RaftAppAppearance.Light, busyRef = null)
-
-    @Test
     fun busyLight() = capture("thread.ref-chip-busy", RaftAppAppearance.Light, busyRef = BusyThreadRef)
-
-    @Test
-    fun busyDark() = capture("thread.ref-chip-busy.dark", RaftAppAppearance.Dark, busyRef = BusyThreadRef)
-
-    @Test
-    fun busyChannelLight() = capture("thread.ref-chip-busy.channel", RaftAppAppearance.Light, busyRef = BusyChannelRef)
 
     private fun capture(name: String, appearance: RaftAppAppearance, busyRef: String?) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

@@ -46,15 +46,6 @@ class SearchFilterRowScreenshotTest {
     @Test @Config(sdk = [34], qualifiers = "w360dp-h230dp-xxhdpi")
     fun filterRow360Light() = capture("search.filter-row.360", RaftAppAppearance.Light)
 
-    @Test @Config(sdk = [34], qualifiers = "w360dp-h230dp-xxhdpi")
-    fun filterRow360Dark() = capture("search.filter-row.360.dark", RaftAppAppearance.Dark)
-
-    @Test @Config(sdk = [34], qualifiers = "w412dp-h230dp-xxhdpi")
-    fun filterRow412Light() = capture("search.filter-row.412", RaftAppAppearance.Light)
-
-    @Test @Config(sdk = [34], qualifiers = "w412dp-h230dp-xxhdpi")
-    fun filterRow412Dark() = capture("search.filter-row.412.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

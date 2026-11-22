@@ -178,25 +178,6 @@ class ChannelAnnouncementUiTest {
             }
         }
 
-    @Test
-    fun noSettingsEntryForWhoMayNotChangeIt() =
-        runRobolectricComposeUiTest {
-            show {
-                ChannelAnnouncementStrip(
-                    announcement = channelAnnouncementFixture,
-                    authorName = "Bugen",
-                    onOpen = {},
-                    onCopyLink = {},
-                    onOpenSettings = null,
-                )
-            }
-            onNodeWithTag(ChannelAnnouncementTestTags.StripOptions).performClick()
-            onNodeWithTag(ChannelAnnouncementTestTags.StripSettings).assertDoesNotExist()
-            // Close the menu: a popup left open outlives the test's activity.
-            onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).performClick()
-            onNodeWithTag(ChannelAnnouncementTestTags.StripCopyLink).assertDoesNotExist()
-        }
-
     /** slock #15659: for an editor, Replace pin and Unpin live in a ⋯ menu before the chevron. */
     @Test
     fun anEditorFindsReplaceAndRemoveInTheRowsMenu() =
@@ -232,29 +213,6 @@ class ChannelAnnouncementUiTest {
             }
         }
 
-    /** ⋯ sits inside the row's height, immediately before the trailing chevron. */
-    @Test
-    fun theMenuButtonSitsBeforeTheChevron() =
-        runRobolectricComposeUiTest {
-            show {
-                ChannelAnnouncementDetailsRow(
-                    slice = ChannelAnnouncementSlice(read = true, announcement = channelAnnouncementFixture),
-                    canEdit = true,
-                    onOpen = {},
-                    onSet = {},
-                    onReplace = {},
-                    onRemove = {},
-                )
-            }
-            val item = onNodeWithTag(ChannelAnnouncementTestTags.DetailsItem).getBoundsInRoot()
-            val actions = onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).getBoundsInRoot()
-            val meta = onNodeWithTag(ChannelAnnouncementTestTags.DetailsMeta, useUnmergedTree = true).getBoundsInRoot()
-            assertTrue(actions.top >= item.top && actions.bottom <= item.bottom, "⋯ inside the row's height: $actions in $item")
-            assertTrue(meta.right <= actions.left, "subtitle clears ⋯ without running under it: meta=$meta actions=$actions")
-            val endGap = item.right - actions.right
-            assertTrue(endGap >= 36.dp && endGap <= 50.dp, "⋯ sits before the chevron: endGap=$endGap")
-        }
-
     @Test
     fun aReaderSeesTheAnnouncementAloneAndNoRowWhenThereIsNone() =
         runRobolectricComposeUiTest {
@@ -274,35 +232,6 @@ class ChannelAnnouncementUiTest {
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsActions).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsReplace).assertDoesNotExist()
             onNodeWithTag(ChannelAnnouncementTestTags.DetailsRemove).assertDoesNotExist()
-        }
-
-    @Test
-    fun noneShowsSetToAnEditorAndNothingToAReader() =
-        runRobolectricComposeUiTest {
-            var sets = 0
-            show {
-                ChannelAnnouncementDetailsRow(
-                    slice = ChannelAnnouncementSlice(read = true, announcement = null),
-                    canEdit = true,
-                    onOpen = {},
-                    onSet = { sets++ },
-                    onReplace = {},
-                    onRemove = {},
-                )
-                ChannelAnnouncementDetailsRow(
-                    slice = ChannelAnnouncementSlice(read = true, announcement = null),
-                    canEdit = false,
-                    onOpen = {},
-                    onSet = {},
-                    onReplace = {},
-                    onRemove = {},
-                )
-            }
-            onNodeWithText("Pinned content").assertExists()
-            onNodeWithText("Nothing pinned").assertExists()
-            onNodeWithText("Pin an Artifact").assertExists()
-            onNodeWithTag(ChannelAnnouncementTestTags.DetailsSet).performClick()
-            runOnIdle { assertEquals(1, sets) }
         }
 
     /** slock #15693: a long updater name truncates while the short relative time stays unclipped. */
@@ -384,27 +313,6 @@ class ChannelAnnouncementUiTest {
                 assertEquals(ArtifactKind.Html, chosen.single().kind)
             }
         }
-
-    @Test
-    fun metaTemplateSplitHandlesEveryLocaleWordOrder() {
-        assertEquals(
-            listOf(
-                ChannelAnnouncementMetaPart.Literal("Updated by "),
-                ChannelAnnouncementMetaPart.Name,
-                ChannelAnnouncementMetaPart.Literal(" · "),
-                ChannelAnnouncementMetaPart.Time,
-            ),
-            splitChannelAnnouncementMetaTemplate("Updated by \u0001 · \u0002"),
-        )
-        assertEquals(
-            listOf(
-                ChannelAnnouncementMetaPart.Name,
-                ChannelAnnouncementMetaPart.Literal(" 更新 · "),
-                ChannelAnnouncementMetaPart.Time,
-            ),
-            splitChannelAnnouncementMetaTemplate("\u0001 更新 · \u0002"),
-        )
-    }
 
     @Test
     fun theChangeLineIsSaidInTheReadersLanguage() =

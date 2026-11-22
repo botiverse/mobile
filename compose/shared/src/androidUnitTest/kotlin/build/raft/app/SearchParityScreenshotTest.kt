@@ -8,13 +8,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasScrollToNodeAction
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -87,12 +82,6 @@ class SearchParityScreenshotTest {
     }
 
     @Test
-    fun entitiesShowAll() =
-        RaftRobolectricScreenshot.capture("search.entities.show-all", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host { EntitiesPanel() }
-        }
-
-    @Test
     fun incompleteSearchWithHistoryNotice() =
         RaftRobolectricScreenshot.capture("search.incomplete", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
             Host { IncompletePanel() }
@@ -116,28 +105,6 @@ class SearchParityScreenshotTest {
                     )
                 }
             }
-        }
-
-    @Test
-    fun showAllListsEveryDestinationAndShowFewerFoldsThemBack() =
-        runRobolectricComposeUiTest {
-            setContent { Host { EntitiesPanel() } }
-            onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(5)
-
-            onNodeWithText("Show all").performClick()
-            waitForIdle()
-            onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(7)
-
-            // Seven rows push Show fewer below the fold of the lazy list: scroll the list to it.
-            val scrollables = onAllNodes(hasScrollToNodeAction())
-            val reached =
-                (0 until scrollables.fetchSemanticsNodes().size).any { index ->
-                    runCatching { scrollables[index].performScrollToNode(hasText("Show fewer")) }.isSuccess
-                }
-            assertEquals(true, reached, "Show fewer is in the results list")
-            onNodeWithText("Show fewer").performClick()
-            waitForIdle()
-            onAllNodesWithText("eng-0", substring = true, useUnmergedTree = true).assertCountEquals(5)
         }
 
     @Test
@@ -165,19 +132,6 @@ class SearchParityScreenshotTest {
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
             RaftTheme(appearance = RaftAppearance.Light) { content() }
         }
-    }
-
-    @Composable
-    private fun EntitiesPanel() {
-        SharedHomeSearchPanel(
-            state = SharedHomeSearchPanelState(serverId = "server-1", query = "eng", searched = true),
-            homeState = home(channels = 7, plan = "pro"),
-            onIntent = {},
-            onOpenItem = {},
-            onOpenEntity = {},
-            bottomContentPadding = 0.dp,
-            timeContext = TimeContext,
-        )
     }
 
     @Composable

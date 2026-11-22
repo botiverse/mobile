@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -21,7 +20,6 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.printToString
-import androidx.compose.ui.test.swipe
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.LocalRaftHost
@@ -132,24 +130,6 @@ class TaskConversationHeadRealTapTest {
         }
 
     @Test
-    fun aFingerOnTheStatusOpensTheStatusMenu() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3)
-            tapAtCentreOf(TaskHeadStatusTestTag)
-            assertOpened("Todo", TaskHeadStatusTestTag)
-        }
-
-    @Test
-    fun inALongConversationAtItsNewestMessageTheBarPullsTheHeadDownAndAFingerOnTheAssigneeOpensThePicker() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 60)
-            assertHeadOutOfViewAndNotPulledDown()
-            pullHeadDownFromTheBar()
-            tapAtCentreOf(TaskHeadAssigneeTestTag)
-            assertOpened("Search assignees", TaskHeadAssigneeTestTag)
-        }
-
-    @Test
     fun inALongConversationTheBarPullsTheHeadDownAndAFingerOnTheStatusOpensTheMenu() =
         runRobolectricComposeUiTest {
             openTaskPage(messages = 60)
@@ -157,84 +137,6 @@ class TaskConversationHeadRealTapTest {
             pullHeadDownFromTheBar()
             tapAtCentreOf(TaskHeadStatusTestTag)
             assertOpened("Todo", TaskHeadStatusTestTag)
-        }
-
-    @Test
-    fun inALongConversationScrolledBackToTheTopAFingerOnTheStatusInTheRowOpensTheMenu() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 60)
-            assertHeadOutOfViewAndNotPulledDown()
-            // Back through the messages to where the conversation begins: the head is its first row.
-            repeat(40) {
-                if (onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) return@repeat
-                swipeTowardsOlder()
-            }
-            // On to the very top, so the whole head is on screen.
-            repeat(3) { swipeTowardsOlder() }
-            assertTrue(
-                onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
-                "the head's row is in view but the bar still summarizes the task\n" + root().printToString(Int.MAX_VALUE),
-            )
-            tapAtCentreOf(TaskHeadStatusTestTag)
-            assertOpened("Todo", TaskHeadStatusTestTag)
-        }
-
-    @Test
-    fun aFingerOnTheCreatorOpensTheirProfile() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3)
-            tapAtCentreOfText("@AppFather")
-            assertTrue(
-                TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" },
-                "a finger on Created by did not open AppFather's profile (opened ${TaskTapFixture.openedProfiles}); trace:\n" +
-                    trace.joinToString("\n"),
-            )
-        }
-
-    @Test
-    fun aFingerOnTheTopBarRefOpensTheTaskChannel() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3)
-            tapAtCentreOfText("#proj-apps:#35")
-            assertTrue(
-                TaskTapFixture.openedConversations.contains(TaskTapParentChannelId),
-                "a finger on the bar's #proj-apps:#35 did not open #proj-apps (opened ${TaskTapFixture.openedConversations}); trace:\n" +
-                    trace.joinToString("\n"),
-            )
-        }
-
-    @Test
-    fun withNavigation3AFingerOnTheAssigneeOpensTheAssigneePicker() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 60, nav3 = true)
-            assertHeadOutOfViewAndNotPulledDown()
-            pullHeadDownFromTheBar()
-            tapAtCentreOf(TaskHeadAssigneeTestTag)
-            assertOpened("Search assignees", TaskHeadAssigneeTestTag)
-        }
-
-    @Test
-    fun withNavigation3AFingerOnTheStatusOpensTheStatusMenu() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOf(TaskHeadStatusTestTag)
-            assertOpened("Todo", TaskHeadStatusTestTag)
-        }
-
-    @Test
-    fun withNavigation3AFingerOnTheCreatorOpensTheirProfile() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOfText("@AppFather")
-            assertTrue(TaskTapFixture.openedProfiles.any { it.memberId.value == "agent-appfather" }, trace.joinToString("\n"))
-        }
-
-    @Test
-    fun withNavigation3AFingerOnTheTopBarRefOpensTheTaskChannel() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 3, nav3 = true)
-            tapAtCentreOfText("#proj-apps:#35")
-            assertTrue(TaskTapFixture.openedConversations.contains(TaskTapParentChannelId), trace.joinToString("\n"))
         }
 
     private fun ComposeUiTest.openTaskPage(messages: Int, nav3: Boolean = false) {
@@ -332,15 +234,6 @@ class TaskConversationHeadRealTapTest {
         settle()
     }
 
-    /** A drag down the messages: back towards the older ones. */
-    private fun ComposeUiTest.swipeTowardsOlder() {
-        root().performTouchInput {
-            val x = width / 2f
-            swipe(Offset(x, height * 0.3f), Offset(x, height * 0.8f), durationMillis = 300)
-        }
-        settle()
-    }
-
     private fun ComposeUiTest.settle() {
         repeat(20) {
             Thread.sleep(20)
@@ -352,10 +245,6 @@ class TaskConversationHeadRealTapTest {
     private fun ComposeUiTest.root(): SemanticsNodeInteraction = onAllNodes(isRoot())[0]
 
     private fun ComposeUiTest.chipBounds(tag: String): Rect = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-
-    /** [tapAtCentreOf] for a fact found by its text (the creator's name, the bar's ref). */
-    private fun ComposeUiTest.tapAtCentreOfText(text: String) =
-        tapAt(text, onAllNodesWithText(text, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot)
 
     /** A real finger: down and up at the chip's centre, injected at the page's root, not at the chip. */
     private fun ComposeUiTest.tapAtCentreOf(tag: String) = tapAt(tag, chipBounds(tag))

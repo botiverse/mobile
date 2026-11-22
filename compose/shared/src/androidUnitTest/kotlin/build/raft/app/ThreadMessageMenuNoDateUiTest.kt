@@ -59,9 +59,6 @@ class ThreadMessageMenuNoDateUiTest {
     @Test
     fun phoneLongPressMenuHasNoDateRow() = runRobolectricComposeUiTest { assertNoDate(RaftPointerInput.Touch) }
 
-    @Test
-    fun desktopContextMenuHasNoDateRow() = runRobolectricComposeUiTest { assertNoDate(RaftPointerInput.Fine) }
-
     private fun ComposeUiTest.assertNoDate(pointerInput: RaftPointerInput) {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())

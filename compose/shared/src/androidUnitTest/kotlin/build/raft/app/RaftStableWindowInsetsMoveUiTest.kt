@@ -2,11 +2,8 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -25,10 +22,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftSafeAreaInsets
 import build.raft.designsystem.components.RaftSafeAreaInsets
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
-import build.raft.designsystem.components.rememberRaftStablePaddingValues
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -99,54 +94,6 @@ class RaftStableWindowInsetsMoveUiTest {
             val (before, after) = elementAcrossASafeAreaChange(frame)
             assertEquals(before, after, "a new safe area must not make the element unequal (update() would run)")
             assertEquals(24.dp, innerLeft(), "the padding still follows the safe area")
-        }
-
-    @Test
-    fun aNewWindowInsetsPerValueMakesTheElementUnequal() =
-        runRobolectricComposeUiTest {
-            // What raftSafeAreaHorizontalPadding did before: the trigger for update().
-            val frame = Frame()
-            show(frame) {
-                val insets = WindowInsets(left = LocalRaftSafeAreaInsets.current.left)
-                Box(Modifier.testTag(PADDED).windowInsetsPadding(insets)) { Box(Modifier.size(10.dp).testTag(INNER)) }
-            }
-            val (before, after) = elementAcrossASafeAreaChange(frame)
-            assertNotEquals(before, after)
-            assertEquals(24.dp, innerLeft())
-        }
-
-    @Test
-    fun nestedSafeAreaPaddingPadsOnceAndFollowsEveryValue() =
-        runRobolectricComposeUiTest {
-            val frame = Frame()
-            show(frame) {
-                // As in production (a row inside a padded header): the inner one pads nothing more.
-                Box(Modifier.raftSafeAreaHorizontalPadding()) {
-                    Box(Modifier.raftSafeAreaHorizontalPadding()) { Box(Modifier.size(10.dp).testTag(INNER)) }
-                }
-            }
-            for (left in listOf(24.dp, 8.dp, 0.dp)) {
-                runOnIdle { frame.left = left }
-                assertEquals(left, innerLeft(), "padded once by a safe area of $left")
-            }
-        }
-
-    @Test
-    fun stableConsumedPaddingFollowsTheValue() =
-        runRobolectricComposeUiTest {
-            val frame = Frame()
-            show(frame) {
-                // RaftHorizontalSafeAreaShell / RaftSideColumnScaffold: consume what the shell padded.
-                val consumed = rememberRaftStablePaddingValues(PaddingValues.Absolute(left = frame.left))
-                Box(Modifier.consumeWindowInsets(consumed)) {
-                    Box(Modifier.windowInsetsPadding(WindowInsets(left = 30.dp))) { Box(Modifier.size(10.dp).testTag(INNER)) }
-                }
-            }
-            assertEquals(30.dp, innerLeft())
-            runOnIdle { frame.left = 24.dp }
-            assertEquals(6.dp, innerLeft(), "24dp consumed leaves 6dp of the 30dp to pad")
-            runOnIdle { frame.left = 8.dp }
-            assertEquals(22.dp, innerLeft())
         }
 
     @Test

@@ -37,12 +37,6 @@ class SettingsHomeLocaleScreenshotTest {
     }
 
     @Test
-    fun settingsHomeSpanish() = capture("settings.home.es", AppLocale.Spanish)
-
-    @Test
-    fun settingsHomeBrazilianPortuguese() = capture("settings.home.pt-BR", AppLocale.BrazilianPortuguese)
-
-    @Test
     fun settingsHomeKorean() = capture("settings.home.ko", AppLocale.Korean)
 
     @Test

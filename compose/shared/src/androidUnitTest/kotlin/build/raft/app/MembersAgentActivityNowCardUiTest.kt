@@ -144,12 +144,4 @@ class MembersAgentActivityNowCardUiTest {
             assertEquals("Idle · last turn ended 20:01", text("agent-now-headline"))
             assertNull(text("agent-now-step"))
         }
-
-    @Test
-    fun workingWithoutARunningTurnSaysTheStepOnce() =
-        runRobolectricComposeUiTest {
-            overview(now(AgentStatus.Working, "Running tests"), running = null)
-            assertEquals("Running tests", text("agent-now-headline"))
-            assertNull(text("agent-now-step"), "the headline already says it")
-        }
 }

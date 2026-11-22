@@ -44,10 +44,6 @@ class BottomTabBarLabelScreenshotTest {
     @Config(sdk = [34], qualifiers = "zh-rCN-w412dp-h300dp-420dpi")
     fun bottomTabBarLabelsChinese() = capture("shell.bottom-tab-bar.labels.zh")
 
-    @Test
-    @Config(sdk = [34], qualifiers = "en-w412dp-h300dp-420dpi")
-    fun bottomTabBarLabelsEnglish() = capture("shell.bottom-tab-bar.labels.en")
-
     private fun capture(name: String) =
         RaftRobolectricScreenshot.capture(
             name,

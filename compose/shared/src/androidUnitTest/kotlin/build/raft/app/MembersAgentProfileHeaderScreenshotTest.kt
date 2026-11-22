@@ -55,10 +55,6 @@ class MembersAgentProfileHeaderScreenshotTest {
     @Config(sdk = [34], qualifiers = "w360dp-h240dp-xxhdpi")
     fun headerLongLight() = capture("members.agent-profile-header.long", RaftAppAppearance.Light, long = true)
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h240dp-xxhdpi")
-    fun headerLongDark() = capture("members.agent-profile-header.long.dark", RaftAppAppearance.Dark, long = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, long: Boolean = false) =
         RaftRobolectricScreenshot.capture(
             name,

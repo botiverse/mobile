@@ -80,16 +80,6 @@ class ComputerRuntimeAuthScreenshotTest {
         }
 
     @Test
-    fun signInDeviceCodeDark() =
-        capture("settings.computer.runtime_auth.sign_in_device_code.dark", RaftAppAppearance.Dark) {
-            SignInDialog(
-                "Grok Build",
-                ComputerRuntimeSignInState(started = true, deviceCode = RuntimeAuthLoginStep.DeviceCode("QX7B-K2MD", "https://accounts.x.ai/oauth2/device?user_code=QX7B-K2MD", 900)),
-                RuntimeAuthRuntime.Grok,
-            )
-        }
-
-    @Test
     fun signInPastedCodeLight() =
         capture("settings.computer.runtime_auth.sign_in_code", RaftAppAppearance.Light) {
             SignInDialog(

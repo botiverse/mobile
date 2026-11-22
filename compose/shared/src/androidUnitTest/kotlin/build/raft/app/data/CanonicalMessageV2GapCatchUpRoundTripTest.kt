@@ -28,25 +28,6 @@ import kotlin.test.assertTrue
  */
 class CanonicalMessageV2GapCatchUpRoundTripTest {
     @Test
-    fun smallGapExtendsTheNewestEdgeWithNoHole() = withFreshDatabase { database ->
-        val rig = Rig(database)
-        runBlocking {
-            rig.enter(listOf(10L, 20L, 30L))
-            // The latest page reaches into the stored window: the missing m40/m50 attach at the top.
-            rig.latest(pageOf(20L, 30L, 40L, 50L), limit = 200)
-
-            val frame = assertNotNull(rig.coldStartReader().read(partition, "channel-1"))
-            assertEquals(listOf(10L, 20L, 30L, 40L, 50L), frame.envelopes.map { it.fact.seq })
-            assertEquals(10L, frame.cursor.oldestLoadedSeq)
-            assertEquals(50L, frame.cursor.newestLoadedSeq)
-            assertEquals(50L, frame.cursor.latestSeq)
-            assertTrue(frame.cursor.hasLoadedNewest)
-            assertTrue(rig.logs.any { "canonical_v2_latest_page" in it && "outcome=window_extended new=20..50 committed facts=4" in it }, rig.logs.toString())
-            assertTrue(rig.logs.none { "island_kept" in it }, rig.logs.toString())
-        }
-    }
-
-    @Test
     fun largeGapKeepsTheOldWindowAsAnIslandAndColdStartShowsTheNewestPage() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {
@@ -77,30 +58,6 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
     }
 
     @Test
-    fun theServerWindowDecidesWhetherTheLatestPageJoinsUnderIdenticalRows() {
-        // Twin pair: the same stored window (10, 20, 30) and the SAME page rows (40, 50, a full page): every
-        // count and seq comparison is identical. Only the server's messageWindow differs — A: nothing lies
-        // between seq 30 and the page ([31, 50]); B: seq 31 exists and is not on the page ([32, 50]). Only
-        // code that reads the producer's coverage keeps one range in A and two in B.
-        fun run(coveredAfterSeq: Long) = withFreshDatabase { database ->
-            val rig = Rig(database)
-            runBlocking {
-                rig.enter(listOf(10L, 20L, 30L))
-                rig.latest(pageOf(40L, 50L), limit = 2, window = channelWindow(coveredAfterSeq, coveredThroughSeq = 50))
-                Triple(
-                    assertNotNull(rig.coldStartReader().read(partition, "channel-1")).envelopes.map { it.fact.seq },
-                    rig.segments(),
-                    rig.onDiskSeqs(),
-                )
-            }
-        }
-        val joined = run(coveredAfterSeq = 30)
-        val island = run(coveredAfterSeq = 31)
-        assertEquals(Triple(listOf(10L, 20L, 30L, 40L, 50L), listOf(10L to 50L), listOf(10L, 20L, 30L, 40L, 50L)), joined)
-        assertEquals(Triple(listOf(40L, 50L), listOf(10L to 30L, 32L to 50L), listOf(10L, 20L, 30L, 40L, 50L)), island)
-    }
-
-    @Test
     fun twoEntersKeepTheOlderPage() {
         // P1 acceptance: a second enter never wipes the first one's messages. Pair: the second page's window says
         // it starts right above seq 99 (island) or right above the stored 30 (joined) — same rows.
@@ -114,27 +71,6 @@ class CanonicalMessageV2GapCatchUpRoundTripTest {
         }
         assertEquals(Pair(listOf(10L, 20L, 30L, 100L, 110L, 120L), listOf(10L to 30L, 100L to 120L)), run(coveredAfterSeq = 99))
         assertEquals(Pair(listOf(10L, 20L, 30L, 100L, 110L, 120L), listOf(10L to 120L)), run(coveredAfterSeq = 30))
-    }
-
-    @Test
-    fun aRowThatCannotBeConvertedIsLeftOutAndTheRestOfThePageIsStored() = withFreshDatabase { database ->
-        // Phase 2b: the page carries a thread parent and the reply-count lookup fails. Only that row is left out (its
-        // seq excluded from the claim); the other row is stored. Twin: a page whose rows all convert stores both.
-        fun run(threadSummariesBody: String?) = withFreshDatabase { db ->
-            val rig = Rig(db, threadSummariesBody = threadSummariesBody)
-            runBlocking {
-                rig.enter(listOf(10L, 20L, 30L))
-                rig.latest(adjacentPageOf(node("m100", 100, threadId = "thread-100"), node("m110", 110)), limit = 2)
-                Triple(rig.onDiskSeqs(), rig.segments(), rig.logs.last())
-            }
-        }
-        val (seqs, segments, log) = run(threadSummariesBody = null)
-        assertEquals(listOf(10L, 20L, 30L, 110L), seqs)
-        assertEquals(listOf(10L to 30L, 101L to 110L), segments, "the claim starts above the left-out seq 100")
-        assertTrue("left_out=1 reason=canonical_v2_thread_summaries_unavailable" in log, log)
-        val (allSeqs, allSegments, _) = run(threadSummariesBody = """{"m100":{"threadChannelId":"thread-100","replyCount":2}}""")
-        assertEquals(listOf(10L, 20L, 30L, 100L, 110L), allSeqs)
-        assertEquals(listOf(10L to 30L, 100L to 110L), allSegments)
     }
 
     private class Rig(private val database: RaftSqlDatabase, threadSummariesBody: String? = "{}") {

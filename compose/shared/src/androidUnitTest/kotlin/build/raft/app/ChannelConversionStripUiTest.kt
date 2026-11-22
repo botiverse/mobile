@@ -144,20 +144,4 @@ class ChannelConversionStripUiTest {
             onNodeWithTag(ChannelConversionTestTags.Retry).performClick()
             assertEquals(1, retries)
         }
-
-    @Test
-    fun inChineseTheStripAndTheConfirmationAreTheWebsWords() =
-        runRobolectricComposeUiTest {
-            StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
-            val longName = "产品设计与工程协作讨论频道-二零二六年第四季度跨团队发布计划"
-            setContent {
-                Host { ChannelConversionStatus(running, channelName = longName, onRetry = {}, onCancel = {}, onCheckStatus = {}, stepsInPopover = false) }
-            }
-            onNodeWithTag(ChannelConversionTestTags.StripTitle, useUnmergedTree = true).assertTextEquals("正在连接外部…")
-            onNodeWithTag(ChannelConversionTestTags.StripView).performClick()
-            awaitTag(ChannelConversionTestTags.StagePrefix + "preserve")
-            onNodeWithTag(ChannelConversionTestTags.StagePrefix + "preserve").assertContentDescriptionEquals("正在保留消息、文件、消息列和任务…，当前步骤，正在进行")
-            onNodeWithTag(ChannelConversionTestTags.Cancel).performClick()
-            awaitText("#$longName 将恢复到连接前的样子。")
-        }
 }

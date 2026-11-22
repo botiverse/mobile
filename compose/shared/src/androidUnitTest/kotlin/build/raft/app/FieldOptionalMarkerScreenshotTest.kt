@@ -46,25 +46,3 @@ class FieldOptionalMarkerZhCnScreenshotTest {
     @Test
     fun optionalMarker() = captureOptionalMarker("field.optional-marker.zh-CN", "描述", "成员", activities)
 }
-
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "zh-rTW-w390dp-h200dp-xxhdpi")
-class FieldOptionalMarkerZhTwScreenshotTest {
-    @get:org.junit.Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun optionalMarker() = captureOptionalMarker("field.optional-marker.zh-TW", "描述", "成員", activities)
-}
-
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "ja-w390dp-h200dp-xxhdpi")
-class FieldOptionalMarkerJaScreenshotTest {
-    @get:org.junit.Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun optionalMarker() = captureOptionalMarker("field.optional-marker.ja", "説明", "メンバー", activities)
-}

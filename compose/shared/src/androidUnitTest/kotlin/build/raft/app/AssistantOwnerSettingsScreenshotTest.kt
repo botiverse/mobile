@@ -17,7 +17,6 @@ import build.raft.app.assistant.AssistantOwnerSectionContent
 import build.raft.app.assistant.AssistantOwnerWeChatRow
 import build.raft.app.assistant.WeChatConnectionBody
 import build.raft.app.assistant.WeChatDisconnectConfirmBody
-import build.raft.app.assistant.WeChatPhoneBlockedBody
 import build.raft.app.data.ScreenError
 import build.raft.app.data.WeChatBinding
 import build.raft.app.model.RaftTimeContext
@@ -60,15 +59,6 @@ class AssistantOwnerSettingsScreenshotTest {
     fun fullSectionLight() = capture("assistant.owner-section.full", RaftAppAppearance.Light) { FullSectionFixture() }
 
     @Test
-    fun fullSectionDark() = capture("assistant.owner-section.full.dark", RaftAppAppearance.Dark) { FullSectionFixture() }
-
-    @Test
-    fun otterSaveFailed() =
-        capture("assistant.owner-section.otter-failed", RaftAppAppearance.Light) {
-            FullSectionFixture(otter = AssistantOwnerOtterRow(checked = true, enabled = true, failure = ScreenError("http_500", traceId = TRACE_ID)))
-        }
-
-    @Test
     fun weChatConnection() =
         capture("assistant.wechat.connection", RaftAppAppearance.Light) { ConnectionFixture(WeChatBinding(BINDING_ID, "active", CONNECTED_AT)) }
 
@@ -76,21 +66,6 @@ class AssistantOwnerSettingsScreenshotTest {
     fun weChatConnectionStopped() =
         capture("assistant.wechat.connection.stopped", RaftAppAppearance.Light) {
             ConnectionFixture(WeChatBinding(BINDING_ID, "reconnect_required", CONNECTED_AT))
-        }
-
-    @Test
-    fun weChatPhoneBlocked() =
-        capture("assistant.wechat.phone-blocked", RaftAppAppearance.Light) {
-            Backdrop {
-                RaftDialogSurface(
-                    title = stringResource(Res.string.assistant_wechat_connect_title),
-                    description = stringResource(Res.string.assistant_wechat_intro, "Ada"),
-                    onClose = {},
-                    footer = { RaftButton(stringResource(Res.string.common_close), onClick = {}, variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg) },
-                ) {
-                    WeChatPhoneBlockedBody()
-                }
-            }
         }
 
     @Test

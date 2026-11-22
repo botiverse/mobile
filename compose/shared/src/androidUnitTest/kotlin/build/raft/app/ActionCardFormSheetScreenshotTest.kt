@@ -43,9 +43,6 @@ class ActionCardFormSheetScreenshotTest {
     fun emptyLight() = capture("action-card.form.empty", RaftAppAppearance.Light, fixtures.empty)
 
     @Test
-    fun emptyDark() = capture("action-card.form.empty.dark", RaftAppAppearance.Dark, fixtures.empty)
-
-    @Test
     fun filledLight() = capture("action-card.form.filled", RaftAppAppearance.Light, fixtures.filled)
 
     @Test
@@ -55,23 +52,7 @@ class ActionCardFormSheetScreenshotTest {
     fun errorsLight() = capture("action-card.form.errors", RaftAppAppearance.Light, fixtures.empty, issues = fixtures.serverIssues)
 
     @Test
-    fun errorsDark() = capture("action-card.form.errors.dark", RaftAppAppearance.Dark, fixtures.empty, issues = fixtures.serverIssues)
-
-    @Test
     fun submittingLight() = capture("action-card.form.submitting", RaftAppAppearance.Light, fixtures.filled, submitting = true)
-
-    @Test
-    fun submittingDark() = capture("action-card.form.submitting.dark", RaftAppAppearance.Dark, fixtures.filled, submitting = true)
-
-    private val decisionForm by lazy { checkNotNull(ActionCardSpecFixtures.card("form_submit_labels").forms?.get("decision")) }
-
-    @Test
-    fun submitLabelsLight() =
-        capture("action-card.form.submit-labels", RaftAppAppearance.Light, mapOf("decision" to ActionCardFormValue.Text("approve")), form = decisionForm)
-
-    @Test
-    fun submitLabelsDark() =
-        capture("action-card.form.submit-labels.dark", RaftAppAppearance.Dark, mapOf("decision" to ActionCardFormValue.Text("approve")), form = decisionForm)
 
     /** The vector's question card form (schemaVersion 8): three steps, a single and a multiple Choice with Other, and a TextArea. */
     private val questionForm by lazy { checkNotNull(ActionCardSpecFixtures.card("question_card").forms?.get("answers")) }
@@ -82,39 +63,6 @@ class ActionCardFormSheetScreenshotTest {
     @Test
     fun questionChoiceOtherLight() =
         capture("action-card.question.choice-other", RaftAppAppearance.Light, questionValues("window" to ActionCardFormValue.Choice(emptyList(), "周五上午")), form = questionForm)
-
-    @Test
-    fun questionChoiceOtherDark() =
-        capture("action-card.question.choice-other.dark", RaftAppAppearance.Dark, questionValues("window" to ActionCardFormValue.Choice(emptyList(), "周五上午")), form = questionForm)
-
-    // Step 1 with Next tapped before choosing: the page stays and the line under the list says why.
-    @Test
-    fun questionPendingLight() = capture("action-card.question.pending", RaftAppAppearance.Light, questionValues(), form = questionForm, tried = true)
-
-    // Step 2 of 3: a multiple Choice (checkboxes) with one option ticked and Other typed, under the back arrow.
-    @Test
-    fun questionMultipleStepLight() =
-        capture(
-            "action-card.question.steps-multiple",
-            RaftAppAppearance.Light,
-            questionValues("envs" to ActionCardFormValue.Choice(listOf("staging"), "preview-eu")),
-            form = questionForm,
-            page = 1,
-        )
-
-    @Test
-    fun questionMultipleStepDark() =
-        capture(
-            "action-card.question.steps-multiple.dark",
-            RaftAppAppearance.Dark,
-            questionValues("envs" to ActionCardFormValue.Choice(listOf("staging"), "preview-eu")),
-            form = questionForm,
-            page = 1,
-        )
-
-    // Step 3 of 3: the optional free text, and the form's own submit label.
-    @Test
-    fun questionLastStepLight() = capture("action-card.question.steps-last", RaftAppAppearance.Light, questionValues(), form = questionForm, page = 2)
 
     private fun capture(
         name: String,

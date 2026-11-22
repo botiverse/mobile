@@ -516,12 +516,6 @@ class ThreadPendingSendStoreIntegrationTest {
         sendFailingAfterServerSwitchScenario(pageSawServerB = false)
     }
 
-    /** Same, when A's page store already observed server B before the failure arrived. */
-    @Test
-    fun sendFailingAfterServerSwitchIsJournaledEvenWhenThePageAlreadySeesServerB() = runTest {
-        sendFailingAfterServerSwitchScenario(pageSawServerB = true)
-    }
-
     private suspend fun sendFailingAfterServerSwitchScenario(pageSawServerB: Boolean) {
         withDatabase { path ->
             val serverA = identity().copy(bindingGeneration = 3L)

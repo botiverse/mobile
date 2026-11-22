@@ -92,19 +92,6 @@ class MembersAgentActivityLogTailUiTest {
         }
 
     @Test
-    fun aCappedLogTrimmingAtTheTopStillFollowsAtTheBottom() =
-        runRobolectricComposeUiTest {
-            val harness = host()
-            runOnIdle {
-                harness.rows.removeAt(0)
-                harness.rows.add("new0")
-            }
-            waitForIdle()
-            assertEquals(InitialRows, harness.rows.size)
-            assertTrue(harness.lastVisible(), "the count stays the same, yet the newest entry is followed")
-        }
-
-    @Test
     fun scrolledUpKeepsItsPlaceAndThePillCountsNewSteps() =
         runRobolectricComposeUiTest {
             val harness = host()

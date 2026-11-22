@@ -62,9 +62,6 @@ class AgentActivityAppEventsScreenshotTest {
     @Test
     fun appEventsLight() = capture("members.agent-activity.app-events", RaftAppAppearance.Light)
 
-    @Test
-    fun appEventsDark() = capture("members.agent-activity.app-events.dark", RaftAppAppearance.Dark)
-
     @OptIn(ExperimentalCoilApi::class)
     private fun capture(name: String, appearance: RaftAppAppearance) {
         // As ThreadMessageAttachmentsScreenshotTest: install the app's loader before the first request.

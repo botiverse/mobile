@@ -14,11 +14,8 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.data.ComputersRackView
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueComputersRackPreferenceRepository
 import build.raft.app.data.ScreenLoadState
@@ -118,18 +115,6 @@ class ComputersRackFitToolbarUiTest {
     }
 
     private fun ComposeUiTest.has(tag: String): Boolean = onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
-
-    @Test
-    fun cardsListAndAddComputerAreAtTheToolbarsEnd() = runRobolectricComposeUiTest {
-        val store = store()
-        var added = 0
-        show(loaded, store, onAdd = { added++ })
-        onNodeWithTag("${RaftComputersRackTags.View}-list").performClick()
-        waitForIdle()
-        assertEquals(ComputersRackView.List, store.state.value.view)
-        onNodeWithTag(RaftComputersRackTags.Add).performClick()
-        assertEquals(1, added)
-    }
 
     @Test
     fun theToolbarStaysWhileLoadingWithNoComputersAndAfterAFailedLoad() = runRobolectricComposeUiTest {

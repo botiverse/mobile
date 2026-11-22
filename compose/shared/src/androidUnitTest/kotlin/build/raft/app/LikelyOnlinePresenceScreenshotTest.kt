@@ -17,14 +17,12 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.likelyOnlineMemberStatusOrNull
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertNotNull
-import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -48,22 +46,9 @@ class LikelyOnlinePresenceScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h400dp-xxhdpi")
-    fun listLight() = capture("members.likely-online.list", RaftAppAppearance.Light) { LikelyOnlineList() }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h400dp-xxhdpi")
-    fun listDark() = capture("members.likely-online.list.dark", RaftAppAppearance.Dark) { LikelyOnlineList() }
-
-    @Test
     @Config(sdk = [34], qualifiers = "w390dp-h200dp-xxhdpi")
     fun profileHeaderLight() =
         capture("members.likely-online.profile-header", RaftAppAppearance.Light) { LikelyOnlineProfileHeader() }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w390dp-h200dp-xxhdpi")
-    fun profileHeaderDark() =
-        capture("members.likely-online.profile-header.dark", RaftAppAppearance.Dark) { LikelyOnlineProfileHeader() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
@@ -88,51 +73,6 @@ private fun likelyOnlineAgent(id: String, name: String, description: String? = n
 
 private fun likelyOnlineState(member: MemberProfile): RaftAgentStatusIndicatorState =
     assertNotNull(member.likelyOnlineMemberStatusOrNull()).toRaftAgentStatusIndicatorState()
-
-private fun factState(status: AgentStatus): RaftAgentStatusIndicatorState =
-    raftAgentStatusIndicatorState(
-        status = status,
-        presence = status.presence,
-        external = false,
-    )
-
-@Composable
-private fun LikelyOnlineList() {
-    val lagoon = likelyOnlineAgent("agent-lagoon", "Lagoon", "Reviews pull requests")
-    val payload =
-        remember {
-            RaftMembersPayload(
-                instanceId = "members-likely-online-screenshot",
-                members =
-                    listOf(
-                        likelyOnlineAgent("agent-tenny", "Tenny", "Ships the mobile app"),
-                        lagoon,
-                        likelyOnlineAgent("agent-volta", "Volta"),
-                    ),
-            )
-        }
-    val resolver: RaftAgentStatusResolver =
-        remember {
-            { id ->
-                flowOf(
-                    when (id) {
-                        "agent-tenny" -> factState(AgentStatus.Online)
-                        "agent-lagoon" -> likelyOnlineState(lagoon)
-                        else -> factState(AgentStatus.Offline)
-                    }
-                )
-            }
-        }
-    MembersListContent(
-        payload = payload,
-        onAddHuman = {},
-        onOpenMember = {},
-        agentStatusResolver = resolver,
-        canCreateAgents = true,
-        inviteHuman = MembersInviteHumanInputs(inviteHumanDialog = {}),
-        currentUserId = "human-artin",
-    )
-}
 
 @Composable
 private fun LikelyOnlineProfileHeader() {

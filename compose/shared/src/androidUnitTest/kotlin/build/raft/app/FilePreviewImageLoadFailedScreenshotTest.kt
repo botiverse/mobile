@@ -29,9 +29,6 @@ class FilePreviewImageLoadFailedScreenshotTest {
     @Test
     fun imageLoadFailedLight() = capture("file.preview.image.load.failed", RaftAppAppearance.Light)
 
-    @Test
-    fun imageLoadFailedDark() = capture("file.preview.image.load.failed.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {

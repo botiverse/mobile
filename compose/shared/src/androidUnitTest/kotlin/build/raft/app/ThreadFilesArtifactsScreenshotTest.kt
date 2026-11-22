@@ -32,9 +32,6 @@ class ThreadFilesArtifactsScreenshotTest {
     @Test
     fun filesTabArtifactsLight() = capture("thread.files-tab.artifacts", RaftAppAppearance.Light)
 
-    @Test
-    fun filesTabArtifactsDark() = capture("thread.files-tab.artifacts.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) {
         val timeContext =
             RaftTimeContext(

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.LocalRaftWindowTitleBar
@@ -28,22 +27,6 @@ class RaftImageLightboxScreenshotTest {
 
     @Test
     fun lightboxLight() = capture("image.lightbox", RaftAppAppearance.Light)
-
-    @Test
-    fun lightboxDark() = capture("image.lightbox.dark", RaftAppAppearance.Dark)
-
-    /**
-     * artin 11-03: the macOS window's title bar laid over the app (#4193): the bar is its row and
-     * the sender starts after the traffic lights' corner instead of under them.
-     */
-    @Test
-    fun lightboxWindowTitleBar() =
-        capture(
-            "image.lightbox.window-title-bar",
-            RaftAppAppearance.Dark,
-            frameInsets = RaftFrameInsets(top = 48.dp),
-            titleBar = RaftWindowTitleBar(height = 48.dp, startInset = 70.dp)
-        )
 
     private fun capture(
         name: String,

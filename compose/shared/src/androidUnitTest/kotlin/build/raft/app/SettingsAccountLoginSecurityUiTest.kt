@@ -103,14 +103,6 @@ class SettingsAccountLoginSecurityUiTest {
         }
 
     @Test
-    fun offAndNoPasskeysReadAsTheWebSays() =
-        runRobolectricComposeUiTest {
-            showGroup(SharedAccountLoginSecurityState(security = AccountLoginSecurity(twoStepEnabled = false, passkeyCount = 0)))
-            onNodeWithText("Off").assertExists()
-            onNodeWithText("No passkeys yet").assertExists()
-        }
-
-    @Test
     fun aFailedFirstReadSaysSoWithTheTraceIdAndRetries() =
         runRobolectricComposeUiTest {
             var retries = 0

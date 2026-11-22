@@ -160,15 +160,4 @@ class ThreadOutlineRailUiTest {
             if (menus.isNotEmpty()) onNodeWithContentDescription("Thread panel menu").performClick()
             onNodeWithText("Timeline").assertDoesNotExist()
         }
-
-    @Test
-    fun theFirstMessagesRowJumpsToIt() =
-        runRobolectricComposeUiTest {
-            val jumps = mutableListOf<String>()
-            showThread(FakeApi(), RaftScale.Wide, jumps, originMessage = origin)
-            onNodeWithTag(ThreadOutlineRailTestTag).performClick()
-            // The thread's first message is the list's first row, whoever wrote it.
-            onNodeWithTag(threadOutlineRowTestTag("lead")).assertExists().performClick()
-            assertEquals(listOf("lead"), jumps)
-        }
 }

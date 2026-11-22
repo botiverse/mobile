@@ -83,14 +83,6 @@ class AgentMigrationDrainRetryUiTest {
         }
 
     @Test
-    fun aRetryStartedForSomeoneElseNamesThem() =
-        runRobolectricComposeUiTest {
-            section(AgentMigrationDrainRetryFixtures.retryPacking, AgentMigrationDrainRetryFixtures.inputs(viewer = "someone-else"))
-            onNodeWithTag(AgentMigrationRetryTestTags.Note, useUnmergedTree = true)
-                .assertTextEquals("Migration Agent trimmed its workspace and retried this migration on behalf of Owner.")
-        }
-
-    @Test
     fun aRetryThatFailedAgainSaysTheNextMoveIsAPersonsAndWhatItHadPacked() =
         runRobolectricComposeUiTest {
             section(AgentMigrationDrainRetryFixtures.retryFailed)

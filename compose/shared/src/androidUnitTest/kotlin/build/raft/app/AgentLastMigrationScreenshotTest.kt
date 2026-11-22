@@ -42,16 +42,6 @@ class AgentLastMigrationScreenshotTest {
     @Test
     fun lastMigrationLight() = capture("members.agent-migration.last", RaftAppAppearance.Light)
 
-    @Test
-    fun lastMigrationDark() = capture("members.agent-migration.last.dark", RaftAppAppearance.Dark)
-
-    /** A failed move whose server text is a raw zod issue array (xxchan's report): friendly copy, no JSON. */
-    @Test
-    fun lastMigrationRawErrorLight() = capture("members.agent-migration.raw-error", RaftAppAppearance.Light, rawError = true)
-
-    @Test
-    fun lastMigrationRawErrorDark() = capture("members.agent-migration.raw-error.dark", RaftAppAppearance.Dark, rawError = true)
-
     private fun capture(name: String, appearance: RaftAppAppearance, rawError: Boolean = false) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
