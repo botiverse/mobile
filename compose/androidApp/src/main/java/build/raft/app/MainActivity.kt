@@ -826,6 +826,94 @@ internal fun androidExternalBrowserIntent(context: Context, uri: Uri): Intent? {
     )
 }
 
+private const val CustomTabsServiceAction = "android.support.customtabs.action.CustomTabsService"
+private const val CustomTabsExtraSession = "android.support.customtabs.extra.SESSION"
+private const val CustomTabsExtraTitleVisibility = "android.support.customtabs.extra.TITLE_VISIBILITY"
+private const val CustomTabsExtraShareState = "android.support.customtabs.extra.SHARE_STATE"
+private const val CustomTabsExtraInstantAppsEnabled = "android.support.customtabs.extra.INSTANT_APPS_ENABLED"
+private const val AndroidResolverPackage = "android"
+
+internal fun shouldPreferDefaultCustomTabs(
+    inBrowser: Boolean,
+    mimeType: String?,
+    scheme: String?,
+): Boolean = !inBrowser && mimeType == null && scheme?.lowercase(Locale.US) in setOf("http", "https")
+
+/**
+ * Picks the device's default browser for Custom Tabs only when that same default browser
+ * advertises [CustomTabsServiceAction] (#241 Option B). Leaving the Custom Tabs intent unbound
+ * launches the barebones system browser on HarmonyOS / Huawei devices, and switching to a
+ * non-default browser would ignore the user's chosen default browser.
+ */
+internal fun selectDefaultCustomTabsBrowserPackage(
+    ownPackage: String,
+    defaultBrowserPackage: String?,
+    customTabsPackages: List<String>,
+): String? {
+    val preferred =
+        defaultBrowserPackage
+            ?.takeIf {
+                it.isNotBlank() &&
+                    it != ownPackage &&
+                    it != AndroidResolverPackage &&
+                    !it.isRaftAppPackage()
+            }
+            ?: return null
+    val supported =
+        customTabsPackages
+            .filter { it.isNotBlank() && it != ownPackage && !it.isRaftAppPackage() }
+    return preferred.takeIf { it in supported }
+}
+
+/**
+ * Custom Tabs intent explicitly bound to the device's default browser when it supports Custom Tabs;
+ * returns null otherwise so the caller falls back to [androidExternalBrowserIntent].
+ */
+internal fun androidDefaultCustomTabsIntent(
+    context: Context,
+    uri: Uri,
+    addNewTaskFlag: Boolean,
+): Intent? {
+    val packageManager = context.packageManager
+    val defaultBrowserPackage =
+        runCatching {
+            packageManager
+                .resolveActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse(BrowserProbeUrl)).addCategory(Intent.CATEGORY_BROWSABLE),
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                ?.activityInfo
+                ?.packageName
+        }.getOrNull()
+    val customTabsPackages =
+        runCatching {
+            packageManager
+                .queryIntentServices(Intent(CustomTabsServiceAction), 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+                .distinct()
+        }.getOrDefault(emptyList())
+    val selectedPackage =
+        selectDefaultCustomTabsBrowserPackage(
+            ownPackage = context.packageName,
+            defaultBrowserPackage = defaultBrowserPackage,
+            customTabsPackages = customTabsPackages,
+        ) ?: return null
+    return Intent(Intent.ACTION_VIEW, uri).apply {
+        setPackage(selectedPackage)
+        putExtras(
+            Bundle().apply {
+                putBinder(CustomTabsExtraSession, null)
+            }
+        )
+        putExtra(CustomTabsExtraTitleVisibility, 1)
+        putExtra(CustomTabsExtraShareState, 1)
+        putExtra(CustomTabsExtraInstantAppsEnabled, true)
+        if (addNewTaskFlag) {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+}
+
 private fun Intent?.isAppShellPageDataIntent(): Boolean =
     this?.getStringExtra(RaftCmpActivity.KEY_PAGE_NAME) == RaftCmpActivity.PAGE_APP_SHELL
 
