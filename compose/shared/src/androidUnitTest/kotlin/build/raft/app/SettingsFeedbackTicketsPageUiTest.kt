@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -21,9 +22,11 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -54,6 +57,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTextarea
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -409,6 +413,30 @@ class SettingsFeedbackTicketsPageUiTest {
             onNode(hasContentDescription("Close Ticket")).assertIsDisplayed()
             onNode(hasContentDescription("Copy Link")).assertIsDisplayed().performClick()
             runOnIdle { assertEquals(listOf(crash.id), copied) }
+        }
+
+    @Test
+    fun theTicketsStatusAndActionsSitTogetherAtTheHeadsTrailingEdge() =
+        runRobolectricComposeUiTest {
+            // A short title: its status, Copy Link and Close Ticket used to follow it, leaving the
+            // head's end empty (artin 11-22).
+            val short = crash.copy(message = "Lag")
+            val repository = FakeRepository(pageOf(short), mapOf(short.id to crashDetail.copy(ticket = short.copy(latestComment = null))))
+            setContent { Page(repository, onCopyTicketLink = {}) }
+            waitForIdle()
+            onNodeWithText("Lag").performClick()
+            waitForIdle()
+
+            val head = onRoot().getUnclippedBoundsInRoot()
+            val status = onNodeWithText("In progress").getUnclippedBoundsInRoot()
+            val copyLink = onNode(hasContentDescription("Copy Link")).getUnclippedBoundsInRoot()
+            val close = onNode(hasContentDescription("Close Ticket")).getUnclippedBoundsInRoot()
+            assertTrue(head.right - close.right <= 24.dp, "Close Ticket ends ${head.right - close.right} before the head's end")
+            assertTrue(copyLink.right <= close.left, "Copy Link comes before Close Ticket")
+            assertTrue(
+                status.right <= copyLink.left && copyLink.left - status.right <= 32.dp,
+                "the status sits right before the actions (gap ${copyLink.left - status.right})",
+            )
         }
 
     @Test
