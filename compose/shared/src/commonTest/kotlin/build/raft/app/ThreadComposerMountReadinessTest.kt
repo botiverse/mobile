@@ -40,5 +40,18 @@ class ThreadComposerMountReadinessTest {
                     ),
             )
         )
+        assertFalse(
+            threadComposerEditorReadyToMount(
+                composerInstanceId = "composer-dm-1",
+                expectedDraftKey = expectedKey,
+                draftState =
+                    SharedThreadComposerDraftState(
+                        instanceId = "composer-dm-1",
+                        draftKey = expectedKey,
+                        seedText = "restored draft",
+                    ),
+                pageInMotion = true,
+            )
+        )
     }
 }

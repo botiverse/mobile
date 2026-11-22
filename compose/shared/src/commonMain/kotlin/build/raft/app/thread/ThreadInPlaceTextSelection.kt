@@ -646,6 +646,27 @@ internal fun rememberNewMessageMenuEnabled(
     return enabled
 }
 
+/**
+ * Observes the "Enter sends message" preference live without running a synchronous MMKV read on
+ * every recomposition of [SharedThreadRouteContentContent].
+ */
+@Composable
+internal fun rememberComposerSendKeyEnabled(
+    preferenceStore: ChatLayoutPreferenceStore,
+    eventBus: RaftEventBus,
+): Boolean {
+    var enabled by remember(preferenceStore) { mutableStateOf(preferenceStore.readComposerSendKeyEnabledSync()) }
+    DisposableEffect(preferenceStore, eventBus) {
+        val subscription =
+            RaftChatLayoutPreferenceEvents(eventBus).addPreferenceListener { snapshot ->
+                enabled = snapshot.composerSendKeyEnabled
+            }
+        enabled = preferenceStore.readComposerSendKeyEnabledSync()
+        onDispose { subscription.close() }
+    }
+    return enabled
+}
+
 @Composable
 internal fun rememberThreadInPlaceSelectionController(
     messageId: String,

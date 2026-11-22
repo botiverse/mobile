@@ -123,8 +123,11 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Product analytics: app_opened (cold / back after the 30-minute session gap) waits
                 // for the activity's resume, after onNewIntent delivered a notification tap.
                 productAppOpenPending = true
-                // Rating prompt: today is an active day (counted once per local day).
-                RaftRatingPrompt.onAppForeground()
+                // Rating prompt: today is an active day (counted once per local day), off main so
+                // foreground return never blocks Frame 1 on preference I/O.
+                scope.launch(Dispatchers.IO) {
+                    RaftRatingPrompt.onAppForeground()
+                }
                 RaftResumeFrameProbe.onAppShown()
                 flushHiddenNetworkCallbackSummary()
                 installedApplicationContext?.let { context ->
