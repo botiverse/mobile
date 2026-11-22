@@ -29,8 +29,7 @@ decision, 2026-11-14). In this SOP, a **release go** is the mobile DRI's go. It 
 - Hands `main` activation;
 - TestFlight external (Beta App Review, tester notification);
 - App Store submission and release;
-- Google Play promotion beyond internal, including production;
-- announcements (§7.6).
+- Google Play promotion beyond internal, including production.
 
 Release notes are **not** delegated: a person approves them (§4.1).
 
@@ -59,7 +58,7 @@ never implies another.
 1. **CI may build, sign, upload and create Hands drafts. Nothing else is
    implied.** Hands activation, Play track promotion beyond internal,
    TestFlight external, Beta App Review, tester notification, App Store
-   submission and announcements are separate mutations, each needing an
+   submission are separate mutations, each needing an
    explicit release go (§Release decisions) for that exact build.
 2. **No approval needed** for internal/preview channels: Hands `preview`, Play
    internal testing (release rule 2026-10-29), TestFlight internal (Botiverse
@@ -759,93 +758,12 @@ Submit, and release after approval, only with a release go for that version. Upl
 `hands app-store screenshots push raft-ios --version-name X.Y.Z --dir <dir>` (dry run first).
 App Store production is never implied by TestFlight.
 
-### 7.6 Announce (release go)
+### 7.6 No release announcements
 
-Announce only what is reachable on each platform, in `#raft-mobile`: four
-separate top-level messages (Android zh/en, iOS zh/en). Japanese posts only if
-artin asks and approves a template. Use the templates below verbatim except
-bracketed parts and reviewed bullets. Android: map bullets into `✨/🔧/🐛`,
-omit empty sections. iOS: drop section headings, keep every reviewed bullet in
-order in one list (a shorter subset is new copy that needs review). Never paste
-receipts, hashes, rollout or CI status. The Android link is always
-`https://hands.build/apps/raft-android/latest` (owner decision 2026-10-21);
-open it first to confirm it shows the announced version. Record message ids.
-
-Android zh-CN:
-
-```markdown
-# Raft Android [marketing version] 已发布
-
-Raft Android [marketing version] 现已上线。已经安装 Raft 的用户可以在「设置 → 关于 → 检查更新」中直接升级。
-
-- 下载更新：<https://hands.build/apps/raft-android/latest>
-
-✨ **新功能**
-
-- [reviewed item]
-
-🔧 **改进**
-
-- [reviewed item]
-
-🐛 **修复**
-
-- [reviewed item]
-
-遇到问题，欢迎通过「设置 → 发送反馈」告诉我们。感谢大家一直以来的使用与反馈。
-```
-
-Android en:
-
-```markdown
-# Raft Android [marketing version] is now available
-
-Raft Android [marketing version] is now available. If you already have Raft installed, update directly from Settings > About > Check for updates.
-
-- Download: <https://hands.build/apps/raft-android/latest>
-
-✨ **New**
-
-- [reviewed item]
-
-🔧 **Improved**
-
-- [reviewed item]
-
-🐛 **Fixed**
-
-- [reviewed item]
-
-If you run into an issue, please use Settings > Send feedback. Thank you for using Raft and sharing your feedback.
-```
-
-iOS zh-CN:
-
-```markdown
-📱 Raft iOS [marketing version] ([build number]) 已在 TestFlight 提供测试
-
-本次更新包括：
-
-- [reviewed item]
-
-TestFlight：<[current verified join URL]>
-
-说明：这是 TestFlight 测试版本，不是 App Store 正式发布。版本号以 TestFlight 中显示的 `[marketing version] ([build number])` 为准。
-```
-
-iOS en:
-
-```markdown
-📱 Raft iOS [marketing version] ([build number]) is now available on TestFlight
-
-Highlights:
-
-- [reviewed item]
-
-TestFlight: <[current verified join URL]>
-
-This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `[marketing version] ([build number])`.
-```
+Releases are not announced in chat: no "Raft Android/iOS X.Y.Z is now available" posts on any platform
+(artin, 2026-11-22). The in-app update prompt, the Hands pages and TestFlight already tell people.
+The release issue keeps the record of what shipped, and the tags are still required:
+`vX.Y.Z` (§7.2) and `ios-vX.Y.Z-b<build>` (§7.4).
 
 ### 7.7 Defects after distribution
 
