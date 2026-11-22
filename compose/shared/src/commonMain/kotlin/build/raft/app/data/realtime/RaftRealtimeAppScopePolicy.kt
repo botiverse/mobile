@@ -109,6 +109,7 @@ class RaftRealtimeAppScopeState {
         private set
 
     private var sessionKey: String? = null
+    private var principalId: String? = null
     private var epochGeneration: Long = 0L
 
     val joinedChannelCount: Int
@@ -132,10 +133,17 @@ class RaftRealtimeAppScopeState {
         serverId: ServerId,
         accessToken: String,
         requestedLastSeq: Long,
-        rebaseline: Boolean = false
+        rebaseline: Boolean = false,
+        principalId: String = "",
     ): RaftRealtimeConnectPlan {
+        val cleanPrincipalId = principalId.trim().takeIf { it.isNotBlank() }
         val nextSessionKey = sessionKey(accessToken, serverId)
-        val sessionChanged = sessionKey != null && sessionKey != nextSessionKey
+        val sessionChanged =
+            when {
+                this.serverId != null && this.serverId != serverId -> true
+                this.principalId != null && cleanPrincipalId != null -> this.principalId != cleanPrincipalId
+                else -> sessionKey != null && sessionKey != nextSessionKey
+            }
         if (sessionChanged) {
             lastSeq = 0L
             joinedChannels.clear()
@@ -151,6 +159,7 @@ class RaftRealtimeAppScopeState {
                 maxOf(requestedLastSeq.coerceAtLeast(0L), lastSeq)
             }
         sessionKey = nextSessionKey
+        this.principalId = cleanPrincipalId ?: if (sessionChanged) null else this.principalId
         this.serverId = serverId
         this.accessToken = accessToken
         if (resumeSeq == 0L) {
@@ -187,6 +196,7 @@ class RaftRealtimeAppScopeState {
         serverId = null
         accessToken = null
         sessionKey = null
+        principalId = null
         lastSeq = 0L
         epoch = nextEpoch()
         joinedChannels.clear()

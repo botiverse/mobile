@@ -174,6 +174,28 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
+    fun coordinatorWitnessRotationWithSameTokenReconnectsAndKeepsRoomsAndSeq() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val coordinator = RaftRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
+        val witness1 = witness(authGeneration = 1L, connectionFamilyId = "family-1")
+        val witness2 = witness(authGeneration = 2L, connectionFamilyId = "family-2")
+
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 7, forceReconnect = false, witness = witness1)
+        assertTrue(coordinator.onRoomCommand(RaftRealtimeNotifyContract.ActionJoinChannel, ChannelId("channel-open")))
+        coordinator.onMappedEvent(MessageNew(message(seq = 42)))
+
+        // Same token + same principal + forceReconnect=false, but authority generation/family advanced:
+        // active socket must still reconnect on the new witness without dropping joined rooms or seq.
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 10, forceReconnect = false, witness = witness2)
+
+        assertEquals(listOf(7L, 42L), connection.connectedLastSeqs)
+        assertEquals(listOf(witness1, witness2), connection.connectedWitnesses)
+        assertEquals(42L, coordinator.lastSeq)
+        // Plain join dedupes because channel-open remained in the coordinator's joined set.
+        assertFalse(coordinator.onRoomCommand(RaftRealtimeNotifyContract.ActionJoinChannel, ChannelId("channel-open")))
+    }
+
+    @Test
     fun coordinatorAutoJoinsDirectMessagesAndFansOutHeartbeatForVisibleBackfill() = runBlocking {
         val connection = FakeAppScopeConnection()
         val sink = FakeAppScopeSink()
@@ -429,6 +451,8 @@ class RaftRealtimeAppScopePolicyTest {
         val connectedLastSeqs = mutableListOf<Long>()
         val roomCommands = mutableListOf<Pair<String, String>>()
 
+        val connectedWitnesses = mutableListOf<RealtimeConnectionWitnessToken>()
+
         override suspend fun connect(
             serverId: ServerId,
             accessToken: String,
@@ -436,6 +460,7 @@ class RaftRealtimeAppScopePolicyTest {
             witness: RealtimeConnectionWitnessToken,
         ): DataResult<Unit> {
             connectedLastSeqs += lastSeq
+            connectedWitnesses += witness
             state = RealtimeConnectionState.Connected
             return DataResult.Content(Unit)
         }
@@ -487,12 +512,17 @@ class RaftRealtimeAppScopePolicyTest {
         ) = Unit
     }
 
-    private fun witness(): RealtimeConnectionWitnessToken =
+    private fun witness(
+        scopeLeaseId: String = "lease-1",
+        principalId: String = "member-1",
+        authGeneration: Long = 1L,
+        connectionFamilyId: String = "family-1",
+    ): RealtimeConnectionWitnessToken =
         RealtimeConnectionWitnessToken(
-            scopeLeaseId = "lease-1",
-            principalId = "member-1",
-            authGeneration = 1L,
-            connectionFamilyId = "family-1",
+            scopeLeaseId = scopeLeaseId,
+            principalId = principalId,
+            authGeneration = authGeneration,
+            connectionFamilyId = connectionFamilyId,
         )
     @Test
     fun rejoinChannelForcesEmitWhileKeepingJoinedSetConsistent() {
@@ -553,6 +583,67 @@ class RaftRealtimeAppScopePolicyTest {
         // Without the reset this would be skipped as already_joined.
         assertTrue(joinAfterReset.shouldEmit)
         assertFalse(duplicateAfterReset.shouldEmit)
+    }
+
+    @Test
+    fun samePrincipalTokenRotationKeepsJoinedChannelsAndResumeCursor() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val coordinator = RaftRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
+        val witnessBefore =
+            RealtimeConnectionWitnessToken(
+                scopeLeaseId = "lease-1",
+                principalId = "user-1",
+                authGeneration = 3L,
+                connectionFamilyId = "proc:family:1",
+            )
+        val witnessAfter =
+            RealtimeConnectionWitnessToken(
+                scopeLeaseId = "lease-1",
+                principalId = "user-1",
+                authGeneration = 4L,
+                connectionFamilyId = "proc:family:2",
+            )
+
+        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = witnessBefore)
+        assertTrue(coordinator.onRoomCommand(RaftRealtimeNotifyContract.ActionJoinChannel, ChannelId("channel-open"), "realtime_rooms"))
+        coordinator.onMappedEvent(MessageNew(message(seq = 42)))
+
+        // Silent token refresh bumps token, authGeneration, and connectionFamilyId on the same principal.
+        coordinator.connect(ServerId("server-1"), "token-2", requestedLastSeq = coordinator.lastSeq, forceReconnect = true, witness = witnessAfter)
+
+        assertEquals(listOf(0L, 42L), connection.connectedLastSeqs)
+        assertEquals(42L, coordinator.lastSeq)
+        assertEquals(1, coordinator.joinedChannelCount)
+        assertTrue(coordinator.onRoomCommand(RaftRealtimeNotifyContract.ActionLeaveChannel, ChannelId("channel-open"), "realtime_rooms"))
+        assertEquals(0, coordinator.joinedChannelCount)
+    }
+
+    @Test
+    fun differentPrincipalOnSameServerClearsJoinedChannelsAndResumeCursor() = runBlocking {
+        val connection = FakeAppScopeConnection()
+        val coordinator = RaftRealtimeAppScopeCoordinator(connection, FakeAppScopeSink())
+
+        coordinator.connect(
+            ServerId("server-1"),
+            "token-user-1",
+            requestedLastSeq = 0,
+            forceReconnect = false,
+            witness = RealtimeConnectionWitnessToken("lease-1", "user-1", 1L, "proc:family:1"),
+        )
+        assertTrue(coordinator.onRoomCommand(RaftRealtimeNotifyContract.ActionJoinChannel, ChannelId("channel-open"), "realtime_rooms"))
+        coordinator.onMappedEvent(MessageNew(message(seq = 42)))
+
+        coordinator.connect(
+            ServerId("server-1"),
+            "token-user-2",
+            requestedLastSeq = 42,
+            forceReconnect = true,
+            witness = RealtimeConnectionWitnessToken("lease-1", "user-2", 2L, "proc:family:2"),
+        )
+
+        assertEquals(listOf(0L, 0L), connection.connectedLastSeqs)
+        assertEquals(0L, coordinator.lastSeq)
+        assertEquals(0, coordinator.joinedChannelCount)
     }
 
 }
