@@ -29,8 +29,9 @@ import kotlinx.serialization.json.putJsonObject
  *   that throws reads as nothing and is never written. Ids are checked (isRaftBesideId): no one signed in, no server,
  *   or an id that is no id reads and writes nothing.
  * - Every entry written is listed in an index (RaftLastCountsPersistStorage, as the last-known copies are: the store
- *   offers get and put only), so losing access to a server drops that server's entries and sign-out drops them all
- *   (AccountLocalData).
+ *   offers get and put only), so losing access to a server drops that server's entries (AccountLocalData). Sign-out
+ *   keeps them, as every account-keyed copy (owner decision 2026-10-27; the web forgets them): another account never
+ *   reads them, the key is the account's.
  */
 
 /** At most this many conversations are remembered per person and server (web `BESIDE_MEMORY_MAX_CONVERSATIONS`). */
@@ -190,11 +191,6 @@ internal class RaftBesideMemoryRepository(
     /** Lost access to [serverId]: its entries of [accountId] (null: of every person) go; the other servers' stay. */
     fun dropServer(serverId: String, accountId: String?) {
         runCatching { synchronized(lock) { storage.dropServer(serverId, accountId) } }
-    }
-
-    /** Every entry on this device, of every person and server (sign-out: one account is signed in at a time). */
-    fun clearAll() {
-        runCatching { synchronized(lock) { storage.clearAll() } }
     }
 
     private fun keyOf(accountId: String?, serverId: String?): String? {

@@ -33,10 +33,8 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
  * member avatar references are stored per server only, and before the new owner is known they would
  * answer with the previous account's page.
  *
- * What was open beside each conversation ([besideMemory], RaftBesideMemory.kt) is keyed by account too, but
- * sign-out forgets it, as the web's sign-out does (web docs/frontend/beside-memory.md): it remembers panes, not
- * data the person reads offline. This route knows no account, so every entry on the device goes (one
- * account is signed in at a time); losing a server drops that server's entries.
+ * What was open beside each conversation ([besideMemory], RaftBesideMemory.kt) is keyed by account as well: sign-out
+ * keeps it for that account (unlike the web's, which forgets it), losing a server drops that server's entries.
  */
 internal class AccountLocalData(
     private val homeSavedStateCache: SharedHomeSavedStateCache,
@@ -54,7 +52,7 @@ internal class AccountLocalData(
     /** Session-only viewer caches (app link previews, artifact summaries); only the ones that exist. */
     private val clearViewerMemoryCaches: () -> Unit,
     private val logger: (String) -> Unit = {},
-    /** What was open beside each conversation on the wide layout: forgotten on sign-out and with the server. */
+    /** What was open beside each conversation on the wide layout: dropped with the server (sign-out keeps it). */
     private val besideMemory: RaftBesideMemoryRepository? = null,
 ) {
     /** Sign-out. Runs inside the auth terminal-revision gate: synchronous, no suspension. */
@@ -72,7 +70,6 @@ internal class AccountLocalData(
         clearViewerMemoryCaches()
         // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
         RaftAgentLounges.clear()
-        besideMemory?.clearAll()
     }
 
     /**

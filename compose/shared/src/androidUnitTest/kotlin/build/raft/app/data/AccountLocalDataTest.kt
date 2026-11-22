@@ -27,11 +27,9 @@ import kotlin.test.assertNull
  * Owner decision 2026-10-27 (WeChat/QQ style), through the provider's real [AccountLocalData] on real stores
  * (SQLite for offline rows, reply windows and V2 messages; the preference store for the last-known copies):
  * - sign-out keeps the account's data for itself only: account B reads none of A's Saved list, notification
- *   mode or messages; A signing back in offline reads all three again;
+ *   mode, messages or what was open beside a conversation; A signing back in offline reads them again;
  * - losing access to a server drops that server's offline rows, Home hints, Activity pages, notification
- *   preference, reply windows and messages, and keeps the account's other servers.
- *
- * What was open beside each conversation is the exception: sign-out forgets it on every server, as the web does.
+ *   preference, reply windows, messages and beside memory, and keeps the account's other servers.
  */
 class AccountLocalDataTest {
     // One test per kept copy, so a wipe re-added for any one of them turns exactly its test red.
@@ -73,16 +71,11 @@ class AccountLocalDataTest {
     }
 
     @Test
-    fun signOutForgetsWhatWasOpenBesideConversationsOnEveryServer() = withDevice { device, reopen ->
-        device.besideMemory.write(USER_A, S1, "channel-1", RaftBesideState(thread = "message-1"))
-        device.besideMemory.write(USER_A, S2, "channel-1", RaftBesideState(thread = "message-2"))
-
-        device.accountLocalData.onSignOut()
-
-        val coldStart = reopen()
-        assertNull(coldStart.besideMemory.read(USER_A, S1, "channel-1"))
-        assertNull(coldStart.besideMemory.read(USER_A, S2, "channel-1"))
-    }
+    fun signOutKeepsWhatWasOpenBesideConversationsForItsAccountOnly() = signOutKeeps(
+        write = { besideMemory.write(USER_A, S1, "channel-1", RaftBesideState(thread = "message-1")) },
+        read = { user -> besideMemory.read(user, S1, "channel-1")?.thread },
+        expected = "message-1",
+    )
 
     @Test
     fun signOutFencesTheOldSessionsInFlightWrites() = withDevice { device, _ ->

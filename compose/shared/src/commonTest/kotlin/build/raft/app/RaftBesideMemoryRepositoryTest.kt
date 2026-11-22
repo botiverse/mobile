@@ -120,11 +120,10 @@ class RaftBesideMemoryRepositoryTest {
         broken.write("u1", "s1", "c1", thread("m1"))
         assertNull(broken.read("u1", "s1", "c1"))
         broken.dropServer("s1", "u1")
-        broken.clearAll()
     }
 
     @Test
-    fun losingAServerDropsItsEntriesAndSignOutDropsEveryEntryOnly() {
+    fun losingAServerDropsItsEntriesOnly() {
         memory.write("u1", "s1", "c1", thread("m1"))
         memory.write("u1", "s2", "c1", thread("m1"))
         memory.write("u10", "s1", "c1", thread("m1"))
@@ -134,10 +133,11 @@ class RaftBesideMemoryRepositoryTest {
         assertNull(memory.read("u1", "s1", "c1"))
         assertEquals(threadInFront("m1"), memory.read("u1", "s2", "c1"), "the person's other servers keep theirs")
         assertEquals(threadInFront("m1"), memory.read("u10", "s1", "c1"), "no one else's entry goes")
-
-        memory.clearAll()
-        assertNull(memory.read("u1", "s2", "c1"))
-        assertNull(memory.read("u10", "s1", "c1"))
         assertEquals("500", preferences.getString("slock:conversationWidth"))
+
+        // Removed from the server with no account known: every person's entry there goes.
+        memory.dropServer("s1", accountId = null)
+        assertNull(memory.read("u10", "s1", "c1"))
+        assertEquals(threadInFront("m1"), memory.read("u1", "s2", "c1"))
     }
 }
