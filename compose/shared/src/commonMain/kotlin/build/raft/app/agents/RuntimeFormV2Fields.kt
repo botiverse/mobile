@@ -17,6 +17,13 @@ import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftDesignSystemEditor
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldState
+import build.raft.designsystem.components.LocalRaftFieldState
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.app.components.RaftSlotIcon
+import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -126,7 +133,8 @@ internal fun RuntimeFormV2Fields(
     val connectionOwnedHint = stringResource(Res.string.runtime_form_v2_connection_owned, connection?.label.orEmpty())
     val managedHint = connectionOwnedHint.takeIf { connection != null }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Web: StableFields stacked `stack-y-1`; each keeps its own message line open, so 4dp apart.
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (loaded.form.blockingFieldKeys.isNotEmpty()) {
             Text(
                 text = stringResource(Res.string.runtime_form_v2_update_required_blocking),
@@ -161,7 +169,8 @@ internal fun RuntimeFormV2Fields(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp)
+                        // Web `mt-3`: 12dp under the toggle (8 + the column's 4).
+                        .padding(top = 8.dp)
                         .drawBehind {
                             val x = RaftStroke.Hairline.toPx() / 2f
                             drawLine(hairline, Offset(x, 0f), Offset(x, size.height), strokeWidth = RaftStroke.Hairline.toPx())
@@ -274,17 +283,28 @@ private fun runtimeFormV2RefreshAction(
 ): (@Composable () -> Unit)? {
     if (refreshableSource == null || sourceRefresh == null || !runtimeFormV2ShowsRefreshAction(refreshableSource, status)) return null
     return {
-        CreateAgentLabelAction(
-            actionIcon = RaftLucideIconName.RefreshCw,
-            actionEnabled = enabled && refreshableSource !in sourceRefresh.refreshing,
-            loading = refreshableSource in sourceRefresh.refreshing,
-            onAction = {
+        // Web FieldAction `tone="icon"`: raft-ui's ghost 32px icon button with RefreshCw at 14px, in the label
+        // row (RaftField draws it 7dp past the label line, as StableField's `-my-[7px]`).
+        val refreshing = refreshableSource in sourceRefresh.refreshing
+        RaftIconButton(
+            onClick = {
                 clearFocus()
                 sourceRefresh.onRefresh(refreshableSource)
-            }
-        )
+            },
+            tooltip = stringResource(Res.string.runtime_form_v2_refresh_source_title),
+            contentDescription = stringResource(Res.string.runtime_form_v2_refresh_source_label),
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Md,
+            enabled = enabled && !refreshing,
+            loading = refreshing
+        ) {
+            RaftSlotIcon(RaftLucideIconName.RefreshCw, size = RuntimeFormV2RefreshGlyph)
+        }
     }
 }
+
+/** Web `<RefreshCw size={14} />` in the label-row refresh. */
+private val RuntimeFormV2RefreshGlyph = 14.dp
 
 /**
  * Web `runtimeChoiceMatches`: a choice is found by its label, value, group or description. The label
@@ -449,7 +469,16 @@ private fun RuntimeFormV2FieldRow(
             // Follow a value set from outside (reset, prefill) unless it is just our own half-typed rows.
             val ownValue = entries.mapNotNull { (key, value) -> key.trim().takeIf { it.isNotEmpty() }?.let { it to value } }.toMap()
             if (ownValue != external) entries = external.toList()
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            // Web RuntimeEnvVarsField: a StableField that adopts no control (`adopt={false}`): the rows keep
+            // their own look when the group has an error, which takes the reserved line under them.
+            RaftField(
+                label = null,
+                modifier = Modifier.fillMaxWidth(),
+                error = error?.takeIf { it.isNotBlank() },
+                enabled = fieldEnabled,
+                reserveMessage = true
+            ) {
+                CompositionLocalProvider(LocalRaftFieldState provides RaftFieldState()) {
                 EnvVarsEditor(
                     entries = entries,
                     onChange = { next ->
@@ -464,7 +493,7 @@ private fun RuntimeFormV2FieldRow(
                     // Web RuntimeEnvVarsField: the hint under the label, above the rows.
                     hint = hint?.let { { RuntimeFormV2HintText(it) } }
                 )
-                error?.let { Text(it, style = RaftType.Caption, color = RaftColor.AccentRed) }
+                }
             }
         }
         RuntimeFormV2FieldKind.Select,
@@ -716,7 +745,9 @@ internal fun RuntimeFormV2BooleanField(
         modifier = modifier.fillMaxWidth(),
         error = error?.takeIf { it.isNotBlank() },
         enabled = enabled,
-        required = required
+        required = required,
+        // Web StableField under the option card: its message line stays open.
+        reserveMessage = true
     ) {
         RaftCard(
             modifier = Modifier.fillMaxWidth(),
@@ -1081,10 +1112,15 @@ private fun RuntimeFormV2FieldFrame(
             enabled = enabled,
             required = required,
             labelTrailing = labelTrailing,
+            // Web StableField: the line under the control is always there, so a hint or an error
+            // appearing moves nothing below.
+            reserveMessage = true,
             content = content
         )
         return
     }
+    // A hint with links: its line is always taken (by the hint, or by the error in its place), so
+    // nothing below moves either.
     val linked = rememberRuntimeFormV2HintText(description)
     // RaftField's own 6dp gap between the control and its description.
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {

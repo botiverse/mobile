@@ -3522,6 +3522,8 @@
     <string name="runtime_form_v2_load_failed">Не удалось загрузить форму среды выполнения (%1$s).</string>
     <string name="runtime_form_v2_unavailable">Конфигурация среды выполнения недоступна.</string>
     <string name="runtime_form_v2_source_refresh_failed">Не удалось обновить список. Показаны прежние варианты.</string>
+    <string name="runtime_form_v2_refresh_source_title">Загрузить этот список заново прямо сейчас</string>
+    <string name="runtime_form_v2_refresh_source_label">Обновить этот список</string>
     <string name="runtime_form_v2_source_status_fallback">Вместо этого показан стандартный список.</string>
     <string name="runtime_form_v2_source_status_stale">Этот компьютер не ответил вовремя, поэтому варианты могут быть устаревшими.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Этот компьютер слишком долго получал список вариантов.</string>

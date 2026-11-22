@@ -3522,6 +3522,8 @@
     <string name="runtime_form_v2_load_failed">No se pudo cargar el formulario del runtime (%1$s).</string>
     <string name="runtime_form_v2_unavailable">La configuración del runtime no está disponible.</string>
     <string name="runtime_form_v2_source_refresh_failed">No se pudo actualizar esta lista. Se muestran las opciones anteriores.</string>
+    <string name="runtime_form_v2_refresh_source_title">Volver a cargar esta lista ahora</string>
+    <string name="runtime_form_v2_refresh_source_label">Actualizar esta lista</string>
     <string name="runtime_form_v2_source_status_fallback">Se muestra la lista estándar en su lugar.</string>
     <string name="runtime_form_v2_source_status_stale">Esta computadora no respondió a tiempo, así que estas opciones pueden estar desactualizadas.</string>
     <string name="runtime_form_v2_source_status_probe_timeout">Esta computadora tardó demasiado en listar las opciones.</string>
