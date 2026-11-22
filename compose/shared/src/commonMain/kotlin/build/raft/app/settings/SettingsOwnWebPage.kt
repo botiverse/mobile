@@ -13,11 +13,14 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
+import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
+import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.isArtifactContentHost
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.links.raftComparableHostname
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.network.RaftContentCdnHost
@@ -147,13 +150,15 @@ internal fun raftUrlIsOwnBillingPath(
 
 /**
  * Whether [rawUrl] exposes a payment or upgrade flow restricted under iOS App Store Guideline 3.1.1:
- * - Any Stripe host (`stripe.com` or `*.stripe.com`).
+ * - Stripe checkout/payment/billing hosts (`checkout`, `buy`, `billing`, `invoice`, `pay` on
+ *   `*.stripe.com`; non-billing hosts such as `docs.stripe.com` and `status.stripe.com` stay allowed).
  * - Any Raft own-host `/settings/billing` or `/s/<slug>/settings/billing` path.
  * - Any Raft own-host `/servers/<id>/upgrade` or `/s/<slug>/servers/<id>/upgrade` path.
  * - Any Raft own-host URL carrying an `upgrade` / `upgradeServer` query parameter (which opens
  *   web's `DeferredUpgradeDialogHost` on any route).
- * - Fails closed (returns true) when an own-host URL has malformed/encoded-separator path segments
- *   (`%2F`, `%5C`, `\`, invalid percent-encoding) or malformed query keys.
+ * - Uses lenient slash/percent decoding so encoded slashes (`%2F`) cannot disguise a billing/upgrade
+ *   path (e.g. `/settings%2Fbilling` is blocked) without falsely blocking ordinary own-host links
+ *   that carry `%2F` in non-billing paths.
  */
 internal fun raftUrlIsAppStoreRestrictedPurchaseUrl(
     rawUrl: String,
@@ -165,11 +170,11 @@ internal fun raftUrlIsAppStoreRestrictedPurchaseUrl(
     val scheme = trimmed.substringBefore("://", "").lowercase()
     if (scheme != "http" && scheme != "https") return false
     val host = raftDefensiveHostOf(trimmed) ?: return false
-    if (host == "stripe.com" || host.endsWith(".stripe.com")) {
+    if (isAppStoreRestrictedStripeHost(host)) {
         return true
     }
     if (!raftUrlIsOnOwnRaftHost(trimmed, activeWebBaseUrl, appHosts)) return false
-    val segments = raftNormalizedOwnWebPathSegmentsOrNull(raftRawPathOf(trimmed)) ?: return true
+    val segments = raftLenientOwnWebPathSegmentsForPurchaseCheck(raftRawPathOf(trimmed))
     if (raftOwnWebPathSegmentsAreBilling(segments) || raftOwnWebPathSegmentsAreUpgrade(segments)) {
         return true
     }
@@ -179,11 +184,39 @@ internal fun raftUrlIsAppStoreRestrictedPurchaseUrl(
         val query = beforeFragment.substring(queryIndex + 1)
         for (part in query.split('&')) {
             if (part.isEmpty()) continue
-            val decodedKey = strictPercentDecodeUtf8OrNull(part.substringBefore('=')) ?: return true
+            val rawKey = part.substringBefore('=')
+            val decodedKey = strictPercentDecodeUtf8OrNull(rawKey) ?: rawKey
             if (isAppStoreUpgradeQueryKey(decodedKey)) return true
         }
     }
     return false
+}
+
+private val AppStoreRestrictedStripeSubdomains = setOf("checkout", "buy", "billing", "invoice", "pay")
+
+private fun isAppStoreRestrictedStripeHost(host: String): Boolean {
+    val normalized = host.lowercase().trimEnd('.')
+    if (!normalized.endsWith(".stripe.com")) return false
+    val prefix = normalized.removeSuffix(".stripe.com")
+    val leadingLabel = prefix.substringAfterLast('.')
+    return leadingLabel in AppStoreRestrictedStripeSubdomains
+}
+
+private fun raftLenientOwnWebPathSegmentsForPurchaseCheck(path: String): List<String> {
+    val segments = ArrayList<String>()
+    for (rawSegment in path.split('/', '\\')) {
+        if (rawSegment.isEmpty()) continue
+        val decoded = strictPercentDecodeUtf8OrNull(rawSegment) ?: rawSegment
+        for (piece in decoded.split('/', '\\')) {
+            if (piece.isEmpty()) continue
+            when (piece) {
+                "." -> Unit
+                ".." -> if (segments.isNotEmpty()) segments.removeAt(segments.lastIndex)
+                else -> segments.add(piece.lowercase())
+            }
+        }
+    }
+    return segments
 }
 
 /**
@@ -275,10 +308,10 @@ private fun raftDefensiveHostOf(trimmedUrl: String): String? {
     return host.takeIf { it.isNotEmpty() }
 }
 
-private fun raftUrlIsOnOwnRaftHost(
+internal fun raftUrlIsOnOwnRaftHost(
     trimmedUrl: String,
     activeWebBaseUrl: String?,
-    appHosts: Set<String>,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
 ): Boolean {
     val host = raftDefensiveHostOf(trimmedUrl) ?: return false
     val activeHost = activeWebBaseUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftDefensiveHostOf)
@@ -372,7 +405,9 @@ internal fun Pager.openRaftOwnWebPage(
     storeScopeOverride: RaftShellStoreScope? = null,
     activeWebBaseUrl: String? = null,
     replaceCurrentPage: Boolean = false,
+    supportsEmbeddedWebView: Boolean = raftPlatformSupportsEmbeddedOwnWebView(),
 ): Boolean {
+    if (!supportsEmbeddedWebView) return false
     val webBaseUrl = activeWebBaseUrl ?: RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.webUrl
     val validatedUrl =
         raftAuthenticatedOwnWebPageUrlOrNull(
@@ -410,6 +445,7 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
     }
     val expectedOrigin = remember(validatedUrl) { raftWebOriginOf(validatedUrl) }
     val linkNavigator = LocalRaftLinkNavigator.current
+    val webViewController = rememberRaftWebViewController()
     var currentUrl by remember(validatedUrl) { mutableStateOf(validatedUrl) }
     var deflectedNavigation by remember(validatedUrl) { mutableStateOf(false) }
     val openInBrowserLabel = stringResource(Res.string.in_app_browser_open_system)
@@ -450,7 +486,7 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
     }
 
     val spec =
-        remember(validatedUrl) {
+        remember(validatedUrl, appStoreBillingRules) {
             StandaloneSettingsWebViewSpec(
                 surface = SettingsWebViewSurface.WebPage,
                 includeLocaleQuery = false,
@@ -465,6 +501,10 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
                         emptySet()
                     },
                 hostEventsEnabled = false,
+                // Desktop uses incognito storage (so macOS Wry never persists tokens into
+                // ~/Library/WebKit); iOS uses non-persistent storage so the Artifact fallback page
+                // never leaks slock_access_token into WKWebsiteDataStore.defaultDataStore().
+                ephemeral = appStoreBillingRules || raftPlatformUsesEphemeralAuthWebView(),
                 buildWebUrl = { _, _, _ -> validatedUrl },
             )
         }
@@ -488,6 +528,7 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
         title = "Raft",
         iconName = RaftLucideIconName.Globe,
         spec = spec,
+        controller = webViewController,
         trailingContent = {
             RaftIconButton(
                 onClick = ::openCurrentInBrowser,
@@ -503,7 +544,9 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
             val nextUrl = update.state.url.trim()
             if (nextUrl.isNotEmpty() && raftWebOriginOf(nextUrl) == expectedOrigin) {
                 // iOS App Store Guideline 3.1.1: catch client-side SPA pushState navigations that
-                // leave the iOS allowlist (e.g. to /s/<slug>/..., billing, or upgrade routes).
+                // leave the iOS allowlist (e.g. "Linked from" navigating to a channel, or billing/
+                // upgrade routes). Stop immediately, check restricted purchase rules, hand off to
+                // linkNavigator (native destination or unauthenticated fallback), then close.
                 val disallowedOnAppStore =
                     appStoreBillingRules &&
                         raftAuthenticatedOwnWebPageUrlOrNull(
@@ -513,11 +556,38 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
                             blockAppStoreBilling = true,
                         ) == null
                 if (disallowedOnAppStore) {
+                    webViewController.stop()
                     if (!deflectedNavigation) {
                         deflectedNavigation = true
-                        if (!handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)) {
-                            bridge.logWarn("settings_web-page_appstore_route_blocked url=${raftOwnWebUrlForLog(nextUrl)}")
-                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                        val cleanTarget = stripRaftOwnWebPageEmbedParams(nextUrl)
+                        if (!handleAppStoreRestrictedPurchase(cleanTarget, closeCurrentPage = true)) {
+                            bridge.logWarn("settings_web-page_appstore_route_blocked url=${raftOwnWebUrlForLog(cleanTarget)}")
+                            if (raftOwnLinkIsWebPage(cleanTarget, webBaseUrl)) {
+                                // Non-native Raft web route on iOS: replace atomically into an
+                                // ephemeral InAppBrowserPage (or external browser) instead of push +
+                                // closePage() so UINavigationController never pops the new destination.
+                                val openInApp =
+                                    effectiveLinkOpenMode(
+                                        PersistentLinkOpenPreferenceRepository(
+                                            KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
+                                        ).getLinkOpenModeSync()
+                                    ) == LinkOpenMode.InAppBrowser
+                                if (openInApp && pager.openRaftInAppBrowserPage(cleanTarget, storeScopeOverride = storeScope, replaceCurrentPage = true)) {
+                                    // Replaced atomically.
+                                } else {
+                                    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                                    bridge.openUrl(cleanTarget, inBrowser = true)
+                                }
+                            } else {
+                                // Native Raft destination (e.g. "Linked from" channel/thread/task) or
+                                // external link: close this WebView first, then dispatch through linkNavigator.
+                                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                                if (linkNavigator != null) {
+                                    linkNavigator.open(cleanTarget)
+                                } else {
+                                    bridge.openUrl(cleanTarget, inBrowser = true)
+                                }
+                            }
                         }
                     }
                 } else {
@@ -548,21 +618,16 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
                 openExternally(targetUrl)
             }
         },
-        // iOS App Store Guideline 3.1.1: intercept any in-page navigation that leaves the iOS
-        // allowlist (including /s/<slug>/..., billing, /servers/*/upgrade, ?upgrade=..., and Stripe)
-        // so paywall/purchase UI cannot load inside the authenticated iOS WKWebView.
-        routesMainFrameNavigation =
-            if (appStoreBillingRules) {
-                { candidateUrl ->
-                    raftAuthenticatedOwnWebPageUrlOrNull(
-                        rawUrl = candidateUrl,
-                        activeWebBaseUrl = webBaseUrl,
-                        embedHostShell = false,
-                        blockAppStoreBilling = true,
-                    ) == null
-                }
-            } else {
-                null
-            },
+        // Enforce entry safety checks (`_raft`, `?ticket=`, trailing dot, origin, plus iOS App Store
+        // allowlist when `appStoreBillingRules` is true) on every main-frame navigation across all
+        // platforms so in-page links cannot bypass entry guards.
+        routesMainFrameNavigation = { candidateUrl ->
+            raftAuthenticatedOwnWebPageUrlOrNull(
+                rawUrl = candidateUrl,
+                activeWebBaseUrl = webBaseUrl,
+                embedHostShell = false,
+                blockAppStoreBilling = appStoreBillingRules,
+            ) == null
+        },
     )
 }

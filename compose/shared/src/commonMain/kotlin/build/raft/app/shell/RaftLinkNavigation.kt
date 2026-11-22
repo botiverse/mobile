@@ -171,12 +171,17 @@ internal fun raftInAppBrowserDisplayUrl(rawUrl: String): String {
     return url.substring(0, end)
 }
 
-internal fun raftInAppBrowserPageData(rawUrl: String): JSONObject? {
+internal fun raftInAppBrowserPageData(
+    rawUrl: String,
+    replaceCurrentPage: Boolean = false,
+): JSONObject? {
     val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
     if (decision.target != RaftLinkOpenTarget.InAppBrowser) return null
-    return JSONObject()
-        .put("pageName", RAFT_IN_APP_BROWSER_PAGE)
-        .put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
+    return JSONObject().apply {
+        put("pageName", RAFT_IN_APP_BROWSER_PAGE)
+        put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
+        if (replaceCurrentPage) put(build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE, true)
+    }
 }
 
 internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
@@ -187,8 +192,9 @@ internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
 internal fun Pager.openRaftInAppBrowserPage(
     rawUrl: String,
     storeScopeOverride: RaftShellStoreScope? = null,
+    replaceCurrentPage: Boolean = false,
 ): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl) ?: return false
+    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
     return openRaftPage(
         pageName = RAFT_IN_APP_BROWSER_PAGE,
         pageData = pageData,
@@ -196,8 +202,11 @@ internal fun Pager.openRaftInAppBrowserPage(
     )
 }
 
-internal fun Pager.openUnscopedRaftInAppBrowserPage(rawUrl: String): Boolean {
-    val pageData = raftInAppBrowserPageData(rawUrl) ?: return false
+internal fun Pager.openUnscopedRaftInAppBrowserPage(
+    rawUrl: String,
+    replaceCurrentPage: Boolean = false,
+): Boolean {
+    val pageData = raftInAppBrowserPageData(rawUrl, replaceCurrentPage = replaceCurrentPage) ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(RAFT_IN_APP_BROWSER_PAGE, pageData)
     return true

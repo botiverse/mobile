@@ -55,6 +55,44 @@ internal fun raftInAppBrowserShouldBlockUrl(
             appHosts = appHosts,
         )
 
+/**
+ * On iOS (App Store Guideline 3.1.1), opening any Raft own-host URL in the general in-app browser
+ * must use a non-persistent [WKWebsiteDataStore] (`ephemeral = true`) so it can never inherit
+ * `slock_access_token` from persistent Settings WebView storage and show authenticated paywall or
+ * upgrade UI inside the app.
+ */
+internal fun raftInAppBrowserUsesEphemeralStore(
+    url: String?,
+    activeWebBaseUrl: String?,
+    appStoreBillingRules: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean =
+    appStoreBillingRules &&
+        !url.isNullOrBlank() &&
+        raftUrlIsOnOwnRaftHost(url.trim(), activeWebBaseUrl, appHosts)
+
+/**
+ * Whether an in-page navigation inside [RaftInAppBrowserScreen] must be intercepted by
+ * `routesMainFrameNavigation` on iOS:
+ * - Always intercepts restricted purchase/billing/Stripe URLs.
+ * - When this WebView is backed by persistent storage (`useEphemeralStore == false`, opened from a
+ *   third-party link), also intercepts any navigation or redirect onto a Raft own host so the
+ *   persistent `WKWebsiteDataStore.defaultDataStore()` can never load a Raft page with a token.
+ */
+internal fun raftInAppBrowserShouldRouteNavigation(
+    candidateUrl: String,
+    activeWebBaseUrl: String?,
+    appStoreBillingRules: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+    useEphemeralStore: Boolean = false,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean {
+    if (!appStoreBillingRules) return false
+    if (raftInAppBrowserShouldBlockUrl(candidateUrl, activeWebBaseUrl, appStoreBillingRules = true, appHosts = appHosts)) {
+        return true
+    }
+    return !useEphemeralStore && raftUrlIsOnOwnRaftHost(candidateUrl.trim(), activeWebBaseUrl, appHosts)
+}
+
 @Page(RAFT_IN_APP_BROWSER_PAGE, supportInLocal = true)
 internal class ComposeRaftInAppBrowserPage : build.raft.app.base.BasePager() {
     override fun willInit() {
@@ -82,6 +120,10 @@ private fun RaftInAppBrowserScreen() {
             launchUrl != null && raftInAppBrowserShouldBlockUrl(launchUrl, activeWebBaseUrl, appStoreBillingRules)
         }
     val effectiveLaunchUrl = launchUrl?.takeUnless { launchBlocked }
+    val useEphemeralStore =
+        remember(effectiveLaunchUrl, activeWebBaseUrl, appStoreBillingRules) {
+            raftInAppBrowserUsesEphemeralStore(effectiveLaunchUrl, activeWebBaseUrl, appStoreBillingRules)
+        }
     val controller = rememberRaftWebViewController()
     val externalNavigator =
         rememberRaftLinkNavigator(
@@ -216,7 +258,7 @@ private fun RaftInAppBrowserScreen() {
                         allowedNavigationSchemes = setOf("http", "https"),
                         domStorageEnabled = true,
                         cacheEnabled = true,
-                        ephemeral = false,
+                        ephemeral = useEphemeralStore,
                         injectedJavaScript = "",
                         diagnosticsSurface = "in_app_browser",
                         // Other sites' forms: keep WebKit's field-to-field bar, as Safari does.
@@ -224,7 +266,12 @@ private fun RaftInAppBrowserScreen() {
                         routesMainFrameNavigation =
                             if (appStoreBillingRules) {
                                 { candidateUrl ->
-                                    raftInAppBrowserShouldBlockUrl(candidateUrl, activeWebBaseUrl, appStoreBillingRules = true)
+                                    raftInAppBrowserShouldRouteNavigation(
+                                        candidateUrl = candidateUrl,
+                                        activeWebBaseUrl = activeWebBaseUrl,
+                                        appStoreBillingRules = true,
+                                        useEphemeralStore = useEphemeralStore,
+                                    )
                                 }
                             } else {
                                 null
@@ -235,20 +282,51 @@ private fun RaftInAppBrowserScreen() {
                             bridge.logWarn("in_app_browser_load_failed")
                         },
                         onNavigationBlocked = { blockedUrl ->
-                            if (!handleAppStoreRestrictedPurchase(blockedUrl, closeCurrentPage = false)) {
-                                externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
+                            if (handleAppStoreRestrictedPurchase(blockedUrl, closeCurrentPage = false)) {
+                                return@RaftWebView
                             }
+                            if (appStoreBillingRules && !useEphemeralStore && raftUrlIsOnOwnRaftHost(blockedUrl.trim(), activeWebBaseUrl)) {
+                                // Third-party persistent InAppBrowser navigated/redirected to a Raft
+                                // own host: hand off to a fresh ephemeral InAppBrowserPage (or external).
+                                val replaced =
+                                    if (storeScope != null) {
+                                        pager.openRaftInAppBrowserPage(blockedUrl, storeScopeOverride = storeScope, replaceCurrentPage = true)
+                                    } else {
+                                        pager.openUnscopedRaftInAppBrowserPage(blockedUrl, replaceCurrentPage = true)
+                                    }
+                                if (!replaced) {
+                                    externalNavigator.open(blockedUrl, RaftLinkOpenIntent.RaftWebPageInBrowser)
+                                }
+                                return@RaftWebView
+                            }
+                            externalNavigator.open(blockedUrl, RaftLinkOpenIntent.ForceExternal)
                         },
                         onNavigationStateChange = { nextState ->
                             val nextUrl = nextState.url.trim()
                             if (
                                 nextUrl.isNotEmpty() &&
-                                raftInAppBrowserShouldBlockUrl(nextUrl, activeWebBaseUrl, appStoreBillingRules)
+                                raftInAppBrowserShouldRouteNavigation(
+                                    candidateUrl = nextUrl,
+                                    activeWebBaseUrl = activeWebBaseUrl,
+                                    appStoreBillingRules = appStoreBillingRules,
+                                    useEphemeralStore = useEphemeralStore,
+                                )
                             ) {
                                 controller.stop()
                                 if (!deflectedPurchase) {
                                     deflectedPurchase = true
-                                    handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)
+                                    if (!handleAppStoreRestrictedPurchase(nextUrl, closeCurrentPage = true)) {
+                                        val replaced =
+                                            if (storeScope != null) {
+                                                pager.openRaftInAppBrowserPage(nextUrl, storeScopeOverride = storeScope, replaceCurrentPage = true)
+                                            } else {
+                                                pager.openUnscopedRaftInAppBrowserPage(nextUrl, replaceCurrentPage = true)
+                                            }
+                                        if (!replaced) {
+                                            closePage()
+                                            externalNavigator.open(nextUrl, RaftLinkOpenIntent.RaftWebPageInBrowser)
+                                        }
+                                    }
                                 }
                                 return@RaftWebView
                             }

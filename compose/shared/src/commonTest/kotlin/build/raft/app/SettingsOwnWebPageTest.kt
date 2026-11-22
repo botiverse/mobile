@@ -295,13 +295,13 @@ class SettingsOwnWebPageTest {
                 "https://app.raft.build\\settings/billing",
                 "$prodBase/settings/%5cbilling",
                 "$prodBase/servers/srv-1%5Cupgrade",
-                "$prodBase/s/hq/tasks?%ZZ=1",
                 "https://checkout.stripe.com/c/pay/cs_live_123",
                 "https://checkout.stripe.com\\c/pay/cs_live_123",
                 "https://CHECKOUT.STRIPE.COM./c/pay/cs_live_123",
+                "https://buy.stripe.com/test_abc123",
                 "https://billing.stripe.com/p/session/bps_123",
                 "https://invoice.stripe.com/i/acct_1/inv_1",
-                "https://stripe.com/payments",
+                "https://pay.stripe.com/p/session/123",
             )
         for (url in upgradeAndStripeUrls) {
             assertTrue(
@@ -318,10 +318,14 @@ class SettingsOwnWebPageTest {
             )
         }
 
-        // Safe non-purchase URLs are not flagged.
+        // Safe non-purchase URLs (including non-billing Stripe docs/status and ordinary own-host %2F links) are not flagged.
         for (safeUrl in listOf(
             "$prodBase/artifacts/pt_123",
             "$prodBase/s/hq/tasks",
+            "$prodBase/s/hq/docs/a%2Fb",
+            "https://docs.stripe.com/api",
+            "https://status.stripe.com/",
+            "https://stripe.com/docs",
             "https://example.com/settings/billing",
             "https://example.com/servers/1/upgrade",
             "https://notstripe.com/checkout",
@@ -412,5 +416,64 @@ class SettingsOwnWebPageTest {
 
         val replaceData = settingsOwnWebViewPageData("$prodBase/artifacts/pt_123", replaceCurrentPage = true)
         assertTrue(replaceData.optBoolean(RAFT_REPLACE_CURRENT_PAGE, false))
+    }
+
+    @Test
+    fun inAppBrowserUsesEphemeralStoreForOwnRaftHostsOnIosOnly() {
+        assertTrue(raftInAppBrowserUsesEphemeralStore("$prodBase/s/hq/tasks", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
+        assertTrue(raftInAppBrowserUsesEphemeralStore("https://open.raft.build/s/hq/tasks", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
+        assertFalse(raftInAppBrowserUsesEphemeralStore("https://example.com/docs", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
+        assertFalse(raftInAppBrowserUsesEphemeralStore("$prodBase/s/hq/tasks", prodBase, appStoreBillingRules = false, appHosts = emptySet()))
+        assertFalse(raftInAppBrowserUsesEphemeralStore(null, prodBase, appStoreBillingRules = true, appHosts = emptySet()))
+
+        // A persistent (third-party) InAppBrowser on iOS must intercept redirects/links onto any Raft own host.
+        assertTrue(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "$prodBase/s/hq/tasks",
+                activeWebBaseUrl = prodBase,
+                appStoreBillingRules = true,
+                useEphemeralStore = false,
+                appHosts = emptySet(),
+            ),
+        )
+        // Once already in an ephemeral InAppBrowser on iOS, non-billing Raft pages load unauthenticated while billing stays blocked.
+        assertFalse(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "$prodBase/s/hq/tasks",
+                activeWebBaseUrl = prodBase,
+                appStoreBillingRules = true,
+                useEphemeralStore = true,
+                appHosts = emptySet(),
+            ),
+        )
+        assertTrue(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "$prodBase/settings/billing",
+                activeWebBaseUrl = prodBase,
+                appStoreBillingRules = true,
+                useEphemeralStore = true,
+                appHosts = emptySet(),
+            ),
+        )
+        assertFalse(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://docs.stripe.com/api",
+                activeWebBaseUrl = prodBase,
+                appStoreBillingRules = true,
+                useEphemeralStore = false,
+                appHosts = emptySet(),
+            ),
+        )
+    }
+
+    @Test
+    fun webKitDisplayNameMatcherTargetsOnlyOwnRaftHostsAndPreservesThirdParties() {
+        val hosts = setOf("app.raft.build", "staging.raft.build", "raft.local")
+        assertTrue(raftWebKitDisplayNameMatchesHosts("raft.build", hosts))
+        assertTrue(raftWebKitDisplayNameMatchesHosts("app.raft.build", hosts))
+        assertTrue(raftWebKitDisplayNameMatchesHosts("RAFT.LOCAL.", hosts))
+        assertFalse(raftWebKitDisplayNameMatchesHosts("github.com", hosts))
+        assertFalse(raftWebKitDisplayNameMatchesHosts("notraft.build", hosts))
+        assertFalse(raftWebKitDisplayNameMatchesHosts("", hosts))
     }
 }

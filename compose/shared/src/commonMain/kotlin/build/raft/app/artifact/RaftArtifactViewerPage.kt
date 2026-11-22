@@ -112,7 +112,7 @@ internal fun raftArtifactViewerWebViewConfig(
         domStorageEnabled = true,
         useWideViewPort = desktopMode,
         cacheEnabled = true,
-        ephemeral = false,
+        ephemeral = raftPlatformUsesEphemeralAuthWebView(),
         injectedJavaScript = injectedJavaScript,
         allowedNavigationSchemes = setOf("http", "https"),
         // Rule 3: no bridge into the app, for the page or the content frame.
@@ -1196,7 +1196,7 @@ private fun RaftArtifactViewerWebBody(
             // viewport (the version shown stays); iOS re-zooms the page in place.
             useWideViewPort = desktopMode,
             cacheEnabled = true,
-            ephemeral = false,
+            ephemeral = raftPlatformUsesEphemeralAuthWebView(),
             injectedJavaScript = injected,
             hostEventsEnabled = false,
             controller = controller,

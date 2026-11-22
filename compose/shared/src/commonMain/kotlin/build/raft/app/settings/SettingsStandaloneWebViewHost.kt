@@ -291,6 +291,8 @@ internal data class StandaloneSettingsWebViewSpec(
     val frameHosts: Set<String> = emptySet(),
     val bottomContentPadding: Dp = 0.dp,
     val hostEventsEnabled: Boolean = false,
+    /** Uses non-persistent/incognito WebView storage (e.g. Desktop Wry or iOS own-web fallback). */
+    val ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     val buildWebUrl: (webBaseUrl: String?, session: StoredAuthSession?, localeTag: String) -> String,
 )
 
@@ -306,6 +308,7 @@ internal fun StandaloneSettingsWebViewPage(
     title: String,
     iconName: RaftLucideIconName,
     spec: StandaloneSettingsWebViewSpec,
+    controller: RaftWebViewController = rememberRaftWebViewController(),
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
@@ -320,13 +323,14 @@ internal fun StandaloneSettingsWebViewPage(
         title = title,
         iconName = iconName,
         headerFollowsDocumentTitle = spec.headerFollowsDocumentTitle,
+        webViewController = controller,
         trailingContent = trailingContent,
         nativeActions = nativeActions,
-    ) { controller, onScaffoldNavigationStateChange ->
+    ) { scaffoldController, onScaffoldNavigationStateChange ->
         StandaloneSettingsWebViewBody(
             pager = pager,
             spec = spec,
-            controller = controller,
+            controller = scaffoldController,
             onNavigationStateChange = { update ->
                 onScaffoldNavigationStateChange(update)
                 onNavigationStateChange(update)
@@ -346,6 +350,7 @@ internal fun SettingsWebViewPageScaffold(
     title: String,
     iconName: RaftLucideIconName,
     headerFollowsDocumentTitle: Boolean = false,
+    webViewController: RaftWebViewController = rememberRaftWebViewController(),
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
     content: @Composable (
@@ -354,7 +359,6 @@ internal fun SettingsWebViewPageScaffold(
     ) -> Unit,
 ) {
     var bodyReady by remember { mutableStateOf(false) }
-    val webViewController = rememberRaftWebViewController()
     var navigationState by remember { mutableStateOf(RaftWebViewNavigationState()) }
     var headerTitleState by remember(surface) { mutableStateOf(SettingsWebViewHeaderTitleState()) }
     LaunchedEffect(Unit) {
@@ -681,6 +685,7 @@ internal fun StandaloneSettingsWebViewContent(
                 allowNavigation = spec.allowNavigation,
                 hostEventsEnabled = spec.hostEventsEnabled,
                 bottomContentPadding = spec.bottomContentPadding,
+                ephemeral = spec.ephemeral,
                 injectedJavaScript = injectedJavaScript,
                 controller = controller,
                 generationKey = hostAuthBinding?.webViewGeneration,
@@ -766,6 +771,7 @@ internal fun SettingsWebViewContent(
     frameHosts: Set<String> = emptySet(),
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
+    ephemeral: Boolean = raftPlatformUsesEphemeralAuthWebView(),
     injectedJavaScript: String = "",
     controller: RaftWebViewController = rememberRaftWebViewController(),
     generationKey: Any? = null,
@@ -847,7 +853,7 @@ internal fun SettingsWebViewContent(
                     frameHosts = frameHosts,
                     domStorageEnabled = true,
                     cacheEnabled = true,
-                    ephemeral = false,
+                    ephemeral = ephemeral,
                     injectedJavaScript = injectedJavaScript,
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,

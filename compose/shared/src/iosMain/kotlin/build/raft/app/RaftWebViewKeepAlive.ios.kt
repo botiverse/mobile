@@ -3,7 +3,12 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import kotlin.coroutines.resume
 import kotlin.time.TimeSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
@@ -21,10 +26,9 @@ import platform.Foundation.NSError
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationDelegateProtocol
 import platform.WebKit.WKWebView
+import platform.WebKit.WKWebsiteDataRecord
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
-import platform.darwin.dispatch_async
-import platform.darwin.dispatch_get_main_queue
 
 // No document keep-alive here yet (the Artifact viewer's parked WebView is Android only): every
 // page creates and destroys its own WebView, taking the spare one (RaftIosWebViewSpare) when it can.
@@ -34,22 +38,58 @@ internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
 
 internal actual fun raftWebViewKeepAliveClear() = Unit
 
-internal actual fun raftClearPlatformWebViewAuthStorage() {
-    val clear = {
+internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
+    val hosts =
+        origins
+            .mapNotNull { origin ->
+                origin.substringAfter("://", "").substringBefore('/').substringBefore(':').lowercase().trimEnd('.').takeIf { it.isNotEmpty() }
+            }
+            .toSet()
+    val runOnMain: suspend () -> Unit = {
         runCatching { RaftIosWebViewSpare.drop("logout") }
-        runCatching {
-            WKWebsiteDataStore.defaultDataStore().removeDataOfTypes(
-                dataTypes = WKWebsiteDataStore.allWebsiteDataTypes(),
-                modifiedSince = NSDate.dateWithTimeIntervalSince1970(0.0),
-                completionHandler = {},
-            )
+        withTimeoutOrNull(2_000L) {
+            suspendCancellableCoroutine<Unit> { cont ->
+                runCatching {
+                    val dataStore = WKWebsiteDataStore.defaultDataStore()
+                    val allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+                    if (hosts.isEmpty()) {
+                        dataStore.removeDataOfTypes(
+                            dataTypes = allTypes,
+                            modifiedSince = NSDate.dateWithTimeIntervalSince1970(0.0),
+                            completionHandler = {
+                                if (cont.isActive) cont.resume(Unit)
+                            },
+                        )
+                    } else {
+                        dataStore.fetchDataRecordsOfTypes(allTypes) { records ->
+                            val matched =
+                                records
+                                    ?.filterIsInstance<WKWebsiteDataRecord>()
+                                    ?.filter { raftWebKitDisplayNameMatchesHosts(it.displayName, hosts) }
+                                    .orEmpty()
+                            if (matched.isEmpty()) {
+                                if (cont.isActive) cont.resume(Unit)
+                            } else {
+                                dataStore.removeDataOfTypes(
+                                    dataTypes = allTypes,
+                                    forDataRecords = matched,
+                                    completionHandler = {
+                                        if (cont.isActive) cont.resume(Unit)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }.onFailure {
+                    if (cont.isActive) cont.resume(Unit)
+                }
+            }
         }
-        Unit
     }
     if (NSThread.isMainThread) {
-        clear()
+        runOnMain()
     } else {
-        dispatch_async(dispatch_get_main_queue(), clear)
+        withContext(Dispatchers.Main.immediate) { runOnMain() }
     }
 }
 
