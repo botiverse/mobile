@@ -30,9 +30,9 @@ import org.robolectric.annotation.Config
 
 /**
  * The Activity row's trailing Mark as Done button (web InboxRowDone; raft-design components/inbox-item.md):
- * in the wide layout by touch it rests in every row as an ink-outline button; with a mouse it shows,
- * ghost, while the row is hovered or open beside the list; a phone by touch has none (the swipe and the
- * menu instead). Its tap or click marks the row done without opening it, and it is named after its row.
+ * with a mouse it shows, ghost, while the row is hovered or open beside the list; by touch there is none
+ * at any width, phone or tablet (the swipe and the menu instead; xxchan 2026-11-22). Its click marks the
+ * row done without opening it, and it is named after its row.
  * Drives [ActivityConversationListRow] on a real composition ([runRobolectricComposeUiTest]).
  */
 @OptIn(ExperimentalTestApi::class)
@@ -113,21 +113,25 @@ class ActivityRowDoneUiTest {
         }
 
     @Test
+    fun aTabletByTouchHasNoDoneButtonOnTheRow() =
+        runRobolectricComposeUiTest {
+            showRow(Calls(), RaftScale.Wide, RaftPointerInput.Touch, selected = true)
+            onNodeWithTag(ActivityRowDoneTag).assertDoesNotExist()
+        }
+
+    @Test
     fun visibilityRules() {
-        fun done(scale: RaftScale, pointer: RaftPointerInput, revealed: Boolean, canMarkDone: Boolean = true, hasAction: Boolean = true) =
-            activityRowDoneButton(scale, pointer, revealed, canMarkDone, hasAction)
-        // Touch: at rest in the wide layout, none on a phone, hover or not.
-        assertEquals(ActivityRowDoneButton.AtRest, done(RaftScale.Wide, RaftPointerInput.Touch, revealed = false))
-        assertEquals(ActivityRowDoneButton.AtRest, done(RaftScale.Wide, RaftPointerInput.Touch, revealed = true))
-        assertNull(done(RaftScale.Compact, RaftPointerInput.Touch, revealed = false))
-        assertNull(done(RaftScale.Compact, RaftPointerInput.Touch, revealed = true))
+        fun done(pointer: RaftPointerInput, revealed: Boolean, canMarkDone: Boolean = true, hasAction: Boolean = true) =
+            activityRowDoneButton(pointer, revealed, canMarkDone, hasAction)
+        // Touch, phone or tablet: never, hover or not (the swipe and the press-and-hold menu).
+        assertNull(done(RaftPointerInput.Touch, revealed = false))
+        assertNull(done(RaftPointerInput.Touch, revealed = true))
         // A mouse or trackpad: only revealed (hovered, open, its menu open), at any width.
-        assertEquals(ActivityRowDoneButton.Revealed, done(RaftScale.Wide, RaftPointerInput.Fine, revealed = true))
-        assertEquals(ActivityRowDoneButton.Revealed, done(RaftScale.Compact, RaftPointerInput.Fine, revealed = true))
-        assertNull(done(RaftScale.Wide, RaftPointerInput.Fine, revealed = false))
+        assertEquals(ActivityRowDoneButton.Revealed, done(RaftPointerInput.Fine, revealed = true))
+        assertNull(done(RaftPointerInput.Fine, revealed = false))
         // No Done on the row, or no action: never.
-        assertNull(done(RaftScale.Wide, RaftPointerInput.Touch, revealed = true, canMarkDone = false))
-        assertNull(done(RaftScale.Wide, RaftPointerInput.Fine, revealed = true, hasAction = false))
+        assertNull(done(RaftPointerInput.Fine, revealed = true, canMarkDone = false))
+        assertNull(done(RaftPointerInput.Fine, revealed = true, hasAction = false))
     }
 
     private companion object {
