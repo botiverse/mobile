@@ -479,15 +479,15 @@ class CanonicalMessageV2DurableLastKnownReaderTest {
             )
             store.applyCoverage(
                 scope = scopeB,
-                envelopes = listOf(envB(50L)),
-                coverage = null,
+                envelopes = (90L..110L).map(::envB),
+                coverage = CanonicalMessageV2Coverage(90L, 110L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
                 revAtRequest = 0L,
                 userDriven = false,
             )
             store.applyCoverage(
                 scope = scopeB,
-                envelopes = (90L..110L).map(::envB),
-                coverage = CanonicalMessageV2Coverage(90L, 110L, reachesOldest = false, headAtVerify = false, CanonicalMessageV2SegmentSource.Context),
+                envelopes = listOf(envB(50L)),
+                coverage = null,
                 revAtRequest = 0L,
                 userDriven = false,
             )
