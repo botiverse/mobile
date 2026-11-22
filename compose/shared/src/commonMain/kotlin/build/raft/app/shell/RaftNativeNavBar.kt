@@ -204,6 +204,12 @@ internal data class RaftNativeNavBarHead(
     val titleImage: RaftNativeTabBarAvatar? = null,
     /** A tap on the subtitle line (a reply thread's conversation name opens the parent message). */
     val onSubtitleClick: (() -> Unit)? = null,
+    /**
+     * When true and [actions] is empty (e.g. a cold conversation's temporary LoadingShell before
+     * FeatureSurfaces mounts), keeps any prefilled bar actions on screen so the buttons do not
+     * disappear and pop back in mid-load.
+     */
+    val preservePrefilledActions: Boolean = false,
 )
 
 /** Implemented by the host (Swift). Called on the main thread. */
@@ -263,6 +269,7 @@ class RaftNativeNavBarBridge {
 
     private val entries = mutableListOf<Entry>()
     private var prefill: RaftNativeNavBarHead? = null
+    private var prefilledActions: List<RaftNativeNavBarAction> = emptyList()
     private var liveHeadSeen: Boolean = false
     private var listener: RaftNativeNavBarListener? = null
     private var lastWire: List<Any?>? = null
@@ -276,6 +283,7 @@ class RaftNativeNavBarBridge {
     internal fun prefill(head: RaftNativeNavBarHead) {
         if (liveHeadSeen || entries.any { it.shown }) return
         prefill = head
+        prefilledActions = head.actions
         if (listener != null) send()
     }
 
@@ -329,13 +337,21 @@ class RaftNativeNavBarBridge {
         // A declined head on top: no bar (its Compose head draws instead).
         val head = if (entry != null) entry.head else if (!liveHeadSeen) prefill else null
         if (head == null) {
+            prefilledActions = emptyList()
             handlers = emptyMap()
             if (lastWire != null && lastWire?.isEmpty() == true) return
             lastWire = emptyList()
             listener?.onNativeNavBarCleared()
             return
         }
-        val actions = raftNativeNavBarSplit(head.actions)
+        val effectiveActions =
+            if (entry != null && head.preservePrefilledActions && head.actions.isEmpty() && prefilledActions.isNotEmpty()) {
+                prefilledActions
+            } else {
+                if (entry != null) prefilledActions = emptyList()
+                head.actions
+            }
+        val actions = raftNativeNavBarSplit(effectiveActions)
         val hasBack = head.onBack != null
         val nested = entry != null && entries.firstOrNull { it.head != null } !== entry
         handlers =
@@ -572,6 +588,7 @@ internal fun raftNativeNavBarPublish(
     onTitleClick: (() -> Unit)? = null,
     titleImage: RaftNativeTabBarAvatar? = null,
     onSubtitleClick: (() -> Unit)? = null,
+    preservePrefilledActions: Boolean = false,
 ): Boolean {
     val drawn = LocalRaftNativeNavBar.current
     // Capture only: with the prototype off the page still registers its actions in the script
@@ -583,7 +600,19 @@ internal fun raftNativeNavBarPublish(
         if (active) bridge.activate(entry)
         onDispose { bridge.deactivate(entry) }
     }
-    val head = RaftNativeNavBarHead(title, subtitle, actions, extras, titleMenu, onBack, onTitleClick, titleImage, onSubtitleClick)
+    val head =
+        RaftNativeNavBarHead(
+            title = title,
+            subtitle = subtitle,
+            actions = actions,
+            extras = extras,
+            titleMenu = titleMenu,
+            onBack = onBack,
+            onTitleClick = onTitleClick,
+            titleImage = titleImage,
+            onSubtitleClick = onSubtitleClick,
+            preservePrefilledActions = preservePrefilledActions,
+        )
     SideEffect { if (active) bridge.publish(entry, head) }
     return drawn != null
 }

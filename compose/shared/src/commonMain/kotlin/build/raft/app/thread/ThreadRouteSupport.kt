@@ -1022,6 +1022,7 @@ internal fun ThreadDeferredLoadingRouteContent(
     memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
     showLoadingIndicator: Boolean = true,
+    lounge: ThreadPageLounge? = null,
 ) {
     scaffold(
         ThreadRouteScaffoldSlots(
@@ -1039,7 +1040,9 @@ internal fun ThreadDeferredLoadingRouteContent(
                     onOpenMemberProfile = {},
                     onOpenSearch = {},
                     onShowMembers = {},
-                    onShowSettings = {}
+                    onShowSettings = {},
+                    lounge = lounge,
+                    preserveNativePrefilledActions = true,
                 )
             },
             body = {

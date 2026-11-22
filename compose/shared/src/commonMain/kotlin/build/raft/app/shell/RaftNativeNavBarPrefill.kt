@@ -1,12 +1,15 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.agentLoungeEnabled
+import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.resources.Res
 import build.raft.app.resources.agent_lounge_label
@@ -84,23 +87,29 @@ private fun defaultNativeNavBarPrefillStrings(): RaftNativeNavBarPrefillStrings 
 internal fun buildNativeNavBarPrefillHead(
     pageName: String,
     pageDataJson: String,
-    strings: RaftNativeNavBarPrefillStrings = defaultNativeNavBarPrefillStrings(),
+    strings: RaftNativeNavBarPrefillStrings? = null,
 ): RaftNativeNavBarHead? =
     when (pageName) {
-        THREAD_PAGE -> buildThreadNativeNavBarPrefillFromPageData(pageDataJson = pageDataJson, strings = strings)
+        THREAD_PAGE ->
+            buildThreadNativeNavBarPrefillFromPageData(
+                pageDataJson = pageDataJson,
+                strings = strings ?: defaultNativeNavBarPrefillStrings(),
+            )
         THREAD_MEMBERS_PAGE ->
             RaftNativeNavBarHead(
-                title = strings.membersTitle,
+                title = (strings ?: defaultNativeNavBarPrefillStrings()).membersTitle,
                 subtitle = null,
                 actions = emptyList(),
                 extras = RaftNativeNavBarTitleExtras(),
+                onBack = {},
             )
         CHANNEL_SETTINGS_PAGE ->
             RaftNativeNavBarHead(
-                title = strings.channelDetailsTitle,
+                title = (strings ?: defaultNativeNavBarPrefillStrings()).channelDetailsTitle,
                 subtitle = null,
                 actions = emptyList(),
                 extras = RaftNativeNavBarTitleExtras(),
+                onBack = {},
             )
         else -> null
     }
@@ -143,39 +152,49 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
                 input = headerProjectionInput,
             )
         }
-    val serverPublicPageLive =
+    val homeServer =
         (sharedStores?.sharedHomeStore(storeScope)?.state?.value?.content as? SharedHomeContentState.Content)
             ?.snapshot
             ?.server
             ?.takeIf { it.id == serverId }
-            ?.publicPageLive == true
+    val serverPublicPageLive = homeServer?.publicPageLive == true
+    val scopedMembersStore = sharedStores?.serverMembersStore(storeScope)
     val pageLounge =
         payload.agentLoungeLookupChannelId()?.let { channelId ->
             RaftAgentLounges.lounge(serverId?.value, channelId) ?: RaftAgentLounges.loungeAnyServer(channelId)
         }
-    val loungeAgentProfile =
+    val loungeAgentAvatarWireValue =
         pageLounge?.let { lounge ->
             serverId?.let { sid ->
-                sharedStores?.serverMembersStore?.memberProfile(sid, lounge.agentId)
+                scopedMembersStore?.memberProfile(sid, lounge.agentId)?.avatar?.wireValue
             }
         }
-    val loungeAgentName =
-        loungeAgentProfile?.displayName?.takeIf { it.isNotBlank() } ?: pageLounge?.displayAgentName
-    val loungeAgentAvatarWireValue = loungeAgentProfile?.avatar?.wireValue
-    val dmAgentHasKnownLounge =
-        payload.agentLoungeDmAgentId()?.let { agentId ->
-            RaftAgentLounges.loungeOfAgent(serverId?.value, agentId) != null
-        } == true
+    val resolvedPeerIdentity = directoryProjection?.peerIdentity ?: knownCandidate?.peerIdentity ?: payload.dmPeerIdentity
+    val dmAgentId =
+        resolvedPeerIdentity
+            ?.takeIf { payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage && it.kind == MemberKind.Agent }
+            ?.memberId
+            ?.value
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    val dmLoungeToggleVisible =
+        if (dmAgentId != null && sharedStores != null && serverId != null) {
+            val flagEnabled = sharedStores.serverFeatureFlags.isEnabled(serverId, AGENT_LOUNGE_FEATURE_FLAG_KEY)
+            val personalAssistantAgentIds =
+                sharedStores.myAssistantStore(storeScope).answers.value.values
+                    .mapNotNull { it.assistant?.agentId }
+                    .toSet()
+            agentLoungeEnabled(flagEnabled, homeServer?.role) && dmAgentId !in personalAssistantAgentIds
+        } else {
+            false
+        }
     val dmPeerAvatarWireValue =
         serverId?.let { sid ->
-            val peerId =
-                (directoryProjection?.peerIdentity ?: knownCandidate?.peerIdentity ?: payload.dmPeerIdentity)
-                    ?.memberId
-                    ?.value
-                    ?.takeIf { it.isNotBlank() }
-            peerId?.let { id ->
-                sharedStores?.serverMembersStore?.memberProfile(sid, id)?.avatar?.wireValue
-            }
+            resolvedPeerIdentity
+                ?.memberId
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+                ?.let { id -> scopedMembersStore?.memberProfile(sid, id)?.avatar?.wireValue }
         }
     return buildThreadNativeNavBarPrefillHead(
         payload = payload,
@@ -183,9 +202,8 @@ private fun buildThreadNativeNavBarPrefillFromPageData(
         knownCandidate = knownCandidate,
         serverPublicPageLive = serverPublicPageLive,
         pageLounge = pageLounge,
-        loungeAgentName = loungeAgentName,
         loungeAgentAvatarWireValue = loungeAgentAvatarWireValue,
-        dmAgentHasKnownLounge = dmAgentHasKnownLounge,
+        dmLoungeToggleVisible = dmLoungeToggleVisible,
         resolvedDmPeerAvatarWireValue = dmPeerAvatarWireValue,
         strings = strings,
     )
@@ -197,12 +215,12 @@ internal fun buildThreadNativeNavBarPrefillHead(
     knownCandidate: SharedConversationDirectoryProjection? = null,
     serverPublicPageLive: Boolean = false,
     pageLounge: RaftAgentLounge? = null,
-    loungeAgentName: String? = pageLounge?.displayAgentName,
     loungeAgentAvatarWireValue: String? = null,
-    dmAgentHasKnownLounge: Boolean = false,
+    dmLoungeToggleVisible: Boolean = false,
     resolvedDmPeerAvatarWireValue: String? = null,
-    strings: RaftNativeNavBarPrefillStrings = defaultNativeNavBarPrefillStrings(),
+    strings: RaftNativeNavBarPrefillStrings? = null,
 ): RaftNativeNavBarHead {
+    val resolvedStrings = strings ?: defaultNativeNavBarPrefillStrings()
     val headerProjectionInput = payload.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
     val headerDisplay =
         headerProjectionInput
@@ -213,8 +231,8 @@ internal fun buildThreadNativeNavBarPrefillHead(
             )
             .copy(serverPublicPageLive = serverPublicPageLive)
     val loungeHeader = pageLounge?.takeIf { headerDisplay.surfaceKind == RaftThreadSurfaceKind.Channel }
-    val resolvedLoungeName = loungeAgentName?.takeIf { it.isNotBlank() } ?: pageLounge?.displayAgentName
-    val loungeTitle = resolvedLoungeName?.let(strings.loungeTitleForAgent)
+    val resolvedLoungeName = pageLounge?.displayAgentName
+    val loungeTitle = resolvedLoungeName?.let(resolvedStrings.loungeTitleForAgent)
     val title =
         if (loungeHeader != null && loungeTitle != null) {
             loungeTitle
@@ -222,9 +240,9 @@ internal fun buildThreadNativeNavBarPrefillHead(
             localizedThreadHeaderTitle(
                 title = headerDisplay.title,
                 surfaceKind = headerDisplay.surfaceKind,
-                localizedReplyThread = strings.replyThreadTitle,
-                localizedChannel = strings.channelTitle,
-                localizedDirectMessage = strings.directMessageTitle,
+                localizedReplyThread = resolvedStrings.replyThreadTitle,
+                localizedChannel = resolvedStrings.channelTitle,
+                localizedDirectMessage = resolvedStrings.directMessageTitle,
             )
         }
     val subtitle =
@@ -261,18 +279,18 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     add(
                         RaftNativeNavBarAction(
                             id = "thread-search",
-                            label = strings.searchLabel,
+                            label = resolvedStrings.searchLabel,
                             systemSymbol = "magnifyingglass",
                             onClick = {},
                             icon = RaftLucideIconName.Search,
                         )
                     )
                 }
-                if (dmAgentHasKnownLounge && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                if (dmLoungeToggleVisible && headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                     add(
                         RaftNativeNavBarAction(
                             id = "lounge",
-                            label = strings.loungeLabel,
+                            label = resolvedStrings.loungeLabel,
                             systemSymbol = "person.2",
                             onClick = {},
                             icon = RaftLucideIconName.Users,
@@ -284,7 +302,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
                         add(
                             RaftNativeNavBarAction(
                                 id = "thread-side-card-tasks",
-                                label = strings.openTasksLabel,
+                                label = resolvedStrings.openTasksLabel,
                                 systemSymbol = "checklist",
                                 onClick = {},
                                 icon = RaftLucideIconName.ListTodo,
@@ -294,7 +312,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     add(
                         RaftNativeNavBarAction(
                             id = "thread-side-card-files",
-                            label = strings.openFilesLabel,
+                            label = resolvedStrings.openFilesLabel,
                             systemSymbol = "paperclip",
                             onClick = {},
                             icon = RaftLucideIconName.Paperclip,
@@ -305,7 +323,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     add(
                         RaftNativeNavBarAction(
                             id = "thread-settings",
-                            label = strings.settingsLabel,
+                            label = resolvedStrings.settingsLabel,
                             systemSymbol = "gearshape",
                             onClick = {},
                             icon = RaftLucideIconName.Settings,
@@ -317,7 +335,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     add(
                         RaftNativeNavBarAction(
                             id = SEARCH_IN_TASK_MENU_ITEM_ID,
-                            label = if (taskConversation) strings.searchInTaskLabel else strings.searchInThreadLabel,
+                            label = if (taskConversation) resolvedStrings.searchInTaskLabel else resolvedStrings.searchInThreadLabel,
                             systemSymbol = "magnifyingglass",
                             onClick = {},
                             icon = RaftLucideIconName.Search,
@@ -328,7 +346,7 @@ internal fun buildThreadNativeNavBarPrefillHead(
                     add(
                         RaftNativeNavBarAction(
                             id = VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID,
-                            label = strings.viewInChannelLabel,
+                            label = resolvedStrings.viewInChannelLabel,
                             systemSymbol = "mappin.and.ellipse",
                             onClick = {},
                             icon = RaftLucideIconName.MapPin,

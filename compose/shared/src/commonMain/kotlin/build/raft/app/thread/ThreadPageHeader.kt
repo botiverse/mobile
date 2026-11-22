@@ -219,6 +219,8 @@ internal fun ThreadPageHeader(
     onOpenTimeline: (() -> Unit)? = null,
     /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
     lounge: ThreadPageLounge? = null,
+    /** Keep prefilled iOS native nav bar buttons while LoadingShell renders before FeatureSurfaces. */
+    preserveNativePrefilledActions: Boolean = false,
 ) {
     // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
     // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
@@ -403,6 +405,7 @@ internal fun ThreadPageHeader(
         title = localizedHeaderTitle,
         nativeSubtitle = headerSubtitle,
         nativeOnSubtitleClick = onOpenInChannel.takeIf { channelLinkLabel != null },
+        nativePreservePrefilledActions = preserveNativePrefilledActions,
         nativeActions = nativeNavBarActions,
         // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
         nativeTitleExtras =
