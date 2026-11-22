@@ -2248,7 +2248,7 @@
     <string name="agent_create_label_key">Ключ</string>
     <string name="agent_create_label_value">Значение</string>
     <string name="agent_create_label_environment_variables">Переменные окружения</string>
-    <string name="agent_create_placeholder_name">Например, Noel</string>
+    <string name="agent_create_placeholder_name">Например, Alice</string>
     <string name="agent_create_placeholder_select_computer">Выберите компьютер</string>
     <string name="agent_create_placeholder_select_runtime">Выберите среду выполнения</string>
     <string name="agent_create_title">Создать агента</string>

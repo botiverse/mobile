@@ -2252,10 +2252,10 @@
     <string name="agent_create_label_key">Key</string>
     <string name="agent_create_label_value">Value</string>
     <string name="agent_create_label_environment_variables">Environment variables</string>
-    <string name="agent_create_placeholder_name">e.g. Noel</string>
+    <string name="agent_create_placeholder_name">e.g. Alice</string>
     <string name="agent_create_placeholder_select_computer">Select computer</string>
     <string name="agent_create_placeholder_select_runtime">Select runtime</string>
-    <string name="agent_create_title">Create Agent</string>
+    <string name="agent_create_title">Create agent</string>
     <string name="agent_create_title_external">Create External Agent</string>
     <string name="agent_create_auto_join_channel">Will join %1$s automatically after it is created</string>
     <string name="agent_create_placeholder_description">Leave blank for a general-purpose agent, or describe a role...</string>

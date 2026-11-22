@@ -2248,7 +2248,7 @@
     <string name="agent_create_label_key">키</string>
     <string name="agent_create_label_value">값</string>
     <string name="agent_create_label_environment_variables">환경 변수</string>
-    <string name="agent_create_placeholder_name">예: Noel</string>
+    <string name="agent_create_placeholder_name">예: Alice</string>
     <string name="agent_create_placeholder_select_computer">컴퓨터 선택</string>
     <string name="agent_create_placeholder_select_runtime">런타임 선택</string>
     <string name="agent_create_title">에이전트 만들기</string>
