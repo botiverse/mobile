@@ -96,11 +96,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import build.raft.app.compat.pager.Pager
 import androidx.compose.foundation.layout.widthIn
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.raftClickable
@@ -159,6 +157,8 @@ internal fun createAgentHostedModelToSend(models: CreateAgentHostedModels, pick:
 
 /** What the create dialog's runtime section shows (runtime form v2, the only runtime form). */
 internal sealed interface CreateAgentRuntimeSection {
+    /** No runtime is chosen yet: only the picker (web's dialog has no form, and no notice, until one is). */
+    data object NoRuntime : CreateAgentRuntimeSection
     data object Loading : CreateAgentRuntimeSection
     data class Ready(val loaded: RuntimeFormV2Loaded) : CreateAgentRuntimeSection
     /** The load failed: a warning with Retry. */
@@ -173,10 +173,13 @@ internal sealed interface CreateAgentRuntimeSection {
  * [CreateAgentRuntimeSection.Failed]. Nothing falls back to v1 (task #8, retire runtime form v1).
  */
 internal fun createAgentRuntimeSection(
+    runtime: String,
     availability: RuntimeFormV2Availability,
     load: RuntimeFormV2DialogLoad
 ): CreateAgentRuntimeSection =
-    if (availability == RuntimeFormV2Availability.Unavailable) {
+    if (runtime.isBlank()) {
+        CreateAgentRuntimeSection.NoRuntime
+    } else if (availability == RuntimeFormV2Availability.Unavailable) {
         CreateAgentRuntimeSection.Unavailable
     } else {
         when (load) {
@@ -242,10 +245,7 @@ internal const val SharedCreateAgentDialogHostRoute = "create-agent"
 
 @Composable
 internal fun CreateAgentDialogVisualContent() {
-    val params = (LocalActivity.current.getPager() as Pager).pageData.params
-    val runtime = params.optString("runtime").ifBlank { "codex" }
-    val machineRuntimes =
-        (listOf(runtime, "codex", "claude") + RUNTIMES.filterNot { it.deprecated }.map { it.id }).distinct()
+    val machineRuntimes = (listOf("codex", "claude") + RUNTIMES.filterNot { it.deprecated }.map { it.id }).distinct()
     Box(
         modifier =
             Modifier
@@ -254,11 +254,11 @@ internal fun CreateAgentDialogVisualContent() {
     ) {
         SharedCreateAgentDialog(
             submitting = false,
-            errorMessage = params.optString("errorMessage").takeIf { it.isNotBlank() },
-            initialName = params.optString("name").ifBlank { "Product-QA-Bot" },
+            errorMessage = null,
+            initialName = "Product-QA-Bot",
             initialDescription = "Watches release screenshots and reports visual regressions before merge.",
-            initialRuntime = runtime,
-            initialAdvancedOpen = params.optBoolean("advancedOpen"),
+            // Like React's fixture: the computer's runtime list has not answered, so none is chosen.
+            initialRuntime = "",
             machines =
                 listOf(
                     SharedCreateAgentMachineOption(
@@ -616,7 +616,7 @@ internal fun SharedCreateAgentDialog(
     var v2Load by remember(runtimeFormV2, availableSelectedMachineId, runtime, skipsComputer, v2LoadAttempt) {
         mutableStateOf<RuntimeFormV2DialogLoad>(RuntimeFormV2DialogLoad.Loading)
     }
-    val runtimeSection = createAgentRuntimeSection(v2Availability, v2Load)
+    val runtimeSection = createAgentRuntimeSection(runtime, v2Availability, v2Load)
     val v2Loaded = (runtimeSection as? CreateAgentRuntimeSection.Ready)?.loaded
     var v2Values by remember(v2Loaded) {
         mutableStateOf(v2Loaded?.let { initialRuntimeFormV2Values(it.form, it.sources) }.orEmpty())

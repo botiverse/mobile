@@ -2248,7 +2248,7 @@
     <string name="agent_create_label_key">鍵</string>
     <string name="agent_create_label_value">值</string>
     <string name="agent_create_label_environment_variables">環境變數</string>
-    <string name="agent_create_placeholder_name">例如 Noel</string>
+    <string name="agent_create_placeholder_name">例如 Alice</string>
     <string name="agent_create_placeholder_select_computer">選擇電腦</string>
     <string name="agent_create_placeholder_select_runtime">選擇執行環境</string>
     <string name="agent_create_title">建立 Agent</string>
