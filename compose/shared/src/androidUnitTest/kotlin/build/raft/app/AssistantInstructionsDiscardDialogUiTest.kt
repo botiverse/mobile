@@ -29,7 +29,7 @@ import org.robolectric.annotation.Config
  * assistant's instructions, or the WeChat connect flow, with unsaved edits: two buttons, so a
  * question, "Discard changes?" with Discard (web `agent.detail.editProfile.discardTitle` /
  * `.discard`), not "Unsaved changes" / "Discard Changes"; a small dialog (raft-ui Dialog
- * `size="sm"`, 400dp) with × in the head, Keep Editing first and Discard last. × keeps editing.
+ * `size="sm"`, 400dp) with × in the head, Keep editing first and Discard last. × keeps editing.
  * The window is wide, so the dialog's width shows its size.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -59,9 +59,9 @@ class AssistantInstructionsDiscardDialogUiTest {
         onAllNodesWithText("Unsaved changes").assertCountEquals(0)
         onAllNodesWithText("Discard Changes").assertCountEquals(0)
         onNodeWithTag("wechat-discard-confirm").assertWidthIsEqualTo(400.dp)
-        val keep = onNodeWithText("Keep Editing").getBoundsInRoot()
+        val keep = onNodeWithText("Keep editing").getBoundsInRoot()
         val discard = onNodeWithText("Discard").getBoundsInRoot()
-        assertTrue(keep.right <= discard.left, "Keep Editing first, Discard last: keep=$keep discard=$discard")
+        assertTrue(keep.right <= discard.left, "Keep editing first, Discard last: keep=$keep discard=$discard")
 
         onAllNodesWithContentDescription("Close").onFirst().performClick()
         assertEquals(1 to 0, kept to discarded, "× keeps editing")

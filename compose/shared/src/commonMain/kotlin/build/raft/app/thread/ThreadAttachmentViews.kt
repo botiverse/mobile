@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
@@ -50,6 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onVisibilityChanged
+import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.image.raftImageMayBeAnimated
 import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
@@ -215,15 +219,18 @@ internal fun ThreadImageAttachmentContent(
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
     val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
     // An image this device just uploaded renders from its local copy (by attachment id), so the
-    // canonical message neither re-downloads it nor asks for the signed inline URL.
+    // canonical message neither re-downloads it nor asks for the signed inline URL. A GIF / WebP
+    // moves to its server thumbnail once the message has one, to play it (see below).
     val sentImages = build.raft.app.image.RaftSentAttachmentLocalImages.registry
     val localModelFlow = remember(attachment.id) { sentImages.localModelFlow(attachment.id) }
     val localModel by localModelFlow.collectAsState(initial = sentImages.localModel(attachment.id))
+    val mayAnimate = raftImageMayBeAnimated(attachment.mimeType, attachment.name)
     val sourcePlan =
         threadInlineImageSourcePlan(
             thumbnailUrl = attachment.thumbnailUrl,
             fallbackUrl = fallbackUrl,
-            localModel = localModel
+            localModel = localModel,
+            mayAnimate = mayAnimate
         )
     val fallbackHostAvailable = fallbackHost != null
     LaunchedEffect(attachment.id, sourcePlan.requestRemoteFallback, fallbackHostAvailable) {
@@ -241,6 +248,24 @@ internal fun ThreadImageAttachmentContent(
             failedSources = failedSources,
             awaitingRemoteFallback = sourcePlan.requestRemoteFallback && fallbackHostAvailable
         )
+    // A GIF's thumbnail is an animated WebP (slock #16159): it plays as the web's <img> does, but
+    // only while the tile is on screen and its page is the one shown (not a kept-alive tab or a
+    // page under the top one); RaftCachedImage also stops it while the app is in the background.
+    // It holds its frame while "Generate image" captures the rows. Only the server thumbnail
+    // plays, bounded to 320px: a just-sent GIF's full-size local copy and the fallback (the
+    // original file) show a still. Other images keep the plain static request.
+    val animates = mayAnimate && sourcePlan.sourceIsThumbnail
+    var onScreen by remember { mutableStateOf(false) }
+    val pageActive = LocalRaftPageActive.current
+    val shareCaptureActive = LocalThreadShareCaptureActive.current
+    val onScreenModifier =
+        if (animates) {
+            // Placed with part of it inside the window. A list composes rows ahead of the scroll
+            // without placing them: those do not play.
+            Modifier.onVisibilityChanged(minFractionVisible = 0f) { visible -> onScreen = visible }
+        } else {
+            Modifier
+        }
     val originalCacheKey =
         remember(attachment.id) { build.raft.app.image.raftAttachmentOriginalImageCacheKey(attachment.id) }
     val fallbackCacheKey =
@@ -255,12 +280,14 @@ internal fun ThreadImageAttachmentContent(
         source = sourcePlan.source,
         fallbackSource = sourcePlan.fallbackSource,
         contentDescription = attachment.name,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().then(onScreenModifier),
         // The failed state is drawn below (ImageOff), not the surface's text placeholder.
         placeholderLabel = "",
         backgroundColor = Color.Transparent,
         borderWidth = 0.dp,
         contentScale = if (fit == RaftMessageImageFit.Cover) RaftImageThumbnailContentScale else ContentScale.Fit,
+        animateSource = animates,
+        animationActive = onScreen && pageActive && !shareCaptureActive,
         fallbackCacheKey = fallbackCacheKey,
         onImageStateChange = { state ->
             if (state is AsyncImagePainter.State.Error) {

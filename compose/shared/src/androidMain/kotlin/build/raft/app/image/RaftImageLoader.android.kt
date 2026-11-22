@@ -22,7 +22,7 @@ internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path?
  * Software bitmaps only: see the expect declaration (hardware bitmaps crash software canvases).
  *
  * Coil's service loader is off: coil-gif registers its decoder through it, which would animate
- * every GIF (thumbnails, avatars) and keep it out of the memory cache. The Raft loader adds the
+ * every GIF (avatars, link cards) and keep it out of the memory cache. The Raft loader adds the
  * decoders it wants explicitly (SVG, and coil-gif only behind [RaftAnimatedImageDecoderFactory]'s
  * per-request opt-in); coil-svg's service entry, the only other one, duplicates that SVG decoder.
  */

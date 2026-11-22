@@ -31,7 +31,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Add Member (web ChannelMembers add view): ticking candidates only selects them and counts them
- * in "Add Selected (N)", which is disabled at 0 and sends the selection as one batch; the
+ * in "Add selected (N)", which is disabled at 0 and sends the selection as one batch; the
  * one "Create agent" row opens a menu (Create agent, Create external agent) whose items each ask
  * to create that kind of agent, which joins this channel (the row named after a search that found
  * no one); the row is disabled with the reason, and opens no menu, without permission; members already in the channel are not listed.
@@ -100,19 +100,19 @@ class ChannelAddMemberPanelUiTest {
         runRobolectricComposeUiTest {
             val calls = Calls()
             show(calls)
-            onNodeWithText("Add Selected (0)").assertIsNotEnabled()
+            onNodeWithText("Add selected (0)").assertIsNotEnabled()
 
             row("Cindy").performClick()
             row("Designer").performClick()
             assertTrue(calls.batches.isEmpty(), "a tap on a row added members straight away")
-            onNodeWithText("Add Selected (2)").assertIsEnabled()
+            onNodeWithText("Add selected (2)").assertIsEnabled()
 
             // Unticking takes it out of the count again.
             row("Designer").performClick()
-            onNodeWithText("Add Selected (1)").assertIsEnabled()
+            onNodeWithText("Add selected (1)").assertIsEnabled()
             row("Designer").performClick()
 
-            onNodeWithText("Add Selected (2)").performClick()
+            onNodeWithText("Add selected (2)").performClick()
             assertEquals(listOf(listOf("agent-cindy", "user-designer")), calls.batches)
         }
 

@@ -505,13 +505,16 @@ async function signOutAppViaUi() {
     const mine = list.filter((n) => n.pkg === PKG);
     const is = (n, text) => n.text === text || n.desc === text;
     const confirmMessage = find(mine, (n) => n.text.startsWith("Sign out of this device?"));
-    const chooserSignOut = find(mine, (n) => n.text === "Sign Out" && n.enabled);
-    const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
     const settings = find(mine, (n) => is(n, "Settings"));
     const account = find(mine, (n) => is(n, "Account"));
     // Settings > Account: the profile form first (Display name, Save profile, Connected accounts,
     // Login & security), Sign out and Delete account further down.
-    const accountPage = find(mine, (n) => ["Delete account", "Save profile", "Connected accounts", "Change Password", "Login & security"].includes(n.text) || n.text.startsWith("Sign out on this device."));
+    const accountPage = find(mine, (n) => ["Delete account", "Save profile", "Connected accounts", "Change password", "Change Password", "Login & security"].includes(n.text) || n.text.startsWith("Sign out on this device."));
+    // The server gates (Choose server, Create your first server, Check your email) sign out at once;
+    // Account's Sign out asks first. Builds from 1.29 write both "Sign out" (sentence case, as the
+    // web), older ones the gates' "Sign Out": off the Account page a Sign out is the gate's.
+    const chooserSignOut = find(mine, (n) => n.enabled && (n.text === "Sign Out" || (!accountPage && n.text === "Sign out")));
+    const signOut = mine.filter((n) => n.bounds && n.enabled && n.text === "Sign out");
     const more = find(mine, (n) => is(n, "More"));
     const currentServer = find(mine, (n) => n.desc.startsWith("Current server: "));
     // The server tab's panel (RaftAppServerMenuOverlay): server rows ("/slug" under each name), then
@@ -525,9 +528,9 @@ async function signOutAppViaUi() {
       markLogoutTap();
       tap(button, "confirm:Sign out");
     } else if (chooserSignOut) {
-      // "Choose server … Signed in as …" (an account on several servers): Sign Out, no confirmation.
+      // "Choose server … Signed in as …" (an account on several servers): Sign out, no confirmation.
       markLogoutTap();
-      tap(chooserSignOut, "choose_server:Sign Out");
+      tap(chooserSignOut, "choose_server:Sign out");
     } else if (signOut.length) {
       tap(signOut.sort((a, b) => b.bounds[1] - a.bounds[1])[0], "account:Sign out");
     } else if (accountPage) {
