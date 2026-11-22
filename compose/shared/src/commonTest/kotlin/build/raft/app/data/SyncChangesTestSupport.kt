@@ -80,6 +80,21 @@ internal fun syncStaleWithState(seq: Long, conversationId: String, refSeq: Long?
         parts.joinToString("") { ",$it" } + "}"
 }
 
+/*
+ * `task` changes as slock eeb984b99 (#14975) sends them (packages/shared/src/syncChanges.ts,
+ * packages/server/src/routes/syncChanges.tasks.api.test.ts): an upsert carries the task as
+ * GET /api/tasks/channel/:id lists it, a delete names its channel (`SyncTaskDelete`), and a
+ * resnapshot's id is a channel id (`SyncTaskResnapshot`).
+ */
+internal fun syncTaskUpsert(seq: Long, id: String, channelId: String): String =
+    syncUpsert(seq, "task", id, """{"id":"$id","channelId":"$channelId","taskNumber":7,"title":"Write the sync rows","status":"in_progress"}""")
+
+internal fun syncTaskDelete(seq: Long, id: String, channelId: String): String =
+    """{"seq":$seq,"entity":"task","id":"$id","op":"delete","channelId":"$channelId"}"""
+
+internal fun syncTaskResnapshot(seq: Long, channelId: String): String =
+    """{"seq":$seq,"entity":"task","id":"$channelId","op":"resnapshot"}"""
+
 internal fun syncScope(seq: Long, kind: String, id: String, op: String, snapshots: List<String>): String =
     """{"seq":$seq,"entity":"scope","id":"$id","op":"$op","scopeKind":"$kind","snapshots":[${snapshots.joinToString(",") { "\"$it\"" }}]}"""
 

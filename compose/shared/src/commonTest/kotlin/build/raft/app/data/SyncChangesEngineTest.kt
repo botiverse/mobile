@@ -318,6 +318,44 @@ class SyncChangesEngineTest {
     }
 
     @Test
+    fun `task changes are not applied and the pull counts them once on its log line`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        val logs = mutableListOf<String>()
+        val sink = RecordingSyncChangesSink()
+        val engine =
+            RaftSyncChangesEngine(
+                api =
+                    ScriptedSyncChangesApi(
+                        syncPage(
+                            syncChangesBody(
+                                "c1.3.1",
+                                hasMore = true,
+                                changes = listOf(syncTaskUpsert(2, "t-1", channelId = "ch-1"), syncDelete(3, "agent", "a-1")),
+                            )
+                        ),
+                        syncPage(
+                            syncChangesBody(
+                                "c1.5.1",
+                                changes = listOf(syncTaskDelete(4, "t-1", channelId = "ch-1"), syncTaskResnapshot(5, channelId = "ch-1")),
+                            )
+                        ),
+                    ),
+                cursors = cursors,
+                sink = sink,
+                logger = { logs += it },
+            )
+
+        val result = assertIs<RaftSyncPullResult.Synced>(engine.pull(syncTestScope, trigger = "test"))
+
+        assertEquals(2, result.pages)
+        assertEquals(1, result.changes)
+        assertEquals(mapOf("task" to 3), result.ignoredEntities)
+        assertEquals(setOf("a-1"), sink.plans.single().deletesOf(RaftSyncRowEntity.Agent))
+        val line = logs.single { it.startsWith("sync_changes_pull ") }
+        assertTrue(line.contains(" ignored=task:3 "), line)
+    }
+
+    @Test
     fun `a page coalesces to the newest change per entity and id`() {
         val plan =
             parseSyncChangesPage(
