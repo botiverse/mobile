@@ -549,11 +549,10 @@ internal fun ThreadComposerRoute(
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
     val restingHeightKey = surface.threadComposerRestingHeightKey()
     if (
-        !threadComposerEditorReadyToMount(
+        !threadComposerDraftLoaded(
             composerInstanceId = baseComposerState.instanceId,
             expectedDraftKey = expectedDraftKey,
             draftState = composerDraftState,
-            pageInMotion = !initialMotionSettled,
         )
     ) {
         // Reserve the editor's resting height while it waits to mount, so the message list above
@@ -571,6 +570,33 @@ internal fun ThreadComposerRoute(
             )
         }
     val composerUiState = composerState.toThreadComposerUiState()
+    if (
+        !threadComposerEditorReadyToMount(
+            composerInstanceId = baseComposerState.instanceId,
+            expectedDraftKey = expectedDraftKey,
+            draftState = composerDraftState,
+            pageInMotion = !initialMotionSettled,
+        )
+    ) {
+        // The page is still sliding in, and the live editor mounts only once it settles (#5320:
+        // mounting it mid-slide made the push stutter). Until then the composer slides in with the
+        // page as a picture of itself at rest, laid out by the live composer's own code, so the
+        // editor takes its place without a move. A draft the picture cannot draw exactly (text,
+        // attachments, notices, a send in flight, the assistant's context chip) keeps the blank
+        // slot at the resting height, as before.
+        if (composerUiState.isThreadComposerAtRestPicture() && surface.assistantContext?.context == null) {
+            ThreadComposerAtRest(
+                surface = surface,
+                state = composerUiState,
+                modifier = Modifier.testTag(ThreadComposerAtRestTestTag),
+                contentPaddingTop = 0.dp,
+                contentPaddingBottom = 0.dp,
+            )
+        } else {
+            ThreadComposerRestingHeightPlaceholder(surface)
+        }
+        return
+    }
     val composerAtRest = composerUiState.isThreadComposerAtRest()
     // The personal assistant's otter on this composer's frame edge, when the conversation has one.
     val assistantOtter = LocalThreadAssistantOtter.current
@@ -705,6 +731,9 @@ internal fun ThreadComposerRestingHeightPlaceholder(surface: ThreadComposerSurfa
 
 internal const val ThreadComposerRestingHeightPlaceholderTestTag = "thread-composer-resting-placeholder"
 
+/** The composer at rest as a picture ([ThreadComposerAtRest]) while its page slides in. */
+internal const val ThreadComposerAtRestTestTag = "thread-composer-at-rest"
+
 /**
  * Whether the composer's dock keeps its slot while the footer is not decided yet: the timeline can
  * show (a cached frame while access refreshes) before the composer may mount, and an empty footer
@@ -736,11 +765,38 @@ internal fun ThreadComposerUiState.isThreadComposerAtRest(): Boolean =
         channelSuggestions.isEmpty()
 
 /**
+ * Whether [ThreadComposerAtRest] draws exactly what the live composer will show for this state, so
+ * the editor can replace it without a visible change: at rest ([isThreadComposerAtRest]) with an
+ * empty editor (whitespace hides the placeholder), nothing stacked on the frame (no mention
+ * notice) and nothing being sent (the Send spinner). Otherwise the slot stays blank until the
+ * editor mounts.
+ */
+internal fun ThreadComposerUiState.isThreadComposerAtRestPicture(): Boolean =
+    isThreadComposerAtRest() &&
+        seedText.isEmpty() &&
+        mentionActionNotice.isNullOrBlank() &&
+        composerMode != "sending" &&
+        composerMode != "uploading"
+
+/** Whether the store holds the exact draft session of this composer (its instance and draft key). */
+internal fun threadComposerDraftLoaded(
+    composerInstanceId: String,
+    expectedDraftKey: String?,
+    draftState: SharedThreadComposerDraftState,
+): Boolean =
+    composerInstanceId.isNotBlank() &&
+        expectedDraftKey != null &&
+        draftState.instanceId == composerInstanceId &&
+        draftState.draftKey == expectedDraftKey
+
+/**
  * A restored draft is read synchronously by the persistence slice during Start, but Start itself
  * is dispatched from a launch effect. Mounting the native editor before that transition lets its
  * initial empty callback race the restored String projection and can leave native placeholder
  * drawing on top of restored text. Keep the editor unmounted until the store owns the exact
- * conversation draft session; later programmatic edits continue through editor commands.
+ * conversation draft session ([threadComposerDraftLoaded]); later programmatic edits continue
+ * through editor commands. Nor while the page slides in ([pageInMotion]): mounting the editor
+ * mid-push made it stutter (#5320); the composer's picture at rest stands in meanwhile.
  */
 internal fun threadComposerEditorReadyToMount(
     composerInstanceId: String,
@@ -749,10 +805,11 @@ internal fun threadComposerEditorReadyToMount(
     pageInMotion: Boolean = false,
 ): Boolean =
     !pageInMotion &&
-        composerInstanceId.isNotBlank() &&
-        expectedDraftKey != null &&
-        draftState.instanceId == composerInstanceId &&
-        draftState.draftKey == expectedDraftKey
+        threadComposerDraftLoaded(
+            composerInstanceId = composerInstanceId,
+            expectedDraftKey = expectedDraftKey,
+            draftState = draftState,
+        )
 
 @Composable
 private fun ThreadComposerContentWithSuggestions(

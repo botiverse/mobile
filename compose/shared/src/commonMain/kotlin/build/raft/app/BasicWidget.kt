@@ -1916,13 +1916,7 @@ internal fun TextField(
         decorator = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
                 if (state.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    RaftTextFieldPlaceholder(placeholder, resolvedTextStyle, placeholderColor, maxLines)
                 }
                 innerTextField()
             }
@@ -2027,13 +2021,7 @@ internal fun TextField(
         decorator = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
                 if (state.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    RaftTextFieldPlaceholder(placeholder, resolvedTextStyle, placeholderColor, maxLines)
                 }
                 innerTextField()
             }
@@ -2048,6 +2036,52 @@ internal fun TextField(
     }
 }
 
+/**
+ * [TextField]'s placeholder while the field is empty: [placeholder] in the field's
+ * [resolvedTextStyle] ([raftTextFieldResolvedTextStyle]) and [placeholderColor] (else the text's
+ * colour), cut after [maxLines]. [TextFieldAtRest] draws it the same way.
+ */
+@Composable
+internal fun RaftTextFieldPlaceholder(
+    placeholder: String,
+    resolvedTextStyle: TextStyle,
+    placeholderColor: Color?,
+    maxLines: Int,
+) {
+    Text(
+        text = placeholder,
+        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+        color = placeholderColor ?: resolvedTextStyle.color,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/**
+ * An empty, unfocused [TextField] as a picture: the field's box ([modifier], [contentAlignment])
+ * holding its [placeholder] exactly as the field's decorator lays it out, and no editor (no text
+ * input, focus, keyboard, IME, clipboard or effect). For a stand-in drawn until the field itself
+ * may mount (the conversation composer while its page slides in): pass the arguments the field
+ * gets, and the swap to the field moves nothing. The field's empty editor line sits under the
+ * placeholder at the same start and is never taller than one line of it, so the box has the
+ * field's height.
+ */
+@Composable
+internal fun TextFieldAtRest(
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = TextStyle.Default,
+    placeholderColor: Color? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    contentAlignment: Alignment = Alignment.CenterStart,
+) {
+    val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    Box(modifier, contentAlignment = contentAlignment) {
+        if (placeholder.isNotEmpty()) {
+            RaftTextFieldPlaceholder(placeholder, resolvedTextStyle, placeholderColor, maxLines)
+        }
+    }
+}
 
 /**
  * The app editor's state-based BasicTextField: the value-based options of [TextField] mapped to

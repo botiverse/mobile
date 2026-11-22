@@ -357,27 +357,17 @@ internal fun RaftButtonBox(
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
     val isFocused = raftIsFocusVisible(source)
     val focused = enabled && isFocused
-    val radius = if (chipRadius || LocalRaftEmbeddedControl.current) RaftRadius.Chip else cornerRadius ?: RaftRadius.Control
-    val shape = join.shape(radius)
+    val radius = raftButtonRadius(chipRadius, cornerRadius)
     val drawing =
-        Modifier
-            .raftFocusRing(focused, radius, RaftTheme.colors)
-            .raftDieCutEdge(look.outerRing, radius)
-            .background(look.fill, shape)
-            .then(
-                if (join == RaftButtonJoin.None) {
-                    Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
-                } else {
-                    Modifier.background(joinedFill, shape)
-                },
-            )
-            .then(
-                if (join == RaftButtonJoin.Start) {
-                    Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, radius)
-                } else {
-                    Modifier.border(RaftStroke.Control, look.edge, shape)
-                },
-            )
+        Modifier.raftButtonDrawing(
+            look = look,
+            radius = radius,
+            join = join,
+            focused = focused,
+            pressed = pressed,
+            joinedFill = joinedFill,
+            colors = RaftTheme.colors,
+        )
     val hit =
         Modifier
             .semantics { if (loading) disabled() }
@@ -439,6 +429,50 @@ internal fun RaftButtonBox(
             if (loading) RaftSpinner(contentDescription = loadingLabel)
         }
     }
+}
+
+/**
+ * A button's corners: `radius-chip` for an inline icon button ([chipRadius]) and for any button
+ * embedded in a frame ([RaftEmbeddedControls]), else [cornerRadius] or `radius-control`.
+ */
+@Composable
+internal fun raftButtonRadius(chipRadius: Boolean, cornerRadius: Dp?): Dp =
+    if (chipRadius || LocalRaftEmbeddedControl.current) RaftRadius.Chip else cornerRadius ?: RaftRadius.Control
+
+/**
+ * What [RaftButtonBox] draws, and [RaftIconButtonAtRest] with it: the focus ring outside it all
+ * ([focused]), the sticker's die-cut edge, [look]'s fill, the press overlay ([pressed]; a joined
+ * part lays [joinedFill] instead) and the 1.5dp edge (none on a [RaftButtonJoin.Start] part's
+ * start side), at [radius].
+ */
+internal fun Modifier.raftButtonDrawing(
+    look: RaftButtonLook,
+    radius: Dp,
+    join: RaftButtonJoin,
+    focused: Boolean,
+    pressed: Boolean,
+    joinedFill: Color,
+    colors: RaftUiThemeColors,
+): Modifier {
+    val shape = join.shape(radius)
+    return this
+        .raftFocusRing(focused, radius, colors)
+        .raftDieCutEdge(look.outerRing, radius)
+        .background(look.fill, shape)
+        .then(
+            if (join == RaftButtonJoin.None) {
+                Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
+            } else {
+                Modifier.background(joinedFill, shape)
+            },
+        )
+        .then(
+            if (join == RaftButtonJoin.Start) {
+                Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, radius)
+            } else {
+                Modifier.border(RaftStroke.Control, look.edge, shape)
+            },
+        )
 }
 
 /**
@@ -775,15 +809,12 @@ fun RaftIconButton(
     hitSize: Dp? = null,
     icon: @Composable () -> Unit,
 ) {
-    val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
-    val controls = RaftTheme.controls
-    val bar = LocalRaftBarButtons.current
+    val metrics = raftIconButtonMetrics(variant, size)
     RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
-        // On the frame: the top bar's item, 36 (34 under a fine pointer).
-        box = if (onFrame) controls.topBarItemSize else size.boxIn(controls, bar),
-        glyph = if (onFrame) 20.dp else size.glyphIn(controls, bar),
+        box = metrics.box,
+        glyph = metrics.glyph,
         modifier = modifier,
         variant = variant,
         enabled = enabled,
@@ -793,12 +824,89 @@ fun RaftIconButton(
         contentDescription = contentDescription,
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
-        chipRadius = size.inline,
+        chipRadius = metrics.chipRadius,
         pointerHitSize = hitSize ?: if (size.inline) RaftInlineIconButtonPointerHit else null,
-        cornerRadius = size.radiusIn(controls, bar),
+        cornerRadius = metrics.cornerRadius,
         icon = icon,
     )
 }
+
+/**
+ * A [RaftIconButton] at rest, as a picture: the box, icon box, corners and colours of a
+ * [RaftIconButton] with the same [variant], [size] and [enabled] that nothing presses, hovers
+ * or focuses, from the same metrics, look and drawing ([raftButtonDrawing]), embedded in a
+ * frame ([RaftEmbeddedControls]) too; [icon] gets the same ink ([LocalRaftContentColor]). None
+ * of the button comes with it: no click, tooltip, focus, pointer or interaction tracking,
+ * semantics or effect, so it is cheap to compose.
+ *
+ * For a stand-in drawn until the real control may mount (a conversation's composer while its
+ * page slides in), so that swapping in the button changes nothing on screen. It has no busy
+ * look: a button at rest is not loading. Never use it for a control people can see for long;
+ * a button that cannot be used now is a disabled [RaftIconButton].
+ */
+@Composable
+fun RaftIconButtonAtRest(
+    modifier: Modifier = Modifier,
+    variant: RaftButtonVariant = RaftButtonVariant.Default,
+    size: RaftIconButtonSize = RaftIconButtonSize.Md,
+    enabled: Boolean = true,
+    icon: @Composable () -> Unit,
+) {
+    val metrics = raftIconButtonMetrics(variant, size)
+    val colors = RaftTheme.colors
+    val look = raftIconButtonLook(variant, enabled, colors)
+    val radius = raftButtonRadius(metrics.chipRadius, metrics.cornerRadius)
+    Box(
+        modifier =
+            modifier
+                .size(metrics.box)
+                .raftButtonDrawing(
+                    look = look,
+                    radius = radius,
+                    join = RaftButtonJoin.None,
+                    focused = false,
+                    pressed = false,
+                    joinedFill = Color.Transparent,
+                    colors = colors,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
+            Box(Modifier.size(metrics.glyph), contentAlignment = Alignment.Center) { icon() }
+        }
+    }
+}
+
+/** A [RaftIconButton]'s box, icon box and corners ([RaftButtonBox]'s `chipRadius` / `cornerRadius`). */
+internal class RaftIconButtonMetrics(
+    val box: Dp,
+    val glyph: Dp,
+    val chipRadius: Boolean,
+    val cornerRadius: Dp?,
+)
+
+/**
+ * The metrics of a [RaftIconButton] of [variant] at [size] here: on the frame (an `OnFrame` `Md`
+ * is the top bar's item), under a fine pointer ([RaftTheme.controls]) and in a bar
+ * ([LocalRaftBarButtons]).
+ */
+@Composable
+internal fun raftIconButtonMetrics(variant: RaftButtonVariant, size: RaftIconButtonSize): RaftIconButtonMetrics {
+    val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
+    val controls = RaftTheme.controls
+    val bar = LocalRaftBarButtons.current
+    return RaftIconButtonMetrics(
+        // On the frame: the top bar's item, 36 (34 under a fine pointer).
+        box = if (onFrame) controls.topBarItemSize else size.boxIn(controls, bar),
+        glyph = if (onFrame) 20.dp else size.glyphIn(controls, bar),
+        chipRadius = size.inline,
+        cornerRadius = size.radiusIn(controls, bar),
+    )
+}
+
+/** An icon button's colours: a ghost one is frameless (disabled, it only greys its icon). */
+internal fun raftIconButtonLook(variant: RaftButtonVariant, enabled: Boolean, colors: RaftUiThemeColors): RaftButtonLook =
+    raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = colors)
 
 /** The least pointer (mouse, trackpad) target of an inline icon button ([RaftIconButtonSize.Xs]). */
 private val RaftInlineIconButtonPointerHit = 28.dp
@@ -930,7 +1038,7 @@ internal fun RaftSizedIconButton(
     cornerRadius: Dp? = null,
     icon: @Composable () -> Unit,
 ) {
-    val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
+    val look = raftIconButtonLook(variant, enabled, RaftTheme.colors)
     val description = contentDescription
     val misuse = LocalRaftMisuse.current
     if (description == null) misuse("RaftIconButton needs a name: pass tooltip or contentDescription")
