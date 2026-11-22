@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -217,7 +219,7 @@ private fun AgentMigrationLogToolbar(
                     .testTag(AgentMigrationLogTags.Search)
                     .semantics { contentDescription = searchLabel },
             placeholder = searchLabel,
-            leading = { RaftSlotIcon(RaftLucideIconName.Search, size = 14.dp) },
+            leading = { RaftSlotIcon(RaftLucideIconName.Search) },
             trailingAction =
                 if (state.query.isNotEmpty()) {
                     {
@@ -520,6 +522,8 @@ private fun AgentMigrationLogTable(
                 0 ->
                     RaftText(
                         raftLocalizedShortDateTime(entry.startedAt),
+                        // `whitespace-nowrap`: the column never gets narrower than the whole time.
+                        modifier = Modifier.width(IntrinsicSize.Max),
                         style = typography.callout,
                         color = colors.foregroundMuted,
                         maxLines = 1,
@@ -531,6 +535,7 @@ private fun AgentMigrationLogTable(
                 else ->
                     RaftText(
                         agentMigrationLogDuration(entry.durationSeconds),
+                        modifier = Modifier.width(IntrinsicSize.Max),
                         style = typography.callout.copy(fontFamily = typography.monoCode.fontFamily),
                         color = colors.foreground,
                         maxLines = 1,
@@ -572,6 +577,7 @@ private fun AgentMigrationLogAgent(
  * Where it left and where it arrived: each place's code, then its name, and the name it had at the
  * time of the move when it was renamed since (what a search by that old name matched).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AgentMigrationLogRoute(
     entry: AgentMigrationLogEntry,
@@ -587,21 +593,28 @@ private fun AgentMigrationLogRoute(
     val code = SpanStyle(color = colors.foreground, fontFamily = typography.monoCode.fontFamily, fontWeight = FontWeight.Bold)
     val muted = SpanStyle(color = colors.foregroundMuted)
     val hint = SpanStyle(color = colors.foregroundHint, fontSize = typography.caption.fontSize)
-    RaftText(
+    val place: (AgentMigrationLogNode?, String?, String) -> AnnotatedString = { node, then, after ->
         buildAnnotatedString {
-            fun place(node: AgentMigrationLogNode?, then: String?) {
-                withStyle(code) { append(node?.code.orEmpty()) }
-                append(" · ")
-                withStyle(muted) { append(node?.let(nodeName).orEmpty()) }
-                if (then != null) withStyle(hint) { append(" $then") }
-            }
-            place(source, thenSource)
-            append(" → ")
-            place(target, thenTarget)
-        },
-        style = typography.callout,
-        color = colors.foreground,
-    )
+            withStyle(code) { append(node?.code.orEmpty()) }
+            append(" · ")
+            withStyle(muted) { append(node?.let(nodeName).orEmpty()) }
+            if (then != null) withStyle(hint) { append(" $then") }
+            append(after)
+        }
+    }
+    // Each place stays on one line (`whitespace-nowrap`); the arrival goes under when both don't fit.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        listOf(place(source, thenSource, " →"), place(target, thenTarget, "")).forEach { text ->
+            RaftText(
+                text,
+                modifier = Modifier.width(IntrinsicSize.Max),
+                style = typography.callout,
+                color = colors.foreground,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
 }
 
 @Composable
