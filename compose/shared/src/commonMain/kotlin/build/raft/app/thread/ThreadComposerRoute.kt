@@ -538,14 +538,10 @@ internal fun ThreadComposerRoute(
         return
     }
     val composerDraftState by composerDraftViewModel.state.collectAsState()
-    // Latch one-way once the initial push slide settles so returning to this conversation on
-    // pop-back never unmounts the live editor or destroys cursor / suggestion state mid-pop.
-    val initialMotionSettledLatch = remember(baseComposerState.instanceId) { booleanArrayOf(false) }
-    val initialMotionSettled =
-        initialMotionSettledLatch[0] || !build.raft.app.nav.LocalRaftStackPageInMotion.current
-    if (initialMotionSettled && !initialMotionSettledLatch[0]) {
-        androidx.compose.runtime.SideEffect { initialMotionSettledLatch[0] = true }
-    }
+    // The editor mounts as soon as its draft is loaded, also while the push slide runs, so the
+    // composer slides in with the page (artin 11-22, 1.28). Holding it back until the slide
+    // settled (#5320) left an empty strip sliding in and the input box popping in last; a static
+    // at-rest copy during the slide is the 1.29 follow-up (#proj-mobile:#277).
     val expectedDraftKey = remember(surface) { surface.threadComposerDraftKey() }
     val restingHeightKey = surface.threadComposerRestingHeightKey()
     if (
@@ -553,7 +549,6 @@ internal fun ThreadComposerRoute(
             composerInstanceId = baseComposerState.instanceId,
             expectedDraftKey = expectedDraftKey,
             draftState = composerDraftState,
-            pageInMotion = !initialMotionSettled,
         )
     ) {
         // Reserve the editor's resting height while it waits to mount, so the message list above
