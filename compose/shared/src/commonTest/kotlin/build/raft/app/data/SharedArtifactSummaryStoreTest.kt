@@ -201,4 +201,102 @@ class SharedArtifactSummaryStoreTest {
         store.clearAll()
         assertTrue(store.state.value.entries.isEmpty())
     }
+
+    @Test
+    fun offlineDiskCacheHydratesColdStartAndEvictsUnavailableOnRevalidation() = runTest {
+        val rows = InMemoryRaftOfflineResourceRows()
+        val offline = RaftOfflineResourceCache(rows, environmentId = { "https://api.example" }, scope = backgroundScope)
+        val resource = offline.resource(ArtifactSummaryResourceSpec)
+        val target = ArtifactLinkTarget("pt_a")
+
+        var gone = false
+        val api = FakeApi { okAnswer(it, unavailable = if (gone) setOf("pt_a") else emptySet()) }
+        val firstStore =
+            SharedArtifactSummaryStore(
+                api = api,
+                scope = backgroundScope,
+                nowMillis = { testScheduler.currentTime },
+                offlineResource = resource,
+                currentAccountId = { "user-1" },
+            )
+        firstStore.request(server, listOf(target))
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertIs<ArtifactSummaryAnswer.Ok>(firstStore.state.value.answersFor(server, listOf(target))["pt_a"])
+
+        // Cold start over same disk rows: cached card paints immediately, then background network revalidation evicts gone entry.
+        gone = true
+        val coldStore =
+            SharedArtifactSummaryStore(
+                api = api,
+                scope = backgroundScope,
+                nowMillis = { testScheduler.currentTime },
+                offlineResource = resource,
+                currentAccountId = { "user-1" },
+            )
+        coldStore.request(server, listOf(target))
+        // Disk hydration runs before the batch window fires.
+        advanceTimeBy(1)
+        assertIs<ArtifactSummaryAnswer.Ok>(coldStore.state.value.answersFor(server, listOf(target))["pt_a"])
+
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertEquals(ArtifactSummaryAnswer.Unavailable, coldStore.state.value.answersFor(server, listOf(target))["pt_a"])
+        assertEquals(null, resource.read(resource.key("user-1", server, target.key)!!))
+    }
+
+    @Test
+    fun offlineDiskHydrationRetriesAfterNullAccountAndDropServerFencesInFlightAndOlderUnavailableCannotDeleteNewerRow() = runTest {
+        val rows = InMemoryRaftOfflineResourceRows()
+        val offline = RaftOfflineResourceCache(rows, environmentId = { "https://api.example" }, scope = backgroundScope)
+        val resource = offline.resource(ArtifactSummaryResourceSpec)
+        val target = ArtifactLinkTarget("pt_b")
+
+        // Seed disk with a valid summary.
+        val seedApi = FakeApi { okAnswer(it) }
+        val seeder =
+            SharedArtifactSummaryStore(
+                api = seedApi,
+                scope = backgroundScope,
+                nowMillis = { testScheduler.currentTime },
+                offlineResource = resource,
+                currentAccountId = { "user-1" },
+            )
+        seeder.request(server, listOf(target))
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertIs<ArtifactSummaryAnswer.Ok>(seeder.state.value.answersFor(server, listOf(target))["pt_b"])
+
+        // Cold start where accountId is initially null: first request must NOT poison diskHydrationAttempted.
+        var accountId: String? = null
+        val slowApi = FakeApi { HomeNetworkResponse(500, "{}") }
+        val coldStore =
+            SharedArtifactSummaryStore(
+                api = slowApi,
+                scope = backgroundScope,
+                nowMillis = { testScheduler.currentTime },
+                offlineResource = resource,
+                currentAccountId = { accountId },
+            )
+        coldStore.request(server, listOf(target))
+        advanceTimeBy(ARTIFACT_SUMMARY_BATCH_WINDOW_MILLIS + 1)
+        assertEquals(ArtifactSummaryAnswer.Failed, coldStore.state.value.answersFor(server, listOf(target))["pt_b"])
+
+        // Once accountId becomes known, next request hydrates immediately from disk before network answers.
+        accountId = "user-1"
+        coldStore.request(server, listOf(target))
+        advanceTimeBy(1)
+        assertIs<ArtifactSummaryAnswer.Ok>(coldStore.state.value.answersFor(server, listOf(target))["pt_b"])
+
+        // dropServer clears memory for that server without touching other servers.
+        coldStore.dropServer(server)
+        assertEquals(emptyMap(), coldStore.state.value.answersFor(server, listOf(target)))
+
+        // Fenced negative removal: an older fetch's removeIfNotSuperseded cannot delete a newer fetch's persisted row.
+        val olderStarted = resource.fetchStarted()
+        val newerStarted = resource.fetchStarted()
+        val olderKey = resource.key("user-1", server, target.key, mintedAt = olderStarted)!!
+        val newerKey = resource.key("user-1", server, target.key, mintedAt = newerStarted)!!
+        val newerRecord = PersistedArtifactSummaryRecord("""{"id":"pt_b","title":"Fresh","version":2}""")
+        assertTrue(resource.write(newerKey, newerRecord, startedAt = newerStarted))
+        assertEquals(false, resource.removeIfNotSuperseded(olderKey, startedAt = olderStarted))
+        assertEquals(newerRecord, resource.read(resource.key("user-1", server, target.key)!!))
+    }
 }

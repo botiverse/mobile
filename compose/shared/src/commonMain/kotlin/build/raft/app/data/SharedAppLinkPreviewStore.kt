@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.links.raftAppLinkReadUrls
 import build.raft.app.reportProjectionRowDropped
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -22,6 +24,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
@@ -39,6 +47,85 @@ import kotlin.uuid.Uuid
  * - [Declined] / [Unavailable]: no prompt anywhere; the links stay plain.
  */
 enum class AppLinkConsentStatus { Allowing, Declining, Failed, Allowed, Declined, Unavailable }
+
+/** Disk-cached sanitized link-card response for stale-while-revalidate (#proj-mobile:#294). */
+@Serializable
+internal data class PersistedAppLinkPreviewRecord(
+    val kind: String,
+    val rawBodyJson: String,
+)
+
+internal const val PERSISTED_APP_LINK_KIND_BATCH = "v2"
+internal const val PERSISTED_APP_LINK_KIND_GET = "v1"
+
+internal val AppLinkPreviewResourceSpec: RaftOfflineResourceSpec<String, PersistedAppLinkPreviewRecord> =
+    RaftOfflineResourceSpec(
+        name = "app_link_preview",
+        version = 1,
+        serializer = PersistedAppLinkPreviewRecord.serializer(),
+        paramsId = { scopeKey -> scopeKey },
+        maxEntriesPerAccount = 300,
+        maxBytesPerEntry = 128 * 1024,
+        maxAgeMillis = 7L * 24 * 60 * 60 * 1000L,
+    )
+
+/**
+ * Strips prompts, signed action handles, view tickets, and `rate_limited` entries before writing a
+ * link-card response to disk so only display-only cards are cached (#proj-mobile:#294).
+ */
+internal fun sanitizeAppLinkPreviewBodyForDisk(kind: String, bodyText: String): String? {
+    val root = runCatching { Json.parseToJsonElement(bodyText) }.getOrNull() as? JsonObject ?: return null
+    return when (kind) {
+        PERSISTED_APP_LINK_KIND_BATCH -> {
+            val items = root["items"] as? JsonArray ?: return null
+            val sanitized =
+                items.mapNotNull { element ->
+                    val obj = element as? JsonObject ?: return@mapNotNull null
+                    val itemKind = (obj["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+                    when (itemKind) {
+                        "v1" -> obj
+                        "v2" ->
+                            JsonObject(
+                                obj.toMutableMap().apply {
+                                    this["ticket"] = JsonNull
+                                    this["actions"] = JsonArray(emptyList())
+                                }
+                            )
+                        "v3" -> {
+                            val previewItems = (obj["preview"] as? JsonObject)?.get("items") as? JsonArray
+                            val isConnectAccount =
+                                previewItems?.any { entry ->
+                                    ((entry as? JsonObject)?.get("type") as? JsonPrimitive)?.takeIf { it.isString }?.content == "connect_account"
+                                } == true
+                            if (isConnectAccount) {
+                                null
+                            } else {
+                                JsonObject(
+                                    obj.toMutableMap().apply {
+                                        this["ticket"] = JsonNull
+                                        this["actions"] = JsonArray(emptyList())
+                                    }
+                                )
+                            }
+                        }
+                        else -> null
+                    }
+                }
+            if (sanitized.isEmpty()) return null
+            Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("items" to JsonArray(sanitized))))
+        }
+        PERSISTED_APP_LINK_KIND_GET -> {
+            val previews = root["previews"] as? JsonArray ?: return null
+            if (previews.isEmpty()) return null
+            val filtered = LinkedHashMap<String, kotlinx.serialization.json.JsonElement>()
+            filtered["previews"] = previews
+            root["appIcons"]?.let { filtered["appIcons"] = it }
+            root["objectKeys"]?.let { filtered["objectKeys"] = it }
+            Json.encodeToString(JsonObject.serializer(), JsonObject(filtered))
+        }
+        else -> null
+    }
+}
 
 /** One message's answer, as read (web `Loaded`). */
 data class AppLinkLoaded(
@@ -62,6 +149,12 @@ data class AppLinkLoaded(
      * ([SharedAppLinkPreviewStore.keepFresh]). The number tells one mark from the next.
      */
     val changed: Int = 0,
+    /**
+     * True when hydrated from the offline disk cache before the live network read lands: cards
+     * render immediately (read-only, no handles/tickets/prompts) while `messageView` still requests
+     * a network revalidation (#proj-mobile:#294).
+     */
+    val staleFromDisk: Boolean = false,
 ) {
     /** The links whose card carries [objectKey] ([APP_LINK_ALL_OBJECTS]: any digest), in link order. */
     internal fun keyedUrls(objectKey: String): List<String> =
@@ -282,7 +375,7 @@ fun SharedAppLinkPreviewState.messageView(
     val ownsLimited = loaded.limited.isNotEmpty() && loaded.viewId == viewId
     val readWhole = loaded.limited.isNotEmpty() && !ownsLimited
     val prompts = loaded.results.values.filterIsInstance<AppLinkResult.Consent>()
-    if (prompts.isEmpty()) return AppLinkMessageView(loaded.results, wantsRead = readWhole, readSignature = "", readsLimited = ownsLimited)
+    if (prompts.isEmpty()) return AppLinkMessageView(loaded.results, wantsRead = readWhole || loaded.staleFromDisk, readSignature = "", readsLimited = ownsLimited)
     val conversationKey = appLinkConversationKey(viewerKey, conversationId)
     val results = LinkedHashMap(loaded.results)
     var stale = false
@@ -305,7 +398,7 @@ fun SharedAppLinkPreviewState.messageView(
         if (status != AppLinkConsentStatus.Declined && status != AppLinkConsentStatus.Unavailable) results[prompt.url] = prompt
     }
     val signature = prompts.joinToString(",") { (epoch[appLinkAppKey(viewerKey, it.app.id)] ?: 0).toString() }
-    return AppLinkMessageView(results = results, wantsRead = stale || readWhole, readSignature = signature, readsLimited = ownsLimited)
+    return AppLinkMessageView(results = results, wantsRead = stale || readWhole || loaded.staleFromDisk, readSignature = signature, readsLimited = ownsLimited)
 }
 
 private fun String.appLinkOrigin(): String = "https://" + substringAfter("://").substringBefore('/').substringBefore('?')
@@ -314,7 +407,10 @@ private fun String.appLinkOrigin(): String = "https://" + substringAfter("://").
  * App link previews for every message on screen (web `useAppLinkPreviews` +
  * `linkPreviewConsentStore`): one read per message once its row is composed, kept in memory
  * for the session per viewer, Server, message and content; one answer to an App's prompt
- * updates every message. Nothing is persisted; the server is the record.
+ * updates every message. Sanitized display-only cards (without prompts, `connect_account`,
+ * view tickets, signed action handles, or `rate_limited` items) are persisted per
+ * (environment, account, Server) via [RaftOfflineResource] for cold-start stale-while-revalidate
+ * (#proj-mobile:#294).
  */
 class SharedAppLinkPreviewStore internal constructor(
     private val api: RaftAppLinkPreviewApi,
@@ -336,11 +432,17 @@ class SharedAppLinkPreviewStore internal constructor(
     changedHints: Flow<RaftLinkCardChangedHint> = RaftLinkCardChangedHints.hints,
     /** The process's one "came back" signal (#proj-mobile:#198). */
     freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    /** Disk cache for stale-while-revalidate link cards (#proj-mobile:#294). */
+    private val offlineResource: RaftOfflineResource<String, PersistedAppLinkPreviewRecord>? = null,
+    private val currentAccountId: () -> String? = { null },
 ) {
     private val _state = raftStoreState(initialState, "SharedAppLinkPreviewStore")
     val state: StateFlow<SharedAppLinkPreviewState> = _state.asStateFlow()
 
     private val inFlight = mutableSetOf<String>()
+    private val stateGuardLock = SynchronizedObject()
+    private val diskHydrationAttempted = mutableSetOf<String>()
+    private val serverGenerations = HashMap<String, Long>()
 
     /** A server answered the batched read 404 and then the GET: this session reads with the GET (web `batchedReadMissing`). */
     private var batchedReadMissing = false
@@ -358,7 +460,55 @@ class SharedAppLinkPreviewStore internal constructor(
      * way when this runs is not kept.
      */
     fun clearAll() {
-        _state.update { SharedAppLinkPreviewState(generation = it.generation + 1) }
+        synchronized(stateGuardLock) {
+            diskHydrationAttempted.clear()
+            _state.update { SharedAppLinkPreviewState(generation = it.generation + 1) }
+        }
+    }
+
+    /** Drops one server's cached answers and fences any in-flight reads for it (server access lost). */
+    fun dropServer(serverId: String) {
+        val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        synchronized(stateGuardLock) {
+            serverGenerations[cleanServer] = (serverGenerations[cleanServer] ?: 0L) + 1L
+            diskHydrationAttempted.removeAll { keyBelongsToServer(it, cleanServer) }
+            _state.update { state ->
+                val nextEntries = state.entries.filterNot { (key, loaded) ->
+                    loaded.serverId == cleanServer || keyBelongsToServer(key, cleanServer)
+                }
+                val nextStatus = state.status.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                val nextEpoch = state.epoch.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                val nextClaims = state.claims.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                val nextMessageCards = state.messageCards.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                val nextSignatures = state.messageCardSignatures.filterKeys { !keyBelongsToServer(it, cleanServer) }
+                if (
+                    nextEntries.size == state.entries.size &&
+                    nextStatus.size == state.status.size &&
+                    nextEpoch.size == state.epoch.size &&
+                    nextClaims.size == state.claims.size &&
+                    nextMessageCards.size == state.messageCards.size &&
+                    nextSignatures.size == state.messageCardSignatures.size
+                ) {
+                    state
+                } else {
+                    state.copy(
+                        entries = nextEntries,
+                        status = nextStatus,
+                        epoch = nextEpoch,
+                        claims = nextClaims,
+                        messageCards = nextMessageCards,
+                        messageCardSignatures = nextSignatures,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun keyBelongsToServer(key: String, serverId: String): Boolean {
+        val firstColon = key.indexOf(':')
+        if (firstColon < 0) return false
+        val rest = key.substring(firstColon + 1)
+        return rest == serverId || rest.startsWith("$serverId:")
     }
     private var epochSeq = initialState.epoch.values.maxOrNull() ?: 0
 
@@ -387,6 +537,58 @@ class SharedAppLinkPreviewStore internal constructor(
         scope.launch { readOnStore(viewerKey, serverId, messageId, content, conversationId, batch, presence) }
     }
 
+    private fun resolveDiskAccountId(viewerKey: String): String? =
+        currentAccountId()?.trim()?.takeIf { it.isNotEmpty() }
+            ?: viewerKey.substringBefore(':').trim().takeIf { ':' in viewerKey && it.isNotEmpty() }
+
+    private fun diskScopeParam(messageId: String, content: String, mode: String): String =
+        "$messageId:${content.length}:${content.hashCode()}:$mode"
+
+    private suspend fun hydrateFromDisk(
+        accountId: String,
+        serverId: String,
+        messageId: String,
+        content: String,
+        mode: String,
+        readScope: String,
+        generation: Int,
+        serverGeneration: Long,
+    ) {
+        val resource = offlineResource ?: return
+        val diskKey = resource.key(accountId, serverId, diskScopeParam(messageId, content, mode)) ?: return
+        val record = runCatchingPreservingCancellation { resource.read(diskKey) }.getOrNull() ?: return
+        val parsed =
+            when (record.kind) {
+                PERSISTED_APP_LINK_KIND_BATCH -> parseAppLinkCardReadAnswer(record.rawBodyJson, resolveIcon)?.results
+                PERSISTED_APP_LINK_KIND_GET -> parseAppLinkPreviewAnswer(record.rawBodyJson, resolveIcon)
+                else -> null
+            } ?: return
+        // Disk cache holds display-only cards: never restore prompts, connect_account, pending chips, tickets, or signed handles.
+        val cardsOnly = LinkedHashMap<String, AppLinkResult>()
+        parsed.forEach { (url, result) ->
+            if (result is AppLinkResult.Card && result.connectUrl == null) {
+                cardsOnly[url] = result.copy(handles = emptyMap(), readAtMillis = null)
+            }
+        }
+        if (cardsOnly.isEmpty()) return
+        synchronized(stateGuardLock) {
+            if ((serverGenerations[serverId] ?: 0L) != serverGeneration) return
+            _state.update { state ->
+                if (state.generation != generation || readScope in state.entries) return@update state
+                val entries = LinkedHashMap(state.entries)
+                entries[readScope] =
+                    AppLinkLoaded(
+                        results = cardsOnly,
+                        epochs = state.epoch,
+                        serverId = serverId,
+                        staleFromDisk = true,
+                    )
+                while (entries.size > APP_LINK_RESULT_CACHE_MAX) entries.remove(entries.keys.first())
+                state.copy(entries = entries)
+            }
+        }
+    }
+
     private suspend fun readOnStore(
         viewerKey: String,
         serverId: String,
@@ -401,13 +603,46 @@ class SharedAppLinkPreviewStore internal constructor(
         fun wanted(state: SharedAppLinkPreviewState): Boolean =
             state.messageView(viewerKey, messageId, content, conversationId, artifactHosts(), mode, batch?.view?.id).wantsRead
         if (!wanted(_state.value)) return
-        // Only a message with nothing to show yet waits: a read again after Allow is the person's own and goes at once.
-        if (presence != null && _state.value.entries[readScope] == null && !reentryCooldownPassed(readScope, presence)) return
-        val before = _state.value
+        val hydrateAccountId = if (offlineResource != null) resolveDiskAccountId(viewerKey) else null
+        val hydrateTokens =
+            if (offlineResource != null && hydrateAccountId != null) {
+                synchronized(stateGuardLock) {
+                    val snapshot = _state.value
+                    if (snapshot.entries[readScope] == null && diskHydrationAttempted.add(readScope)) {
+                        snapshot.generation to (serverGenerations[serverId] ?: 0L)
+                    } else {
+                        null
+                    }
+                }
+            } else {
+                null
+            }
+        if (hydrateTokens != null && hydrateAccountId != null) {
+            hydrateFromDisk(
+                accountId = hydrateAccountId,
+                serverId = serverId,
+                messageId = messageId,
+                content = content,
+                mode = mode,
+                readScope = readScope,
+                generation = hydrateTokens.first,
+                serverGeneration = hydrateTokens.second,
+            )
+        }
+        // Only a message with nothing live to show yet waits: a read again after Allow is the person's own and goes at once.
+        val currentEntry = _state.value.entries[readScope]
+        if (presence != null && (currentEntry == null || currentEntry.staleFromDisk) && !reentryCooldownPassed(readScope, presence)) return
+        val (before, askedServerGeneration) =
+            synchronized(stateGuardLock) {
+                _state.value to (serverGenerations[serverId] ?: 0L)
+            }
         if (!wanted(before)) return
         if (!inFlight.add(readScope)) return
         val askedAt = before.epoch
         val askedGeneration = before.generation
+        val resource = offlineResource
+        val fetchStartedAt = resource?.fetchStarted()
+        val accountIdAtStart = resolveDiskAccountId(viewerKey)
         val sentAt = monotonicMillis()
         val fetched =
             try {
@@ -428,15 +663,18 @@ class SharedAppLinkPreviewStore internal constructor(
             caughtUpAt.remember(readScope, sentAt)
         }
         if (answer == null) {
-            _state.update { state ->
-                if (state.generation != askedGeneration) return@update state
-                val previous = state.entries[readScope] ?: return@update state
-                val kept =
-                    previous.results.filterValues { result ->
-                        result !is AppLinkResult.Consent ||
-                            state.status[appLinkAppKey(viewerKey, result.app.id)] != AppLinkConsentStatus.Allowed
-                    }
-                state.copy(entries = state.entries + (readScope to previous.copy(results = kept, epochs = askedAt)))
+            synchronized(stateGuardLock) {
+                if ((serverGenerations[serverId] ?: 0L) != askedServerGeneration) return
+                _state.update { state ->
+                    if (state.generation != askedGeneration) return@update state
+                    val previous = state.entries[readScope] ?: return@update state
+                    val kept =
+                        previous.results.filterValues { result ->
+                            result !is AppLinkResult.Consent ||
+                                state.status[appLinkAppKey(viewerKey, result.app.id)] != AppLinkConsentStatus.Allowed
+                        }
+                    state.copy(entries = state.entries + (readScope to previous.copy(results = kept, epochs = askedAt)))
+                }
             }
             return
         }
@@ -445,18 +683,46 @@ class SharedAppLinkPreviewStore internal constructor(
         val bare = raftAppLinkReadUrls(content, hosts, linkLimit(batch)).toSet()
         val results = answer.results.filterValues { it !is AppLinkResult.Consent || it.url in bare }
         val conversationKey = appLinkConversationKey(viewerKey, conversationId)
-        _state.update { state ->
-            if (state.generation != askedGeneration) return@update state
-            val claims = state.claims.toMutableMap()
-            results.values.filterIsInstance<AppLinkResult.Consent>().forEach { prompt ->
-                val key = "$conversationKey:${prompt.app.id}"
-                if (key !in claims) claims[key] = messageId
+        var accepted = false
+        synchronized(stateGuardLock) {
+            if ((serverGenerations[serverId] ?: 0L) != askedServerGeneration) return
+            _state.update { state ->
+                if (state.generation != askedGeneration) return@update state
+                accepted = true
+                val claims = state.claims.toMutableMap()
+                results.values.filterIsInstance<AppLinkResult.Consent>().forEach { prompt ->
+                    val key = "$conversationKey:${prompt.app.id}"
+                    if (key !in claims) claims[key] = messageId
+                }
+                val entries = LinkedHashMap(state.entries)
+                entries.remove(readScope)
+                entries[readScope] = AppLinkLoaded(results, askedAt, limited = answer.limited, viewId = batch?.view?.id, serverId = serverId)
+                while (entries.size > APP_LINK_RESULT_CACHE_MAX) entries.remove(entries.keys.first())
+                state.copy(entries = entries, claims = claims)
             }
-            val entries = LinkedHashMap(state.entries)
-            entries.remove(readScope)
-            entries[readScope] = AppLinkLoaded(results, askedAt, limited = answer.limited, viewId = batch?.view?.id, serverId = serverId)
-            while (entries.size > APP_LINK_RESULT_CACHE_MAX) entries.remove(entries.keys.first())
-            state.copy(entries = entries, claims = claims)
+        }
+        if (accepted && resource != null && accountIdAtStart != null && fetchStartedAt != null && answer.limited.isEmpty()) {
+            val diskKey = resource.key(accountIdAtStart, serverId, diskScopeParam(messageId, content, mode), mintedAt = fetchStartedAt)
+            if (diskKey != null) {
+                val hasCacheableCards = results.values.any { it is AppLinkResult.Card && it.connectUrl == null }
+                val rawKind = answer.rawKind
+                val rawBody = answer.rawBodyJson
+                val sanitized =
+                    if (hasCacheableCards && rawKind != null && rawBody != null) {
+                        sanitizeAppLinkPreviewBodyForDisk(rawKind, rawBody)
+                    } else {
+                        null
+                    }
+                if (sanitized != null && rawKind != null) {
+                    runCatchingPreservingCancellation {
+                        resource.write(diskKey, PersistedAppLinkPreviewRecord(rawKind, sanitized), startedAt = fetchStartedAt)
+                    }
+                } else if (!hasCacheableCards) {
+                    runCatchingPreservingCancellation {
+                        resource.removeIfNotSuperseded(diskKey, startedAt = fetchStartedAt)
+                    }
+                }
+            }
         }
     }
 
@@ -551,7 +817,8 @@ class SharedAppLinkPreviewStore internal constructor(
             diagnosticsLogger("app_link_cards_read $asked result=superseded code=${response?.code ?: -1}")
             return AppLinkFetch.Stale
         }
-        val parsed = response?.takeIf { it.isSuccessful }?.bodyText?.let { parseAppLinkCardReadAnswer(it, resolveIcon) }
+        val rawBodyText = response?.takeIf { it.isSuccessful }?.bodyText
+        val parsed = rawBodyText?.let { parseAppLinkCardReadAnswer(it, resolveIcon) }
         if (parsed == null) {
             diagnosticsLogger("app_link_cards_read_failed code=${response?.code ?: -1}")
             diagnosticsLogger("app_link_cards_read $asked result=failed code=${response?.code ?: -1}")
@@ -565,17 +832,28 @@ class SharedAppLinkPreviewStore internal constructor(
         val refused = parsed.itemCount - cards - parsed.limited.size
         if (refused > 0) reportProjectionRowDropped("app_link_cards_read", "item_refused", diagnostics = diagnosticsLogger)
         view.settled.value = AppLinkViewRead(seq, true, urls, parsed.limited.keys.mapTo(HashSet()) { appLinkPreviewHref(it) ?: it })
-        return AppLinkFetch.Answer(parsed.results.stampedReadAt(nowMillis()), parsed.limited)
+        return AppLinkFetch.Answer(
+            results = parsed.results.stampedReadAt(nowMillis()),
+            limited = parsed.limited,
+            rawKind = PERSISTED_APP_LINK_KIND_BATCH.takeIf { urls == null },
+            rawBodyJson = rawBodyText.takeIf { urls == null },
+        )
     }
 
     private suspend fun fetchWithGet(messageId: String, serverId: String): AppLinkFetch {
         val response = callOrNull("app_link_previews_read_error") { api.readPreviews(messageId, serverId) }
-        val parsed = response?.takeIf { it.isSuccessful }?.bodyText?.let { parseAppLinkPreviewAnswer(it, resolveIcon) }
+        val rawBodyText = response?.takeIf { it.isSuccessful }?.bodyText
+        val parsed = rawBodyText?.let { parseAppLinkPreviewAnswer(it, resolveIcon) }
         if (parsed == null) {
             diagnosticsLogger("app_link_previews_read_failed code=${response?.code ?: -1}")
             return AppLinkFetch.Failed
         }
-        return AppLinkFetch.Answer(parsed, emptyMap())
+        return AppLinkFetch.Answer(
+            results = parsed,
+            limited = emptyMap(),
+            rawKind = PERSISTED_APP_LINK_KIND_GET,
+            rawBodyJson = rawBodyText,
+        )
     }
 
     /** Prepares a `confirm: "prepare"` button: the description Raft's confirmation shows. */
@@ -1046,7 +1324,10 @@ class SharedAppLinkPreviewStore internal constructor(
     private val messageCardInFlight = mutableSetOf<String>()
 
     private suspend fun readMessageCardNow(viewerKey: String, serverId: String, messageId: String, view: AppLinkCardView, locale: String, key: String): Boolean {
-        val askedGeneration = _state.value.generation
+        val (askedGeneration, askedServerGeneration) =
+            synchronized(stateGuardLock) {
+                _state.value.generation to (serverGenerations[serverId] ?: 0L)
+            }
         view.seq += 1
         val seq = view.seq
         val response = callOrNull("message_card_read_error") { api.readLinkCards(messageId, serverId, messageCardReadRequestBody(view, locale)) }
@@ -1058,14 +1339,17 @@ class SharedAppLinkPreviewStore internal constructor(
         }
         live.handles.forEach { view.tickets[it.url] = it.ticket }
         val stamped = live.copy(readAtMillis = nowMillis())
-        _state.update { state ->
-            if (state.generation != askedGeneration) return@update state
-            val cards = LinkedHashMap(state.messageCards)
-            cards.remove(key)
-            cards[key] = stamped
-            while (cards.size > APP_LINK_RESULT_CACHE_MAX) cards.remove(cards.keys.first())
-            val signatures = state.messageCardSignatures.filterKeys { it in cards } + (key to state.messageCardSignature(viewerKey, stamped))
-            state.copy(messageCards = cards, messageCardSignatures = signatures)
+        synchronized(stateGuardLock) {
+            if ((serverGenerations[serverId] ?: 0L) != askedServerGeneration) return true
+            _state.update { state ->
+                if (state.generation != askedGeneration) return@update state
+                val cards = LinkedHashMap(state.messageCards)
+                cards.remove(key)
+                cards[key] = stamped
+                while (cards.size > APP_LINK_RESULT_CACHE_MAX) cards.remove(cards.keys.first())
+                val signatures = state.messageCardSignatures.filterKeys { it in cards } + (key to state.messageCardSignature(viewerKey, stamped))
+                state.copy(messageCards = cards, messageCardSignatures = signatures)
+            }
         }
         return true
     }
@@ -1166,7 +1450,12 @@ private fun Map<String, AppLinkResult>.stampedReadAt(atMillis: Long): Map<String
     mapValues { (_, result) -> if (result is AppLinkResult.Card) result.copy(readAtMillis = atMillis) else result }
 
 private sealed interface AppLinkFetch {
-    data class Answer(val results: Map<String, AppLinkResult>, val limited: Map<String, Int>) : AppLinkFetch
+    data class Answer(
+        val results: Map<String, AppLinkResult>,
+        val limited: Map<String, Int>,
+        val rawKind: String? = null,
+        val rawBodyJson: String? = null,
+    ) : AppLinkFetch
 
     data object Failed : AppLinkFetch
 

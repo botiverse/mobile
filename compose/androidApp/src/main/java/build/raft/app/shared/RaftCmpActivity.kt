@@ -4047,7 +4047,6 @@ internal object RaftAdapters {
         installAndroidAppScopeEventBus(context)
         installAndroidThreadComposerTemporaryFileRetirement(context)
         RaftAndroidSqlDatabaseContext.init(context)
-        RaftAndroidAvatarCacheProcess.startAsync(context.applicationContext)
         SharedBinaryDownloader.setDiagnosticsLogger { tag, message ->
             // Transport failures must reach release-build feedback logs: avatar/image
             // downloads otherwise fail silently in production (Hands 39eec0a3/d208b2f2).
@@ -4061,7 +4060,20 @@ internal object RaftAdapters {
             return
         }
         initialized = true
+        // #proj-mobile:#294: one-time off-main-thread cleanup of the retired slock-avatar-render-v1
+        // durable avatar directory (image_cache/avatar_durable_v1); Coil owns avatar caching now.
+        val appContext = context.applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            cleanupLegacyAndroidAvatarCacheDir(appContext.cacheDir)
+        }
     }
+}
+
+internal fun cleanupLegacyAndroidAvatarCacheDir(cacheDir: File?): Boolean {
+    val root = cacheDir ?: return false
+    val legacyDir = root.resolve(RAFT_ANDROID_IMAGE_CACHE_DIR_NAME).resolve("avatar_durable_v1")
+    if (!legacyDir.exists()) return false
+    return runCatching { legacyDir.deleteRecursively() }.getOrDefault(false)
 }
 
 private data class PendingThreadAttachmentUpload(
