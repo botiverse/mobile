@@ -19,8 +19,9 @@ import kotlinx.serialization.json.JsonObject
  * column (a member's profile over the channel details) and the Artifact it opened in the Artifact column. Both belong
  * to that conversation (web: its page's address), not to what its detail shows: jumping to a message, and a reply
  * thread replacing the conversation in the detail, folding into it or going back to it, keep them; picking another
- * conversation closes them. When the window leaves the wide layout they reopen as pages on the platform stack, as they
- * would have opened there.
+ * conversation closes them, and its beside memory (AppShellBesideMemoryEffects.kt) opens what was open beside that
+ * one. When the window leaves the wide layout they reopen as pages on the platform stack, as they would have opened
+ * there.
  */
 
 /**
@@ -31,6 +32,9 @@ internal data class RaftDetailConversation(val serverId: String, val conversatio
 
 internal fun RaftAdaptiveDetailIdentity.detailConversation(): RaftDetailConversation =
     RaftDetailConversation(serverId, parentChannelId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread } ?: threadId)
+
+/** The tab an agent's profile in the profile column shows ([tab], `profile`, `activity`, …), by the page's entry id. */
+internal data class RaftProfileAgentTab(val entryId: Long, val tab: String)
 
 /**
  * The side columns' pages, whether each column is on screen right now (Back goes by that, not the pages alone), and
@@ -48,10 +52,15 @@ internal class RaftWideSideColumns {
     var conversation by mutableStateOf<RaftDetailConversation?>(null)
         private set
 
+    /** The tab the agent profile at the top of the profile cell shows, as its page reports it ([reportAgentTab]). */
+    var profileAgentTab by mutableStateOf<RaftProfileAgentTab?>(null)
+        private set
+
     /** Another conversation was picked: its columns close and the row is restored. */
     fun cleared() {
         profile = profile.cleared()
         artifact = artifact.cleared()
+        profileAgentTab = null
         expand.restore()
     }
 
@@ -59,6 +68,12 @@ internal class RaftWideSideColumns {
     fun moveTo(next: RaftDetailConversation?) {
         cleared()
         conversation = next
+    }
+
+    /** The agent profile page of entry [entryId] in the profile cell shows [tab] (MembersDetailContent reports it). */
+    fun reportAgentTab(entryId: Long, tab: String) {
+        val next = RaftProfileAgentTab(entryId, tab)
+        if (profileAgentTab != next) profileAgentTab = next
     }
 
     /**
@@ -158,6 +173,7 @@ internal fun RaftWorkspaceDetailRow(
         artifactOpen = columnHost && detailAccepted && columns.artifact.isOpen,
         onArtifactShown = { columns.artifactShown = it },
         expand = columns.expand,
+        onAgentTab = columns::reportAgentTab,
         main = main,
     )
 }

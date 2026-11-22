@@ -3,11 +3,12 @@ package build.raft.app
 /*
  * What was open beside a conversation on the wide layout, remembered per conversation (web
  * docs/frontend/beside-memory.md and packages/web/src/store/besideMemory.ts, botiverse/slock staging 51c1f706a).
- * Switching channels loses what was open beside the conversation: the shell closes its profile and Artifact columns
- * when another conversation is picked (RaftWideSideColumns.kt), and the reply thread's column belongs to the selection
- * it opened beside (AdaptiveSideThread.kt).
+ * The shell closes its profile and Artifact columns when another conversation is picked (RaftWideSideColumns.kt), and
+ * the reply thread's column belongs to the detail it opened beside (AdaptiveSideThread.kt): this memory opens again
+ * what was open beside the conversation entered.
  *
- * The rules, as pure functions (this file); the device's storage is RaftBesideMemoryRepository.kt.
+ * The rules, as pure functions (this file); the device's storage is RaftBesideMemoryRepository.kt; the shell's wiring
+ * (what shows, what opens, the visibility checks) is AppShellBesideMemoryEffects.kt.
  * - Remembered per person, server and conversation, on this device only: the open reply thread (its parent message),
  *   the open Artifact and its pinned version, the open profile (an agent's or a person's) with an agent profile's tab,
  *   and which of them is in front. Not widths, the Tasks / Files cards, dialogs, scroll positions or any other live
@@ -307,7 +308,19 @@ internal data class RaftBesideConversation(
     val conversationId: String,
     val named: RaftBesideState = RaftBesideState(),
     val threadTaken: Boolean = false,
-)
+) {
+    /** The conversation the side columns belong to ([RaftWideSideColumns.conversation]). */
+    val detail: RaftDetailConversation get() = RaftDetailConversation(serverId, conversationId)
+}
+
+/**
+ * The reply thread this detail shows in its conversation's own place (a notification or a link opened it there, or the
+ * side thread folded into it), by its parent message: the conversation's thread, as the side thread is.
+ */
+internal fun RaftAdaptiveDetailIdentity.besideMainThread(): String? =
+    parentMessageId?.takeIf {
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread && !parentChannelId.isNullOrBlank() && isRaftBesideId(it)
+    }
 
 /** The DMs tab ([RaftWideNavEntry.surface]): its detail is a DM's own page. */
 private const val RaftBesideDmsSurface = "dms"
@@ -325,15 +338,15 @@ internal fun raftBesideConversationOf(shown: RaftWideNavEntry?): RaftBesideConve
     val identity = detail.identity
     if (identity.serverId != entry.serverId) return null
     if (detail.route.channelKind.normalizedThreadChannelKind() == RaftTaskConversationChannelKind) return null
+    val conversation = identity.detailConversation()
+    if (!isRaftBesideId(conversation.conversationId)) return null
     return when (identity.surfaceKind) {
         RaftThreadSurfaceKind.Channel, RaftThreadSurfaceKind.DirectMessage ->
-            identity.threadId.takeIf { isRaftBesideId(it) }?.let { conversation ->
-                RaftBesideConversation(identity.serverId, conversation, threadTaken = identity.focusedMessageId != null)
-            }
+            RaftBesideConversation(conversation.serverId, conversation.conversationId, threadTaken = identity.focusedMessageId != null)
         RaftThreadSurfaceKind.ReplyThread -> {
-            val conversation = identity.parentChannelId?.takeIf { isRaftBesideId(it) } ?: return null
-            val parent = identity.parentMessageId?.takeIf { isRaftBesideId(it) } ?: return null
-            RaftBesideConversation(identity.serverId, conversation, named = RaftBesideState(thread = parent).normalized())
+            val parent = identity.besideMainThread() ?: return null
+            val named = RaftBesideState(thread = parent).normalized()
+            RaftBesideConversation(conversation.serverId, conversation.conversationId, named = named)
         }
         else -> null
     }

@@ -252,6 +252,12 @@ internal fun RaftPaneHost(
  */
 internal val LocalRaftPaneBackCloses = staticCompositionLocalOf { false }
 
+/**
+ * Where an agent's profile page in the profile column reports the tab it shows (MembersDetailContent), so the beside
+ * memory remembers it with the profile (AppShellBesideMemoryEffects.kt); null everywhere else.
+ */
+internal val LocalRaftProfileAgentTabReport = compositionLocalOf<((String) -> Unit)?> { null }
+
 /*
  * The profile column (#189 step 3; web channelSideLayout's `[profile, context, details]` column, 400 wide, at least
  * 320): on the wide layout the pages with the Supporting role (a member's profile, the channel details and the
@@ -433,6 +439,8 @@ internal fun RaftProfileColumnCellStack(
     openArtifact: ((String, JsonObject) -> Unit)? = null,
     /** Whether Back is the column's at all: not while an Artifact column opened after it is shown (it closes first). */
     backOn: () -> Boolean = { true },
+    /** The tab an agent's profile page of the profile cell shows, by its entry id ([LocalRaftProfileAgentTabReport]). */
+    onAgentTab: ((Long, String) -> Unit)? = null,
     page: @Composable (entry: RaftPaneEntry, active: Boolean) -> Unit = { entry, pageActive ->
         val pageData = remember(entry) { entry.pageData.toKuiklyJson() }
         RaftChildPage(pageName = entry.pageName, pageData = pageData, modifier = Modifier.fillMaxSize(), active = pageActive)
@@ -442,6 +450,8 @@ internal fun RaftProfileColumnCellStack(
     val currentOnChange by rememberUpdatedState(onChange)
     val currentOpenDetail by rememberUpdatedState(openDetail)
     val currentOpenArtifact by rememberUpdatedState(openArtifact)
+    val currentOnAgentTab by rememberUpdatedState(onAgentTab)
+    val reportsAgentTab = cell == RaftProfileColumnCell.Profile && onAgentTab != null
     val platform = LocalRaftHost.current.navigator
     val shown = LocalRaftPaneGridColumnShown.current
     val now = panes()
@@ -454,6 +464,7 @@ internal fun RaftProfileColumnCellStack(
     Box(Modifier.fillMaxSize()) {
         stack.entries.forEach { entry ->
             key(entry.id) {
+                val agentTabReport: (String) -> Unit = remember { { tab -> currentOnAgentTab?.invoke(entry.id, tab) } }
                 RaftPaneHost(
                     wide = true,
                     openInPane = { role, name, data ->
@@ -466,7 +477,10 @@ internal fun RaftProfileColumnCellStack(
                     close = { currentOnChange(currentPanes().close(cell, entry.id)) },
                     roleOf = ::raftProfileColumnRole,
                 ) {
-                    CompositionLocalProvider(LocalRaftPaneBackCloses provides (entry == first)) {
+                    CompositionLocalProvider(
+                        LocalRaftPaneBackCloses provides (entry == first),
+                        LocalRaftProfileAgentTabReport provides agentTabReport.takeIf { reportsAgentTab },
+                    ) {
                         page(entry, active && shown && entry == top)
                     }
                 }
@@ -643,6 +657,8 @@ internal fun RaftWorkspaceDetailGrid(
     },
     /** The row's Expand (#189 rule 5): the shell's ([RaftWideSideColumns.expand]). */
     expand: RaftPaneGridExpand = remember { RaftPaneGridExpand() },
+    /** The tab an agent's profile in the profile column shows, by its entry id ([RaftWideSideColumns.reportAgentTab]). */
+    onAgentTab: ((Long, String) -> Unit)? = null,
     main: @Composable () -> Unit,
 ) {
     // Rule 5: Back restores an expanded row first (web: Escape, before the panels' own). Composed when it turns on, so
@@ -696,6 +712,7 @@ internal fun RaftWorkspaceDetailGrid(
                             openArtifact = openArtifact,
                             // An Artifact column opened after the profile's last page closes first.
                             backOn = { !(currentArtifactDeclared && currentArtifact().isOnTopOf(currentPanes())) },
+                            onAgentTab = onAgentTab,
                             page = page,
                         )
                     }
