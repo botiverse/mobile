@@ -4373,6 +4373,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">この移行は確認待ちの状態ではなくなりました。ページを更新して、現在の状態を確認してください。</string>
     <string name="agent_migration_error_hosted_memory_unimportable">エージェントの MEMORY.md をクラウドに移行できません。ファイルが大きすぎるか、プレーンテキストではないか、クラウドに拒否されました。MEMORY.md をプレーンテキストに整理するようエージェントに依頼してから、もう一度お試しください。</string>
     <string name="agent_migration_error_not_cancelable">エージェントはすでにクラウドに移行したため、この移行はキャンセルできません。</string>
+    <string name="agent_migration_error_superseded">この移行の後に新しい移行が開始されました。移行の状態を更新してください。</string>
+    <string name="agent_migration_error_not_dismissible">閉じられるのは失敗した移行だけです。移行の状態を更新してください。</string>
+    <string name="agent_migration_error_dismiss_failed">この移行を閉じられませんでした。移行の状態を更新して、もう一度お試しください。</string>
+    <string name="agent_migration_dismiss_failed">閉じる</string>
     <string name="agent_migration_error_already_in_progress">このエージェントはすでに移行中です。完了するまで待ってから、もう一度お試しください。</string>
     <string name="agent_migration_error_pro_plan_required">エージェントの移行には Pro プランが必要です。このサーバーを Pro にアップグレードしてから、もう一度お試しください。</string>
     <string name="agent_migration_error_pro_plan_required_neutral">エージェントの移行には Pro プランが必要です。</string>

@@ -4373,6 +4373,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">这次迁移已经不在等你确认了。刷新一下看看现在的状态。</string>
     <string name="agent_migration_error_hosted_memory_unimportable">Agent 的 MEMORY.md 没法迁到云端：文件太大、不是纯文本，或者被云端拒绝。请让 Agent 把 MEMORY.md 精简成纯文本后再试。</string>
     <string name="agent_migration_error_not_cancelable">agent 已经迁到云端，这次迁移不能再取消了。</string>
+    <string name="agent_migration_error_superseded">这次迁移之后又发起了新的迁移。请刷新迁移状态。</string>
+    <string name="agent_migration_error_not_dismissible">只有失败的迁移才能关闭。请刷新迁移状态。</string>
+    <string name="agent_migration_error_dismiss_failed">Raft 无法关闭这条迁移记录。请刷新迁移状态后重试。</string>
+    <string name="agent_migration_dismiss_failed">关闭</string>
     <string name="agent_migration_error_already_in_progress">该 Agent 已有一个迁移正在进行。请等它完成后再试。</string>
     <string name="agent_migration_error_pro_plan_required">Agent 迁移需要 Pro 套餐。请先将此 Server 升级到 Pro，再重试。</string>
     <string name="agent_migration_error_pro_plan_required_neutral">Agent 迁移需要 Pro 套餐。</string>
