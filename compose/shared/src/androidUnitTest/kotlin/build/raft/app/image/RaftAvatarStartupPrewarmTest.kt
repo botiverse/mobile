@@ -8,6 +8,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -20,9 +22,11 @@ import kotlin.test.assertNull
  */
 @OptIn(DelicateCoilApi::class)
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34])
 class RaftAvatarStartupPrewarmTest {
     @Test
-    fun restartedImageLoaderPrewarmsDiskCachedAvatarIntoMemoryForSyncFrameOneHit() = runBlocking {
+    fun restartedImageLoaderPrewarmsDiskCachedAvatarIntoMemoryForSyncFrameOneHit(): Unit = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val avatarUrl = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
         val retiredHostUrl = "https://content.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
