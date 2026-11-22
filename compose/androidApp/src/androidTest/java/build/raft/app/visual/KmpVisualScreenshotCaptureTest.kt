@@ -660,6 +660,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerChannelSuggestions() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.channel-suggestions",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-channel-suggestions")
+                    .put("visualFixture", "channel_suggestions"),
+            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerImagePreview() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.image-preview",
@@ -816,6 +829,21 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-menu-default")
                     .put("visualFixture", "default")
                     .put("menuVariant", "default"),
+            crop = FULL_VIEWPORT_CROP,
+            requireReactionAtlas = true
+        )
+    }
+
+    @Test
+    fun captureThreadMessageMenuTask() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-menu.task",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-menu-task")
+                    .put("visualFixture", "default")
+                    .put("menuVariant", "task"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true
         )
@@ -1194,6 +1222,20 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowLongInlineCode() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.long-inline-code",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-long-inline-code")
+                    .put("visualFixture", "long_inline_code"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.long-inline-code", "visual-thread-message-row-long-inline-code", widthDp = 390) }
+        )
+    }
+
+    @Test
     fun captureThreadMessageRowGfmTaskListShort() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.gfm-task-list-short",
@@ -1208,6 +1250,62 @@ class KmpVisualScreenshotCaptureTest {
             // therefore must not be admitted by the generic colour/stability
             // checks alone.
             readyToken = "thread_visual_ready fixtureKey=gfm_task_list_short"
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdLinkRef() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-link-ref",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-link-ref")
+                    .put("visualFixture", "md_link_ref"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-link-ref", "visual-thread-message-row-md-link-ref", widthDp = 390) }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapSlice1() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-slice1",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-slice1")
+                    .put("visualFixture", "md_wrap_slice1"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-slice1", "visual-thread-message-row-md-wrap-slice1", widthDp = 260) }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapStatus606() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-status606",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-status606")
+                    .put("visualFixture", "md_wrap_status606"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-status606", "visual-thread-message-row-md-wrap-status606", widthDp = 390) }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdLatestRelease() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-latest-release",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-latest-release")
+                    .put("visualFixture", "md_latest_release"),
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-latest-release", "visual-thread-message-row-md-latest-release", widthDp = 390) }
         )
     }
 
@@ -1273,6 +1371,50 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-row-md-blockquote")
                     .put("visualFixture", "md_blockquote"),
             crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapAdjacent() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-adjacent",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-adjacent")
+                    .put("visualFixture", "md_wrap_adjacent"),
+            // Standard 390dp width: the '#31 / #521' adjacent pair must stay on
+            // one line (task #60 acceptance), so no narrow wrap column here.
+            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-adjacent", "visual-thread-message-row-md-wrap-adjacent", widthDp = 390) }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapClarify() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-clarify",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-clarify")
+                    .put("visualFixture", "md_wrap_clarify"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-clarify", "visual-thread-message-row-md-wrap-clarify", widthDp = 260) }
+        )
+    }
+
+    @Test
+    fun captureThreadMessageRowMdWrapTask607() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.md-wrap-task607",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-md-wrap-task607")
+                    .put("visualFixture", "md_wrap_task607"),
+            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
+            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-task607", "visual-thread-message-row-md-wrap-task607", widthDp = 260) }
         )
     }
 
@@ -1523,6 +1665,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeSearchChannelDropdown() {
+        captureKmpComponentCase(
+            caseId = "components.home.search.channel-dropdown",
+            pageName = "compose_home_search_channel_dropdown_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeSearchScopeDropdown() {
         captureKmpComponentCase(
             caseId = "components.home.search.scope-dropdown",
@@ -1617,6 +1769,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureWideActivityTask() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.activity-task",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "activity-task"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideChannel() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.channel",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "channel"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
     fun captureWideChannelThread() {
         // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
         // display (wm size 2560x1600, density 320), by touch.
@@ -1637,6 +1815,19 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.wide.settings",
             pageName = "compose_wide_shell_visual",
             pageData = JSONObject().put("scene", "settings"),
+            crop = WIDE_VIEWPORT_CROP,
+            settleMs = 3_000
+        )
+    }
+
+    @Test
+    fun captureWideTasksTask() {
+        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
+        // display (wm size 2560x1600, density 320), by touch.
+        captureKmpComponentCase(
+            caseId = "screens.wide.tasks-task",
+            pageName = "compose_wide_shell_visual",
+            pageData = JSONObject().put("scene", "tasks-task"),
             crop = WIDE_VIEWPORT_CROP,
             settleMs = 3_000
         )
@@ -1694,6 +1885,36 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureMembersCreateAgentClaudeDialog() {
+        captureKmpComponentCase(
+            caseId = "components.members.create-agent.claude-dialog",
+            pageName = "compose_create_agent_dialog_visual",
+            pageData = createAgentDialogPageData(runtime = "claude"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentClaudeCustomProviderDialog() {
+        captureKmpComponentCase(
+            caseId = "components.members.create-agent.claude-custom-provider-dialog",
+            pageName = "compose_create_agent_dialog_visual",
+            pageData =
+                createAgentDialogPageData(
+                    runtime = "claude",
+                    providerMode = "custom",
+                    providerApiUrl = "https://gateway.example.com",
+                    providerApiKey = "visual-test-key",
+                    advancedOpen = true,
+                    command = "claude"
+                ),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
     // React CREATE_AGENT_CASES counterparts (slock packages/web/visual-testing/
     // VisualTestingCases.tsx). State comes from the gated
     // compose_create_agent_state_visual fixture page; `variant` only selects it.
@@ -1702,6 +1923,17 @@ class KmpVisualScreenshotCaptureTest {
         captureMembersCreateAgentStateCase(
             caseId = "components.members.create-agent.dialog-error",
             variant = "error"
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentDialogEmpty() {
+        captureMembersCreateAgentStateCase(
+            caseId = "components.members.create-agent.dialog-empty",
+            variant = "empty",
+            // A blank initial name is replaced by a random suggestion, so clear
+            // the seeded name the way a user would to reach React's empty field.
+            beforeScreenshot = { clearEditableTextField("Product-QA-Bot") }
         )
     }
 
@@ -1738,6 +1970,66 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    @Test
+    fun captureRuntimeFormBuiltin() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.builtin",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.builtin"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormClaude() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.claude",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.claude"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormCodex() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.codex",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.codex"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormGrok() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.grok",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.grok"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormKimiSdk() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.kimi-sdk",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.kimi-sdk"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormPi() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.create.pi",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.create.pi"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
     // Runtime form picker cases (visual-cases.v3.json `picker`): the form at rest, then the capture
     // opens the named choice field and types the query into its list's search (one screen, not full
     // length: slock sharedCases has no capture.fullLength for them).
@@ -1749,6 +2041,17 @@ class KmpVisualScreenshotCaptureTest {
             pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-open"),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") }
+        )
+    }
+
+    @Test
+    fun captureRuntimeFormPickerBuiltinProviderSearch() {
+        captureKmpComponentCase(
+            caseId = "components.runtime-form.picker.builtin.provider-search",
+            pageName = "compose_runtime_form_visual",
+            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-search"),
+            crop = FULL_VIEWPORT_CROP,
+            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") }
         )
     }
 
@@ -1889,6 +2192,44 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    /** Clear the editable field currently showing [text] through its accessibility SetText action. */
+    private fun clearEditableTextField(text: String) {
+        // As the tap helpers do: a sleeping display, the keyguard or a system dialog (a launcher
+        // ANR) takes the active window, and the fixture's field is then not in the tree read here.
+        awaitFixtureIsActiveInputWindow("the field showing \"$text\"")
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
+        var field: android.view.accessibility.AccessibilityNodeInfo? = null
+        while (field == null) {
+            val roots = listOfNotNull(uiAutomation.rootInActiveWindow) + uiAutomation.windows.mapNotNull { it.root }
+            field =
+                roots
+                    .asSequence()
+                    .flatMap { findComposeNodesWithText(it, text).asSequence() }
+                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
+                    .firstOrNull()
+            if (field != null || SystemClock.uptimeMillis() >= deadline) break
+            Thread.sleep(250)
+        }
+        requireNotNull(field) {
+            val active = uiAutomation.rootInActiveWindow
+            "No editable field showing \"$text\" to clear; activeWindowPackage=${active?.packageName} " +
+                "windows=${uiAutomation.windows.size}"
+        }
+        val cleared =
+            field.performAction(
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                android.os.Bundle().apply {
+                    putCharSequence(
+                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        ""
+                    )
+                }
+            )
+        require(cleared) { "SetText(\"\") was rejected by the field showing \"$text\"" }
+        Thread.sleep(500)
+    }
+
     @Test
     fun captureAnnouncementModalFirstPage() {
         captureKmpComponentCase(
@@ -1932,10 +2273,83 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentDetailProfile() {
+        captureKmpComponentCase(
+            caseId = "components.members.agent-detail.profile",
+            pageName = "compose_members_agent_detail_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureMembersAgentDetailProfileScreen() {
         captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.profile",
             tab = "profile"
+        )
+    }
+
+    // task #535: Computer-row oracle states (web AgentDetailPanel.tsx blob
+    // c549c316acf5 :771-772 / :2053-2084). Expected: computer-offline = gray dot +
+    // Offline; computer-missing / no-computer = "No computer assigned", no dot.
+    // Android's rendering of these states is task #259; until it lands these
+    // captures record the current (wrong) behaviour as the before-frame.
+    @Test
+    fun captureMembersAgentDetailProfileComputerOfflineScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-offline",
+            tab = "profile",
+            memberId = "agent-computer-offline"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileComputerMissingScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.computer-missing",
+            tab = "profile",
+            memberId = "agent-computer-missing"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailProfileNoComputerScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.no-computer",
+            tab = "profile",
+            memberId = "agent-no-computer"
+        )
+    }
+
+    // task #537: a machine name that cannot fit one 390dp line, so the wrap /
+    // silent-truncate / overflow outcome is observable at all.
+    @Test
+    fun captureMembersAgentDetailProfileLongMachineNameScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.long-machine-name",
+            tab = "profile",
+            memberId = "agent-long-machine"
+        )
+    }
+
+    // task #259: a bare daemon (isComputer=false) with no computer version:
+    // web shows Connected · daemon vX, never a computer version.
+    @Test
+    fun captureMembersAgentDetailProfileDaemonOnlyScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile.daemon-only",
+            tab = "profile",
+            memberId = "agent-daemon-only"
+        )
+    }
+
+    // task #261: no server membership row -> serverRole omitted -> role chip hidden.
+    @Test
+    fun captureMembersAgentDetailProfileNoMembershipScreen() {
+        captureMembersAgentDetailStateCase(
+            caseId = "screens.members.agent-detail.profile.no-membership",
+            state = "no-membership"
         )
     }
 
@@ -5038,6 +5452,13 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 290
             )
+        private val THREAD_COMPOSER_SUGGESTIONS_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 320
+            )
         // React `components.thread.composer.member-suggestions`: `composerOffsetTop: 250` with
         // the height following the composer, a 342x358 capture.
         private val THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP =
@@ -5128,6 +5549,16 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
+                heightDp = 844
+            )
+        // Narrow 260dp column (matching the React 260px harness container) for
+        // the markdown message-row wrap cases: the narrow width forces a
+        // channel/task chip to wrap to the next line (inline-box line-wrap bug).
+        private val THREAD_MESSAGE_ROW_MD_WRAP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 260,
                 heightDp = 844
             )
 

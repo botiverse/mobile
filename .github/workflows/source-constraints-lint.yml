@@ -40,6 +40,10 @@ on:
       - "compose/shared/src/visualFixturesOff/**"
       - "compose/androidApp/src/main/java/**/*.kt"
       - "scripts/cmp_generate_page_registry.py"
+      # check_visual_pairs.py reads the capture test (compose/**/src/**/*.kt above) and its list.
+      - "scripts/ci/check_visual_pairs.py"
+      - "scripts/ci/visual_paired_cases.txt"
+      - "scripts/visual_android_case_filter.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
     branches:
@@ -82,3 +86,10 @@ jobs:
 
       - name: Enforce no production visual pages
         run: python3 scripts/ci/verify_no_production_visual_pages.py
+
+      # Every case the web captures for comparison has its Android capture (#proj-mobile:#280).
+      - name: Self-test visual pairs check
+        run: python3 scripts/ci/check_visual_pairs.py --self-test
+
+      - name: Enforce visual pairs
+        run: python3 scripts/ci/check_visual_pairs.py
