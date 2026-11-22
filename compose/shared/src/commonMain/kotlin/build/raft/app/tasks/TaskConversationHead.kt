@@ -1255,18 +1255,10 @@ internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): Task
     )
 }
 
-private val TaskHeadMonthResources =
-    listOf(
-        Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
-        Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
-        Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
-        Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
-    )
-
 @Composable
 internal fun TaskHeadDateTime.localized(timeFormat: String): String {
     val time = formatRaftClock(hour, minute, null, timeFormat)
-    return stringResource(Res.string.task_head_medium_date_time, stringResource(TaskHeadMonthResources[month - 1]), day, year, time)
+    return stringResource(Res.string.task_head_medium_date_time, raftLocalizedShortMonth(month), day, year, time)
 }
 
 /**

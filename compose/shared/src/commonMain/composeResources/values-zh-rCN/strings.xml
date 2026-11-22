@@ -327,6 +327,7 @@
     <string name="settings_app_logins_revoked">已撤销 %1$s</string>
     <string name="settings_app_logins_revoke_failed">未能撤销 %1$s，请重试。</string>
     <string name="settings_compact_month_day">%1$s%2$d日</string>
+    <string name="raft_short_date_time">%1$s %2$s</string>
     <string name="settings_archived_channels_title">已归档频道</string>
     <string name="settings_archived_channels_public">公开频道</string>
     <string name="settings_archived_channels_private">私有频道</string>

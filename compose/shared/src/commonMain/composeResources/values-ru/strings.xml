@@ -327,6 +327,7 @@
     <string name="settings_app_logins_revoked">Доступ приложения %1$s отозван</string>
     <string name="settings_app_logins_revoke_failed">Не удалось отозвать доступ у приложения %1$s. Попробуйте ещё раз.</string>
     <string name="settings_compact_month_day">%2$d %1$s</string>
+    <string name="raft_short_date_time">%1$s, %2$s</string>
     <string name="settings_archived_channels_title">Архивные каналы</string>
     <string name="settings_archived_channels_public">Публичный канал</string>
     <string name="settings_archived_channels_private">Закрытый канал</string>

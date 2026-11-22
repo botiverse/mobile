@@ -614,10 +614,10 @@ internal fun buildHostMembersPayload(
     RaftMembersPayload(
         instanceId = server.id.value,
         title = "Members",
-        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        localOffsetMinutes = timeContext?.localOffsetMinutes,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
-        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
+        timeFormat = timeContext?.timeFormat,
         agentPanelTabOrder = agentPanelTabOrder,
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.

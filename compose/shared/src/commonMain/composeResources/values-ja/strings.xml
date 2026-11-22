@@ -327,6 +327,7 @@
     <string name="settings_app_logins_revoked">%1$s のアクセスを取り消しました</string>
     <string name="settings_app_logins_revoke_failed">%1$s のアクセスを取り消せませんでした。もう一度お試しください。</string>
     <string name="settings_compact_month_day">%1$s月%2$d日</string>
+    <string name="raft_short_date_time">%1$s %2$s</string>
     <string name="settings_archived_channels_title">アーカイブ済みのチャンネル</string>
     <string name="settings_archived_channels_public">公開チャンネル</string>
     <string name="settings_archived_channels_private">非公開チャンネル</string>

@@ -37,21 +37,13 @@ internal fun settingsCompactDate(value: String?, context: RaftTimeContext?): Set
     }
 }
 
-private val SettingsCompactMonths =
-    listOf(
-        Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
-        Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
-        Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
-        Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
-    )
-
 /** [settingsCompactDate] as words; the raw value when it can't be read. */
 @Composable
 internal fun settingsCompactDateLabel(value: String, timeContext: RaftTimeContext? = null): String =
     when (val date = settingsCompactDate(value, currentRaftDateTimeContext(timeContext))) {
         is SettingsCompactDate.Clock -> date.text
         is SettingsCompactDate.MonthDay ->
-            stringResource(Res.string.settings_compact_month_day, stringResource(SettingsCompactMonths[date.month - 1]), date.day)
+            stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(date.month), date.day)
         is SettingsCompactDate.IsoDate -> date.text
         null -> value
     }

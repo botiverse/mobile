@@ -27,10 +27,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.RaftRelativeTimeLabel
-import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat12Hour
+import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.model.resolveRaftRelativeTimeLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -52,8 +52,6 @@ import org.jetbrains.compose.resources.StringResource
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.roundToLong
 import androidx.compose.ui.semantics.selected
 
 const val MEMBERS_PAGE = "compose_members"
@@ -304,8 +302,7 @@ internal data class MembersJoinedDate(val year: Int, val month: Int, val day: In
 internal fun String?.membersJoinedDateOrNull(timeContext: RaftTimeContext): MembersJoinedDate? {
     val trimmed = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val epochMillis = parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return null
-    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
-    val date = membersReminderCivilDateFromEpochDay(membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay))
+    val date = civilDateFromEpochDay(timeContext.localEpochDay(epochMillis))
     return MembersJoinedDate(year = date.year, month = date.month, day = date.day)
 }
 
@@ -354,10 +351,10 @@ internal fun RaftMemberDetailPayload.toCreatedAgentDetailPageData(
         (sourceServerId ?: identity?.sourceServerId)?.value?.trim()?.takeIf { it.isNotBlank() }?.let {
             put("sourceServerId", it)
         }
-        put("localOffsetMinutes", localOffsetMinutes)
+        localOffsetMinutes?.let { put("localOffsetMinutes", it) }
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
-        put("timeFormat", timeFormat)
+        timeFormat?.takeIf { it.isNotBlank() }?.let { put("timeFormat", it) }
         if (agentPanelTabOrder.isNotEmpty()) {
             put("agentPanelTabOrder", JSONArray().apply { agentPanelTabOrder.forEach(::put) })
         }
@@ -1423,91 +1420,42 @@ internal fun RaftAgentStatusIndicatorState.toMembersAgentStatusDisplayState(): M
     )
 
 /**
+ * Pure seam for [membersReminderRelativeTime]: uses shared [resolveRaftRelativeTimeLabel] so
+ * half-step rounding (`floor(x + 0.5)`) matches web `AgentRemindersSection.tsx` identically on
+ * JVM and Native/iOS. Returns `null` when [value] is unparseable or [timeContext] lacks `nowEpochMillis`.
+ */
+internal fun resolveMembersReminderRelativeTimeLabel(
+    value: String?,
+    timeContext: RaftTimeContext?,
+): RaftRelativeTimeLabel.Relative? {
+    val trimmed = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val context = timeContext?.takeIf { it.nowEpochMillis != null } ?: return null
+    parseRaftTimestampEpochMillisOrNull(trimmed, context.localOffsetMinutes) ?: return null
+    return resolveRaftRelativeTimeLabel(trimmed, context) as? RaftRelativeTimeLabel.Relative
+}
+
+/**
  * The reminder's fire time relative to now, in this locale (the shared relative-time catalog):
- * "in 3 hours", "5 minutes ago", "now"; the short date-time without a clock, the raw value when
- * it does not parse.
+ * "in 3 hours", "5 minutes ago", "now"; subscribes to the enclosing live [LocalRaftTimeContextProvider]
+ * when [timeContext] has no clock (`nowEpochMillis == null`), falls back to the localized short
+ * date-time when no clock is available, and returns the trimmed raw value when unparseable.
  */
 @Composable
 internal fun String?.membersReminderRelativeTime(timeContext: RaftTimeContext): String {
     val trimmed = this?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
-    val fireAtMillis =
-        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
-    val nowMillis = timeContext.nowEpochMillis ?: return trimmed.membersReminderShortDateTime(timeContext)
-    val diffMillis = fireAtMillis - nowMillis
-    val absMillis = abs(diffMillis)
-    val (unitMillis, unit) =
-        when {
-            absMillis < MembersReminderMillisPerHour -> MembersReminderMillisPerMinute to RaftRelativeTimeUnit.Minute
-            absMillis < MembersReminderMillisPerDay -> MembersReminderMillisPerHour to RaftRelativeTimeUnit.Hour
-            else -> MembersReminderMillisPerDay to RaftRelativeTimeUnit.Day
-        }
-    val amount = (diffMillis.toDouble() / unitMillis.toDouble()).roundToLong()
-        .coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong())
-        .toInt()
-    return RaftRelativeTimeLabel.Relative(amount, unit).localized()
+    val liveContext = currentRaftTimeContext(timeContext)
+    val offsetMinutes = (liveContext ?: timeContext).localOffsetMinutes
+    parseRaftTimestampEpochMillisOrNull(trimmed, offsetMinutes) ?: return trimmed
+    val resolved = resolveMembersReminderRelativeTimeLabel(trimmed, liveContext)
+        ?: return trimmed.membersReminderShortDateTime(timeContext)
+    return resolved.localized()
 }
 
-internal fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): String {
-    val trimmed = this?.trim().orEmpty()
-    if (trimmed.isEmpty()) return ""
-    val epochMillis =
-        parseRaftTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
-    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
-    val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
-    val millisOfDay = membersReminderFloorMod(localMillis, MembersReminderMillisPerDay)
-    val date = membersReminderCivilDateFromEpochDay(epochDay)
-    val hour = (millisOfDay / MembersReminderMillisPerHour).toInt()
-    val minute = ((millisOfDay % MembersReminderMillisPerHour) / MembersReminderMillisPerMinute).toInt()
-    return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
-}
-
-private fun membersReminderClock(hour: Int, minute: Int, timeFormat: String): String {
-    if (timeFormat != RaftTimeFormat12Hour) {
-        return "${hour.membersReminderTwoDigits()}:${minute.membersReminderTwoDigits()}"
-    }
-    val displayHour = (hour % 12).let { if (it == 0) 12 else it }
-    return "${displayHour.membersReminderTwoDigits()}:${minute.membersReminderTwoDigits()} ${if (hour < 12) "AM" else "PM"}"
-}
-
-private data class MembersReminderCivilDate(
-    val year: Int,
-    val month: Int,
-    val day: Int
-)
-
-private fun membersReminderCivilDateFromEpochDay(epochDay: Long): MembersReminderCivilDate {
-    val zeroDay = epochDay + 719_468L
-    val era = membersReminderFloorDiv(zeroDay, 146_097L)
-    val dayOfEra = zeroDay - era * 146_097L
-    val yearOfEra =
-        (dayOfEra - dayOfEra / 1_460L + dayOfEra / 36_524L - dayOfEra / 146_096L) / 365L
-    val year = yearOfEra + era * 400L
-    val dayOfYear = dayOfEra - (365L * yearOfEra + yearOfEra / 4L - yearOfEra / 100L)
-    val monthPrime = (5L * dayOfYear + 2L) / 153L
-    val day = dayOfYear - (153L * monthPrime + 2L) / 5L + 1L
-    val month = monthPrime + if (monthPrime < 10L) 3L else -9L
-    val adjustedYear = year + if (month <= 2L) 1L else 0L
-    return MembersReminderCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
-}
-
-private fun membersReminderFloorDiv(value: Long, divisor: Long): Long {
-    val quotient = value / divisor
-    val remainder = value % divisor
-    return if (remainder != 0L && (value xor divisor) < 0L) quotient - 1 else quotient
-}
-
-private fun membersReminderFloorMod(value: Long, divisor: Long): Long =
-    value - membersReminderFloorDiv(value, divisor) * divisor
-
-private fun Int.membersReminderTwoDigits(): String =
-    if (this < 10) "0$this" else toString()
-
-private val MembersReminderMonthNames =
-    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-
-private const val MembersReminderMillisPerMinute = 60_000L
-
-private const val MembersReminderMillisPerHour = 3_600_000L
-
-private const val MembersReminderMillisPerDay = 86_400_000L
+/**
+ * Localized short month/day + clock (web `formatShortDateTime`) for reminder and app-grant rows.
+ * Delegates to [raftLocalizedShortDateTime] (8 locales, respecting 12h/24h preference and DI timezone).
+ */
+@Composable
+internal fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): String =
+    raftLocalizedShortDateTime(this, timeContext)

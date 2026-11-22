@@ -15,6 +15,7 @@ import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.floorDiv
+import build.raft.app.model.formatRaftClock
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.normalizeRaftTimeFormatPreference
@@ -394,6 +395,34 @@ internal fun rememberRaftLocalClockFormatter(timeContext: RaftTimeContext? = nul
 internal fun rememberRaftIsoClockFormatter(timeContext: RaftTimeContext? = null): (String) -> String {
     val context = currentRaftEffectiveDateTimeContext(timeContext)
     return remember(context) { { iso -> context.formatClock(iso) ?: iso } }
+}
+
+private val RaftShortMonthResources =
+    listOf(
+        Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
+        Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
+        Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
+        Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
+    )
+
+/** Localized short month label (`1..12`), shared across compact dates, short date-times, and task heads. */
+@Composable
+internal fun raftLocalizedShortMonth(month: Int): String =
+    RaftShortMonthResources.getOrNull(month - 1)?.let { stringResource(it) } ?: month.toString()
+
+/**
+ * Localized short month/day + clock (web `formatShortDateTime`, e.g., `"Nov 5, 14:30"` / `"11月5日 14:30"`)
+ * in the viewer's [RaftTimeContext]; returns `""` when blank and falls back to the trimmed raw text when unparseable.
+ */
+@Composable
+internal fun raftLocalizedShortDateTime(iso: String?, timeContext: RaftTimeContext? = null): String {
+    val trimmed = iso?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    val parts = taskHeadDateTime(trimmed, context) ?: return trimmed
+    val monthDay = stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(parts.month), parts.day)
+    val clock = formatRaftClock(parts.hour, parts.minute, null, context.timeFormat)
+    return stringResource(Res.string.raft_short_date_time, monthDay, clock)
 }
 
 /**

@@ -327,6 +327,7 @@
     <string name="settings_app_logins_revoked">Acesso de %1$s revogado</string>
     <string name="settings_app_logins_revoke_failed">Não foi possível revogar %1$s. Tente novamente.</string>
     <string name="settings_compact_month_day">%2$d de %1$s</string>
+    <string name="raft_short_date_time">%1$s, %2$s</string>
     <string name="settings_archived_channels_title">Canais arquivados</string>
     <string name="settings_archived_channels_public">Canal público</string>
     <string name="settings_archived_channels_private">Canal privado</string>
