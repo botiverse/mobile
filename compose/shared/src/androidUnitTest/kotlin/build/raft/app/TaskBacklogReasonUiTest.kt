@@ -127,7 +127,7 @@ class TaskBacklogReasonUiTest {
             onNodeWithText("Todo").assertIsDisplayed()
             onNodeWithTag(TaskCreateStatusTestTag, useUnmergedTree = true).performClick()
             waitForIdle()
-            listOf("Backlog", "In Progress").forEach { onNodeWithText(it).assertIsDisplayed() }
+            listOf("Backlog", "In progress").forEach { onNodeWithText(it).assertIsDisplayed() }
             onNodeWithText("Backlog").performClick()
             waitForIdle()
             onNode(hasSetTextAction()).performTextInput("Offline drafts")
