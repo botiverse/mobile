@@ -865,7 +865,8 @@ internal fun SharedCreateAgentDialog(
                                 keyboardActions = KeyboardActions.Default,
                                 keyboardHeightChange = {},
                                 focusRequester = remember { FocusRequester() },
-                                autoFocus = !submitting,
+                                // Web: the form opens without the keyboard over it.
+                                autoFocus = false,
                                 onFocus = {},
                                 onBlur = {}
                             )
