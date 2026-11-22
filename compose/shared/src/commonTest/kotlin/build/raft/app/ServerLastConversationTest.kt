@@ -76,7 +76,7 @@ class ServerLastConversationTest {
     @Test
     fun switchingAToBToARestoresTheConversationOpenOnA() {
         val repository = ServerLastConversationRepository { MapPreferences() }
-        // The shell writes every shown selection under its server (the selection LaunchedEffect).
+        // The shell writes every conversation Chat shows under its server (AppShellAdaptiveSelectionEffect).
         fun show(state: RaftAdaptiveWorkspaceState): RaftAdaptiveWorkspaceState {
             val identity = state.selection?.identity ?: return state
             repository.write(owner, identity.serverId, identity.toServerLastConversation()!!)

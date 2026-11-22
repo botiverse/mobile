@@ -32,19 +32,29 @@ class CreateAgentRuntimeFormV2FailureTest {
     fun aFailedV2LoadIsAFailureWithItsCodeNeverV1() {
         assertEquals(
             CreateAgentRuntimeSection.Failed("runtime_form_v2_http_503"),
-            createAgentRuntimeSection(RuntimeFormV2Availability.Available, RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_503"))
+            createAgentRuntimeSection("codex", RuntimeFormV2Availability.Available, RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_503"))
         )
         // Before the runtime-options rows arrive nothing says the runtime lacks a form.
         assertEquals(
             CreateAgentRuntimeSection.Failed("x"),
-            createAgentRuntimeSection(RuntimeFormV2Availability.Unknown, RuntimeFormV2DialogLoad.Failed("x"))
+            createAgentRuntimeSection("codex", RuntimeFormV2Availability.Unknown, RuntimeFormV2DialogLoad.Failed("x"))
         )
+    }
+
+    @Test
+    fun withNoRuntimeChosenNothingIsLoadingOrUnavailable() {
+        for (availability in RuntimeFormV2Availability.entries) {
+            assertEquals(
+                CreateAgentRuntimeSection.NoRuntime,
+                createAgentRuntimeSection("", availability, RuntimeFormV2DialogLoad.Loading)
+            )
+        }
     }
 
     @Test
     fun aRuntimeWithoutTheV2MarkerIsUnavailableWhateverTheLoadSays() {
         for (load in listOf(RuntimeFormV2DialogLoad.Loading, RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_404"))) {
-            assertEquals(CreateAgentRuntimeSection.Unavailable, createAgentRuntimeSection(RuntimeFormV2Availability.Unavailable, load))
+            assertEquals(CreateAgentRuntimeSection.Unavailable, createAgentRuntimeSection("codex", RuntimeFormV2Availability.Unavailable, load))
         }
     }
 
@@ -70,6 +80,7 @@ class CreateAgentRuntimeFormV2FailureTest {
         assertEquals(
             CreateAgentRuntimeSection.Failed("runtime_form_v2_http_503"),
             createAgentRuntimeSection(
+                "codex",
                 unmarked.runtimeFormV2Availability("codex"),
                 RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_503")
             )

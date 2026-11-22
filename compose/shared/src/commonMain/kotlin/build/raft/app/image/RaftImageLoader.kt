@@ -1,5 +1,7 @@
 package build.raft.app.image
 
+import androidx.compose.ui.graphics.ImageBitmap
+import build.raft.app.compat.ui.toRaftImageBitmap
 import build.raft.app.raftLogWarn
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -7,21 +9,47 @@ import coil3.SingletonImageLoader
 import coil3.disk.DiskCache
 import coil3.intercept.Interceptor
 import coil3.memory.MemoryCache
+import coil3.request.CachePolicy
 import coil3.request.ErrorResult
+import coil3.request.ImageRequest
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
+import coil3.size.Precision
+import coil3.size.Scale
+import coil3.size.Size
 import coil3.svg.SvgDecoder
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val RAFT_IMAGE_DISK_CACHE_BYTES = 128L * 1024 * 1024
 private const val RAFT_IMAGE_MEMORY_CACHE_PERCENT = 0.2
 private const val RAFT_IMAGE_LOADER_LOG_TAG = "RaftImageLoader"
+private const val RAFT_AVATAR_PREWARM_DEFAULT_MAX = 64
+
+/**
+ * Shared decode bound for http(s) avatars and server logos across every slot size (19dp–51dp) and
+ * startup disk-to-memory prewarm (#proj-mobile:#290): large enough for 3x retina 51dp tiles while
+ * sharing one [MemoryCache.Key] across Home, Activity, Thread, and the iOS native navigation bar.
+ */
+internal val RaftAvatarDecodeSize: Size = Size(256, 256)
 
 private val raftImageLoaderInstalled = atomic(false)
+private val raftStartupAvatarPrewarmStarted = atomic(false)
+private val raftPrewarmLock = SynchronizedObject()
+private var raftPrewarmJob: Job? = null
+private var raftPrewarmGeneration = 0L
+private val raftPrewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /** The loader [raftBuildImageLoader] built last (the singleton), for [raftClearImageCaches]. */
 private val raftBuiltImageLoader = atomic<ImageLoader?>(null)
@@ -30,12 +58,128 @@ private val raftBuiltImageLoader = atomic<ImageLoader?>(null)
 internal fun raftCurrentImageLoader(): ImageLoader? = raftBuiltImageLoader.value
 
 /**
+ * Synchronous frame-1 Coil memory-cache lookup for an http(s) avatar / server logo keyed by
+ * [cacheKey] ([raftNetworkImageCacheKey]). Returns the decoded [ImageBitmap] immediately when
+ * already in memory (including after startup disk-to-memory prewarm), or null on a miss.
+ */
+internal fun raftAvatarMemoryCacheBitmap(cacheKey: String): ImageBitmap? {
+    val loader = raftBuiltImageLoader.value ?: return null
+    val memoryCache = loader.memoryCache ?: return null
+    val entry = memoryCache[MemoryCache.Key(cacheKey)] ?: return null
+    return runCatching { entry.image.toRaftImageBitmap() }.getOrNull()
+}
+
+/**
+ * Warms Coil's memory cache from Coil's on-disk cache for [urls] without touching the network
+ * (`CachePolicy.DISABLED` network, `CachePolicy.READ_ONLY` disk). Returns how many images were
+ * newly promoted from disk into memory.
+ */
+internal suspend fun raftPrewarmCachedImagesFromDisk(
+    context: PlatformContext,
+    urls: Collection<String>,
+    maxCount: Int = RAFT_AVATAR_PREWARM_DEFAULT_MAX,
+    imageLoader: ImageLoader? = null,
+): Int {
+    if (urls.isEmpty() || maxCount <= 0) return 0
+    return withContext(Dispatchers.Default) {
+        val loader =
+            imageLoader ?: run {
+                raftInstallImageLoader()
+                SingletonImageLoader.get(context)
+            }
+        val memoryCache = loader.memoryCache
+        val seenKeys = LinkedHashSet<String>()
+        var promoted = 0
+        for (rawUrl in urls) {
+            ensureActive()
+            if (seenKeys.size >= maxCount) break
+            val url = rawUrl.trim()
+            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) continue
+            val cacheKey = raftNetworkImageCacheKey(url)
+            if (!seenKeys.add(cacheKey)) continue
+            if (memoryCache?.get(MemoryCache.Key(cacheKey)) != null) continue
+            val request =
+                ImageRequest.Builder(context)
+                    .data(url)
+                    .size(RaftAvatarDecodeSize)
+                    .scale(Scale.FIT)
+                    .precision(Precision.INEXACT)
+                    .memoryCacheKey(cacheKey)
+                    .diskCacheKey(cacheKey)
+                    .networkCachePolicy(CachePolicy.DISABLED)
+                    .diskCachePolicy(CachePolicy.READ_ONLY)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .build()
+            val result =
+                try {
+                    loader.execute(request)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    null
+                }
+            if (result is SuccessResult) promoted += 1
+        }
+        promoted
+    }
+}
+
+/**
+ * One-shot startup prewarm on [Dispatchers.Default]: promotes recently used avatars and server
+ * logos from Coil's disk cache into its memory cache so cold-start frame 1 hits synchronously.
+ */
+internal fun raftScheduleStartupAvatarPrewarm(
+    context: PlatformContext,
+    urlsProvider: () -> Collection<String>,
+) {
+    val jobToStart =
+        synchronized(raftPrewarmLock) {
+            if (!raftStartupAvatarPrewarmStarted.compareAndSet(expect = false, update = true)) return
+            val generation = raftPrewarmGeneration
+            raftPrewarmScope.launch(start = CoroutineStart.LAZY) {
+                val urls =
+                    try {
+                        urlsProvider()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        emptyList()
+                    }
+                if (urls.isEmpty()) {
+                    synchronized(raftPrewarmLock) {
+                        if (raftPrewarmGeneration == generation) {
+                            raftStartupAvatarPrewarmStarted.value = false
+                        }
+                    }
+                    return@launch
+                }
+                try {
+                    raftPrewarmCachedImagesFromDisk(context, urls)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    Unit
+                }
+            }.also { raftPrewarmJob = it }
+        }
+    jobToStart.start()
+}
+
+/**
  * Drops every decoded and on-disk image of the previous account: called when the session is
  * cleared (logout, forced sign-out) or replaced by a different account. Image URLs can be
  * account-scoped (attachments, avatars), so they must not survive into the next session.
  */
 suspend fun raftClearImageCaches() {
     RaftSentAttachmentLocalImages.registry.clear()
+    build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
+    val runningPrewarm =
+        synchronized(raftPrewarmLock) {
+            raftPrewarmGeneration += 1L
+            raftStartupAvatarPrewarmStarted.value = false
+            raftPrewarmJob.also { raftPrewarmJob = null }
+        }
+    runCatching { runningPrewarm?.cancelAndJoin() }
     val loader = raftBuiltImageLoader.value ?: return
     withContext(Dispatchers.Default) {
         runCatching { loader.memoryCache?.clear() }
@@ -67,6 +211,12 @@ fun raftInstallImageLoader() {
  * clean process state. Pair with Coil's `SingletonImageLoader.reset()`. Never call from app code.
  */
 internal fun resetRaftImageLoaderForTest() {
+    synchronized(raftPrewarmLock) {
+        raftPrewarmGeneration += 1L
+        raftPrewarmJob?.cancel()
+        raftPrewarmJob = null
+        raftStartupAvatarPrewarmStarted.value = false
+    }
     raftImageLoaderInstalled.value = false
     raftBuiltImageLoader.value = null
 }

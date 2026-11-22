@@ -1875,41 +1875,10 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersCreateAgentCodexDialog() {
+    fun captureMembersCreateAgentDialog() {
         captureKmpComponentCase(
             caseId = "components.members.create-agent.dialog",
             pageName = "compose_create_agent_dialog_visual",
-            pageData = createAgentDialogPageData(runtime = "codex", errorMessage = "Failed to create agent"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureMembersCreateAgentClaudeDialog() {
-        captureKmpComponentCase(
-            caseId = "components.members.create-agent.claude-dialog",
-            pageName = "compose_create_agent_dialog_visual",
-            pageData = createAgentDialogPageData(runtime = "claude"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureMembersCreateAgentClaudeCustomProviderDialog() {
-        captureKmpComponentCase(
-            caseId = "components.members.create-agent.claude-custom-provider-dialog",
-            pageName = "compose_create_agent_dialog_visual",
-            pageData =
-                createAgentDialogPageData(
-                    runtime = "claude",
-                    providerMode = "custom",
-                    providerApiUrl = "https://gateway.example.com",
-                    providerApiKey = "visual-test-key",
-                    advancedOpen = true,
-                    command = "claude"
-                ),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -2599,6 +2568,37 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureSettingsServerDangerModal() {
         captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
+    }
+
+    @Test
+    fun captureAgentMigrationLogTable() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.table.phone",
+            pageName = "compose_agent_migration_log_visual",
+            pageData = JSONObject().put("view", "table"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureAgentMigrationLogChart() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.chart.phone",
+            pageName = "compose_agent_migration_log_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
+    fun captureAgentMigrationLogChartAgent() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.chart.agent.phone",
+            pageName = "compose_agent_migration_log_visual",
+            pageData = JSONObject().put("agent", "visual-mig-kirby"),
+            crop = FULL_VIEWPORT_CROP,
+            // The haze is blurred, which a software draw leaves out.
+            captureAppWindowSurface = true
+        )
     }
 
     // Settings > Computers is native again (RaftSettingsComputersPage). These
@@ -4426,24 +4426,6 @@ class KmpVisualScreenshotCaptureTest {
             .put("slug", slug)
             .put("unreadCount", unreadCount)
             .also { server -> avatarUrl?.let { server.put("avatarUrl", it) } }
-
-    private fun createAgentDialogPageData(
-        runtime: String,
-        providerMode: String = "default",
-        providerApiUrl: String = "",
-        providerApiKey: String = "",
-        advancedOpen: Boolean = false,
-        command: String = "",
-        errorMessage: String = ""
-    ): JSONObject =
-        JSONObject()
-            .put("runtime", runtime)
-            .put("providerMode", providerMode)
-            .put("providerApiUrl", providerApiUrl)
-            .put("providerApiKey", providerApiKey)
-            .put("advancedOpen", advancedOpen)
-            .put("command", command)
-            .put("errorMessage", errorMessage)
 
     private fun memberDetailVisualPageData(
         instanceId: String,

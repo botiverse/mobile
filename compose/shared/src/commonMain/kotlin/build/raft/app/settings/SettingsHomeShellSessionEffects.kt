@@ -1058,16 +1058,30 @@ internal fun AppShellHomePreviewEffect(
     }
 }
 
-// Moved verbatim out of RaftAppShellReadyContent (JVM method size; #4802, task #102).
+/**
+ * The server's last conversation (ServerLastConversation.kt), which Chat's default landing reads again after a server
+ * switch or a restart, is the one Chat showed last: [chatConversation], the conversation the wide layout's Chat shows
+ * (RaftRailPlaces.kt). A conversation opened from Activity, Search, Saved or Tasks is that tab's and leaves it alone
+ * (web layout-memory.md: only Chat's place is a conversation). Off the wide layout ([navRailActive] false) there is
+ * no rail and every selection the workspace keeps is written, as before (desktop mode off parks each open there).
+ */
 @Composable
 @NonRestartableComposable
 internal fun AppShellAdaptiveSelectionEffect(
     adaptiveWorkspaceState: RaftAdaptiveWorkspaceState?,
+    chatConversation: RaftAdaptiveDetailIdentity?,
+    navRailActive: Boolean,
     serverLastConversationRepository: ServerLastConversationRepository,
     serverLastConversationOwnerKey: String?,
 ) {
     LaunchedEffect(adaptiveWorkspaceState?.selection?.identity, serverLastConversationOwnerKey) {
+        if (navRailActive) return@LaunchedEffect
         val identity = adaptiveWorkspaceState?.selection?.identity ?: return@LaunchedEffect
+        val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
+        serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
+    }
+    LaunchedEffect(chatConversation, serverLastConversationOwnerKey) {
+        val identity = chatConversation ?: return@LaunchedEffect
         val conversation = identity.toServerLastConversation() ?: return@LaunchedEffect
         serverLastConversationRepository.write(serverLastConversationOwnerKey, identity.serverId, conversation)
     }

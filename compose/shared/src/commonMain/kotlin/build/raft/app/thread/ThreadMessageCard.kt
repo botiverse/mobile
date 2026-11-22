@@ -21,6 +21,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.markdown.LocalRaftMarkdownLinkLongPress
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
@@ -203,9 +204,25 @@ internal fun ThreadQuotedPermalinkCard(
                         stringResource(Res.string.thread_quoted_permalink_channel_fallback)
                     }
             val senderKind = item.authorKind.parsedMemberKindOrNull()
+            val jointAuthor =
+                rememberRaftJointActor(
+                    memberAvatarResolver = memberAvatarResolver,
+                    kind = senderKind,
+                    memberId = item.authorId,
+                    enabled = memberAvatarResolver.jointSurface,
+                )
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
-                    ?: item.avatarWireValue
+                    ?: item.avatarWireValue?.appAvatarWireValueOrNull()
+                    ?: jointAuthor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
+            val quotedAvatarPending =
+                avatarWireValue.isNullOrBlank() &&
+                    rememberRaftMemberAvatarPending(
+                        memberAvatarResolver = memberAvatarResolver,
+                        kind = senderKind,
+                        memberId = item.authorId,
+                        jointSurface = memberAvatarResolver.jointSurface,
+                    )
             build.raft.designsystem.components.RaftMessageQuotedPreview(
                 authorName = item.localizedAuthorName().ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
@@ -230,6 +247,7 @@ internal fun ThreadQuotedPermalinkCard(
                         label = item.localizedAuthorName(),
                         avatarSize = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.AvatarSize.edge,
                         cacheSubject = raftMemberAvatarCacheSubject(senderKind, item.authorId),
+                        avatarPending = quotedAvatarPending,
                     )
                 },
                 // RFC 077 (web QuoteCardContent): "(sent by Friday)" after the author, words only.
@@ -749,6 +767,15 @@ private fun ThreadMessageCardContent(
         resolveThreadRowAvatarWireValue(
             rememberRaftMemberAvatarWireValue(memberAvatarResolver, message.authorId)
         ) ?: jointAuthor?.renderedAvatarWireValue()
+    val authorAvatarPending =
+        message.externalAuthor == null &&
+            avatarWireValue.isNullOrBlank() &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = memberAvatarResolver,
+                kind = message.authorKind.projectedMemberKindOrNull(),
+                memberId = message.authorId,
+                jointSurface = memberAvatarResolver.jointSurface,
+            )
     val avatarDiagnostics =
         remember(message.id, message.authorId, diagnosticsLogger) {
             raftAvatarRowDiagnostics(
@@ -1185,6 +1212,7 @@ private fun ThreadMessageCardContent(
                         avatarKind = message.threadAvatarKind(),
                         avatarWireValue =
                             if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
+                        avatarPending = authorAvatarPending,
                         avatarDiagnostics = avatarDiagnostics,
                         cacheSubject =
                             raftMemberAvatarCacheSubject(
@@ -1880,6 +1908,7 @@ private fun ThreadMessageCardContent(
                         avatarKind = message.threadAvatarKind(),
                         avatarWireValue =
                             if (message.externalAuthor != null) message.avatarWireValue else avatarWireValue,
+                        avatarPending = authorAvatarPending,
                         avatarDiagnostics = avatarDiagnostics,
                         cacheSubject =
                             raftMemberAvatarCacheSubject(
