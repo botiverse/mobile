@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package build.raft.app.data
 
 import build.raft.app.data.realtime.RealtimeEventMapper
@@ -164,6 +166,8 @@ class MachineStatusAgentRefresherTest {
         assertEquals(1, repository.agentCalls)
 
         // Daemons reconnect to the restarted server: server emits machine:status (no agent:activity_state: "online").
+        // Advance virtual clock so machine:status arrives strictly after the reconnect /agents read started.
+        advanceTimeBy(100L)
         repository.agentsJson = recoveredJson
         val machineOnline =
             assertIs<RealtimeRefreshRequired>(

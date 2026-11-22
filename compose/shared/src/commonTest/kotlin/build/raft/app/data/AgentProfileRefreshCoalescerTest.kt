@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package build.raft.app.data
 
 import kotlinx.coroutines.CancellationException
