@@ -5,6 +5,7 @@ import coil3.SingletonImageLoader
 import coil3.annotation.DelicateCoilApi
 import coil3.decode.DataSource
 import coil3.request.CachePolicy
+import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import java.io.ByteArrayOutputStream
@@ -12,6 +13,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -24,6 +27,8 @@ import kotlin.test.assertNotNull
  */
 @OptIn(DelicateCoilApi::class)
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34])
 class RaftAttachmentImageCacheReuseTest {
     @Test
     fun imageViewedInThreadReusesCoilCacheInPreviewAfterPresignedUrlChanges() = runBlocking {
@@ -40,6 +45,7 @@ class RaftAttachmentImageCacheReuseTest {
                 bmp.recycle()
                 out.toByteArray()
             }
+        assertEquals("image/png", raftSniffImageMimeType(pngBytes), "fixture bytes must be a real PNG")
 
         val loader = raftBuildImageLoader(context)
         try {
@@ -51,16 +57,24 @@ class RaftAttachmentImageCacheReuseTest {
                 writeUtf8(RaftImageDiskMetadata("image/png", storedAtEpochMillis = 1L).encode())
             }
             editor.commit()
+            assertNotNull(diskCache.openSnapshot(cacheKey), "disk cache entry must be readable after commit").close()
             loader.memoryCache?.clear()
 
             val previewRequest =
                 ImageRequest.Builder(context)
                     .data(resignedPreviewUrl)
+                    .defaults(loader.defaults)
                     .memoryCacheKey(cacheKey)
                     .diskCacheKey(cacheKey)
                     .networkCachePolicy(CachePolicy.DISABLED)
                     .build()
             val result = loader.execute(previewRequest)
+            if (result is ErrorResult) {
+                throw AssertionError(
+                    "Expected SuccessResult from Coil disk cache, got ErrorResult(${result.throwable})",
+                    result.throwable,
+                )
+            }
             val success = assertIs<SuccessResult>(result)
             assertEquals(DataSource.DISK, success.dataSource)
         } finally {
