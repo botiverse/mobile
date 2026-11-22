@@ -22,7 +22,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
@@ -138,7 +137,6 @@ import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftActiveStickerLook
-import build.raft.designsystem.components.raftInsetFocusOutline
 import build.raft.designsystem.components.raftPressOverlay
 import build.raft.designsystem.components.raftPressOverlayColor
 import build.raft.designsystem.components.raftSticker
@@ -166,44 +164,6 @@ import dev.vcase.VCase
 @Composable
 private fun StillSpinner(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0, content = content)
-}
-
-/** The shared state primitives on a bare 36dp item, and the inset outline on rows. */
-@VCase("ds.states.gallery")
-@Composable
-fun StatesGallery() {
-    val colors = RaftTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Caption("Active sticker: rest, pressed, focused; active, pressed, focused")
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            listOf(false, true).forEach { active ->
-                StateCell { StickerItem("Overview", active) }
-                StateCell(pressed = true) { StickerItem("Overview", active) }
-                StateCell(focused = true) { StickerItem("Overview", active) }
-            }
-        }
-        Caption("Press overlays: paper, sticker, frame")
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            OverlaySwatch(colors.layerCard, RaftPressSurface.Paper)
-            OverlaySwatch(RaftUiPalette.attention400, RaftPressSurface.Sticker)
-            OverlaySwatch(colors.layerFrame, RaftPressSurface.Frame)
-        }
-        Caption("Inset focus outline on a row touching its container's edge")
-        Column(
-            Modifier
-                .width(280.dp)
-                .clip(RoundedCornerShape(RaftRadius.Container))
-                .background(colors.layerPopover, RoundedCornerShape(RaftRadius.Container))
-                .border(RaftStroke.Hairline, colors.lineSeam, RoundedCornerShape(RaftRadius.Container)),
-        ) {
-            Row(Modifier.fillMaxWidth().height(40.dp).raftInsetFocusOutline(true, colors.foreground).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftText("Search channels", color = colors.foregroundHint)
-            }
-            Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                RaftText("general")
-            }
-        }
-    }
 }
 
 @VCase("ds.conversation-kind-glyphs.gallery")
@@ -1014,32 +974,6 @@ fun AvatarListRowStatesGallery() {
                 divider = true,
                 selected = true,
                 leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
-                trailing = { RaftButton("Open", onClick = {}) },
-            )
-        }
-    }
-}
-
-// An agent row with a presence light cut out of the card and of the selected wash.
-@VCase("ds.avatar-list-row-presence.gallery")
-@Composable
-fun AvatarListRowPresenceGallery() {
-    Box(Modifier.width(342.dp).background(RaftTheme.colors.layerCanvas).padding(16.dp)) {
-        RaftListRowGroup(Modifier.fillMaxWidth()) {
-            RaftListRow(
-                title = "Wug",
-                subtitle = "@wug · claude-code",
-                onClick = {},
-                leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online) },
-                trailing = { RaftBadge("Online", variant = RaftBadgeVariant.Success) },
-            )
-            RaftListRow(
-                title = "Bugen",
-                subtitle = "@bugen · codex",
-                onClick = {},
-                divider = true,
-                selected = true,
-                leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Offline) },
                 trailing = { RaftButton("Open", onClick = {}) },
             )
         }

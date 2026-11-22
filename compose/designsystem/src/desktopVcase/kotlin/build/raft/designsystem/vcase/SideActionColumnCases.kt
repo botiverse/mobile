@@ -11,22 +11,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftSideAction
 import build.raft.designsystem.components.RaftSideActionColumn
 import build.raft.designsystem.components.RaftSideActionColumnDefaults
-import build.raft.designsystem.components.RaftSideActionColumnSide
 import build.raft.designsystem.components.RaftSideColumnKeepOut
 import build.raft.designsystem.screenshot.AppIcon
 import build.raft.designsystem.screenshot.AppIconImage
@@ -97,35 +91,6 @@ fun SideActionColumnAttention() {
         Page(240.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(bell(attention = true), search)) }
         // Room for two: Search stays (listed first), the ⋯ holds the bell and wears its pixel.
         Page(124.dp) { RaftSideActionColumn(primary = emptyList(), actions = listOf(search, bell(attention = true), settings)) }
-    }
-}
-
-@VCase("ds.side-action-column.tooltip", settleFrames = 2, frameIntervalMs = 0)
-@Composable
-fun SideActionColumnTooltip() {
-    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        CompositionLocalProvider(LocalRaftTooltipPreview provides true) {
-            Page(160.dp, pageWidth = 200.dp) { RaftSideActionColumn(primary = listOf(back), actions = emptyList()) }
-        }
-    }
-}
-
-@VCase("ds.side-action-column.rtl")
-@Composable
-fun SideActionColumnRtl() {
-    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Box(Modifier.height(320.dp).width(220.dp)) {
-                RaftText("Page", Modifier.align(Alignment.Center), style = RaftTheme.typography.headline)
-                // Still on the physical right, its hairline on its left.
-                RaftSideActionColumn(
-                    primary = listOf(back),
-                    actions = listOf(search, settings),
-                    modifier = Modifier.align(AbsoluteAlignment.CenterRight),
-                    side = RaftSideActionColumnSide.Right,
-                )
-            }
-        }
     }
 }
 
