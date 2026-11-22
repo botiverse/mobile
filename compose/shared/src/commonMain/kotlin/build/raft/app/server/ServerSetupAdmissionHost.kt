@@ -42,10 +42,13 @@ internal data class ServerSetupAdmissionHost(
     /** [serverSetupGateEnabled]: off means no setup check at all and Home as before. */
     val gateEnabled: Boolean = true,
     /**
-     * The gate was off when this server mounted (flag still loading) and Home was already shown, so
-     * a late ON keeps Home while the check runs; only a positive blocksChat then takes the screen.
+     * Home has already been rendered for this server (gate was off on mount, cached Home rendered,
+     * or a prior failed check let Home through), so a background check keeps Home while running;
+     * only a positive blocksChat then takes the screen.
      */
     val homeShownBeforeGate: Boolean = false,
+    /** Called when AppShell renders Home for this server (e.g. via cached restore). */
+    val noteHomeShown: () -> Unit = {},
 ) {
     val allowsHome: Boolean
         get() = serverSetupHostAllowsHome(gateEnabled, state, previouslyAllowed, homeShownBeforeGate)
@@ -135,8 +138,10 @@ internal fun serverSetupWebViewTopInset(statusBarTop: Dp, hostPadsWebView: Boole
 
 /**
  * One setup check for [identity]. With the gate off, or for a server admitted earlier in this
- * process (also on return to foreground), no request is sent; otherwise publishes Loading, then
- * the result.
+ * process (also on return to foreground), no request is sent. When Home is already visible
+ * ([homeAlreadyShown] and not [setupShowing]), the re-check runs silently without publishing
+ * [ServerSetupAdmissionState.Loading] so AppShell is never unmounted to a blank loading cover;
+ * only a positive [ServerSetupAdmissionState.Blocked] takes the screen.
  */
 internal suspend fun runServerSetupCheck(
     controller: ServerSetupAdmissionController,
@@ -144,10 +149,14 @@ internal suspend fun runServerSetupCheck(
     memoryKey: String,
     setupShowing: Boolean,
     gateEnabled: Boolean = true,
+    homeAlreadyShown: Boolean = false,
     publish: (ServerSetupAdmissionState) -> Unit,
 ) {
     if (!gateEnabled || ServerSetupAdmissionMemory.contains(memoryKey)) return
-    publish(controller.begin(identity))
+    val loading = controller.begin(identity)
+    if (!homeAlreadyShown || setupShowing) {
+        publish(loading)
+    }
     val loaded = controller.load(identity) ?: return
     val result =
         if (loaded is ServerSetupAdmissionState.Failed && setupShowing) loaded.copy(duringSetup = true) else loaded
@@ -196,12 +205,30 @@ internal fun rememberServerSetupAdmissionHost(
     var state by remember(identity) { mutableStateOf<ServerSetupAdmissionState?>(null) }
     val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
     var setupShown by remember(identity) { mutableStateOf(false) }
-    val homeShownBeforeGate = remember(identity) { !gateEnabled }
+    var homeAlreadyShown by remember(identity) { mutableStateOf(!gateEnabled) }
     LaunchedEffect(repository, identity, refreshEpoch, refreshSignal, gateEnabled) {
-        if (!gateEnabled) state = null
-        runServerSetupCheck(controllerState, identity, memoryKey, setupShowing = setupShown, gateEnabled = gateEnabled) {
-            if (it is ServerSetupAdmissionState.Blocked) setupShown = true
-            state = it
+        if (!gateEnabled) {
+            state = null
+            if (!setupShown) homeAlreadyShown = true
+        }
+        runServerSetupCheck(
+            controller = controllerState,
+            identity = identity,
+            memoryKey = memoryKey,
+            setupShowing = setupShown,
+            gateEnabled = gateEnabled,
+            homeAlreadyShown = homeAlreadyShown,
+        ) { next ->
+            when (next) {
+                is ServerSetupAdmissionState.Blocked -> {
+                    setupShown = true
+                    homeAlreadyShown = false
+                }
+                is ServerSetupAdmissionState.Admitted -> homeAlreadyShown = true
+                is ServerSetupAdmissionState.Failed -> if (!next.duringSetup) homeAlreadyShown = true
+                is ServerSetupAdmissionState.Loading -> Unit
+            }
+            state = next
         }
     }
 
@@ -209,11 +236,20 @@ internal fun rememberServerSetupAdmissionHost(
     // Read on every composition, not remembered: after a Blocked result forgets the server, a
     // retry's Loading must not show Home again.
     val previouslyAllowed = ServerSetupAdmissionMemory.contains(memoryKey)
+    val noteHomeShown =
+        remember(identity) {
+            {
+                if (!setupShown && !serverSetupBlocksHome(state)) {
+                    homeAlreadyShown = true
+                }
+            }
+        }
     return ServerSetupAdmissionHost(
         state = state,
         previouslyAllowed = previouslyAllowed,
         gateEnabled = gateEnabled,
-        homeShownBeforeGate = homeShownBeforeGate,
+        homeShownBeforeGate = homeAlreadyShown,
+        noteHomeShown = noteHomeShown,
         retry = retry,
         content = {
             when (state) {
