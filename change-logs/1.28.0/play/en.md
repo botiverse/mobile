@@ -1,6 +1,5 @@
 ✨ New
 - Guidance to keep Raft running when the system stops it in the background
-- Edit your own description on your profile
 - Web pages in the app can share files to other apps
 
 🔧 Improved
@@ -10,4 +9,4 @@
 
 🐛 Fixed
 - Attachments no longer wait in line when the network stalls
-- No flash of the bottom when opening at a message, plus security, crash and other fixes
+- No flash of the bottom when opening at a message, plus crash and other fixes
