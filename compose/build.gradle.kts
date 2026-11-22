@@ -395,6 +395,13 @@ if (raftComposeFoundationPatchOn) {
 allprojects {
     tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
         addTestListener(build.raft.ci.HangWatchdogTestListener())
+        // Robolectric downloads its android-all jars when a test first needs them, from
+        // repo1.maven.org by default. Maven Central answers busy CI runners with HTTP 429
+        // (2026-11-22: about 480 Robolectric classes failed per Android CI run with "Failed to
+        // fetch maven artifact org.robolectric:android-all-instrumented"), so fetch them from
+        // Google's mirror of Maven Central, which serves the same paths.
+        systemProperty("robolectric.dependency.repo.id", "google-maven-central")
+        systemProperty("robolectric.dependency.repo.url", "https://maven-central.storage-download.googleapis.com/maven2")
     }
 }
 
