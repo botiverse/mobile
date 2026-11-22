@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
-import build.raft.app.assistant.assistantContextTokenForSend
-import build.raft.app.assistant.withAssistantContextReference
 import build.raft.app.assistant.newAssistantOtterHostId
 import build.raft.app.assistant.rememberThreadAssistantOtter
 import build.raft.app.assistant.threadForegroundBannerOnPage
@@ -35,9 +33,7 @@ import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.PlatformFile
-import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.data.ThreadPendingSendInFlightRegistry
-import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
@@ -199,7 +195,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.module.PerformanceModule
@@ -215,7 +210,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -229,7 +223,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -243,8 +236,8 @@ import kotlin.time.TimeSource
 
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 internal const val THREAD_MEMBERS_PAGE = "compose_thread_members"
-private const val ThreadComposerMentionActionFadeDelayMs = 450L
-private const val ThreadComposerMentionActionRemoveDelayMs = 750L
+internal const val ThreadComposerMentionActionFadeDelayMs = 450L
+internal const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 private const val ThreadSendSilentRetryDelayMs = 900L
 private const val ThreadSendMaxSilentRetries = 2
@@ -283,7 +276,7 @@ internal fun threadMessageHeaderTimestampLayoutSpec(): ThreadSystemMessageTimest
         maxWidthDp = ThreadRelativeTimestampSlotWidthDp
     )
 
-private val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
+internal val ThreadLocalSendNextId = ThreadLocalSendIdGenerator()
 
 /** task #36: longest wait for the keyboard to close before the main detail focuses a parent. */
 private const val ADAPTIVE_PARENT_FOCUS_IME_WAIT_MS = 1_500L
@@ -365,7 +358,7 @@ private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSna
     )
 }
 
-private fun buildThreadPendingSendMessage(
+internal fun buildThreadPendingSendMessage(
     localMessageId: String,
     context: RaftThreadPendingSendContext,
     session: StoredAuthSession?,
@@ -1909,7 +1902,8 @@ private fun SharedThreadRouteContentContent(
     val adaptiveFocusManager = LocalFocusManager.current
     val adaptiveKeyboardController = LocalSoftwareKeyboardController.current
     val adaptiveFocusWorkspaceStore = remember(sharedStores, storeScope) { sharedStores.adaptiveWorkspaceStore(storeScope) }
-    var adaptivePageKeyboardInsetDp by remember { mutableStateOf(0f) }
+    val adaptivePageKeyboardInsetDpState = remember { mutableStateOf(0f) }
+    var adaptivePageKeyboardInsetDp by adaptivePageKeyboardInsetDpState
     val threadKeyboardTapDismissal =
         remember(adaptiveFocusManager, adaptiveKeyboardController) {
             ThreadKeyboardTapDismissal(
@@ -2947,14 +2941,15 @@ private fun SharedThreadRouteContentContent(
     var restoredAttachmentUploadFileIds by remember(threadInstanceKey) {
         mutableStateOf<Set<ThreadAttachmentUploadAttemptIdentity>>(emptySet())
     }
-    var externalShareSendRequested by remember(threadInstanceKey) { mutableStateOf(false) }
+    val externalShareSendRequestedState = remember(threadInstanceKey) { mutableStateOf(false) }
+    var externalShareSendRequested by externalShareSendRequestedState
     val pendingMentionActionBatchRequestGate =
         remember(threadInstanceKey) { PendingMentionActionBatchRequestGate() }
-    var externalShareExpectedAuthority by remember(threadInstanceKey) {
+    val externalShareExpectedAuthorityState = remember(threadInstanceKey) {
         mutableStateOf<build.raft.app.data.RaftExpectedAuthBinding?>(null)
     }
+    var externalShareExpectedAuthority by externalShareExpectedAuthorityState
     val composerImageActionCounterState = remember(threadInstanceKey) { mutableStateOf(0) }
-    var composerImageActionCounter by composerImageActionCounterState
     // Cross-process editor callbacks may arrive out of order and on separate event-bus turns.
     // Keep one process-local accumulator per mounted Thread and serialize offers/claims so a
     // duplicate cannot race the complete N/N handoff.
@@ -2984,7 +2979,6 @@ private fun SharedThreadRouteContentContent(
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
     val genericThreadErrorLabel = labels.genericThreadErrorLabel
-    val pendingMentionActionBatchStrings = labels.pendingMentionActionBatchStrings
     val userFacingErrorLabels = threadUserFacingErrorLabels()
     val attachmentPickerUnavailableLabel = labels.attachmentPickerUnavailableLabel
     val copiedLabel = labels.copiedLabel
@@ -2994,8 +2988,6 @@ private fun SharedThreadRouteContentContent(
     val unableToUpdateAssigneeLabel = labels.unableToUpdateAssigneeLabel
     val unableToJoinChannelLabel = labels.unableToJoinChannelLabel
     val joinedChannelLabel = labels.joinedChannelLabel
-    val attachmentRetryUnavailableLabel = labels.attachmentRetryUnavailableLabel
-    val attachmentSkippedOneLabel = labels.attachmentSkippedOneLabel
     val dropFoldersCantUploadLabel = labels.dropFoldersCantUploadLabel
     val dropFoldersSkippedLabel = labels.dropFoldersSkippedLabel
     val attachmentSkippedManyTemplate = labels.attachmentSkippedManyTemplate
@@ -4295,10 +4287,6 @@ private fun SharedThreadRouteContentContent(
         threadRouteAttachmentActions.requestInlineAudioPreview(attachmentId, force)
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false): Unit =
         threadRouteAttachmentActions.requestInlineVideoPreview(attachmentId, force)
-    fun openComposerAttachmentPreview(attachmentId: String): Boolean =
-        threadRouteAttachmentActions.openComposerAttachmentPreview(attachmentId)
-    fun openTrackedComposerImagePreview(payload: RaftFilePreviewPayload): Boolean =
-        threadRouteAttachmentActions.openTrackedComposerImagePreview(payload)
     imageLightboxRequest?.let { request ->
         RaftImageLightbox(
             request = request,
@@ -4760,11 +4748,12 @@ private fun SharedThreadRouteContentContent(
     // A lambda, not `::uploadComposerAttachmentFiles`: a local function reference compares equal
     // across compositions (it ignores what it captured), so rememberUpdatedState would keep the
     // first frame's copy (found by Reef in the alpha's dex).
-    val latestUploadComposerAttachmentFiles by rememberUpdatedState<
+    val latestUploadComposerAttachmentFilesState = rememberUpdatedState<
         suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean
     > { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
         uploadComposerAttachmentFiles(files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId)
     }
+    val latestUploadComposerAttachmentFiles by latestUploadComposerAttachmentFilesState
     // The draft's uploads, wherever they were started: progress, the ready attachment, or Retry.
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
@@ -4858,237 +4847,59 @@ private fun SharedThreadRouteContentContent(
             },
         )
     }
-    fun performComposerSend(): Boolean {
-        val currentComposer = currentComposerPayload()
-        val currentDraftState = composerDraftViewModel.state.value
-        val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
-        val threadId = composerSurface.sendChannelId
-        val externalShareAttachments =
-            currentComposer.pendingAttachments.filter { attachment -> attachment.source == "external_share" }
-        val externalShareSources = currentDraftState.externalShareSources
-        val session = currentSession
-        if (
-            externalShareSources.any { source ->
-                session == null || source.accountId != session.user.id || source.serverId != session.currentServerId
-            } || externalShareAttachments.any { attachment ->
-                session == null ||
-                    attachment.externalShareAccountId != session.user.id ||
-                    attachment.externalShareServerId != session.currentServerId
-            }
-        ) {
-            bridge.logWarn("external_share_send_rejected reason=authority_changed_before_message_send")
-            return false
-        }
-        val draftText = currentDraftState.seedText.trim()
-        val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
-        val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
-        val hasFailedAttachmentUpload = currentComposer.pendingAttachments.hasFailedThreadAttachmentUpload()
-        val gateBlockReason =
-            when {
-                !payload.canSend -> "payload_can_send_false"
-                threadId == null -> "missing_send_channel"
-                hasFailedAttachmentUpload -> "attachment_upload_failed"
-                hasBlockingAttachmentUpload -> "attachment_upload_in_progress"
-                draftText.isBlank() && attachmentIds.isEmpty() -> "empty_draft"
-                else -> null
-            }
-        if (gateBlockReason != null) {
-            bridge.log(
-                "thread_composer_send_gate result=blocked reason=$gateBlockReason " +
-                    "surface=${payload.surfaceKind} status=${payload.status} canSend=${payload.canSend} " +
-                    "sendChannelId=${threadId.orEmpty()} hasText=${draftText.isNotBlank()} " +
-                    "attachments=${attachmentIds.size} blockingAttachments=$hasBlockingAttachmentUpload " +
-                    "failedAttachments=$hasFailedAttachmentUpload " +
-                    "attachmentStates=${currentComposer.pendingAttachments.threadComposerSendGateAttachmentStates()}"
-            )
-            return false
-        }
-        val sendAuthority =
-            dataSource.captureThreadLocalSendAuthority(
-                state = threadViewModel.state.value,
-                mountedOwnerProvenance = replyCacheProvenance
-            )
-                ?: run {
-                    bridge.logWarn("thread_composer_send_rejected reason=missing_owner_provenance")
-                    return false
-                }
-        val pendingAttachments = currentComposer.pendingAttachments
-        val ownedTemporaryFileRefs =
-            threadPendingSendOwnedTemporaryFileRefs(
-                attachments = currentDraftState.uploadedAttachments,
-                attachmentIds = attachmentIds
-            )
-        // The assistant's DM in its panel: a message with text carries the conversation the panel
-        // was opened from, its token on a line of its own (web MessageInput withComposerReference).
-        val assistantContextAttachment = composerSurface.assistantContext
-        val assistantContextToken = assistantContextTokenForSend(draftText, assistantContextAttachment?.context)
-        val composedBody =
-            threadComposerMessageBodyForSend(
-                draftText = draftText,
-                attachmentCount = pendingAttachments.size
-            )
-        val pendingContext =
-            RaftThreadPendingSendContext(
-                channelId = threadId ?: return false,
-                body = withAssistantContextReference(composedBody, assistantContextToken),
-                asTask = currentDraftState.seedAsTask && composerSurface.sendsAsTask,
-                attachmentIds = attachmentIds,
-                attachments = pendingAttachments,
-                ownedTemporaryFileRefs = ownedTemporaryFileRefs,
-                externalShareSources = externalShareSources,
-                mentionChannelId = composerSurface.mentionScopeChannelId,
-                parentMessageId = composerSurface.parentMessageId,
-                streamChannelId = composerSurface.streamChannelId,
-                memberScopedMentions = payload.memberScopedMentions,
-                randomId = newThreadSendRandomId(),
-                // Only picks whose `@handle` is still in the text go out; the list is journaled as is.
-                mentions = currentDraftState.structuredMentions.visibleStructuredMentionsIn(draftText),
-            )
-        val localMessageId = ThreadLocalSendNextId.next(composerInstanceId)
-        val localTimestampLabel = buildThreadPendingSendTimestampLabel(bridge, payload.nowEpochMillis)
-        val localMessage =
-            buildThreadPendingSendMessage(
-                localMessageId = localMessageId,
-                context = pendingContext,
-                session = currentSession,
-                timestampLabel = localTimestampLabel
-            )
-        if (
-            !threadViewModel.admitLocalSend(
-                message = localMessage,
-                expectedProvenance = sendAuthority.provenance,
-                expectedRoute = sendAuthority.route,
-                composerSeed =
-                    ThreadLocalSendComposerSeed(
-                        // What the composer held: the reference token was never in it.
-                        sentBody = composedBody,
-                        sentAttachmentIds = pendingContext.attachmentIds.toSet()
-                    )
-            )
-        ) {
-            bridge.logWarn("thread_composer_send_rejected reason=owner_changed_before_admission")
-            return false
-        }
-        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-        // The message took the reference (it is in the journaled body, retries included): the chip clears.
-        if (assistantContextToken != null) assistantContextAttachment?.detach()
-        // The journal row now owns crash protection for this send (restart adoption,
-        // failed row with retry), so the persisted composer draft must be cleared at
-        // admission — otherwise a mid-send process kill leaves a second copy of the same
-        // text that reloads into the composer and invites a duplicate send (#1134 cell 3,
-        // Argus ruling). Journal-write failure keeps the draft because admission already
-        // returned false above. CompleteSend only clears the durable record; the send
-        // completion below still dispatches its own CompleteSend for mention actions.
-        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
-        // The draft went out with its ready attachments: forget its uploads (the send gate let it
-        // through only with none in flight).
-        attachmentUploads.retireDraft(currentDraftState.draftKey, RaftAttachmentUploadCancelReason.DraftSent)
-        // Before the request: the canonical echo may beat the HTTP response, and it must already
-        // resolve these attachment ids to the local image instead of downloading it again.
-        build.raft.app.image.RaftSentAttachmentLocalImages.registry.register(
-            threadSentAttachmentLocalImageSources(
-                attachments = currentDraftState.uploadedAttachments,
-                attachmentIds = attachmentIds
-            )
+    // The composer's send, annotation, picked files and events (ThreadRouteComposerActions.kt), built every
+    // composition by a local function (a method of its own, so this one only loads what it captures for
+    // the call). The states they read and write stay here.
+    fun buildThreadRouteComposerActions(): ThreadRouteComposerActions =
+        ThreadRouteComposerActions(
+            bridge = data.bridge,
+            dataSource = data.dataSource,
+            membersStore = data.membersStore,
+            serverMembersStore = data.serverMembersStore,
+            composerDraftPersistSlice = data.composerDraftPersistSlice,
+            coroutineScope = coroutineScope,
+            threadViewModel = threadViewModel,
+            renderSliceState = renderSliceState,
+            payload = payload,
+            threadInstanceKey = threadInstanceKey,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            replyCacheProvenance = replyCacheProvenance,
+            threadMembersServerId = threadMembersServerId,
+            threadLimitLocked = threadLimitLocked,
+            memberSuggestionScopeChannelId = memberSuggestionScopeChannelId,
+            memberSuggestionScopedMentions = memberSuggestionScopedMentions,
+            labels = labels,
+            userFacingErrorLabels = userFacingErrorLabels,
+            composerDraftViewModel = composerDraftViewModel,
+            composerKeyboardHandoff = composerKeyboardHandoff,
+            composerSurface = composerSurface,
+            attachmentUploads = attachmentUploads,
+            attachmentUploadOrchestrator = attachmentUploadOrchestrator,
+            pendingMentionActionBatchRequestGate = pendingMentionActionBatchRequestGate,
+            threadRouteAttachmentActions = threadRouteAttachmentActions,
+            threadRouteAttachmentUploader = threadRouteAttachmentUploader,
+            adaptivePageKeyboardInsetDpState = adaptivePageKeyboardInsetDpState,
+            attachmentUploadFilesByLocalIdState = attachmentUploadFilesByLocalIdState,
+            externalShareSendRequestedState = externalShareSendRequestedState,
+            externalShareExpectedAuthorityState = externalShareExpectedAuthorityState,
+            composerImageActionCounterState = composerImageActionCounterState,
+            latestUploadComposerAttachmentFilesState = latestUploadComposerAttachmentFilesState,
+            currentComposerPayloadFn = { currentComposerPayload() },
+            sendPendingLocalMessageFn = { localMessageId, context, startedFromComposer, authority ->
+                sendPendingLocalMessage(localMessageId, context, startedFromComposer, authority)
+            },
+            localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
+            localizedAttachmentSkippedManyFn = { count -> localizedAttachmentSkippedMany(count) },
         )
-        sendPendingLocalMessage(
-            localMessageId = localMessageId,
-            context = pendingContext,
-            startedFromComposer = true,
-            authority = sendAuthority
-        )
-        return true
-    }
+    val threadRouteComposerActions = buildThreadRouteComposerActions()
+    fun performComposerSend(): Boolean = threadRouteComposerActions.performComposerSend()
     // The external-share auto-send below runs in an effect keyed only on the thread: it must
     // send with the latest session, provenance and upload store, not the first frame's (null
     // before the session loads, so the queued share was silently never sent).
     val latestPerformComposerSend by rememberUpdatedState<() -> Boolean> { performComposerSend() }
-    fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission {
-        if (externalShareSendRequested) {
-            bridge.log("external_share_send_duplicate_drop reason=upload_chain_active")
-            return ThreadComposerSendAdmission.Deferred
-        }
-        // Reconcile the explicit native tap-time snapshot before any host gate reads the draft.
-        // This closes the window where UIKit already displays a final character while its normal
-        // text-change callback is still queued for Compose.
-        composerDraftViewModel.dispatch(
-            SharedThreadComposerDraftIntent.Change(
-                seedText = request.value.text,
-                seedAsTask = request.asTask,
-            )
-        )
-        val currentDraftState = composerDraftViewModel.state.value
-        bridge.log(
-            "thread_composer_send_snapshot session=${request.editorSessionId} " +
-                "textLen=${request.value.text.length} textBlank=${request.value.text.isBlank()} " +
-                "asTask=${request.asTask}"
-        )
-        val queuedExternalAttachments =
-            currentDraftState.uploadedAttachments.filter { attachment ->
-                attachment.source == "external_share" &&
-                    attachment.status == "queued" &&
-                    attachment.id !in currentDraftState.removedAttachmentIds
-            }
-        val externalShareSources = currentDraftState.externalShareSources
-        if (externalShareSources.isNotEmpty()) {
-            externalShareSendRequested = true
-            coroutineScope.launch {
-                val expected = dataSource.captureExternalShareSendAuthority()
-                val authorityMatches =
-                    expected != null &&
-                        externalShareSources.all { source ->
-                            source.accountId == expected.accountId &&
-                                source.serverId == expected.serverId
-                        }
-                if (!authorityMatches) {
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                    bridge.logWarn("external_share_send_rejected reason=authority_changed")
-                    bridge.toast(genericThreadErrorLabel)
-                    return@launch
-                }
-                externalShareExpectedAuthority = expected
-                if (queuedExternalAttachments.isNotEmpty()) {
-                    val files =
-                        queuedExternalAttachments.mapNotNull { attachment ->
-                            attachmentUploadFilesByLocalId.threadAttachmentUploadFile(
-                                attachment.id,
-                                normalizeThreadAttachmentUploadDraftKey(currentDraftState.draftKey)
-                            )
-                        }
-                    if (files.size != queuedExternalAttachments.size) {
-                        externalShareSendRequested = false
-                        externalShareExpectedAuthority = null
-                        bridge.logWarn("external_share_send_rejected reason=missing_file_ref")
-                        bridge.toast(attachmentRetryUnavailableLabel)
-                        return@launch
-                    }
-                    val uploadStarted = latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
-                    if (!uploadStarted) {
-                        externalShareSendRequested = false
-                        externalShareExpectedAuthority = null
-                    }
-                } else {
-                    val stillCurrent = dataSource.matchesExternalShareSendAuthority(expected)
-                    externalShareSendRequested = false
-                    externalShareExpectedAuthority = null
-                    if (stillCurrent) {
-                        performComposerSend()
-                    } else {
-                        bridge.logWarn(
-                            "external_share_send_rejected reason=auth_generation_changed_before_send"
-                        )
-                    }
-                }
-            }
-            return ThreadComposerSendAdmission.Deferred
-        }
-        return if (performComposerSend()) {
-            ThreadComposerSendAdmission.Started
-        } else {
-            ThreadComposerSendAdmission.Rejected
-        }
-    }
+    fun handleComposerSendRequest(request: ThreadComposerSendRequest): ThreadComposerSendAdmission =
+        threadRouteComposerActions.handleComposerSendRequest(request)
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             if (!externalShareSendRequested) return@collect
@@ -5121,101 +4932,8 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
-    fun openComposerImageAnnotation(files: List<PlatformFile>) {
-        val firstFile = files.firstOrNull() ?: return
-        val currentDraftState = composerDraftViewModel.state.value
-        composerImageActionCounter += 1
-        val actionId = "composer-image-${threadInstanceKey}-${composerImageActionCounter}-${firstFile.id.take(12)}"
-        val opened =
-            openTrackedComposerImagePreview(
-                threadComposerImageAnnotationPayload(
-                    threadInstanceKey = threadInstanceKey,
-                    actionId = actionId,
-                    files = files,
-                    originalImage = currentDraftState.originalImage,
-                ) ?: return
-            )
-        if (opened) composerKeyboardHandoff.pageOpened()
-    }
-    /**
-     * A host files envelope from the attach buttons' picker or a drop on the composer
-     * (`threadAttachmentDrop`): one admission path for both, so a dropped file is admitted, sized
-     * and reported exactly like a picked one.
-     */
-    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?) {
-        val files = parseSharedThreadPickedPlatformFiles(response)
-        bridge.log(
-            "thread_attachment_picker_result action=$action code=${response?.optInt("code", -1) ?: -1} " +
-                "files=${files.size} errorCode=${response?.optString("errorCode").orEmpty()} " +
-                "bodyBytes=${response?.optString("bodyText").orEmpty().encodeToByteArray().size}"
-        )
-        // Native generic pickers may finish a mixed selection with a readable
-        // subset and a compression error (code 206).  Never upload that subset:
-        // doing so would silently drop the failed image while the user believes
-        // the whole selection was admitted.  Retire every ref exposed by the
-        // envelope before returning, including refs from successful files and
-        // any future error/fileRefs compatibility fields.
-        if (threadAttachmentPickerHasCompressionFailure(response)) {
-            val cleanupRefs = threadAttachmentPickerCompressionFailureFileRefs(response)
-            if (cleanupRefs.isNotEmpty()) {
-                bridge.retireFilePreviewTemporaryFiles(
-                    sessionId = "thread-picker-compression-$threadInstanceKey",
-                    fileRefs = cleanupRefs.toList()
-                )
-            }
-            bridge.logWarn(
-                "thread_attachment_picker_rejected reason=image_compression_failed " +
-                    "cleanupRefs=${cleanupRefs.size}"
-            )
-            bridge.toast(
-                localizedAttachmentUploadFailedDetail(
-                    userFacingErrorLabels.forErrorCode(
-                        RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
-                    ) ?: genericThreadErrorLabel
-                )
-            )
-            return
-        }
-        if (files.isEmpty()) {
-            val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
-            when {
-                errorCode != null ->
-                    bridge.toast(
-                        localizedAttachmentUploadFailedDetail(
-                            userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-                        )
-                    )
-                response == null ->
-                    bridge.toast(attachmentPickerUnavailableLabel)
-            }
-            return
-        }
-        val skippedCount = response?.optInt("skippedCount", 0) ?: 0
-        if (skippedCount > 0) {
-            bridge.toast(
-                if (skippedCount == 1) {
-                    attachmentSkippedOneLabel
-                } else {
-                    localizedAttachmentSkippedMany(skippedCount)
-                }
-            )
-        }
-        when (
-            resolveThreadPickedAttachmentComposerAction(
-                action = action,
-                fileCount = files.size,
-                allFilesAreImages = raftComposerImagePickerFilesAreStrictImages(files),
-            )
-        ) {
-            ThreadPickedAttachmentComposerAction.OpenImageAnnotation ->
-                // The picker-reported bytes are the source image, not the final
-                // editor output.  Defer the server-size gate until the confirmed
-                // PNG/original or compressor-produced JPEG reaches upload.
-                openComposerImageAnnotation(files)
-            ThreadPickedAttachmentComposerAction.UploadToComposer -> latestUploadComposerAttachmentFiles(files, null, false, emptyMap())
-            ThreadPickedAttachmentComposerAction.None -> Unit
-        }
-    }
+    suspend fun admitComposerPickedAttachments(action: String, response: JSONObject?): Unit =
+        threadRouteComposerActions.admitComposerPickedAttachments(action, response)
     DisposableEffect(eventBus, threadInstanceKey) {
         // Event-bus callbacks can be re-entrant and may be dispatched from different host turns.
         // Keep the callback side-effect-free: one sequential consumer owns parsing, accumulation,
@@ -5577,25 +5295,6 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         }
-    }
-    suspend fun refreshComposerMemberSuggestions(reason: String) {
-        val store = serverMembersStore ?: return
-        val serverId = threadMembersServerId ?: currentServerId?.let(::ServerId) ?: return
-        bridge.log(
-            "thread_composer_member_suggestions_refresh reason=$reason " +
-                "serverId=${serverId.value} mentionChannelId=${memberSuggestionScopeChannelId.orEmpty()} " +
-                "memberScoped=$memberSuggestionScopedMentions"
-        )
-        store.ensureMemberSuggestionsForServer(
-            serverId = serverId,
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions,
-            force = true
-        )
-    }
-
-    suspend fun refreshComposerMemberSuggestionsAfterMembershipMutation() {
-        refreshComposerMemberSuggestions(reason = "membership_mutation")
     }
 
     fun openCanonicalTaskWith(
@@ -6910,427 +6609,7 @@ private fun SharedThreadRouteContentContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                if (!threadComposerEventAllowed(renderSlice.writeActionsEnabled && !threadLimitLocked, action)) {
-                    bridge.log("thread_composer_action_blocked action=$action reason=${if (threadLimitLocked) "channel_limit_locked" else "read_only_access_fallback"}")
-                    return@ThreadPageContent
-                }
-                val currentComposer = currentComposerPayload()
-                val currentDraftState = composerDraftViewModel.state.value
-                val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
-                when (action) {
-                "refreshMemberSuggestions" -> {
-                    coroutineScope.launch {
-                        refreshComposerMemberSuggestions(reason = "panel_open")
-                    }
-                }
-                "refreshChannelSuggestions" -> {
-                    bridge.log("thread_composer_channel_suggestions_refresh reason=panel_open")
-                    membersStore?.dispatch(SharedMembersIntent.RefreshChannelSuggestions)
-                }
-                "staleChangeIgnored" -> {
-                    bridge.log(
-                        "thread_composer_stale_change_ignored instanceId=$composerInstanceId " +
-                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                }
-                "sendSnapshotUnavailable" -> {
-                    bridge.logWarn(
-                        "thread_composer_send_snapshot_unavailable " +
-                            "instanceId=$composerInstanceId reason=${value.orEmpty()}"
-                    )
-                    bridge.toast(genericThreadErrorLabel)
-                }
-                "staleEditorCommandIgnored" -> {
-                    bridge.log(
-                        "thread_composer_editor_command_ignored instanceId=$composerInstanceId " +
-                            "reason=local_editor_advanced localTextLen=${value?.length ?: -1} localAsTask=$asTask"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(
-                            seedText = value,
-                            seedAsTask = asTask,
-                        )
-                    )
-                }
-                "change" -> {
-                    bridge.log(
-                        "thread_composer_change instanceId=$composerInstanceId " +
-                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()} " +
-                            "surfaceSendChannelId=${composerSurface.sendChannelId.orEmpty()} " +
-                            "surfaceParentMessageId=${composerSurface.parentMessageId.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(
-                            seedText = value,
-                            seedAsTask = asTask
-                        )
-                    )
-                    val nextDraftState = composerDraftViewModel.state.value
-                    bridge.log(
-                        "thread_composer_change_result instanceId=$composerInstanceId " +
-                            "textLen=${nextDraftState.seedText.length} textBlank=${nextDraftState.seedText.isBlank()} " +
-                            "asTask=${nextDraftState.seedAsTask} draftKey=${nextDraftState.draftKey.orEmpty()} " +
-                            "activeRecords=${composerDraftPersistSlice.activeDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
-                    )
-                }
-                ThreadComposerSelectMentionEvent -> {
-                    val mention = decodeThreadComposerMentionEvent(value)
-                    bridge.log(
-                        "thread_composer_select_mention instanceId=$composerInstanceId " +
-                            "type=${mention?.type.orEmpty()} draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    mention?.let { composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.SelectMention(it)) }
-                }
-                "toggleAsTask" -> {
-                    bridge.log(
-                        "thread_composer_toggle_as_task instanceId=$composerInstanceId asTask=$asTask " +
-                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
-                            "draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
-                    )
-                }
-                "toggleOriginalImage" -> {
-                    val enabled = asTask ?: !currentDraftState.originalImage
-                    bridge.log(
-                        "thread_composer_toggle_original_image instanceId=$composerInstanceId " +
-                            "originalImage=$enabled draftKey=${currentDraftState.draftKey.orEmpty()}"
-                    )
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.SetOriginalImage(enabled)
-                    )
-                }
-                "send" -> {
-                    handleComposerSendRequest(
-                        ThreadComposerSendRequest(
-                            editorSessionId = 0L,
-                            value = TextFieldValue(value ?: currentDraftState.seedText),
-                            asTask = asTask ?: currentDraftState.seedAsTask,
-                        )
-                    )
-                }
-                "dismissMention" -> {
-                    value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId))
-                    }
-                }
-                "dismissMentionNotice" -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.ClearMentionActionNotice)
-                }
-                ThreadComposerDismissUnresolvedMentionsEvent -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissUnresolvedMentions)
-                }
-                "addAllMentions" -> {
-                    if (!pendingMentionActionBatchRequestGate.tryBegin()) return@ThreadPageContent
-                    val eligibleActions =
-                        eligiblePendingMentionActionBatch(
-                            actions = currentDraftState.pendingMentionActions,
-                            actionStates = currentDraftState.mentionActionStates,
-                            removingIds = currentDraftState.removingMentionActionIds,
-                            executingIds = currentDraftState.executingMentionActionIds
-                        )
-                    if (eligibleActions.size < 2) {
-                        pendingMentionActionBatchRequestGate.finish()
-                        return@ThreadPageContent
-                    }
-                    val resolutionIds = eligibleActions.map { it.resolutionId.trim() }
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.BeginMentionActionBatch(resolutionIds)
-                    )
-                    coroutineScope.launch {
-                        try {
-                            val requestAttempt =
-                                runCatchingPreservingCancellation {
-                                    dataSource.executePendingMentionActions(
-                                        action = "add",
-                                        resolutionIds = resolutionIds
-                                    )
-                                }
-                            val requestResult = requestAttempt.getOrNull()
-                            val requestFailureNotice =
-                                localizedPendingMentionActionRequestFailure(
-                                    result = requestResult,
-                                    requestThrew = requestAttempt.isFailure,
-                                    strings = pendingMentionActionBatchStrings
-                                )
-                            val results =
-                                (requestResult as? ThreadApiResult.Success)?.data.orEmpty()
-                            val outcome = pendingMentionActionBatchOutcome(resolutionIds, results)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.FinishMentionActionBatch(
-                                    requestedIds = outcome.requestedIds,
-                                    deliveredIds = outcome.deliveredIds,
-                                    noticeTitle = outcome.localizedNoticeTitle(pendingMentionActionBatchStrings),
-                                    notice =
-                                        requestFailureNotice
-                                            ?: outcome.localizedFailureNotice(pendingMentionActionBatchStrings)
-                                )
-                            )
-                            if (outcome.deliveredIds.isNotEmpty()) {
-                                refreshComposerMemberSuggestionsAfterMembershipMutation()
-                            }
-                        } finally {
-                            pendingMentionActionBatchRequestGate.finish()
-                        }
-                    }
-                }
-                "inviteMention", "notifyMention" -> {
-                    val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent
-                    if (resolutionId in currentDraftState.executingMentionActionIds) {
-                        return@ThreadPageContent
-                    }
-                    val pendingAction =
-                        currentDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
-                            ?: return@ThreadPageContent
-                    val verb = if (action == "inviteMention") "add" else "notify"
-                    val localState = if (verb == "add") "added" else "notified"
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.BeginMentionAction(
-                            resolutionId = resolutionId,
-                            state = localState
-                        )
-                    )
-                    coroutineScope.launch {
-                        val requestAttempt =
-                            runCatchingPreservingCancellation {
-                                dataSource.executePendingMentionActions(
-                                    action = verb,
-                                    resolutionIds = listOf(resolutionId)
-                                )
-                            }
-                        val result = requestAttempt.getOrNull()
-                        val rowResult =
-                            (result as? ThreadApiResult.Success)
-                                ?.data
-                                ?.firstOrNull { it.resolutionId == resolutionId }
-                        val succeeded = mentionActionSucceeded(verb, rowResult)
-                        val notice =
-                            if (succeeded) {
-                                pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
-                            } else {
-                                localizedPendingMentionActionRequestFailure(
-                                    result = result,
-                                    requestThrew = requestAttempt.isFailure,
-                                    strings = pendingMentionActionBatchStrings
-                                ) ?: formatMentionActionStatusNotice(verb, rowResult, pendingMentionActionBatchStrings)
-                            }
-                        composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.FinishMentionAction(
-                                resolutionId = resolutionId,
-                                notice = notice,
-                                delivered = succeeded,
-                                state = localState
-                            )
-                        )
-                        if (succeeded && verb == "add") {
-                            refreshComposerMemberSuggestionsAfterMembershipMutation()
-                        }
-                        if (succeeded) {
-                            delay(ThreadComposerMentionActionFadeDelayMs)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.MarkMentionActionRemoving(resolutionId)
-                            )
-                            delay(ThreadComposerMentionActionRemoveDelayMs - ThreadComposerMentionActionFadeDelayMs)
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.RemoveMentionAction(resolutionId)
-                            )
-                        }
-                    }
-                }
-                ThreadComposerPasteAttachmentsAction -> {
-                    // Desktop paste of files / an image: straight into the tray, as the web
-                    // composer's paste does (no annotation editor). A copied image is compressed
-                    // by the host (2048 px / JPEG 82, as editor output on mobile) unless the
-                    // draft asks for the original; Finder files stay their own bytes, as a File
-                    // pick does on mobile.
-                    // iOS: pasted images open in the image editor, as picked photos do.
-                    val pasteOriginalImage = currentDraftState.originalImage
-                    // Images the host already read inside its paste action (no clipboard read here).
-                    val hostPasted = ThreadComposerImagePasteRequests.takePending()
-                    coroutineScope.launch {
-                        if (composerSurface.sendChannelId == null) {
-                            bridge.toast(attachmentPickerUnavailableLabel)
-                            return@launch
-                        }
-                        val files =
-                            (hostPasted ?: withContext(Dispatchers.Default) { raftPlatformReadClipboardAttachments() })
-                                .take(ThreadComposerImagePasteMaxImages.takeIf { raftPlatformPastedImagesOpenEditor() } ?: Int.MAX_VALUE)
-                        bridge.log("thread_attachment_paste files=${files.size} host=${hostPasted != null}")
-                        if (files.isEmpty()) return@launch
-                        if (raftPlatformPastedImagesOpenEditor() && raftComposerImagePickerFilesAreStrictImages(files)) {
-                            // The picked-photo path: the editor first, compressed after Done
-                            // unless the draft asks for the original. The keyboard the paste
-                            // came from goes down over the editor and comes back after it (dm #119).
-                            composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                            openComposerImageAnnotation(files)
-                            composerKeyboardHandoff.settle()
-                            return@launch
-                        }
-                        val prepared =
-                            threadComposerCompressPastedImages(
-                                files = files,
-                                originalImage = pasteOriginalImage,
-                                compress = { file ->
-                                    val response =
-                                        bridge.compressThreadImage(
-                                            fileRef = file.fileRef.orEmpty(),
-                                            fileName = file.fileName.ifBlank { "image.png" },
-                                            mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
-                                        )
-                                    (parseRaftFilePreviewCompressedImageResult(response)
-                                        as? RaftFilePreviewCompressedImageResult.Success)?.file
-                                },
-                                retire = { refs ->
-                                    bridge.retireFilePreviewTemporaryFiles(
-                                        sessionId = "thread-paste-compression-$threadInstanceKey",
-                                        fileRefs = refs
-                                    )
-                                },
-                                log = bridge::log,
-                            )
-                        uploadComposerAttachmentFiles(prepared)
-                    }
-                }
-                ThreadComposerAttachImageAction, ThreadComposerCaptureImageAction, "attachFile" -> {
-                    // Freeze the session's image policy at picker admission.  The picker may
-                    // complete after a recomposition (or a new toggle event), but its result must
-                    // retain the policy that was visible when the user opened it.
-                    val compressPickerImages =
-                        shouldCompressThreadAttachmentPickerImages(
-                            action = action,
-                            originalImage = currentDraftState.originalImage
-                        )
-                    // A picked photo opens the image editor: the keyboard goes down before the
-                    // picker, or coming back to the window raises it over the editor (dm #119).
-                    // A file pick goes straight into the tray and keeps the keyboard as it is.
-                    val opensImageEditor = action != "attachFile"
-                    if (opensImageEditor) composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                    coroutineScope.launch {
-                        try {
-                            val channelId = composerSurface.sendChannelId
-                            if (channelId == null) {
-                                bridge.toast(attachmentPickerUnavailableLabel)
-                                return@launch
-                            }
-                            val response =
-                                bridge.threadAttachmentUpload(
-                                    channelId = channelId,
-                                    imageOnly = opensImageEditor,
-                                    capture = action == ThreadComposerCaptureImageAction,
-                                    // Image picker/camera results enter the annotation editor first.
-                                    // Do not encode before the editor decision: picker JPEG -> editor
-                                    // PNG -> JPEG would incur two lossy generations. Generic file
-                                    // picks also stay uncompressed so a JPEG remains source bytes
-                                    // and the shared size gate sees the real file.
-                                    compressImages = compressPickerImages,
-                                )
-                            admitComposerPickedAttachments(action, response)
-                        } finally {
-                            // Cancelled, rejected or straight into the tray: back at the composer.
-                            if (opensImageEditor) composerKeyboardHandoff.settle()
-                        }
-                    }
-                }
-                "removeAttachment" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-                        val removal =
-                            resolveThreadComposerAttachmentRemoval(
-                                attachments = composerDraftViewModel.state.value.uploadedAttachments,
-                                removedAttachmentIds = composerDraftViewModel.state.value.removedAttachmentIds,
-                                attachmentId = id,
-                                draftKey = draftKey
-                            )
-                        if (!removal.accepted) {
-                            bridge.logWarn(
-                                "thread_composer_attachment_remove_rejected attachmentId=$id reason=${removal.reason}"
-                            )
-                            return@ThreadPageContent
-                        }
-                        // Removing the tile is what cancels its upload (leaving the conversation does not).
-                        attachmentUploads.remove(draftKey, id)
-                        attachmentUploadFilesByLocalId =
-                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
-                        if (removal.fileRefToRetire != null) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = "thread-composer-${draftKey.orEmpty()}",
-                                fileRefs = listOf(removal.fileRefToRetire)
-                            )
-                        }
-                    }
-                }
-                ThreadComposerReorderAttachmentsAction ->
-                    composerDraftViewModel.reorderThreadComposerAttachments(value, bridge::log)
-                "retryAttachments" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-                        if (draftKey == null) {
-                            bridge.log("thread_composer_attachment_retry result=missing_draft_key attachmentId=$id")
-                            bridge.toast(attachmentRetryUnavailableLabel)
-                            return@ThreadPageContent
-                        }
-                        val file = attachmentUploadFilesByLocalId.threadAttachmentUploadFile(id, draftKey)
-                        if (file == null) {
-                            bridge.log(
-                                "thread_composer_attachment_retry result=missing_file_ref attachmentId=$id"
-                            )
-                            bridge.toast(attachmentRetryUnavailableLabel)
-                            return@ThreadPageContent
-                        }
-                        if (attachmentUploadOrchestrator.isActive(id, draftKey)) {
-                            bridge.log(
-                                "thread_composer_attachment_retry result=already_uploading attachmentId=$id"
-                            )
-                            return@ThreadPageContent
-                        }
-                        bridge.log(
-                            "thread_composer_attachment_retry result=start attachmentId=$id fileName=${file.fileName}"
-                        )
-                        // Preserve an editor's remote replacement slot across a failed attempt.
-                        // RetryAttachment clears the old admission so the next AddLocal mint gets
-                        // a fresh generation; capture the slot before that clear, otherwise a
-                        // successful retry would append beside the original remote row.
-                        val replacementSlot =
-                            composerDraftViewModel.state.value.attachmentAdmissionsByLocalId[id]
-                                ?.replacementAttachmentId
-                                ?.trim()
-                                ?.takeIf { it.isNotBlank() && it != id }
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
-                        coroutineScope.launch {
-                            uploadComposerAttachmentFiles(
-                                files = listOf(file),
-                                replaceAttachmentId = replacementSlot
-                            )
-                        }
-                    }
-                }
-                "previewAttachment" -> {
-                    attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        // The tile opens its preview or the image editor: the keyboard goes down
-                        // first and comes back when that page closes (dm #119).
-                        composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
-                        if (openComposerAttachmentPreview(id)) composerKeyboardHandoff.pageOpened()
-                        composerKeyboardHandoff.settle()
-                    }
-                }
-                "blur" -> {
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Flush)
-                    bridge.log(
-                        "thread_composer_blur instanceId=$composerInstanceId"
-                    )
-                }
-                else -> {
-                    bridge.log(
-                        "thread_composer_event_unsupported instanceId=$composerInstanceId action=$action attachmentId=${attachmentId.orEmpty()}"
-                    )
-                }
-                }
+                threadRouteComposerActions.onComposerEvent(action, value, asTask, attachmentId)
             }
             )
         }
