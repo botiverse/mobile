@@ -53,32 +53,34 @@ internal fun RaftDesignSystemTheme(content: @Composable () -> Unit) = RaftDesign
 /** [RaftDesignSystemTheme]; [forceDark]: dark tokens whatever the app's appearance (chrome over a photo viewer's dark backdrop). */
 @Composable
 internal fun RaftDesignSystemTheme(forceDark: Boolean, content: @Composable () -> Unit) {
-    val appearance = if (forceDark || RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light
-    val appSelectionColors = LocalTextSelectionColors.current
-    val fonts =
-        remember {
-            RaftFonts(
-                sans = raftMultiWeightFontFamily("sans"),
-                mono = raftMultiWeightFontFamily("mono")
-            )
-        }
-    val strings = raftAppDesignSystemStrings()
-    RaftTheme(
-        appearance = appearance,
-        fonts = fonts,
-        localeList = RaftUiTextLocaleState.localeList,
-        raftTheme = RaftAppThemeState.raftTheme,
-        decor = RaftAppThemeState.decor,
-    ) {
-        // The app's own RaftType roles follow the scale this theme resolved (wide from the wide
-        // breakpoint, by window width alone), as the page host already set it for the page; kept
-        // here for content drawn without a page host (tests, visual fixtures).
-        RaftProvideAppTypeScale {
-            CompositionLocalProvider(
-                LocalTextSelectionColors provides appSelectionColors,
-                LocalRaftStrings provides strings,
-            ) {
-                RaftProvideDesignSystemMisuse(content = content)
+    RaftProvideResourceEnvironment {
+        val appearance = if (forceDark || RaftAppThemeState.isDark) RaftAppearance.Dark else RaftAppearance.Light
+        val appSelectionColors = LocalTextSelectionColors.current
+        val fonts =
+            remember {
+                RaftFonts(
+                    sans = raftMultiWeightFontFamily("sans"),
+                    mono = raftMultiWeightFontFamily("mono")
+                )
+            }
+        val strings = raftAppDesignSystemStrings()
+        RaftTheme(
+            appearance = appearance,
+            fonts = fonts,
+            localeList = RaftUiTextLocaleState.localeList,
+            raftTheme = RaftAppThemeState.raftTheme,
+            decor = RaftAppThemeState.decor,
+        ) {
+            // The app's own RaftType roles follow the scale this theme resolved (wide from the wide
+            // breakpoint, by window width alone), as the page host already set it for the page; kept
+            // here for content drawn without a page host (tests, visual fixtures).
+            RaftProvideAppTypeScale {
+                CompositionLocalProvider(
+                    LocalTextSelectionColors provides appSelectionColors,
+                    LocalRaftStrings provides strings,
+                ) {
+                    RaftProvideDesignSystemMisuse(content = content)
+                }
             }
         }
     }

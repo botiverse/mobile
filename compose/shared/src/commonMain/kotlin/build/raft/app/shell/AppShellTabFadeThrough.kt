@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -53,6 +56,26 @@ internal fun appShellTabFadeThroughFrame(elapsedMillis: Float): AppShellTabFadeT
     )
 }
 
+private enum class AppShellTabFadeRole {
+    Rest,
+    Incoming,
+    Outgoing,
+}
+
+/**
+ * Per-tab placement and fade state read strictly in placement / draw phases so tab switches never
+ * attach/detach `graphicsLayer` nodes or force remeasurement of kept-alive tab subtrees.
+ */
+@Stable
+private class AppShellTabLayerState(
+    placed: Boolean,
+    role: AppShellTabFadeRole,
+    elapsed: Animatable<Float, *>,
+) {
+    var placed by mutableStateOf(placed)
+    var role by mutableStateOf(role)
+    var elapsed by mutableStateOf(elapsed)
+}
 /** The tab switch the stack is animating: from [outgoing] (null: none) in switch [generation]. */
 private class AppShellTabSwitchTracker(var shownTab: String) {
     var outgoing: String? = null
@@ -109,37 +132,58 @@ internal fun AppShellTabFadeThroughStack(
         remember(elapsed, transitioning) {
             derivedStateOf { transitioning && appShellTabFadeThroughFrame(elapsed.value).outgoingShown }
         }
-    // The incoming tab's layer only while the fade runs: at rest the tab is drawn as it always was.
-    val fading by
-        remember(elapsed, transitioning) {
-            derivedStateOf { transitioning && elapsed.value < RaftMotion.FadeThroughMillis }
-        }
     val outgoing = tracker.outgoing?.takeIf { outgoingShown && it != activeTab && it in tabs }
     Box(modifier = modifier.fillMaxSize()) {
         tabs.forEach { tab ->
             key("app-shell-$tab") {
                 val active = tab == activeTab
                 val placed = active || tab == outgoing
-                val fade =
+                val role =
                     when {
-                        active && fading ->
-                            Modifier.graphicsLayer {
-                                val frame = appShellTabFadeThroughFrame(elapsed.value)
-                                alpha = frame.incomingAlpha
-                                scaleX = frame.incomingScale
-                                scaleY = frame.incomingScale
+                        active && transitioning -> AppShellTabFadeRole.Incoming
+                        tab == outgoing -> AppShellTabFadeRole.Outgoing
+                        else -> AppShellTabFadeRole.Rest
+                    }
+                val layerState = remember { AppShellTabLayerState(placed, role, elapsed) }
+                layerState.placed = placed
+                layerState.role = role
+                layerState.elapsed = elapsed
+                val stableTabModifier =
+                    remember(layerState) {
+                        Modifier
+                            .layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                layout(placeable.width, placeable.height) {
+                                    if (layerState.placed) placeable.place(0, 0)
+                                }
                             }
-                        tab == outgoing ->
-                            Modifier.graphicsLayer { alpha = appShellTabFadeThroughFrame(elapsed.value).outgoingAlpha }
-                        else -> Modifier
+                            .graphicsLayer {
+                                when (layerState.role) {
+                                    AppShellTabFadeRole.Incoming -> {
+                                        val frame = appShellTabFadeThroughFrame(layerState.elapsed.value)
+                                        alpha = frame.incomingAlpha
+                                        scaleX = frame.incomingScale
+                                        scaleY = frame.incomingScale
+                                    }
+                                    AppShellTabFadeRole.Outgoing -> {
+                                        alpha = appShellTabFadeThroughFrame(layerState.elapsed.value).outgoingAlpha
+                                        scaleX = 1f
+                                        scaleY = 1f
+                                    }
+                                    AppShellTabFadeRole.Rest -> {
+                                        alpha = 1f
+                                        scaleX = 1f
+                                        scaleY = 1f
+                                    }
+                                }
+                            }
                     }
                 // The selected tab sits over the outgoing one, so touches during the fade reach it.
                 Box(
                     modifier =
                         Modifier
-                            .appShellTabPlacedOnlyWhen(placed)
                             .zIndex(if (active) 1f else 0f)
-                            .then(fade)
+                            .then(stableTabModifier)
                             .fillMaxSize()
                 ) {
                     CompositionLocalProvider(LocalRaftAppShellTabSelected provides active) {
@@ -158,12 +202,3 @@ internal fun AppShellTabFadeThroughStack(
  * reply-thread column) check it instead of being composed once per retained tab.
  */
 internal val LocalRaftAppShellTabSelected = compositionLocalOf { true }
-
-/** Measured and kept, but neither drawn nor hit-tested while not [placed] (see RaftChildPage). */
-private fun Modifier.appShellTabPlacedOnlyWhen(placed: Boolean): Modifier =
-    layout { measurable, constraints ->
-        val placeable = measurable.measure(constraints)
-        layout(placeable.width, placeable.height) {
-            if (placed) placeable.place(0, 0)
-        }
-    }

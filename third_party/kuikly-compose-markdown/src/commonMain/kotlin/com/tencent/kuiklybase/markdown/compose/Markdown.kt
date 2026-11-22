@@ -14,6 +14,7 @@ import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.components.markdownComponents
 import com.tencent.kuiklybase.markdown.model.ImageLinkHandler
 import com.tencent.kuiklybase.markdown.model.ImageLinkHandlerImpl
+import com.tencent.kuiklybase.markdown.model.DefaultRaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.ImageTransformer
 import com.tencent.kuiklybase.markdown.model.MarkdownAnimations
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
@@ -29,7 +30,6 @@ import com.tencent.kuiklybase.markdown.model.NoOpTextProvider
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.RAFT_MARKDOWN_PARSE_DISPATCHER_LABEL
-import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnimations
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
@@ -72,7 +72,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = DefaultRaftGFMFlavourDescriptor,
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),
@@ -120,7 +120,7 @@ fun Markdown(
     modifier: Modifier = Modifier.fillMaxSize(),
     padding: MarkdownPadding = markdownPadding(),
     dimens: MarkdownDimens = markdownDimens(),
-    flavour: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor(),
+    flavour: MarkdownFlavourDescriptor = DefaultRaftGFMFlavourDescriptor,
     parser: MarkdownParser = MarkdownParser(flavour),
     imageTransformer: ImageTransformer = NoOpImageTransformerImpl(),
     imageLinkHandler: ImageLinkHandler = ImageLinkHandlerImpl(),

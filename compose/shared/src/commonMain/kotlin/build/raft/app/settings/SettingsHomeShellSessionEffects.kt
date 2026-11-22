@@ -36,6 +36,8 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.data.mergedSharedConversationDirectoryState
+import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedDirectMessagePreviewPrefetchCoordinator
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.ServerId
@@ -790,6 +792,8 @@ internal fun AppShellTaskDraftsAndBannerEffects(
     latestSelectedTabState: State<String>,
     latestSelectedHomeDestinationState: State<String?>,
     latestAppShellConversationDirectoryState: State<SharedConversationDirectoryState>,
+    homeConversationDirectoryFlow: kotlinx.coroutines.flow.Flow<SharedConversationDirectoryState>,
+    homeShellStore: SharedHomeShellStore,
     latestSelectedHomeConversationIdState: State<String?>,
     foregroundBannerStore: SharedForegroundBannerStore,
 ) {
@@ -799,12 +803,27 @@ internal fun AppShellTaskDraftsAndBannerEffects(
     val latestSelectedHomeDestination by latestSelectedHomeDestinationState
     val latestAppShellConversationDirectory by latestAppShellConversationDirectoryState
     val latestSelectedHomeConversationId by latestSelectedHomeConversationIdState
+    // Keep a plain non-snapshot directory reference synced even while the shell is covered so
+    // notification suppression never sees stale channel/DM names without recomposing the shell.
+    val liveHomeDirectoryRef = remember { arrayOf(SharedConversationDirectoryState()) }
+    LaunchedEffect(homeConversationDirectoryFlow) {
+        homeConversationDirectoryFlow.collect { liveHomeDirectoryRef[0] = it }
+    }
     TaskPendingDraftsFollowSessionEffect(foregroundBannerStore.taskPendingDrafts, authGateState, readySession)
     // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
-    DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore) {
+    DisposableEffect(sharedStores, pager.pagerId, foregroundBannerStore, homeShellStore) {
         val ownerId = "app-shell:${pager.pagerId}"
         RaftVisibleConversationRegistry.register(ownerId) {
             if (!sharedStores.isActiveAppShellPager(pager.pagerId)) return@register null
+            val liveActivity = homeShellStore.state.value.activity
+            val activityDirectory =
+                liveActivity.snapshot?.toSharedConversationDirectoryState(dmPeerNames = liveActivity.dmPeerNames)
+                    ?: SharedConversationDirectoryState()
+            val liveDirectory =
+                listOf(liveHomeDirectoryRef[0], activityDirectory)
+                    .mergedSharedConversationDirectoryState()
+                    .takeIf { it.byId.isNotEmpty() }
+                    ?: latestAppShellConversationDirectory
             RaftVisibleConversationSnapshot(
                 currentServerId = selectedServerStore.selectedServerId.value,
                 visibleConversationKey =
@@ -814,7 +833,7 @@ internal fun AppShellTaskDraftsAndBannerEffects(
                         selectedConversationId = latestSelectedHomeConversationId
                     ),
                 visibleRouteIdentity = foregroundBannerStore.visibleRouteIdentity(),
-                conversationDirectory = latestAppShellConversationDirectory,
+                conversationDirectory = liveDirectory,
                 visibleRouteIdentities = foregroundBannerStore.visibleRouteIdentities(),
             )
         }

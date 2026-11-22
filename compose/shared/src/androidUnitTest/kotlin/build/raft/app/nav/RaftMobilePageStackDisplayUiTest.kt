@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -198,21 +199,33 @@ class RaftMobilePageStackDisplayUiTest {
             val sizes = mutableMapOf<String, IntSize>()
             setContent {
                 RaftMobilePageStackDisplay(stack) { page ->
-                    Box(Modifier.fillMaxSize().onSizeChanged { sizes[page.contentKey] = it })
+                    Box(Modifier.fillMaxSize().testTag(page.contentKey).onSizeChanged { sizes[page.contentKey] = it })
                 }
             }
+            val rootKey = stack.pages.first().contentKey
             runOnIdle { stack.open(CHAT, JsonObject(emptyMap()), from = stack.pages.first()) }
             waitForIdle()
             val chat = stack.pages.last()
             val window = sizes.getValue(chat.contentKey)
             assertTrue(window.width > 0 && window.height > 0, "chat on top: $window")
-            assertEquals(IntSize.Zero, sizes.getValue(stack.pages.first().contentKey), "covered shell collapses as before")
+            onNodeWithTag(rootKey).assertIsNotDisplayed()
+            assertEquals(window, sizes.getValue(rootKey), "covered shell keeps viewport size so gesture back never rebuilds tabs from 0x0")
 
             runOnIdle { stack.open("compose_member_detail", JsonObject(emptyMap()), from = chat) }
             waitForIdle()
             val profile = stack.pages.last()
             assertEquals(window, sizes.getValue(profile.contentKey))
             assertEquals(window, sizes.getValue(chat.contentKey), "covered chat keeps its viewport size")
+
+            runOnIdle { stack.open("compose_settings", JsonObject(emptyMap()), from = profile) }
+            waitForIdle()
+            val settings = stack.pages.last()
+            assertEquals(window, sizes.getValue(settings.contentKey))
+            assertEquals(IntSize.Zero, sizes.getValue(profile.contentKey), "other covered non-root pages still collapse to 0x0")
+
+            runOnIdle { stack.back() }
+            waitForIdle()
+            assertEquals(window, sizes.getValue(profile.contentKey))
 
             runOnIdle { stack.back() }
             waitForIdle()

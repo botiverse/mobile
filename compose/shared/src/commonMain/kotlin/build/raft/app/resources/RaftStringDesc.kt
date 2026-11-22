@@ -3,9 +3,13 @@
 package build.raft.app.resources
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.intl.Locale
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.DensityQualifier
@@ -121,16 +125,67 @@ fun stringResource(resource: StringResource, vararg args: Any): String {
 private data class RaftResolvedResourceEnvironment(
     val environment: ResourceEnvironment,
     val language: String,
+    val region: String,
 )
 
+private data class RaftResolvedStringCacheKey(
+    val language: String,
+    val region: String,
+    val stringRes: StringResource,
+)
+
+private const val RaftResolvedStringCacheMaxEntries = 4096
+
 /**
- * The lookup environment for the current [StringDesc.localeType]. Subscribes the caller via
- * [StringDesc.observeLocaleType], and keys the environment by the value itself, so a language
- * switch always recomposes into the new catalog. Locale.current keys system language changes; the
- * lookup walks the whole preferred-language list.
+ * In-memory resolved-string cache for zero-arg [ResourceStringDesc] lookups.
+ * Avoids spinning up `runBlocking` + `EventLoop` on every newly composed screen (200+ calls per
+ * pushed conversation) once a string has been resolved for that `(language, region)`.
+ */
+private object RaftResolvedStringCache {
+    private val lock = SynchronizedObject()
+    private val entries = HashMap<RaftResolvedStringCacheKey, String>(256)
+
+    fun get(key: RaftResolvedStringCacheKey): String? = synchronized(lock) { entries[key] }
+
+    fun put(key: RaftResolvedStringCacheKey, value: String) {
+        synchronized(lock) {
+            if (entries.size >= RaftResolvedStringCacheMaxEntries && key !in entries) {
+                entries.clear()
+            }
+            entries[key] = value
+        }
+    }
+}
+
+private val LocalRaftResourceEnvironment = compositionLocalOf<RaftResolvedResourceEnvironment?> { null }
+
+/**
+ * Observes [StringDesc.observeLocaleType] and [Locale.current] once at a stable ancestor and shares
+ * the resolved [RaftResolvedResourceEnvironment] down to every [stringResource] / [StringDesc.localized]
+ * call beneath it, avoiding hundreds of per-call `collectAsState` coroutines and `LocaleListCompat`
+ * queries on every pushed screen.
  */
 @Composable
-private fun rememberRaftResourceEnvironment(): RaftResolvedResourceEnvironment {
+fun RaftProvideResourceEnvironment(content: @Composable () -> Unit) {
+    if (LocalRaftResourceEnvironment.current != null) {
+        content()
+    } else {
+        val environment = rememberRaftResourceEnvironmentUncached()
+        CompositionLocalProvider(LocalRaftResourceEnvironment provides environment, content = content)
+    }
+}
+
+/**
+ * The lookup environment for the current [StringDesc.localeType]. Reads the shared
+ * [LocalRaftResourceEnvironment] when provided by an ancestor, falling back to direct observation
+ * in standalone composables / unit tests so a language switch always recomposes into the new catalog.
+ */
+@Composable
+private fun rememberRaftResourceEnvironment(): RaftResolvedResourceEnvironment =
+    LocalRaftResourceEnvironment.current ?: rememberRaftResourceEnvironmentUncached()
+
+@Composable
+private fun rememberRaftResourceEnvironmentUncached(): RaftResolvedResourceEnvironment {
     val localeType = StringDesc.observeLocaleType()
     val systemLocale = Locale.current
     return remember(localeType, systemLocale) {
@@ -141,13 +196,18 @@ private fun rememberRaftResourceEnvironment(): RaftResolvedResourceEnvironment {
 /**
  * Compose resources reads string catalogs from disk asynchronously; the app resolves strings
  * synchronously (composition and host callbacks), as Compose's own `stringResource` does on
- * Android and iOS. Catalogs are cached after the first read.
+ * Android and iOS. Catalogs are cached after the first read; [RaftResolvedStringCache] keeps
+ * subsequent zero-arg lookups off `runBlocking`.
  */
 private fun StringDesc.resolveIn(resolved: RaftResolvedResourceEnvironment): String {
     val environment = resolved.environment
     return when (this) {
         is RawStringDesc -> string
-        is ResourceStringDesc -> runBlocking { getString(environment, stringRes) }
+        is ResourceStringDesc -> {
+            val cacheKey = RaftResolvedStringCacheKey(resolved.language, resolved.region, stringRes)
+            RaftResolvedStringCache.get(cacheKey)
+                ?: runBlocking { getString(environment, stringRes) }.also { RaftResolvedStringCache.put(cacheKey, it) }
+        }
         is ResourceFormattedStringDesc -> {
             // kmmresource resolved StringDesc arguments before formatting; keep that.
             val resolvedArgs = args.map { arg -> (arg as? StringDesc)?.resolveIn(resolved) ?: arg }
@@ -284,5 +344,6 @@ private fun raftResolvedResourceEnvironment(
                 DensityQualifier.MDPI,
             ),
         language = locale.language,
+        region = locale.region,
     )
 }
