@@ -116,7 +116,10 @@ internal fun raftListPaneShareCapDp(roomDp: Float, share: Float, minDp: Float): 
  *   collapses) the handle collapses the list too, by the input in use ([raftListPaneDragCollapses]:
  *   with a mouse or trackpad 40dp past its minimum while held, by touch only its edge let go of
  *   near the rail), or Enter; and where the list was, a strip keeps the rail toggle's Expand
- *   sidebar in sight ([RaftListPaneExpandStrip]), which brings it back.
+ *   sidebar in sight ([RaftListPaneExpandStrip]), which brings it back. [detailHeadTopInset] is
+ *   the top safe area the detail's head pads, the shell's to give (it has no page host to read it
+ *   from here): 0 under the wide top bar, the window's on iPhone Duo's inner screen, which has
+ *   none; the strip's button stays level with that head.
  * - Otherwise (compact): the detail when something is selected, else the list.
  */
 @Composable
@@ -135,6 +138,7 @@ internal fun RaftAdaptiveListDetailSplit(
     maxShare: Float? = null,
     onResizingChange: (Boolean) -> Unit = {},
     log: (String) -> Unit = {},
+    detailHeadTopInset: Dp = 0.dp,
 ) {
     val density = LocalDensity.current
     var rowWidthDp by remember { mutableStateOf<Float?>(null) }
@@ -178,7 +182,7 @@ internal fun RaftAdaptiveListDetailSplit(
                             listPane(active)
                         }
                     } else if (expandStrip) {
-                        RaftListPaneExpandStrip(onExpand = { onCollapsedChange?.invoke(false) })
+                        RaftListPaneExpandStrip(topInset = detailHeadTopInset, onExpand = { onCollapsedChange?.invoke(false) })
                     }
                 },
         ) {
@@ -375,10 +379,12 @@ internal fun raftListPaneExpandStripWidthDp(pointerInput: RaftPointerInput): Flo
  * Expand sidebar (web LeftRail SidebarToggleRailItem: PanelLeftOpen, "Expand sidebar"; the web shows it only on the
  * rail, at the foot of it, far from where the list was), a head's bar button level with the head beside it. It brings
  * the list back at the width it had ([onExpand]); the rail's toggle and ⌘\ / Ctrl+\ still do too. The split stands
- * outside any page's theme: the strip takes the design system's, for its colours and the input in use.
+ * outside any page's theme: the strip takes the design system's, for its colours and the input in use. [topInset]: the
+ * top safe area the head beside it pads ([RaftAdaptiveListDetailSplit]'s `detailHeadTopInset`). Nothing here reads the
+ * page host (LocalActivity), so the split composes without one, as it always did.
  */
 @Composable
-private fun RaftListPaneExpandStrip(onExpand: () -> Unit) {
+private fun RaftListPaneExpandStrip(topInset: Dp, onExpand: () -> Unit) {
     RaftDesignSystemTheme {
         val controls = RaftTheme.controls
         Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas), contentAlignment = Alignment.TopCenter) {
@@ -389,7 +395,7 @@ private fun RaftListPaneExpandStrip(onExpand: () -> Unit) {
                     tooltip = stringResource(Res.string.rail_expand_sidebar),
                     modifier =
                         Modifier
-                            .padding(top = raftTopSafeAreaPadding() + (controls.headHeight - controls.barButtonSize) / 2)
+                            .padding(top = topInset + (controls.headHeight - controls.barButtonSize) / 2)
                             .testTag(RAFT_LIST_PANE_EXPAND_TEST_TAG),
                     variant = RaftButtonVariant.Ghost,
                     size = RaftIconButtonSize.Lg,

@@ -6065,6 +6065,8 @@ private fun RaftAppShellReadyContent(
                                 maxShare = 0.5f.takeIf { collapseColumn == RaftCollapsibleColumn.ActivityList && selection != null },
                                 onResizingChange = { adaptiveListPaneResizing = it },
                                 log = { bridge.log(it) },
+                                // The head beside the collapsed strip pads the status bar only without the top bar (Duo).
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                             listPane(active)
@@ -6578,6 +6580,7 @@ private fun RaftAppShellReadyContent(
                                         )
                                     }
                                 },
+                                detailHeadTopInset = if (railWithoutTopBar) shellScope.topSafeArea else 0.dp,
                             )
                         } else {
                         val stackPageClose = LocalAppShellServerStackPageClose.current

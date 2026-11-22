@@ -153,7 +153,8 @@ private fun settingsWideWebPage(surface: SettingsWebViewSurface, storeScope: Raf
  * [collapsed]: the rail's Collapse Sidebar hid the list, so the section takes the width beside the
  * strip that keeps Expand sidebar where the list was; [onCollapsedChange] lets that strip bring it
  * back and the list's handle collapse it too (a drag past its minimum: with a mouse or trackpad
- * at once, by touch only let go near the rail; Enter).
+ * at once, by touch only let go near the rail; Enter). [detailHeadTopInset]: the top safe area the
+ * section's head pads, for that strip ([RaftAdaptiveListDetailSplit]).
  */
 @Composable
 internal fun SettingsWideListDetail(
@@ -171,6 +172,7 @@ internal fun SettingsWideListDetail(
     onResizingChange: (Boolean) -> Unit = {},
     /** Search settings at the top of the list (the results stay there, the open one selected). */
     search: SettingsSearchHost? = null,
+    detailHeadTopInset: Dp = 0.dp,
 ) {
     val rowKeys = payload.items.map { it.key }
     val showing = settingsWideDetailKey(picked, rowKeys)
@@ -208,6 +210,7 @@ internal fun SettingsWideListDetail(
         collapsed = collapsed,
         onCollapsedChange = onCollapsedChange,
         onResizingChange = onResizingChange,
+        detailHeadTopInset = detailHeadTopInset,
     )
 }
 
