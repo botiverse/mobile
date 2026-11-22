@@ -151,9 +151,7 @@ class RestartAvatarFirstFrameTest {
         val deletedAgentId = "agent-deleted"
         val realAvatar = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
 
-        // Session 1: authoritative roster persists the real avatar, then a sparse authoritative
-        // profile cache update with avatar=null arrives. It must NOT overwrite the real ref with
-        // pixel:robot.
+        // Session 1: authoritative roster persists the real avatar to preferences.
         val session1Store =
             SharedServerMembersStore(
                 memberRepository = PresenceNoopMemberRepository,
@@ -166,21 +164,29 @@ class RestartAvatarFirstFrameTest {
                 listOf(agent(cachedAgentId, AvatarReference.fromWireValue(realAvatar))),
             )
         )
-        session1Store.cacheProfiles(
-            serverId = serverId,
-            profiles = listOf(agent(cachedAgentId, avatar = null).copy(serverId = serverId)),
-            authoritativeAvatar = true,
-        )
 
-        // Session 2 (cold restart): cached agent paints its real avatar on frame 1; unconfirmed
-        // agent stays pending instead of flashing default pixel:robot.
+        // Session 2 (cold restart): a sparse profile slice with avatar=null lands before the full
+        // directory roster. Its recordDurableAvatarRefs(authoritativeAbsence = false) must NOT
+        // overwrite the real persisted avatar with pixel:robot.
         val coldStore =
             SharedServerMembersStore(
                 memberRepository = PresenceNoopMemberRepository,
                 presenceOwner = { owner },
                 avatarRefStore = RaftMemberAvatarRefStore(prefs),
             )
-        val resolver = raftMemberAvatarResolver(coldStore, ServerKey)
+        coldStore.seedProfiles(
+            serverId = serverId,
+            profiles = listOf(agent(cachedAgentId, avatar = null).copy(serverId = serverId)),
+        )
+        assertEquals(realAvatar, RaftMemberAvatarRefStore(prefs).avatarWireValue(ServerKey, cachedAgentId, ownerKey))
+
+        val freshAfterRestart =
+            SharedServerMembersStore(
+                memberRepository = PresenceNoopMemberRepository,
+                presenceOwner = { owner },
+                avatarRefStore = RaftMemberAvatarRefStore(prefs),
+            )
+        val resolver = raftMemberAvatarResolver(freshAfterRestart, ServerKey)
         assertEquals(realAvatar, resolver.current(cachedAgentId))
         assertFalse(resolver.isAgentAvatarPending(cachedAgentId))
         assertNull(resolver.current(bareAgentId))
@@ -190,7 +196,7 @@ class RestartAvatarFirstFrameTest {
 
         // Once the live roster lands, the avatar-less agent is confirmed as pixel:robot and a
         // missing/deleted agent stops being pending so it never stays blank.
-        coldStore.seed(
+        freshAfterRestart.seed(
             MemberSnapshot(
                 ServerSummary(id = serverId, name = "Raft"),
                 listOf(

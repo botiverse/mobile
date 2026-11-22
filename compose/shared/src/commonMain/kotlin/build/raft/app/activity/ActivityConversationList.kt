@@ -104,6 +104,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon

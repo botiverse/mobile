@@ -21,11 +21,14 @@ import coil3.svg.SvgDecoder
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -88,6 +91,7 @@ internal suspend fun raftPrewarmCachedImagesFromDisk(
         val seenKeys = LinkedHashSet<String>()
         var promoted = 0
         for (rawUrl in urls) {
+            ensureActive()
             if (seenKeys.size >= maxCount) break
             val url = rawUrl.trim()
             if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) continue
@@ -106,7 +110,14 @@ internal suspend fun raftPrewarmCachedImagesFromDisk(
                     .diskCachePolicy(CachePolicy.READ_ONLY)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .build()
-            val result = runCatching { loader.execute(request) }.getOrNull()
+            val result =
+                try {
+                    loader.execute(request)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    null
+                }
             if (result is SuccessResult) promoted += 1
         }
         promoted
@@ -121,28 +132,37 @@ internal fun raftScheduleStartupAvatarPrewarm(
     context: PlatformContext,
     urlsProvider: () -> Collection<String>,
 ) {
-    if (!raftStartupAvatarPrewarmStarted.compareAndSet(expect = false, update = true)) return
-    val generation = synchronized(raftPrewarmLock) { raftPrewarmGeneration }
-    val job =
-        raftPrewarmScope.launch {
-            val urls = runCatching { urlsProvider() }.getOrNull().orEmpty()
-            if (urls.isEmpty()) {
-                synchronized(raftPrewarmLock) {
-                    if (raftPrewarmGeneration == generation) {
-                        raftStartupAvatarPrewarmStarted.value = false
+    val jobToStart =
+        synchronized(raftPrewarmLock) {
+            if (!raftStartupAvatarPrewarmStarted.compareAndSet(expect = false, update = true)) return
+            val generation = raftPrewarmGeneration
+            raftPrewarmScope.launch(start = CoroutineStart.LAZY) {
+                val urls =
+                    try {
+                        urlsProvider()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        emptyList()
                     }
+                if (urls.isEmpty()) {
+                    synchronized(raftPrewarmLock) {
+                        if (raftPrewarmGeneration == generation) {
+                            raftStartupAvatarPrewarmStarted.value = false
+                        }
+                    }
+                    return@launch
                 }
-                return@launch
-            }
-            runCatching { raftPrewarmCachedImagesFromDisk(context, urls) }
+                try {
+                    raftPrewarmCachedImagesFromDisk(context, urls)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    Unit
+                }
+            }.also { raftPrewarmJob = it }
         }
-    synchronized(raftPrewarmLock) {
-        if (raftPrewarmGeneration != generation) {
-            job.cancel()
-        } else {
-            raftPrewarmJob = job
-        }
-    }
+    jobToStart.start()
 }
 
 /**

@@ -2,6 +2,7 @@ package build.raft.app.image
 
 import android.graphics.Bitmap
 import coil3.SingletonImageLoader
+import coil3.annotation.DelicateCoilApi
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
@@ -17,6 +18,7 @@ import kotlin.test.assertNull
  * after restart, an avatar/server icon already present in Coil's disk cache is promoted into Coil's
  * memory cache without touching the network so frame 1 hits synchronously from memory.
  */
+@OptIn(DelicateCoilApi::class)
 @RunWith(RobolectricTestRunner::class)
 class RaftAvatarStartupPrewarmTest {
     @Test

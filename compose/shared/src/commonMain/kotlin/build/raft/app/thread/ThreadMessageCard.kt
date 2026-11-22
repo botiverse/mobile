@@ -21,6 +21,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.stripQuoteReplyRefsForPreview
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.markdown.LocalRaftMarkdownLinkLongPress
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
