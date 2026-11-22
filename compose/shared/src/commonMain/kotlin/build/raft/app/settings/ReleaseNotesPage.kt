@@ -180,16 +180,40 @@ internal fun sharedSettingsReleaseNotesUrl(versionCode: String): String {
     val localeTag =
         try {
             val locale = KeyValueLocalePreferenceStore(raftSharedPreferenceStore()).readLocaleSync()
-            when (locale) {
-                AppLocale.System -> null
-                else -> locale.kmmResourceLocaleTag
-            }
+            releaseNotesLocaleTag(locale, androidx.compose.ui.text.intl.Locale.current.toLanguageTag())
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             AppLocale.Default.kmmResourceLocaleTag
         }
     return sharedSettingsReleaseNotesUrlForLocale(versionCode, localeTag)
+}
+
+/**
+ * The `lang` the notes page is asked for: the app's own language, or with "follow system" the
+ * system's, mapped onto the app's languages. The URL has to say it: Android reads the page through
+ * the app's document cache, whose request carries no Accept-Language, so a system-language page
+ * fell back to English (artin 11-22, Volta found the cause).
+ */
+internal fun releaseNotesLocaleTag(appLocale: AppLocale, systemLanguageTag: String?): String? =
+    if (appLocale == AppLocale.System) {
+        releaseNotesSystemAppLocale(systemLanguageTag).kmmResourceLocaleTag
+    } else {
+        appLocale.kmmResourceLocaleTag
+    }
+
+/** The app language a system language tag (`zh-Hans-CN`, `es-ES`, `fr-FR`) maps to; English otherwise. */
+internal fun releaseNotesSystemAppLocale(systemLanguageTag: String?): AppLocale {
+    val tag = systemLanguageTag?.trim()?.lowercase()?.replace('_', '-').orEmpty()
+    if (tag.isEmpty()) return AppLocale.Default
+    val parts = tag.split('-')
+    if (parts.first() == "zh") {
+        val traditional = parts.any { it == "hant" || it == "tw" || it == "hk" || it == "mo" }
+        return if (traditional) AppLocale.TraditionalChinese else AppLocale.SimplifiedChinese
+    }
+    val exact = AppLocale.fromStorageKey(tag)
+    if (exact != AppLocale.Default && exact != AppLocale.System) return exact
+    return AppLocale.fromStorageKey(parts.first()).takeUnless { it == AppLocale.System } ?: AppLocale.Default
 }
 
 internal fun sharedSettingsReleaseNotesUrlForLocale(
