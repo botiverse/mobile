@@ -743,7 +743,7 @@ internal fun MembersPageContent(
 private fun RaftMembersPayload.toRaftTimeContextOrNull(): RaftTimeContext? {
     // Only pin a static payload context when the caller explicitly pinned a clock (visual fixtures / tests);
     // live routes that merely pass todayEpochDay follow the enclosing live DI time provider.
-    if (nowEpochMillis == null && localOffsetMinutes == null && timeFormat == null) return null
+    if (nowEpochMillis == null) return null
     val offset = localOffsetMinutes ?: 0
     return RaftTimeContext(
         localOffsetMinutes = offset,

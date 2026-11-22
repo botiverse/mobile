@@ -2156,20 +2156,17 @@ internal fun rememberMemberDetailTimeContextProvider(
             pinnedContext?.let(::RaftTimeContextProvider)
         }
     val inheritedDateContext = inherited?.dateContext
-    val inheritedMatchesPayload =
-        inherited != null &&
-            (payload.localOffsetMinutes == null || payload.localOffsetMinutes == inheritedDateContext?.localOffsetMinutes) &&
-            (payload.timeFormat == null || payload.timeFormat == inheritedDateContext?.timeFormat)
-    val needsFallback = !hasPinnedClock && !inheritedMatchesPayload
-    val effectiveFallbackTimeFormat = payload.timeFormat ?: runtimeTimeFormat
+    val inheritedMatchesRuntime =
+        inherited != null && inheritedDateContext?.timeFormat == runtimeTimeFormat
+    val needsFallback = !hasPinnedClock && !inheritedMatchesRuntime
     val fallbackCapabilities =
-        remember(needsFallback, payload.localOffsetMinutes, effectiveFallbackTimeFormat) {
+        remember(needsFallback, payload.localOffsetMinutes, runtimeTimeFormat) {
             if (needsFallback) {
                 RaftTimeCapabilities(
                     localOffsetMinutes =
                         payload.localOffsetMinutes
                             ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
-                    timeFormat = effectiveFallbackTimeFormat,
+                    timeFormat = runtimeTimeFormat,
                 )
             } else {
                 null
@@ -2181,7 +2178,7 @@ internal fun rememberMemberDetailTimeContextProvider(
             pageVisibleTick = pageVisibleTick,
             active = needsFallback && pageVisible,
         )
-    return pinnedProvider ?: if (inheritedMatchesPayload) inherited!! else fallbackProvider
+    return pinnedProvider ?: if (inheritedMatchesRuntime) inherited!! else fallbackProvider
 }
 
 internal fun RaftMemberDetailPayload.toRaftTimeContextOrNull(): RaftTimeContext? {

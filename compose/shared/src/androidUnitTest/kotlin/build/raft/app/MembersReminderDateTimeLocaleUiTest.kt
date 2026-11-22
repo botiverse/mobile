@@ -2,11 +2,15 @@ package build.raft.app
 
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
@@ -93,21 +97,23 @@ class MembersReminderDateTimeLocaleUiTest {
             val dayOnlyLivePayload =
                 RaftMemberDetailPayload(
                     instanceId = "detail-1",
-                    memberId = "agent-1",
                     todayEpochDay = 20_397L,
                     nowEpochMillis = null,
                 )
             val pinnedClockPayload =
                 RaftMemberDetailPayload(
                     instanceId = "detail-2",
-                    memberId = "agent-1",
                     localOffsetMinutes = 0,
                     todayEpochDay = 20_397L,
                     nowEpochMillis = initialNow + 3_600_000L, // +2h until fireAt
                 )
 
             setContent {
-                CompositionLocalProvider(LocalRaftTimeContextProvider provides liveProvider) {
+                val pager = remember { object : Pager() {} }
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalRaftTimeContextProvider provides liveProvider,
+                ) {
                     val inherited = rememberMemberDetailTimeContextProvider(dayOnlyLivePayload, pageVisibleTick = 0, pageVisible = true)
                     val pinned = rememberMemberDetailTimeContextProvider(pinnedClockPayload, pageVisibleTick = 0, pageVisible = true)
                     CompositionLocalProvider(LocalRaftTimeContextProvider provides inherited) {

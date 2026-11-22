@@ -1447,20 +1447,14 @@ internal fun String?.membersReminderRelativeTime(timeContext: RaftTimeContext): 
     val liveContext = currentRaftTimeContext(timeContext)
     val effectiveContext = liveContext ?: timeContext
     val resolved =
-        if (effectiveContext.nowEpochMillis != null) {
+        if (effectiveContext.nowEpochMillis != null && !trimmed.equals("Now", ignoreCase = true)) {
             resolveRaftRelativeTimeLabel(trimmed, effectiveContext)
         } else {
             null
         }
     return when (resolved) {
         is RaftRelativeTimeLabel.Relative -> resolved.localized()
-        else -> {
-            if (parseRaftTimestampEpochMillisOrNull(trimmed, effectiveContext.localOffsetMinutes) == null) {
-                trimmed
-            } else {
-                trimmed.membersReminderShortDateTime(effectiveContext)
-            }
-        }
+        else -> trimmed.membersReminderShortDateTime(effectiveContext)
     }
 }
 
