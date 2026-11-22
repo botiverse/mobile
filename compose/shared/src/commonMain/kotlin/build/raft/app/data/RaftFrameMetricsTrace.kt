@@ -48,6 +48,7 @@ private val ALLOWED_FRAME_TRACE_PAGES: Set<String> =
         "compose_file_preview",
         "compose_artifact_viewer",
         "compose_artifacts_home",
+        "compose_agent_migration_log",
         "compose_in_app_browser",
         "compose_members",
         "compose_member_detail",

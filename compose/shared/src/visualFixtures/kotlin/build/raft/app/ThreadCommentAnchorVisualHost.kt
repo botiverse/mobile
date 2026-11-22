@@ -52,7 +52,7 @@ internal fun ThreadCommentAnchorVisualScreen() {
                                         senderId = "user-anchor-2",
                                         senderName = "Artea",
                                         content = "Please keep the tag inset consistent with the field below.",
-                                        createdAt = "06/25 18:32",
+                                        createdAt = "2026-06-25T10:32:00Z",
                                         reactions = emptyList(),
                                         anchorLabel = "§ agent-tabs-full-page-review.mp4"
                                     )

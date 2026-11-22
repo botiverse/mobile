@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -25,6 +26,8 @@ import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.Rule
@@ -96,16 +99,18 @@ private fun ComputerInfoContent() {
         modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
     ) {
-        MembersAgentComputerInfoRows(
-            member = computerInfoAgent,
-            summary = computerInfoSummary,
-            machineStatusRow = {
-                MembersMachineStatusRow.Machine(online = true, runLabel = MembersMachineRunLabel.ComputerVersion("0.62.1"))
-            },
-            onOpenComputer = {},
-            timeContext = computerInfoTimeContext,
-            memberAvatarResolver = EmptyRaftMemberAvatarResolver,
-        )
+        RaftDescriptionList(Modifier.fillMaxWidth(), RaftDescriptionListDirection.Horizontal) {
+            MembersAgentComputerInfoRows(
+                member = computerInfoAgent,
+                summary = computerInfoSummary,
+                machineStatusRow = {
+                    MembersMachineStatusRow.Machine(online = true, runLabel = MembersMachineRunLabel.ComputerVersion("0.62.1"))
+                },
+                onOpenComputer = {},
+                timeContext = computerInfoTimeContext,
+                memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+            )
+        }
         MembersAgentRuntimeConfigRows(
             resolution =
                 remember {

@@ -217,6 +217,16 @@ class SharedComputersStore internal constructor(
             }
             .distinctUntilChanged()
 
+    /** The server's machines as the migration log's places. */
+    internal fun migrationLogMachinesFlow(serverId: String?): Flow<List<AgentMigrationLogMachine>> =
+        state
+            .map { state ->
+                state.selectComputerServerSlice(serverId).machines.map {
+                    AgentMigrationLogMachine(id = it.id, name = it.name, hostProvider = it.hostProvider, deviceClass = it.deviceClass)
+                }
+            }
+            .distinctUntilChanged()
+
     internal fun dispatch(intent: SharedComputersIntent) {
         when (intent) {
             is SharedComputersIntent.EnsureComputerPicker ->

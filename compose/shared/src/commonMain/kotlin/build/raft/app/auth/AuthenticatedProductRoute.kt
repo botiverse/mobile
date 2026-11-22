@@ -37,6 +37,7 @@ internal enum class AuthenticatedProductRoute(val pageName: String) {
     ReleaseNotes(RELEASE_NOTES_PAGE),
     ArtifactViewer(RAFT_ARTIFACT_VIEWER_PAGE),
     ArtifactsHome(ARTIFACTS_HOME_PAGE),
+    AgentMigrationLog(AGENT_MIGRATION_LOG_PAGE),
     Assistant(ASSISTANT_PAGE),
     ExternalInvite(EXTERNAL_INVITE_PAGE),
     ServerJoin(SERVER_JOIN_PAGE),

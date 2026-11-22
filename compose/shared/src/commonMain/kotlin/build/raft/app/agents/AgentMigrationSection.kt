@@ -1,13 +1,16 @@
 package build.raft.app
 
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.raftMineFirst
 import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.key
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftListRowGroup
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -62,6 +65,7 @@ import build.raft.app.data.isActive
 import build.raft.app.data.isCancelRequested
 import build.raft.app.data.isCanceled
 import build.raft.app.data.isCompleted
+import build.raft.app.data.isDismissed
 import build.raft.app.data.isFailed
 import build.raft.app.data.isHosted
 import build.raft.app.data.isHostedReviewPending
@@ -83,8 +87,10 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStep
@@ -151,6 +157,8 @@ internal class AgentMigrationSectionInputs(
     val nowMillis: () -> Long = ::defaultNowMillis,
     /** The agents on each target, for its details' Agents section; null shows only how many. */
     val computerAgents: AgentMigrationComputerAgents? = null,
+    /** The server's migration log, opened on this agent (owners and admins); null shows no link. */
+    val onOpenMigrationLog: (() -> Unit)? = null,
 ) {
     /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
     val offersHosted: Boolean
@@ -160,6 +168,12 @@ internal class AgentMigrationSectionInputs(
 internal object AgentMigrationSectionTestTags {
     /** Web `agent-migration-place-note`. */
     const val PlaceNote = "agent-migration-place-note"
+
+    /** Web `agent-migration-log-link`. */
+    const val LogLink = "agent-migration-log-link"
+
+    /** Web `agent-last-migration-dismiss`. */
+    const val Dismiss = "agent-last-migration-dismiss"
 }
 
 /** The target option for the cloud; never a machine id (web `HOSTED_TARGET_CHOICE`). */
@@ -190,7 +204,7 @@ internal fun AgentMigrationSection(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val notice = state.notice
+    val notice = state.notice?.takeUnless { it.isDismissed() }
     val ended = notice?.endedComputerMigration()
     val active = notice?.isActive == true
     val retryOnTarget = ended == AgentMigrationEnding.Failed && notice.flippedAt == null
@@ -282,8 +296,20 @@ internal fun AgentMigrationSection(
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(top = AgentMigrationBlockGap),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Web `mr-auto`: at the start of the line, the buttons at its end.
+                    inputs.onOpenMigrationLog?.let { openLog ->
+                        Box(Modifier.weight(1f)) {
+                            RaftTextLink(
+                                text = stringResource(Res.string.agent_migration_log_view_log),
+                                onClick = openLog,
+                                modifier = Modifier.testTag(AgentMigrationSectionTestTags.LogLink),
+                                style = typography.caption
+                            )
+                        }
+                    }
                     if (retryOnTarget) {
                         RaftButton(
                             text = stringResource(Res.string.agent_migration_detail_try_migration_again),
@@ -443,25 +469,44 @@ private fun AgentLastMigration(
             }
         }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
-        // One row is the toggle: chevron, label, summary.
-        Row(
-            modifier = Modifier.fillMaxWidth().raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            RaftLucideIcon(
-                name = if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
-                modifier = Modifier.padding(top = 2.dp).size(16.dp),
-                color = raftArgbHex(colors.foregroundMuted)
-            )
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // A small label inside the migration section, not a second section heading.
-                RaftText(
-                    text = stringResource(Res.string.agent_migration_last_title),
-                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foregroundMuted
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            // One row is the toggle: chevron, label, summary.
+            Row(
+                modifier = Modifier.weight(1f).raftClickable(onClick = { open = !open }, tier = RaftHoverTier.Subtle),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                RaftLucideIcon(
+                    name = if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
+                    modifier = Modifier.padding(top = 2.dp).size(16.dp),
+                    color = raftArgbHex(colors.foregroundMuted)
                 )
-                RaftText(text = summary, style = typography.caption, color = colors.foregroundMuted)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // A small label inside the migration section, not a second section heading.
+                    RaftText(
+                        text = stringResource(Res.string.agent_migration_last_title),
+                        style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foregroundMuted
+                    )
+                    RaftText(text = summary, style = typography.caption, color = colors.foregroundMuted)
+                }
             }
+            // A failure can be closed: the section then reads as if there were no last migration.
+            if (failed && notice.dismissedAt == null) {
+                // Web `icon-sm -my-1 -me-1`: 28dp that takes 20 x 24 of the row.
+                Box(Modifier.size(width = 24.dp, height = 20.dp), contentAlignment = Alignment.Center) {
+                    RaftIconButton(
+                        onClick = { inputs.onIntent(AgentMigrationIntent.Dismiss) },
+                        tooltip = stringResource(Res.string.agent_migration_dismiss_failed),
+                        modifier = Modifier.requiredSize(28.dp).testTag(AgentMigrationSectionTestTags.Dismiss),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Sm,
+                        enabled = !state.dismissing
+                    ) { RaftSlotIcon(RaftLucideIconName.X) }
+                }
+            }
+        }
+        state.dismissError?.let { error ->
+            AgentMigrationActionErrorBanner(error = error, context = MigrationErrorContext.Status)
         }
         if (open) {
             // The DS inset group holds the details, so the steps and banner read as this row's.

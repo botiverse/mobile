@@ -76,6 +76,14 @@ import shared
             container.raftNativeNavBarHost = navHost
             if usesNativeNavBar {
                 navHost.attach()
+                // #proj-mobile:#282: populate the navigationItem synchronously from the route
+                // before pushViewController so the push animation already carries the destination's
+                // title, channel glyph / DM avatar tile, and buttons instead of jumping ~0.25s later.
+                RaftNativeNavBarPrefillKt.raftPrefillNativeNavBar(
+                    bridge: nativeNavBar.bridge,
+                    pageName: pageName,
+                    pageDataJson: jsonText(container.raftPageData)
+                )
             }
         }
         // Before the page's first composition: the last painted canvas, else the resolved app

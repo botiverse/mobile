@@ -43,6 +43,7 @@ import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftQuotedPermalinkContextRead
 import build.raft.app.data.RaftQuotedPermalinkHistoryLimitedMemo
@@ -2751,6 +2752,20 @@ private fun SharedThreadRouteContentContent(
             }
         }
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+        val loadingLounge =
+            mutePageLounge?.let { lounge ->
+                ThreadPageLounge(
+                    lounge = lounge,
+                    agentAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, lounge.agentId),
+                    cacheServerId = headerProjectionServerId?.value,
+                    canUnarchive = false,
+                    unarchiving = false,
+                    onUnarchive = {},
+                    onOpenAgentProfile = null,
+                    onOpenDmAgentLounge = null,
+                    dmLoungeOpening = false,
+                )
+            }
         ThreadDeferredLoadingRouteContent(
             scaffold = movableThreadRouteScaffold,
             payload = payload,
@@ -2758,6 +2773,7 @@ private fun SharedThreadRouteContentContent(
             memberAvatarResolver = memberAvatarResolver,
             onBack = onBack,
             showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
+            lounge = loadingLounge,
         )
         return
     }
@@ -4142,6 +4158,17 @@ private fun SharedThreadRouteContentContent(
         mutableStateOf(ThreadInlineImageFallbackState())
     }
     var inlineImageFallbackState by inlineImageFallbackStateHolder
+    val inlineImageUrlBatcher =
+        remember(threadInstanceKey, coroutineScope, data.dataSource, sharedStores, storeScope) {
+            ThreadInlineAttachmentUrlBatcher(
+                coroutineScope = coroutineScope,
+                ownerProvider = { sharedStores.currentAuthenticatedRouteOwner(storeScope) },
+                fetchBatch = { ids -> data.dataSource.attachmentUrls(DataRequestPriority.Visible, ids) },
+                readState = { inlineImageFallbackStateHolder.value },
+                writeState = { next -> inlineImageFallbackStateHolder.value = next },
+                logger = { line -> data.bridge.log(line) },
+            )
+        }
     val baseComposerState =
         remember(
             renderedPayload.composer,
@@ -4264,6 +4291,8 @@ private fun SharedThreadRouteContentContent(
             renderedTimelineSlice = renderedTimelineSlice,
             threadInstanceKey = threadInstanceKey,
             attachmentOwner = attachmentOwner,
+            routeOwnerProvider = { sharedStores.currentAuthenticatedRouteOwner(storeScope) },
+            inlineImageUrlBatcher = inlineImageUrlBatcher,
             labels = labels,
             imageLightboxEnabled = imageLightboxEnabled,
             attachmentCommentsDialogStateHolder = attachmentCommentsDialogStateHolder,
@@ -4286,6 +4315,8 @@ private fun SharedThreadRouteContentContent(
     val threadRouteAttachmentActions = buildThreadRouteAttachmentActions()
     fun requestInlineImageFallback(attachmentId: String): Unit =
         threadRouteAttachmentActions.requestInlineImageFallback(attachmentId)
+    fun handleInlineImageFallbackError(attachmentId: String, failedUrl: String): Unit =
+        threadRouteAttachmentActions.handleInlineImageFallbackError(attachmentId, failedUrl)
     fun openImagePreview(group: ThreadImageAttachmentGroup, conversationWide: Boolean = true): Unit =
         threadRouteAttachmentActions.openImagePreview(group, conversationWide)
     fun openAttachmentExternally(attachment: RaftThreadAttachmentItem): Unit =
@@ -4310,12 +4341,33 @@ private fun SharedThreadRouteContentContent(
             RaftImageLightbox(
                 request = request,
                 resolveFullUrl = { attachmentId ->
+                    val owner = sharedStores.currentAuthenticatedRouteOwner(storeScope)?.normalizedOrNull()
+                    val cacheKey = owner?.let { RaftFilePreviewAttachmentUrlCacheKey(it, attachmentId.trim(), "inline") }
+                    cacheKey?.let(raftFilePreviewAttachmentUrlCache()::get)?.let { return@RaftImageLightbox it }
                     when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                        is ThreadApiResult.Success -> response.data.url
+                        is ThreadApiResult.Success -> {
+                            if (cacheKey != null) {
+                                raftFilePreviewAttachmentUrlCache().put(
+                                    key = cacheKey,
+                                    url = response.data.url,
+                                    expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
+                                )
+                            }
+                            response.data.url
+                        }
                         is ThreadApiResult.Failure -> {
                             bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
                             null
                         }
+                    }
+                },
+                onFullUrlError = { attachmentId, failedUrl ->
+                    val owner = sharedStores.currentAuthenticatedRouteOwner(storeScope)?.normalizedOrNull()
+                    if (owner != null) {
+                        raftFilePreviewAttachmentUrlCache().invalidate(
+                            key = RaftFilePreviewAttachmentUrlCacheKey(owner, attachmentId.trim(), "inline"),
+                            expectedUrl = failedUrl,
+                        )
                     }
                 },
                 onDismiss = { imageLightboxRequest = null },
@@ -5936,7 +5988,8 @@ private fun SharedThreadRouteContentContent(
                 LocalThreadInlineImageFallbackHost provides
                     ThreadInlineImageFallbackHost(
                         state = inlineImageFallbackState,
-                        requestFallback = ::requestInlineImageFallback
+                        requestFallback = ::requestInlineImageFallback,
+                        onFallbackError = ::handleInlineImageFallbackError,
                     ),
                 LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,

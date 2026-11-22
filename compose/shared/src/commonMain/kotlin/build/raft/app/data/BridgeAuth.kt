@@ -1093,6 +1093,15 @@ internal interface SharedThreadNetworkApi {
         attachmentId: String,
         disposition: String? = null
     ): HomeNetworkResponse
+    /**
+     * `POST /api/attachments/urls` batch inline URL resolution (#proj-mobile:#293, web
+     * `inlineAttachmentUrlCache.ts`). Fakes that only implement [attachmentUrl] inherit 404,
+     * which [RaftThreadApiClient] falls back from cleanly.
+     */
+    suspend fun attachmentUrls(
+        priority: DataRequestPriority,
+        attachmentIds: List<String>,
+    ): HomeNetworkResponse = HomeNetworkResponse(code = 404, bodyText = null)
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse
     suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse
     suspend fun sendAttachmentComment(

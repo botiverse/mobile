@@ -2806,15 +2806,19 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         routeOwner?.takeIf { currentServerId != null && it.serverId == currentServerId && (target.serverId == null || target.serverId == it.serverId) }
     var createAgentOpen by remember(target) { mutableStateOf(false) }
     var createAgentServerPlan by remember { mutableStateOf<String?>(null) }
+    // The viewer's role on this computer's own server: owners and admins see its migration log.
+    var viewerServerRole by remember { mutableStateOf<String?>(null) }
     val createAgentScope = rememberCoroutineScope()
     LaunchedEffect(createAgentOwner) {
         if (createAgentOwner == null) createAgentOpen = false
-        createAgentServerPlan =
+        val server =
             createAgentOwner?.let { owner ->
                 runCatchingPreservingCancellation {
-                    environment.authStore.readSession()?.servers?.firstOrNull { it.id == owner.serverId }?.toServerSummary()?.plan
+                    environment.authStore.readSession()?.servers?.firstOrNull { it.id == owner.serverId }?.toServerSummary()
                 }.getOrNull()
             }
+        createAgentServerPlan = server?.plan
+        viewerServerRole = server?.role
     }
     fun openAgentProfile(agentId: String) {
         val pageData =
@@ -2933,6 +2937,12 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     )
                 },
                 serverId = target.serverId ?: currentServerId,
+                onOpenMigrationLog =
+                    if (canSeeAgentMigrationLog(viewerServerRole)) {
+                        { pager.openAgentMigrationLogPage(environment.storeScope, computerId = target.machineId) }
+                    } else {
+                        null
+                    },
             )
         }
         }
@@ -2995,6 +3005,8 @@ internal fun RaftSettingsComputerDetailContent(
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)? = null,
     /** Owning server id for server model-label catalog lookup on agent rows. */
     serverId: String? = null,
+    /** The server's migration log, opened on this computer (owners and admins); null shows no link. */
+    onOpenMigrationLog: (() -> Unit)? = null,
 ) {
     build.raft.app.data.EnsureServerModelLabelCatalog(serverId)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
@@ -3041,6 +3053,7 @@ internal fun RaftSettingsComputerDetailContent(
                     procJobsByAgent = procJobsByAgent,
                     onStopProcJob = onStopProcJob,
                     serverId = serverId,
+                    onOpenMigrationLog = onOpenMigrationLog,
                 )
         }
     }
@@ -3066,6 +3079,7 @@ private fun RaftComputerDetailBody(
     procJobsByAgent: Map<String, List<ComputerProcJobSnapshot>>,
     onStopProcJob: (suspend (ComputerProcJobSnapshot, (ComputerProcJobStopResult) -> Unit) -> Unit)?,
     serverId: String? = null,
+    onOpenMigrationLog: (() -> Unit)? = null,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -3143,7 +3157,7 @@ private fun RaftComputerDetailBody(
     // Back leaves select mode first.
     RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
     LazyColumn(Modifier.fillMaxSize()) {
-        item(key = "header") { RaftComputerDetailHeader(computer) }
+        item(key = "header") { RaftComputerDetailHeader(computer, onOpenMigrationLog) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
         raftComputerMemoryLimitNotApplied(snapshot.computer)?.let { scopes ->
             item(key = "memory-limit-not-applied") { RaftComputerMemoryLimitNotAppliedBanner(scopes) }
@@ -3666,7 +3680,7 @@ private fun raftComputerCreatedDate(createdAt: String?): String? {
 }
 
 @Composable
-private fun RaftComputerDetailHeader(computer: RaftComputerRowModel) {
+private fun RaftComputerDetailHeader(computer: RaftComputerRowModel, onOpenMigrationLog: (() -> Unit)?) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -3692,6 +3706,14 @@ private fun RaftComputerDetailHeader(computer: RaftComputerRowModel) {
             }
             computer.lastSeenAt?.let {
                 RaftText(raftComputerLastSeen(it), style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundHint)
+            }
+            // Web ComputerMigrationLogLink.
+            if (onOpenMigrationLog != null) {
+                RaftTextLink(
+                    text = stringResource(Res.string.agent_migration_log_view_log),
+                    onClick = onOpenMigrationLog,
+                    style = RaftTheme.typography.caption,
+                )
             }
         }
     }

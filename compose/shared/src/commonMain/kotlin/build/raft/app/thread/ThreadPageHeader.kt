@@ -221,6 +221,8 @@ internal fun ThreadPageHeader(
     onOpenTimeline: (() -> Unit)? = null,
     /** Agent Lounge v0: the Lounge this page is (or is in), and an agent DM's Lounge toggle. */
     lounge: ThreadPageLounge? = null,
+    /** Keep prefilled iOS native nav bar buttons while LoadingShell renders before FeatureSurfaces. */
+    preserveNativePrefilledActions: Boolean = false,
     /** Share loop: the ⋯ menu's Share row and Copy link (ThreadShareOut.kt); null: none (the loop off, a DM). */
     shareEntry: ThreadHeaderShareEntry? = null,
 ) {
@@ -403,6 +405,7 @@ internal fun ThreadPageHeader(
             },
         nativeSubtitle = headerSubtitle,
         nativeOnSubtitleClick = onOpenInChannel.takeIf { channelLinkLabel != null },
+        nativePreservePrefilledActions = preserveNativePrefilledActions,
         nativeActions = nativeNavBarActions,
         // PROTOTYPE: the channel glyph / DM avatar and the refresh spinner in the host's title view.
         nativeTitleExtras =
@@ -587,15 +590,16 @@ internal fun ThreadPageHeader(
                         )
                     val openInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
                     val sideCardOwnActions =
-                        sideCardToggles?.cardsInHeader()?.map { card ->
-                            val open = sideCardToggles.cards.isOpen(card)
-                            ThreadHeaderOwnActionSpec(
-                                id = "thread-side-card-${card.name.lowercase()}",
-                                label = conversationSideCardToggleLabel(card, open),
-                                icon = card.icon,
-                                selected = open,
-                                toggle = true,
-                                onClick = { sideCardToggles.onToggle(card) },
+                        sideCardToggles?.let { toggles ->
+                            val labels =
+                                ConversationSideCard.entries.associateWith { card ->
+                                    conversationSideCardToggleLabel(card, toggles.cards.isOpen(card))
+                                }
+                            threadHeaderSideCardOwnActions(
+                                tasksAvailable = toggles.tasksAvailable,
+                                isCardOpen = toggles.cards::isOpen,
+                                labelForCard = { card, _ -> labels.getValue(card) },
+                                onToggle = toggles.onToggle,
                             )
                         }.orEmpty()
                     val ownActions =
@@ -844,6 +848,154 @@ internal fun threadHeaderShownOwnActions(
 }
 
 /**
+ * Single source for Task v2 header side-card actions (Tasks before Files; Tasks only when
+ * [tasksAvailable]), shared by the Compose header, Duo side column, live iOS native nav bar, and
+ * pre-push native nav bar prefill.
+ */
+internal fun threadHeaderSideCardOwnActions(
+    tasksAvailable: Boolean,
+    isCardOpen: (ConversationSideCard) -> Boolean = { false },
+    labelForCard: (ConversationSideCard, Boolean) -> String,
+    onToggle: (ConversationSideCard) -> Unit = {},
+): List<ThreadHeaderOwnActionSpec> =
+    ConversationSideCard.entries
+        .filter { it != ConversationSideCard.Tasks || tasksAvailable }
+        .map { card ->
+            val open = isCardOpen(card)
+            ThreadHeaderOwnActionSpec(
+                id = "thread-side-card-${card.name.lowercase()}",
+                label = labelForCard(card, open),
+                icon = card.icon,
+                selected = open,
+                toggle = true,
+                onClick = { onToggle(card) },
+            )
+        }
+
+internal data class ThreadHeaderSideColumnLabels(
+    val searchLabel: String,
+    val searchInThreadLabel: String,
+    val searchInTaskLabel: String,
+    val settingsLabel: String,
+    val viewInChannelLabel: String,
+    val loungeLabel: String = "",
+    val timelineLabel: String = "",
+    val markUnreadLabel: String = "",
+    val deleteTaskLabel: String = "",
+    val focusLabel: String = "",
+    val followLabel: String? = null,
+    /** Share loop: the ⋯ menu's Share row and its Copy link; null: no share entry. */
+    val shareLabel: String? = null,
+    val shareCopyLinkLabel: String = "",
+)
+
+/**
+ * Pure single source of conversation header actions for the Duo side column, live iOS native nav
+ * bar, and pre-push native nav bar prefill (#proj-mobile:#281 / #282). Own conversation buttons
+ * always come from [threadHeaderConversationOwnActions], so live head and prefill cannot drift.
+ */
+internal fun threadHeaderSideColumnActionsForPayload(
+    payload: RaftThreadScreenPayload,
+    surfaceKind: String,
+    taskConversation: Boolean,
+    labels: ThreadHeaderSideColumnLabels,
+    onOpenSearch: () -> Unit = {},
+    onShowSettings: () -> Unit = {},
+    onOpenInChannel: () -> Unit = {},
+    parentReachable: Boolean = true,
+    onToggleFocusMode: (() -> Unit)? = null,
+    focusModeActive: Boolean = false,
+    threadFollowed: Boolean? = null,
+    onToggleThreadFollow: (() -> Unit)? = null,
+    onMarkThreadUnread: (() -> Unit)? = null,
+    onViewTaskInChannel: (() -> Unit)? = null,
+    sideCardActions: List<ThreadHeaderOwnActionSpec> = emptyList(),
+    dmLoungeToggle: (() -> Unit)? = null,
+    onOpenTimeline: (() -> Unit)? = null,
+    onDeleteTask: (() -> Unit)? = null,
+    /** Share loop: Share and Copy link, in the ⋯; null: none. */
+    shareEntry: ThreadHeaderShareEntry? = null,
+): List<RaftSideAction> {
+    val replyThreadMenu = surfaceKind == RaftThreadSurfaceKind.ReplyThread
+    val ownActions =
+        threadHeaderConversationOwnActions(
+            searchLabel = labels.searchLabel.takeIf { !taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null },
+            onOpenSearch = onOpenSearch,
+            loungeLabel = labels.loungeLabel.takeIf { dmLoungeToggle != null },
+            onOpenLounge = dmLoungeToggle,
+            sideCardActions = sideCardActions,
+            settingsLabel = labels.settingsLabel.takeIf { threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind) },
+            settingsOpen = false,
+            onShowSettings = onShowSettings,
+            openInChannelLabel =
+                labels.viewInChannelLabel.takeIf {
+                    !replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()
+                },
+            onOpenInChannel = onOpenInChannel,
+        )
+    return buildList {
+        ownActions.forEach { action ->
+            add(raftSideColumnLucideAction(action.id, action.label, action.icon, action.onClick))
+        }
+        // web ThreadPanelHeader (slock #12211): Focus mode (the head's Expand) never goes into the ⋯.
+        if (onToggleFocusMode != null) {
+            val icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2
+            add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, labels.focusLabel, icon, onToggleFocusMode).copy(keepVisible = true))
+        }
+        if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
+            val label = if (taskConversation) labels.searchInTaskLabel else labels.searchInThreadLabel
+            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch))
+        }
+        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
+        if (onOpenTimeline != null) {
+            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, labels.timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
+        }
+        if (taskConversation && onViewTaskInChannel != null) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
+        } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, labels.viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
+        }
+        if (onMarkThreadUnread != null) {
+            add(
+                raftSideColumnLucideAction(
+                    MARK_THREAD_UNREAD_MENU_ITEM_ID,
+                    labels.markUnreadLabel,
+                    RaftLucideIconName.MessageSquareDot,
+                    onMarkThreadUnread,
+                    priority = -1,
+                )
+            )
+        }
+        if (labels.followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
+            add(
+                raftSideColumnLucideAction(
+                    FOLLOW_THREAD_MENU_ITEM_ID,
+                    labels.followLabel,
+                    threadFollowMenuIcon(threadFollowed),
+                    onToggleThreadFollow,
+                    priority = -1,
+                )
+            )
+        }
+        if (shareEntry != null && labels.shareLabel != null) {
+            add(raftSideColumnLucideAction(SHARE_OUT_MENU_ITEM_ID, labels.shareLabel, RaftLucideIconName.Share, shareEntry.onShare, priority = -1))
+            add(
+                raftSideColumnLucideAction(
+                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID,
+                    labels.shareCopyLinkLabel,
+                    RaftLucideIconName.Link,
+                    shareEntry.onCopyLink,
+                    priority = -1,
+                )
+            )
+        }
+        if (taskConversation && onDeleteTask != null) {
+            add(raftSideColumnLucideAction(DELETE_TASK_MENU_ITEM_ID, labels.deleteTaskLabel, RaftLucideIconName.Trash2, onDeleteTask, priority = -1))
+        }
+    }
+}
+
+/**
  * The conversation header's actions for the Duo side column and iOS native nav bar, in web Task v2
  * order: Search, Lounge (agent DM), Tasks, Files, Settings — folding from the last into ⋯; reply
  * thread and task commands prioritize Search and View in Channel while Timeline / Mark Unread /
@@ -874,18 +1026,19 @@ private fun threadHeaderSideColumnActions(
     /** Share loop: Share and Copy link, in the ⋯; null: none. */
     shareEntry: ThreadHeaderShareEntry? = null,
 ): List<RaftSideAction> {
-    val shareLabel = shareEntry?.let { stringResource(it.shareLabel) }
-    val shareCopyLinkLabel = stringResource(Res.string.thread_link_menu_copy_link)
-    val timelineLabel = stringResource(Res.string.thread_outline_list_title)
-    val markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread)
-    val searchLabel = stringResource(Res.string.thread_action_search)
-    val searchInThreadLabel = stringResource(Res.string.thread_action_search_in_thread)
-    val settingsLabel = stringResource(Res.string.settings_title)
-    val viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel)
-    val deleteTaskLabel = stringResource(Res.string.task_delete_action)
-    val focusLabel =
-        stringResource(if (focusModeActive) Res.string.tasks_task_column_restore else Res.string.tasks_task_column_expand)
-    val searchInTaskLabel = stringResource(Res.string.task_conversation_search)
+    val sideCardActions =
+        sideCardToggles?.let { toggles ->
+            val labels =
+                ConversationSideCard.entries.associateWith { card ->
+                    conversationSideCardToggleLabel(card, toggles.cards.isOpen(card))
+                }
+            threadHeaderSideCardOwnActions(
+                tasksAvailable = toggles.tasksAvailable,
+                isCardOpen = toggles.cards::isOpen,
+                labelForCard = { card, _ -> labels.getValue(card) },
+                onToggle = toggles.onToggle,
+            )
+        }.orEmpty()
     val followLabel =
         threadFollowed?.let { followed ->
             stringResource(
@@ -897,113 +1050,43 @@ private fun threadHeaderSideColumnActions(
                 }
             )
         }
-    val sideCardLabels =
-        ConversationSideCard.entries.associateWith { card ->
-            conversationSideCardToggleLabel(card, sideCardToggles?.cards?.isOpen(card) == true)
-        }
-    val replyThreadMenu = surfaceKind == RaftThreadSurfaceKind.ReplyThread
-    return buildList {
-        if (!taskConversation && !replyThreadMenu && payload.threadHeaderSearchAction() != null) {
-            add(
-                raftSideColumnLucideAction(
-                    "thread-search",
-                    searchLabel,
-                    RaftLucideIconName.Search,
-                    onOpenSearch,
-                )
-            )
-        }
-        if (dmLoungeToggle != null && loungeLabel.isNotBlank()) {
-            add(
-                raftSideColumnLucideAction(
-                    "lounge",
-                    loungeLabel,
-                    RaftLucideIconName.Users,
-                    dmLoungeToggle,
-                )
-            )
-        }
-        sideCardToggles?.let { toggles ->
-            toggles.cardsInHeader().forEach { card ->
-                add(
-                    raftSideColumnLucideAction(
-                        "thread-side-card-${card.name.lowercase()}",
-                        sideCardLabels.getValue(card),
-                        card.icon,
-                        { toggles.onToggle(card) },
-                    )
-                )
-            }
-        }
-        if (threadHeaderSettingsActionVisible(payload.showSettingsAction, surfaceKind)) {
-            add(
-                raftSideColumnLucideAction(
-                    "thread-settings",
-                    settingsLabel,
-                    RaftLucideIconName.Settings,
-                    onShowSettings,
-                )
-            )
-        }
-        if (!replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
-            add(raftSideColumnLucideAction("thread-open-in-channel", viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
-        }
-        // web ThreadPanelHeader (slock #12211): Focus mode (the head's Expand) never goes into the ⋯.
-        if (onToggleFocusMode != null) {
-            val icon = if (focusModeActive) RaftLucideIconName.Minimize2 else RaftLucideIconName.Maximize2
-            add(raftSideColumnLucideAction(FOCUS_MODE_MENU_ITEM_ID, focusLabel, icon, onToggleFocusMode).copy(keepVisible = true))
-        }
-        if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
-            val label = if (taskConversation) searchInTaskLabel else searchInThreadLabel
-            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch))
-        }
-        // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
-        if (onOpenTimeline != null) {
-            add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
-        }
-        if (taskConversation && onViewTaskInChannel != null) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
-        } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
-        }
-        if (onMarkThreadUnread != null) {
-            add(
-                raftSideColumnLucideAction(
-                    MARK_THREAD_UNREAD_MENU_ITEM_ID,
-                    markUnreadLabel,
-                    RaftLucideIconName.MessageSquareDot,
-                    onMarkThreadUnread,
-                    priority = -1,
-                )
-            )
-        }
-        if (followLabel != null && threadFollowed != null && onToggleThreadFollow != null) {
-            add(
-                raftSideColumnLucideAction(
-                    FOLLOW_THREAD_MENU_ITEM_ID,
-                    followLabel,
-                    threadFollowMenuIcon(threadFollowed),
-                    onToggleThreadFollow,
-                    priority = -1,
-                )
-            )
-        }
-        if (shareEntry != null && shareLabel != null) {
-            add(raftSideColumnLucideAction(SHARE_OUT_MENU_ITEM_ID, shareLabel, RaftLucideIconName.Share, shareEntry.onShare, priority = -1))
-            add(
-                raftSideColumnLucideAction(
-                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID,
-                    shareCopyLinkLabel,
-                    RaftLucideIconName.Link,
-                    shareEntry.onCopyLink,
-                    priority = -1,
-                )
-            )
-        }
-        if (taskConversation && onDeleteTask != null) {
-            add(raftSideColumnLucideAction(DELETE_TASK_MENU_ITEM_ID, deleteTaskLabel, RaftLucideIconName.Trash2, onDeleteTask, priority = -1))
-        }
-    }
+    return threadHeaderSideColumnActionsForPayload(
+        payload = payload,
+        surfaceKind = surfaceKind,
+        taskConversation = taskConversation,
+        labels =
+            ThreadHeaderSideColumnLabels(
+                searchLabel = stringResource(Res.string.thread_action_search),
+                searchInThreadLabel = stringResource(Res.string.thread_action_search_in_thread),
+                searchInTaskLabel = stringResource(Res.string.task_conversation_search),
+                settingsLabel = stringResource(Res.string.settings_title),
+                viewInChannelLabel = stringResource(Res.string.task_conversation_view_in_channel),
+                loungeLabel = loungeLabel,
+                timelineLabel = stringResource(Res.string.thread_outline_list_title),
+                markUnreadLabel = stringResource(Res.string.home_action_mark_as_unread),
+                deleteTaskLabel = stringResource(Res.string.task_delete_action),
+                focusLabel =
+                    stringResource(if (focusModeActive) Res.string.tasks_task_column_restore else Res.string.tasks_task_column_expand),
+                followLabel = followLabel,
+                shareLabel = shareEntry?.let { stringResource(it.shareLabel) },
+                shareCopyLinkLabel = stringResource(Res.string.thread_link_menu_copy_link),
+            ),
+        onOpenSearch = onOpenSearch,
+        onShowSettings = onShowSettings,
+        onOpenInChannel = onOpenInChannel,
+        parentReachable = parentReachable,
+        onToggleFocusMode = onToggleFocusMode,
+        focusModeActive = focusModeActive,
+        threadFollowed = threadFollowed,
+        onToggleThreadFollow = onToggleThreadFollow,
+        onMarkThreadUnread = onMarkThreadUnread,
+        onViewTaskInChannel = onViewTaskInChannel,
+        sideCardActions = sideCardActions,
+        dmLoungeToggle = dmLoungeToggle,
+        onOpenTimeline = onOpenTimeline,
+        onDeleteTask = onDeleteTask,
+        shareEntry = shareEntry,
+    )
 }
 
 @Composable
@@ -1688,8 +1771,8 @@ private fun ThreadHeaderFocusModeMenu(
                     VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
                     DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
                     NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
-                    SHARE_OUT_MENU_ITEM_ID -> currentShareEntry?.onShare?.invoke()
-                    SHARE_OUT_COPY_LINK_MENU_ITEM_ID -> currentShareEntry?.onCopyLink?.invoke()
+                        SHARE_OUT_MENU_ITEM_ID -> currentShareEntry?.onShare?.invoke()
+                        SHARE_OUT_COPY_LINK_MENU_ITEM_ID -> currentShareEntry?.onCopyLink?.invoke()
                     else -> latestFoldedActions.firstOrNull { it.id == id }?.onClick?.invoke()
                 }
             },

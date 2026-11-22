@@ -487,7 +487,21 @@ internal fun threadMessageVisualWidth(visualFixture: String): Dp =
  */
 internal val ThreadVisualNoKnownTaskNumbers: List<Int> = listOf(Int.MAX_VALUE)
 
+/** [fixture] on the fixture's instant and time zone, unless it pins its own clock (its times are ISO, as the server sends them). */
 internal fun threadVisualFixture(
+    fixture: String,
+    instanceId: String
+): RaftThreadScreenPayload {
+    val payload = threadVisualFixturePayload(fixture, instanceId)
+    if (payload.nowEpochMillis != null) return payload
+    return payload.copy(
+        localOffsetMinutes = VisualFixtureData.Locale.UTC_OFFSET_MINUTES,
+        todayEpochDay = VisualFixtureData.Locale.TODAY_EPOCH_DAY.toLong(),
+        nowEpochMillis = VisualFixtureData.Locale.NOW_EPOCH_MILLIS,
+    )
+}
+
+private fun threadVisualFixturePayload(
     fixture: String,
     instanceId: String
 ): RaftThreadScreenPayload {
@@ -628,7 +642,7 @@ internal fun threadVisualFixture(
                             authorKind = "agent",
                             isOwn = false,
                             avatarLabel = "CI",
-                            timestampLabel = "06/22 10:30",
+                            timestampLabel = "2026-06-22T02:30:00Z",
                             messageType = "Chat",
                             body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
                             threadChannelId = "thread-msg-agent-reply",
@@ -694,7 +708,7 @@ internal fun threadVisualFixture(
                             authorKind = "user",
                             avatarLabel = "FT",
                             senderMembershipStatus = "removed",
-                            timestampLabel = "06/22 11:10",
+                            timestampLabel = "2026-06-22T03:10:00Z",
                             messageType = "Chat",
                             body = "Captured the previous visual baseline before leaving the workspace.",
                             threadChannelId = "thread-msg-deleted-human",
@@ -738,7 +752,7 @@ internal fun threadVisualFixture(
                             authorKind = "user",
                             avatarLabel = "DE",
                             avatarWireValue = AvatarReference.Random("visual-human-designer").wireValue,
-                            timestampLabel = "06/26 17:15",
+                            timestampLabel = "2026-06-26T09:15:00Z",
                             messageType = "Chat",
                             body = "Inline image keeps its reserved box, rounded hairline frame and muted letterbox.",
                             threadChannelId = "thread-msg-inline-image",
@@ -800,7 +814,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/22 23:30",
+                            timestampLabel = "2026-06-22T15:30:00Z",
                             messageType = "Chat",
                             body =
                                 "Rich fixture for #design: @artin please compare the Android capture " +
@@ -1038,7 +1052,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/22 10:30",
+                            timestampLabel = "2026-06-22T02:30:00Z",
                             messageType = "Chat",
                             body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
                             reactions =
@@ -1059,7 +1073,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Owner",
                             authorKind = "human",
                             avatarLabel = "AR",
-                            timestampLabel = "06/22 10:35",
+                            timestampLabel = "2026-06-22T02:35:00Z",
                             messageType = "Chat",
                             body = "Review the Android composer crop before release."
                         )
@@ -1115,7 +1129,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/25 16:20",
+                            timestampLabel = "2026-07-25T08:20:00Z",
                             messageType = "Chat",
                             body =
                                 "Share image check: the avatar, name, body and link line should sit where the web puts them.\n\n" +
@@ -1169,7 +1183,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "06/25 13:55",
+                            timestampLabel = "2026-06-25T05:55:00Z",
                             messageType = "Chat",
                             body =
                                 "Plain text baseline before bold.\n\n" +
@@ -1299,7 +1313,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/25 16:20",
+                            timestampLabel = "2026-07-25T08:20:00Z",
                             messageType = "Chat",
                             // The Raft dialect contract this case guards: refs inside a
                             // Markdown link label/destination stay part of that one blue
@@ -1388,7 +1402,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 13:55",
+                            timestampLabel = "2026-07-13T05:55:00Z",
                             messageType = "Chat",
                             body =
                                 "**Synthetic slice is ready** — this message is generated for visual testing only.\n\n" +
@@ -1458,7 +1472,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 13:56",
+                            timestampLabel = "2026-07-13T05:56:00Z",
                             messageType = "Chat",
                             body =
                                 "另外帮一个澄清避免混淆：#31（read-state→Activity，我的）和 @Android-Developer-4 的 **task #521**（`message:new`→Activity 即时新增，artin 原话\"新消息来了 activity 没刷新\"）是两个不同 gap，不是重复——Codex 早前建议的\"#521 判重关闭\"是把两者混了，AD4 已更正。#31 复用 versioned read-state fact，#521 是 SharedActivityStore 缺 message:new realtime，两条链路各修各的。"
@@ -1509,7 +1523,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 19:25",
+                            timestampLabel = "2026-07-13T11:25:00Z",
                             messageType = "Chat",
                             body =
                                 "Task #606 新真机基线已就绪：PR #785 exact `0e5a82b02` Alpha 已附在 #对话流专修:661a12bf，SHA-256 `db01c5e5b91f3696bfda64edde2fc31b3a40ffe9b508813d651a6de735e8a85b`。这是 process-owned decoded auth-session snapshot 根修包，不是日志抑制包；`8a5e542f4` 作废。\n\n等待 @artin 验普通导航/滚动及 `#/@` suggestion。若仍卡，以新 Hands 对比 auth durable cold-read 次数和 traversal/layout/draw；task #606 保持 In Progress，PR 不合。"
@@ -1550,7 +1564,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/16 11:40",
+                            timestampLabel = "2026-07-16T03:40:00Z",
                             messageType = "Chat",
                             body =
                                 "Fenced block below must show the copy icon top-right.\n\n" +
@@ -1637,7 +1651,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "10/20 09:12",
+                            timestampLabel = "2026-10-20T01:12:00Z",
                             messageType = "Chat",
                             body =
                                 "### 二、in_review，只差最后一步\n\n" +
@@ -1691,7 +1705,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/16 11:58",
+                            timestampLabel = "2026-07-16T03:58:00Z",
                             messageType = "Chat",
                             body =
                                 "Hard assertions:\n\n" +
@@ -1741,7 +1755,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/16 12:15",
+                            timestampLabel = "2026-07-16T04:15:00Z",
                             messageType = "Chat",
                             body =
                                 "**Hard assertions**：\n" +
@@ -1789,7 +1803,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/16 15:05",
+                            timestampLabel = "2026-07-16T07:05:00Z",
                             messageType = "Chat",
                             body =
                                 "Type \\` to start a code span.\n\n" +
@@ -1836,7 +1850,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/15 18:05",
+                            timestampLabel = "2026-07-15T10:05:00Z",
                             messageType = "Chat",
                             body =
                                 "Inline code keeps the email literal: `artin <artin@example.test>` end.\n\n" +
@@ -1880,7 +1894,7 @@ internal fun threadVisualFixture(
                             authorDescription = "视觉测试采集 harness 与 CI 排查。",
                             authorKind = "agent",
                             avatarLabel = "西",
-                            timestampLabel = "07/22 04:32",
+                            timestampLabel = "2026-07-21T20:32:00Z",
                             messageType = "Chat",
                             body =
                                 "对，模板仓库很可能是同源问题，应该一起扫，不只修单个实例。\n\n" +
@@ -1932,7 +1946,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/19 21:03",
+                            timestampLabel = "2026-07-19T13:03:00Z",
                             messageType = "Chat",
                             body =
                                 "---\n\n" +
@@ -1977,7 +1991,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/15 11:20",
+                            timestampLabel = "2026-07-15T03:20:00Z",
                             messageType = "Chat",
                             body =
                                 "Paragraph above the quote marks the rail's upper bound.\n\n" +
@@ -2019,7 +2033,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/28 19:15",
+                            timestampLabel = "2026-07-28T11:15:00Z",
                             messageType = "Chat",
                             body =
                                 "Paragraph above the quoted table.\n\n" +
@@ -2063,7 +2077,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/28 20:40",
+                            timestampLabel = "2026-07-28T12:40:00Z",
                             messageType = "Chat",
                             body =
                                 "Paragraph above the quoted list.\n\n" +
@@ -2110,7 +2124,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 13:56",
+                            timestampLabel = "2026-07-13T05:56:00Z",
                             messageType = "Chat",
                             body =
                                 "对照：#31 / #521 两块同行。\n\n紧凑：#31/#521。\n\n尾宽对照：task #607 与 #对话流专修。"
@@ -2149,7 +2163,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps markdown link targets aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/22 06:00",
+                            timestampLabel = "2026-07-21T22:00:00Z",
                             messageType = "Chat",
                             body =
                                 "@alice 情绪板已经准备完成，有空可以看下" +
@@ -2192,7 +2206,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Keeps visual testing release notes aligned.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/13 13:57",
+                            timestampLabel = "2026-07-13T05:57:00Z",
                             messageType = "Chat",
                             body =
                                 "@artin 建好了：**task #607**（#对话流专修，我已 claim）——slice-1 那个 mapper→network.sync 解耦 follow-up。scope + @Android-Developer-2 的 A/B 设计选择（接受耦合 vs observer-routed 重构）我贴在 task thread 了。AD2 定 A 我 close 成 by-design，定 B 我实现。V2 那条独立、等赵定信封。"
@@ -2248,7 +2262,7 @@ internal fun threadVisualFixture(
                             authorDescription = "Tracking Markdown width regressions.",
                             authorKind = "agent",
                             avatarLabel = "CI",
-                            timestampLabel = "07/06 01:40",
+                            timestampLabel = "2026-07-05T17:40:00Z",
                             messageType = "Chat",
                             body =
                                 "Wide-row regression: this sentence should keep flowing across the available row width before it wraps, " +
@@ -2308,7 +2322,7 @@ internal fun threadVisualFixture(
                             authorName = "CC-Wow",
                             authorKind = "agent",
                             avatarLabel = "CW",
-                            timestampLabel = "07/03 13:24",
+                            timestampLabel = "2026-07-03T05:24:00Z",
                             messageType = "Chat",
                             body =
                                 "Review summary before the list must remain visible.\n\n" +
@@ -2365,7 +2379,7 @@ internal fun threadVisualFixture(
                     authorName = "GFM Bot",
                     authorKind = "agent",
                     avatarLabel = "GF",
-                    timestampLabel = "08/20 13:30",
+                    timestampLabel = "2026-08-20T05:30:00Z",
                     messageType = "Chat",
                     body =
                         "Task-list parity: task #210\n\n" +
@@ -2427,7 +2441,7 @@ internal fun threadMessagePermalinkVisualPayload(instanceId: String): RaftThread
                     authorDescription = "Validates generic inline boxes across renderers.",
                     authorKind = "agent",
                     avatarLabel = "KM",
-                    timestampLabel = "07/11 23:55",
+                    timestampLabel = "2026-07-11T15:55:00Z",
                     messageType = "Chat",
                     body =
                         "Single line: https://app.raft.build/s/mobile/channel/a7475818-d6b2-426d-8529-5ccdd26c295e?msg=71e10f8e-a8ec-47fb-8226-4dd6bb9c4a3b\n\n" +
@@ -2637,7 +2651,7 @@ internal fun threadActionCardVisualMessage(
         authorDescription = "Keeps visual testing release notes aligned.",
         authorKind = "agent",
         avatarLabel = "CI",
-        timestampLabel = "07/08 14:30",
+        timestampLabel = "2026-07-08T06:30:00Z",
         messageType = "System",
         body = body,
         metadata = card.toMessageMetadata()
@@ -2698,7 +2712,7 @@ private fun threadMermaidVisualFixture(
                     authorDescription = "Keeps visual testing release notes aligned.",
                     authorKind = "agent",
                     avatarLabel = "CI",
-                    timestampLabel = "09/21 07:20",
+                    timestampLabel = "2026-09-20T23:20:00Z",
                     messageType = "Chat",
                     body = intro + "\n\n```mermaid\n" + mermaid + "```\n\nTrailing paragraph closes the specimen."
                 )

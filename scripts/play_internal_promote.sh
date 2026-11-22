@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Put a CI-built Play AAB that android-release.yml already uploaded to Hands on the
-# Google Play internal testing track.
+# Google Play internal testing track, and with --open-testing (a preview round) on
+# open testing too.
 #
-# Release rule (artin, 2026-10-29): every Android release goes to Play internal
-# testing by default, like iOS goes to the TestFlight internal group. Closed,
-# open and production tracks still need artin's explicit approval, so this script
-# only ever uses --track internal.
+# Release rules: every Android release goes to Play internal testing by default,
+# like iOS goes to the TestFlight internal group (artin, 2026-10-29); from 1.29 every
+# preview round also goes to open testing, Play's `beta` track (artin, 2026-11-22,
+# #proj-mobile msg=13d01fb6). Closed testing (`alpha`) and production need a release
+# go (docs/mobile-release-sop.md, Release decisions), so this script never uses them.
 #
 # Run it as a signed-in Hands human or agent with the publisher role
 # (`hands login`). By policy, Google Play writes run under an accountable identity,
@@ -15,10 +17,12 @@
 # The Hands draft this creates exists only to carry the Play promotion. Never
 # publish it on Hands: it would ship the Play variant to the Hands channel.
 #
-# Usage: scripts/play_internal_promote.sh <hands_build_id> [acceptance note]
+# Usage: scripts/play_internal_promote.sh [--open-testing] <hands_build_id> [acceptance note]
 set -euo pipefail
 
-build_id="${1:?usage: $0 <hands_build_id> [acceptance note]}"
+open_testing=false
+if [ "${1:-}" = "--open-testing" ]; then open_testing=true; shift; fi
+build_id="${1:?usage: $0 [--open-testing] <hands_build_id> [acceptance note]}"
 note="${2:-}"
 app="${HANDS_ANDROID_APP_ID:-a78f3891-f980-4f48-80d7-2a58e93a99aa}"
 read -r -a hands <<<"${HANDS_CLI:-npx -y @botiverse/hands-cli@0.5.34}"
@@ -34,7 +38,12 @@ run_id="$(jq -er .source.ci_run_id <<<"$bundle")"
 commit="$(jq -er .source.commit_sha <<<"$bundle")"
 echo "Hands build $build_id: versionCode $version_code, source ${commit:0:8}, CI run $run_id"
 
-note="${note:-Play variant versionCode $version_code from ${commit:0:8}, CI run $run_id: build and upload-key signature verified in CI. Internal testing track only, by the default release rule (artin 2026-10-29).}"
+if [ "$open_testing" = true ]; then
+  rule="Internal testing, then open testing (beta) for this preview round, by the default release rules (artin 2026-10-29; 2026-11-22 #proj-mobile msg=13d01fb6)."
+else
+  rule="Internal testing track only, by the default release rule (artin 2026-10-29)."
+fi
+note="${note:-Play variant versionCode $version_code from ${commit:0:8}, CI run $run_id: build and upload-key signature verified in CI. $rule}"
 
 release="$(api POST "/api/apps/$app/releases/draft" --data "$(jq -nc --arg b "$build_id" '{build_id: $b}')")"
 release_id="$(jq -er .id <<<"$release")"
@@ -52,3 +61,17 @@ promote="$(api POST "/api/apps/$app/releases/$release_id/distributions/play/prom
 jq -e '.track == "internal"' <<<"$promote" >/dev/null || { echo "Play promotion did not confirm the internal track" >&2; jq . <<<"$promote" >&2; exit 1; }
 echo "Play internal: versionCode $(jq -r .version_code <<<"$promote"), receipt $(jq -r .receipt_id <<<"$promote")"
 echo "release_id=$release_id"
+
+[ "$open_testing" = true ] || exit 0
+# The internal promotion bumped the revision: re-read before the open testing one. No
+# rollout percent: open testing goes to everyone who joined it.
+revision="$(api GET "/api/apps/$app/releases/$release_id" | jq -er .release.revision)"
+if ! beta="$(api POST "/api/apps/$app/releases/$release_id/distributions/play/promote" --data "$(jq -nc \
+  --arg n "$note" --argjson r "$revision" '{track: "beta", expected_revision: $r, approval: {note: $n}}')")"; then
+  echo "Play open testing (beta) failed; internal is done (receipt above). If a change is in review on Play, retry only this step later:" >&2
+  echo "  hands releases play-promote raft-android $release_id --track beta --note '<note>' [--changes-not-sent-for-review]" >&2
+  echo "Never cancel a review for a preview (docs/mobile-release-sop.md 7.3)." >&2
+  exit 1
+fi
+jq -e '.track == "beta"' <<<"$beta" >/dev/null || { echo "Play promotion did not confirm the beta (open testing) track" >&2; jq . <<<"$beta" >&2; exit 1; }
+echo "Play open testing (beta): versionCode $(jq -r .version_code <<<"$beta"), receipt $(jq -r .receipt_id <<<"$beta")"

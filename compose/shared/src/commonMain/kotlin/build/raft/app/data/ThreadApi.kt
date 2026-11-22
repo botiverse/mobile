@@ -93,6 +93,30 @@ internal interface RaftThreadApi {
         attachmentId: String,
         disposition: String? = null
     ): ThreadApiResult<ThreadAttachmentOpenTarget>
+    /**
+     * Batch inline URL resolution (`POST /api/attachments/urls`, #proj-mobile:#293). Fakes that
+     * only override [attachmentUrl] fall back to per-id calls automatically.
+     */
+    suspend fun attachmentUrls(
+        priority: DataRequestPriority,
+        attachmentIds: List<String>,
+    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> {
+        val resolved = LinkedHashMap<String, ThreadAttachmentOpenTarget>()
+        var lastFailure: ThreadApiResult.Failure? = null
+        for (rawId in attachmentIds) {
+            val id = rawId.trim()
+            if (id.isEmpty() || resolved.containsKey(id)) continue
+            when (val single = attachmentUrl(priority, id, disposition = "inline")) {
+                is ThreadApiResult.Success -> resolved[id] = single.data
+                is ThreadApiResult.Failure -> lastFailure = single
+            }
+        }
+        return if (resolved.isNotEmpty() || lastFailure == null) {
+            ThreadApiResult.Success(resolved)
+        } else {
+            lastFailure
+        }
+    }
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
     suspend fun sendAttachmentComment(
@@ -276,6 +300,35 @@ internal class RaftThreadApiClient(
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
             }
+
+    override suspend fun attachmentUrls(
+        priority: DataRequestPriority,
+        attachmentIds: List<String>,
+    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> {
+        val cleanIds = attachmentIds.map(String::trim).filter(String::isNotEmpty).distinct()
+        if (cleanIds.isEmpty()) return ThreadApiResult.Success(emptyMap())
+        val response = transport.attachmentUrls(priority, cleanIds)
+        // Older servers without POST /api/attachments/urls: fall back to per-attachment URL calls.
+        if (response.code == 404 || response.code == 405 || response.code == 501) {
+            return super.attachmentUrls(priority, cleanIds)
+        }
+        return response.mapThreadBody(
+            contractCode = "thread_attachment_urls_contract_mismatch",
+            serializer = ThreadAttachmentUrlsResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger,
+            parseDispatcher = parseDispatcher
+        ) { wire ->
+            buildMap {
+                wire.urls.forEach { entry ->
+                    val id = entry.id.trim()
+                    val url = entry.url.trim()
+                    if (id.isNotEmpty() && url.isNotEmpty()) {
+                        put(id, ThreadAttachmentOpenTarget(url = url, expiresAt = entry.expiresAt))
+                    }
+                }
+            }
+        }
+    }
 
     override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         transport.attachmentHtmlPreviewUrl(attachmentId)
@@ -467,6 +520,17 @@ internal class NetworkRaftThreadApi(
             priority = priority,
             path = "attachments/${attachmentId.trim()}/url",
             query = listOfNotNull(disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition" to it })
+        )
+
+    override suspend fun attachmentUrls(
+        priority: DataRequestPriority,
+        attachmentIds: List<String>,
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = priority,
+            path = "attachments/urls",
+            method = "POST",
+            bodyText = threadApiJson.encodeToString(ThreadAttachmentUrlsRequestBody(attachmentIds))
         )
 
     override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =
@@ -837,6 +901,23 @@ private data class ChannelMessagesResponseDto(
 private data class ThreadAttachmentUrlResponseDto(
     val url: String,
     val expiresAt: String? = null,
+)
+
+@Serializable
+private data class ThreadAttachmentUrlsRequestBody(
+    val attachmentIds: List<String>,
+)
+
+@Serializable
+private data class ThreadAttachmentBatchUrlItemDto(
+    val id: String,
+    val url: String,
+    val expiresAt: String? = null,
+)
+
+@Serializable
+private data class ThreadAttachmentUrlsResponseDto(
+    val urls: List<ThreadAttachmentBatchUrlItemDto> = emptyList(),
 )
 
 @Serializable

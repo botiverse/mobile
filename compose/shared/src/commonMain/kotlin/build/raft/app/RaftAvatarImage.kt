@@ -16,9 +16,15 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.appAvatarApiFallbackUrl
 import build.raft.app.model.appAvatarRelativeApiUrl
 import build.raft.app.model.isRelativeAppAvatarPath
-import coil3.compose.AsyncImagePainter
-import coil3.compose.rememberAsyncImagePainter
+import build.raft.app.image.RaftAvatarDecodeSize
+import build.raft.app.image.raftAvatarMemoryCacheBitmap
 import build.raft.app.image.raftNetworkImageCacheKey
+import coil3.compose.AsyncImagePainter
+import coil3.compose.LocalPlatformContext
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.size.Precision
+import coil3.size.Scale
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.delay
@@ -82,8 +88,49 @@ internal fun RaftAvatarHttpImage(
         return
     }
     val model = candidates.getOrElse(candidateIndex) { candidates.first() }
+    val cacheKey = remember(model) { raftNetworkImageCacheKey(model) }
+    // #proj-mobile:#290: synchronous frame-1 Coil memory-cache hit (populated by startup disk
+    // prewarm or prior slots at any size). Draws immediately on frame 1 without waiting for
+    // AsyncImagePainter's post-layout coroutine round-trip.
+    val cachedMemoryBitmap = remember(cacheKey, round) { raftAvatarMemoryCacheBitmap(cacheKey) }
+    if (cachedMemoryBitmap != null) {
+        LaunchedEffect(cacheKey) {
+            val message =
+                "source=${source.raftAvatarDiagnosticsSource()} candidate=$candidateIndex " +
+                    "round=$round painter=success dataSource=memory_cache"
+            diagnostics?.let { row ->
+                row.logger("thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} $message")
+            }
+            serverDiagnosticsId?.let { serverId ->
+                raftLogInfo(
+                    "SlockServerAvatar",
+                    "server_avatar_painter serverHash=${serverId.raftAvatarDiagnosticsHash()} role=$diagnosticsRole $message"
+                )
+            }
+            raftAvatarFailureCooldown.recordSuccess(cooldownKey)
+        }
+        Image(
+            bitmap = cachedMemoryBitmap,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.FillBounds
+        )
+        return
+    }
+    val platformContext = LocalPlatformContext.current
+    val request =
+        remember(platformContext, model, cacheKey) {
+            ImageRequest.Builder(platformContext)
+                .data(model)
+                .size(RaftAvatarDecodeSize)
+                .scale(Scale.FIT)
+                .precision(Precision.INEXACT)
+                .memoryCacheKey(cacheKey)
+                .diskCacheKey(cacheKey)
+                .build()
+        }
     key(model, round) {
-        val painter = rememberAsyncImagePainter(model = model)
+        val painter = rememberAsyncImagePainter(model = request)
         val imageState by painter.state.collectAsState()
         val failed = imageState is AsyncImagePainter.State.Error
         LaunchedEffect(imageState) {

@@ -104,6 +104,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
@@ -135,8 +136,9 @@ import androidx.compose.ui.graphics.Shape
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
  * phone touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, a right swipe Read / Unread (#793), and the press-and-hold menu has the same actions, with undo)
- * are in ActivityConversationSwipe.kt. The row's own Mark as Done button (web InboxRowDone) shows at rest in
- * the wide layout by touch and on hover with a mouse or trackpad ([activityRowDoneButton]).
+ * are in ActivityConversationSwipe.kt, at every width (xxchan 2026-11-22: a tablet by touch drops the row's
+ * Done button too, as Gmail and Feishu do). The row's own Mark as Done button (web InboxRowDone) shows only
+ * with a mouse or trackpad, on hover ([activityRowDoneButton]).
  */
 
 /** The agent peer of a DM row (not a thread in a DM): whose App Bot badge the title carries. */
@@ -853,16 +855,34 @@ internal fun ActivityMemberFace(
             memberId = identity.senderId,
             enabled = identity.jointSurface,
         )
+    val explicitAvatar =
+        memberAvatar?.appAvatarWireValueOrNull()
+            ?: identity.avatarWireValue?.appAvatarWireValueOrNull()
+            ?: jointActor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
+    val avatarPending =
+        explicitAvatar == null &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = source.memberAvatarResolver,
+                kind = identity.senderKind,
+                memberId = identity.senderId,
+                jointSurface = identity.jointSurface,
+            )
     RaftAppAvatar(
         // web Activity rows: an agent's face that does not load is the robot, a person's the
         // placeholder person; a sender of unknown kind has no label to take letters from either.
         kind = raftAvatarKind(identity.senderKind),
-        avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue()),
+        avatarWireValue =
+            if (avatarPending) {
+                null
+            } else {
+                activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue())
+            },
         label = "",
         modifier = modifier,
         avatarSize = avatarSize,
         cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
         cacheServerId = source.cacheServerId,
+        avatarPending = avatarPending,
     )
 }
 
@@ -1083,7 +1103,6 @@ internal fun ActivityConversationListRow(
     var pointerHovering by remember(item.key) { mutableStateOf(false) }
     val doneButton =
         activityRowDoneButton(
-            scale = RaftTheme.scale,
             pointerInput = RaftTheme.pointerInput,
             revealed = pointerHovering || hoverPreview || selected || menuOpen,
             canMarkDone = canMarkDone,
@@ -1333,22 +1352,16 @@ internal enum class ActivityRowDoneButton(
      * a ghost button on the row's hover fill, 8dp from the time and the marks.
      */
     Revealed(RaftButtonVariant.Ghost, gap = 8.dp, hitSize = null),
-
-    /**
-     * The wide layout by touch, at rest: an ink-outline button with a 44dp target, 12dp from the
-     * time and the marks, so its target (6dp past each edge) never reaches the time's text.
-     */
-    AtRest(RaftButtonVariant.Default, gap = 12.dp, hitSize = 44.dp),
 }
 
 /**
- * Which Done button a row shows, or null for none: none on a row without Done; by touch, at rest in
- * the wide layout and none on a phone (Done is the left swipe's first button and the press-and-hold
- * menu's item, and the row's screen-reader action; stdrc, raft-design #769); with a mouse or
- * trackpad, at any width, only while [revealed] (hovered, open beside the list or its menu open).
+ * Which Done button a row shows, or null for none: none on a row without Done; none by touch at any
+ * width (Done is the left swipe's first button and the press-and-hold menu's item, and the row's
+ * screen-reader action; raft-design #769 for phones, xxchan 2026-11-22 for tablets: the wide layout's
+ * at-rest button only repeated the swipe); with a mouse or trackpad, at any width, only while
+ * [revealed] (hovered, open beside the list or its menu open).
  */
 internal fun activityRowDoneButton(
-    scale: RaftScale,
     pointerInput: RaftPointerInput,
     revealed: Boolean,
     canMarkDone: Boolean,
@@ -1357,7 +1370,6 @@ internal fun activityRowDoneButton(
     when {
         !canMarkDone || !hasAction -> null
         pointerInput == RaftPointerInput.Fine -> ActivityRowDoneButton.Revealed.takeIf { revealed }
-        scale == RaftScale.Wide -> ActivityRowDoneButton.AtRest
         else -> null
     }
 

@@ -1,20 +1,32 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -110,9 +122,71 @@ internal fun RaftNativeNavBarTitleImageCapture(
                         label = leading.label,
                         avatarSize = RaftNativeNavBarTitleImageSize,
                     )
-                // A kind without an app drawing here keeps the host's own (PR #4464's server tile).
-                else -> Unit
+                is RaftNativeNavBarTitleLeading.Server ->
+                    RaftNativeNavBarServerTile(
+                        label = leading.label,
+                        imageUrl = leading.imageUrl,
+                        tileSize = RaftNativeNavBarTitleImageSize,
+                    )
             }
+        }
+    }
+}
+
+/**
+ * #proj-mobile:#290: draws the iOS native Home title bar's server tile through the same Coil
+ * memory+disk cache ([RaftAvatarHttpImage]) as every Compose server icon instead of a separate
+ * UIKit `URLSession.shared` fetch. Never flashes the initial letter while a configured server
+ * image is decoding.
+ */
+@Composable
+private fun RaftNativeNavBarServerTile(
+    label: String,
+    imageUrl: String?,
+    tileSize: Dp,
+) {
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    val initial = label.trim().take(1).uppercase()
+    val fallbackLabel: @Composable () -> Unit = {
+        Box(
+            modifier = Modifier.fillMaxSize().background(RaftColor.StickerInk, shape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = initial,
+                style =
+                    RaftType.Button.copy(
+                        fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
+                        fontSize = if (tileSize < 32.dp) 13.sp else 17.sp,
+                        lineHeight = if (tileSize < 32.dp) 16.sp else 20.sp,
+                        fontWeight = FontWeight.Normal,
+                    ),
+                color = RaftColor.BrandYellow,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+    val source = imageUrl?.trim()?.takeIf { it.isNotEmpty() }
+    Box(
+        modifier =
+            Modifier
+                .size(tileSize)
+                .clip(shape)
+                .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (source == null) {
+            fallbackLabel()
+        } else {
+            RaftAvatarHttpImage(
+                source = source,
+                modifier = Modifier.fillMaxSize(),
+                fallback = fallbackLabel,
+                placeholder = {
+                    Box(Modifier.fillMaxSize().background(RaftColor.StickerInk, shape))
+                },
+            )
         }
     }
 }

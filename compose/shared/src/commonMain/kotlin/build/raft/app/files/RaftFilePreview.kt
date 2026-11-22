@@ -1442,14 +1442,21 @@ internal class RaftFilePreviewAttachmentUrlCache(
         key: RaftFilePreviewAttachmentUrlCacheKey,
         url: String,
         expiresAtEpochMillis: Long? = null,
-        expirySafetyMarginMillis: Long = 60_000L
+        expirySafetyMarginMillis: Long = 60_000L,
+        fallbackTtlMillis: Long? = null,
     ) {
         val trimmed = url.trim()
         if (trimmed.isEmpty()) return
-        // expiresAt absent/unparseable => lifetime unknown => never cache (Argus review on
-        // PR #2618): caching a URL of unknown TTL is exactly the case that can 403 later.
-        val serverExpiry = expiresAtEpochMillis ?: return
-        val lifetimeMillis = serverExpiry - currentEpochMillis() - expirySafetyMarginMillis
+        val lifetimeMillis =
+            if (expiresAtEpochMillis != null) {
+                expiresAtEpochMillis - currentEpochMillis() - expirySafetyMarginMillis
+            } else {
+                // Batch `POST /api/attachments/urls` intentionally omits `expiresAt` (slock
+                // ATTACHMENT_PRESIGNED_URL_TTL_SECONDS = 300 s); callers that opt in supply a
+                // conservative fallback TTL and invalidate on load failure. Single-URL callers
+                // keep `fallbackTtlMillis == null` so an unparseable/absent expiry is never cached.
+                fallbackTtlMillis ?: return
+            }
         if (lifetimeMillis <= 0) return
         synchronized(lock) {
             entries[key] = trimmed to timeSource.markNow().plus(lifetimeMillis.milliseconds)
@@ -1460,7 +1467,43 @@ internal class RaftFilePreviewAttachmentUrlCache(
         }
     }
 
+    /** Drops a cached entry (e.g. after an image load error on an expired presigned URL). */
+    fun invalidate(
+        key: RaftFilePreviewAttachmentUrlCacheKey,
+        expectedUrl: String? = null,
+    ) {
+        val expected = expectedUrl?.trim()?.takeIf { it.isNotEmpty() }
+        synchronized(lock) {
+            val current = entries[key] ?: return
+            if (expected != null && current.first != expected) return
+            entries.remove(key)
+        }
+    }
+
+    /** Clears all cached signed URLs (called on account sign-out). */
+    fun clear() {
+        synchronized(lock) { entries.clear() }
+    }
+
+    /** Clears cached signed URLs belonging to [serverId] (and [accountId] when specified). */
+    fun clearServer(serverId: String, accountId: String? = null) {
+        val cleanServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        val cleanAccount = accountId?.trim()?.takeIf { it.isNotEmpty() }
+        synchronized(lock) {
+            val victims =
+                entries.keys.filter { key ->
+                    key.owner.serverId == cleanServer && (cleanAccount == null || key.owner.accountId == cleanAccount)
+                }
+            victims.forEach(entries::remove)
+        }
+    }
+
     internal var currentEpochMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+
+    internal companion object {
+        /** 5-minute server presigned TTL (`ATTACHMENT_PRESIGNED_URL_TTL_SECONDS`) minus 60 s margin. */
+        const val DefaultInlineFallbackUrlTtlMillis: Long = 4L * 60L * 1000L
+    }
 }
 
 private val ProcessRaftFilePreviewAttachmentUrlCache = RaftFilePreviewAttachmentUrlCache()
@@ -1638,6 +1681,12 @@ internal data class RaftFilePreviewPayload(
     val content: String = "",
     val markdown: Boolean = false,
     val imageUrl: String? = null,
+    /**
+     * Inline image URL already displayed in the message list when the attachment has no
+     * `thumbnailUrl` (#proj-mobile:#293): kept as the preview underlay so opening full-screen
+     * preview starts on the inline image instead of a blank loading screen.
+     */
+    val inlinePlaceholderUrl: String? = null,
     /** True when the full-size URL could not be loaded and [imageUrl] is only the thumbnail on screen. */
     val imageFullLoadFailed: Boolean = false,
     /** task #351: serialized [RaftFilePreviewXlsxCarrier] payload for the xlsx preview panel. */
@@ -1706,6 +1755,7 @@ internal data class RaftFilePreviewGalleryImage(
     val mimeType: String = "",
     val sizeLabel: String = "",
     val thumbnailUrl: String? = null,
+    val inlineUrl: String? = null,
     val composerImageFileRef: String = "",
     val composerImagePreviewUri: String = "",
     val composerImageSizeBytes: Long? = null,
@@ -3083,7 +3133,35 @@ private fun RaftFilePreviewStandalonePageContent() {
     }
     fun retryFullImage() {
         if (!payload.imageFullLoadFailed) return
+        remoteOperationScope?.owner?.normalizedOrNull()?.let { owner ->
+            val id = payload.attachmentId.trim()
+            if (id.isNotEmpty()) {
+                raftFilePreviewAttachmentUrlCache().invalidate(
+                    RaftFilePreviewAttachmentUrlCacheKey(owner, id, "inline")
+                )
+            }
+        }
         payload = payload.withImageFullLoadRetry()
+    }
+
+    fun onFullImageLoadError(failedAttachmentId: String, failedUrl: String) {
+        val cleanId = failedAttachmentId.trim()
+        if (cleanId.isEmpty()) return
+        remoteOperationScope?.owner?.normalizedOrNull()?.let { owner ->
+            raftFilePreviewAttachmentUrlCache().invalidate(
+                RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"),
+                expectedUrl = failedUrl,
+            )
+        }
+        if (cleanId in imageGalleryResolutionState.resolvedPayloadByAttachmentId) {
+            imageGalleryResolutionState =
+                imageGalleryResolutionState.copy(
+                    resolvedPayloadByAttachmentId = imageGalleryResolutionState.resolvedPayloadByAttachmentId - cleanId
+                )
+        }
+        if (payload.attachmentId.trim() == cleanId && payload.kind == "image" && !payload.imageFullLoadFailed) {
+            payload = payload.copy(imageFullLoadFailed = true)
+        }
     }
 
     fun retryPdf() {
@@ -4458,6 +4536,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onPdfRenderError = ::onPdfRenderError,
                     onPdfRetry = ::retryPdf,
                     onImageRetry = ::retryFullImage,
+                    onImageLoadError = ::onFullImageLoadError,
                     onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onRetryLoad =
                         if (payload.canRetryPreviewLoad()) {
@@ -4474,8 +4553,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                     modifier = Modifier.fillMaxSize()
                 )
                 RaftFilePreviewImageGalleryCacheKeepAlive(
-                    sources =
-                        payload.imageGalleryKeepAliveSources(
+                    entries =
+                        payload.imageGalleryKeepAliveEntries(
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
                         )
                 )
@@ -7820,9 +7899,22 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
     kind: String,
     imageGallery: List<RaftThreadAttachmentItem> = emptyList(),
     imageGalleryIndex: Int = 0,
-    attachmentCommentsEnabled: Boolean = false
-): RaftFilePreviewPayload =
-    RaftFilePreviewPayload(
+    attachmentCommentsEnabled: Boolean = false,
+    inlineImageUrlsByAttachmentId: Map<String, String> = emptyMap(),
+): RaftFilePreviewPayload {
+    val inlinePlaceholder =
+        if (kind == "image") {
+            inlineImageUrlsByAttachmentId[id]?.trim()?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    val initialImageUrl =
+        if (kind == "image") {
+            thumbnailUrl?.trim()?.takeIf { it.isNotBlank() } ?: inlinePlaceholder
+        } else {
+            null
+        }
+    return RaftFilePreviewPayload(
         kind = "loading",
         requestedKind = kind,
         titleDesc = when (kind) {
@@ -7837,21 +7929,18 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
         name = name,
         path = name,
         meta = genericAttachmentMetaLine(),
-        imageUrl =
-            if (kind == "image") {
-                thumbnailUrl?.takeIf { it.isNotBlank() }
-            } else {
-                null
-            },
+        imageUrl = initialImageUrl,
+        inlinePlaceholderUrl = inlinePlaceholder,
         messageDesc = Res.string.common_loading.desc(),
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
         source = RaftFilePreviewSourceThreadAttachment,
         attachmentId = id,
         attachmentCommentsEnabled = attachmentCommentsEnabled,
-        imageGallery = imageGallery.map { it.toRaftFilePreviewGalleryImage() },
+        imageGallery = imageGallery.map { it.toRaftFilePreviewGalleryImage(inlineImageUrlsByAttachmentId[it.id]) },
         imageGalleryIndex = imageGalleryIndex.coerceAtLeast(0)
     )
+}
 
 internal fun RaftThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload(
     commentsEnabled: Boolean
@@ -9096,6 +9185,8 @@ internal fun RaftFilePreviewPayloadContent(
     onPdfRetry: (() -> Unit)? = null,
     /** The full image failed to load and the thumbnail is shown: the banner's Retry. */
     onImageRetry: (() -> Unit)? = null,
+    /** Primary full-res image URL failed in Coil (e.g. expired signed URL): evict cached URL and show Retry. */
+    onImageLoadError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
     /**
      * Hand the file to another app (the Open with action): the PDF failure fallback, and the
      * download card of a video this platform cannot play.
@@ -9142,9 +9233,33 @@ internal fun RaftFilePreviewPayloadContent(
                         modifier = Modifier.fillMaxSize()
                     ) {
                         Box(Modifier.fillMaxSize()) {
+                            val originalCacheKey =
+                                if (
+                                    pagePayload.source == RaftFilePreviewSourceThreadAttachment &&
+                                    pagePayload.error.isNullOrBlank() &&
+                                    !pagePayload.imageFullLoadFailed
+                                ) {
+                                    build.raft.app.image.raftAttachmentOriginalImageCacheKey(pagePayload.attachmentId)
+                                } else {
+                                    null
+                                }
+                            val primaryUrl = pagePayload.imageUrl?.trim()?.takeIf { it.isNotBlank() }
+                            val fallbackUrl = pagePayload.currentImageThumbnailUrl()
+                            val explicitThumbnail = pagePayload.currentExplicitImageThumbnailUrl()
+                            val inlinePlaceholder = pagePayload.currentInlinePlaceholderUrl()
+                            val canKeyPrimaryAsOriginal =
+                                originalCacheKey != null &&
+                                    primaryUrl != null &&
+                                    primaryUrl != explicitThumbnail &&
+                                    (
+                                        pagePayload.kind == "image" ||
+                                            (pagePayload.kind == "loading" && inlinePlaceholder != null && primaryUrl == inlinePlaceholder)
+                                    )
+                            val fallbackIsInlineOriginal =
+                                fallbackUrl != null && explicitThumbnail == null && fallbackUrl == inlinePlaceholder
                             RaftFilePreviewImagePanel(
                                 source = pagePayload.imageUrl,
-                                fallbackSource = pagePayload.currentImageThumbnailUrl(),
+                                fallbackSource = fallbackUrl,
                                 contentDescription = pagePayload.name.ifBlank { pagePayload.path },
                                 modifier = Modifier.fillMaxSize(),
                                 backgroundColor = RaftColor.SurfaceWhite,
@@ -9153,7 +9268,23 @@ internal fun RaftFilePreviewPayloadContent(
                                 zoomState = zoomState,
                                 animated = pagePayload.raftFilePreviewImageMayAnimate(),
                                 // Only the page on screen plays; its neighbours hold their frame.
-                                animationActive = selected
+                                animationActive = selected,
+                                sourceCacheKey = originalCacheKey.takeIf { canKeyPrimaryAsOriginal },
+                                fallbackCacheKey = originalCacheKey.takeIf { fallbackIsInlineOriginal },
+                                onImageStateChange = { state ->
+                                    if (
+                                        state is coil3.compose.AsyncImagePainter.State.Error &&
+                                        pagePayload.source == RaftFilePreviewSourceThreadAttachment &&
+                                        pagePayload.kind == "image" &&
+                                        !pagePayload.imageFullLoadFailed &&
+                                        primaryUrl != null
+                                    ) {
+                                        val failedData = state.result.request.data.toString().trim()
+                                        if (failedData == primaryUrl) {
+                                            onImageLoadError?.invoke(pagePayload.attachmentId, primaryUrl)
+                                        }
+                                    }
+                                },
                             )
                             if (selected && pagePayload.imageFullLoadFailed && onImageRetry != null) {
                                 RaftFilePreviewImageLoadFailedBanner(
@@ -9661,10 +9792,10 @@ private fun RaftFilePreviewImageGalleryPage(
  */
 @Composable
 private fun RaftFilePreviewImageGalleryCacheKeepAlive(
-    sources: Set<String>,
+    entries: List<Pair<String, String?>>,
     modifier: Modifier = Modifier
 ) {
-    if (sources.isEmpty()) return
+    if (entries.isEmpty()) return
     Box(
         modifier =
             modifier
@@ -9672,11 +9803,12 @@ private fun RaftFilePreviewImageGalleryCacheKeepAlive(
                 .alpha(0f)
                 .clipToBounds()
     ) {
-        sources.sorted().forEach { source ->
-            key(source) {
+        entries.forEach { (source, cacheKey) ->
+            key(source, cacheKey) {
                 RaftCachedImage(
                     source = source,
                     contentDescription = null,
+                    cacheKey = cacheKey,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -10654,9 +10786,11 @@ internal fun RaftFilePreviewPayload.withResolvedImageGalleryPayload(
 private fun RaftFilePreviewPayload.hasResolvedRemoteImageComparedTo(
     requestPayload: RaftFilePreviewPayload
 ): Boolean {
+    if (imageFullLoadFailed || !error.isNullOrBlank()) return false
     val resolvedSource = imageUrl?.trim()?.takeIf { it.isNotBlank() } ?: return false
     val initialSource = requestPayload.imageUrl?.trim()?.takeIf { it.isNotBlank() }
-    return resolvedSource != initialSource
+    val inlinePlaceholder = requestPayload.currentInlinePlaceholderUrl()
+    return resolvedSource != initialSource || (inlinePlaceholder != null && resolvedSource == inlinePlaceholder)
 }
 
 private fun RaftFilePreviewPayload.imageGalleryResolutionFailurePayload(): RaftFilePreviewPayload =
@@ -10672,6 +10806,49 @@ private fun RaftFilePreviewPayload.imageGalleryResolutionFailurePayload(): RaftF
             },
         error = "image_preview_resolve_failed"
     )
+
+internal fun RaftFilePreviewPayload.imageGalleryKeepAliveEntries(
+    resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
+): List<Pair<String, String?>> {
+    if (imageGallery.isEmpty()) return emptyList()
+    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    val retainedIndices =
+        (currentIndex - 1..currentIndex + 1)
+            .filter(imageGallery.indices::contains)
+    val seen = LinkedHashSet<Pair<String, String?>>()
+    retainedIndices.forEach { index ->
+        val galleryImage = imageGallery[index]
+        val originalCacheKey = build.raft.app.image.raftAttachmentOriginalImageCacheKey(galleryImage.attachmentId)
+        val thumb = galleryImage.thumbnailUrl?.trim()?.takeIf { it.isNotBlank() }
+        thumb?.let { seen += it to null }
+        galleryImage.inlineUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != thumb }
+            ?.let { seen += it to originalCacheKey }
+        resolvedPayloadByAttachmentId[galleryImage.attachmentId]
+            ?.takeUnless { it.imageFullLoadFailed || !it.error.isNullOrBlank() }
+            ?.imageUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != thumb }
+            ?.let { seen += it to originalCacheKey }
+        if (index == currentIndex) {
+            val primary = imageUrl?.trim()?.takeIf { it.isNotBlank() }
+            val explicitThumb = currentExplicitImageThumbnailUrl()
+            val inlinePlaceholder = currentInlinePlaceholderUrl()
+            if (primary != null) {
+                val canKeyOriginal =
+                    source == RaftFilePreviewSourceThreadAttachment &&
+                        !imageFullLoadFailed &&
+                        error.isNullOrBlank() &&
+                        primary != explicitThumb &&
+                        (kind == "image" || (kind == "loading" && inlinePlaceholder != null && primary == inlinePlaceholder))
+                val primaryKey = if (canKeyOriginal) originalCacheKey else null
+                seen += primary to primaryKey
+            }
+        }
+    }
+    return seen.sortedWith(compareBy<Pair<String, String?>>({ it.first }, { it.second.orEmpty() }))
+}
 
 internal fun RaftFilePreviewPayload.imageGalleryKeepAliveSources(
     resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
@@ -10810,13 +10987,16 @@ private fun String.raftFilePreviewFileName(fallback: String): String {
     return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { fallback } }
 }
 
-private fun RaftThreadAttachmentItem.toRaftFilePreviewGalleryImage(): RaftFilePreviewGalleryImage =
+private fun RaftThreadAttachmentItem.toRaftFilePreviewGalleryImage(
+    inlineUrl: String? = null,
+): RaftFilePreviewGalleryImage =
     RaftFilePreviewGalleryImage(
         attachmentId = id,
         name = name,
         mimeType = mimeType,
         sizeLabel = sizeLabel,
-        thumbnailUrl = thumbnailUrl
+        thumbnailUrl = thumbnailUrl,
+        inlineUrl = inlineUrl?.trim()?.takeIf { it.isNotBlank() },
     )
 
 private fun RaftFilePreviewGalleryImage.toPreviewPayload(
@@ -10867,7 +11047,8 @@ private fun RaftFilePreviewGalleryImage.toPreviewPayload(
         meta = meta,
         content = "",
         markdown = false,
-        imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
+        imageUrl = thumbnailUrl?.trim()?.takeIf { it.isNotBlank() } ?: inlineUrl?.trim()?.takeIf { it.isNotBlank() },
+        inlinePlaceholderUrl = inlineUrl?.trim()?.takeIf { it.isNotBlank() },
         message = "",
         messageDesc = Res.string.common_loading.desc(),
         error = null,
@@ -12007,7 +12188,10 @@ internal fun RaftFilePreviewImagePanel(
     zoomState: RaftZoomableImageState? = null,
     /** Play [source] when it turns out to be an animated GIF / WebP. */
     animated: Boolean = false,
-    animationActive: Boolean = true
+    animationActive: Boolean = true,
+    sourceCacheKey: String? = null,
+    fallbackCacheKey: String? = null,
+    onImageStateChange: ((coil3.compose.AsyncImagePainter.State) -> Unit)? = null,
 ) {
     RaftAspectFitImagePreviewSurface(
         source = source,
@@ -12021,7 +12205,10 @@ internal fun RaftFilePreviewImagePanel(
         zoomState = zoomState,
         showLoadingIndicator = true,
         animateSource = animated,
-        animationActive = animationActive
+        animationActive = animationActive,
+        sourceCacheKey = sourceCacheKey,
+        fallbackCacheKey = fallbackCacheKey,
+        onImageStateChange = onImageStateChange,
     )
 }
 
@@ -12070,13 +12257,26 @@ internal fun RaftFilePreviewPayload.raftFilePreviewImageZoomIdentity(): RaftFile
         composerImageFileRef = composerImageFileRef
     )
 
-internal fun RaftFilePreviewPayload.currentImageThumbnailUrl(): String? =
+internal fun RaftFilePreviewPayload.currentExplicitImageThumbnailUrl(): String? =
     imageGallery
         .takeIf { it.isNotEmpty() }
         ?.let { gallery -> gallery[imageGalleryIndex.coerceIn(gallery.indices)] }
         ?.thumbnailUrl
         ?.trim()
         ?.takeIf { it.isNotBlank() }
+
+internal fun RaftFilePreviewPayload.currentInlinePlaceholderUrl(): String? =
+    imageGallery
+        .takeIf { it.isNotEmpty() }
+        ?.let { gallery -> gallery[imageGalleryIndex.coerceIn(gallery.indices)] }
+        ?.inlineUrl
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?: inlinePlaceholderUrl?.trim()?.takeIf { it.isNotBlank() }
+
+internal fun RaftFilePreviewPayload.currentImageThumbnailUrl(): String? =
+    currentExplicitImageThumbnailUrl()
+        ?: currentInlinePlaceholderUrl()
         ?: imageUrl?.trim()?.takeIf { kind == "loading" && requestedKind == "image" && it.isNotBlank() }
 
 @Composable

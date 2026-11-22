@@ -282,6 +282,19 @@ internal class RaftAgentControlsApi(
             parse = { Unit }
         )
 
+    override suspend fun dismissMigration(
+        agentId: MemberId,
+        migrationRef: String,
+        expectedRevision: Int
+    ): DataResult<Unit> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/migration/dismiss",
+            method = "POST",
+            bodyText = agentMigrationRevisionRequestBody(migrationRef, expectedRevision),
+            parse = { Unit }
+        )
+
     /**
      * The server plan from `GET /billing/subscription` (web `serverStore.loadBilling`),
      * the Pro gate's advisory input. Owners/admins only; others get a 403 and no plan.

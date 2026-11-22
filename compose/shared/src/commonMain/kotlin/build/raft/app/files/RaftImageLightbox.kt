@@ -91,7 +91,9 @@ import net.engawapg.lib.zoomable.zoomable
 internal data class RaftImageLightboxItem(
     val attachment: RaftThreadAttachmentItem,
     val senderName: String = "",
-    val timeLabel: String = ""
+    val timeLabel: String = "",
+    /** Inline image URL already displayed in the message list when [attachment.thumbnailUrl] is absent (#proj-mobile:#293). */
+    val inlinePlaceholderUrl: String? = null,
 )
 
 internal data class RaftImageLightboxRequest(
@@ -211,7 +213,8 @@ internal fun RaftImageLightbox(
     onDownload: (RaftThreadAttachmentItem) -> Unit,
     onOpenWith: ((RaftThreadAttachmentItem) -> Unit)?,
     onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
-    onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null
+    onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
+    onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
 ) {
     // The window's top safe area, read in the page (the lightbox covers the whole window).
     val topSafeArea = raftWindowTopSafeAreaPadding()
@@ -224,7 +227,8 @@ internal fun RaftImageLightbox(
             onOpenWith = onOpenWith,
             onShare = onShare,
             topSafeArea = topSafeArea,
-            onEdit = onEdit
+            onEdit = onEdit,
+            onFullUrlError = onFullUrlError,
         )
     }
 }
@@ -245,8 +249,16 @@ internal fun RaftImageLightboxContent(
     onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
     /** Edit this image; the result goes to the composer as a new image (RaftViewerImageEdit.kt). */
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
+    onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
-        { item, fullUrl, onContentSize -> RaftImageLightboxRemoteImage(item, fullUrl, onContentSize) }
+        { item, fullUrl, onContentSize ->
+            RaftImageLightboxRemoteImage(
+                item = item,
+                fullUrl = fullUrl,
+                onContentSize = onContentSize,
+                onFullUrlError = onFullUrlError?.let { handler -> { failed -> handler(item.attachment.id, failed) } },
+            )
+        }
 ) {
     val items = request.items
     if (items.isEmpty()) return
@@ -419,9 +431,14 @@ private suspend fun ZoomState.toggleRaftLightboxScale(position: Offset) {
 private fun RaftImageLightboxRemoteImage(
     item: RaftImageLightboxItem,
     fullUrl: String?,
-    onContentSize: (Size) -> Unit
+    onContentSize: (Size) -> Unit,
+    onFullUrlError: ((String) -> Unit)? = null,
 ) {
-    val thumbnail = item.attachment.thumbnailUrl?.trim()?.takeIf { it.isNotBlank() }
+    val explicitThumbnail = item.attachment.thumbnailUrl?.trim()?.takeIf { it.isNotBlank() }
+    val inlinePlaceholder = item.inlinePlaceholderUrl?.trim()?.takeIf { it.isNotBlank() }
+    val thumbnail = explicitThumbnail ?: inlinePlaceholder
+    val originalCacheKey = build.raft.app.image.raftAttachmentOriginalImageCacheKey(item.attachment.id)
+    val thumbnailCacheKey = if (explicitThumbnail == null && inlinePlaceholder != null) originalCacheKey else null
     var fullLoaded by remember(fullUrl) { mutableStateOf(false) }
     var thumbnailFailed by remember(thumbnail) { mutableStateOf(false) }
     var fullFailed by remember(fullUrl) { mutableStateOf(false) }
@@ -434,6 +451,7 @@ private fun RaftImageLightboxRemoteImage(
             source = thumbnail,
             contentDescription = item.attachment.name,
             contentScale = ContentScale.Fit,
+            cacheKey = thumbnailCacheKey,
             modifier = Modifier.fillMaxSize(),
             onImageStateChange = { state ->
                 report(state)
@@ -448,10 +466,14 @@ private fun RaftImageLightboxRemoteImage(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
             animated = build.raft.app.image.raftImageMayBeAnimated(item.attachment.mimeType, item.attachment.name),
+            cacheKey = originalCacheKey,
             onImageStateChange = { state ->
                 report(state)
                 if (state is AsyncImagePainter.State.Success) fullLoaded = true
-                if (state is AsyncImagePainter.State.Error) fullFailed = true
+                if (state is AsyncImagePainter.State.Error) {
+                    fullFailed = true
+                    onFullUrlError?.invoke(fullUrl)
+                }
             }
         )
     }

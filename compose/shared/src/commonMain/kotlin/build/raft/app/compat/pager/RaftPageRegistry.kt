@@ -60,8 +60,11 @@ import build.raft.app.rememberRaftSideActionHost
 import build.raft.designsystem.components.LocalRaftSideActionHost
 import build.raft.app.RaftPageHorizontalSafeAreaShell
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.image.raftInstallImageLoader
+import build.raft.app.image.raftScheduleStartupAvatarPrewarm
 import build.raft.app.toKuiklyJson
+import coil3.compose.LocalPlatformContext
 import kotlinx.atomicfu.atomic
 
 /**
@@ -123,6 +126,12 @@ fun RaftPagerHost(
     val host = LocalRaftHost.current
     // The Raft Coil loader must be the singleton before any page asks Coil for an image.
     remember { raftInstallImageLoader() }
+    val platformContext = LocalPlatformContext.current
+    remember(platformContext) {
+        raftScheduleStartupAvatarPrewarm(platformContext) {
+            RaftSharedStoreRegistry.currentOrNull()?.startupPrewarmAvatarUrls().orEmpty()
+        }
+    }
     val density = LocalDensity.current
     val statusBars = WindowInsets.statusBars
     val navigationBars = WindowInsets.navigationBars

@@ -388,6 +388,15 @@
       "divergences": []
     },
     {
+      "id": "ds.field.reserved-message",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/FieldMessageCases.kt:24",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.filter-chip.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/InteractiveComponentCases.kt:760",
@@ -1367,6 +1376,15 @@
       "id": "ds.switch.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/InteractiveComponentCases.kt:445",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
+      "id": "ds.table.gallery",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/TableCases.kt:25",
       "fixture": null,
       "axes": {},
       "parity": [],

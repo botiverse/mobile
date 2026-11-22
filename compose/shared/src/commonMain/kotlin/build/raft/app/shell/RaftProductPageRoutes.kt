@@ -140,6 +140,8 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ArtifactViewer,
         // `artifacts` is in the registry (RaftPageRoute.Artifacts); the Artifacts home's view is not wired yet.
         AuthenticatedProductRoute.ArtifactsHome,
+        // No migration log route in the shared page_viewed registry.
+        AuthenticatedProductRoute.AgentMigrationLog,
         // No `external_invite` route in the shared page_viewed registry (the server records its own view).
         AuthenticatedProductRoute.ExternalInvite,
         // No `server_join` route in the shared page_viewed registry.

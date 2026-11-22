@@ -1231,7 +1231,13 @@ internal fun MemberDetailPageContent(
                                                         )
                                                     }
                                                 }
-                                            )
+                                            ),
+                                        onOpenLog =
+                                            if (canSeeAgentMigrationLog(current.server.role)) {
+                                                { pager.openAgentMigrationLogPage(provider.storeScope, agentId = member.id.value) }
+                                            } else {
+                                                null
+                                            }
                                     )
                                 },
                             appAccess =

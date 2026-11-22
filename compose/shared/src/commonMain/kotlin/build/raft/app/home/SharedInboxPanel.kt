@@ -204,6 +204,13 @@ internal fun SharedHomeActivityScreen(
      * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
+    /**
+     * Whether the conversation [externalSelectedThreadId] names was opened from this Activity surface
+     * (a row, a link, Back), not left beside the list by another tab (Chat's conversation in the
+     * shared slot, RaftRailPlaces.kt). The reopen on arrival counts only that as something open.
+     * Null: any [externalSelectedThreadId] counts.
+     */
+    externalSelectionOpenedHere: Boolean? = null,
     // Activity hosted as an app-shell bottom tab: main-tab header.
     mainTab: Boolean = false,
     // App-shell bottom-tab double tap generation (AppShellTabScrollToTopRequests.activity).
@@ -588,7 +595,9 @@ internal fun SharedHomeActivityScreen(
     }
     // Wide layout (the list-detail host owns the selection): once per visit, after the list loads,
     // reopen the conversation opened last time on this server when it is still listed and nothing
-    // is open beside the list (ActivityArrivalReopen.kt). Not a pick: no MarkRead, no prewarm.
+    // Activity opened is open beside the list (ActivityArrivalReopen.kt; another tab's conversation
+    // left in the shared slot does not count, [externalSelectionOpenedHere]). Not a pick: no
+    // MarkRead, no prewarm.
     // The visit is the host's when it holds them ([arrivalVisits]): the wide list leaves composition
     // while collapsed beside an open conversation, and a visit remembered here would start afresh
     // when Back brings the list back, reopening what Back just closed (mobile #193).
@@ -602,7 +611,7 @@ internal fun SharedHomeActivityScreen(
         val item =
             activityArrivalReopenTarget(
                 wide = externalSelectionOwned,
-                somethingOpen = externalSelectedThreadId != null,
+                somethingOpen = externalSelectedThreadId != null && externalSelectionOpenedHere != false,
                 items = arrivalItems.orEmpty(),
                 lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
             ) ?: return@ActivityArrivalReopenEffect

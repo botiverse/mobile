@@ -34,7 +34,6 @@ internal class ComposeCreateAgentStateVisualPage : BasePager() {
 }
 
 private data class CreateAgentStateVisualSpec(
-    val runtime: String,
     val machineRuntimes: List<String>,
     val name: String = CREATE_AGENT_STATE_VISUAL_NAME,
     val description: String = CREATE_AGENT_STATE_VISUAL_DESCRIPTION,
@@ -47,9 +46,9 @@ private const val CREATE_AGENT_STATE_VISUAL_DESCRIPTION =
 
 private fun createAgentStateVisualSpec(variant: String): CreateAgentStateVisualSpec =
     when (variant) {
-        "error" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), name = "bad name!!")
-        "empty" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), description = "")
-        "no-computer" -> CreateAgentStateVisualSpec("codex", listOf("codex", "claude"), noMachines = true)
+        "error" -> CreateAgentStateVisualSpec(listOf("codex", "claude"), name = "bad name!!")
+        "empty" -> CreateAgentStateVisualSpec(listOf("codex", "claude"), description = "")
+        "no-computer" -> CreateAgentStateVisualSpec(listOf("codex", "claude"), noMachines = true)
         else -> error("unknown create-agent visual variant: $variant")
     }
 
@@ -63,7 +62,8 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             errorMessage = null,
             initialName = spec.name,
             initialDescription = spec.description,
-            initialRuntime = spec.runtime,
+            // Like React's fixture: the computer's runtime list has not answered, so none is chosen.
+            initialRuntime = "",
             machines =
                 if (spec.noMachines) {
                     emptyList()
@@ -86,6 +86,7 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",
+            onUpgrade = {},
             // React's fixture offers Add Computer; a non-null callback shows the button.
             onAddComputer = {},
             onDismiss = {},

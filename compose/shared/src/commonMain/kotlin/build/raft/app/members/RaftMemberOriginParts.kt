@@ -298,7 +298,7 @@ internal fun RaftServerOriginTile(server: MemberServerRef, edge: Dp, initialSize
                 cacheServerId = server.id,
                 serverDiagnosticsId = server.id,
                 fallback = initial,
-                placeholder = initial,
+                placeholder = {},
             )
         }
     }

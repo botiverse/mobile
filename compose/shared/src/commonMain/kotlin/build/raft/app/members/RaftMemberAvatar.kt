@@ -99,17 +99,35 @@ internal fun RaftMemberAvatar(
 ) {
     val memberId = identity.memberId?.trim()?.takeIf { it.isNotEmpty() }
     val resolved = rememberRaftMemberAvatarWireValue(resolver, memberId)
+    val jointSurface = resolver.jointSurface || LocalRaftJointActorSurface.current
     // Null while this server's roster knows them (they always win) or off a joint surface.
     val jointActor =
         rememberRaftJointActor(
             memberAvatarResolver = resolver,
             kind = identity.kind,
             memberId = memberId,
-            enabled = resolver.jointSurface || LocalRaftJointActorSurface.current,
+            enabled = jointSurface,
         )
+    val explicitAvatar =
+        resolved?.appAvatarWireValueOrNull()
+            ?: carriedAvatarWireValue?.appAvatarWireValueOrNull()
+            ?: jointActor?.renderedAvatarWireValue()
+    val avatarPending =
+        explicitAvatar == null &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = resolver,
+                kind = identity.kind,
+                memberId = memberId,
+                jointSurface = jointSurface,
+            )
     RaftAppAvatar(
         kind = raftAvatarKind(identity.kind),
-        avatarWireValue = raftMemberAvatarWireValue(identity, resolved, carriedAvatarWireValue, jointActor?.explicitAvatarWireValue()),
+        avatarWireValue =
+            if (avatarPending) {
+                null
+            } else {
+                raftMemberAvatarWireValue(identity, resolved, carriedAvatarWireValue, jointActor?.explicitAvatarWireValue())
+            },
         label = label,
         modifier = modifier,
         avatarSize = avatarSize,
@@ -117,5 +135,6 @@ internal fun RaftMemberAvatar(
         diagnostics = diagnostics,
         cacheSubject = raftMemberAvatarCacheSubject(identity.kind, identity.memberId),
         cacheServerId = identity.serverId?.trim()?.takeIf { it.isNotEmpty() },
+        avatarPending = avatarPending,
     )
 }

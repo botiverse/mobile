@@ -137,6 +137,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_LABS_PAGE),
                 // The Artifacts home, from the server panel (task #proj-mobile:#62).
                 RaftStackPageRule(pageName = build.raft.app.ARTIFACTS_HOME_PAGE),
+                // The agent migration log, from an agent's or a computer's page.
+                RaftStackPageRule(pageName = build.raft.app.AGENT_MIGRATION_LOG_PAGE),
                 // The personal assistant's page, from the phone Home's Assistant row (1.27).
                 RaftStackPageRule(pageName = build.raft.app.ASSISTANT_PAGE),
             ) +

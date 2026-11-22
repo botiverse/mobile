@@ -14,7 +14,6 @@ import build.raft.app.components.RaftUiBannerSize
 import build.raft.app.components.RaftUiBannerStatus
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.ForwardMessageBatchResult
-import build.raft.app.data.ForwardMessageSendMode
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetDirectoryCursor
 import build.raft.app.data.ForwardMessageTargetRepository
@@ -70,17 +69,12 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
 
 /**
  * task #346: state payload of [ThreadPageContent]. See RaftStructuralHomeShellData for why
@@ -834,149 +828,6 @@ private fun ThreadPageContentContent(
             ThreadTransientBackTarget.InlineSearch -> threadFind.store.dispatch(ThreadFindIntent.Close)
         }
     }
-    suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
-        // Capture slices, per message: the share image frames each message on its own.
-        val messageFragments = mutableListOf<MutableList<String>>()
-        var completedMessages = 0
-        // The click set shareCaptureMode, which drops the rows' viewer-only previews
-        // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
-        // recomposition and the relayout it causes land before any bounds are read or pixels
-        // taken: one frame recomposes, the next lays out and reports the rows' new bounds.
-        // Fail closed: without a frame clock the recomposition can't be awaited, so the
-        // screenshot could still hold the viewer-only previews. No capture, export fails.
-        if (!awaitThreadShareCaptureFrames()) {
-            diagnosticsLogger("thread_share_capture_aborted reason=no_frame_clock")
-            return null
-        }
-        diagnosticsLogger(
-            "thread_share_capture_start selected=${selectedShareMessages.size} " +
-                "ids=${selectedShareMessages.joinToString(separator = ",") { it.id }}"
-        )
-        selectedShareMessages.forEach { message ->
-            val targetIndex = timelineSlice.threadMessageListItemIndex(message.id)
-            if (targetIndex < 0) {
-                diagnosticsLogger("thread_share_capture_target_missing messageId=${message.id}")
-                return@forEach
-            }
-            shareState.shareCaptureTargetMessageId = message.id
-            shareState.shareCaptureAnchorBeforeTarget = true
-            shareState.shareCaptureTailPaddingActive = true
-            var messageScrollBaseOffsetPx = ThreadShareCaptureTopScrollOffsetPx
-            shareState.shareCaptureScrollOffsetPx = messageScrollBaseOffsetPx
-            delay(ThreadShareCaptureScrollSettleMs + 64L)
-            // Keep the phase-one placement when the exact-target scroll is a
-            // no-op. Kuikly does not re-run onGloballyPositioned for an item
-            // whose placement did not change, so clearing here can discard the
-            // only fresh bounds for a target that was already visible.
-            shareState.shareCaptureAnchorBeforeTarget = false
-            delay(ThreadShareCaptureScrollSettleMs + 64L)
-            var attempts = 0
-            while (attempts < 24 && shareState.selectedShareBounds[message.id] == null) {
-                delay(32)
-                attempts += 1
-            }
-            val initialRect =
-                shareState.selectedShareBounds[message.id]
-                    ?: run {
-                        diagnosticsLogger(
-                            "thread_share_capture_bounds_missing messageId=${message.id} " +
-                                "targetIndex=$targetIndex attempts=$attempts"
-                        )
-                        return@forEach
-                    }
-            diagnosticsLogger(
-                "thread_share_capture_bounds_ready messageId=${message.id} targetIndex=$targetIndex " +
-                    "x=${initialRect.x} y=${initialRect.y} width=${initialRect.width} height=${initialRect.height}"
-            )
-            val captureViewportTop = initialRect.y.coerceAtLeast(0f)
-            val captureViewportBottom = shareState.shareCaptureViewportBottomPx
-            if (captureViewportBottom <= captureViewportTop) {
-                diagnosticsLogger(
-                    "thread_share_capture_viewport_missing messageId=${message.id} " +
-                        "top=$captureViewportTop bottom=$captureViewportBottom"
-                )
-                return@forEach
-            }
-            var capturedHeight = 0
-            var segmentHeight = 0
-            var segmentCount = 0
-            val fragments = mutableListOf<String>().also { messageFragments += it }
-            while (capturedHeight < initialRect.height.roundToInt() && segmentCount < ThreadShareCaptureMaxSegmentsPerMessage) {
-                val rect = shareState.selectedShareBounds[message.id] ?: break
-                val slice =
-                    threadShareCaptureSlice(
-                        messageHeight = initialRect.height,
-                        currentMessageTop = rect.y,
-                        captureViewportTop = captureViewportTop,
-                        captureViewportBottom = captureViewportBottom,
-                        capturedHeight = capturedHeight,
-                        segmentHeight = segmentHeight
-                    ) ?: break
-                val captureRect =
-                    ThreadShareCaptureRect(
-                        x = rect.x,
-                        y = slice.y,
-                        width = rect.width,
-                        height = slice.height,
-                        frame = false
-                    )
-                val result = runCatching { onExportShareImage(captureRect) }.getOrNull()
-                val path = result?.optString("path").orEmpty()
-                val exportedHeight = result?.optString("height")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
-                if (result?.optString("status") != "ok" || path.isBlank() || exportedHeight <= 0) {
-                    diagnosticsLogger(
-                        "thread_share_capture_slice_failed messageId=${message.id} segment=$segmentCount " +
-                            "capturedHeight=$capturedHeight y=${captureRect.y} height=${captureRect.height} " +
-                            "status=${result?.optString("status").orEmpty()} " +
-                            "message=${result?.optString("message").orEmpty()} exportedHeight=$exportedHeight"
-                    )
-                    break
-                }
-                diagnosticsLogger(
-                    "thread_share_capture_slice_ok messageId=${message.id} segment=$segmentCount " +
-                        "capturedHeight=$capturedHeight exportedHeight=$exportedHeight"
-                )
-                fragments += path
-                segmentHeight = maxOf(segmentHeight, exportedHeight)
-                capturedHeight += exportedHeight
-                segmentCount += 1
-                if (capturedHeight >= initialRect.height.roundToInt()) {
-                    break
-                }
-                shareState.selectedShareBounds.clear()
-                shareState.shareCaptureAnchorBeforeTarget = false
-                shareState.shareCaptureTailPaddingActive = true
-                shareState.shareCaptureScrollOffsetPx = capturedHeight + messageScrollBaseOffsetPx
-                delay(ThreadShareCaptureScrollSettleMs + 64L)
-                attempts = 0
-                while (attempts < 24 && shareState.selectedShareBounds[message.id] == null) {
-                    delay(32)
-                    attempts += 1
-                }
-            }
-            if (capturedHeight >= initialRect.height.roundToInt()) {
-                completedMessages += 1
-            }
-        }
-        val fragmentCount = messageFragments.sumOf { it.size }
-        if (fragmentCount == 0 || completedMessages != selectedShareMessages.size) {
-            diagnosticsLogger(
-                "thread_share_capture_incomplete fragments=$fragmentCount " +
-                    "completed=$completedMessages selected=${selectedShareMessages.size}"
-            )
-            return null
-        }
-        diagnosticsLogger(
-            "thread_share_capture_complete fragments=$fragmentCount completed=$completedMessages"
-        )
-        return ThreadShareCaptureRect(
-            x = 0f,
-            y = 0f,
-            width = 0f,
-            height = 0f,
-            path = threadShareFragmentsParam(messageFragments)
-        )
-    }
     val composerKeyboardInsetDpState = remember(threadInstanceKey) { mutableStateOf(0f) }
     var composerKeyboardInsetDp by composerKeyboardInsetDpState
     val composerBottomSafeArea = raftBottomSafeAreaPadding()
@@ -1584,7 +1435,13 @@ private fun ThreadPageContentContent(
                                     diagnosticsLogger("thread_share_export_job_start")
                                     var result: JSONObject? = null
                                     try {
-                                        val captureRect = captureSelectedShareFragments()
+                                        val captureRect = captureThreadShareFragments(
+                                            shareState = shareState,
+                                            selectedShareMessages = selectedShareMessages,
+                                            timelineSlice = timelineSlice,
+                                            onExportShareImage = onExportShareImage,
+                                            diagnosticsLogger = diagnosticsLogger,
+                                        )
                                         result =
                                             captureRect?.let { rect ->
                                                 runCatching { onExportShareImage(rect) }.getOrNull()
@@ -1840,257 +1697,24 @@ private fun ThreadPageContentContent(
                 }
             }
         }
-        val visibleForwardPickerSession = shareState.forwardPickerFlow.sessionKey
-        val forwardPickerBottomSafeArea = raftBottomSafeAreaPadding()
-        if ((activeModal == "forwardTargets" || activeModal == "forwardNote") && visibleForwardPickerSession != null) {
-                RaftForwardTargetPicker(
-                    messageCount = forwardMessageSelection.forwardableMessages.size,
-                    skippedCount = forwardMessageSelection.skippedCount,
-                    nestedForwardCount = forwardMessageSelection.nestedForwardCount,
-                    // Keep the search field composed while results load: swapping it
-                    // for the read-only placeholder destroys the focused field and
-                    // closes the IME on every keystroke (verify feedback #255).
-                    searchInputInteractive = shareState.forwardPickerFlow.step == RaftForwardPickerStep.Targets,
-                    bottomSafeArea = forwardPickerBottomSafeArea,
-                    sourceLabel = payload.threadForwardSourceLabel(),
-                    singleTapContinues = true,
-                    state =
-                        RaftForwardTargetPickerUiState(
-                            sessionKey = visibleForwardPickerSession,
-                            query = shareState.forwardPickerFlow.query,
-                            items = forwardTargetItems,
-                            selectedKey = shareState.forwardPickerFlow.selectedKey,
-                            selectedItems = shareState.forwardSelectedReceipts.map { it.target.toRaftForwardTargetPickerItem() },
-                            loadState = shareState.forwardPickerFlow.loadState,
-                            errorCode = shareState.forwardPickerFlow.errorCode,
-                            canLoadMore = shareState.forwardDirectoryNextCursor != null,
-                            appending = shareState.forwardPickerFlow.appending,
-                            interactive = shareState.forwardPickerFlow.rowsInteractive,
-                            dismissEnabled = shareState.forwardPickerFlow.dismissEnabled,
-                            requestGeneration = shareState.forwardPickerFlow.requestGeneration,
-                            conversationItems = forwardConversationItems
-                        ),
-                    onIntent = { intent ->
-                        when (intent) {
-                            is RaftForwardTargetPickerIntent.QueryChanged -> {
-                                shareState.forwardPickerFlow.sessionKey?.let { session ->
-                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
-                                }
-                                shareState.forwardPickerFlow =
-                                    shareState.forwardPickerFlow.reduce(
-                                        RaftForwardPickerFlowEvent.QueryChanged(intent.query)
-                                    )
-                                shareState.forwardDirectoryNextCursor = null
-                            }
-                            RaftForwardTargetPickerIntent.Retry -> {
-                                shareState.forwardPickerFlow =
-                                    shareState.forwardPickerFlow.reduce(
-                                        RaftForwardPickerFlowEvent.Retry(
-                                            appending = shareState.forwardPickerFlow.query.isBlank() && shareState.forwardDirectoryNextCursor != null
-                                        )
-                                    )
-                            }
-                            RaftForwardTargetPickerIntent.LoadMore -> {
-                                if (shareState.forwardDirectoryNextCursor != null && !shareState.forwardPickerFlow.appending) {
-                                    shareState.forwardPickerFlow =
-                                        shareState.forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.LoadMore)
-                                }
-                            }
-                            RaftForwardTargetPickerIntent.Dismiss -> {
-                                shareState.forwardPickerFlow.sessionKey?.let { session ->
-                                    forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
-                                }
-                                shareState.forwardPickerFlow = shareState.forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
-                                shareState.forwardMessageIds = emptySet()
-                                activeModal = null
-                            }
-                            RaftForwardTargetPickerIntent.Continue -> {
-                                val nextFlow = shareState.forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Continue)
-                                shareState.forwardPickerFlow = nextFlow
-                                if (nextFlow.step == RaftForwardPickerStep.Note) {
-                                    if (shareState.forwardRequestId == null) {
-                                        shareState.forwardRequestId = newThreadForwardRequestId()
-                                    }
-                                    activeModal = "forwardNote"
-                                }
-                            }
-                            is RaftForwardTargetPickerIntent.RemoveSelection -> {
-                                shareState.forwardPickerFlow =
-                                    shareState.forwardPickerFlow.reduce(
-                                        RaftForwardPickerFlowEvent.TargetSelected(
-                                            stableKey = intent.stableKey,
-                                            renderGeneration = shareState.forwardPickerFlow.requestGeneration
-                                        )
-                                    )
-                                shareState.forwardSelectedReceipts = shareState.forwardSelectedReceipts.filterNot {
-                                    it.target.threadForwardSelectionKey() == intent.stableKey
-                                }
-                                shareState.forwardRequestId = null
-                            }
-                            is RaftForwardTargetPickerIntent.TargetSelected -> {
-                                val nextFlow =
-                                    shareState.forwardPickerFlow.reduce(
-                                        RaftForwardPickerFlowEvent.TargetSelected(
-                                            stableKey = intent.item.stableKey,
-                                            renderGeneration = intent.renderGeneration
-                                        )
-                                    )
-                                val sourceServerId = shareState.forwardSourceServerId
-                                shareState.forwardRequestId = forwardRequestIdAfterSelectionChange(
-                                    previousKeys = shareState.forwardPickerFlow.selectedKeys,
-                                    nextKeys = nextFlow.selectedKeys,
-                                    currentRequestId = shareState.forwardRequestId
-                                )
-                                if (
-                                    sourceServerId != null &&
-                                    nextFlow.selectedKeys.contains(intent.item.stableKey)
-                                ) {
-                                    shareState.forwardPickerFlow = nextFlow
-                                    shareState.forwardOperationNonce += 1
-                                    val receipt =
-                                        intent.item.payload.toThreadForwardDestinationReceipt(
-                                            operationId = "$threadInstanceKey-fwd-${shareState.forwardOperationNonce}",
-                                            sourceServerId = sourceServerId,
-                                            directoryGeneration = shareState.forwardDirectoryGeneration
-                                        )
-                                    shareState.forwardSelectedReceipts =
-                                        (shareState.forwardSelectedReceipts + receipt).distinctBy {
-                                            it.target.threadForwardSelectionKey()
-                                        }
-                                } else {
-                                    shareState.forwardPickerFlow = nextFlow
-                                    shareState.forwardSelectedReceipts = shareState.forwardSelectedReceipts.filterNot {
-                                        it.target.threadForwardSelectionKey() == intent.item.stableKey
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-        }
-        if (activeModal == "forwardNote") {
-                ThreadForwardNoteDialog(
-                    messageCount = forwardMessageSelection.forwardableMessages.size,
-                    selectedTargetLabel = shareState.forwardSelectedReceipts.joinToString(", ") { it.displayedTitle },
-                    note = shareState.forwardNote,
-                    sending = shareState.forwardSending,
-                    onNoteChange = { shareState.forwardNote = it },
-                    onDismiss = {
-                        shareState.forwardPickerFlow = shareState.forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.NoteBack)
-                        activeModal = "forwardTargets"
-                    },
-                    onSend = {
-                        if (!writeActionsEnabled) return@ThreadForwardNoteDialog
-                        val repository = forwardTargetRepository
-                        // task #803: the gate needs the LIVE server authority at
-                        // confirm time — forwardServerId is the live projection;
-                        // forwardSourceServerId is the frozen picker-open copy
-                        // already inside the receipt.
-                        val liveServerId = forwardServerId
-                        val sourceChannelId = forwardSourceChannelId
-                        val selectedReceipts = shareState.forwardSelectedReceipts
-                        when {
-                            repository == null ->
-                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeUnavailable, null, null)
-                            sourceChannelId == null ->
-                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeSourceUnavailable, null, null)
-                            selectedReceipts.isEmpty() ->
-                                onThreadEvent("forwardMessagesFailed", ThreadForwardFailureCodeTargetUnavailable, null, null)
-                            !shareState.forwardSending -> {
-                                shareState.forwardSending = true
-                                shareExportScope.launch {
-                                    try {
-                                        val outcome =
-                                            executeThreadForwardBatch(
-                                                repository = repository,
-                                                liveSourceServerId = liveServerId,
-                                                sourceChannelId = sourceChannelId,
-                                                receipts = selectedReceipts,
-                                                currentDirectoryGeneration = shareState.forwardDirectoryGeneration,
-                                                messageIds = forwardMessageSelection.forwardableMessages.map { it.id },
-                                                mode = shareState.activeForwardSelectionMode.toForwardMessageSendMode(),
-                                                note = shareState.forwardNote.text,
-                                                requestId = shareState.forwardRequestId ?: newThreadForwardRequestId()
-                                            )
-                                        outcome.result
-                                            ?.takeIf { it.deliveries.isNotEmpty() }
-                                            ?.let { result ->
-                                                onForwardMessagesDelivered(result)
-                                                if (result.deliveries.size == 1 && result.failures.isEmpty()) {
-                                                    val delivery = result.deliveries.single()
-                                                    val receipt = selectedReceipts.singleOrNull()
-                                                    if (receipt != null) {
-                                                        shareState.forwardSuccessBanner =
-                                                            ThreadForwardSuccessBanner(
-                                                                target = receipt.target,
-                                                                destination = delivery.destination,
-                                                                messageId = delivery.message.id,
-                                                                conversationContext = delivery.message.conversationContext
-                                                            )
-                                                    }
-                                                }
-                                            }
-                                        if (outcome.failureCode == null && outcome.result != null && outcome.result.failures.isEmpty()) {
-                                            activeModal = null
-                                            shareState.forwardPickerFlow.sessionKey?.let { session ->
-                                                forwardTargetRepository?.releaseDirectorySnapshot(session.directorySessionId())
-                                            }
-                                            shareState.forwardPickerFlow =
-                                                shareState.forwardPickerFlow.reduce(RaftForwardPickerFlowEvent.Dismiss)
-                                            shareState.forwardSelectedReceipts = emptyList()
-                                            shareState.forwardRequestId = null
-                                            shareState.forwardMessageIds = emptySet()
-                                            shareState.forwardNote = TextFieldValue()
-                                            clearShareSelection()
-                                            if (outcome.result.deliveries.size != 1 || shareState.forwardSuccessBanner == null) {
-                                                onThreadEvent(
-                                                    "forwardMessagesSent",
-                                                    selectedReceipts.joinToString(", ") { it.displayedTitle },
-                                                    null,
-                                                    shareState.activeForwardSelectionMode.wireValue
-                                                )
-                                            }
-                                        } else {
-                                            outcome.result?.let { result ->
-                                                if (outcome.failedReceipts.isNotEmpty()) {
-                                                    val failedKeys = outcome.failedReceipts
-                                                        .map { it.target.threadForwardSelectionKey() }
-                                                        .toSet()
-                                                    shareState.forwardPickerFlow = shareState.forwardPickerFlow.reduce(
-                                                        RaftForwardPickerFlowEvent.ClearSelected(
-                                                            stableKeys = shareState.forwardPickerFlow.selectedKeys - failedKeys
-                                                        )
-                                                    )
-                                                    shareState.forwardSelectedReceipts = outcome.failedReceipts
-                                                    shareState.forwardRequestId = null
-                                                }
-                                            }
-                                            onThreadEvent(
-                                                "forwardMessagesFailed",
-                                                outcome.failureCode ?: ThreadForwardFailureCodePartial,
-                                                null,
-                                                outcome.traceId
-                                            )
-                                        }
-                                    } finally {
-                                        shareState.forwardSending = false
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-        }
-        shareState.forwardSuccessBanner?.let { banner ->
-            ThreadForwardSuccessToastView(
-                banner = banner,
-                onViewInChat = {
-                    shareState.forwardSuccessBanner = null
-                    onOpenForwardDestination(banner)
-                },
-                onDismiss = { shareState.forwardSuccessBanner = null }
-            )
-        }
+        ThreadForwardOverlays(
+            shareState = shareState,
+            activeModalState = activeModalState,
+            threadInstanceKey = threadInstanceKey,
+            payload = payload,
+            writeActionsEnabled = writeActionsEnabled,
+            forwardServerId = forwardServerId,
+            forwardSourceChannelId = forwardSourceChannelId,
+            forwardTargetRepository = forwardTargetRepository,
+            forwardMessageSelection = forwardMessageSelection,
+            forwardTargetItems = forwardTargetItems,
+            forwardConversationItems = forwardConversationItems,
+            shareExportScope = shareExportScope,
+            clearShareSelection = clearShareSelection,
+            onThreadEvent = onThreadEvent,
+            onForwardMessagesDelivered = onForwardMessagesDelivered,
+            onOpenForwardDestination = onOpenForwardDestination,
+        )
         when (activeModal) {
             "settings" -> {
                 // Only a DM and a Lounge open here (a channel opens its details page, ChannelSettingsPage.kt).
@@ -2110,15 +1734,16 @@ private fun ThreadPageContentContent(
                 )
             }
             "sharePreview" ->
-                ThreadSharePreviewModal(
-                    messages = selectedShareMessages,
-                    image = shareState.sharePreviewImage,
-                    onDismiss = { activeModal = null },
-                    onCopyMarkdown = {
-                        if (selectedShareMarkdown.isNotBlank()) {
-                            onThreadEvent("copyShareSelectionMarkdown", selectedShareMarkdown, null, null)
-                        }
-                    },
+                ThreadSharePreviewOverlay(
+                    shareState = shareState,
+                    activeModalState = activeModalState,
+                    selectedShareMessages = selectedShareMessages,
+                    selectedShareMarkdown = selectedShareMarkdown,
+                    sharePngWriter = sharePngWriter,
+                    shareExportScope = shareExportScope,
+                    onSaveShareImage = onSaveShareImage,
+                    onThreadEvent = onThreadEvent,
+                    // Share loop: the preview's Share button sends the image through the system sheet.
                     onShareImage =
                         shareOut?.let { out ->
                             {
@@ -2132,71 +1757,6 @@ private fun ThreadPageContentContent(
                                 )
                             }
                         },
-                    offscreen =
-                        if (threadShareImageRendersOffscreen) {
-                            ThreadSharePreviewOffscreen(
-                                image = shareState.shareImageBitmap,
-                                rendering = shareState.shareImageRendering || shareState.shareImageSaving,
-                                choice = shareState.shareImageWidthChoice,
-                                onChoiceChange = { shareState.shareImageWidthChoice = it },
-                            )
-                        } else {
-                            null
-                        },
-                    onDownloadImage = {
-                        val offscreenImage = shareState.shareImageBitmap?.image
-                        if (threadShareImageRendersOffscreen) {
-                            if (offscreenImage != null && !shareState.shareImageSaving && !shareState.shareImageRendering) {
-                                shareState.shareImageSaving = true
-                                shareExportScope.launch {
-                                    val result =
-                                        try {
-                                            val fileRef =
-                                                withContext(Dispatchers.Default) {
-                                                    runCatching { sharePngWriter.writePng(offscreenImage, ThreadShareImageFilePrefix) }.getOrNull()
-                                                }
-                                            val path = fileRef?.let(::threadShareImageFilePath)
-                                            if (path.isNullOrBlank()) null else runCatching { onSaveShareImage(path) }.getOrNull()
-                                        } finally {
-                                            shareState.shareImageSaving = false
-                                        }
-                                    val status = result?.optString("status")
-                                    if (status == "cancelled") return@launch
-                                    val saved = status == "ok"
-                                    if (saved) {
-                                        activeModal = null
-                                    }
-                                    onThreadEvent(
-                                        if (saved) "shareSelectionImageSaved" else "shareSelectionExportFailed",
-                                        result?.optString("message")?.takeIf { it.isNotBlank() },
-                                        null,
-                                        null
-                                    )
-                                }
-                            }
-                            return@ThreadSharePreviewModal
-                        }
-                        val imagePath = shareState.sharePreviewImage?.path
-                        if (!imagePath.isNullOrBlank()) {
-                            shareExportScope.launch {
-                                val result = runCatching { onSaveShareImage(imagePath) }.getOrNull()
-                                val saved = result?.optString("status") == "ok"
-                                if (saved) {
-                                    activeModal = null
-                                }
-                                onThreadEvent(
-                                    if (saved) {
-                                        "shareSelectionImageSaved"
-                                    } else {
-                                        "shareSelectionExportFailed"
-                                    },
-                                    result?.optString("message")?.takeIf { it.isNotBlank() },
-                                    null,
-                                    null
-                                )
-                            }
-                        }
-                    }
                 )
         }
             }
@@ -2408,16 +1968,6 @@ private fun ThreadForwardPickerEffects(
         }
     }
 }
-
-private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
-private fun ThreadForwardSelectionMode.toForwardMessageSendMode(): ForwardMessageSendMode =
-    when (this) {
-        ThreadForwardSelectionMode.Merged -> ForwardMessageSendMode.Merged
-        ThreadForwardSelectionMode.Individual -> ForwardMessageSendMode.Individual
-    }
-
-@OptIn(ExperimentalUuidApi::class)
-private fun newThreadForwardRequestId(): String = Uuid.random().toString()
 
 private data class ThreadForwardTargetLoadPage(
     val items: List<ForwardMessageTarget>,

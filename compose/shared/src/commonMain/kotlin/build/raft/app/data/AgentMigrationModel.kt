@@ -107,7 +107,9 @@ internal data class AgentMigrationNotice(
     /** The agent that retried it (#14275). */
     val triggeredByAgentId: String? = null,
     /** For a retry: the failed attempt's size next to this one's (server `agentMigrationRetryComparison`). */
-    val retryComparison: AgentMigrationRetryComparison? = null
+    val retryComparison: AgentMigrationRetryComparison? = null,
+    /** When someone closed this failed move's card (`POST agents/:id/migration/dismiss`, #16161); null while it shows. */
+    val dismissedAt: String? = null
 )
 
 /** Shared `AgentMigrationSourceDrain`: `waitingFor` is `turn`, `background_tasks`, `queued_input`, `other` or null. */
@@ -320,6 +322,10 @@ internal fun AgentMigrationNotice.endedComputerMigration(): AgentMigrationEnding
         else -> null
     }
 }
+
+/** Web: a failed move between computers that someone closed reads as no last migration (the log keeps it). */
+internal fun AgentMigrationNotice.isDismissed(): Boolean =
+    dismissedAt != null && endedComputerMigration() == AgentMigrationEnding.Failed
 
 /** Hosted arrival stalls that keep `arriving`/`starting` but need attention (web R5). */
 internal val HOSTED_ARRIVAL_ATTENTION_REASONS =

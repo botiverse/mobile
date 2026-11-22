@@ -110,7 +110,7 @@ init_test_metadata() {
 
   TEST_CLASS["attachment-download-runtime"]="build.raft.app.network.AndroidAttachmentDownloadCoordinatorRuntimeTest"
   TEST_RUNNER["attachment-download-runtime"]="$RUNNER_SHARED"
-  TEST_RETRIES["attachment-download-runtime"]=6
+  TEST_RETRIES["attachment-download-runtime"]=2
   TEST_OUTPUT["attachment-download-runtime"]="attachment-download-runtime-instrumentation.txt"
   TEST_CONDITION["attachment-download-runtime"]="always"
 
@@ -134,7 +134,7 @@ init_test_metadata() {
 
   TEST_CLASS["qa-session-bootstrap-inbox"]="build.raft.app.core.data.auth.QaSessionBootstrapInboxConnectedTest"
   TEST_RUNNER["qa-session-bootstrap-inbox"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["qa-session-bootstrap-inbox"]=7
+  TEST_RETRIES["qa-session-bootstrap-inbox"]=2
   TEST_OUTPUT["qa-session-bootstrap-inbox"]="qa-session-bootstrap-inbox-instrumentation.txt"
   TEST_CONDITION["qa-session-bootstrap-inbox"]="always"
 

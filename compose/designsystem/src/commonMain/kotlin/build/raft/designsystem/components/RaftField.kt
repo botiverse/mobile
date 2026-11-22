@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,6 +21,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -31,6 +34,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -114,6 +118,13 @@ fun raftFieldSpokenName(label: String?, required: Boolean, requiredWord: String)
  *   failure ([RaftSaveStatus]) 4dp under the control, before the description; while
  *   [RaftSaveStatusState.Idle] it takes no room (raft-ui 0.84.0).
  *
+ * - [reserveMessage]: the line under the control is always there (web `StableField`, the fields
+ *   of the create-agent dialog and the runtime form): empty, it keeps one `text-caption` line
+ *   (16dp), so a description or an error appearing moves nothing below. The field then also
+ *   keeps its label row one label line tall: [labelTrailing] (a 32dp icon button) reaches 7dp past
+ *   it above and below. Stack such fields 4dp apart.
+ * - [counter]: persistent text at the end of that line ("12/300"), in `text-mono-meta`.
+ *
  * ```
  * RaftField(label = "Agent name", description = "Shown in chat and on tasks.") {
  *     RaftTextField(value = name, onValueChange = { name = it }, placeholder = "Wug")
@@ -132,6 +143,8 @@ fun RaftField(
     labelSize: RaftFieldLabelSize = RaftFieldLabelSize.Md,
     labelTrailing: (@Composable () -> Unit)? = null,
     saveStatus: RaftSaveStatusState? = null,
+    reserveMessage: Boolean = false,
+    counter: String? = null,
     content: @Composable () -> Unit,
 ) {
     val invalid = error != null
@@ -147,7 +160,11 @@ fun RaftField(
                         RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional && !required, maxLines = 1)
                     }
                 }
-                labelTrailing()
+                if (reserveMessage) {
+                    Box(Modifier.raftBleedVertically(RaftFieldAccessoryBleed)) { labelTrailing() }
+                } else {
+                    labelTrailing()
+                }
             }
         } else if (label != null) {
             RaftFieldLabel(label, size = labelSize, enabled = enabled, optional = optional && !required)
@@ -165,13 +182,54 @@ fun RaftField(
                 }
             }
         }
-        if (error != null) {
+        if (reserveMessage || counter != null) {
+            RaftFieldMessageRow(description, error, counter, enabled)
+        } else if (error != null) {
             RaftFieldError(error, enabled = enabled)
         } else if (description != null) {
             RaftFieldDescription(description, enabled = enabled)
         }
     }
 }
+
+/** StableField `-my-[7px]`: a 32dp icon button on an 18dp label line. */
+private val RaftFieldAccessoryBleed = 7.dp
+
+/** StableField `min-h-4`: one caption line, open whether or not it says anything. */
+private val RaftFieldMessageMinHeight = 16.dp
+
+/** The error in place of the description, and the counter at the end, on one held-open line. */
+@Composable
+private fun RaftFieldMessageRow(description: String?, error: String?, counter: String?, enabled: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = RaftFieldMessageMinHeight),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        val messageModifier = Modifier.weight(1f)
+        when {
+            error != null -> RaftFieldError(error, messageModifier, enabled = enabled)
+            description != null -> RaftFieldDescription(description, messageModifier, enabled = enabled)
+            else -> Spacer(messageModifier)
+        }
+        if (counter != null) {
+            RaftText(
+                counter,
+                style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
+                color = RaftTheme.colors.foregroundHint,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** Takes [amount] less room above and below than it draws (a negative vertical margin). */
+private fun Modifier.raftBleedVertically(amount: Dp): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        val bleed = amount.roundToPx()
+        layout(placeable.width, (placeable.height - 2 * bleed).coerceAtLeast(0)) { placeable.placeRelative(0, -bleed) }
+    }
 
 /**
  * raft-ui `FieldLabel` on its own (for custom field layouts). See [RaftField]. The

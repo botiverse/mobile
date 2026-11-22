@@ -14,7 +14,9 @@ import kotlinx.serialization.json.put
 
 /*
  * Each server remembers the conversation last open there, so switching servers back and forth
- * comes back to it instead of #all.
+ * comes back to it instead of #all. On the wide layout that is the one last open in Chat (Chat's
+ * place, RaftRailPlaces.kt): a conversation opened from Activity, Search, Saved or Tasks does not
+ * replace it.
  *
  * web parity: `useTabRouteMemory` writes the current route of the current server to localStorage
  * `slock:serverSurface:v1:<serverSlug>` on every navigation, and every server switch (workspace

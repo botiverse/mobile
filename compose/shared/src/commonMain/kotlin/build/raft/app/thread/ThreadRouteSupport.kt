@@ -1014,6 +1014,14 @@ internal fun ThreadRouteScaffold(
     }
 }
 
+/**
+ * Maximum time [ThreadDeferredLoadingRouteContent] keeps prefilled (non-interactive) native nav
+ * bar buttons on screen while waiting for FeatureSurfaces to mount. Long enough to span the iOS
+ * push animation and fast loads without flashing, short enough that a stalled / offline load does
+ * not leave dead buttons on the bar indefinitely.
+ */
+internal const val ThreadNativeNavBarPrefillPreserveTimeoutMs: Long = 1_500L
+
 @Composable
 internal fun ThreadDeferredLoadingRouteContent(
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
@@ -1022,7 +1030,20 @@ internal fun ThreadDeferredLoadingRouteContent(
     memberAvatarResolver: RaftMemberAvatarResolver,
     onBack: () -> Unit,
     showLoadingIndicator: Boolean = true,
+    lounge: ThreadPageLounge? = null,
 ) {
+    var preservePrefilledActions by remember(payload.instanceId) {
+        androidx.compose.runtime.mutableStateOf(payload.status == "loading")
+    }
+    LaunchedEffect(payload.instanceId, payload.status) {
+        if (payload.status != "loading") {
+            preservePrefilledActions = false
+            return@LaunchedEffect
+        }
+        preservePrefilledActions = true
+        kotlinx.coroutines.delay(ThreadNativeNavBarPrefillPreserveTimeoutMs)
+        preservePrefilledActions = false
+    }
     scaffold(
         ThreadRouteScaffoldSlots(
             scaffoldPlan = ThreadRouteMountPlan.LoadingShell.toThreadRouteScaffoldPlan(),
@@ -1039,7 +1060,9 @@ internal fun ThreadDeferredLoadingRouteContent(
                     onOpenMemberProfile = {},
                     onOpenSearch = {},
                     onShowMembers = {},
-                    onShowSettings = {}
+                    onShowSettings = {},
+                    lounge = lounge,
+                    preserveNativePrefilledActions = preservePrefilledActions,
                 )
             },
             body = {

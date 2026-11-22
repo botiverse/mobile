@@ -7,6 +7,9 @@ import build.raft.app.components.raftCardSurface
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionListDirection
+import build.raft.designsystem.components.RaftDescriptionListScope
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentResetMode
@@ -88,11 +91,11 @@ import androidx.compose.ui.semantics.selected
 /**
  * The Computer / Computer status / Computer Version / Created / Creator rows of the agent
  * profile's INFO section (web AgentProfileInfo InfoRows), split out so a golden can cover them.
- * Each is its own stacked item: the computer's status and version are rows of their own, so a
- * long (wrapping) computer name never has the status wedged into it.
+ * The computer's status and version are rows of their own, so a long (wrapping) computer name
+ * never has the status wedged into it.
  */
 @Composable
-internal fun MembersAgentComputerInfoRows(
+internal fun RaftDescriptionListScope.MembersAgentComputerInfoRows(
     member: MemberProfile,
     summary: AgentDetailSummary?,
     machineStatusRow: (machineId: String?) -> MembersMachineStatusRow,
@@ -659,27 +662,15 @@ internal fun MembersAgentRuntimeConfigRows(
             serverId = serverId,
             machineId = machineId
         )
-    // Web: the same stacked DescriptionList as Info -- one row per property, label above value.
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(MembersInfoItemGap)
-    ) {
-        // The label below brings [serverId]'s catalog in; this follows it when it lands.
-        val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId)
+    // The label below brings [serverId]'s catalog in; this follows it when it lands.
+    val deprecated = runtimeDeprecated ?: runtimeCatalogIsDeprecated(runtimeId, serverId)
+    // Web: the same DescriptionList as Info.
+    RaftDescriptionList(Modifier.fillMaxWidth(), RaftDescriptionListDirection.Horizontal) {
         MembersAgentInfoField(stringResource(Res.string.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
                 label = runtimeLabelWithStatus(runtimeId, serverId, deprecated = deprecated),
                 runtimeId = runtimeId,
                 machineId = machineId
-            )
-        }
-        // Web AgentProfileInfo: under the Runtime row while the agent's runtime is deprecated here.
-        if (deprecated) {
-            RaftUiBanner(
-                status = RaftUiBannerStatus.Warning,
-                description = stringResource(Res.string.member_runtime_deprecated_warning),
-                size = RaftUiBannerSize.Small,
-                modifier = Modifier.testTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG)
             )
         }
         if (modelLabel != null) {
@@ -771,6 +762,15 @@ internal fun MembersAgentRuntimeConfigRows(
                 )
             }
         }
+    }
+    // Web AgentProfileInfo, while the agent's runtime is deprecated here (there: under the Runtime row).
+    if (deprecated) {
+        RaftUiBanner(
+            status = RaftUiBannerStatus.Warning,
+            description = stringResource(Res.string.member_runtime_deprecated_warning),
+            size = RaftUiBannerSize.Small,
+            modifier = Modifier.testTag(MEMBERS_RUNTIME_DEPRECATED_BANNER_TAG)
+        )
     }
 }
 

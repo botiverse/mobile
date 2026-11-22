@@ -2727,13 +2727,6 @@ private fun RaftAppShellReadyContent(
         )
     }
 
-    // Every conversation the wide detail shows becomes its server's last conversation.
-    AppShellAdaptiveSelectionEffect(
-        adaptiveWorkspaceState = adaptiveWorkspaceState,
-        serverLastConversationRepository = serverLastConversationRepository,
-        serverLastConversationOwnerKey = serverLastConversationOwnerKey,
-    )
-
     // Back on Home from a pushed conversation: the conversation it left becomes the Forward
     // entry. On iOS the shell's Compose pageDidAppear (pageVisibleTick) does not reliably follow a
     // native push/pop, so the host's own viewDidAppear (hostDidAppearTick) counts as well.
@@ -3011,6 +3004,8 @@ private fun RaftAppShellReadyContent(
     // so launch notification/shortcut intents are enqueued first and any immediately-resolvable
     // OpenConversation claims the detail pane before default landing falls back to #all (task #243).
     val windowNavigationStateVersion by windowNavigationCoordinator.stateVersion.collectAsState()
+    // Only into Chat's own detail, not beside Activity's or an inline list (RaftRailPlaces.kt).
+    val chatDetailShown = appShellChatDetailShown(selectedTab, selectedHomeDestination, railInlineSecondaryDestination)
     LaunchedEffect(
         desktopModeOnLargeScreen,
         adaptivePane,
@@ -3024,6 +3019,7 @@ private fun RaftAppShellReadyContent(
         homeState.content,
         authoritativeHomeStartAllowed,
         windowNavigationStateVersion,
+        chatDetailShown,
     ) {
         if (!authoritativeHomeStartAllowed) return@LaunchedEffect
         val liveSession = adaptiveWorkspaceStore.snapshot()
@@ -3031,6 +3027,7 @@ private fun RaftAppShellReadyContent(
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
             !desktopModeOnLargeScreen ||
+            !chatDetailShown ||
             workspace.serverId != serverId ||
             !workspace.acceptsAdaptiveDefaultLanding() ||
             liveSession.defaultLandingServerId == serverId
@@ -4068,6 +4065,22 @@ private fun RaftAppShellReadyContent(
         wideNavHistoriesState = wideNavHistoriesState,
         wideNavShowing = wideNavShowing,
     )
+    // What each rail tab had open (RaftRailPlaces.kt): a rail click lands back there, and only the
+    // conversation Chat shows becomes its server's last conversation.
+    val railPlaces =
+        rememberAppShellRailPlaces(
+            shellInstanceId = storeScope.shellInstanceId,
+            adaptiveWorkspaceStore = adaptiveWorkspaceStore,
+            homeShellStore = homeShellStore,
+            bridge = bridge,
+            wideNavShowing = wideNavShowing,
+            defaultLandingServerId = adaptiveDefaultLandingServerId,
+            adaptiveWorkspaceState = adaptiveWorkspaceState,
+            navRailActive = navRailActive,
+            serverLastConversationRepository = serverLastConversationRepository,
+            serverLastConversationOwnerKey = serverLastConversationOwnerKey,
+        )
+    val railSelectionOpenedOn = rememberRaftSelectionOpenedOn(adaptiveWorkspaceState?.selection, wideNavShowing?.surface)
     val wideNavHistory = wideNavHistories.of(readyServerId)
     AppShellWideNavRestoreEffect(
         bridge = bridge,
@@ -5197,6 +5210,10 @@ private fun RaftAppShellReadyContent(
                                 // -> Activity must land back on Activity).
                                 railInlineSecondaryDestination = null
                                 onAppShellTabSelected(key)
+                                // Then the tab's place (RaftRailPlaces.kt): Chat's conversation, a list with nothing open.
+                                railPlaces.land(latestWideNavShowing, key, selectedTab, railSelectionOpenedOn) { place ->
+                                    restoreWideNavEntry(place)
+                                }
                             },
                             modifier = Modifier.fillMaxHeight(),
                             reorder = railTabReorder,
@@ -6336,6 +6353,8 @@ private fun RaftAppShellReadyContent(
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
                             // The two-pane layout owns the highlight: none once the detail closes.
                             externalSelectionOwned = navRailActive,
+                            // Activity's own open, not Chat's conversation left in the slot (RaftRailPlaces.kt).
+                            externalSelectionOpenedHere = railSelectionOpenedOn == "activity",
                             mainTab = true,
                             scrollToTopRequest = tabScrollToTopRequests.activity,
                             arrivalVisits = arrivalVisits,

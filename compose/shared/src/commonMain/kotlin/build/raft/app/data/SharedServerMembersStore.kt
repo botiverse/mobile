@@ -697,6 +697,11 @@ class SharedServerMembersStore internal constructor(
      */
     private val avatarRefStore: RaftMemberAvatarRefStore? = null,
     /**
+     * #proj-mobile:#290: durable resolved joint-channel actors so remote senders keep their real
+     * avatars on frame 1 after restart without waiting for `POST /api/actors/resolve`.
+     */
+    private val jointActorRefStore: RaftJointActorRefStore? = null,
+    /**
      * Durable rosters (data-layer plan step 3), keyed by environment + account + server. Null keeps
      * the store memory-only (tests, fixtures).
      */
@@ -740,6 +745,7 @@ class SharedServerMembersStore internal constructor(
                 ownerFlow = { serverId -> presenceOwnerFlow(serverId) },
                 knownLocally = { serverId, ref -> knowsActorLocally(serverId, ref.id) },
                 resolve = actorResolve,
+                refStore = jointActorRefStore,
                 logger = { message -> logger("joint_actor_directory $message") },
             )
         } else {
@@ -2011,6 +2017,38 @@ class SharedServerMembersStore internal constructor(
         return _state.value.entriesByServerId[key]?.let {
             it.matches(binding) && it.status == SharedServerMembersLoadStatus.Loaded && !it.seededFromDurable
         } == true
+    }
+
+    /**
+     * #proj-mobile:#290: true once [serverId]'s live member/agent roster has finished loading
+     * (either non-durable [SharedServerMembersLoadStatus.Loaded] or terminal [SharedServerMembersLoadStatus.Error]).
+     * While false, an unknown agent id's missing avatar is still pending rather than confirmed absent.
+     */
+    internal fun isServerRosterSettled(serverId: ServerId): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return true
+        val owner = presenceOwner(ServerId(key))
+        val binding = currentDirectoryOwnerBinding(ServerId(key))
+        if (owner != null && binding != null && !binding.matches(owner)) return true
+        val entry = _state.value.entriesByServerId[key] ?: return false
+        if (binding != null && !entry.matches(binding)) return false
+        return (entry.status == SharedServerMembersLoadStatus.Loaded && !entry.seededFromDurable) ||
+            entry.status == SharedServerMembersLoadStatus.Error
+    }
+
+    internal fun serverRosterSettledFlow(serverId: ServerId): Flow<Boolean> {
+        val key = serverId.value.normalizedServerMembersId() ?: return flowOf(true)
+        return _state
+            .map { current ->
+                val owner = presenceOwner(ServerId(key))
+                val binding = currentDirectoryOwnerBinding(ServerId(key))
+                if (owner != null && binding != null && !binding.matches(owner)) return@map true
+                val entry = current.entriesByServerId[key]
+                entry != null &&
+                    (binding == null || entry.matches(binding)) &&
+                    ((entry.status == SharedServerMembersLoadStatus.Loaded && !entry.seededFromDurable) ||
+                        entry.status == SharedServerMembersLoadStatus.Error)
+            }
+            .distinctUntilChanged()
     }
 
     private fun applySyncedAgentPresence(
@@ -4476,7 +4514,15 @@ class SharedServerMembersStore internal constructor(
         val avatars = LinkedHashMap<String, String?>()
         profiles.forEach { profile ->
             val memberId = profile.id.value.trim().takeIf { it.isNotEmpty() } ?: return@forEach
-            val avatar = profile.avatarWireValueForRenderedAvatar()?.trim()?.takeIf { it.isNotEmpty() }
+            // #proj-mobile:#290: when authoritativeAbsence is false (sparse/hydrated slices), only
+            // persist an explicit avatar — never synthesize "pixel:robot" for an avatar-less agent
+            // and overwrite a real cached avatar URL on disk.
+            val avatar =
+                if (authoritativeAbsence) {
+                    profile.avatarWireValueForRenderedAvatar()?.trim()?.takeIf { it.isNotEmpty() }
+                } else {
+                    profile.avatarSlotResolution().displayAvatarWireValue?.trim()?.takeIf { it.isNotEmpty() }
+                }
             if (avatar != null || authoritativeAbsence) avatars[memberId] = avatar
         }
         // A load that finishes after an auth change has no current owner binding: drop its write.

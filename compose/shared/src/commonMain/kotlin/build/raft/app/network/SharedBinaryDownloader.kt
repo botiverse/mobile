@@ -9,8 +9,23 @@ private const val SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS = 60_000L
 
 data class SharedDownloadedBytes(
     val bytes: ByteArray,
-    val contentType: String?
+    val contentType: String?,
+    val cacheControl: String? = null,
+    val eTag: String? = null,
+    val lastModified: String? = null,
+    val ageSeconds: Long? = null,
 )
+
+internal sealed interface SharedBinaryConditionalBytesResult {
+    data class Modified(val downloaded: SharedDownloadedBytes) : SharedBinaryConditionalBytesResult
+
+    data class NotModified(
+        val cacheControl: String?,
+        val eTag: String?,
+        val lastModified: String?,
+        val ageSeconds: Long?,
+    ) : SharedBinaryConditionalBytesResult
+}
 
 data class SharedBinaryConditionalValidators(
     val eTag: String? = null,
@@ -100,8 +115,8 @@ object SharedBinaryDownloader {
     suspend fun fetchBytes(url: String): SharedDownloadedBytes {
         val chunks = mutableListOf<ByteArray>()
         var totalBytes = 0
-        val contentType =
-            streamDownload(
+        val headers =
+            streamDownloadHeaders(
                 url = url,
                 operation = "fetch_bytes",
                 failurePrefix = "Download failed",
@@ -113,8 +128,110 @@ object SharedBinaryDownloader {
             )
         return SharedDownloadedBytes(
             bytes = combineDownloadedChunks(chunks, totalBytes),
-            contentType = contentType
+            contentType = headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() },
+            cacheControl = headers.joinedHeaderValues("Cache-Control"),
+            eTag = headers.firstHeaderValue("ETag"),
+            lastModified = headers.firstHeaderValue("Last-Modified"),
+            ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L },
         )
+    }
+
+    /**
+     * #proj-mobile:#293: conditional byte fetch for Coil's HTTP image cache. Sends `If-None-Match`
+     * / `If-Modified-Since` when [validators] are present and returns [SharedBinaryConditionalBytesResult.NotModified]
+     * on HTTP 304 without downloading a body, or [SharedBinaryConditionalBytesResult.Modified] with
+     * response cache headers (`Cache-Control`, `ETag`, `Last-Modified`, `Age`) on 2xx.
+     */
+    internal suspend fun fetchBytesConditional(
+        url: String,
+        validators: SharedBinaryConditionalValidators?
+    ): SharedBinaryConditionalBytesResult {
+        if (validators == null) {
+            return SharedBinaryConditionalBytesResult.Modified(fetchBytes(url))
+        }
+        val operation = "conditional_fetch_bytes"
+        val failurePrefix = "Conditional download failed"
+        val chunks = mutableListOf<ByteArray>()
+        var totalBytes = 0
+        var downloadedBytes = 0L
+        var expectedBytes: Long? = null
+        val startedAt = TimeSource.Monotonic.markNow()
+        val urlSummary = binaryDownloadUrlDiagnostics(url)
+        recordDiagnostics("operation=$operation status=start $urlSummary")
+        val response =
+            runDownload(operation, startedAt, urlSummary, { downloadedBytes }, { expectedBytes }) {
+                raftStreamingGet(
+                    url = url,
+                    requestHeaders = sharedBinaryConditionalHeaders(validators),
+                    priority = RaftRequestPriority.Visible,
+                    connectTimeoutMillis = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS,
+                    socketTimeoutMillis = null,
+                    totalTimeoutMillis = SHARED_BINARY_DOWNLOAD_TIMEOUT_MILLIS,
+                    onResponseStart = { statusCode, contentLength, _ ->
+                        expectedBytes = contentLength?.takeIf { it > 0L }
+                        recordDiagnostics(
+                            "operation=$operation status=response_start http=$statusCode " +
+                                "expectedBytes=${expectedBytes ?: "unknown"} $urlSummary"
+                        )
+                        statusCode in 200..299
+                    },
+                    onChunk = { chunk ->
+                        downloadedBytes += chunk.size.toLong()
+                        totalBytes += chunk.size
+                        chunks += chunk.copyOf()
+                    }
+                )
+            }
+        val headers = response.headers
+        val cacheControl = headers.joinedHeaderValues("Cache-Control")
+        val eTag = headers.firstHeaderValue("ETag")
+        val lastModified = headers.firstHeaderValue("Last-Modified")
+        val ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L }
+        return when (response.statusCode) {
+            304 -> {
+                recordDiagnostics(
+                    "operation=$operation status=complete http=304 downloadedBytes=0 " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                SharedBinaryConditionalBytesResult.NotModified(
+                    cacheControl = cacheControl,
+                    eTag = eTag,
+                    lastModified = lastModified,
+                    ageSeconds = ageSeconds,
+                )
+            }
+            in 200..299 -> {
+                val contentType = headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+                recordDiagnostics(
+                    "operation=$operation status=complete http=${response.statusCode} " +
+                        "downloadedBytes=$downloadedBytes expectedBytes=${expectedBytes ?: "unknown"} " +
+                        "contentType=${contentType ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
+                )
+                SharedBinaryConditionalBytesResult.Modified(
+                    SharedDownloadedBytes(
+                        bytes = combineDownloadedChunks(chunks, totalBytes),
+                        contentType = contentType,
+                        cacheControl = cacheControl,
+                        eTag = eTag,
+                        lastModified = lastModified,
+                        ageSeconds = ageSeconds,
+                    )
+                )
+            }
+            else -> {
+                recordDiagnostics(
+                    "operation=$operation status=failed http=${response.statusCode} " +
+                        "downloadedBytes=$downloadedBytes expectedBytes=${expectedBytes ?: "unknown"} " +
+                        "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} errorKind=none message=none $urlSummary"
+                )
+                throw sharedBinaryConditionalFailure(
+                    statusCode = response.statusCode,
+                    failurePrefix = failurePrefix,
+                    safeErrorMessage = "none"
+                )
+            }
+        }
     }
 
     suspend fun download(
@@ -206,7 +323,24 @@ object SharedBinaryDownloader {
         onStart: (totalBytes: Long?) -> Unit,
         beforeRead: () -> Unit = {},
         onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
-    ): String? {
+    ): String? =
+        streamDownloadHeaders(
+            url = url,
+            operation = operation,
+            failurePrefix = failurePrefix,
+            onStart = onStart,
+            beforeRead = beforeRead,
+            onChunk = onChunk
+        ).firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+
+    private suspend fun streamDownloadHeaders(
+        url: String,
+        operation: String,
+        failurePrefix: String,
+        onStart: (totalBytes: Long?) -> Unit,
+        beforeRead: () -> Unit = {},
+        onChunk: (bytes: ByteArray, downloadedBytes: Long, totalBytes: Long?) -> Unit
+    ): Map<String, List<String>> {
         // Chunks are delivered straight off the transport without buffering the whole payload.
         var downloadedBytes = 0L
         var totalBytes: Long? = null
@@ -255,7 +389,7 @@ object SharedBinaryDownloader {
                 "contentType=${contentType ?: "unknown"} " +
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds} $urlSummary"
         )
-        return contentType
+        return response.headers
     }
 
     /**
@@ -348,6 +482,15 @@ private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =
         ?.firstOrNull()
         ?.trim()
         ?.takeIf(String::isNotBlank)
+
+private fun Map<String, List<String>>.joinedHeaderValues(name: String): String? =
+    entries
+        .filter { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+        .flatMap { (_, values) -> values }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(", ")
 
 internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
     val output = ByteArray(totalBytes)

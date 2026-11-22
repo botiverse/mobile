@@ -110,6 +110,32 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M19 12H5"),
                     ),
                 )
+            RaftLucideIconName.ArrowRight ->
+                RaftLucideIconSpec(
+                    "arrow-right",
+                    listOf(
+                        RaftLucidePathSpec("M5 12h14"),
+                        RaftLucidePathSpec("m12 5 7 7-7 7"),
+                    ),
+                )
+            RaftLucideIconName.ArrowRightFromLine ->
+                RaftLucideIconSpec(
+                    "arrow-right-from-line",
+                    listOf(
+                        RaftLucidePathSpec("M3 5v14"),
+                        RaftLucidePathSpec("M21 12H7"),
+                        RaftLucidePathSpec("m15 18 6-6-6-6"),
+                    ),
+                )
+            RaftLucideIconName.ArrowRightToLine ->
+                RaftLucideIconSpec(
+                    "arrow-right-to-line",
+                    listOf(
+                        RaftLucidePathSpec("M17 12H3"),
+                        RaftLucidePathSpec("m11 18 6-6-6-6"),
+                        RaftLucidePathSpec("M21 5v14"),
+                    ),
+                )
             RaftLucideIconName.ArrowUpDown ->
                 RaftLucideIconSpec(
                     "arrow-up-down",
@@ -283,6 +309,20 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M3 10h18"),
                     ),
                 )
+            RaftLucideIconName.CalendarRange ->
+                RaftLucideIconSpec(
+                    "calendar-range",
+                    listOf(
+                        RaftLucidePathSpec("M 5.0 4.0 H 19.0 A 2.0 2.0 0 0 1 21.0 6.0 V 20.0 A 2.0 2.0 0 0 1 19.0 22.0 H 5.0 A 2.0 2.0 0 0 1 3.0 20.0 V 6.0 A 2.0 2.0 0 0 1 5.0 4.0 Z"),
+                        RaftLucidePathSpec("M16 2v4"),
+                        RaftLucidePathSpec("M3 10h18"),
+                        RaftLucidePathSpec("M8 2v4"),
+                        RaftLucidePathSpec("M17 14h-6"),
+                        RaftLucidePathSpec("M13 18H7"),
+                        RaftLucidePathSpec("M7 14h.01"),
+                        RaftLucidePathSpec("M17 18h.01"),
+                    ),
+                )
             RaftLucideIconName.Camera ->
                 RaftLucideIconSpec(
                     "camera",
@@ -309,6 +349,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M18 17V9"),
                         RaftLucidePathSpec("M13 17V5"),
                         RaftLucidePathSpec("M8 17v-3"),
+                    ),
+                )
+            RaftLucideIconName.ChartPie ->
+                RaftLucideIconSpec(
+                    "chart-pie",
+                    listOf(
+                        RaftLucidePathSpec("M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"),
+                        RaftLucidePathSpec("M21.21 15.89A10 10 0 1 1 8 2.83"),
                     ),
                 )
             RaftLucideIconName.Check ->
@@ -2232,6 +2280,13 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"),
                         RaftLucidePathSpec("M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"),
                         RaftLucidePathSpec("M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"),
+                    ),
+                )
+            RaftLucideIconName.Table2 ->
+                RaftLucideIconSpec(
+                    "table-2",
+                    listOf(
+                        RaftLucidePathSpec("M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"),
                     ),
                 )
             RaftLucideIconName.Terminal ->

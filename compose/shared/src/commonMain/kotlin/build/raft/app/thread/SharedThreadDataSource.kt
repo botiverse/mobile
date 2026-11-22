@@ -4003,6 +4003,12 @@ internal class SharedThreadDataSource(
     ): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentUrl(priority, attachmentId, disposition)
 
+    suspend fun attachmentUrls(
+        priority: DataRequestPriority,
+        attachmentIds: List<String>,
+    ): ThreadApiResult<Map<String, ThreadAttachmentOpenTarget>> =
+        api.attachmentUrls(priority, attachmentIds)
+
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentHtmlPreviewUrl(attachmentId)
 

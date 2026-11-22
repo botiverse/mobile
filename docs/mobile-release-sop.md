@@ -29,7 +29,8 @@ decision, 2026-11-14). In this SOP, a **release go** is the mobile DRI's go. It 
 - Hands `main` activation;
 - TestFlight external (Beta App Review, tester notification);
 - App Store submission and release;
-- Google Play promotion beyond internal, including production.
+- Google Play closed testing (`alpha`) and production. Open testing (`beta`) takes
+  every preview round without a go (§Hard rules 2).
 
 Release notes are **not** delegated: a person approves them (§4.1).
 
@@ -56,14 +57,16 @@ These hold in every step. Each external mutation needs its own go; a go for one
 never implies another.
 
 1. **CI may build, sign, upload and create Hands drafts. Nothing else is
-   implied.** Hands activation, Play track promotion beyond internal,
-   TestFlight external, Beta App Review, tester notification, App Store
+   implied.** Hands activation, Play track promotion beyond internal and
+   open testing, TestFlight external, Beta App Review, tester notification, App Store
    submission are separate mutations, each needing an
    explicit release go (§Release decisions) for that exact build.
 2. **No approval needed** for internal/preview channels: Hands `preview`, Play
-   internal testing (release rule 2026-10-29), TestFlight internal (Botiverse
-   group). Every external release (Hands `main`, Play closed/open/production,
-   TestFlight external, App Store) needs a release go for that version and a
+   internal testing (release rule 2026-10-29), Play open testing (`beta`) for
+   preview rounds (artin, 2026-11-22, #proj-mobile msg=13d01fb6; from 1.29),
+   TestFlight internal (Botiverse group). Every external release (Hands `main`,
+   Play closed testing and production, TestFlight external, App Store) needs a
+   release go for that version and a
    smoke of the exact build first (artin, 2026-11-02; go delegated to the mobile
    DRI by product owner decision, 2026-11-14).
 3. **One branch per semantic version**, never reused, force-pushed or rewound.
@@ -369,7 +372,15 @@ scripts/play_internal_promote.sh <hands_build_id>
 ```
 
 It creates the Hands draft carrying the promotion, writes the acceptance
-receipt and promotes to `internal`. **Never publish that Hands draft**: it would
+receipt and promotes to `internal`. A **preview round** (from 1.29) also goes to
+Play open testing: run it with `--open-testing`
+(`scripts/play_internal_promote.sh --open-testing <hands_build_id>`), which then
+promotes the same release to `beta` at full rollout. When Google already holds a
+change in review, the `beta` step fails closed after `internal` is done; retry
+only that step later with
+`hands releases play-promote raft-android <release_id> --track beta --note …`
+(CLI >= 0.5.67), or add `--changes-not-sent-for-review` to save it on Play
+unsent. Never cancel a review for a preview (§7.3). **Never publish that Hands draft**: it would
 put the Play carrier on a Hands channel. Record the Play receipt in the issue;
 a green run or GitHub artifact is not a Play receipt; if the binding is
 unavailable, record `AAB ready / Play upload NOT RUN`.
@@ -645,9 +656,11 @@ without the fix.
 
 ### 7.3 Google Play beyond internal
 
-Closed, open and production tracks each need a release go:
-`hands releases play-promote <app> <release> --track closed --note …`
-(`closed` = the binding's configured track, `alpha`). Read back
+Track names are Play's own (Hands CLI >= 0.5.67): `internal`, `alpha` (closed
+testing), `beta` (open testing), `production`; `closed` and `open` still work as
+aliases. Open testing takes every preview round (§Google Play carrier above).
+Closed testing and production each need a release go:
+`hands releases play-promote <app> <release> --track production --note …`. Read back
 `/distributions/play` and `/receipts`: receipt/edit id, package, versionCode,
 track, AAB SHA-256, source, run, review state.
 

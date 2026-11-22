@@ -1098,6 +1098,8 @@ internal data class ComputerSummary(
     val osRelease: String? = null,
     /** Server `hostProvider`: a shared `HOST_PROVIDER_LABELS` id ("hetzner"); null when not recognized or an older server. */
     val hostProvider: String? = null,
+    /** Server `deviceClass` ("laptop", "server"); null when unknown or an older server. */
+    val deviceClass: String? = null,
     /** Server `installerRepairHint.reason` (a known one only); null when there is nothing to hint or an older server. */
     val installerRepairHint: String? = null,
     /** Server `upgradeScope.ok == false`: the Computer refuses a web upgrade's scope (it runs as a system service). */
@@ -1350,6 +1352,8 @@ private data class ComputerDto(
     // (packages/shared/src/index.ts HOST_PROVIDER_LABELS ids, db/schema.ts `host_provider`): the cloud / VM
     // platform the Computer recognized; null when none and from older servers (absent).
     val hostProvider: String? = null,
+    // services/machineReadModel.ts `deviceClass: isDeviceClass(machine.deviceClass) ? machine.deviceClass : null`.
+    val deviceClass: String? = null,
     // routes/servers.ts GET /:id/machines `installerRepairHint: await readInstallerRepairHint(...)`
     // (packages/shared/src/index.ts ComputerInstallerRepairHint, #proj-raft-computer task #34):
     // advisory, the installer state needs a repair run on the machine; null when nothing to hint.
@@ -1669,6 +1673,7 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         createdAt = createdAt,
         osRelease = osRelease?.trim()?.takeIf { it.isNotBlank() },
         hostProvider = hostProvider?.trim()?.takeIf { it.isNotBlank() },
+        deviceClass = deviceClass?.trim()?.takeIf { it.isNotBlank() },
         installerRepairHint = installerRepairHint?.reason?.takeIf { it in COMPUTER_INSTALLER_REPAIR_HINT_REASONS },
         upgradeScopeRefused = upgradeScope?.ok == false,
         runtimeVersions =
