@@ -4287,24 +4287,30 @@ private fun SharedThreadRouteContentContent(
         threadRouteAttachmentActions.requestInlineAudioPreview(attachmentId, force)
     fun requestInlineVideoPreview(attachmentId: String, force: Boolean = false): Unit =
         threadRouteAttachmentActions.requestInlineVideoPreview(attachmentId, force)
-    imageLightboxRequest?.let { request ->
-        RaftImageLightbox(
-            request = request,
-            resolveFullUrl = { attachmentId ->
-                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                    is ThreadApiResult.Success -> response.data.url
-                    is ThreadApiResult.Failure -> {
-                        bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
-                        null
+    // Dialogs and pages over the thread are local composables only to keep this method small: each is a
+    // JVM method of its own. Local composables are not restartable, so they run whenever this one does.
+    @Composable
+    fun ThreadImageLightboxSection() {
+        imageLightboxRequest?.let { request ->
+            RaftImageLightbox(
+                request = request,
+                resolveFullUrl = { attachmentId ->
+                    when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                        is ThreadApiResult.Success -> response.data.url
+                        is ThreadApiResult.Failure -> {
+                            bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                            null
+                        }
                     }
-                }
-            },
-            onDismiss = { imageLightboxRequest = null },
-            onDownload = { attachment -> saveAttachmentExternally(attachment) },
-            onOpenWith = { attachment -> openAttachmentExternally(attachment) },
-            onEdit = { attachment -> viewerImageEditAttachment = attachment }
-        )
+                },
+                onDismiss = { imageLightboxRequest = null },
+                onDownload = { attachment -> saveAttachmentExternally(attachment) },
+                onOpenWith = { attachment -> openAttachmentExternally(attachment) },
+                onEdit = { attachment -> viewerImageEditAttachment = attachment }
+            )
+        }
     }
+    ThreadImageLightboxSection()
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
     // are intentionally excluded so they do not retrigger the render log.
@@ -4817,36 +4823,40 @@ private fun SharedThreadRouteContentContent(
             }
         onDispose { subscription.close() }
     }
-    viewerImageEditAttachment?.let { attachment ->
-        ThreadViewerImageEditHost(
-            attachment = attachment,
-            desktop = imageLightboxEnabled,
-            threadInstanceKey = threadInstanceKey,
-            composerInstanceId = currentComposerPayload().instanceId.ifBlank { payload.instanceId },
-            bridge = bridge,
-            dataSource = dataSource,
-            composerDraftViewModel = composerDraftViewModel,
-            coroutineScope = coroutineScope,
-            genericThreadErrorLabel = genericThreadErrorLabel,
-            nextEditSequence = {
-                viewerImageEditSequence += 1
-                viewerImageEditSequence
-            },
-            onCancel = { viewerImageEditAttachment = null },
-            onDismissModals = {
-                viewerImageEditAttachment = null
-                imageLightboxRequest = null
-            },
-            uploadComposerAttachmentFiles = { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
-                latestUploadComposerAttachmentFiles(
-                    files,
-                    replaceAttachmentId,
-                    requireAllFiles,
-                    replaceAttachmentIdsByLocalId,
-                )
-            },
-        )
+    @Composable
+    fun ThreadViewerImageEditSection() {
+        viewerImageEditAttachment?.let { attachment ->
+            ThreadViewerImageEditHost(
+                attachment = attachment,
+                desktop = imageLightboxEnabled,
+                threadInstanceKey = threadInstanceKey,
+                composerInstanceId = currentComposerPayload().instanceId.ifBlank { payload.instanceId },
+                bridge = bridge,
+                dataSource = dataSource,
+                composerDraftViewModel = composerDraftViewModel,
+                coroutineScope = coroutineScope,
+                genericThreadErrorLabel = genericThreadErrorLabel,
+                nextEditSequence = {
+                    viewerImageEditSequence += 1
+                    viewerImageEditSequence
+                },
+                onCancel = { viewerImageEditAttachment = null },
+                onDismissModals = {
+                    viewerImageEditAttachment = null
+                    imageLightboxRequest = null
+                },
+                uploadComposerAttachmentFiles = { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
+                    latestUploadComposerAttachmentFiles(
+                        files,
+                        replaceAttachmentId,
+                        requireAllFiles,
+                        replaceAttachmentIdsByLocalId,
+                    )
+                },
+            )
+        }
     }
+    ThreadViewerImageEditSection()
     // The composer's send, annotation, picked files and events (ThreadRouteComposerActions.kt), built every
     // composition by a local function (a method of its own, so this one only loads what it captures for
     // the call). The states they read and write stay here.
@@ -5385,95 +5395,99 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    TaskOpenSurfaceHost(
-        flow = taskOpenSurfaceFlow,
-        detailsRepository = taskConversation.detailsRepository,
-        membersStore = serverMembersStore,
-        serverId = currentServerId,
-        // The conversation page's head writes: the same task channel store, gates and failure toasts.
-        editing =
-            TaskPageEditing(
-                authStore = authStore,
-                tasksDataSource = tasksDataSource,
-                tasksDataStore = tasksDataStore,
-                onFailedWithTrace = { code, traceId ->
-                    when {
-                        code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateTaskLabel, traceId)
-                        code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateAssigneeLabel, traceId)
-                    }
-                },
-                log = { bridge.log(it) },
-            ),
-        hostVisible = active,
-        onConversationArrived = { arrived ->
-            bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
-            openCanonicalTask(arrived, "task_conversation_arrived")
-        },
-        timeContext = timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext(),
-        // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
-        // another channel is not known here and stays writable.
-        canWriteTaskChannel = { channelId ->
-            renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
-                channelId == null ||
-                channelId != renderedThread.joinChannelTargetId() ||
-                renderedThread.channelTaskWritesShown()
-        },
-        // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
-        joined = { task ->
-            task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
-        },
-        onJoin = { task ->
-            val channelId = task.channelId
-            // slock #12426: a join already in flight sends no second request.
-            if (channelId != null && ThreadChannelJoinsInFlight.begin(channelId)) {
-                coroutineScope.launch {
-                    try {
-                        when (val result = dataSource.joinChannel(channelId)) {
-                            is DataResult.Content -> {
-                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
-                                currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
-                                    realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
-                                    sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
-                                    sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
-                                }
-                                realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
-                                bridge.toast(joinedChannelLabel)
-                            }
-                            is DataResult.NoPermission ->
-                                if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
-                            is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
-                            else -> bridge.toast(unableToJoinChannelLabel)
+    @Composable
+    fun ThreadTaskOpenSurfaceSection() {
+        TaskOpenSurfaceHost(
+            flow = taskOpenSurfaceFlow,
+            detailsRepository = taskConversation.detailsRepository,
+            membersStore = serverMembersStore,
+            serverId = currentServerId,
+            // The conversation page's head writes: the same task channel store, gates and failure toasts.
+            editing =
+                TaskPageEditing(
+                    authStore = authStore,
+                    tasksDataSource = tasksDataSource,
+                    tasksDataStore = tasksDataStore,
+                    onFailedWithTrace = { code, traceId ->
+                        when {
+                            code.startsWith("tasks_status") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateTaskLabel, traceId)
+                            code.startsWith("tasks_assign") && !routeAuthRequired(code) -> bridge.errorToast(unableToUpdateAssigneeLabel, traceId)
                         }
-                    } finally {
-                        ThreadChannelJoinsInFlight.end(channelId)
+                    },
+                    log = { bridge.log(it) },
+                ),
+            hostVisible = active,
+            onConversationArrived = { arrived ->
+                bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
+                openCanonicalTask(arrived, "task_conversation_arrived")
+            },
+            timeContext = timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext(),
+            // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
+            // another channel is not known here and stays writable.
+            canWriteTaskChannel = { channelId ->
+                renderedThread.surfaceKind != RaftThreadSurfaceKind.Channel ||
+                    channelId == null ||
+                    channelId != renderedThread.joinChannelTargetId() ||
+                    renderedThread.channelTaskWritesShown()
+            },
+            // Known for the channel this page shows (web ThreadPanel `parentJoined`); else not known here.
+            joined = { task ->
+                task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
+            },
+            onJoin = { task ->
+                val channelId = task.channelId
+                // slock #12426: a join already in flight sends no second request.
+                if (channelId != null && ThreadChannelJoinsInFlight.begin(channelId)) {
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.joinChannel(channelId)) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                                    currentSession?.currentServerId?.takeIf(String::isNotBlank)?.let { serverId ->
+                                        realtimeRoomLeaseRegistry.markJoinedByUser(serverId, result.data.channelId.value)
+                                        sharedHomeStore?.dispatch(channelJoinedHomeIntent(renderedThread, serverId, result.data.channelId))
+                                        sharedHomeStore?.dispatch(SharedHomeIntent.Refresh)
+                                    }
+                                    realtimeEvents.joinChannel(result.data.channelId.value, currentSession?.currentServerId)
+                                    bridge.toast(joinedChannelLabel)
+                                }
+                                is DataResult.NoPermission ->
+                                    if (!routeAuthRequired(result)) bridge.errorToast(unableToJoinChannelLabel, result.blocker.traceId)
+                                is DataResult.Error -> bridge.errorToast(unableToJoinChannelLabel, result.error)
+                                else -> bridge.toast(unableToJoinChannelLabel)
+                            }
+                        } finally {
+                            ThreadChannelJoinsInFlight.end(channelId)
+                        }
                     }
                 }
-            }
-        },
-        onSend = { task, text ->
-            val serverId = currentServerId?.takeIf { it.isNotBlank() }
-            if (serverId != null) {
-                coroutineScope.launch {
-                    val opened =
-                        taskOpenSurfaceFlow.send(
-                            text = text,
-                            serverId = serverId,
-                            tasksDataSource = tasksDataSource,
-                            sendMessage = { channelId, body, randomId ->
-                                dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
-                            },
-                            currentServerId = { latestTaskOpenServerId },
-                            fallbackError = unableToSendTaskMessageLabel,
-                        )
-                    bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
-                    // The conversation takes the pending page's place: no push; the pending page goes once it is covered.
-                    opened?.let { (sentTask, conversationId) ->
-                        openCanonicalTaskWith(sentTask, "task_first_send", conversationId, animated = false)
+            },
+            onSend = { task, text ->
+                val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                if (serverId != null) {
+                    coroutineScope.launch {
+                        val opened =
+                            taskOpenSurfaceFlow.send(
+                                text = text,
+                                serverId = serverId,
+                                tasksDataSource = tasksDataSource,
+                                sendMessage = { channelId, body, randomId ->
+                                    dataSource.sendMessage(channelId = channelId, body = body, asTask = false, randomId = randomId)
+                                },
+                                currentServerId = { latestTaskOpenServerId },
+                                fallbackError = unableToSendTaskMessageLabel,
+                            )
+                        bridge.log("thread_task_first_send taskId=${task.id.value} opened=${opened != null}")
+                        // The conversation takes the pending page's place: no push; the pending page goes once it is covered.
+                        opened?.let { (sentTask, conversationId) ->
+                            openCanonicalTaskWith(sentTask, "task_first_send", conversationId, animated = false)
+                        }
                     }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
+    ThreadTaskOpenSurfaceSection()
     // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
     // sheet follows the store's copy of its task and gives way to the conversation page.
     val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
@@ -5488,31 +5502,35 @@ private fun SharedThreadRouteContentContent(
         }
     }
 
-    createTaskFromMessage.source?.let { source ->
-        TaskCreateFromMessageDialog(
-            source = source,
-            submitting = createTaskFromMessage.submitting,
-            errorText = createTaskFromMessage.errorText,
-            onDismiss = { createTaskFromMessage.dismiss() },
-            // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
-            statusField = true,
-            onSubmit = { titles, status ->
-                val serverId = currentServerId?.takeIf { it.isNotBlank() }
-                if (serverId != null && !createTaskFromMessage.submitting) {
-                    coroutineScope.launch {
-                        val outcome =
-                            createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
-                        bridge.log(
-                            "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
-                                "messageId=${source.messageId.value}"
-                        )
-                        val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
-                        if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
+    @Composable
+    fun ThreadCreateTaskFromMessageSection() {
+        createTaskFromMessage.source?.let { source ->
+            TaskCreateFromMessageDialog(
+                source = source,
+                submitting = createTaskFromMessage.submitting,
+                errorText = createTaskFromMessage.errorText,
+                onDismiss = { createTaskFromMessage.dismiss() },
+                // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
+                statusField = true,
+                onSubmit = { titles, status ->
+                    val serverId = currentServerId?.takeIf { it.isNotBlank() }
+                    if (serverId != null && !createTaskFromMessage.submitting) {
+                        coroutineScope.launch {
+                            val outcome =
+                                createTaskFromMessage.submit(titles, serverId, tasksDataSource, tasksDataStore, unableToCreateTaskLabel, status)
+                            bridge.log(
+                                "thread_task_create_from_message result=${outcome?.let { it::class.simpleName }} " +
+                                    "messageId=${source.messageId.value}"
+                            )
+                            val blocker = (outcome as? TaskCreateFromMessageOutcome.Failed)?.blocker
+                            if (blocker != null) routeAuthRequired(DataResult.NoPermission(blocker))
+                        }
                     }
-                }
-            },
-        )
+                },
+            )
+        }
     }
+    ThreadCreateTaskFromMessageSection()
 
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
