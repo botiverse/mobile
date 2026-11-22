@@ -2250,7 +2250,7 @@
     <string name="agent_create_label_environment_variables">Variáveis de ambiente</string>
     <string name="agent_create_placeholder_name">ex.: Alice</string>
     <string name="agent_create_placeholder_select_computer">Selecionar computador</string>
-    <string name="agent_create_placeholder_select_runtime">Selecionar runtime</string>
+    <string name="agent_create_placeholder_select_runtime">Selecionar…</string>
     <string name="agent_create_title">Criar agente</string>
     <string name="agent_create_title_external">Criar agente externo</string>
     <string name="agent_create_auto_join_channel">Entrará em %1$s automaticamente após a criação</string>
@@ -2332,7 +2332,7 @@
     <string name="agent_create_error_name_reserved">O nome de agente @%1$s está reservado. Escolha outro.</string>
     <string name="agent_create_error_name_min">O nome do agente deve ter pelo menos 1 caractere</string>
     <string name="agent_create_error_name_max">O nome do agente deve ter no máximo 32 caracteres</string>
-    <string name="agent_create_error_name_characters">O nome do agente deve começar com uma letra e só pode conter letras, números, hifens e sublinhados</string>
+    <string name="agent_create_error_name_characters">Comece com uma letra, seguida de letras, números, - ou _</string>
     <string name="agent_create_label_advanced">Avançado</string>
     <string name="agent_create_action_add_env_var">+ Adicionar variável de ambiente</string>
     <string name="agent_create_reasoning_off">Sem raciocínio</string>

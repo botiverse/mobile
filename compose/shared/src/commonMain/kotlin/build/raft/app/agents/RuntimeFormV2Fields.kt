@@ -4,7 +4,6 @@ import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.designsystem.components.RaftFieldLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import build.raft.app.data.BundledRuntimeCatalog
@@ -79,7 +78,6 @@ import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -915,44 +913,44 @@ internal fun RuntimeFormV2RuntimeSection(
             serverSelectable = serverSelectable,
             options = options
         )
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // Web Field: the label 6dp over its picker (`gap-1.5`).
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftFieldLabel(text = stringResource(Res.string.agent_create_label_runtime))
-        RuntimeSelectChoice(
-            runtime = runtime,
-            rows = rows,
-            showAll = showAll,
-            onShowAllChange = { showAll = it },
-            quotaMachine = quotaMachine,
-            enabled = enabled && runtimeAvailabilityError == null,
-            emptyLabel =
-                if (runtimeAvailabilityError != null) {
-                    stringResource(Res.string.agent_create_state_no_runtimes)
-                } else {
-                    null
-                },
-            onSelect = { id ->
-                focusManager.clearFocus(force = true)
-                onRuntimeChange(id)
-            }
-        )
-        // Web slock #15551: what the chosen runtime lacks in Raft, under the field (never in the list).
-        if (runtimeAvailabilityError == null) {
-            RuntimeCapabilityHintText(rows.selectedCapabilityHint(runtime), enabled = enabled)
-        }
-        runtimeAvailabilityError?.let { error ->
-            Text(
-                text =
+    val hint = rows.selectedCapabilityHint(runtime).takeIf { runtimeAvailabilityError == null }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Web StableField: its message line is always there.
+        RaftField(
+            label = stringResource(Res.string.agent_create_label_runtime),
+            modifier = Modifier.fillMaxWidth(),
+            error =
+                runtimeAvailabilityError?.let { error ->
                     if (error == CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR) {
                         stringResource(Res.string.agent_create_error_no_machine_runtimes)
                     } else {
                         error
-                    },
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed
-            )
-        }
+                    }
+                },
+            reserveMessage = hint == null
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                RuntimeSelectChoice(
+                    runtime = runtime,
+                    rows = rows,
+                    showAll = showAll,
+                    onShowAllChange = { showAll = it },
+                    quotaMachine = quotaMachine,
+                    enabled = enabled && runtimeAvailabilityError == null,
+                    emptyLabel =
+                        if (runtimeAvailabilityError != null) {
+                            stringResource(Res.string.agent_create_state_no_runtimes)
+                        } else {
+                            null
+                        },
+                    onSelect = { id ->
+                        focusManager.clearFocus(force = true)
+                        onRuntimeChange(id)
+                    }
+                )
+                // Web slock #15551: what the chosen runtime lacks in Raft, under the field (never in the list).
+                RuntimeCapabilityHintText(hint, enabled = enabled)
+            }
         }
         if (runtimeAvailabilityError == null) content()
     }

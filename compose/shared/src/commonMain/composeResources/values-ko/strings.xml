@@ -2250,7 +2250,7 @@
     <string name="agent_create_label_environment_variables">환경 변수</string>
     <string name="agent_create_placeholder_name">예: Alice</string>
     <string name="agent_create_placeholder_select_computer">컴퓨터 선택</string>
-    <string name="agent_create_placeholder_select_runtime">런타임 선택</string>
+    <string name="agent_create_placeholder_select_runtime">선택…</string>
     <string name="agent_create_title">에이전트 만들기</string>
     <string name="agent_create_title_external">외부 에이전트 만들기</string>
     <string name="agent_create_auto_join_channel">만들고 나면 %1$s에 자동으로 참여해요</string>
@@ -2332,7 +2332,7 @@
     <string name="agent_create_error_name_reserved">에이전트 이름 @%1$s은(는) 예약되어 있어요. 다른 이름을 선택해 주세요.</string>
     <string name="agent_create_error_name_min">에이전트 이름은 1자 이상이어야 해요</string>
     <string name="agent_create_error_name_max">에이전트 이름은 32자 이하여야 해요</string>
-    <string name="agent_create_error_name_characters">에이전트 이름은 영문자로 시작해야 하며 영문자, 숫자, 하이픈, 밑줄만 사용할 수 있어요</string>
+    <string name="agent_create_error_name_characters">영문자로 시작해야 하며 영문자, 숫자, -, _만 사용할 수 있어요</string>
     <string name="agent_create_label_advanced">고급</string>
     <string name="agent_create_action_add_env_var">+ 환경 변수 추가</string>
     <string name="agent_create_reasoning_off">추론 안 함</string>

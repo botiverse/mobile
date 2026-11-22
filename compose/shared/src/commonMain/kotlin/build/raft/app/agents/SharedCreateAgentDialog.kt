@@ -280,6 +280,7 @@ internal fun CreateAgentDialogVisualContent() {
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",
+            onUpgrade = {},
             onDismiss = {},
             onSubmit = {}
         )
@@ -775,10 +776,8 @@ internal fun SharedCreateAgentDialog(
         // (React's `card-brutal p-6` dialog).
         LazyColumn(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            // React's normal dialog form uses space-y-4. Keep each field
-            // group at the same 16dp rhythm; field-internal helper/count
-            // spacing stays inside the group below.
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Web `stack-y-1`: every field keeps its own message line open (RaftField reserveMessage).
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
                 autoJoinChannelName?.takeIf { it.isNotBlank() }?.let { channel ->
                     item(key = "auto-join-channel") {
@@ -852,6 +851,7 @@ internal fun SharedCreateAgentDialog(
                         error = inlineNameError?.let { localizedInlineNameError ?: it },
                         enabled = !submitting,
                         required = true,
+                        reserveMessage = true,
                         labelTrailing = {
                             CreateAgentRandomNameButton(
                                 enabled = !submitting,
@@ -891,30 +891,24 @@ internal fun SharedCreateAgentDialog(
                     RaftField(
                         label = stringResource(Res.string.agent_create_label_description),
                         modifier = Modifier.fillMaxWidth(),
+                        description = stringResource(Res.string.agent_create_description_hint),
+                        error = descriptionError,
                         enabled = !submitting,
-                        optional = true
+                        optional = true,
+                        reserveMessage = true,
+                        counter = "${description.text.length}/$PROFILE_DESCRIPTION_MAX_LENGTH"
                     ) {
-                        // Web StableField: the textarea, then one row with the hint (or the error) and the
-                        // "n/300" counter. Typing stops at the limit (web `maxLength`).
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            RaftTextarea(
-                                value = description,
-                                onValueChange = { description = it.coerceTextLength(PROFILE_DESCRIPTION_MAX_LENGTH) },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = stringResource(Res.string.agent_create_placeholder_description),
-                                invalid = descriptionTooLong,
-                                minHeight = 82.dp,
-                                // Three 24dp field lines inside the textarea's 10dp vertical padding, then it scrolls.
-                                maxHeight = 92.dp,
-                                inputModifier = rememberRaftTextareaEditorModifier()
-                            )
-                            RaftProfileDescriptionFoot(
-                                count = description.text.length,
-                                hint = stringResource(Res.string.agent_create_description_hint),
-                                error = descriptionError,
-                                enabled = !submitting
-                            )
-                        }
+                        // Typing stops at the limit (web `maxLength`).
+                        RaftTextarea(
+                            value = description,
+                            onValueChange = { description = it.coerceTextLength(PROFILE_DESCRIPTION_MAX_LENGTH) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = stringResource(Res.string.agent_create_placeholder_description),
+                            // Web `rows={3}`: three 24dp lines, 10dp above and below, the 1.5dp stroke; then it scrolls.
+                            minHeight = CreateAgentDescriptionHeight,
+                            maxHeight = CreateAgentDescriptionHeight,
+                            inputModifier = rememberRaftTextareaEditorModifier()
+                        )
                     }
                 }
                 if (hostedMode && createAgentHostedModelFieldShown(hostedModels)) {
@@ -1049,8 +1043,7 @@ private fun CreateAgentHostedModelField(
     onReload: () -> Unit,
 ) {
     val label = stringResource(Res.string.agent_create_hosted_model_label)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftFieldLabel(text = label)
+    RaftField(label = label, modifier = Modifier.fillMaxWidth(), enabled = enabled, reserveMessage = true) {
         when (models) {
             CreateAgentHostedModels.Loading ->
                 Text(
@@ -1078,16 +1071,18 @@ private fun CreateAgentHostedModelField(
             is CreateAgentHostedModels.Ready -> {
                 val view = models.models
                 if (view.locked) {
-                    Text(
-                        text = view.defaultLabel ?: view.defaultModel.orEmpty(),
-                        style = RaftType.Body,
-                        color = RaftColor.TextBlack
-                    )
-                    Text(
-                        text = stringResource(Res.string.agent_create_hosted_model_locked),
-                        style = RaftType.Caption,
-                        color = RaftColor.TextMutedGray
-                    )
+                    Column {
+                        Text(
+                            text = view.defaultLabel ?: view.defaultModel.orEmpty(),
+                            style = RaftType.Body,
+                            color = RaftColor.TextBlack
+                        )
+                        Text(
+                            text = stringResource(Res.string.agent_create_hosted_model_locked),
+                            style = RaftType.Caption,
+                            color = RaftColor.TextMutedGray
+                        )
+                    }
                 } else {
                     val defaultLabel =
                         view.defaultLabel?.let { stringResource(Res.string.agent_create_hosted_model_default, it) }
@@ -1233,6 +1228,8 @@ private fun PlanLimitBanner(
     RaftBanner(
         description = description,
         status = RaftBannerStatus.Warning,
+        // Web `<Banner status="warning">` draws no icon here.
+        showIcon = false,
         action = viewPlan
     )
 }
@@ -1296,8 +1293,22 @@ internal fun MachinePicker(
     onSelectHosted: () -> Unit = {},
     onSelect: (String) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftFieldLabel(text = stringResource(Res.string.agent_create_label_computer))
+    RaftField(
+        label = stringResource(Res.string.agent_create_label_computer),
+        modifier = Modifier.fillMaxWidth(),
+        description =
+            when {
+                hostedSelected -> stringResource(Res.string.agent_create_hosted_hint)
+                !requiredComputer.isNullOrBlank() ->
+                    Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized()
+                !suggestedComputer.isNullOrBlank() ->
+                    Res.string.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized()
+                else -> null
+            },
+        enabled = enabled,
+        required = true,
+        reserveMessage = true
+    ) {
         when {
             machinesLoading -> Text(
                 text = stringResource(Res.string.agent_create_state_computers_loading),
@@ -1354,27 +1365,11 @@ internal fun MachinePicker(
                 }
             }
         }
-        if (hostedSelected) {
-            Text(
-                text = stringResource(Res.string.agent_create_hosted_hint),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
-        } else if (!requiredComputer.isNullOrBlank()) {
-            Text(
-                text = Res.string.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
-        } else if (!suggestedComputer.isNullOrBlank()) {
-            Text(
-                text = Res.string.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized(),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
-        }
     }
 }
+
+/** Web `rows={3}` of the description: 3 x 24dp lines, 10dp above and below, the 1.5dp stroke. */
+private val CreateAgentDescriptionHeight = 95.dp
 
 /**
  * Under the runtime picker, for a card's suggested runtime (web `SuggestedRuntimeNotice`, slock

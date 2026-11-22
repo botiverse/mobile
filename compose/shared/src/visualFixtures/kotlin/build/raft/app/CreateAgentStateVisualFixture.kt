@@ -86,6 +86,7 @@ private fun CreateAgentStateVisualContent(spec: CreateAgentStateVisualSpec) {
             currentAgentCount = 2,
             maxAgents = 2,
             limitPlanLabel = "Free",
+            onUpgrade = {},
             // React's fixture offers Add Computer; a non-null callback shows the button.
             onAddComputer = {},
             onDismiss = {},
