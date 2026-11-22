@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftScrollFrameSignal
 import build.raft.app.shownAuthorName
 import build.raft.app.RaftSidebarSortMode
 import build.raft.app.isHomeExternalSectionChannel
@@ -199,6 +200,13 @@ internal class SharedHomeStore(
      * it. Left open in a hidden or idle window, it counts like any other row, as the server counts it.
      */
     private val selectedConversationSeen: () -> Boolean = { RaftHostInUse.isInUse },
+    /**
+     * Waits for an active Home scroll to settle before launching background member/agent projection
+     * refreshes (#wg-mobile-feedback:#271). Returns immediately when Home is not scrolling.
+     */
+    private val awaitBackgroundProjectionWindow: suspend () -> Unit = {
+        RaftScrollFrameSignal.awaitHomeScrollSettled()
+    },
 ) : SharedConversationIdentityProvider {
     private val _state = raftStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -3078,6 +3086,7 @@ internal class SharedHomeStore(
         agentDirectMessageStatusJob?.cancel()
         agentDirectMessageStatusJob =
             scope.launch {
+                awaitBackgroundProjectionWindow()
                 val patch =
                     try {
                         dataSource.refreshAgentDirectMessageStatuses(snapshot, DataRequestPriority.Background)

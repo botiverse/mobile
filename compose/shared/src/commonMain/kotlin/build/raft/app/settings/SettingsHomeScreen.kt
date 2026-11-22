@@ -26,7 +26,6 @@ import build.raft.app.data.ReadReceiptOwner
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationIdentityProvider
 import build.raft.app.data.ScreenError
-import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ChannelId
@@ -47,7 +46,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
 import kotlinx.coroutines.launch
@@ -561,16 +559,12 @@ internal fun SharedHomeScreen(
                 remember(serverMembersStore, snapshot.server.id.value) {
                     raftMemberAppBotResolver(serverMembersStore, snapshot.server.id.value)
                 }
-            val serverMembersState by (serverMembersStore?.state ?: flowOf(SharedServerMembersState()))
-                .collectAsState(SharedServerMembersState())
-            val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? =
-                remember(serverMembersState, snapshot.server.id) {
-                    { memberId ->
-                        serverMembersState
-                            .memberProfile(snapshot.server.id, memberId)
-                            ?.toRaftHomePinnedMemberItem()
-                    }
-                }
+            val pinnedMemberProfileResolver =
+                rememberPinnedMemberProfileResolver(
+                    serverMembersStore = serverMembersStore,
+                    serverId = snapshot.server.id,
+                    pinnedItems = snapshot.sidebarOrder?.pinned.orEmpty(),
+                )
             LaunchedEffect(serverMembersStore, snapshot.server.id) {
                 bridge.log(
                     "shared_home_avatar_chain serverId=${snapshot.server.id.value} " +
@@ -999,6 +993,7 @@ internal fun SharedHomeScreen(
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
                 diagnosticsLogger = bridge::log,
                 scrollToTopRequest = scrollToTopRequest,
+                active = active,
                 listPositionServerId = listPositionServerId ?: snapshot.server.id.value,
                 initialListPosition = initialListPosition,
                 onListPositionSnapshot = { serverId, position ->

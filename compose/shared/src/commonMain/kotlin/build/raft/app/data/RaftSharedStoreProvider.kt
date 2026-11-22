@@ -527,6 +527,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val accountBinding: StateFlow<RaftAccountBinding<ProcessPresenceAuthContext>>,
     private val memberPresenceRealtimeSink: (RealtimePresenceAdmission, MemberPresenceUpdated) -> Unit,
     val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
+    private val activityPersistStorage: SharedActivityPersistStorage,
     private val activityPersistSlice: MviPersistSlice<SharedActivityState, SharedActivityIntent>,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     /**
@@ -580,7 +581,8 @@ internal class RaftSharedStoreProvider private constructor(
         createSharedHomeRowHintPersistSlice(
             storage = homeRowHintPersistStorage,
             diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_row_hints"),
-            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints")
+            failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_row_hints"),
+            scrollDeferScope = threadSendScope,
         )
     private val selectedServerStores = RaftShellScopedStoreCache<SelectedServerStore>()
     private val selectedServerSelectionEpochStore =
@@ -795,7 +797,7 @@ internal class RaftSharedStoreProvider private constructor(
             homeSavedStateCache = homeSavedStateCache,
             offlineResourceCache = offlineResourceCache,
             homeRowHints = homeRowHintPersistStorage,
-            activityFirstPages = SharedActivityPersistStorage(sharedPreferenceStore),
+            activityFirstPages = activityPersistStorage,
             notificationPreferences = settingsServerNotificationLastKnownStore,
             messageEngine = canonicalMessageV2GenerationEngine,
             memberAvatarRefStore = memberAvatarRefStore,
@@ -1916,6 +1918,10 @@ internal class RaftSharedStoreProvider private constructor(
                 processAuthTerminalSource.runIfAuthSessionTerminalRevision(expectedGeneration) {
                     // Sign-out keeps the account's stored data (keyed by account; owner decision
                     // 2026-10-27) and resets every in-memory copy: see AccountLocalData.
+                    // Fence deferred persist writes first so no in-flight write lands after sign-out.
+                    (activityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
+                    (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.discardPending()
                     accountLocalData.onSignOut()
                     // The signed-out account's attachment uploads stop with it.
                     composerDraftUploads.cancelAll()
@@ -2039,6 +2045,11 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 // Offline resources, Home hints, Activity pages, notification preferences, reply windows
                 // and the stored messages of that server (they outlive sign-out, so they must go here).
+                // Fence deferred scroll-coalesced persist slices before deleting from disk so an
+                // in-flight or queued flush cannot resurrect the lost server (#wg-mobile-feedback:#271).
+                (activityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeIdentityPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
+                (homeRowHintPersistSlice as? RaftScrollDeferredPersistControl)?.dropServer(grant.serverId, lostAccountId)
                 accountLocalData.onServerAccessLost(
                     serverId = grant.serverId,
                     accountId = lostAccountId,
@@ -4259,6 +4270,7 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                     }
             }
+            val sharedActivityPersistStorage = SharedActivityPersistStorage(sharedPreferenceStore)
             provider = RaftSharedStoreProvider(
                 host = host,
                 sqlDatabase = database,
@@ -4304,11 +4316,13 @@ internal class RaftSharedStoreProvider private constructor(
                 accountBinding = accountBinding,
                 memberPresenceRealtimeSink = memberPresenceRealtimeSink,
                 composerDraftPersistSlice = composerDraftPersistSlice,
+                activityPersistStorage = sharedActivityPersistStorage,
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
-                        storage = SharedActivityPersistStorage(sharedPreferenceStore),
+                        storage = sharedActivityPersistStorage,
                         diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
-                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
+                        failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 homeSavedStateCache = SharedHomeSavedStateCache(offlineResourceCache.resource(SavedListResourceSpec)),
                 offlineResourceCache = offlineResourceCache,
@@ -4317,7 +4331,8 @@ internal class RaftSharedStoreProvider private constructor(
                     createSharedHomeIdentityPersistSlice(
                         storage = SharedPreferencePersistStorage(sharedPreferenceStore),
                         diagnosticsLogger = sharedInfoLogger("SlockHomePersist", "shared_home_persist"),
-                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist")
+                        failureLogger = sharedErrorLogger("SlockHomePersist", "shared_home_persist"),
+                        scrollDeferScope = threadSendScope,
                     ),
                 apiEnvironmentStore = apiEnvironmentStore,
                 eventBus = eventBusRelay,

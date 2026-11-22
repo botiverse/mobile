@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,6 +12,7 @@ import kotlin.test.assertNull
  * `X-Raft-Fetch-Reason` on `GET /channels/inbox`: the value set is web's `ListFetchReason`
  * (botiverse/slock packages/web/src/store/listFetchReason.ts), sent on first-page reads only.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class InboxFetchReasonHeaderTest {
 
     @Test
@@ -32,7 +35,12 @@ class InboxFetchReasonHeaderTest {
     @Test
     fun firstPageReadSendsTheReasonOfTheCaller() = runTest {
         val network = RecordingInboxClient()
-        val repository = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
+        val repository =
+            RealInboxRepository(
+                InMemoryRaftAuthSessionStore(sampleSession()),
+                network,
+                parseDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
 
         withInboxFetchReason(InboxFetchReason.Visibility) { repository.loadInitial(ServerId("server-1")) }
 
@@ -42,7 +50,12 @@ class InboxFetchReasonHeaderTest {
     @Test
     fun readWithoutAReasonAndContinuationPagesSendNoHeader() = runTest {
         val network = RecordingInboxClient()
-        val repository = RealInboxRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
+        val repository =
+            RealInboxRepository(
+                InMemoryRaftAuthSessionStore(sampleSession()),
+                network,
+                parseDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
 
         repository.loadInitial(ServerId("server-1"))
         withInboxFetchReason(InboxFetchReason.Manual) {
@@ -56,7 +69,12 @@ class InboxFetchReasonHeaderTest {
     @Test
     fun unreadSummaryReadSendsTheReasonOfItsSource() = runTest {
         val network = RecordingInboxClient()
-        val repository = ProcessActivityUnreadRepository(InMemoryRaftAuthSessionStore(sampleSession()), network)
+        val repository =
+            ProcessActivityUnreadRepository(
+                InMemoryRaftAuthSessionStore(sampleSession()),
+                network,
+                parseDispatcher = UnconfinedTestDispatcher(testScheduler),
+            )
         val owner = ProcessActivityUnreadOwner(environmentId = "https://api.example.test", accountId = "user-1", serverId = "server-1")
 
         withInboxFetchReason(activityUnreadSummaryFetchReason("invalidate:realtime:MessageNew")) {

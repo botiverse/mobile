@@ -3,6 +3,7 @@ package build.raft.app.data
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -152,7 +153,7 @@ class SharedActivityStoreRwStaleTest {
         val session = InMemoryRaftAuthSessionStore(sampleSession())
         return activityStore(
             scope = backgroundScope,
-            inboxRepository = RealInboxRepository(session, network),
+            inboxRepository = RealInboxRepository(session, network, parseDispatcher = UnconfinedTestDispatcher(testScheduler)),
             authStore = session,
             persistSlices = listOfNotNull(storage?.let(::createSharedActivityPersistSlice)),
             staleRecoveryDelayMillis = { _, _ -> RecoveryDelayMillis },
