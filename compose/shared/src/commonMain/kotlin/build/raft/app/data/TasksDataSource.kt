@@ -18,7 +18,12 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -38,7 +43,20 @@ class SharedTasksDataSource(
     private val api: RaftTasksApi,
     private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
 ) : SharedTasksRemoteDataSource {
+    private data class InFlightCountsKey(
+        val serverId: String,
+        val countsKey: String,
+    )
+
     private val typedApi = RaftTasksApiClient(api, diagnosticsLogger)
+    private val inFlightCountsLock = SynchronizedObject()
+    private val inFlightCounts = mutableMapOf<InFlightCountsKey, CompletableDeferred<ServerTaskCountsResult?>>()
+
+    private fun invalidateInFlightCounts() {
+        synchronized(inFlightCountsLock) {
+            inFlightCounts.clear()
+        }
+    }
 
     override suspend fun loadTasks(
         serverId: ServerId,
@@ -89,14 +107,43 @@ class SharedTasksDataSource(
         serverId: ServerId,
         filters: ServerTaskBoardFilters,
         priority: DataRequestPriority
-    ): ServerTaskCountsResult =
-        try {
-            typedApi.serverTaskCounts(serverId, priority, filters)
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            ServerTaskCountsResult.Error(code = "tasks_counts_network")
+    ): ServerTaskCountsResult {
+        val key = InFlightCountsKey(serverId = serverId.value, countsKey = tasksCountsKey(filters))
+        while (true) {
+            var isLeader = false
+            val entry =
+                synchronized(inFlightCountsLock) {
+                    inFlightCounts[key] ?: CompletableDeferred<ServerTaskCountsResult?>().also {
+                        inFlightCounts[key] = it
+                        isLeader = true
+                    }
+                }
+            if (!isLeader) {
+                val shared = entry.await()
+                if (shared != null) return shared
+                currentCoroutineContext().ensureActive()
+                continue
+            }
+            var completedResult: ServerTaskCountsResult? = null
+            try {
+                val result =
+                    try {
+                        typedApi.serverTaskCounts(serverId, priority, filters)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        ServerTaskCountsResult.Error(code = "tasks_counts_network")
+                    }
+                completedResult = result
+                return result
+            } finally {
+                synchronized(inFlightCountsLock) {
+                    if (inFlightCounts[key] === entry) inFlightCounts.remove(key)
+                }
+                entry.complete(completedResult)
+            }
         }
+    }
 
     override suspend fun loadChannelTasks(
         serverId: ServerId,
@@ -137,51 +184,67 @@ class SharedTasksDataSource(
         taskId: TaskId,
         status: TaskStatus,
         reason: String?
-    ): DataResult<TaskActionResult> =
-        try {
+    ): DataResult<TaskActionResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.updateTaskStatus(serverId, taskId, status, reason)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_status_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     override suspend fun assignTask(
         serverId: ServerId,
         taskId: TaskId,
         assignee: MemberProfile?,
         expectedRevision: Long?
-    ): DataResult<TaskActionResult> =
-        try {
+    ): DataResult<TaskActionResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.assignTask(serverId, taskId, assignee, expectedRevision)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_assign_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     override suspend fun amendTask(
         serverId: ServerId,
         taskId: TaskId,
         patch: TaskAmendPatch,
         expectedRevision: Long?
-    ): TaskAmendResult =
-        try {
+    ): TaskAmendResult {
+        invalidateInFlightCounts()
+        return try {
             typedApi.amendTask(serverId, taskId, patch, expectedRevision)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             TaskAmendResult.Failed(ScreenError(code = "tasks_amend_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
-    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
-        try {
+    override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.deleteTask(serverId, taskId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_delete_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     /**
      * Batch-create channel tasks. Titles are passed through as-is here — the typed
@@ -202,8 +265,9 @@ class SharedTasksDataSource(
         channelId: ChannelId,
         titles: List<String>,
         status: TaskStatus?
-    ): DataResult<TaskSnapshot> =
-        try {
+    ): DataResult<TaskSnapshot> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.createTasks(
                 serverId = serverId,
                 channelId = channelId,
@@ -215,7 +279,10 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 
     /**
      * Task v2 "Create Task from Message" (slock web `CreateTaskDialog` → taskStore `createTasks`):
@@ -232,6 +299,7 @@ class SharedTasksDataSource(
     ): DataResult<TaskSnapshot> {
         val drafts = titles.map { it.trim() }.filter { it.isNotBlank() }.map { TaskCreateDraft(title = it, sourceMessageId = sourceMessageId) }
         if (drafts.isEmpty()) return DataResult.Empty(EmptyReason.NoTasks)
+        invalidateInFlightCounts()
         return try {
             typedApi.createTasks(
                 serverId = serverId,
@@ -244,6 +312,8 @@ class SharedTasksDataSource(
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_create_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
     }
 
@@ -262,14 +332,18 @@ class SharedTasksDataSource(
             DataResult.Error(ScreenError(code = "tasks_conversation_network", retryable = true))
         }
 
-    suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> =
-        try {
+    suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> {
+        invalidateInFlightCounts()
+        return try {
             typedApi.convertMessage(serverId, messageId)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_convert_message_network", retryable = true))
+        } finally {
+            invalidateInFlightCounts()
         }
+    }
 }
 
 /**

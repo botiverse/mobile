@@ -1105,13 +1105,6 @@ private fun RaftAppShellReadyContent(
                 warningLogger = raftLogger("SlockSearchRepository", "shared_search_repository", RaftLogLevel.Warn)
             )
         }
-    val tasksDataSource =
-        remember {
-            SharedTasksDataSource(
-                api = NetworkRaftTasksApi(appShellNetworkClient),
-                diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks")
-            )
-        }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsStateWhileStarted()
     val draftProjection =
@@ -1472,6 +1465,13 @@ private fun RaftAppShellReadyContent(
         accountId = readySession?.user?.id,
         serverId = readyServerId
     )
+    val tasksDataSource =
+        remember(appShellNetworkClient, tasksOwner.environment, tasksOwner.accountId) {
+            SharedTasksDataSource(
+                api = NetworkRaftTasksApi(appShellNetworkClient),
+                diagnosticsLogger = raftLogger("SlockTasks", "shared_tasks")
+            )
+        }
     val tasksBinding = rememberSharedTasksRoute(
         owner = tasksOwner,
         authStore = shellAuthStore,
@@ -5879,8 +5879,14 @@ private fun RaftAppShellReadyContent(
                         key(tasksRoute) {
                         // The page's Mine / All, search, status and sort: read from the server's task query.
                         val tasksQueryStore = tasksViewModel.queryStore
-                        LaunchedEffect(tasksQueryStore, active) {
-                            if (active) tasksQueryStore?.start()
+                        val tasksListShown = LocalRaftTasksListShown.current
+                        val tasksQueryVisible = active && pageVisible && tasksListShown
+                        LaunchedEffect(tasksQueryStore, tasksQueryVisible) {
+                            tasksQueryStore?.setVisible(tasksQueryVisible)
+                            if (tasksQueryVisible) tasksQueryStore?.start()
+                        }
+                        DisposableEffect(tasksQueryStore) {
+                            onDispose { tasksQueryStore?.setVisible(false) }
                         }
                         val tasksQueryState = tasksQueryStore?.let { store -> store.state.collectAsState().value }
                         SharedTasksScreen(

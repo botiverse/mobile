@@ -115,6 +115,12 @@ internal fun RaftTaskColumnHeadActions(head: RaftTaskColumnHead) {
 }
 
 /**
+ * True while the Tasks list pane is visible (not covered by an expanded or full-width task detail
+ * column; matches web `TasksPageShownContext` / `TasksRoute.tsx` `listShown`).
+ */
+internal val LocalRaftTasksListShown = compositionLocalOf { true }
+
+/**
  * The Tasks page ([list]) with the task open beside it ([task], while [open]). [expanded] is the
  * column's Expand; [onBack] is Back once the column is not expanded (the shell unwinds navigation
  * made inside the column, then closes it). Back is the column's while it is open and [active]:
@@ -135,6 +141,7 @@ internal fun RaftTasksTaskColumnLayout(
     BoxWithConstraints(modifier) {
         val beside = raftTasksTaskColumnBeside(maxWidth.value)
         val expandedShown = open && beside && expanded
+        val listShown = !open || (beside && !expandedShown)
         RaftBackHandler(
             enabled = active && open,
             label = "tasks_task_column",
@@ -184,7 +191,11 @@ internal fun RaftTasksTaskColumnLayout(
             RaftFocusRegionHost(
                 region = RaftFocusRegion.ListPane,
                 modifier = Modifier.fillMaxSize().testTag(RaftTasksTaskColumnTags.List),
-            ) { list() }
+            ) {
+                CompositionLocalProvider(LocalRaftTasksListShown provides listShown) {
+                    list()
+                }
+            }
         }
     }
 }
