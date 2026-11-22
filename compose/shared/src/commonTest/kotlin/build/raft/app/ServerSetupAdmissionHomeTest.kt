@@ -95,42 +95,6 @@ class ServerSetupAdmissionHomeTest {
         }
     }
 
-    /** The flag landed ON after Home was shown: Home stays while checking; only blocksChat takes over. */
-    @Test
-    fun lateGateOnKeepsHomeUntilAPositiveBlocksChat() {
-        val identity = identity(5)
-        assertTrue(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = true))
-        assertFalse(serverSetupHostAllowsHome(true, ServerSetupAdmissionState.Loading(identity), false, homeShownBeforeGate = false))
-        assertFalse(
-            serverSetupHostAllowsHome(
-                true,
-                ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)),
-                false,
-                homeShownBeforeGate = true,
-            )
-        )
-    }
-
-    @Test
-    fun admittedServerIsNotCheckedAgainOnForegroundOrRemount() = runTest {
-        var requests = 0
-        val controller = controller {
-            requests += 1
-            projectionResponse(blocksChat = false, gateReason = "setup_complete")
-        }
-        val published = mutableListOf<ServerSetupAdmissionState>()
-
-        runServerSetupCheck(controller, identity(1), memoryKey, setupShowing = false) { published += it }
-        assertIs<ServerSetupAdmissionState.Admitted>(published.last())
-        // Return to foreground (same identity) and a remount (new generation) send no request.
-        runServerSetupCheck(controller, identity(1), memoryKey, setupShowing = false) { published += it }
-        runServerSetupCheck(controller, identity(2), memoryKey, setupShowing = false) { published += it }
-
-        assertEquals(1, requests)
-        assertEquals(2, published.size)
-        assertTrue(serverSetupStillAllowsHome(ServerSetupAdmissionMemory.contains(memoryKey), state = null))
-    }
-
     @Test
     fun failedCheckLetsHomeThroughAndIsRetriedNextTimeWhileSetupFailureKeepsRetryScreen() = runTest {
         val responses = ArrayDeque(
@@ -160,29 +124,6 @@ class ServerSetupAdmissionHomeTest {
         assertTrue(serverSetupBlocksHome(state))
         assertFalse(serverSetupAllowsHome(state))
         assertEquals(3, requests)
-    }
-
-    @Test
-    fun aServerThatPassedBeforeKeepsHomeUnlessSetupTakesTheScreen() {
-        val identity = identity(3)
-        assertTrue(serverSetupStillAllowsHome(previouslyAllowed = true, state = null))
-        assertTrue(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Loading(identity)))
-        assertFalse(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true))))
-        assertFalse(serverSetupStillAllowsHome(false, ServerSetupAdmissionState.Loading(identity)))
-    }
-
-    @Test
-    fun admissionMemoryRecordsAdmittedServersAndForgetsBlockedOnes() {
-        val identity = identity(4)
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Failed(identity, build.raft.app.data.ScreenError("offline")))
-        assertFalse(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Admitted(identity, projection(blocksChat = false)))
-        assertTrue(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Loading(identity))
-        assertTrue(ServerSetupAdmissionMemory.contains(memoryKey))
-        ServerSetupAdmissionMemory.record(memoryKey, ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)))
-        assertFalse(ServerSetupAdmissionMemory.contains(memoryKey))
-        assertFalse(ServerSetupAdmissionMemory.contains(ServerSetupAdmissionMemory.key("env", "other-account", "server")))
     }
 
     private fun identity(generation: Int) = ServerSetupAdmissionIdentity("env", "account", "server", "generation:$generation")

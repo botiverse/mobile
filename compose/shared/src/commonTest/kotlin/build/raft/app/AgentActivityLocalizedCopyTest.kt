@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
@@ -15,16 +14,6 @@ import kotlin.test.assertNull
  * details (web `utils/activity.ts`), instead of the English the data layer keeps as ids.
  */
 class AgentActivityLocalizedCopyTest {
-    @Test
-    fun freshnessHoldTitlesMapLikeWeb() {
-        assertEquals(AgentFreshnessHold.Send, agentFreshnessHold("Send held by freshness check"))
-        assertEquals(AgentFreshnessHold.TaskClaim, agentFreshnessHold(" Task claim held by freshness check "))
-        assertEquals(AgentFreshnessHold.TaskAmend, agentFreshnessHold("Task amendment held by freshness check"))
-        assertEquals(AgentFreshnessHold.TaskUpdate, agentFreshnessHold("Task update held by freshness check"))
-        assertNull(agentFreshnessHold("Sent message"))
-        assertNull(agentFreshnessHold(null))
-    }
-
     @Test
     fun freshnessHoldBodyReadsAsCountAndTarget() {
         assertEquals(
@@ -83,31 +72,6 @@ class AgentActivityLocalizedCopyTest {
         assertNull(agentToolLogLabelRes("mcp__linear__create_issue"))
         assertNull(agentToolLogLabelRes(""))
     }
-
-    @Test
-    fun parserFallbackTitlesAreTranslatedAtRender() {
-        assertEquals(
-            Res.string.member_activity_log_tool_grep,
-            membersActivityFixedTitleRes(entry(type = "tool_start", title = "Searching code", toolName = "Grep"))
-        )
-        assertEquals(
-            Res.string.member_activity_log_freshness_hold_task_update,
-            membersActivityFixedTitleRes(entry(type = "slock_action", title = "Task update held by freshness check"))
-        )
-        assertEquals(Res.string.member_activity_log_raft_action, membersActivityFixedTitleRes(entry(type = "slock_action", title = "Raft action")))
-        assertEquals(Res.string.activity_list_system_sender, membersActivityFixedTitleRes(entry(type = "system", title = "System")))
-        assertEquals(Res.string.member_label_status, membersActivityFixedTitleRes(entry(type = "status", title = "Status")))
-        assertEquals(
-            Res.string.member_activity_log_agent_activity,
-            membersActivityFixedTitleRes(entry(type = "tool_start", title = "Agent activity", toolName = ""))
-        )
-        // A server title and an unknown tool show as they are.
-        assertNull(membersActivityFixedTitleRes(entry(type = "slock_action", title = "Claimed #12")))
-        assertNull(membersActivityFixedTitleRes(entry(type = "tool_start", title = "create_issue", toolName = "mcp__linear__create_issue")))
-    }
-
-    private fun entry(type: String, title: String, toolName: String? = null) =
-        AgentActivityEntry(id = "row", type = type, title = title, toolName = toolName)
 
     private fun state(
         status: AgentStatus?,

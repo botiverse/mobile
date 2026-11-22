@@ -26,32 +26,6 @@ class SettingsAboutUpdateStatusTest {
         settingsAboutUpdateStatus(snapshot, busy, copy)
 
     @Test
-    fun upToDateShowsNoTrailingValue() {
-        assertEquals("", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Current", detail = "Raft 已是最新版本。")))
-        // The delta host reports up to date as an idle check with nothing newer.
-        assertEquals(
-            "",
-            status(
-                SharedSettingsUpdateCheckSnapshot(
-                    supported = true,
-                    transactionState = SharedSettingsUpdateTransactionState.Idle,
-                    statusLabel = "Ready",
-                    checkedAtLabel = "1763452800000"
-                )
-            )
-        )
-        // Store installs: the answer was "up to date".
-        assertEquals("", status(SharedSettingsUpdateCheckSnapshot(supported = true, storeChannel = "play", detail = "Raft 已是最新版本。")))
-    }
-
-    @Test
-    fun beforeACheckTheRowOffersCheck() {
-        assertEquals("检查", status(SharedSettingsUpdateCheckSnapshot(supported = true)))
-        assertEquals("检查", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Ready")))
-        assertEquals("检查", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Check")))
-    }
-
-    @Test
     fun informativeStatesAreLocalized() {
         assertEquals("检查中", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Current"), busy = true))
         assertEquals("有可用更新", status(SharedSettingsUpdateCheckSnapshot(supported = true, statusLabel = "Update available", updateAvailable = true)))

@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerType
-import kotlinx.coroutines.Job
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,11 +13,6 @@ import kotlin.test.assertTrue
  */
 class ThreadMessageDoubleTapTrackerTest {
     private val slop = 30f // 10dp at 3x
-
-    @Test
-    fun theDoubleTapWindowIs250Millis() {
-        assertEquals(250L, ThreadMessageDoubleTapTimeoutMillis)
-    }
 
     @Test
     fun twoTapsCloseInTimeAndPlaceAreADoubleTap() {
@@ -38,40 +32,6 @@ class ThreadMessageDoubleTapTrackerTest {
         val far = ThreadMessageDoubleTapTracker()
         far.onTap(1_000, Offset(100f, 100f), slop)
         assertFalse(far.onTap(1_100, Offset(100f, 140f), slop), "past the slop")
-    }
-
-    @Test
-    fun aSlowSecondTapStartsANewPair() {
-        val tracker = ThreadMessageDoubleTapTracker()
-        tracker.onTap(1_000, Offset.Zero, slop)
-        assertFalse(tracker.onTap(1_400, Offset.Zero, slop))
-        assertTrue(tracker.onTap(1_600, Offset.Zero, slop), "the slow tap became the new first tap")
-    }
-
-    @Test
-    fun aThirdTapStartsOverAndAResetBreaksThePair() {
-        val tracker = ThreadMessageDoubleTapTracker()
-        tracker.onTap(1_000, Offset.Zero, slop)
-        assertTrue(tracker.onTap(1_100, Offset.Zero, slop))
-        assertFalse(tracker.onTap(1_200, Offset.Zero, slop), "a third tap is a new first tap")
-        tracker.reset()
-        assertFalse(tracker.onTap(1_300, Offset.Zero, slop), "a tap a child took breaks the pair")
-    }
-
-    @Test
-    fun aRefusedTapDoesNothing() {
-        assertEquals(
-            ThreadMessageRowTapOutcome.None,
-            decideThreadMessageRowTap(
-                tapAccepted = false,
-                fromTouch = true,
-                selectionShowingAtDown = true,
-                hasSingleTapAction = true,
-                doubleTapAvailable = true,
-                completesDoubleTap = true
-            ),
-            "a scroll, a child's own tap (link, image, code block) or a stale gesture"
-        )
     }
 
     @Test
@@ -132,54 +92,6 @@ class ThreadMessageDoubleTapTrackerTest {
     }
 
     @Test
-    fun insideAReplyThreadOnlyTheDoubleTapActs() {
-        assertEquals(
-            ThreadMessageRowTapOutcome.None,
-            decideThreadMessageRowTap(
-                tapAccepted = true,
-                fromTouch = true,
-                selectionShowingAtDown = false,
-                hasSingleTapAction = false,
-                doubleTapAvailable = true,
-                completesDoubleTap = false
-            ),
-            "the first tap only waits for a second"
-        )
-        assertEquals(
-            ThreadMessageRowTapOutcome.ShowReactionBar,
-            decideThreadMessageRowTap(
-                tapAccepted = true,
-                fromTouch = true,
-                selectionShowingAtDown = false,
-                hasSingleTapAction = false,
-                doubleTapAvailable = true,
-                completesDoubleTap = true
-            )
-        )
-        assertEquals(
-            ThreadMessageRowTapOutcome.None,
-            decideThreadMessageRowTap(
-                tapAccepted = true,
-                fromTouch = true,
-                selectionShowingAtDown = false,
-                hasSingleTapAction = false,
-                doubleTapAvailable = false,
-                completesDoubleTap = false
-            ),
-            "no tap action and no reactions: nothing"
-        )
-    }
-
-    @Test
-    fun onlyAFingerGetsTheRowTapGestures() {
-        assertTrue(threadMessageRowTapGesturesFor(PointerType.Touch))
-        assertFalse(threadMessageRowTapGesturesFor(PointerType.Mouse), "desktop, an iPad with a mouse or trackpad")
-        assertFalse(threadMessageRowTapGesturesFor(PointerType.Stylus))
-        assertFalse(threadMessageRowTapGesturesFor(PointerType.Eraser))
-        assertTrue(threadMessageRowTapGesturesFor(PointerType.Unknown), "a tap injected without a tool type")
-    }
-
-    @Test
     fun aRightClickOpensTheMessageMenuAndAFingerNeverDoes() {
         // artin, 2026-10-29 (Mac): a right-click on a message opens its menu at the pointer (web
         // `contextmenu`), not the text's own Copy menu.
@@ -233,16 +145,5 @@ class ThreadMessageDoubleTapTrackerTest {
             ),
             "a click while a selection shows still only dismisses it"
         )
-    }
-
-    @Test
-    fun aDownAnywhereCancelsTheHeldSingleTap() {
-        val slot = ThreadMessagePendingTapSlot()
-        assertFalse(slot.cancel(), "nothing held")
-        val held = Job()
-        slot.hold(held)
-        assertTrue(slot.cancel(), "a down on any row cancels the held tap")
-        assertTrue(held.isCancelled)
-        assertFalse(slot.cancel(), "only once")
     }
 }

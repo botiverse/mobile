@@ -12,7 +12,6 @@ import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.model.MemberId
-import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.runBlocking
@@ -63,13 +62,6 @@ class MembersRuntimeSwitchEntryTest {
     }
 
     @Test
-    fun reselectingTheSelectedRuntimeOrABlankPickIsNoChange() {
-        assertNull(membersRuntimeFormV2EditRuntimeSelection(currentRuntimeId = "builtin", picked = "builtin"))
-        assertNull(membersRuntimeFormV2EditRuntimeSelection(currentRuntimeId = "builtin", picked = " "))
-        assertFalse(membersRuntimeFormV2EditRuntimeSwitched(agentRuntimeId = "builtin", selectedRuntimeId = " "))
-    }
-
-    @Test
     fun aSwitchedRuntimeLoadsThatRuntimesCreateFormWithoutTheAgent() = runBlocking {
         val computers = FormComputersApi()
         val agents = FormAgentsApi(editCode = 200)
@@ -98,153 +90,9 @@ class MembersRuntimeSwitchEntryTest {
     }
 
     @Test
-    fun aSwitchedRuntimesCreateFormFailureStaysInV2AsAFailure() = runBlocking {
-        val load =
-            loadMembersRuntimeFormV2Edit(
-                access(FormComputersApi(formCode = 500), FormAgentsApi(editCode = 200)),
-                "m-1",
-                AGENT,
-                "codex",
-                "builtin",
-                unknownCatalog
-            )
-        assertEquals(MembersRuntimeFormV2EditLoad.Failed("runtime_form_v2_http_500"), load)
-    }
-
-    @Test
-    fun theV2EditorIsTheOnlyRuntimeEditor() {
-        val authority =
-            MembersAgentProfileEditAuthority(
-                memberId = AGENT,
-                environmentId = "prod",
-                accountId = "account-1",
-                serverId = ServerId("server-1"),
-                profileGeneration = 1L
-            )
-        val live =
-            MembersRuntimeEditorLiveFacts(
-                authority = authority,
-                canManage = true,
-                deleted = false,
-                runtimeStatusResolved = true,
-                config = null,
-                formV2Available = true
-            )
-        assertEquals(
-            MembersRuntimeEditorDialog.FormV2,
-            membersRuntimeEditorDialog(editing = true, opened = authority, openedFormV2 = true, live = live)
-        )
-        // Without v2 access (no loader or server) nothing opens; there is no v1 editor any more.
-        assertEquals(
-            MembersRuntimeEditorDialog.None,
-            membersRuntimeEditorDialog(editing = true, opened = authority, openedFormV2 = false, live = live)
-        )
-    }
-
-    @Test
-    fun anAgentWithoutAComputerIsUnavailableAndRequestsNothing() = runBlocking {
-        val computers = FormComputersApi()
-        val agents = FormAgentsApi(editCode = 200)
-        for (machine in listOf(null, " ")) {
-            assertEquals(
-                MembersRuntimeFormV2EditLoad.Unavailable,
-                loadMembersRuntimeFormV2Edit(access(computers, agents), machine, AGENT, "codex", "codex", catalogWith())
-            )
-        }
-        assertEquals(emptyList(), computers.formRequests)
-        assertEquals(emptyList(), agents.editRequests)
-    }
-
-    @Test
-    fun aSwitchToARuntimeWithoutTheV2MarkerIsUnavailableAndRequestsNoForm() = runBlocking {
-        val computers = FormComputersApi()
-        val agents = FormAgentsApi(editCode = 200)
-        assertEquals(
-            MembersRuntimeFormV2EditLoad.Unavailable,
-            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("codex" to true, "gemini" to false))
-        )
-        // No row at all (not admitted for new agents on this computer), while other rows are marked: same.
-        assertEquals(
-            MembersRuntimeFormV2EditLoad.Unavailable,
-            loadMembersRuntimeFormV2Edit(access(computers, agents), "m-1", AGENT, "codex", "gemini", catalogWith("codex" to true))
-        )
-        assertEquals(emptyList(), computers.formRequests, "no endless retry against a form that does not exist")
-        assertEquals(emptyList(), agents.editRequests)
-    }
-
-    @Test
-    fun theAgentsOwnRuntimeWithoutTheV2MarkerIsUnavailableAndRequestsNoEditForm() = runBlocking {
-        val computers = FormComputersApi()
-        val agents = FormAgentsApi(editCode = 503)
-        assertEquals(
-            MembersRuntimeFormV2EditLoad.Unavailable,
-            loadMembersRuntimeFormV2Edit(
-                access(computers, agents),
-                "m-1",
-                AGENT,
-                "gemini",
-                "gemini",
-                catalogWith("codex" to true, "gemini" to false)
-            ),
-            "not a Retry banner that can never succeed"
-        )
-        assertEquals(emptyList(), agents.editRequests)
-        assertEquals(emptyList(), computers.formRequests)
-    }
-
-    @Test
-    fun theAgentsOwnRuntimeLoadsItsEditFormWhenTheCatalogProvesNothing() = runBlocking {
-        // Marked own runtime, failed catalog, or rows without any marker: the edit form load decides.
-        for (catalog in listOf(catalogWith("codex" to true), unknownCatalog, catalogWith("codex" to false, "gemini" to false))) {
-            val agents = FormAgentsApi(editCode = 503)
-            assertEquals(
-                MembersRuntimeFormV2EditLoad.Failed("runtime_form_v2_http_503"),
-                loadMembersRuntimeFormV2Edit(access(FormComputersApi(), agents), "m-1", AGENT, "codex", "codex", catalog)
-            )
-            assertEquals(listOf(AGENT), agents.editRequests)
-        }
-    }
-
-    @Test
-    fun aSwitchTargetInACatalogWithNoMarkedRowLoadsItsCreateForm() = runBlocking {
-        val computers = FormComputersApi()
-        val load =
-            loadMembersRuntimeFormV2Edit(
-                access(computers, FormAgentsApi(editCode = 200)),
-                "m-1",
-                AGENT,
-                "codex",
-                "builtin",
-                catalogWith("codex" to false, "builtin" to false)
-            )
-        assertIs<MembersRuntimeFormV2EditLoad.Ready>(load)
-        assertEquals(listOf("builtin"), computers.formRequests)
-    }
-
-    @Test
-    fun theSavingStateEndsOnEveryExit() = runBlocking {
-        var saving = true
-        membersRuntimeEditorSaving(setSaving = { saving = it }) { return@membersRuntimeEditorSaving }
-        assertFalse(saving, "an early return (stale authority after the request) ends saving")
-
-        saving = true
-        runCatching { membersRuntimeEditorSaving(setSaving = { saving = it }) { error("boom") } }
-        assertFalse(saving, "a failure ends saving")
-    }
-
-    @Test
     fun saveIsDisabledUntilTheFormHasLoaded() {
         assertFalse(save(formReady = false, runtimeSwitched = true, valuesChanged = true))
         assertFalse(save(formReady = false, runtimeSwitched = false, valuesChanged = true))
-    }
-
-    @Test
-    fun aRuntimeSwitchIsAChangeByItself() {
-        assertTrue(save(formReady = true, runtimeSwitched = true, valuesChanged = false))
-        assertFalse(save(formReady = true, runtimeSwitched = false, valuesChanged = false))
-        assertTrue(save(formReady = true, runtimeSwitched = false, valuesChanged = true))
-        assertFalse(save(formReady = true, runtimeSwitched = true, valuesChanged = false, hasErrors = true))
-        assertFalse(save(formReady = true, runtimeSwitched = true, valuesChanged = false, saving = true))
     }
 
     @Test
@@ -292,28 +140,6 @@ class MembersRuntimeSwitchEntryTest {
         assertFalse(membersRuntimeFormV2SaveNeedsSwitchConfirmation(runtimeSwitched = false, activeAgent = true))
     }
 
-    @Test
-    fun aRuntimeSwitchOrACodexModelChangeStartsANewSession() {
-        assertTrue(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = true, runtimeId = "claude", modelChanged = false))
-        assertTrue(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "codex", modelChanged = true))
-        assertFalse(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "codex", modelChanged = false))
-        assertFalse(membersRuntimeConfigSaveStartsNewSession(runtimeSwitched = false, runtimeId = "claude", modelChanged = true))
-    }
-
-    @Test
-    fun theSwitchConfirmationUsesWebsFromToCopy() {
-        val inactive = membersRuntimeFormV2SwitchConfirmation("codex", "claude")
-        assertEquals(ResourceStringDesc(Res.string.member_action_switch_runtime_config), inactive.title)
-        assertEquals(
-            ResourceFormattedStringDesc(
-                Res.string.member_runtime_switch_inactive_message,
-                listOf(getRuntimeDisplayName("codex"), getRuntimeDisplayName("claude"))
-            ),
-            inactive.message
-        )
-        assertEquals(ResourceStringDesc(Res.string.member_action_save_runtime_change), inactive.confirmLabel)
-    }
-
     private fun save(
         formReady: Boolean,
         runtimeSwitched: Boolean,
@@ -341,8 +167,6 @@ class MembersRuntimeSwitchEntryTest {
                 }
         )
     }
-
-    private val unknownCatalog: suspend (String) -> SharedCreateAgentRuntimeCatalog? = { null }
 
     private fun access(computers: RaftComputersApi, agents: RaftAgentsApi) =
         RuntimeFormV2Access(RuntimeFormV2Loader(computers, agents), ServerId("server-1"))

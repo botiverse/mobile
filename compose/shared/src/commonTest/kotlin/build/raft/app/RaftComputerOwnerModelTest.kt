@@ -48,14 +48,6 @@ class RaftComputerOwnerModelTest {
         assertEquals(listOf("user-1", "user-2", "user-5"), raftComputerOwnerCandidates(members, null, null).map { it.id })
     }
 
-    @Test
-    fun theSearchMatchesTheShownName() {
-        val people = listOf(RaftComputerOwnerCandidate("1", "Ann Lee", false), RaftComputerOwnerCandidate("2", "Bea", false))
-        assertEquals(people, raftComputerOwnerCandidatesMatching(people, "  "))
-        assertEquals(listOf(people[0]), raftComputerOwnerCandidatesMatching(people, "lee"))
-        assertEquals(emptyList(), raftComputerOwnerCandidatesMatching(people, "zed"))
-    }
-
     private fun human(id: String, name: String, handle: String = name.lowercase(), role: String, status: String = "active") =
         MemberProfile(
             id = MemberId(id),

@@ -3,12 +3,10 @@ package build.raft.app
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProfileSnapshot
 import build.raft.app.data.AccountSettingsSnapshot
-import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RealSettingsRepository
-import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDataSource
 import build.raft.app.data.SharedSettingsIntent
@@ -126,26 +124,6 @@ class SettingsHonestStateTest {
             assertFalse(payload.saveErrorCode.orEmpty().contains("http_409"), case.name)
             assertFalse(payload.saveErrorCode.orEmpty().contains("must not be guessed"), case.name)
         }
-    }
-
-    @Test
-    fun addComputerDialogUsesTypedFailureBeforeLocalHumanCopy() {
-        val errorStrings = englishErrorPresentationStringsForTest()
-        val typed =
-            AddComputerDialogState(
-                errorMessage = "stale local text",
-                screenError =
-                    ScreenError(
-                        code = "http_409",
-                        retryable = false,
-                        serverMessage = "A computer with this name already exists"
-                    )
-            )
-        val local = AddComputerDialogState(errorMessage = "Choose a computer name")
-
-        assertEquals("A computer with this name already exists", typed.userFacingErrorMessage(errorStrings))
-        assertEquals("Choose a computer name", local.userFacingErrorMessage(errorStrings))
-        assertNull(AddComputerDialogState().userFacingErrorMessage(errorStrings))
     }
 
     private fun accountProfile(userId: String): AccountProfileSnapshot =

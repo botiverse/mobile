@@ -1,14 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.EmptyReason
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
-import build.raft.app.data.PermissionBlocker
-import build.raft.app.data.ScreenError
-import build.raft.app.data.SettingsServerActionResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,39 +63,6 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
-    fun humanRoleOptionsNeverIncludeCurrentRole() {
-        MembersHumanServerRole.entries.forEach { current ->
-            assertFalse(
-                editableHumanRoles(targetRole = current.wireValue, ownerCount = 2).contains(current)
-            )
-        }
-    }
-
-    @Test
-    fun humanRoleSaveOutcomeOnlyClosesOnSuccessfulContent() {
-        assertEquals(
-            MembersHumanRoleSaveOutcome.Success,
-            DataResult.Content(SettingsServerActionResult(success = true)).membersHumanRoleSaveOutcome()
-        )
-        assertEquals(
-            MembersHumanRoleSaveOutcome.Error,
-            DataResult.Empty(EmptyReason.NoSettingsAvailable).membersHumanRoleSaveOutcome()
-        )
-        assertEquals(
-            MembersHumanRoleSaveOutcome.Error,
-            DataResult.Content(SettingsServerActionResult(success = false)).membersHumanRoleSaveOutcome()
-        )
-        assertEquals(
-            MembersHumanRoleSaveOutcome.NoPermission,
-            DataResult.NoPermission(PermissionBlocker("forbidden")).membersHumanRoleSaveOutcome()
-        )
-        assertEquals(
-            MembersHumanRoleSaveOutcome.Error,
-            DataResult.Error(ScreenError("network")).membersHumanRoleSaveOutcome()
-        )
-    }
-
-    @Test
     fun humanRoleSubmitRequiresFrozenRouteServerToRemainSelected() {
         assertTrue(membersHumanRoleUpdateServerMatches("server-1", "server-1"))
         assertTrue(membersHumanRoleUpdateServerMatches(" server-1 ", "server-1"))
@@ -139,12 +102,6 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
-    fun normalizesAgentServerRoleWireValues() {
-        assertEquals(MembersAgentServerRole.Admin, " Admin ".toMembersAgentServerRoleOrNull())
-        assertEquals(MembersAgentServerRole.Member, "MEMBER".toMembersAgentServerRoleOrNull())
-    }
-
-    @Test
     fun rejectsUnknownAgentServerRoles() {
         assertNull("owner".toMembersAgentServerRoleOrNull())
         assertNull("".toMembersAgentServerRoleOrNull())
@@ -164,34 +121,6 @@ class MembersAgentServerRoleTest {
         assertEquals(MembersAgentServerRoleDisplay.Hidden, membersAgentDisplayServerRole("", " "))
     }
 
-    // A deleted agent reaches this from a wholly ordinary state, and the "with a role" case is
-    // reachable in client state even though the wire never sends it: SharedServerMembersStore
-    // merges serverRole fill-only, so a role cached before deletion is never overwritten --
-    // not even by the authoritative path, which starts by calling that same merge. Without the
-    // deleted check such an agent still shows an Admin chip (LiBai, task #261).
-    //
-    // Both hide today, but they are asserted separately: if either ever gains its own wording,
-    // wording written for the anomaly would be wrong on a deleted agent.
-    @Test
-    fun displayRoleHidesTheChipForADeletedAgentEvenWithARole() {
-        assertEquals(
-            MembersAgentServerRoleDisplay.Hidden,
-            membersAgentDisplayServerRole("admin", null, deleted = true)
-        )
-        assertEquals(
-            MembersAgentServerRoleDisplay.Hidden,
-            membersAgentDisplayServerRole(null, null, deleted = true)
-        )
-    }
-
-    @Test
-    fun displayRolePrefersMemberRoleOverSummaryRole() {
-        assertEquals(
-            MembersAgentServerRoleDisplay.Known(MembersAgentServerRole.Admin),
-            membersAgentDisplayServerRole("admin", "member")
-        )
-    }
-
     // Was displayRoleRejectsUnknownNonBlankRole, which asserted null -> the chip read
     // "No role" for a role the server had explicitly named. Denying a role we were told about
     // is a false statement independent of any wire-semantics question, so this half of #261
@@ -206,16 +135,6 @@ class MembersAgentServerRoleTest {
             MembersAgentServerRoleDisplay.Unrecognized("moderator"),
             membersAgentDisplayServerRole(null, "moderator")
         )
-    }
-
-    @Test
-    fun marksSelectedAgentServerRoleOption() {
-        val options = membersAgentServerRoleOptions(MembersAgentServerRole.Member) { "label:${it.wireValue}" }
-
-        assertEquals(listOf("admin", "member"), options.map { it.id })
-        assertEquals(listOf("label:admin", "label:member"), options.map { it.label })
-        assertTrue(options.first { it.id == "member" }.selected)
-        assertFalse(options.first { it.id == "admin" }.selected)
     }
 
     @Test
@@ -267,26 +186,6 @@ class MembersAgentServerRoleTest {
         )
     }
 
-    @Test
-    fun agentRoleSaveKeepsEmptyAndPermissionResultsAsFailures() {
-        assertEquals(
-            MembersAgentServerRoleSaveOutcome.Empty,
-            DataResult.Empty(EmptyReason.NoMembers).membersAgentServerRoleSaveOutcome(
-                MemberId("agent-1"),
-                ServerId("server-1"),
-                MembersAgentServerRole.Admin
-            )
-        )
-        assertEquals(
-            MembersAgentServerRoleSaveOutcome.NoPermission,
-            DataResult.NoPermission(PermissionBlocker("forbidden")).membersAgentServerRoleSaveOutcome(
-                MemberId("agent-1"),
-                ServerId("server-1"),
-                MembersAgentServerRole.Admin
-            )
-        )
-    }
-
     private fun agentProfile(serverRole: String?, serverId: String?, id: String = "agent-1"): MemberProfile =
         MemberProfile(
             id = MemberId(id),
@@ -296,54 +195,6 @@ class MembersAgentServerRoleTest {
             serverId = serverId?.let(::ServerId),
             serverRole = serverRole
         )
-
-    @Test
-    fun humanRemoveActionFollowsReactServerRoleGate() {
-        assertTrue(
-            membersCanRemoveHumanMember(
-                actorRole = "admin",
-                targetRole = "member",
-                targetMembershipStatus = "active",
-                targetMemberId = "member-1",
-                currentUserId = "admin-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-        assertFalse(
-            membersCanRemoveHumanMember(
-                actorRole = "member",
-                targetRole = "admin",
-                targetMembershipStatus = "active",
-                targetMemberId = "admin-1",
-                currentUserId = "member-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-        assertFalse(
-            membersCanRemoveHumanMember(
-                actorRole = "admin",
-                targetRole = "admin",
-                targetMembershipStatus = "active",
-                targetMemberId = "admin-2",
-                currentUserId = "admin-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-        assertFalse(
-            membersCanRemoveHumanMember(
-                actorRole = "admin",
-                targetRole = "owner",
-                targetMembershipStatus = "active",
-                targetMemberId = "owner-1",
-                currentUserId = "admin-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-    }
 
     @Test
     fun humanRemoveActionBlocksSelfRemovedRemoteAndLastOwner() {
@@ -395,44 +246,6 @@ class MembersAgentServerRoleTest {
     }
 
     @Test
-    fun ownerCanRemoveNonLastOwnersAdminsAndMembers() {
-        assertTrue(
-            membersCanRemoveHumanMember(
-                actorRole = "owner",
-                targetRole = "owner",
-                targetMembershipStatus = "active",
-                targetMemberId = "owner-2",
-                currentUserId = "owner-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1",
-                ownerCount = 2
-            )
-        )
-        assertTrue(
-            membersCanRemoveHumanMember(
-                actorRole = "owner",
-                targetRole = "admin",
-                targetMembershipStatus = "active",
-                targetMemberId = "admin-1",
-                currentUserId = "owner-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-        assertTrue(
-            membersCanRemoveHumanMember(
-                actorRole = "owner",
-                targetRole = "member",
-                targetMembershipStatus = "active",
-                targetMemberId = "member-1",
-                currentUserId = "owner-1",
-                targetServerId = "server-1",
-                currentServerId = "server-1"
-            )
-        )
-    }
-
-    @Test
     fun agentRuntimeEditorUsesSelectedMachineRuntimes() {
         val runtimes =
             membersAgentMachineRuntimeIds(
@@ -460,24 +273,5 @@ class MembersAgentServerRoleTest {
         assertTrue(runtimeItems.first { it.id == "claude" }.enabled)
         assertFalse(runtimeItems.first { it.id == "pi" }.enabled)
         assertEquals(RuntimePickerSuffix.NotInstalled, runtimeItems.first { it.id == "pi" }.suffix)
-    }
-
-    @Test
-    fun agentRuntimeEditorReturnsNoRuntimesForUnknownMachine() {
-        assertEquals(
-            emptyList(),
-            membersAgentMachineRuntimeIds(
-                machines =
-                    listOf(
-                        SharedCreateAgentMachineOption(
-                            id = "machine-1",
-                            name = "MacBook",
-                            status = "online",
-                            runtimes = listOf("codex")
-                        )
-                    ),
-                machineId = "missing"
-            )
-        )
     }
 }

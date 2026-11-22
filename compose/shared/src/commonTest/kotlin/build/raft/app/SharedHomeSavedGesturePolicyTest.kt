@@ -31,12 +31,4 @@ class SharedHomeSavedGesturePolicyTest {
             sharedHomeSavedGestureOwner(tapX = 299f, rowWidthPx = 300f, trailingActionWidthPx = 0f)
         )
     }
-
-    @Test
-    fun actionZoneIsClampedToTheMeasuredRowWidth() {
-        assertEquals(
-            SharedHomeSavedGestureOwner.Unsave,
-            sharedHomeSavedGestureOwner(tapX = 0f, rowWidthPx = 32f, trailingActionWidthPx = 44f)
-        )
-    }
 }

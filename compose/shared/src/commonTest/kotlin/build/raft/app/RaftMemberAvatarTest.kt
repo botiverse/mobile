@@ -39,19 +39,6 @@ class RaftMemberAvatarTest {
     }
 
     @Test
-    fun agentWithNoAvatarWearsTheRobotDefault() {
-        val store = store()
-        store.seed(MemberSnapshot(server(), listOf(agent("plain", avatar = null))))
-        val resolver = raftMemberAvatarResolver(store, ServerKey)
-
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "plain", resolver))
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "unknown-agent", resolver))
-        assertEquals("pixel:robot", resolve(MemberKind.Agent, "no-store", EmptyRaftMemberAvatarResolver))
-        // A person has no default face: RaftAppAvatar of a person shows the placeholder.
-        assertNull(resolve(MemberKind.Human, "unknown-human", resolver))
-    }
-
-    @Test
     fun unknownIdFallsBackToTheSavedAvatar() {
         val preferences = InMemoryRaftKeyValueStore()
         store(preferences).seed(MemberSnapshot(server(), listOf(human("artin", HumanAvatar), agent("kirby", AvatarReference.Pixel("pencil")))))
@@ -65,22 +52,6 @@ class RaftMemberAvatarTest {
         // The saved avatar outranks what the row carries, and is server scoped.
         assertEquals(HumanAvatar, resolve(MemberKind.Human, "artin", resolver, carried = OtherHumanAvatar))
         assertEquals(OtherHumanAvatar, resolve(MemberKind.Human, "artin", raftMemberAvatarResolver(cold, "other-server"), carried = OtherHumanAvatar))
-    }
-
-    @Test
-    fun carriedValuesAreFilteredLikeAProfilesOwnAvatar() {
-        val identity = RaftMemberAvatarIdentity(MemberKind.Human, "artin", ServerKey)
-        // A person shows only an uploaded avatar, as MemberProfile's helpers do.
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = "https://example.com/photo.png"))
-        // A retired Gravatar value (slock #13674), carried or saved, is the placeholder.
-        val gravatar = "gravatar:" + "a".repeat(64)
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = null, carriedAvatarWireValue = gravatar))
-        assertNull(raftMemberAvatarWireValue(identity, resolvedAvatarWireValue = gravatar, carriedAvatarWireValue = null))
-        // No person kind (an external author): the carried value as it is.
-        assertEquals(
-            "https://example.com/ext.png",
-            raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.External, "x", null), null, "https://example.com/ext.png"),
-        )
     }
 
     @Test

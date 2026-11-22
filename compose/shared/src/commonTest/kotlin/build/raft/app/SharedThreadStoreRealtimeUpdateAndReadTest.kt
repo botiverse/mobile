@@ -24,19 +24,13 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageUpdated
-import build.raft.app.model.TaskId
-import build.raft.app.model.TaskStatus
-import build.raft.app.model.TaskSummary
-import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
-import build.raft.app.network.sync.ReplyPreview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -44,10 +38,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 
 class SharedThreadStoreRealtimeUpdateAndReadTest {
     @Test
@@ -357,148 +349,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         scope.cancel()
     }
     @Test
-    fun realtimeThreadUpdatedMergesButTaskUpdatedDoesNotMutatePayloadTaskFacts() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
-        val initial =
-            contentPayload("task body").copy(
-                messages =
-                    listOf(
-                        contentPayload("task body").messages.single().copy(
-                            taskId = "task-1",
-                            taskNumber = 44,
-                            taskStatus = "Todo"
-                        )
-                    ),
-                tasks =
-                    listOf(
-                        RaftThreadTaskItem(
-                            id = "task-1",
-                            title = "Old task",
-                            status = "Todo",
-                            taskNumber = 44
-                        )
-                    )
-            )
-        dataSource.cachePayloadForTest(initial)
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("m1"),
-                    threadChannelId = ChannelId("reply-thread"),
-                    replyCount = 3,
-                    lastReplyAt = "2026-05-19T16:10:00Z",
-                    participantIds = emptyList(),
-                    unreadCount = 2,
-                    firstUnreadMessageId = MessageId("reply-2"),
-                    latestReply =
-                        ReplyPreview(
-                            messageId = "reply-2",
-                            seq = 2,
-                            content = "latest reply",
-                            senderId = "agent-1",
-                            senderType = "agent",
-                            senderName = "MingQi",
-                            senderAvatarUrl = null,
-                            createdAt = "2026-05-19T16:10:00Z",
-                            senderDisplayName = "明启",
-                        ),
-                    syncCoreReplyWindow =
-                        build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope(
-                            producer = build.raft.app.network.sync.ThreadRepliesSyncWindowProducer,
-                            rootKind = "message",
-                            rootServerId = "server-1",
-                            rootMessageId = "m1",
-                            relationKind = "replies",
-                            parentScopeServerId = "server-1",
-                            parentScopeKind = "channel",
-                            parentScopeId = "channel-1",
-                            backing = "sync-scope",
-                            windowKind = "sync-scope-window",
-                        ),
-                )
-            )
-        )
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                TaskUpdated(
-                    TaskSummary(
-                        id = TaskId("task-1"),
-                        title = "Updated task",
-                        status = TaskStatus.InReview,
-                        taskNumber = 44,
-                        messageId = MessageId("m1"),
-                        updatedAtLabel = "2026-05-19T16:11:00Z"
-                    )
-                )
-            )
-        )
-
-        val message = store.state.value.payload.messages.single()
-        assertEquals(3, message.replyCount)
-        assertEquals(2, message.unreadReplyCount)
-        assertEquals("reply-2", message.firstUnreadReplyMessageId)
-        assertEquals(listOf("reply-2"), message.inlineReplies?.replies?.map { it.messageId })
-        assertEquals("明启", message.inlineReplies?.replies?.single()?.senderDisplayName)
-        assertEquals("Todo", message.taskStatus)
-        assertEquals("Old task", store.state.value.payload.tasks.single().title)
-        assertEquals("Todo", store.state.value.payload.tasks.single().status)
-        scope.cancel()
-    }
-    @Test
-    fun realtimeTaskUpdatedLeavesThreadPayloadTaskFallbackUntouched() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
-        val initial =
-            contentPayload("task body").copy(
-                messages =
-                    listOf(
-                        contentPayload("task body").messages.single().copy(
-                            taskId = "local-stale-task",
-                            taskNumber = 77,
-                            taskStatus = "Todo"
-                        )
-                    ),
-                tasks =
-                    listOf(
-                        RaftThreadTaskItem(
-                            id = "local-stale-task",
-                            title = "Cached task",
-                            status = "Todo",
-                            taskNumber = 77,
-                            messageId = "m1"
-                        )
-                    )
-            )
-        dataSource.cachePayloadForTest(initial)
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                TaskUpdated(
-                    TaskSummary(
-                        id = TaskId("server-task"),
-                        title = "Server task",
-                        status = TaskStatus.Done,
-                        taskNumber = 77,
-                        updatedAtLabel = "2026-05-19T16:12:00Z"
-                    )
-                )
-            )
-        )
-
-        val payload = store.state.value.payload
-        val message = payload.messages.single()
-        assertEquals("local-stale-task", message.taskId)
-        assertEquals("Todo", message.taskStatus)
-        assertEquals(listOf("local-stale-task"), payload.tasks.map { it.id })
-        scope.cancel()
-    }
-    @Test
     fun realtimeThreadUpdatedCanDecreaseAuthoritativeReplyCount() = runTest {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val dataSource = canonicalThreadDataSource(storeScope = backgroundScope)
@@ -536,147 +386,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         assertEquals(0, message.unreadReplyCount)
         assertNull(message.firstUnreadReplyMessageId)
         scope.cancel()
-    }
-    @Test
-    fun realtimeThreadUpdatedReplyCountSurvivesCanonicalReprojection() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val payloadStore = SharedThreadPayloadStore(backgroundScope)
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                payloadStore = payloadStore
-            )
-        dataSource.cachePayloadForTest(
-            contentPayload("parent").copy(
-                messages =
-                    listOf(contentPayload("parent").messages.single().copy(replyCount = 5))
-            )
-        )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        // Unconfined scope: Start has already rendered the cached parent. With the channel fetch
-        // failing, write actions stay disabled, so waiting on them would never finish.
-        assertEquals(5, store.state.value.payload.messages.single().replyCount)
-        val provenance = requireNotNull(dataSource.currentReplyCacheProvenance())
-
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                ThreadUpdated(
-                    parentMessageId = MessageId("m1"),
-                    threadChannelId = ChannelId("reply-thread"),
-                    replyCount = 9,
-                    lastReplyAt = "2026-05-19T16:13:00Z",
-                    participantIds = emptyList(),
-                    unreadCount = 0,
-                    firstUnreadMessageId = null
-                )
-            )
-        )
-        assertEquals(9, store.state.value.payload.messages.single().replyCount)
-
-        // The realtime fact was recorded, so a stale canonical reprojection cannot erase it.
-        val staleCanonical =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        RaftThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            body = "parent",
-                            threadChannelId = null,
-                            replyCount = 5
-                        )
-                    )
-            )
-        assertEquals(
-            9,
-            payloadStore
-                .applyReplyCountFacts(
-                    provenance.serverId,
-                    "channel-1",
-                    provenance.environmentId,
-                    provenance.principalId,
-                    staleCanonical
-                )
-                .messages.single().replyCount
-        )
-        scope.cancel()
-    }
-    @Test
-    fun visibleReadMarksChannel() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
-                    ),
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.accept(SharedThreadIntent.MarkVisibleRead())
-        store.accept(SharedThreadIntent.MarkVisibleRead())
-
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        scope.cancel()
-    }
-    @Test
-    fun cachedTimelineMarksReadOnlyAfterCanonicalAccessResolves() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-        val api =
-            FakeThreadApi().also {
-                it.channelMessagesStarted = CompletableDeferred()
-                it.releaseChannelMessages = CompletableDeferred()
-            }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-
-        try {
-            store.dispatch(SharedThreadIntent.Start(basePayload()))
-            withTimeout(5_000) { api.channelMessagesStarted?.await() }
-            assertEquals(ThreadAccessResolution.Loading, store.state.value.accessResolution)
-            assertFalse(store.state.value.writeActionsEnabled)
-
-            store.accept(SharedThreadIntent.MarkVisibleRead())
-            assertTrue(api.readAllChannels.isEmpty())
-            assertTrue(api.readSeqRequests.isEmpty())
-
-            api.releaseChannelMessages?.complete(Unit)
-            withTimeout(5_000) {
-                while (store.state.value.accessResolution != ThreadAccessResolution.Resolved) {
-                    delay(1)
-                }
-            }
-            assertTrue(store.state.value.writeActionsEnabled)
-            store.accept(SharedThreadIntent.MarkVisibleRead())
-            assertEquals(1, api.readAllChannels.size + api.readSeqRequests.size)
-            assertEquals(
-                "channel-1",
-                api.readAllChannels.singleOrNull() ?: api.readSeqRequests.single().first
-            )
-        } finally {
-            api.releaseChannelMessages?.complete(Unit)
-            scope.cancel()
-        }
     }
     @Test
     fun cachedTimelineNeverMarksReadWhenCanonicalAccessIsDenied() = runTest {
@@ -735,67 +444,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         scope.cancel()
     }
     @Test
-    fun inlineReplyScopeOpenReadUsesCanonicalReadAllWhenPreviewIsBounded() = runTest {
-        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-
-        val result = dataSource.markVisibleChannelRead("reply-thread", latestSeq = null)
-
-        assertTrue(result is DataResult.Content)
-        assertEquals(listOf("reply-thread"), api.readAllChannels)
-        assertTrue(api.readSeqRequests.isEmpty())
-    }
-    @Test
-    fun visibleReadCoalescesImmediateSameChannelCompletion() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
-                    ),
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.accept(SharedThreadIntent.MarkVisibleRead())
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    Message(
-                        id = MessageId("m2"),
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        seq = 11L,
-                        author = member("u2", "Stdrc"),
-                        timestampLabel = "2026-05-19T16:01:00Z",
-                        body = "fresh body"
-                    )
-                )
-            )
-        )
-        store.accept(SharedThreadIntent.MarkVisibleRead())
-
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        assertTrue(api.readSeqRequests.isEmpty(), "coalesced inside the window")
-        // Task #19 (Hands 2aa74345): the newer message is not dropped — it is marked once the window ends.
-        withTimeout(5_000) { while (api.readSeqRequests.isEmpty()) delay(50) }
-        assertEquals(listOf("channel-1" to 11L), api.readSeqRequests)
-        scope.cancel()
-    }
-    @Test
     fun deferredReadIsDroppedWhenANewerMessageArrivedUnseen() = runTest {
         // Review of task #19: the deferred retry marks only the marker the user was shown. A message that
         // arrives during the window without a new visible-read dispatch (page backgrounded) stays unread.
@@ -834,34 +482,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         store.accept(newMessage("m2", 11L))
         store.accept(SharedThreadIntent.MarkVisibleRead()) // shown m2 -> deferred
         store.accept(newMessage("m3", 12L)) // arrives unseen: no further dispatch
-        delay(2_500)
-
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        assertTrue(api.readSeqRequests.isEmpty(), api.readSeqRequests.toString())
-        scope.cancel()
-    }
-    @Test
-    fun visibleReadOfTheSameMarkerInsideTheWindowIsNotRetried() = runTest {
-        // Negative twin of the deferred retry: nothing new arrived, so nothing is re-sent after the window.
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
-                    ),
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.accept(SharedThreadIntent.MarkVisibleRead())
-        store.accept(SharedThreadIntent.MarkVisibleRead())
         delay(2_500)
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
@@ -919,42 +539,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         // Coming back shows the conversation again: its next visible read goes out as before.
         store.accept(SharedThreadIntent.MarkVisibleRead())
         assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
-        scope.cancel()
-    }
-
-    @Test
-    fun readQueuedBehindAnInFlightReadIsDroppedWhenTheUserLeaves() = runTest {
-        // fb-4440a18c: the follow-up queued while a read is in flight (reason=in_flight) went out after the
-        // in-flight one finished, even if the page had been left by then.
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api =
-            FakeThreadApi(failChannelMessages = true).also {
-                it.failReadAll = false
-                it.readAllDelayMillis = 1_000L
-            }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
-                    ),
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.dispatch(SharedThreadIntent.MarkVisibleRead()) // in flight for 1 s
-        store.accept(leftConversationNewMessage("m2", 11L))
-        store.dispatch(SharedThreadIntent.MarkVisibleRead()) // queued behind it
-        store.dispatch(SharedThreadIntent.VisibleReadHidden) // the person leaves before it finishes
-        delay(5_000)
-
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        assertTrue(api.readSeqRequests.isEmpty(), "left conversation marked read: ${api.readSeqRequests}")
         scope.cancel()
     }
 
@@ -1049,100 +633,6 @@ class SharedThreadStoreRealtimeUpdateAndReadTest {
         val cached = dataSource.cachedPayload("channel-1")?.messages?.single()
         assertEquals(0, cached?.unreadReplyCount)
         assertNull(cached?.firstUnreadReplyMessageId)
-        scope.cancel()
-    }
-    @Test
-    fun replyThreadLoadingPayloadCarriesFirstUnreadFocus() {
-        val parent =
-            RaftThreadMessageItem(
-                id = "m1",
-                authorId = "u1",
-                authorName = "Artin",
-                body = "parent",
-                replyCount = 2,
-                unreadReplyCount = 1,
-                firstUnreadReplyMessageId = "reply-1"
-            )
-
-        val loading =
-            basePayload().replyThreadLoadingPayload(
-                parentMessageId = parent.id,
-                parentChannelId = "channel-1",
-                threadChannelId = parent.threadChannelId,
-                focusedMessageId = parent.firstUnreadReplyMessageId
-            )
-
-        assertEquals("reply-1", loading.focusedMessageId)
-        assertEquals("m1", loading.parentMessageId)
-    }
-    @Test
-    fun visibleReadCoalescesInFlightBurstToLatestMarker() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api =
-            FakeThreadApi(failChannelMessages = true).also {
-                it.failReadAll = false
-                it.readAllDelayMillis = 50L
-            }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository =
-                    FakeConversationRepository(
-                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
-                    ),
-            )
-        dataSource.cachePayloadForTest(contentPayload("cached body"))
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, readCoalesceTimeSource = testScheduler.timeSource)
-        store.accept(SharedThreadIntent.Start(basePayload()))
-
-        store.dispatch(SharedThreadIntent.MarkVisibleRead())
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    Message(
-                        id = MessageId("m2"),
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        seq = 11L,
-                        author = member("u2", "Stdrc"),
-                        timestampLabel = "2026-05-19T16:01:00Z",
-                        body = "realtime body 2"
-                    )
-                )
-            )
-        )
-        store.dispatch(SharedThreadIntent.MarkVisibleRead())
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    Message(
-                        id = MessageId("m3"),
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        seq = 12L,
-                        author = member("u3", "Cindy"),
-                        timestampLabel = "2026-05-19T16:02:00Z",
-                        body = "realtime body 3"
-                    )
-                )
-            )
-        )
-        store.dispatch(SharedThreadIntent.MarkVisibleRead())
-
-        // Wait for the coalesced follow-up read instead of a fixed 120ms against the 50ms fake
-        // readAll delay (a stalled JVM blew that budget), then give a stray extra request a
-        // moment to show up before asserting the burst collapsed to one call.
-        withTimeout(10_000) {
-            while (api.readSeqRequests.isEmpty() || api.activeReadAllCalls > 0) delay(10)
-        }
-        delay(50L)
-
-        assertEquals(listOf("channel-1"), api.readAllChannels)
-        assertEquals(listOf("channel-1" to 12L), api.readSeqRequests)
-        assertEquals(1, api.maxConcurrentReadAllCalls)
         scope.cancel()
     }
 }

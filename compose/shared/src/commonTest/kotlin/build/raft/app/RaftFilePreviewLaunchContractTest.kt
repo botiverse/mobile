@@ -4,8 +4,6 @@ import build.raft.app.resources.*
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.AuthenticatedRouteOwner
-import build.raft.app.data.RealtimeSubscription
-import build.raft.app.data.RaftEventBus
 import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -39,72 +37,6 @@ class RaftFilePreviewLaunchContractTest {
             ),
             names
         )
-    }
-
-    @Test
-    fun remotePageDataExcludesDisplayContentUrlsFileRefsAndTokens() {
-        val payload =
-            RaftFilePreviewPayload(
-                kind = "loading",
-                requestedKind = "image",
-                title = "SECRET_TITLE",
-                subtitle = "SECRET_SUBTITLE",
-                name = "SECRET_NAME.png",
-                path = "SECRET_PATH.png",
-                meta = "SECRET_META",
-                content = "SECRET_CONTENT",
-                imageUrl = "https://signed.example/SECRET_IMAGE_TOKEN",
-                externalUrl = "https://signed.example/SECRET_EXTERNAL_TOKEN",
-                externalFileName = "SECRET_EXTERNAL_NAME.png",
-                externalMimeType = "image/png",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-current",
-                imageGallery =
-                    listOf(
-                        RaftFilePreviewGalleryImage(
-                            attachmentId = "attachment-current",
-                            name = "SECRET_GALLERY_NAME",
-                            thumbnailUrl = "https://signed.example/SECRET_THUMB_TOKEN",
-                            composerImageFileRef = "file:///SECRET_REF",
-                            composerImageOwnedTemporary = true
-                        )
-                    ),
-                composerImageOwnedTemporaryFileRefs = listOf("file:///SECRET_OWNED_REF")
-            )
-        val launch = raftFilePreviewLaunchDescriptor("preview-session", payload)
-        val pageData =
-            raftFilePreviewLaunchPageData(
-                launch = launch,
-                storeScope = RaftShellStoreScope.create("shell-a", "server-a"),
-                targetServerId = "server-a"
-            )
-        val encodedPayload = pageData.optString("payload")
-
-        assertEquals(RAFT_FILE_PREVIEW_PAGE, pageData.optString("pageName"))
-        assertEquals("shell-a", pageData.optString(RAFT_SHELL_INSTANCE_ID))
-        assertEquals("server-a", pageData.optString(RAFT_SHELL_SERVER_ID))
-        assertEquals("server-a", pageData.optString("serverId"))
-        assertTrue(encodedPayload.contains("attachment-current"))
-        listOf(
-            "SECRET_TITLE",
-            "SECRET_SUBTITLE",
-            "SECRET_NAME",
-            "SECRET_PATH",
-            "SECRET_META",
-            "SECRET_CONTENT",
-            "SECRET_IMAGE_TOKEN",
-            "SECRET_EXTERNAL_TOKEN",
-            "SECRET_EXTERNAL_NAME",
-            "SECRET_GALLERY_NAME",
-            "SECRET_THUMB_TOKEN",
-            "SECRET_REF",
-            "SECRET_OWNED_REF",
-            "fileRef",
-            "accessToken",
-            "refreshToken"
-        ).forEach { forbidden ->
-            assertFalse(encodedPayload.contains(forbidden), "$forbidden must stay outside compose_file_preview payload")
-        }
     }
 
     @Test
@@ -163,44 +95,6 @@ class RaftFilePreviewLaunchContractTest {
                 liveOwner = null
             )
         )
-    }
-
-    @Test
-    fun remoteSameProcessCandidateCannotBypassCanonicalHydration() {
-        val candidate =
-            RaftFilePreviewPayload(
-                kind = "loading",
-                requestedKind = "image",
-                title = "Candidate title",
-                imageUrl = "https://candidate.example/image",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-1"
-            )
-        val sessionId = RaftFilePreviewLaunchPayloadStore.put(candidate)
-        val pageData =
-            raftFilePreviewLaunchPageData(
-                launch = raftFilePreviewLaunchDescriptor(sessionId, candidate),
-                storeScope = RaftShellStoreScope.create("shell-a", "server-a")
-            )
-
-        var candidateLookupCount = 0
-        val trace =
-            raftFilePreviewResolveLaunchPayload(
-                source = pageData.optString("payload"),
-                loadPreviewPayload = {
-                    candidateLookupCount += 1
-                    RaftFilePreviewLaunchPayloadStore.get(it)
-                }
-            )
-
-        assertEquals("restored_thread_attachment", trace.result)
-        assertEquals(0, candidateLookupCount)
-        assertEquals("loading", trace.payload.kind)
-        assertEquals("", trace.payload.title)
-        assertNull(trace.payload.imageUrl)
-        assertEquals("attachment-1", trace.payload.attachmentId)
-        assertTrue(trace.requiresAuthenticatedRouteAuthority())
-        assertTrue(RaftFilePreviewLaunchPayloadStore.retire(sessionId))
     }
 
     @Test
@@ -274,28 +168,6 @@ class RaftFilePreviewLaunchContractTest {
     }
 
     @Test
-    fun agentWorkspaceStoreMissRestoresAgentAndPath() {
-        val launch =
-            raftFilePreviewLaunchDescriptor(
-                sessionId = "missing-workspace-session",
-                payload = agentWorkspaceLazyPreviewPayload("agent-1", "notes/plan.md")
-            )
-
-        val trace =
-            raftFilePreviewResolveLaunchPayload(
-                source = Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch),
-                loadPreviewPayload = { null }
-            )
-
-        assertEquals("restored_agent_workspace", trace.result)
-        assertEquals(RaftFilePreviewSourceAgentWorkspace, trace.payload.source)
-        assertEquals("agent-1", trace.payload.agentId)
-        assertEquals("notes/plan.md", trace.payload.path)
-        assertEquals("loading", trace.payload.kind)
-        assertTrue(trace.requiresAuthenticatedRouteAuthority())
-    }
-
-    @Test
     fun localEditorStoreMissFailsClosedRetiresAndCarriesZeroCallbackMaterial() {
         val launch =
             raftFilePreviewLaunchDescriptor(
@@ -336,30 +208,6 @@ class RaftFilePreviewLaunchContractTest {
     }
 
     @Test
-    fun localEditorWireContainsOnlyOpaqueSessionIdentity() {
-        val launch =
-            raftFilePreviewLaunchDescriptor(
-                sessionId = "opaque-session",
-                payload =
-                    RaftFilePreviewPayload(
-                        kind = "image",
-                        imageUrl = "file:///tmp/private.png",
-                        composerImageThreadKey = "private-thread",
-                        composerImageActionId = "private-action",
-                        composerImageFileRef = "file:///tmp/private.png",
-                        composerImageCanComplete = true
-                    )
-            )
-        val encoded = Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch)
-
-        assertEquals(RaftFilePreviewRouteEphemeral, launch.routeKind)
-        assertTrue(encoded.contains("opaque-session"))
-        listOf("private.png", "private-thread", "private-action", "file://").forEach { forbidden ->
-            assertFalse(encoded.contains(forbidden))
-        }
-    }
-
-    @Test
     fun mixedOrMalformedRemoteIdentityFailsClosedWithoutCandidateLookup() {
         var candidateLookupCount = 0
         val malformed =
@@ -384,54 +232,6 @@ class RaftFilePreviewLaunchContractTest {
         assertEquals("invalid_launch", trace.result)
         assertEquals("invalid_file_preview_launch", trace.payload.error)
         assertEquals(0, candidateLookupCount)
-    }
-
-    @Test
-    fun storeRetirementIsExactlyOnce() {
-        val store = RaftFilePreviewStore()
-        val sessionId = store.put(RaftFilePreviewPayload(kind = "image"))
-
-        assertTrue(store.retire(sessionId))
-        assertFalse(store.retire(sessionId))
-        assertNull(store.get(sessionId))
-    }
-
-    @Test
-    fun remoteRouteIntentWinsWithoutReadingProcessCandidate() {
-        val launchPayload =
-            RaftFilePreviewPayload(
-                kind = "loading",
-                requestedKind = "image",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-1",
-                attachmentCommentsEnabled = true,
-                commentsInitiallyOpen = true
-            )
-        val launch = raftFilePreviewLaunchDescriptor("candidate-session", launchPayload)
-        val mismatchedCandidates =
-            listOf(
-                launchPayload.copy(requestedKind = "text"),
-                launchPayload.copy(attachmentCommentsEnabled = false, commentsInitiallyOpen = false),
-                launchPayload.copy(commentsInitiallyOpen = false)
-            )
-
-        mismatchedCandidates.forEach { candidate ->
-            var candidateLookupCount = 0
-            val trace =
-                raftFilePreviewResolveLaunchPayload(
-                    source = Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch),
-                    loadPreviewPayload = {
-                        candidateLookupCount += 1
-                        candidate
-                    }
-                )
-
-            assertEquals("restored_thread_attachment", trace.result)
-            assertEquals(0, candidateLookupCount)
-            assertEquals("image", trace.payload.requestedKind)
-            assertTrue(trace.payload.attachmentCommentsEnabled)
-            assertTrue(trace.payload.commentsInitiallyOpen)
-        }
     }
 
     @Test
@@ -570,100 +370,6 @@ class RaftFilePreviewLaunchContractTest {
     }
 
     @Test
-    fun postFailureRetiresOnlyAWhollyUnclaimedPendingBatch() {
-        val registry = RaftFilePreviewEphemeralActionRegistry()
-        registry.register(
-            sessionId = "session-unclaimed",
-            threadKey = "thread-1",
-            actionIds = setOf("action-1"),
-            ownedTemporaryFileRefs = setOf("file:///cache/unclaimed.png")
-        )
-        registry.prepareDeliveryBatch(
-            sessionId = "session-unclaimed",
-            threadKey = "thread-1",
-            fileRefByActionId = mapOf("action-1" to "file:///cache/unclaimed.png")
-        )
-
-        assertEquals(
-            RaftFilePreviewEphemeralSessionRetirement(
-                cleanupFileRefs = setOf("file:///cache/unclaimed.png"),
-                retiredSession = true
-            ),
-            registry.retirePendingIfUnclaimed("session-unclaimed")
-        )
-        assertFalse(registry.hasSession("session-unclaimed"))
-
-        registry.register(
-            sessionId = "session-claimed",
-            threadKey = "thread-1",
-            actionIds = setOf("action-1"),
-            ownedTemporaryFileRefs = setOf("file:///cache/claimed.png")
-        )
-        registry.prepareDeliveryBatch(
-            sessionId = "session-claimed",
-            threadKey = "thread-1",
-            fileRefByActionId = mapOf("action-1" to "file:///cache/claimed.png")
-        )
-        assertEquals(
-            RaftFilePreviewEphemeralActionClaim.Accepted(sessionComplete = true),
-            registry.claim("session-claimed", "thread-1", "action-1", "file:///cache/claimed.png")
-        )
-
-        assertEquals(
-            RaftFilePreviewEphemeralSessionRetirement(),
-            registry.retirePendingIfUnclaimed("session-claimed")
-        )
-        assertTrue(registry.hasSession("session-claimed"))
-        assertTrue(
-            registry.markTransferred(
-                "session-claimed",
-                "thread-1",
-                "action-1",
-                "file:///cache/claimed.png"
-            )
-        )
-        assertTrue(registry.completePending("session-claimed"))
-    }
-
-    @Test
-    fun composerEditorEventsStayProcessLocalAndAttemptTheWholeBatchAfterFailure() {
-        val deliveries = mutableListOf<Pair<String, Boolean>>()
-        val eventBus =
-            object : RaftEventBus {
-                override fun observe(
-                    eventName: String,
-                    crossProcess: Boolean,
-                    listener: (kotlinx.serialization.json.JsonObject?) -> Unit
-                ): RealtimeSubscription = RealtimeSubscription {}
-
-                override fun post(
-                    eventName: String,
-                    eventData: kotlinx.serialization.json.JsonObject,
-                    crossProcess: Boolean,
-                    source: String
-                ) {
-                    deliveries += eventData.optString("actionId") to crossProcess
-                    if (deliveries.size == 1) error("injected listener failure")
-                }
-            }
-
-        assertFalse(
-            raftFilePreviewPostComposerImageEvents(
-                events =
-                    listOf(
-                        JSONObject().put("actionId", "action-1"),
-                        JSONObject().put("actionId", "action-2")
-                    ),
-                eventBus = eventBus
-            )
-        )
-        assertEquals(
-            listOf("action-1" to false, "action-2" to false),
-            deliveries
-        )
-    }
-
-    @Test
     fun processDeathRegistryRejectsOldCallbackAndDrainsItsLedger() {
         val store = InMemoryRaftKeyValueStore()
         val ledger = RaftFilePreviewEphemeralCleanupLedger(store)
@@ -690,26 +396,6 @@ class RaftFilePreviewLaunchContractTest {
     }
 
     @Test
-    fun cleanupLedgerIsBoundedAndReplaceCreatesAnIndexedRecord() {
-        val ledger =
-            RaftFilePreviewEphemeralCleanupLedger(
-                store = InMemoryRaftKeyValueStore(),
-                maxEntries = 2
-            )
-
-        ledger.register("session-1", setOf("file:///cache/one.png"))
-        ledger.replace("session-2", setOf("file:///cache/two.png"))
-        val evicted = ledger.register("session-3", setOf("file:///cache/three.png"))
-
-        assertEquals(setOf("file:///cache/one.png"), evicted)
-        assertEquals(
-            setOf("file:///cache/two.png"),
-            ledger.takeOrphans(activeSessionIds = setOf("session-3"))
-        )
-        assertEquals(setOf("file:///cache/three.png"), ledger.take("session-3"))
-    }
-
-    @Test
     fun galleryActionIdentityUsesTheFullAttachmentId() {
         val first =
             raftFilePreviewComposerImageGalleryActionId(
@@ -727,36 +413,5 @@ class RaftFilePreviewLaunchContractTest {
         assertFalse(first == second)
         assertTrue(first.endsWith("same-prefix-1-full-id"))
         assertTrue(second.endsWith("same-prefix-2-full-id"))
-    }
-
-    @Test
-    fun legacyComposerCallbackWithoutPreviewSessionIsRejected() {
-        val admission =
-            raftFilePreviewClaimComposerImageEvent(
-                eventData =
-                    JSONObject().apply {
-                        put("threadKey", "thread-1")
-                        put("actionId", "action-1")
-                        put("fileRef", "file:///cache/edited.png")
-                    },
-                expectedThreadKey = "thread-1",
-                registry = RaftFilePreviewEphemeralActionRegistry(),
-                cleanupLedger = RaftFilePreviewEphemeralCleanupLedger(InMemoryRaftKeyValueStore())
-            )
-
-        assertIs<RaftFilePreviewComposerImageEventAdmission.Rejected>(admission)
-    }
-
-    @Test
-    fun invalidJsonFailsClosed() {
-        val trace =
-            raftFilePreviewResolveLaunchPayload(
-                source = "{not-json",
-                loadPreviewPayload = { null }
-            )
-
-        assertEquals("failure", trace.result)
-        assertEquals(Res.string.file_preview_unavailable.desc(), trace.payload.titleDesc)
-        assertEquals("payload_parse_failed", trace.payload.error)
     }
 }

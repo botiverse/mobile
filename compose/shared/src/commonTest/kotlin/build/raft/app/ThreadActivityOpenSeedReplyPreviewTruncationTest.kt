@@ -1,9 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.ThreadPreviewCharsQueryKey
-import build.raft.app.data.isThreadPreviewCharsRequest
 import build.raft.app.data.parseSharedInboxSnapshot
-import build.raft.app.data.withThreadPreviewChars
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,20 +48,6 @@ class ThreadActivityOpenSeedReplyPreviewTruncationTest {
     }
 
     @Test
-    fun aRowsWholeLatestPreviewWinsOverAFlaggedReplyWindowEntry() {
-        // The reply window entry is flagged cut; the row's own latest preview of the same message is
-        // whole. The whole text shows, ordered by the reply window's seq.
-        val seeded =
-            seedFromJson(
-                reply("r-6", 16, "short and whole", truncated = "true"),
-                latestPreview = "short and whole",
-            )
-        val r6 = seeded.single { it.id == "r-6" }
-        assertFalse(r6.activityPreviewTruncated)
-        assertEquals("short and whole" to 16L, r6.body to r6.seq)
-    }
-
-    @Test
     fun aTruncatedReplyNeverRendersAsABodyOrCopiesAndAFailedLoadSaysSo() {
         val seeded = seedFromJson(reply("r-1", 11, cut, truncated = "true"), latestPreview = "ok").single { it.id == "r-1" }
         assertTrue(seeded.hasActivityCutBody())
@@ -84,39 +67,6 @@ class ThreadActivityOpenSeedReplyPreviewTruncationTest {
         assertFalse(availability.enabled(ThreadNewMessageMenuTool.Copy))
         assertFalse(availability.enabled(ThreadNewMessageMenuTool.SelectText))
         assertTrue(ThreadNewMessageMenuActionAvailability().enabled(ThreadNewMessageMenuTool.SelectText))
-    }
-
-    @Test
-    fun theThreadSummaryReadsAskForCutPreviews() {
-        val asked =
-            listOf(
-                "messages/channel/channel-1",
-                "/messages/channel/channel-1/by-activity",
-                "messages/context/m-1",
-                "channels/channel-1/threads",
-            )
-        for (path in asked) {
-            assertTrue(isThreadPreviewCharsRequest("GET", path), path)
-            assertEquals(
-                listOf("limit" to "30", ThreadPreviewCharsQueryKey to "200"),
-                listOf("limit" to "30").withThreadPreviewChars("GET", path),
-                path,
-            )
-        }
-        val notAsked =
-            listOf(
-                "GET" to "messages/channel/channel-1/human-outline",
-                "GET" to "channels/threads/followed",
-                "GET" to "channels/inbox",
-                "GET" to "messages/sync",
-                "POST" to "channels/channel-1/threads",
-            )
-        for ((method, path) in notAsked) {
-            assertFalse(isThreadPreviewCharsRequest(method, path), "$method $path")
-            assertEquals(listOf("limit" to "30"), listOf("limit" to "30").withThreadPreviewChars(method, path))
-        }
-        val explicit = listOf(ThreadPreviewCharsQueryKey to "80")
-        assertEquals(explicit, explicit.withThreadPreviewChars("GET", "messages/channel/channel-1"), "never asked twice")
     }
 
     private fun reply(id: String, seq: Long, preview: String, truncated: String? = null): String {

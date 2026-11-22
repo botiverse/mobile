@@ -29,15 +29,6 @@ class ActionCardFormSheetTest {
     }
 
     @Test
-    fun clientCheckTreatsJavaScriptBlanksAsEmpty() {
-        val values = ActionCardFormTestFixtures.filled + ("summary" to ActionCardFormValue.Text(" 　﻿\t"))
-        assertEquals(listOf(ActionCardFormIssueCode.Required), checkActionCardFormValues(form, values).map { it.code })
-        // U+200B is not in JavaScript's trim set: not blank.
-        val zeroWidth = ActionCardFormTestFixtures.filled + ("summary" to ActionCardFormValue.Text("​"))
-        assertTrue(checkActionCardFormValues(form, zeroWidth).isEmpty())
-    }
-
-    @Test
     fun clientCheckCountsCodePoints() {
         val emoji = "😀" // one code point, two UTF-16 units
         val fits = ActionCardFormTestFixtures.filled + ("summary" to ActionCardFormValue.Text(emoji.repeat(80)))

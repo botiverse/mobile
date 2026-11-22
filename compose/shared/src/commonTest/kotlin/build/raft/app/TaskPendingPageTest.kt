@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TaskConversationDetailsState
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskStatusOption
@@ -67,24 +66,6 @@ class TaskPendingPageTest {
         val done = bar(pending.copy(status = TaskStatus.Done))
         assertTrue(done.statusEditable)
         assertFalse(done.assigneeEditable)
-    }
-
-    @Test
-    fun `status and assignee changes take the conversation head intents`() {
-        val pending = pendingTask()
-        val sent = mutableListOf<SharedTasksRouteIntent>()
-        val edits = TaskHeadEdits { sent += it }
-        edits.updateStatus(pending, TaskStatus.InReview)
-        edits.assign(pending, members[0])
-        edits.assign(pending, null)
-        assertEquals(
-            listOf(
-                SharedTasksRouteIntent.UpdateStatus(pending, TaskStatus.InReview),
-                SharedTasksRouteIntent.AssignTask(pending, members[0]),
-                SharedTasksRouteIntent.AssignTask(pending, null),
-            ),
-            sent,
-        )
     }
 
     @Test

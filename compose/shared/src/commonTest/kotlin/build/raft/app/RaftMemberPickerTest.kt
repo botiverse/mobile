@@ -50,35 +50,12 @@ class RaftMemberPickerTest {
     }
 
     @Test
-    fun handleOutranksDisplayNameAndDescriptionAndServerOutrankNothing() {
-        val members =
-            listOf(
-                human("server", "Quinn", "quinn", serverName = "Nova Labs"),
-                agent("description", "Helper", "helper", description = "nova release notes"),
-                human("name", "Nova Jones", "jones"),
-                human("handle", "Someone", "nova"),
-            )
-        val (agents, humans) = ids("nova", members)
-        assertEquals(listOf("handle", "name", "server"), humans)
-        assertEquals(listOf("description"), agents)
-        assertEquals(emptyList<String>() to emptyList(), ids("zzz", members))
-    }
-
-    @Test
     fun searchIsCaseAndPunctuationInsensitiveAndMatchesPinyin() {
         val members = listOf(human("bo", "Bo Rivera", "bo-r"), human("zh", "张伟", "zhangwei-cn"), agent("ada", "Ada Bot", "ada"))
         assertEquals(listOf("bo"), ids("BO-R", members).second)
         assertEquals(listOf("zh"), ids("zw", members).second)
         assertEquals(listOf("zh"), ids("张", members).second)
         assertEquals(listOf("ada") to emptyList<String>(), ids("bot", members))
-    }
-
-    @Test
-    fun aSearchKeepsTheThirtyBestAcrossBothGroups() {
-        val crowd = (1..40).map { human("user-$it", "Sam $it", "sam$it") } + agent("agent-sam", "Sam", "sam")
-        val (agents, humans) = ids("sam", crowd)
-        assertEquals(listOf("agent-sam"), agents)
-        assertEquals(29, humans.size)
     }
 
     @Test

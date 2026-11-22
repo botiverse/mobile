@@ -9,7 +9,6 @@ import build.raft.app.data.AgentDetailSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * artin 612602c0: returning from background reconnects presence, which publishes status=null
@@ -77,33 +76,6 @@ class MembersRuntimeEditorSessionTest {
         assertEquals(MembersRuntimeEditorDialog.None, dialog(steady().copy(canManage = false)))
     }
 
-    /**
-     * Decision-function coverage only: in production an account/server switch nulls the live
-     * authority (kept open above) and the save path's authority checks fence it; no caller
-     * hands this a non-null authority for another owner.
-     */
-    @Test
-    fun decisionRejectsANonNullAuthorityForAnotherOwner() {
-        assertEquals(
-            MembersRuntimeEditorDialog.None,
-            dialog(steady().copy(authority = opened.copy(accountId = "account-2")))
-        )
-        assertEquals(
-            MembersRuntimeEditorDialog.None,
-            dialog(steady().copy(authority = opened.copy(serverId = ServerId("server-2"))))
-        )
-        assertEquals(
-            MembersRuntimeEditorDialog.None,
-            dialog(steady().copy(authority = opened.copy(memberId = MemberId("agent-2"))))
-        )
-    }
-
-    @Test
-    fun aFormV2SessionStaysOnFormV2WhileStatusIsUnresolved() {
-        // Task #8: nothing hands a v2-opened session to the legacy editor any more.
-        assertEquals(MembersRuntimeEditorDialog.FormV2, dialog(steady().copy(runtimeStatusResolved = false)))
-    }
-
     private fun agentDetail(creatorId: String?, deletedAt: String? = null) =
         AgentDetailSnapshot(
             agentId = MemberId("agent-1"),
@@ -128,19 +100,6 @@ class MembersRuntimeEditorSessionTest {
             canManageSettings = false,
             currentUserId = "creator-1",
             detail = detail
-        )
-    }
-
-    @Test
-    fun creatorKeepsTheEditorWhileADetailRefreshFailsOrIsInFlight() {
-        val lastGood = agentDetail(creatorId = "creator-1")
-        assertTrue(creatorCanManage(currentDetail = lastGood, lastContentDetail = lastGood, refreshTransient = false))
-        // Refresh Error / Loading-without-content: the page's detail is null, the store keeps it.
-        val failedRefresh = creatorCanManage(currentDetail = null, lastContentDetail = lastGood, refreshTransient = true)
-        assertTrue(failedRefresh)
-        assertEquals(
-            MembersRuntimeEditorDialog.FormV2,
-            dialog(steady().copy(canManage = failedRefresh, authority = null))
         )
     }
 

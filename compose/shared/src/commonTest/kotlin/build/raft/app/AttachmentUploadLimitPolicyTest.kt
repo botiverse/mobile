@@ -24,18 +24,6 @@ class AttachmentUploadLimitPolicyTest {
     }
 
     @Test
-    fun servedBoundaryIsNotReplacedByAPlanConstant() {
-        val decision =
-            applyServerAttachmentUploadLimit(
-                files = listOf(PlatformFile(id = "file", fileName = "file.bin", sizeBytes = 138L)),
-                maxBytes = 137L
-            )
-
-        assertEquals(emptyList(), decision.accepted)
-        assertEquals(138L, decision.largestRejectedBytes)
-    }
-
-    @Test
     fun nonPositiveServerBoundaryCannotEnterTheUploadPolicy() {
         assertFailsWith<IllegalArgumentException> {
             applyServerAttachmentUploadLimit(

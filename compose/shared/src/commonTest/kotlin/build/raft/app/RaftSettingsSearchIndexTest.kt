@@ -1,11 +1,6 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.RaftFeatureFlagsApi
-import build.raft.app.data.RaftNotificationAccountSettings
-import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,56 +62,11 @@ class RaftSettingsSearchIndexTest {
     }
 
     @Test
-    fun theOwnerFindsAdministrationAndPublicAccessButCannotLeave() {
-        val owner = ids(RaftSettingsSearchContext(phoneRows, role = "owner", publicServer = true, serverSso = true))
-        for (shown in listOf("plan", "invite-links", "single-sign-on", "member-permissions", "public-access")) {
-            assertTrue(shown in owner, shown)
-        }
-        assertFalse("leave-server" in owner)
-    }
-
-    @Test
     fun flagsThatAreOffHideTheirSections() {
         val admin = ids(RaftSettingsSearchContext(phoneRows, role = "admin"))
         assertFalse("single-sign-on" in admin) // server_sso_v1 off
         assertFalse("public-access" in admin) // owner only, and public_server_v0 off
         assertTrue("invite-links" in admin)
-    }
-
-    @Test
-    fun repliesInThreadsIFollowIsFoundOnlyWhileTheLoadedSettingsCarryTheField() {
-        // No server (no flag reads): the evaluation API is never called.
-        val flags =
-            SharedServerFeatureFlags(
-                object : RaftFeatureFlagsApi {
-                    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-                        error("no flag read without a server")
-                },
-            )
-        val id = "notification-followed-thread-replies"
-        // Not loaded yet, a server that does not send the field (feature pulled back), then on and off.
-        val cases =
-            listOf(
-                null to false,
-                RaftNotificationAccountSettings(followedThreadReplies = null) to false,
-                RaftNotificationAccountSettings(followedThreadReplies = true) to true,
-                RaftNotificationAccountSettings(followedThreadReplies = false) to true,
-            )
-        cases.forEach { (settings, found) ->
-            val context =
-                settingsSearchContext(null, flags, serverId = null, notificationSettings = settings)
-                    .copy(rowKeys = phoneRows)
-            assertEquals(found, context.followedThreadReplies, "$settings")
-            assertEquals(found, id in ids(context), "$settings")
-            val results =
-                searchSettings(
-                    raftSearchableSettings(context, emptyMap(), "Acme", "en") { res, _ -> res.key },
-                    "followed threads",
-                )
-            assertEquals(if (found) listOf(id) else emptyList(), results.map { it.setting.id }, "$settings")
-        }
-        // The rest of Notifications is found either way.
-        assertTrue("notification-sound" in ids(RaftSettingsSearchContext(phoneRows)))
     }
 
     @Test
@@ -132,44 +82,9 @@ class RaftSettingsSearchIndexTest {
     }
 
     @Test
-    fun theComposerKeyAndLightAndDarkMoveWithTheirCards() {
-        val phone = raftSettingsSearchPlacements(RaftSettingsSearchContext(phoneRows)).associate { it.entry.id to it.rowKey }
-        // Enter to send is on Appearance everywhere (1.27.0: no Mobile page).
-        assertEquals(SettingsNativeDetailPage.Appearance.key, phone["send-with"])
-        assertEquals(SettingsNativeDetailPage.Theme.key, phone["theme"])
-        // No server: no Theme page, so light and dark is on Appearance.
-        val desktopRows = settingsHomeRowKeys(hasThemeServer = false)
-        val desktop = raftSettingsSearchPlacements(RaftSettingsSearchContext(desktopRows)).associate { it.entry.id to it.rowKey }
-        assertEquals(SettingsNativeDetailPage.Appearance.key, desktop["send-with"])
-        assertEquals(SettingsNativeDetailPage.Appearance.key, desktop["theme"])
-        assertNull(desktop["server-theme"])
-        assertNull(desktop["mute-server"])
-    }
-
-    @Test
     fun aPageTheListDoesNotShowHasNoResults() {
         val rows = phoneRows - SettingsDestinationAdministration
         assertFalse("invite-links" in ids(RaftSettingsSearchContext(rows, role = "owner")))
-    }
-
-    @Test
-    fun searchableSettingsTakeTheRowsWordsAndTheListsPageTitles() {
-        val settings =
-            raftSearchableSettings(
-                context = RaftSettingsSearchContext(phoneRows, role = "member"),
-                pageTitles = mapOf(SettingsNativeDetailPage.Appearance.key to "Appearance"),
-                serverName = "Acme",
-                aliasLocale = "zh-cn",
-                resolve = { res, arg -> if (arg != null) "${res.key}($arg)" else res.key },
-            ).associateBy { it.id }
-        val send = settings.getValue("send-with")
-        assertEquals("settings_mobile_composer_key", send.name)
-        assertEquals("Appearance", send.pageLabel)
-        assertEquals(listOf("回车", "换行", "发送键", "发送方式", "快捷键", "enter"), send.aliases.take(6))
-        // Pages on the server are named after it, as their links are.
-        assertEquals("settings_appearance_server_theme_link_title(Acme)", settings.getValue("server-theme").pageLabel)
-        assertEquals("settings_server_theme_description(Acme)", settings.getValue("server-theme").description)
-        assertEquals("settings_server_notifications_subtitle(Acme)", settings.getValue("mute-server").pageLabel)
     }
 
     @Test

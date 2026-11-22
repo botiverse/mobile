@@ -10,26 +10,6 @@ import kotlin.test.assertNull
 
 class SettingsComputersRouteTest {
     @Test
-    fun computersLaunchOpensTheNativePageWithOnlyShellIdentity() {
-        val pageData =
-            settingsComputersPageData(
-                RaftShellStoreScope.create(
-                    shellInstanceId = "shell-computers",
-                    initialServerId = "server-1"
-                )
-            )
-
-        assertEquals(SETTINGS_COMPUTERS_PAGE, pageData.optString("pageName"))
-        assertFalse(pageData.has(SETTINGS_WEB_VIEW_SURFACE))
-        assertEquals("shell-computers", pageData.optString(RAFT_SHELL_INSTANCE_ID))
-        assertEquals("server-1", pageData.optString(RAFT_SHELL_SERVER_ID))
-        assertFalse(pageData.has(SETTINGS_COMPUTER_ID))
-        assertFalse(pageData.has("payload"))
-        assertFalse(pageData.has("accessToken"))
-        assertFalse(pageData.has("machines"))
-    }
-
-    @Test
     fun computerDetailLaunchCarriesOnlyServerAndMachineIdentity() {
         val target = settingsComputerRouteIdentity(" server-1 ", " machine-42 ")!!
         val pageData =

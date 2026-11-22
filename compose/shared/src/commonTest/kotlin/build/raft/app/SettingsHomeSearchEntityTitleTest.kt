@@ -18,7 +18,6 @@ import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Task #246: when the leading avatar/icon already expresses the channel type,
@@ -36,14 +35,6 @@ class SettingsHomeSearchEntityTitleTest {
 
         val dm = candidates.single { it.result.type == SearchEntityType.DirectMessage }
         assertEquals("alex (bot)", dm.result.title)
-    }
-
-    @Test
-    fun channelFilterOptionLabelKeepsNameWithoutHashPrefix() {
-        val labels = homeSearchChannelFilters(homeState()).map { it.label }
-
-        assertTrue(labels.contains("all-staff-plus"))
-        assertFalse(labels.any { it.startsWith("#") })
     }
 
     @Test

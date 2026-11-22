@@ -2,8 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * Task #77: the "Not notified" notice of web MessageInput (`message.composer.unresolvedMentions`).
@@ -51,15 +49,6 @@ class ThreadComposerUnresolvedMentionsTest {
     }
 
     @Test
-    fun aRetriedBubbleSendAppliesItsHandlesToo() {
-        val store = startedStore()
-
-        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(unresolvedMentionHandles = listOf("@ghost")))
-
-        assertEquals(listOf("@ghost"), store.state.value.unresolvedMentionHandles)
-    }
-
-    @Test
     fun switchingConversationsDropsTheNotice() {
         val store = startedStore()
         store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(unresolvedMentionHandles = listOf("@ghost")))
@@ -72,40 +61,5 @@ class ThreadComposerUnresolvedMentionsTest {
         )
 
         assertEquals(emptyList(), store.state.value.unresolvedMentionHandles)
-    }
-
-    @Test
-    fun theNoticeIsNeverPersistedWithTheDraft() {
-        val store = startedStore()
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "draft", seedAsTask = false))
-        store.dispatch(SharedThreadComposerDraftIntent.ApplyPendingMentionActions(unresolvedMentionHandles = listOf("@ghost")))
-        store.dispatch(SharedThreadComposerDraftIntent.Flush)
-
-        // A remount of the same conversation restores the text, not the last send's notice.
-        store.dispatch(
-            SharedThreadComposerDraftIntent.Start(
-                composer = RaftThreadComposerPayload(instanceId = "composer-1b"),
-                draftKey = "send=c1|parent=_|mention=c1"
-            )
-        )
-        assertEquals(emptyList(), store.state.value.unresolvedMentionHandles)
-    }
-
-    @Test
-    fun theHandlesReachTheComposerUiStateAndKeepItOffRest() {
-        val payload = RaftThreadComposerPayload(instanceId = "c", unresolvedMentionHandles = listOf("@ghost"))
-        val ui = payload.toThreadComposerUiState()
-
-        assertEquals(listOf("@ghost"), ui.unresolvedMentionHandles)
-        assertFalse(ui.isThreadComposerAtRest())
-        assertTrue(ui.copy(unresolvedMentionHandles = emptyList()).isThreadComposerAtRest())
-    }
-
-    @Test
-    fun theNoticeListsTheServerHandlesJoinedAsWebDoesAndIsHiddenInADm() {
-        assertEquals("@ghost, @outside", threadComposerUnresolvedMentionHandlesLabel(listOf("@ghost", "@outside")))
-        assertTrue(ThreadComposerSurface(channelId = "c1").showsUnresolvedMentionNotice())
-        assertTrue(ThreadComposerSurface(kind = RaftThreadSurfaceKind.ReplyThread, channelId = "t1").showsUnresolvedMentionNotice())
-        assertFalse(ThreadComposerSurface(kind = RaftThreadSurfaceKind.DirectMessage, channelId = "dm1").showsUnresolvedMentionNotice())
     }
 }

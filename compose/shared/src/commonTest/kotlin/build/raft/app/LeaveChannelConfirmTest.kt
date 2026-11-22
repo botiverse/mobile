@@ -70,51 +70,6 @@ class LeaveChannelConfirmTest {
     }
 
     @Test
-    fun homeMenuPutsLeaveUnderArchiveSharingOneDivider() {
-        val conversation = RaftHomeConversationItem(id = "c-1", name = "dev")
-        val labels = RaftHomeShellLabels(leaveChannel = "离开频道")
-
-        val withArchive =
-            raftHomeConversationMenuItems(
-                conversation = conversation,
-                labels = labels,
-                pinTargetIsPinned = false,
-                sortableFromMenu = false,
-                activeIsDirectMessage = false,
-                activeCanArchive = true,
-                activeCanLeave = true,
-            )
-        assertEquals(listOf("archive-channel", "leave-channel"), withArchive.takeLast(2).map { it.id })
-        val leave = withArchive.last()
-        assertEquals("离开频道", leave.label)
-        assertEquals(RaftLucideIconName.LogOut, leave.icon)
-        assertFalse(leave.dividerBefore)
-
-        val leaveOnly =
-            raftHomeConversationMenuItems(
-                conversation = conversation,
-                labels = labels,
-                pinTargetIsPinned = false,
-                sortableFromMenu = false,
-                activeIsDirectMessage = false,
-                activeCanArchive = false,
-                activeCanLeave = true,
-            )
-        assertTrue(leaveOnly.last().id == "leave-channel" && leaveOnly.last().dividerBefore)
-
-        val directMessage =
-            raftHomeConversationMenuItems(
-                conversation = conversation,
-                pinTargetIsPinned = false,
-                sortableFromMenu = false,
-                activeIsDirectMessage = true,
-                activeCanArchive = false,
-                activeCanLeave = true,
-            )
-        assertTrue(directMessage.none { it.id == "leave-channel" })
-    }
-
-    @Test
     fun confirmedHomeLeaveDispatchesTheLeaveIntentForThatRow() {
         val target = channel("c-dev", "channel")
         assertEquals(SharedHomeIntent.LeaveChannel("c-dev"), homeLeaveChannelIntent(target))

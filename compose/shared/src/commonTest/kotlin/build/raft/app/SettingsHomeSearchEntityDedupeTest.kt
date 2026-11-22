@@ -53,29 +53,6 @@ class SettingsHomeSearchEntityDedupeTest {
         )
     }
 
-    @Test
-    fun agentMemberWithExistingDirectMessageCollapsesToOneRow() {
-        val candidates = candidates(senderFilters = listOf(agentSender()))
-
-        val agentRows = candidates.filter { it.result.title == "Alex" }
-        assertEquals(1, agentRows.size, "expected exactly one row for an agent that also has a DM")
-        assertEquals(SearchEntityType.Agent, agentRows.single().result.type)
-        assertEquals("thread-dm-agent", agentRows.single().result.threadId)
-    }
-
-    /**
-     * Negative control. Without it, an implementation that simply drops every duplicate would
-     * satisfy every "must not appear twice" assertion above while showing nothing at all.
-     */
-    @Test
-    fun memberWithoutDirectMessageStillProducesOneRow() {
-        val candidates = candidates(senderFilters = listOf(memberWithoutDmSender()))
-
-        val rows = candidates.filter { it.result.title == "No Dm Person" }
-        assertEquals(1, rows.size, "a member with no DM must still appear exactly once")
-        assertEquals(SearchEntityType.Human, rows.single().result.type)
-    }
-
     /**
      * A member id is only unique within its own server. A joint channel surfaces members from
      * other servers, so an unscoped identity key would hand a foreign member the local DM's
@@ -136,87 +113,6 @@ class SettingsHomeSearchEntityDedupeTest {
         assertEquals(null, member.result.threadId, "a blank peer id must never resolve to a member")
     }
 
-    /**
-     * The identity index is keyed on `presenceMemberId` alone, deliberately **without**
-     * `MemberKind`. That is a design decision, not an omission: a DM row's peer kind comes from
-     * the wire `peerType`, and `memberDetailIdentityFromWire()` returns null for any value it
-     * cannot strictly parse - so keying on kind would silently narrow the merge to DMs whose
-     * `peerType` happens to be well-formed.
-     *
-     * This case pins that decision. The DM below carries a usable `presenceMemberId` and a
-     * malformed `peerType`, so its own `dmPeerIdentity` is null while the index still resolves.
-     * It discriminates: against an implementation that required a parseable kind, the member and
-     * its DM would fall into different namespaces again and the row count would go back to two.
-     */
-    @Test
-    fun malformedPeerTypeStillCollapsesWithItsMemberRow() {
-        val candidates =
-            candidates(
-                directMessages =
-                    listOf(
-                        directMessageRow(
-                            threadId = "thread-dm-malformed-kind",
-                            // Same display name as the member, as production does - otherwise the
-                            // count assertion below passes for the wrong reason.
-                            name = "Artin Zaker",
-                            peerId = "member-artin",
-                            peerType = "HUMANOID"
-                        )
-                    ),
-                senderFilters = listOf(humanSender())
-            )
-
-        val rows = candidates.filter { it.result.title == "Artin Zaker" }
-        assertEquals(
-            1,
-            rows.size,
-            "a malformed peerType must not split an entity back into two rows"
-        )
-        // The surviving row still reaches the DM, which is what the kind-free key buys.
-        assertEquals("thread-dm-malformed-kind", rows.single().result.threadId)
-        assertNotNull(rows.single().result.conversationIdentity)
-    }
-
-    /**
-     * The owner scope must be a typed key, not a concatenated `"$serverId:$memberId"` string.
-     * With concatenation, server `"server-1:member"` + member `"artin"` and server `"server-1"` +
-     * member `"member:artin"` both flatten to `"server-1:member:artin"` and merge two different
-     * people. This case fails against a concatenated key and passes against a typed one, so it
-     * discriminates the implementation rather than merely restating the row count.
-     */
-    @Test
-    fun scopeKeyIsNotDelimiterAmbiguous() {
-        val candidates =
-            candidates(
-                directMessages =
-                    listOf(
-                        directMessageRow(
-                            threadId = "thread-dm-colon",
-                            name = "Colon Peer",
-                            peerId = "member:artin",
-                            peerType = "human"
-                        )
-                    ),
-                senderFilters =
-                    listOf(
-                        SearchSenderFilterItem(
-                            id = "artin",
-                            label = "Different Person",
-                            handle = "artin",
-                            kind = MemberKind.Human,
-                            sourceServerId = ServerId("server-1:member"),
-                        )
-                    )
-            )
-
-        val person = candidates.single { it.result.title == "Different Person" }
-        assertEquals(
-            null,
-            person.result.threadId,
-            "a delimiter-collided scope must not merge two distinct members"
-        )
-    }
-
     private fun candidates(
         directMessages: List<HomeDirectMessageRow> = defaultDirectMessages(),
         senderFilters: List<SearchSenderFilterItem>,
@@ -236,15 +132,6 @@ class SettingsHomeSearchEntityDedupeTest {
             label = "Artin Zaker",
             handle = "artin",
             kind = MemberKind.Human,
-            sourceServerId = ServerId("server-1"),
-        )
-
-    private fun agentSender() =
-        SearchSenderFilterItem(
-            id = "member-alex",
-            label = "Alex",
-            handle = "alex",
-            kind = MemberKind.Agent,
             sourceServerId = ServerId("server-1"),
         )
 

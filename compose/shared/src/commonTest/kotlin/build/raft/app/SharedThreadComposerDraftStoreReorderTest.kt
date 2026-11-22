@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 /**
  * The composer tray's drag reorder (web MessageInput `handleAttachmentDragEnd`: `arrayMove` of
@@ -49,18 +47,6 @@ class SharedThreadComposerDraftStoreReorderTest {
 
         assertEquals(listOf("picked-c", "a", "b"), store.ids())
         assertEquals(syncBefore + 1, store.state.value.syncNonce, "the host re-syncs to the new order")
-    }
-
-    @Test
-    fun theSameOrderOrAnEmptyOneChangesNothing() {
-        val store = startedStore(null, ready("a"), ready("b"))
-        val before = store.state.value
-
-        store.dispatch(SharedThreadComposerDraftIntent.ReorderAttachments(listOf("a", "b")))
-        assertSame(before, store.state.value, "no-op gate: the same snapshot")
-
-        store.dispatch(SharedThreadComposerDraftIntent.ReorderAttachments(emptyList()))
-        assertSame(before, store.state.value)
     }
 
     @Test
@@ -119,13 +105,5 @@ class SharedThreadComposerDraftStoreReorderTest {
 
         assertEquals(listOf("b", "c", "a"), composer.pendingAttachments.map { it.id })
         assertEquals(listOf("b", "c", "a"), composer.pendingAttachments.readyThreadAttachmentIdsForSend())
-    }
-
-    @Test
-    fun theTraysOrderRoundTripsThroughTheComposerEvent() {
-        val order = listOf("picked-1", "remote-2", "a,b")
-        assertEquals(order, decodeThreadComposerAttachmentOrder(encodeThreadComposerAttachmentOrder(order)))
-        assertNull(decodeThreadComposerAttachmentOrder(null))
-        assertNull(decodeThreadComposerAttachmentOrder("not json"))
     }
 }

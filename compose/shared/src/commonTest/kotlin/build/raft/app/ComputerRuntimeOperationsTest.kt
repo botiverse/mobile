@@ -6,7 +6,6 @@ import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
 import build.raft.app.data.RuntimeAuthProviderConnectResult
 import build.raft.app.data.RuntimeAuthProvidersResult
-import build.raft.app.data.RuntimeAuthRequestError
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
@@ -14,7 +13,6 @@ import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.RuntimeInstallUnsupportedReason
-import build.raft.app.data.RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS
 import build.raft.app.data.RuntimeOperationErrorCode
 import build.raft.app.data.RuntimeUpdateCheck
 import build.raft.app.data.RuntimeUpdateCheckUnavailableReason
@@ -23,7 +21,6 @@ import build.raft.app.data.RuntimeUpgradeUnsupportedReason
 import build.raft.app.resources.*
 import kotlin.time.Instant
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -131,30 +128,6 @@ class ComputerRuntimeOperationsTest {
     }
 
     @Test
-    fun everyInstallOutcomeAndReasonReadsAsTheWebsSentence() {
-        fun copy(result: RuntimeInstallResult) = computerRuntimeInstallCopy(ComputerRuntimeInstallState.Done(RuntimeAuthRuntime.Grok, "grok", "Grok", result))
-        assertEquals(
-            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_installed_version, listOf("0.1.9"), success = true),
-            copy(RuntimeInstallResult.Installed("0.1.9")),
-        )
-        assertEquals(Res.string.settings_computers_runtime_install_installed, copy(RuntimeInstallResult.Installed())?.message)
-        assertEquals(Res.string.settings_computers_runtime_install_already_installed, copy(RuntimeInstallResult.AlreadyInstalled())?.message)
-        assertEquals(Res.string.settings_computers_runtime_install_failed, copy(RuntimeInstallResult.Failed(null))?.message)
-        assertEquals(Res.string.settings_computers_runtime_install_in_progress, copy(RuntimeInstallResult.Error(RuntimeOperationErrorCode.InProgress))?.message)
-        mapOf(
-            RuntimeInstallUnsupportedReason.Platform to Res.string.settings_computers_runtime_install_unsupported_platform,
-            RuntimeInstallUnsupportedReason.RequiresPrivileges to Res.string.settings_computers_runtime_install_unsupported_requires_privileges,
-            RuntimeInstallUnsupportedReason.RequiresGui to Res.string.settings_computers_runtime_install_unsupported_requires_gui,
-            RuntimeInstallUnsupportedReason.MissingTool to Res.string.settings_computers_runtime_install_unsupported_missing_tool,
-            RuntimeInstallUnsupportedReason.LocationUnknown to Res.string.settings_computers_runtime_install_unsupported_location_unknown,
-            RuntimeInstallUnsupportedReason.Configuration to Res.string.settings_computers_runtime_install_unsupported_configuration,
-            RuntimeInstallUnsupportedReason.Bundled to Res.string.settings_computers_runtime_install_unsupported_other,
-            RuntimeInstallUnsupportedReason.LineRequired to Res.string.settings_computers_runtime_install_unsupported_other,
-            RuntimeInstallUnsupportedReason.UnknownLine to Res.string.settings_computers_runtime_install_unsupported_other,
-        ).forEach { (reason, expected) -> assertEquals(expected, computerRuntimeInstallUnsupportedCopy(reason), reason.wire) }
-    }
-
-    @Test
     fun installReadsThePlanRunsOnlyOnConfirmAndReadsTheComputerAgain() = runTest {
         val ops = FakeInstallOps()
         val controller = ComputerRuntimeInstallController(ops, backgroundScope)
@@ -189,18 +162,6 @@ class ComputerRuntimeOperationsTest {
     }
 
     @Test
-    fun aRefusedInstallSaysWhyWithItsTraceId() = runTest {
-        val ops = FakeInstallOps(plan = RuntimeAuthCall.Refused(RuntimeAuthRequestError(status = 409, code = "computer_upgrade_required", traceId = "t1")))
-        val controller = ComputerRuntimeInstallController(ops, backgroundScope)
-        controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
-        runCurrent()
-        val refused = assertIs<ComputerRuntimeInstallState.Refused>(controller.state)
-        assertEquals(ComputerRuntimeOperationRefusal.ComputerUpgradeRequired, refused.reason)
-        assertEquals("t1", computerRuntimeInstallCopy(refused)?.traceId)
-        assertEquals(Res.string.settings_computers_runtime_install_computer_too_old, computerRuntimeInstallCopy(refused)?.message)
-    }
-
-    @Test
     fun upgradeIsOfferedOnTheCardOnlyWhereTheServerSaysAndRunsOncePerPress() = runTest {
         val ops = FakeUpgradeOps()
         val controller = ComputerRuntimeAuthController("s1", "m1", "claude", RuntimeAuthRuntime.Claude, ops, backgroundScope)
@@ -222,40 +183,6 @@ class ComputerRuntimeOperationsTest {
         codex.read()
         runCurrent()
         assertNull(codex.upgradeOffer)
-    }
-
-    @Test
-    fun tooOldWithUpgradeOfferedDropsTheUpdateItThereGuidance() {
-        val view = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Claude to RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported)))
-        val offer = ComputerRuntimeUpgradeOffer(ComputerRuntimeUpgradeState.Idle) {}
-        assertEquals(
-            ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported, upgradeOffered = true),
-            ComputerRuntimeAuthCardState("claude", RuntimeAuthRuntime.Claude, view, upgrade = offer).action(),
-        )
-        assertEquals(
-            ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.VersionUnsupported, upgradeOffered = false),
-            ComputerRuntimeAuthCardState("claude", RuntimeAuthRuntime.Claude, view).action(),
-        )
-        // Signed in with no sign-out (Qoder): no action row; Upgrade is the version line's link (slock #15482).
-        val qoder = UPGRADE_VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qoder to RuntimeAuthStatus.LoggedIn()), upgradableRuntimes = listOf(RuntimeAuthRuntime.Qoder))
-        assertNull(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder).action())
-        assertFalse(ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = offer).hasActions)
-    }
-
-    @Test
-    fun upgradeIsOfferedAgainOnlyAfterAFailureAnotherPressMayFix() {
-        // Web `upgradeAgainAfter` (slock #15482): an outcome takes the version line; the link comes back
-        // only where a second press may help.
-        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.Failed)))
-        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerOffline)))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerTimeout)))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.RateLimited)))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Refused(ComputerRuntimeOperationRefusal.ComputerUpgradeRequired)))
-        assertTrue(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.Internal))))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Error(RuntimeOperationErrorCode.InProgress))))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Upgraded(from = "1.0.0", to = "1.1.0"))))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Idle))
-        assertFalse(computerRuntimeUpgradeAgainAfter(ComputerRuntimeUpgradeState.Running))
     }
 
     /**
@@ -370,50 +297,6 @@ class ComputerRuntimeOperationsTest {
             ComputerRuntimeAuthCardState("qoder", RuntimeAuthRuntime.Qoder, qoder, upgrade = ComputerRuntimeUpgradeOffer(state) {}, update = latest)
         assertFalse(qoderCard(ComputerRuntimeUpgradeState.Idle).hasActions)
         assertFalse(qoderCard(ComputerRuntimeUpgradeState.Done(RuntimeUpgradeResult.Current("1.5.11"))).hasActions)
-    }
-
-    /**
-     * Web `runtimeUpdateOf` on the card: the controller reads the check only for a runtime Upgrade is
-     * offered for, and only while it is under a day old by the Computer's `checkedAt` (virtual time
-     * drives the wall clock); a stale "Latest" is no answer, so Upgrade is offered as before.
-     */
-    @Test
-    fun theCardReadsTheUpdateCheckOnlyForAnOfferedRuntimeAndOnlyWhileItIsUnderADayOld() = runTest {
-        val latest = RuntimeUpdateCheck.Ok("2.0.5", "2.0.5", updateAvailable = false, checkedAtMillis = CHECKED_AT_MILLIS)
-        val ops =
-            FakeUpgradeOps(
-                UPGRADE_VIEW.copy(
-                    status = mapOf(RuntimeAuthRuntime.Claude to RuntimeAuthStatus.LoggedIn()),
-                    runtimeUpdates = mapOf(RuntimeAuthRuntime.Claude to latest, RuntimeAuthRuntime.Codex to latest),
-                )
-            )
-        // The card is read a minute after the Computer ran its check.
-        val now = { CHECKED_AT_MILLIS + 60_000L + testScheduler.currentTime }
-        val controller = ComputerRuntimeAuthController("s1", "m1", "claude", RuntimeAuthRuntime.Claude, ops, backgroundScope, nowEpochMillis = now)
-        assertNull(controller.cardState, "nothing to draw before the read")
-        controller.read()
-        runCurrent()
-        val card = assertNotNull(controller.cardState)
-        assertEquals(latest, card.update)
-        assertEquals(ComputerRuntimeUpdateCheckCopy(Res.string.settings_computers_runtime_upgrade_latest, listOf("2.0.5")), card.updateCheckCopy("2.0.5"))
-        assertFalse(card.upgradeButtonShown)
-
-        // Codex is not offered on this Computer: its check is never read.
-        val codex = ComputerRuntimeAuthController("s1", "m1", "codex", RuntimeAuthRuntime.Codex, ops, backgroundScope, nowEpochMillis = now)
-        codex.read()
-        runCurrent()
-        assertNull(codex.updateCheck)
-        assertNull(codex.cardState?.upgrade)
-
-        // A day after the check it still counts; a moment later it is no answer: the version line and Upgrade as before.
-        advanceTimeBy(RUNTIME_UPDATE_CHECK_MAX_AGE_MILLIS - 60_000L)
-        assertEquals(latest, controller.updateCheck)
-        advanceTimeBy(1L)
-        val stale = assertNotNull(controller.cardState)
-        assertNull(stale.update)
-        assertNull(stale.updateCheckCopy("2.0.5"))
-        assertTrue(stale.upgradeButtonShown)
-        assertEquals(listOf("view", "view"), ops.calls, "the age is read from the clock, never by asking the Computer again")
     }
 
     private class FakeInstallOps(

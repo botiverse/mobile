@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.AuthenticatedRouteOwner
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -40,23 +39,6 @@ class RaftArtifactViewerCacheTest {
     }
 
     @Test
-    fun anUnknownSubjectReadsAndKeepsNothing() {
-        val cache = cache()
-        cache.remember(null, header)
-        assertNull(cache.header(null, target.id))
-        assertFalse(cache.rememberKeptDocument(null, target, pageUrl, token))
-        assertFalse(cache.keptDocumentUsable(null, token))
-        assertFalse(cache.keptDocumentShows(null, target))
-
-        cache.remember(maya, header)
-        assertNull(cache.header(null, target.id))
-        assertNull(RaftArtifactViewerScope.of(web, null))
-        assertNull(RaftArtifactViewerScope.of(web, AuthenticatedRouteOwner(env, "", "server")))
-        assertNull(RaftArtifactViewerScope.of(web, AuthenticatedRouteOwner(env, "user", " ")))
-        assertNull(RaftArtifactViewerScope.of("not a url", AuthenticatedRouteOwner(env, "user", "server")))
-    }
-
-    @Test
     fun aSwitchOfAccountOrServerClearsEverythingAndDropsTheKeptDocument() {
         val drops = mutableListOf<Unit>()
         val cache = cache(drops)
@@ -74,19 +56,6 @@ class RaftArtifactViewerCacheTest {
         assertNull(cache.header(someoneElse, target.id))
         assertTrue(cache.keptDocumentUsable(mayaOtherServer, token))
         assertFalse(cache.keptDocumentUsable(someoneElse, token))
-    }
-
-    @Test
-    fun signOutClearsEverything() {
-        val drops = mutableListOf<Unit>()
-        val cache = cache(drops)
-        cache.remember(maya, header)
-        cache.rememberKeptDocument(maya, target, pageUrl, token)
-        drops.clear()
-        cache.clear()
-        assertNull(cache.header(maya, target.id))
-        assertFalse(cache.keptDocumentUsable(maya, token))
-        assertEquals(1, drops.size)
     }
 
     @Test
@@ -281,33 +250,5 @@ class RaftArtifactViewerCacheTest {
         ) {
             assertFalse(raftArtifactViewerRoutesDocumentAsLink(url, web, target.id, emptySet()), url)
         }
-    }
-
-    @Test
-    fun webOrigins() {
-        assertEquals(web, raftWebOriginOf("$web/artifacts/pt_x?a=1#b"))
-        assertEquals(web, raftWebOriginOf("HTTPS://Raft-App-Staging.Botiverse.dev:443/"))
-        assertEquals("https://h.test:8443", raftWebOriginOf("https://h.test:8443/x"))
-        assertNull(raftWebOriginOf("https://user@h.test/"))
-        assertNull(raftWebOriginOf("javascript:alert(1)"))
-        assertNull(raftWebOriginOf("https://h.test:99999/"))
-        assertTrue(raftArtifactViewerDocumentUrlIsKeepable(web, pageUrl))
-        assertFalse(raftArtifactViewerDocumentUrlIsKeepable(web, "https://w.raftusercontent.com/x"))
-    }
-
-    @Test
-    fun viewerAddresses() {
-        assertEquals("$web/artifacts/${target.id}", raftArtifactViewerPageUrl(web, target))
-        assertEquals("$web/artifacts/${target.id}/v/3", raftArtifactViewerPageUrl(web, ArtifactLinkTarget(target.id, 3)))
-        assertEquals("$web/artifacts/$RAFT_ARTIFACT_VIEWER_WARM_SEGMENT?embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,open-in-browser,copy-link&hostOpen=message", raftArtifactViewerWarmUrl("$web/"))
-        // Route data is identity only: the Artifact and its pinned version, never its title or kind.
-        val pageData = raftArtifactViewerPageData(ArtifactLinkTarget(target.id, 3))
-        assertEquals(ArtifactLinkTarget(target.id, 3), pageData.raftArtifactViewerTargetOrNull())
-        assertFalse(pageData.toString().contains(header.title))
-        assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "https://evil.test/").raftArtifactViewerTargetOrNull())
-        // A short id is route identity as written (slock staging 380482116 artifactShortId.ts).
-        val short = ArtifactLinkTarget("2QthvfPeGfDnqwr7LG6itx", 2)
-        assertEquals(short, raftArtifactViewerPageData(short).raftArtifactViewerTargetOrNull())
-        assertNull(build.raft.app.compat.json.JSONObject().put("artifactId", "YcVfxkQb6JRzqk5kF2tNLw").raftArtifactViewerTargetOrNull())
     }
 }

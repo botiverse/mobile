@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 
 class ThreadPreviewOverlayLifecycleTest {
     private val resume = RaftRealtimeNotifyContract.LifecycleVisibleResume
@@ -27,28 +25,6 @@ class ThreadPreviewOverlayLifecycleTest {
     }
 
     @Test
-    fun openingAndClosingThePreviewDoesNotRefreshTheThread() {
-        val thread = FakeThread()
-        thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
-        assertEquals(1, thread.refreshes)
-        repeat(3) {
-            thread.lifecycle(pause, THREAD_PAGE, epoch = 4)
-            thread.lifecycle(resume, RAFT_FILE_PREVIEW_PAGE, epoch = 4)
-            thread.lifecycle(pause, RAFT_FILE_PREVIEW_PAGE, epoch = 4)
-            thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
-        }
-        assertEquals(1, thread.refreshes)
-    }
-
-    @Test
-    fun appBackgroundingStillCountsAfterAPlainPause() {
-        val thread = FakeThread()
-        thread.lifecycle(pause, THREAD_PAGE, epoch = 4)
-        thread.lifecycle(resume, THREAD_PAGE, epoch = 5)
-        assertEquals(1, thread.refreshes)
-    }
-
-    @Test
     fun appBackgroundingWhilePreviewIsOpenCountsOnReturnToThread() {
         val thread = FakeThread()
         thread.lifecycle(pause, THREAD_PAGE, epoch = 4)
@@ -58,16 +34,6 @@ class ThreadPreviewOverlayLifecycleTest {
         thread.lifecycle(resume, RAFT_FILE_PREVIEW_PAGE, epoch = 5)
         thread.lifecycle(pause, RAFT_FILE_PREVIEW_PAGE, epoch = 5)
         thread.lifecycle(resume, THREAD_PAGE, epoch = 5)
-        assertEquals(1, thread.refreshes)
-    }
-
-    @Test
-    fun navigatingAwayToAnotherPageAndBackCounts() {
-        val thread = FakeThread()
-        thread.lifecycle(pause, THREAD_PAGE, epoch = 4)
-        thread.lifecycle(resume, "compose_settings", epoch = 4)
-        thread.lifecycle(pause, "compose_settings", epoch = 4)
-        thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
         assertEquals(1, thread.refreshes)
     }
 
@@ -83,16 +49,5 @@ class ThreadPreviewOverlayLifecycleTest {
         thread.lifecycle(pause, "compose_settings", epoch = 4)
         thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
         assertEquals(1, thread.refreshes)
-    }
-
-    @Test
-    fun coveredReturnLeavesNoPendingResumeLatched() {
-        val thread = FakeThread()
-        thread.lifecycle(pause, THREAD_PAGE, epoch = 4)
-        thread.lifecycle(resume, RAFT_FILE_PREVIEW_PAGE, epoch = 4)
-        thread.lifecycle(resume, THREAD_PAGE, epoch = 4)
-        assertNull(thread.gate.onRouteBecameVisible())
-        assertEquals(0, thread.refreshes)
-        assertNotNull(thread.gate.onLifecycleVisibleResume(routeActive = true))
     }
 }

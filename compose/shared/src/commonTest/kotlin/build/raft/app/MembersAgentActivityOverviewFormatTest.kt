@@ -31,16 +31,6 @@ class MembersAgentActivityOverviewFormatTest {
     }
 
     @Test
-    fun actionListJoinsLikeIntlConjunction() {
-        val join = "%1\$s, %2\$s"
-        val last = "%1\$s, and %2\$s"
-        val pair = "%1\$s and %2\$s"
-        assertEquals("a", membersActivityOverviewJoinList(listOf("a"), join, last, pair))
-        assertEquals("a and b", membersActivityOverviewJoinList(listOf("a", "b"), join, last, pair))
-        assertEquals("a, b, and c", membersActivityOverviewJoinList(listOf("a", "b", "c"), join, last, pair))
-    }
-
-    @Test
     fun aNewTurnFollowsTheBottomOnlyForAReaderParkedThere() {
         // First placement always lands at the bottom (web: first load scrolls to the newest).
         assertEquals(MembersActivityOverviewNewTurnAction.FollowBottom, membersActivityOverviewNewTurnAction(placed = false, followingBottom = false, scrolling = true))

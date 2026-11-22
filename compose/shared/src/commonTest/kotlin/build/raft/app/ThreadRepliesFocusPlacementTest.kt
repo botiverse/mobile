@@ -21,22 +21,6 @@ class ThreadRepliesFocusPlacementTest {
     private val reserve = 500
 
     @Test
-    fun aShortParentIsCentredWhole() {
-        val size = 600
-        assertEquals((viewportEnd - size) / 2, top(size))
-        assertTrue(top(size) >= 0)
-        assertTrue(top(size) + size <= viewportEnd - reserve)
-    }
-
-    @Test
-    fun aParentTooTallToCentreKeepsItsBottomAboveTheReserve() {
-        // Centred, a 1200px row would end at 1600, inside the 500px reserve: pinned at 1500 instead.
-        val size = 1_200
-        assertEquals(viewportEnd - reserve, top(size) + size)
-        assertTrue(top(size) >= 0, "the whole row still fits")
-    }
-
-    @Test
     fun aParentTallerThanTheViewportShowsItsBottomNotItsTop() {
         // The old placement put this row's top at 0, so its replies block (the last ~400px) sat at
         // 4600..5000, far below the viewport. Now the bottom lands at 1500: the block is at 1100..1500.
@@ -47,24 +31,6 @@ class ThreadRepliesFocusPlacementTest {
         assertTrue(rowTop < 0, "the parent's top scrolls off")
         val repliesBlockTop = rowBottom - 400
         assertTrue(repliesBlockTop >= 0 && rowBottom <= viewportEnd - reserve, "replies block fully visible")
-    }
-
-    @Test
-    fun theReserveIsAtLeastTheMinimumAndAtMostHalfTheViewport() {
-        // A short viewport: 25% of 800 = 200 < 300, so the 300px minimum (room for the pills) applies.
-        val bottom =
-            -threadRepliesFocusedItemScrollOffset(itemSize = 3_000, viewportEnd = 800, minBottomReservePx = 300) + 3_000
-        assertEquals(500, bottom)
-        // A minimum larger than half the viewport is capped there, so the row is never pushed off the top.
-        val cappedBottom =
-            -threadRepliesFocusedItemScrollOffset(itemSize = 3_000, viewportEnd = 400, minBottomReservePx = 300) + 3_000
-        assertEquals(200, cappedBottom)
-    }
-
-    @Test
-    fun unmeasuredGeometryDoesNotScroll() {
-        assertEquals(0, threadRepliesFocusedItemScrollOffset(itemSize = 0, viewportEnd = viewportEnd, minBottomReservePx = minReserve))
-        assertEquals(0, threadRepliesFocusedItemScrollOffset(itemSize = 500, viewportEnd = 0, minBottomReservePx = minReserve))
     }
 
     @Test

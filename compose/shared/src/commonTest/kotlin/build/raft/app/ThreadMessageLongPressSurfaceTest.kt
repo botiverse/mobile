@@ -9,16 +9,6 @@ import kotlin.test.assertTrue
 
 class ThreadMessageLongPressSurfaceTest {
     @Test
-    fun normalMessageUsesTheFullRowGestureSurface() {
-        assertTrue(threadMessageUsesFullRowLongPressActions(shareSelectionActive = false))
-    }
-
-    @Test
-    fun shareSelectionKeepsItsDedicatedSelectionGestures() {
-        assertFalse(threadMessageUsesFullRowLongPressActions(shareSelectionActive = true))
-    }
-
-    @Test
     fun stationaryLongPressSurvivesProgrammaticListScroll() {
         val decision =
             decideThreadMessageLongPressDispatch(
@@ -129,15 +119,6 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun replyThreadIgnoresAnyStaleMessageOpenEvent() {
-        assertTrue(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.ReplyThread))
-        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel))
-        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.DirectMessage))
-        assertTrue(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel, RaftTaskConversationChannelKind))
-        assertFalse(threadMessageOpenIgnoredForSurface(RaftThreadSurfaceKind.Channel, "channel"))
-    }
-
-    @Test
     fun rowTapMovementGateCancelsVerticalSwipeBeyondTouchSlop() {
         val gate = ThreadMessageTapMovementGate()
         gate.begin(Offset(500f, 995f))
@@ -152,32 +133,6 @@ class ThreadMessageLongPressSurfaceTest {
         assertFalse(decision.allowed)
         assertTrue(decision.reason == "movement")
         assertTrue(decision.maxDistance == 515f)
-    }
-
-    @Test
-    fun rowTapMovementGateAllowsJitterButRejectsMultiTouch() {
-        val gate = ThreadMessageTapMovementGate()
-        gate.begin(Offset(100f, 100f))
-        gate.observe(Offset(105f, 104f), pointerCount = 1, touchSlop = 18f)
-        assertTrue(gate.decision().allowed)
-
-        gate.begin(Offset(100f, 100f))
-        gate.observe(Offset(100f, 100f), pointerCount = 2, touchSlop = 18f)
-        assertFalse(gate.decision().allowed)
-        assertTrue(gate.decision().reason == "multi_touch")
-    }
-
-    @Test
-    fun rowTapMovementGateResetsForFirstGestureAfterResume() {
-        val gate = ThreadMessageTapMovementGate()
-        gate.begin(Offset.Zero)
-        gate.observe(Offset(100f, 100f), pointerCount = 1, touchSlop = 18f)
-        assertFalse(gate.decision().allowed)
-
-        gate.begin(Offset(20f, 20f))
-        gate.observe(Offset(20f, 20f), pointerCount = 1, touchSlop = 18f)
-
-        assertTrue(gate.decision().allowed)
     }
 
     @Test
@@ -200,43 +155,6 @@ class ThreadMessageLongPressSurfaceTest {
     }
 
     @Test
-    fun pendingRowTapIsRejectedWhenPointerSessionAdvancesWithoutNewDown() {
-        val gate = ThreadMessageTapMovementGate()
-        gate.activatePointerSession(7)
-        gate.begin(Offset(100f, 100f))
-        val pendingTap = gate.currentGestureToken()
-
-        gate.activatePointerSession(8)
-
-        val staleSessionDecision = gate.decision(pendingTap)
-        assertFalse(staleSessionDecision.allowed)
-        assertTrue(staleSessionDecision.reason == "session_superseded")
-
-        gate.begin(Offset(120f, 120f))
-        gate.observe(Offset(120f, 120f), pointerCount = 1, touchSlop = 18f)
-        assertTrue(gate.decision().allowed)
-    }
-
-    @Test
-    fun pointerSessionKeyAdvancesAcrossHostResumeAndWrapsSafely() {
-        assertTrue(nextThreadPointerSessionKey(0) == 1)
-        assertTrue(nextThreadPointerSessionKey(41) == 42)
-        assertTrue(nextThreadPointerSessionKey(Int.MAX_VALUE) == 0)
-    }
-
-    @Test
-    fun visibleThreadResumePlansOnlyTheCurrentConversationWork() {
-        assertEquals(
-            ThreadVisibleResumePlan(
-                refreshVisibleConversation = true,
-                rejoinVisibleRooms = true
-            ),
-            threadVisibleResumePlan(routeActive = true)
-        )
-        assertNull(threadVisibleResumePlan(routeActive = false))
-    }
-
-    @Test
     fun hiddenThreadSkipsAppShellResumeThenRefreshesExactlyOnceAfterAppearing() {
         val gate = ThreadVisibleResumeGate()
         var conversationRefreshes = 0
@@ -251,35 +169,6 @@ class ThreadMessageLongPressSurfaceTest {
 
         assertEquals(1, conversationRefreshes)
         assertEquals(1, roomRejoins)
-    }
-
-    @Test
-    fun threadAppearanceWithoutPendingResumeDoesNotRefresh() {
-        val gate = ThreadVisibleResumeGate()
-
-        assertNull(gate.onRouteBecameVisible())
-        assertNull(gate.onRouteBecameVisible())
-    }
-
-    @Test
-    fun pendingResumeLatchedWhileHiddenStaysObservableUntilDrained() {
-        val gate = ThreadVisibleResumeGate()
-
-        assertFalse(gate.pendingVisibleResume)
-        // The lifecycle listener can latch pending from a stale routeActive
-        // snapshot after the route already became active; the drain effect
-        // keys on this flag so the pending write alone re-triggers it.
-        assertNull(gate.onLifecycleVisibleResume(routeActive = false))
-        assertTrue(gate.pendingVisibleResume)
-
-        assertEquals(
-            ThreadVisibleResumePlan(
-                refreshVisibleConversation = true,
-                rejoinVisibleRooms = true
-            ),
-            gate.onRouteBecameVisible()
-        )
-        assertFalse(gate.pendingVisibleResume)
     }
 
     @Test

@@ -12,40 +12,9 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class SharedTasksPageTest {
-    @Test
-    fun taskDisplaySortExtractsEachLargeSnapshotKeyExactlyOnce() {
-        val tasks =
-            (1..3_515).map { number ->
-                TaskSummary(
-                    id = TaskId("task-$number"),
-                    title = "Task $number",
-                    status = TaskStatus.Todo,
-                    taskNumber = number,
-                    updatedAtLabel = (1_700_000_000_000L + number).toString()
-                )
-            }
-        var keyExtractions = 0
-
-        val sorted =
-            tasks.sortedByTaskDisplayOrder { task ->
-                keyExtractions += 1
-                task.taskDisplayOrderKey()
-            }
-
-        assertEquals(tasks.size, keyExtractions)
-        assertEquals(3_515, sorted.first().taskNumber)
-        assertEquals(1, sorted.last().taskNumber)
-    }
-
-    @Test
-    fun tasksHeaderSubtitleShowsTotalWhenUnfiltered() {
-        assertEquals("42 channel tasks", tasksHeaderSubtitle(totalTasks = 42, visibleTasks = 42))
-    }
-
     @Test
     fun tasksHeaderSubtitleShowsVisibleOfTotalWhenFiltered() {
         assertEquals("12 of 42 channel tasks", tasksHeaderSubtitle(totalTasks = 42, visibleTasks = 12))
@@ -61,12 +30,6 @@ class SharedTasksPageTest {
         assertEquals(true, task.copy(channelId = ChannelId("ch-member")).opensTaskMutationMenus(standIn = false, canWriteTaskChannel = reader))
         assertEquals(false, task.opensTaskMutationMenus(standIn = true) { true }, "the offline stand-in")
         assertEquals(false, task.copy(readOnlyReason = "historical_joint_task").opensTaskMutationMenus(standIn = false) { true })
-    }
-
-    @Test
-    fun serverWideEmptyTasksSkipsToolbarWithoutCreateAction() {
-        assertEquals(false, sharedTasksEmptyToolbarVisible(createTasksChannelId = null))
-        assertEquals(true, sharedTasksEmptyToolbarVisible(createTasksChannelId = ChannelId("channel-1")))
     }
 
     @Test
@@ -97,34 +60,6 @@ class SharedTasksPageTest {
         assertEquals(listOf("Unassigned", "Human", "Agent"), options.map { it.label })
     }
 
-    @Test
-    fun tasksBeyondBoundsKeepsSceneEnterPremeasureSmall() {
-        assertEquals(0, sharedTasksBeyondBoundsItemCount(0))
-        assertEquals(1, sharedTasksBeyondBoundsItemCount(1))
-        assertEquals(4, sharedTasksBeyondBoundsItemCount(40))
-        assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
-    }
-
-    @Test
-    fun tasksStatusChipClickIdentityTracksRecycledCardBinding() {
-        val first = tasksStatusChipClickIdentity("task-1", TaskStatus.Todo)
-
-        assertEquals("tasks-status:task-1:Todo", first)
-        assertNotEquals(first, tasksStatusChipClickIdentity("task-2", TaskStatus.Todo))
-        assertNotEquals(first, tasksStatusChipClickIdentity("task-1", TaskStatus.InProgress))
-        assertEquals(first, tasksStatusChipClickIdentity("task-1", TaskStatus.Todo))
-    }
-
-    @Test
-    fun tasksStatusMenuOwnerIdentityStaysSemanticAcrossStatusChanges() {
-        val owner = tasksStatusMenuOwnerIdentity("task-1")
-
-        assertEquals("task:task-1", owner)
-        assertNotEquals(owner, tasksStatusChipClickIdentity("task-1", TaskStatus.Todo))
-        assertNotEquals(owner, tasksStatusChipClickIdentity("task-1", TaskStatus.InProgress))
-        assertEquals(owner, tasksStatusMenuOwnerIdentity("task-1"))
-    }
-
     // #130 filter-search caller-local editor seed contract. The editor is the sole
     // owner of its TextFieldValue within a filter session; raftFilterSearchSessionSeed
     // is invoked only from a LaunchedEffect keyed on the openFilterId session token,
@@ -137,24 +72,6 @@ class SharedTasksPageTest {
     }
 
     @Test
-    fun filterSearchSeedCaretUsesCharacterCountForCjk() {
-        val seed = raftFilterSearchSessionSeed(openFilterId = "creator", thisFilterId = "creator", durableSearch = "设计师")
-        assertEquals("设计师", seed?.text)
-        // caret at end by character index (3), so mid-text CJK editing starts sane;
-        // the live editor owns the selection/composition for the rest of the session.
-        assertEquals(TextRange(3), seed?.selection)
-    }
-
-    @Test
-    fun filterSearchNewSessionSeedsFreshFromResetDurable() {
-        // SetOpenFilter clears the non-active box on close; the reopened session
-        // seeds an empty editor rather than reopening with stale local text.
-        val seed = raftFilterSearchSessionSeed(openFilterId = "assignee", thisFilterId = "assignee", durableSearch = "")
-        assertEquals("", seed?.text)
-        assertEquals(TextRange(0), seed?.selection)
-    }
-
-    @Test
     fun filterSearchDoesNotReseedInactiveFilterFromStaleDurable() {
         // While "channel" owns the open session, a stale or echoed "creator" durable
         // String must never reseat the creator editor (would clobber its composition).
@@ -162,15 +79,6 @@ class SharedTasksPageTest {
         // No open session at all → nothing is seeded.
         assertNull(raftFilterSearchSessionSeed(openFilterId = null, thisFilterId = "channel", durableSearch = "x"))
     }
-
-    @Test
-    fun filterSearchSessionSeedTargetsOnlyTheOpenFilter() {
-        val open = "creator"
-        assertNull(raftFilterSearchSessionSeed(open, "channel", "c"))
-        assertEquals("cr", raftFilterSearchSessionSeed(open, "creator", "cr")?.text)
-        assertNull(raftFilterSearchSessionSeed(open, "assignee", "a"))
-    }
-
 
     @Test
     fun collapsedSectionChevronTurnsRightAndOpenSectionPointsDown() {

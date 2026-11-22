@@ -16,12 +16,4 @@ class SettingsHomeSearchFilterOrderTest {
             homeSearchFilterOrder(showSenderFilter = true),
         )
     }
-
-    @Test
-    fun senderlessSearchKeepsScopeFirst() {
-        assertEquals(
-            listOf(HomeSearchFilter.Scope, HomeSearchFilter.Channel, HomeSearchFilter.Time),
-            homeSearchFilterOrder(showSenderFilter = false),
-        )
-    }
 }

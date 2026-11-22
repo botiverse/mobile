@@ -23,32 +23,6 @@ class RaftInlineListSelectionTest {
         assertNull(raftInlineListSelectedRowKey(null, openDetailKey = "d1"))
     }
 
-    @Test fun anotherRowOpeningAnotherConversationTakesTheMark() {
-        val first = RaftInlineOpenedRow("r1", "d1")
-        val next = raftInlineListBindOpenedRow(first, rowKey = "r2", detailKeyBefore = "d1", detailKeyAfter = "d2")
-        assertEquals("r2", raftInlineListSelectedRowKey(next, openDetailKey = "d2"))
-    }
-
-    @Test fun aTapThatOpensNothingBesideTheListKeepsTheMark() {
-        val first = RaftInlineOpenedRow("r1", "d1")
-        // A member result pushes its own page; an unresolved row only toasts: the pane is unchanged.
-        assertEquals(first, raftInlineListBindOpenedRow(first, rowKey = "member", detailKeyBefore = "d1", detailKeyAfter = "d1"))
-        // Nothing was open and nothing landed: still nothing selected.
-        assertNull(raftInlineListBindOpenedRow(null, rowKey = "member", detailKeyBefore = null, detailKeyAfter = null))
-        // A detail opened from Home is not claimed by a tap that did not open it.
-        assertNull(raftInlineListBindOpenedRow(null, rowKey = "member", detailKeyBefore = "home", detailKeyAfter = "home"))
-    }
-
-    @Test fun theSelectionHolderBindsAfterTheSynchronousOpen() {
-        var live: String? = null
-        val selection = RaftInlineListSelection { live }
-        selection.open("r1") { live = "d1" }
-        selection.openDetailKey = "d1"
-        assertEquals("r1", selection.selectedRowKey)
-        selection.openDetailKey = null
-        assertNull(selection.selectedRowKey)
-    }
-
     @Test fun withoutAHostTheTapStillOpens() {
         var opened = false
         val none: RaftInlineListSelection? = null

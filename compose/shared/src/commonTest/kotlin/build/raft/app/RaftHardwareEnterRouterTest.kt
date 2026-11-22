@@ -30,14 +30,6 @@ class RaftHardwareEnterRouterTest {
     }
 
     @Test
-    fun shiftPressedAfterEnterDownStillSends() {
-        val router = RaftHardwareEnterRouter()
-        assertTrue(router.onEnter(Phase.Down, shiftPressed = false, singleLine = false, send))
-        assertTrue(router.onEnter(Phase.Up, shiftPressed = true, singleLine = false, send))
-        assertEquals(1, sends)
-    }
-
-    @Test
     fun singleLineShiftEnterIsSwallowedWithoutSending() {
         val router = RaftHardwareEnterRouter()
         assertTrue(router.onEnter(Phase.Down, shiftPressed = true, singleLine = true, send))

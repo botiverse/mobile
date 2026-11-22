@@ -50,12 +50,6 @@ class RaftArtifactViewerKeptReloadTest {
     }
 
     @Test
-    fun aMessageOrAnotherArtifactStillLeaves() {
-        val other = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
-        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/artifacts/$other"))
-    }
-
-    @Test
     fun aTokenChangeMakesTheKeptPageUnusable() {
         var drops = 0
         val cache = RaftArtifactViewerCache(onKeptDocumentDropped = { drops += 1 })

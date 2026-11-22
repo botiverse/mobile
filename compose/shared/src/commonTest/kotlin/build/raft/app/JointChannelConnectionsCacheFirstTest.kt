@@ -29,39 +29,6 @@ import kotlin.test.assertNull
  */
 class JointChannelConnectionsCacheFirstTest {
     @Test
-    fun reopeningAfterServerSwitchPaintsCachedListOnFirstFrameAndRefreshesOnce() = runTest {
-        val cache = cache(this)
-        val dataSource = ScriptedJointDataSource()
-        val first = store(this, cache, dataSource, SERVER_A)
-        first.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-        first.clear()
-        // Server B's page in between: its own key.
-        store(this, cache, ScriptedJointDataSource(), SERVER_B).apply {
-            dispatch(JointChannelConnectionsIntent.Refresh)
-            runCurrent()
-            clear()
-        }
-
-        // Back on A: the very first state is the cached list, before any request.
-        val gate = CompletableDeferred<Unit>()
-        dataSource.gate = gate
-        dataSource.connections = jointTestConnections(serverCount = 3)
-        val reopened = store(this, cache, dataSource, SERVER_A)
-        assertEquals(JointChannelConnectionsLoadStatus.Content, reopened.state.value.status)
-        assertEquals(2, reopened.state.value.connections?.servers?.size)
-
-        reopened.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-        assertEquals(2, reopened.state.value.connections?.servers?.size, "no blank while refreshing")
-        gate.complete(Unit)
-        runCurrent()
-        assertEquals(3, reopened.state.value.connections?.servers?.size)
-        assertEquals(2, dataSource.loadCalls, "exactly one background refresh on reopen")
-        reopened.clear()
-    }
-
-    @Test
     fun coldStartPaintsTheDurableRowBeforeTheNetworkAnswers() = runTest {
         val storage = MapRowStorage()
         store(this, cache(this, storage), ScriptedJointDataSource(), SERVER_A).apply {

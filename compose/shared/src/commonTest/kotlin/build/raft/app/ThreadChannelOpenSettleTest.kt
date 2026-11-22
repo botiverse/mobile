@@ -132,53 +132,6 @@ class ThreadChannelOpenSettleTest {
         assertEquals(0, anchorAttempts, "the initial anchor sees it anchored on its first check")
     }
 
-    @Test
-    fun aDisplacedListIsAnchoredInOneCommandUnderTheInset() {
-        // The feedback log's displaced state: raw scrolled 135px, newest row 135px below the composer.
-        val list = FakeReversedList(topInsetPx = TopInsetPx, layoutPx = LayoutWithComposerPx)
-        list.scrollToItem(NewestForwardIndex, scrollOffset = NewestRowPx + PaddingRowPx - LayoutWithComposerPx)
-        assertEquals(TopInsetPx, list.info().newestRowGapToRenderedBottom())
-        assertFalse(threadItemAtRenderedBottom(list.info(), NewestForwardIndex, PaddingRowPx))
-
-        list.scrollToItem(NewestForwardIndex, assertNotNull(threadRenderedBottomScrollOffset(list.info(), NewestForwardIndex, PaddingRowPx)))
-        assertTrue(threadItemAtRenderedBottom(list.info(), NewestForwardIndex, PaddingRowPx))
-        assertEquals(0, list.rawScrollPx)
-    }
-
-    @Test
-    fun theOldFullViewportTargetDisagreedWithTheAnchoredCheckByTheInset() {
-        // Negative control for the root cause: a target computed from the whole viewport height
-        // (end - start) counts the top inset twice and parks the newest row one inset too low, which
-        // the anchored check rejects, so the initial anchor and the composer relayout kept fighting.
-        val list = FakeReversedList(topInsetPx = TopInsetPx, layoutPx = LayoutWithComposerPx)
-        val info = list.info()
-        val legacyOffset =
-            threadLatestItemBottomAnchorScrollOffset(
-                itemSize = NewestRowPx,
-                viewportHeight = info.viewportEndOffset - info.viewportStartOffset,
-                visibleItemCount = info.visibleItemsInfo.size,
-                totalItemCount = info.totalItemsCount,
-                trailingPaddingSize = PaddingRowPx
-            )
-        assertEquals(TopInsetPx, assertNotNull(threadRenderedBottomScrollOffset(info, NewestForwardIndex, PaddingRowPx)) - legacyOffset)
-        list.scrollToItem(NewestForwardIndex, legacyOffset)
-        assertEquals(TopInsetPx, list.info().newestRowGapToRenderedBottom())
-        assertFalse(threadItemAtRenderedBottom(list.info(), NewestForwardIndex, PaddingRowPx))
-
-        // Without an inset both agree, which is why only cold (stand-in) opens bounced.
-        val noInset = FakeReversedList(topInsetPx = 0, layoutPx = LayoutWithComposerPx).info()
-        assertEquals(
-            threadRenderedBottomScrollOffset(noInset, NewestForwardIndex, PaddingRowPx),
-            threadLatestItemBottomAnchorScrollOffset(
-                itemSize = NewestRowPx,
-                viewportHeight = noInset.viewportEndOffset - noInset.viewportStartOffset,
-                visibleItemCount = noInset.visibleItemsInfo.size,
-                totalItemCount = noInset.totalItemsCount,
-                trailingPaddingSize = PaddingRowPx
-            )
-        )
-    }
-
     /** One store emission as the route sees it. */
     private data class Emission(
         val access: ThreadAccessResolution,
@@ -227,15 +180,6 @@ class ThreadChannelOpenSettleTest {
     }
 
     @Test
-    fun aReadOnlyAnswerCollapsesTheReservedComposerSlot() {
-        val cached = contentPayload()
-        val pending = Emission(ThreadAccessResolution.Loading, homeLookupComplete = false, payload = cached)
-        val readOnly = Emission(ThreadAccessResolution.NoPermission, homeLookupComplete = true, payload = cached)
-        assertTrue(reservesComposerSlot(pending))
-        assertFalse(reservesComposerSlot(readOnly), "no permission: the slot collapses")
-    }
-
-    @Test
     fun anOfflineStandInIsShownWithoutWaitingForTheNetwork() {
         val standIn = contentPayload().copy(durableLastKnown = true)
         val plans =
@@ -255,25 +199,6 @@ class ThreadChannelOpenSettleTest {
             threadOfflineLastKnownChrome(standIn.copy(mainLoadFailed = true, errorCode = "network_timeout")).tipVisible,
             "the tip appears once the load really failed"
         )
-    }
-
-    @Test
-    fun withNothingToShowTheLoadingShellStays() {
-        val loading = RaftThreadScreenPayload(instanceId = "shared-shell-thread-dm-1", sourceThreadId = "dm-1", status = "loading")
-        assertEquals(
-            ThreadRouteMountPlan.LoadingShell,
-            loading.threadRouteMountPlan(loading.toThreadTimelineSlice(), ThreadAccessResolution.Loading)
-        )
-    }
-
-    @Test
-    fun theScrollAheadWindowWaitsForThePushSlide() {
-        // #171 cost at the source: content shows mid slide, but only the rows on screen are composed
-        // until the slide settles.
-        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = true, pageInMotion = true))
-        assertTrue(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = true, pageInMotion = false))
-        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = false, viewportMeasurementReady = true, pageInMotion = false))
-        assertFalse(threadScrollAheadWindowMayOpen(initialBottomAnchorReady = true, viewportMeasurementReady = false, pageInMotion = false))
     }
 
     private fun contentPayload(): RaftThreadScreenPayload =

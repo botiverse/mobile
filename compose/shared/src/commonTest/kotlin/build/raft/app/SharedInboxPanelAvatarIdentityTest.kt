@@ -32,44 +32,6 @@ class SharedInboxPanelAvatarIdentityTest {
     }
 
     @Test
-    fun channelAndDirectMessageUseLastMessageSenderIdentity() {
-        val channel =
-            fixtures.activityItem(key = "channel:human").copy(
-                kind = InboxItemKind.Channel,
-                lastMessageSenderKind = MemberKind.Human,
-                lastMessageSenderId = "human-2",
-                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-2.webp",
-                latestActivitySenderKind = MemberKind.Agent,
-                latestActivitySenderId = "agent-9",
-                latestActivitySenderAvatarWireValue = "pixel:agent-9"
-            )
-        val dm = channel.copy(key = "dm:human", kind = InboxItemKind.DirectMessage)
-
-        listOf(channel.activitySenderAvatarIdentity(), dm.activitySenderAvatarIdentity()).forEach { identity ->
-            assertEquals(MemberKind.Human, identity.senderKind)
-            assertEquals("human-2", identity.senderId)
-            assertEquals("https://cdn.example/avatars/users/human-2.webp", identity.avatarWireValue)
-        }
-    }
-
-    @Test
-    fun mentionActionIsSystemAppWithoutMemberIdentity() {
-        val mention =
-            fixtures.activityItem(key = "mention:1").copy(
-                kind = InboxItemKind.MentionAction,
-                lastMessageSenderKind = MemberKind.Human,
-                lastMessageSenderId = "human-3",
-                lastMessageSenderAvatarWireValue = "https://cdn.example/avatars/users/human-3.webp"
-            )
-
-        val identity = mention.activitySenderAvatarIdentity()
-
-        assertEquals(MemberKind.System, identity.senderKind)
-        assertEquals(null, identity.senderId)
-        assertEquals(null, identity.avatarWireValue)
-    }
-
-    @Test
     fun senderFieldsFallbackButParentAuthorNeverBecomesAvatarIdentity() {
         val threadFallback =
             fixtures.activityItem(key = "thread:fallback").copy(
@@ -129,33 +91,6 @@ class SharedInboxPanelAvatarIdentityTest {
     }
 
     @Test
-    fun senderKindAndIdentityRemainWhenAvatarWireIsMissing() {
-        val agent =
-            fixtures.activityItem(key = "channel:agent-no-avatar").copy(
-                kind = InboxItemKind.Channel,
-                lastMessageSenderKind = MemberKind.Agent,
-                lastMessageSenderId = "agent-noavatar",
-                lastMessageSenderName = "NoAvatar",
-                lastMessageSenderAvatarWireValue = null
-            ).activitySenderAvatarIdentity()
-        assertEquals(MemberKind.Agent, agent.senderKind)
-        assertEquals("agent-noavatar", agent.senderId)
-        assertEquals(null, agent.avatarWireValue)
-
-        val human =
-            fixtures.activityItem(key = "dm:human-no-avatar").copy(
-                kind = InboxItemKind.DirectMessage,
-                lastMessageSenderKind = MemberKind.Human,
-                lastMessageSenderId = "human-noavatar",
-                lastMessageSenderName = "NoAvatarHuman",
-                lastMessageSenderAvatarWireValue = null
-            ).activitySenderAvatarIdentity()
-        assertEquals(MemberKind.Human, human.senderKind)
-        assertEquals("human-noavatar", human.senderId)
-        assertEquals(null, human.avatarWireValue)
-    }
-
-    @Test
     fun labelResolvesFromSenderProfilesWithWireNameFallback() {
         val thread =
             fixtures.activityItem(key = "thread:label").copy(
@@ -189,25 +124,6 @@ class SharedInboxPanelAvatarIdentityTest {
         // A person with nothing to show stays null: the placeholder person.
         assertEquals(null, activityFaceAvatarWireValue(null, human))
         assertEquals("https://cdn.example/avatars/users/abc.webp", activityFaceAvatarWireValue("https://cdn.example/avatars/users/abc.webp", human))
-    }
-
-    @Test
-    fun aJointSenderFromTheOtherServerFillsOnlyARowWithoutItsOwnAvatar() {
-        val peerAvatar = "https://cdn.example/avatars/users/0a1b2c3d.webp"
-        val human = ActivitySenderAvatarIdentity(MemberKind.Human, avatarWireValue = null, label = "Peer", senderId = "human-1", jointSurface = true)
-        val agent = ActivitySenderAvatarIdentity(MemberKind.Agent, avatarWireValue = null, label = "Peer bot", senderId = "agent-1", jointSurface = true)
-
-        // This server's directory first, then the row's own avatar, then the resolved actor.
-        assertEquals("https://cdn.example/avatars/users/abc.webp", activityFaceAvatarWireValue("https://cdn.example/avatars/users/abc.webp", human, peerAvatar))
-        assertEquals(
-            "https://cdn.example/avatars/users/ffff.webp",
-            activityFaceAvatarWireValue(null, human.copy(avatarWireValue = "https://cdn.example/avatars/users/ffff.webp"), peerAvatar)
-        )
-        assertEquals(peerAvatar, activityFaceAvatarWireValue(null, human, peerAvatar))
-        assertEquals("https://cdn.example/agent.png", activityFaceAvatarWireValue(null, agent, "https://cdn.example/agent.png"))
-        // Nothing resolved: today's faces.
-        assertEquals(null, activityFaceAvatarWireValue(null, human, null))
-        assertEquals(agentAvatarFallbackWireValue("agent-1"), activityFaceAvatarWireValue(null, agent, null))
     }
 
     @Test

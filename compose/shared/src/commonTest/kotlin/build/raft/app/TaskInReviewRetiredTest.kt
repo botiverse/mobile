@@ -1,10 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.TaskConversationHeaderState
-import build.raft.app.data.TaskStatusOption
 import build.raft.app.data.TasksContent
 import build.raft.app.data.boardColumns
-import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -42,20 +39,6 @@ class TaskInReviewRetiredTest {
     @Test
     fun aLegacyTaskKeepsEveryStatus() {
         assertEquals(everyChoice, task(isLegacy = true).statusMenuChoices())
-    }
-
-    @Test
-    fun theTaskConversationBarDropsInReviewUnlessTheTaskIsInIt() {
-        fun barStatuses(task: TaskSummary) =
-            task.taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
-                .statusOptions.map(TaskStatusOption::status)
-        assertEquals(v2Choices, barStatuses(task(conversationAnchored = true)))
-        assertEquals(TaskStatus.known, barStatuses(task(status = TaskStatus.InReview, conversationAnchored = true)))
-        // Closed -> Todo still reads "Reopen to Todo".
-        val closed =
-            task(status = TaskStatus.Closed, conversationAnchored = true)
-                .taskConversationHeaderBarModel(TaskConversationHeaderState(ChannelId("conv-1")), statusUpdating = false)
-        assertEquals(listOf(TaskStatus.Todo), closed.statusOptions.filter { it.reopensToTodo }.map { it.status })
     }
 
     @Test

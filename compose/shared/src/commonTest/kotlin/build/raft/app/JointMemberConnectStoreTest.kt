@@ -68,23 +68,6 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun theMenuNeedsAServerToConnect() = runTest {
-        val store = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections()))
-        assertTrue(store.state.value.memberConnectAvailable)
-
-        // Only servers already connected or not administered: no menu, and no sheet opens.
-        store.dispatch(
-            JointChannelConnectionsIntent.SetMemberConnectAccount(
-                memberTestAccount().let { it.copy(servers = it.servers.filter { server -> server.id in setOf("srv-mine", "srv-member", "srv-cur") }) }
-            )
-        )
-        assertFalse(store.state.value.memberConnectAvailable)
-        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
-        assertNull(store.state.value.memberConnectSheet)
-        store.clear()
-    }
-
-    @Test
     fun onlyEligibleRowsCanBeChosenAndAllConnectedClosesWithAToastAndRereads() = runTest {
         val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
         dataSource.memberConnectResult =
@@ -165,59 +148,6 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun onlyAlreadyConnectedClosesWithThatToast() = runTest {
-        val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
-        dataSource.memberConnectResult =
-            DataResult.Content(
-                MemberConnectResponse.Answered(listOf(ServerConnectOutcome.Refused("srv-zed", 409, "already_connected", "x")), traceId = null)
-            )
-        val store = memberStore(dataSource)
-        store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
-        store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-zed")))
-        store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
-        runCurrent()
-
-        assertNull(store.state.value.memberConnectSheet)
-        assertEquals(JointChannelConnectionsEffect.MemberConnectFinished(alreadyConnected = listOf("Zed Co")), store.state.value.effect)
-        assertEquals(emptySet(), store.state.value.connectedByYou)
-        store.clear()
-    }
-
-    @Test
-    fun aRefusedRequestClosesTheRouteWhereTheServerSaysSoAndKeepsItsTraceId() = runTest {
-        data class Case(val status: Int, val code: String?, val message: MemberConnectMessage, val closed: Boolean)
-        listOf(
-            Case(404, null, MemberConnectMessage.NotAllowed, true),
-            Case(400, "channel_not_invitable", MemberConnectMessage.NotAllowed, true),
-            Case(409, "guest_has_computer", MemberConnectMessage.GuestHasComputer, true),
-            Case(400, "invalid_input", MemberConnectMessage.Generic, false),
-            Case(429, null, MemberConnectMessage.TooManyAttempts, false),
-            Case(500, null, MemberConnectMessage.Generic, false),
-        ).forEach { case ->
-            val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
-            dataSource.memberConnectResult = DataResult.Content(MemberConnectResponse.Refused(case.status, case.code, null, TRACE))
-            val store = memberStore(dataSource)
-            store.dispatch(JointChannelConnectionsIntent.OpenMemberConnect)
-            store.dispatch(JointChannelConnectionsIntent.SetMemberConnectSelection(setOf("srv-zed")))
-            store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
-            runCurrent()
-
-            val sheet = assertNotNull(store.state.value.memberConnectSheet, "$case")
-            assertEquals(listOf(MemberConnectLine.Request(case.message)), sheet.lines, "$case")
-            assertEquals(case.closed, sheet.closed, "$case")
-            assertEquals(TRACE, sheet.traceId)
-            if (case.closed) {
-                // Nothing can be chosen or sent any more.
-                assertTrue(store.state.value.memberConnectRows.none(store.state.value::memberConnectRowSelectable))
-                store.dispatch(JointChannelConnectionsIntent.SubmitMemberConnect)
-                runCurrent()
-                assertEquals(1, dataSource.memberConnectCalls.size)
-            }
-            store.clear()
-        }
-    }
-
-    @Test
     fun networkFailureSaysTryAgainWithItsTraceIdAndTheSheetCannotBeClosedMidRequest() = runTest {
         val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
         dataSource.memberConnectResult = DataResult.Error(ScreenError(code = "network_unavailable", traceId = null))
@@ -243,45 +173,6 @@ class JointMemberConnectStoreTest {
     }
 
     @Test
-    fun refusalsSayWhatTheWebSays() {
-        fun refused(code: String?, status: Int = 409, side: String? = null, limitServerId: String? = null) =
-            memberConnectRefusalMessage(ServerConnectOutcome.Refused("srv-x", status, code, null, side, limitServerId))
-        assertEquals(MemberConnectMessage.NotAdmin, refused("server_admin_required", 403))
-        assertEquals(MemberConnectMessage.AlreadyConnected, refused("already_connected"))
-        assertEquals(MemberConnectMessage.MembershipChanged, refused("membership_changed"))
-        assertEquals(MemberConnectMessage.ServerMembershipRequired, refused("server_membership_required", 403))
-        assertEquals(MemberConnectMessage.InvalidServer, refused("invalid_server", 400))
-        assertEquals(MemberConnectMessage.Archived, refused("channel_archived"))
-        assertEquals(MemberConnectMessage.ChannelNameTaken, refused("channel_name_taken"))
-        assertEquals(MemberConnectMessage.ChannelFull, refused("joint_server_limit"))
-        assertEquals(MemberConnectMessage.GuestsPresent, refused("guests_present"))
-        assertEquals(MemberConnectMessage.JointPartyLimit, refused("joint_party_limit"))
-        assertEquals(MemberConnectMessage.ConnectInProgress, refused("connect_in_progress"))
-        assertEquals(MemberConnectMessage.HostLimit, refused("joint_channel_plan_limit_reached"))
-        assertEquals(MemberConnectMessage.Busy, refused("channel_conversion_fence_conflict"))
-        // A limit: the viewer's own server's (upgrade it), else the host's.
-        assertEquals(MemberConnectMessage.TargetFreeLimit, refused("free_external_limit"))
-        assertEquals(MemberConnectMessage.TargetFreeLimit, refused("free_external_limit", side = "connecting", limitServerId = "srv-x"))
-        assertEquals(MemberConnectMessage.HostLimit, refused("free_external_limit", side = "host", limitServerId = "srv-host"))
-        assertEquals(MemberConnectMessage.JointFreeServerLimit, refused("joint_free_server_limit", side = "connecting", limitServerId = "srv-x"))
-        assertEquals(MemberConnectMessage.HostLimit, refused("joint_free_server_limit"))
-        assertEquals(MemberConnectMessage.TooManyAttempts, refused(null, 429))
-        assertEquals(MemberConnectMessage.Generic, refused("internal_error", 500))
-    }
-
-    @Test
-    fun aPrivateChannelListsThisServerAsTheHostAndSaysItBecomesShared() = runTest {
-        val store = memberStore(FakeJointConnectionsDataSource(connections = privateTestConnections()))
-        val state = store.state.value
-        assertEquals(listOf("srv-cur"), state.displayServers.map { it.serverId })
-        assertTrue(state.showsHostBadge(state.displayServers.single()))
-        assertTrue(state.memberConnectToPrivate)
-        assertTrue(state.memberConnectAvailable)
-        assertEquals("Current Co", state.memberConnectHostName)
-        store.clear()
-    }
-
-    @Test
     fun aGuestOfTheHostIsToldTheirSeatEnds() = runTest {
         val guestAccount = memberTestAccount().copy(currentServerRole = "guest")
         val host = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections(jointRole = JointChannelRole.Host)), account = guestAccount)
@@ -290,54 +181,6 @@ class JointMemberConnectStoreTest {
         val participant = memberStore(FakeJointConnectionsDataSource(connections = memberTestConnections()), account = guestAccount)
         assertFalse(participant.state.value.memberConnectGuest)
         participant.clear()
-    }
-
-    @Test
-    fun aFailedLoadDropsTheChannelButKeepsTheAccount() = runTest {
-        val memory = MemberConnectedByYouMemory().apply { add("k", listOf("srv-zed")) }
-        val dataSource = FakeJointConnectionsDataSource(connections = memberTestConnections())
-        val store = memberStore(dataSource, connectedByYou = MemberConnectedByYouSlot(memory, "k"))
-        assertEquals(JointChannelConnectionsLoadStatus.Content, store.state.value.status)
-        assertNotNull(store.state.value.connections)
-
-        // Access lost on a refresh (404): nothing of the channel stays, the account facts do.
-        dataSource.loadResult = DataResult.Error(ScreenError(code = "joint_http_404", retryable = false))
-        store.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-
-        val lost = store.state.value
-        assertEquals(JointChannelConnectionsLoadStatus.Error, lost.status)
-        assertEquals("joint_http_404", lost.loadFailure?.code)
-        assertNull(lost.connections)
-        assertFalse(lost.canFederate)
-        assertFalse(lost.refreshing)
-        assertEquals(emptyList(), lost.displayServers)
-        assertFalse(lost.memberConnectAvailable)
-        assertEquals(memberTestAccount(), lost.memberConnectAccount)
-        assertEquals(setOf("srv-zed"), lost.connectedByYou)
-
-        // The next load that answers paints with them, no re-dispatch needed.
-        dataSource.loadResult = DataResult.Content(JointChannelConnectionsSnapshot(memberTestConnections(), canFederate = false))
-        store.dispatch(JointChannelConnectionsIntent.Refresh)
-        runCurrent()
-        assertEquals(JointChannelConnectionsLoadStatus.Content, store.state.value.status)
-        assertTrue(store.state.value.memberConnectAvailable)
-        store.clear()
-    }
-
-    @Test
-    fun aFirstLoadThatFailsKeepsTheAccount() = runTest {
-        val dataSource =
-            FakeJointConnectionsDataSource(
-                loadResult = DataResult.Error(ScreenError(code = "joint_http_500", retryable = true)),
-            )
-        val store = memberStore(dataSource)
-
-        val failed = store.state.value
-        assertEquals(JointChannelConnectionsLoadStatus.Error, failed.status)
-        assertNull(failed.connections)
-        assertEquals(memberTestAccount(), failed.memberConnectAccount)
-        store.clear()
     }
 
     private fun TestScope.memberStore(

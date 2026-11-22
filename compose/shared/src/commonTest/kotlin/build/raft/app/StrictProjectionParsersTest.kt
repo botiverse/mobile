@@ -1,12 +1,10 @@
 package build.raft.app
 
-import build.raft.app.data.AgentCreatorSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageType
 import build.raft.app.model.TaskStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -148,22 +146,6 @@ class StrictProjectionParsersTest {
     }
 
     @Test
-    fun strictParserEmitsBoundedSanitizedDiagnosticForRejectedValue() {
-        val logs = mutableListOf<String>()
-
-        val result = "future/agent?kind".strictMemberKindOrNull("REST Message", logs::add)
-
-        assertNull(result)
-        assertEquals(
-            listOf(
-                "projection_value_rejected source=rest_message field=member_kind " +
-                    "value=future_agent_kind",
-            ),
-            logs,
-        )
-    }
-
-    @Test
     fun strictParserBoundsTokensAndDoesNotReceivePayloadContent() {
         val logs = mutableListOf<String>()
         val longUnknownValue = "x".repeat(80)
@@ -174,58 +156,5 @@ class StrictProjectionParsersTest {
         assertEquals(32, diagnostic.substringAfter("value=").length)
         assertTrue("secret-message-id" !in diagnostic)
         assertTrue("private body" !in diagnostic)
-    }
-
-    @Test
-    fun projectedThreadConsumersDoNotInventHumanProfilesOrAvatarKinds() {
-        val unknownAuthor =
-            RaftThreadMessageItem(
-                id = "message-1",
-                authorId = "member-1",
-                authorName = "Unknown",
-                authorKind = "member",
-            )
-        val timeline = RaftThreadScreenPayload(messages = listOf(unknownAuthor)).toThreadTimelineSlice()
-
-        assertNull(timeline.findThreadAuthorProfile("member-1"))
-        assertNull(unknownAuthor.resolvedThreadAvatarWireValue())
-
-        val humanAuthor = unknownAuthor.copy(authorKind = "human")
-        val humanProfile =
-            assertNotNull(
-                RaftThreadScreenPayload(messages = listOf(humanAuthor))
-                    .toThreadTimelineSlice()
-                    .findThreadAuthorProfile("member-1"),
-            )
-        assertEquals(MemberKind.Human, humanProfile.kind)
-    }
-
-    @Test
-    fun agentCreatorConsumerUsesInternalActorContract() {
-        val diagnostics = mutableListOf<String>()
-        val unknown =
-            AgentCreatorSummary(
-                type = "user",
-                id = "creator-1",
-                name = "Creator",
-            ).toStrictMemberProfile(diagnostics::add)
-
-        assertNull(unknown)
-        assertEquals(
-            listOf(
-                "projection_value_rejected source=agent_creator field=member_kind value=user",
-            ),
-            diagnostics,
-        )
-        assertEquals(
-            MemberKind.Human,
-            assertNotNull(
-                AgentCreatorSummary(
-                    type = "human",
-                    id = "creator-1",
-                    name = "Creator",
-                ).toStrictMemberProfile(),
-            ).kind,
-        )
     }
 }

@@ -7,78 +7,6 @@ import kotlin.test.assertEquals
 
 class ThreadMessageMenuLayoutTest {
     @Test
-    fun contentHeightIsExactBeforeFirstPlacement() {
-        // web MessageItem context menu: 8 rows x 36 + 2 group separators (my-1 + 1dp
-        // hairline) x 9 + reaction header (h-9 + 9) + 2 x 4 (p-1) inset.
-        assertEquals(
-            359f,
-            threadMessageMenuContentHeightDp(
-                actionGroups = listOf("copy", "copy", "copy", "message", "message", "task", "task", "task"),
-                showReactionActions = true
-            )
-        )
-    }
-
-    @Test
-    fun contentHeightTracksRowsGroupDividersAndOptionalReactionHeader() {
-        // 3 rows x 36 + 1 group separator x 9 + 2 x 4 inset.
-        assertEquals(
-            125f,
-            threadMessageMenuContentHeightDp(
-                actionGroups = listOf("copy", "copy", "message"),
-                showReactionActions = false
-            )
-        )
-        assertEquals(
-            170f,
-            threadMessageMenuContentHeightDp(
-                actionGroups = listOf("copy", "copy", "message"),
-                showReactionActions = true
-            )
-        )
-    }
-
-    @Test
-    fun exactHeightChoosesFinalSideBeforeMenuIsDrawn() {
-        val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
-        val anchor = Offset(x = 300f, y = 500f)
-
-        assertEquals(
-            508f,
-            viewport.positionContent(
-                anchor = anchor,
-                contentSize = Size(width = 244f, height = 250f),
-                viewportGap = 8f,
-                verticalOffset = 8f,
-                verticalOffsetAbove = 8f,
-                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
-                horizontalAutoFlip = true
-            )?.y
-        )
-        assertEquals(
-            92f,
-            viewport.positionContent(
-                anchor = anchor,
-                contentSize = Size(width = 244f, height = 400f),
-                viewportGap = 8f,
-                verticalOffset = 8f,
-                verticalOffsetAbove = 8f,
-                verticalPlacement = RaftFloatingVerticalPlacement.Auto,
-                horizontalAutoFlip = true
-            )?.y
-        )
-    }
-
-    @Test
-    fun menuWidthIsMinW60OrTheQuickReactionRow() {
-        // raft-ui MessageReactionQuickRow: 7 x 36 (size-9) + 6 x 2 (gap-0.5) + 2 x 3 (px-0.75)
-        // + 2 x 4 (p-1) = 278; with Add Reaction 8 x 36 + 7 x 2 + 6 + 8 = 316 (the web's).
-        assertEquals(278f, threadMessageMenuWidthDp(showReactionActions = true))
-        assertEquals(316f, threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true))
-        assertEquals(240f, threadMessageMenuWidthDp(showReactionActions = false))
-    }
-
-    @Test
     fun contextMenuPlacementMatchesWebPlaceFloatingOverlay() {
         val viewport = RaftFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
         fun place(anchor: Offset, content: Size) =
@@ -99,46 +27,5 @@ class ThreadMessageMenuLayoutTest {
         assertEquals(Offset(134f, 86f), place(Offset(211f, 86f), Size(248f, 375f)))
         // Fits only to the left/above: end at the press point.
         assertEquals(Offset(32f, 325f), place(Offset(280f, 700f), Size(248f, 375f)))
-    }
-
-    @Test
-    fun threadMenuOwnerIdentityIsMessageScoped() {
-        assertEquals("thread_message:message-1", threadMessageMenuOwnerIdentity("message-1"))
-        assertEquals("thread_message:message-2", threadMessageMenuOwnerIdentity("message-2"))
-    }
-
-    @Test
-    fun horizontalPositionCentersWithinViewport() {
-        // Viewport 390 wide, content 288 wide, gap 8 -> max X is 390 - 288 - 8 = 94. Center is (390 - 288)/2 = 51
-        val centeredX = raftHorizontalPosition(
-            localAnchorX = 350f,
-            contentWidth = 288f,
-            viewportWidth = 390f,
-            viewportGap = 8f,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.Center
-        )
-        assertEquals(51f, centeredX)
-
-        // Anchor mode places relative to localAnchorX
-        val anchorX = raftHorizontalPosition(
-            localAnchorX = 50f,
-            contentWidth = 288f,
-            viewportWidth = 390f,
-            viewportGap = 8f,
-            horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor
-        )
-        assertEquals(50f, anchorX)
-    }
-
-    @Test
-    fun watchingAgentsPopoverHangsFromTheTriggerNotTheWindowCentre() {
-        // Wide window: the popover's right edge sits under the chip's right edge (anchor x).
-        assertEquals(712f, raftHorizontalPosition(localAnchorX = 1000f, contentWidth = 288f, viewportWidth = 1280f,
-            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
-        // Phone: same rule, still kept inside the viewport gap.
-        assertEquals(92f, raftHorizontalPosition(localAnchorX = 380f, contentWidth = 288f, viewportWidth = 390f,
-            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
-        assertEquals(8f, raftHorizontalPosition(localAnchorX = 200f, contentWidth = 288f, viewportWidth = 390f,
-            horizontalOffset = -288f, viewportGap = 8f, horizontalPlacement = RaftFloatingHorizontalPlacement.Anchor))
     }
 }

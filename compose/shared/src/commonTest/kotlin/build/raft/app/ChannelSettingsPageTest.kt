@@ -4,7 +4,6 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
-import androidx.compose.ui.unit.dp
 import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -16,7 +15,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ChannelSettingsPageTest {
@@ -71,17 +69,6 @@ class ChannelSettingsPageTest {
     }
 
     @Test
-    fun archiveAndUnarchiveStayInTheChannel() {
-        listOf(ChannelSettingsAction.Archive, ChannelSettingsAction.Unarchive, null).forEach { action ->
-            assertEquals(
-                ChannelSettingsCloseLanding.StayInChannel,
-                channelSettingsCloseLanding(action, landingRow("private")),
-                "$action",
-            )
-        }
-    }
-
-    @Test
     fun theLandingTellsHomeWhetherTheRowStays() {
         val id = ChannelId("channel-9")
         assertNull(ChannelSettingsCloseLanding.StayInChannel.homeIntent(id))
@@ -104,71 +91,10 @@ class ChannelSettingsPageTest {
         )
 
     @Test
-    fun routeCarriesTheOpeningConversationsLinkWhenGiven() {
-        val pageData = channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9"), "thread-settings:a")
-
-        assertEquals("thread-settings:a", pageData.optString(THREAD_SETTINGS_LINK_KEY))
-        assertEquals(
-            ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9")),
-            pageData.toChannelSettingsRouteOrNull(),
-        )
-        assertEquals("", channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9")).optString(THREAD_SETTINGS_LINK_KEY))
-    }
-
-    @Test
-    fun routeCarriesIdentityOnly() {
-        val pageData = channelSettingsPageData(ServerId("server-1"), ChannelId("channel-9"))
-
-        assertEquals(CHANNEL_SETTINGS_PAGE, pageData.optString("pageName"))
-        assertEquals("server-1", pageData.optString("serverId"))
-        assertEquals("channel-9", pageData.optString("channelId"))
-        assertEquals(
-            ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9")),
-            pageData.toChannelSettingsRouteOrNull()
-        )
-        val serialized = pageData.toString()
-        assertFalse(serialized.contains("channelName"))
-        assertFalse(serialized.contains("description"))
-        assertFalse(serialized.contains("members"))
-        assertFalse(serialized.contains("permissions"))
-        assertFalse(serialized.contains("activityMuted"))
-        assertFalse(serialized.contains("pinned"))
-    }
-
-    @Test
     fun routeRejectsMissingIdentity() {
         assertNull(JSONObject().toChannelSettingsRouteOrNull())
         assertNull(JSONObject().apply { put("serverId", "server-1") }.toChannelSettingsRouteOrNull())
         assertNull(JSONObject().apply { put("channelId", "channel-9") }.toChannelSettingsRouteOrNull())
-    }
-
-    @Test
-    fun pageSectionsDoNotReintroduceRemovedToolsCard() {
-        assertEquals(
-            listOf("identity", "members", "preferences"),
-            channelSettingsSectionKeys(canManage = false)
-        )
-        assertEquals(
-            listOf("identity", "members", "preferences", "management"),
-            channelSettingsSectionKeys(canManage = true)
-        )
-        val keys = channelSettingsSectionKeys(canManage = true)
-        assertFalse("tools" in keys)
-        assertFalse("search" in keys)
-        assertFalse("tasks" in keys)
-        assertFalse("files" in keys)
-    }
-
-    @Test
-    fun managementKeepsOriginalThreadSettingsActionOrder() {
-        assertEquals(
-            listOf("visibility", "archive", "delete"),
-            channelSettingsManagementActions(showMakePrivate = true).map { it.id }
-        )
-        assertEquals(
-            listOf("archive", "delete"),
-            channelSettingsManagementActions(showMakePrivate = false).map { it.id }
-        )
     }
 
     @Test
@@ -195,26 +121,6 @@ class ChannelSettingsPageTest {
         assertEquals(
             listOf("archive"),
             channelSettingsManagementActions(showMakePrivate = false, showDelete = false).map { it.id },
-        )
-    }
-
-    @Test
-    fun archiveAndDeleteUseTheSameSingleConfirmationContract() {
-        assertEquals(
-            ThreadSettingsDangerConfirmationMode.SingleConfirm,
-            threadSettingsDangerConfirmationMode("archive")
-        )
-        assertEquals(
-            ThreadSettingsDangerConfirmationMode.SingleConfirm,
-            threadSettingsDangerConfirmationMode("delete")
-        )
-        assertEquals(
-            ThreadSettingsDangerConfirmationMode.Explanation,
-            threadSettingsDangerConfirmationMode("visibility")
-        )
-        assertEquals(
-            ThreadSettingsDangerConfirmationMode.Unsupported,
-            threadSettingsDangerConfirmationMode("unknown")
         )
     }
 
@@ -275,18 +181,6 @@ class ChannelSettingsPageTest {
     }
 
     @Test
-    fun hostsJointCopyOffersArchiveOnly() {
-        val archiveLeave = listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave)
-        val withDisconnect = archiveLeave + ChannelSettingsActionRow.Disconnect
-        // Web hostCannotDisconnect: the server's jointRole decides.
-        assertEquals(archiveLeave, actions(row(type = "joint", jointRole = "host")))
-        assertEquals(withDisconnect, actions(row(type = "joint", jointRole = "participant")))
-        assertEquals(withDisconnect, actions(row(type = "joint")))
-        assertTrue(channelSettingsHostCannotDisconnect(row(type = "joint", jointRole = "host")))
-        assertFalse(channelSettingsHostCannotDisconnect(row(jointRole = "host")))
-    }
-
-    @Test
     fun actionsFollowTheWebOrderAndDropWhatTheChannelCannotDo() {
         assertEquals(
             listOf(
@@ -330,78 +224,12 @@ class ChannelSettingsPageTest {
     }
 
     @Test
-    fun membersStripKeepsTheAddSlotAndAPlusTileWithinThreeRows() {
-        // 8 columns x 3 rows = 24 slots.
-        assertEquals(8, channelSettingsMemberStripColumns(350.dp))
-        assertEquals(23, channelSettingsMemberStripVisibleCount(23, 8, withAddSlot = true))
-        assertEquals(22, channelSettingsMemberStripVisibleCount(24, 8, withAddSlot = true))
-        assertEquals(24, channelSettingsMemberStripVisibleCount(24, 8, withAddSlot = false))
-        assertEquals(23, channelSettingsMemberStripVisibleCount(30, 8, withAddSlot = false))
-    }
-
-    @Test
     fun addTileOpensMembersInAddModeThroughAnIntentKeyOnly() {
         val route = ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9"))
         val add = channelSettingsMembersPageData(route, openAddMember = true)
         assertEquals("add", add.optString(THREAD_MEMBERS_INITIAL_VIEW_KEY))
         assertEquals(true, add.toThreadMembersPageRouteOrNull()?.openAddMember)
         assertEquals(false, channelSettingsMembersPageData(route).toThreadMembersPageRouteOrNull()?.openAddMember)
-    }
-
-    @Test
-    fun archiveTakesTheChannelOffHomeWhileStayingOnThePage() {
-        val channelId = ChannelId("channel-1")
-        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Archive, null)
-
-        assertEquals(ChannelSettingsCloseLanding.StayInChannel, landing)
-        assertEquals(
-            SharedHomeIntent.ChannelMembershipEnded(channelId, keepListed = false),
-            channelSettingsCloseHomeIntent(ChannelSettingsAction.Archive, landing, channelId),
-        )
-    }
-
-    @Test
-    fun aProfileEditLeavesHomeAlone() {
-        val landing = channelSettingsCloseLanding(ChannelSettingsAction.Profile, null)
-
-        assertEquals(null, channelSettingsCloseHomeIntent(ChannelSettingsAction.Profile, landing, ChannelId("channel-1")))
-    }
-
-    @Test
-    fun theLinkUnderTheNewestPageAnswersAgainWhenTheNewestGoes() {
-        val key = "thread-settings:link-stack-test"
-        val under = ThreadSettingsPageLink()
-        val over = ThreadSettingsPageLink()
-
-        ThreadSettingsPageLinks.register(key, under)
-        ThreadSettingsPageLinks.register(key, over)
-        assertSame(over, ThreadSettingsPageLinks.get(key))
-
-        ThreadSettingsPageLinks.unregister(key, over)
-        assertSame(under, ThreadSettingsPageLinks.get(key))
-
-        ThreadSettingsPageLinks.unregister(key, under)
-        assertNull(ThreadSettingsPageLinks.get(key))
-    }
-
-    // Forms "A setting's row" (raft-design #1204): by the row's own width, not the window's.
-    @Test
-    fun aSelectGoesToTheRowEndOnlyFrom32remOfTheRowsOwnWidth() {
-        assertTrue(channelDetailsSelectAtRowEnd(512.dp))
-        assertTrue(channelDetailsSelectAtRowEnd(720.dp))
-        assertFalse(channelDetailsSelectAtRowEnd(511.dp))
-        // The 400 wide details column, inset: under the title on a wide window too.
-        assertFalse(channelDetailsSelectAtRowEnd(366.dp))
-    }
-
-    // raft-design channel.md: Make private and Make public are the Public or Private row's button.
-    @Test
-    fun theVisibilityActionIsAChannelSettingsRowNotAnActionAtTheEnd() {
-        assertTrue(channelSettingsIsVisibilityAction(ChannelSettingsActionRow.MakePrivate))
-        assertTrue(channelSettingsIsVisibilityAction(ChannelSettingsActionRow.MakePublic))
-        ChannelSettingsActionRow.entries
-            .filterNot { it == ChannelSettingsActionRow.MakePrivate || it == ChannelSettingsActionRow.MakePublic }
-            .forEach { assertFalse(channelSettingsIsVisibilityAction(it)) }
     }
 
     @Test

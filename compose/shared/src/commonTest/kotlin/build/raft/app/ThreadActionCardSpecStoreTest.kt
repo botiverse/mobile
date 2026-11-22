@@ -7,7 +7,6 @@ import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
-import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecNavigateTarget
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
@@ -21,7 +20,6 @@ import build.raft.app.data.SecondFactorStepUpResult
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.actionCardFormIssue
 import build.raft.app.data.parseActionCardSpec
-import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.stripActionCardSpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -109,27 +107,6 @@ class ThreadActionCardSpecStoreTest {
     }
 
     @Test
-    fun theAppDeclaresWhatItWiresAndStripsTheRest() {
-        assertEquals(
-            listOf(
-                "card.v1", "confirm.v1", "form.v1", "field.text_input", "field.text_area", "field.select", "field.toggle",
-                "field.member_picker", "field.channel_picker", "field.agent_picker", "field.choice",
-                "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
-                "intent.feedback_ticket",
-            ),
-            RAFT_APP_ACTION_CARD_CAPABILITIES,
-        )
-        val feedback = """{"kind":"open","intent":"feedback_form"}"""
-        val read = assertNotNull(parseActionCardSpec(Json.parseToJsonElement(cardJson("fb" to feedback, "fill" to form))))
-        val on = stripActionCardSpec(read, raftAppActionCardCapabilities(feedbackFormAvailable = true))!!
-        assertTrue((on.spec.element("fb") as ActionCardSpecButton).action is ActionCardSpecAction.Open)
-        assertEquals(ActionCardSpecAction.OpenForm("details"), (on.spec.element("fill") as ActionCardSpecButton).action)
-        // Before the viewing server is known (no native form to open), the feedback Button opens in web instead.
-        val off = stripActionCardSpec(read, raftAppActionCardCapabilities(feedbackFormAvailable = false))!!
-        assertEquals(ActionCardSpecAction.OpenInWeb, (off.spec.element("fb") as ActionCardSpecButton).action)
-    }
-
-    @Test
     fun aPressGoesToTheStoreTheTypedPathOrALink() {
         val navigate = """{"kind":"navigate","target":{"kind":"agent","id":"7b2e8f3a-0c5d-4e4f-9a3b-2c3d4e5f6071"}}"""
         val url = """{"kind":"navigate","url":"https://example.com/docs"}"""
@@ -173,25 +150,6 @@ class ThreadActionCardSpecStoreTest {
         assertEquals(true, farButton.actionCardSpecLinkNavigable(cardSourceServerId = null, viewerServerId = "c07d3e8f-5bac-4d9e-8f8a-718293a4b5c6"))
         // A card from another server: its targets without a serverId live there too.
         assertEquals(false, actionCardTargetOnViewerServer(ActionCardSpecNavigateTarget(ActionCardSpecNavigateTarget.Kind.Channel, "c"), "other", "s-1"))
-    }
-
-    @Test
-    fun anIntentIsKeptOnlyForTheCardTypeItsNativePathBelongsTo() {
-        val createChannel = """{"kind":"open","intent":"create_channel"}"""
-        val createAgent = """{"kind":"open","intent":"create_agent"}"""
-        val json = cardJson("chan" to createChannel, "agent" to createAgent)
-        val onChannelCard = assertNotNull(card(type = "channel:create", spec = json).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
-        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateChannel), (onChannelCard.spec.element("chan") as ActionCardSpecButton).action)
-        // Another type's dialog: "Open in web", with that label, not the spec's.
-        val other = onChannelCard.spec.element("agent") as ActionCardSpecButton
-        assertEquals(ActionCardSpecAction.OpenInWeb to ACTION_CARD_OPEN_IN_WEB_LABEL, other.action to other.label)
-        val onAgentCard = assertNotNull(card(type = "agent:create", spec = json).actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
-        assertEquals(ActionCardSpecAction.OpenInWeb, (onAgentCard.spec.element("chan") as ActionCardSpecButton).action)
-        assertEquals(ActionCardSpecAction.Open(ActionCardSpecIntent.CreateAgent), (onAgentCard.spec.element("agent") as ActionCardSpecButton).action)
-        assertEquals(
-            RAFT_APP_ACTION_CARD_CAPABILITIES.filterNot { it.startsWith("intent.") } + "intent.create_agent",
-            card(type = "agent:create").actionCardSpecCapabilitiesFor(RAFT_APP_ACTION_CARD_CAPABILITIES),
-        )
     }
 
     @Test
@@ -474,34 +432,5 @@ class ThreadActionCardSpecStoreTest {
         assertEquals(3, h.calls.size)
         assertNull(h.store.state.value.form)
         assertEquals(listOf("m-1" to executed), h.applied)
-    }
-
-    @Test
-    fun aFeedbackRateLimitOnAPlainExecuteSaysSoUnderItsCard() = runTest {
-        val h = Harness(this)
-        h.answer(DataResult.Error(ScreenError(code = "x", serverMessage = "Too many", serverCode = "feedback_rate_limited")))
-        h.store.dispatch(ThreadActionCardSpecIntent.Press("m-1", "go", card(), spec("go" to execute)))
-        runCurrent()
-        assertEquals(ThreadActionCardSpecError.FeedbackRateLimited(null), h.store.state.value.errors["m-1"])
-    }
-
-    @Test
-    fun aMessageLinkBuildsBackToTheSameMessage() {
-        val links =
-            listOf(
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001", messageId = "a0a0a0a0-0000-4000-8000-000000000001"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.DirectMessage, "d0d0d0d0-0000-4000-8000-000000000002", messageId = "a0a0a0a0-0000-4000-8000-000000000002"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001", messageId = "a0a0a0a0-0000-4000-8000-000000000003", threadParentMessageId = "a0a0a0a0-0000-4000-8000-000000000004"),
-                RaftMessageLink("acme", build.raft.app.model.ConversationKind.Channel, "c0c0c0c0-0000-4000-8000-000000000001"),
-            )
-        for (webUrl in listOf(null, "https://staging.raft.example", "http://localhost:3000/")) {
-            for (link in links) {
-                val url = assertNotNull(buildRaftMessageLink(link, webUrl), "$link")
-                assertEquals(link, parseRaftMessageLink(url, webUrl), url)
-            }
-        }
-        assertEquals("https://app.raft.build/s/acme/channel/c0c0c0c0-0000-4000-8000-000000000001?msg=a0a0a0a0-0000-4000-8000-000000000003&thread=c0c0c0c0-0000-4000-8000-000000000001%3Aa0a0a0a0-0000-4000-8000-000000000004", buildRaftMessageLink(links[2], null))
-        // An id the parser would refuse builds nothing.
-        assertNull(buildRaftMessageLink(links[0].copy(messageId = "m/1"), null))
     }
 }

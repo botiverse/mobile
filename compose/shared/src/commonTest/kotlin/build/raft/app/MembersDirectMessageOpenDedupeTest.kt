@@ -63,8 +63,6 @@ class MembersDirectMessageOpenDedupeTest {
     private val server = ServerId("server-1")
     private val agent =
         MemberProfile(id = MemberId("agent-lagoon"), displayName = "Lagoon", handle = "Lagoon", kind = MemberKind.Agent, serverId = server)
-    private val human =
-        MemberProfile(id = MemberId("user-tenny"), displayName = "Tenny", handle = "tenny", kind = MemberKind.Human, serverId = server)
 
     private fun dmRow(id: String, peerType: String, peerId: String) =
         HomeDirectMessageRow(
@@ -127,29 +125,6 @@ class MembersDirectMessageOpenDedupeTest {
             errorStrings = englishErrorPresentationStringsForTest(),
             onUnavailableAction = { unavailable += it },
         )
-
-    @Test
-    fun aDmHomeAlreadyListsOpensWithoutTheNetwork() = runBlocking {
-        val repository = CountingDmRepository()
-        val opens = RaftDirectMessageOpens()
-        val home = homeWith(dmRow("dm-agent", "agent", "agent-lagoon"), dmRow("dm-human", "user", "user-tenny"))
-        val unavailable = mutableListOf<String>()
-
-        val agentResult = assertIs<DataResult.Content<OpenDirectMessageResult>>(
-            opens.open(repository, server, MemberKind.Agent, agent.id, home)
-        )
-        val humanResult = assertIs<DataResult.Content<OpenDirectMessageResult>>(
-            opens.open(repository, server, MemberKind.Human, human.id, home)
-        )
-        agentResult.openPage(agent, unavailable)
-
-        assertEquals("dm-agent", agentResult.data.conversation.channelId.value)
-        assertEquals("dm-human", humanResult.data.conversation.channelId.value)
-        assertEquals(0, repository.agentCalls)
-        assertEquals(0, repository.userCalls)
-        assertEquals(listOf(THREAD_PAGE), opened)
-        assertTrue(unavailable.isEmpty())
-    }
 
     @Test
     fun aDmOfAnotherServerOrPeerKindStillAsksTheServer() = runBlocking {

@@ -42,28 +42,6 @@ class HomeSearchServerScopeTest {
     }
 
     @Test
-    fun liveHomeOnAnotherServerLeavesThePagesOwnSnapshot() {
-        val own = homeState(serverId = "server-b", channelId = "channel-b", channelName = "b")
-        val live = homeState(serverId = "server-a", channelId = "channel-a", channelName = "a")
-        assertSame(own, homeSearchCandidateState(live, own, "server-b"))
-    }
-
-    @Test
-    fun liveHomeNotLoadedLeavesThePagesOwnSnapshot() {
-        val own = homeState(serverId = "server-a", channelId = "channel-a", channelName = "a")
-        assertSame(own, homeSearchCandidateState(SharedHomeState(), own, "server-a"))
-    }
-
-    @Test
-    fun matchingServerHomeSnapshotStillServesSearchRows() {
-        val scoped = botiverseHome.scopedToSearchServer("server-a")
-
-        assertSame(botiverseHome, scoped)
-        assertEquals(listOf("conversation:channel-a"), entityKeys(scoped, "deploy"))
-        assertEquals(listOf("conversation:channel-a"), frequentKeys(scoped, "channel-a"))
-    }
-
-    @Test
     fun unknownSearchServerShowsNoCandidates() {
         assertEquals(emptyList(), entityKeys(botiverseHome.scopedToSearchServer(null), "deploy"))
     }

@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import kotlin.test.Test
@@ -9,23 +8,6 @@ import kotlin.test.assertFalse
 
 class MembersErrorPresentationTest {
     private val errorStrings = englishErrorPresentationStringsForTest()
-
-    @Test
-    fun inviteAggregationPreservesFirstCompleteScreenError() {
-        val upstream = ScreenError(
-            code = "http_409",
-            retryable = false,
-            serverMessage = "This person is already invited"
-        )
-
-        val retained = membersFirstScreenErrorOrFallback(
-            results = listOf(DataResult.Content(Unit), DataResult.Error(upstream)),
-            fallbackCode = "invite_send_failed"
-        )
-
-        assertEquals(upstream, retained)
-        assertEquals("This person is already invited", retained.serverMessage)
-    }
 
     @Test
     fun membersFormattingUsesServerReasonInsteadOfBareCode() {

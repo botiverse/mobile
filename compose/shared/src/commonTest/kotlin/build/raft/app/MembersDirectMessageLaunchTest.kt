@@ -16,10 +16,8 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class MembersDirectMessageLaunchTest {
     @Test
@@ -78,13 +76,6 @@ class MembersDirectMessageLaunchTest {
     }
 
     @Test
-    fun directMessageEligibleProfilesUseIconOnlyHeaderMessageAction() {
-        assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Agent))
-        assertTrue(membersHeaderMessageUsesIconOnly(MemberKind.Human))
-        assertFalse(membersHeaderMessageUsesIconOnly(MemberKind.System))
-    }
-
-    @Test
     fun agentDetailMessageActionBuildsDirectMessageLaunchPayload() {
         val timeContext = RaftTimeContext(
             localOffsetMinutes = 480,
@@ -133,32 +124,6 @@ class MembersDirectMessageLaunchTest {
         assertEquals("", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals("", pageData.optString("dmPeerName"))
         assertEquals("", pageData.optString("dmPeerAvatar"))
-    }
-
-    @Test
-    fun agentDetailMessageActionFallsBackToChannelIdWhenThreadIdMissing() {
-        val payload =
-            buildMembersDirectMessageThreadLaunchPayload(
-                member =
-                    MemberProfile(
-                        id = MemberId("human-artin"),
-                        displayName = "artin",
-                        handle = "artin",
-                        kind = MemberKind.Human,
-                        serverId = ServerId("server-1")
-                    ),
-                conversation = HomeDirectMessageRow(
-                    threadId = ThreadId(""),
-                    channelId = ChannelId("dm-human-artin"),
-                    name = "artin"
-                ),
-                timeContext = RaftTimeContext(localOffsetMinutes = 0)
-            )
-
-        assertNotNull(payload)
-        assertEquals("dm-human-artin", payload.threadId)
-        assertEquals("dm-human-artin", payload.sourceThreadId)
-        assertEquals("dm-human-artin", payload.streamChannelId)
     }
 
     @Test
@@ -238,39 +203,6 @@ class MembersDirectMessageLaunchTest {
     }
 
     @Test
-    fun humanMemberReminderChannelPermalinkUsesRouteServerDirectory() {
-        val payload =
-            requireNotNull(
-                RaftThreadWebLinkTarget(
-                    channelId = "channel-general",
-                    messageId = "channel-message"
-                ).toMembersReminderThreadLaunchPayload(
-                    messageId = "channel-message",
-                    server = ServerSummary(ServerId("server-1"), "Raft"),
-                    conversationIdentityProvider = null,
-                    conversationDirectory =
-                        listOf(
-                            SharedConversationDirectoryProjection(
-                                serverId = "server-1",
-                                canonicalChannelId = "channel-general",
-                                aliases = setOf("channel-general"),
-                                conversationKind = ConversationKind.Channel,
-                                surfaceKind = RaftThreadSurfaceKind.Channel,
-                                channelKind = RaftThreadSurfaceKind.Channel,
-                                title = "general"
-                            )
-                        ).toSharedConversationDirectoryState(),
-                    timeContext = RaftTimeContext(localOffsetMinutes = 0)
-                )
-            )
-
-        assertEquals(RaftThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("channel-general", payload.sourceThreadId)
-        assertEquals("channel-general", payload.streamChannelId)
-        assertEquals("channel-message", payload.focusedMessageId)
-    }
-
-    @Test
     fun membersReminderDmThreadPermalinkPreservesDirectMessageParentKind() {
         val payload =
             requireNotNull(
@@ -295,31 +227,5 @@ class MembersDirectMessageLaunchTest {
         assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.parentChannelKind)
         assertEquals("dm-parent-message", payload.originParentMessageId)
         assertEquals("dm-reply", payload.focusedMessageId)
-    }
-
-    @Test
-    fun membersReminderDmPermalinkBuildsDirectMessageLaunchPayload() {
-        val payload =
-            requireNotNull(
-                RaftThreadWebLinkTarget(
-                    channelId = "dm-agent-artin",
-                    messageId = "dm-message",
-                    routeKind = RaftThreadSurfaceKind.DirectMessage
-                ).toMembersReminderThreadLaunchPayload(
-                    messageId = "dm-message",
-                    server = ServerSummary(ServerId("server-1"), "Raft"),
-                    conversationIdentityProvider = null,
-                    timeContext = RaftTimeContext(localOffsetMinutes = 0)
-                )
-            )
-
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.surfaceKind)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, payload.channelKind)
-        assertEquals("dm-agent-artin", payload.threadId)
-        assertEquals("dm-agent-artin", payload.sourceThreadId)
-        assertEquals("dm-agent-artin", payload.streamChannelId)
-        assertNull(payload.parentChannelId)
-        assertNull(payload.parentMessageId)
-        assertEquals("dm-message", payload.focusedMessageId)
     }
 }

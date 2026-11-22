@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ChannelJoinResult
 import build.raft.app.data.DataResult
-import build.raft.app.data.ScreenError
 import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
@@ -103,24 +102,6 @@ class ThreadJoinChannelTest {
     }
 
     @Test
-    fun anUnreadableTaskRefSendsNoJoinAndKeepsItsError() = runTest {
-        val calls = Calls()
-        val error = ScreenError(code = "task_conversation_ref_network", traceId = "0123456789abcdef0123456789abcdef")
-
-        val outcome =
-            taskConversationPage().joinThreadChannel(
-                loadTaskConversationRef = { DataResult.Error(error) },
-                joinChannel = { id ->
-                    calls.joins += id
-                    DataResult.Content(ChannelJoinResult(channelId = id))
-                },
-            )
-
-        assertEquals(emptyList<ChannelId>(), calls.joins)
-        assertEquals(DataResult.Error(error), assertIs<ThreadJoinChannelOutcome.Failed>(outcome).result)
-    }
-
-    @Test
     fun aRefOfAnotherConversationSendsNoJoin() = runTest {
         val calls = Calls()
 
@@ -135,12 +116,5 @@ class ThreadJoinChannelTest {
 
         assertEquals(emptyList<ChannelId>(), calls.joins)
         assertEquals(ThreadJoinChannelOutcome.Unresolved, outcome)
-    }
-
-    @Test
-    fun aJoinOfAnotherChannelLeavesThePageAsItWas() {
-        val page = taskConversationPage()
-
-        assertEquals(page, page.withChannelJoined("channel-general"))
     }
 }

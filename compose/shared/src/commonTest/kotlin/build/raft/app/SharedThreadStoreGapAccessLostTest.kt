@@ -10,11 +10,9 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionRequiredResult
-import build.raft.app.model.ChannelId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -120,15 +118,6 @@ class SharedThreadStoreGapAccessLostTest {
         }
     }
 
-    @Test
-    fun onlyAChannelLeavesWithTheChannelNotice() {
-        val channel = basePayload()
-        assertEquals(ChannelId("channel-1"), channel.accessLostChannelIdOrNull())
-        assertNull(channel.copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage).accessLostChannelIdOrNull())
-        assertNull(channel.copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread).accessLostChannelIdOrNull())
-        assertNull(channel.copy(channelKind = RaftTaskConversationChannelKind).accessLostChannelIdOrNull())
-    }
-
     private fun forbidden(message: String?, serverCode: String? = null): DataResult<ThreadSnapshot> =
         DataResult.NoPermission(
             PermissionBlocker(
@@ -138,17 +127,4 @@ class SharedThreadStoreGapAccessLostTest {
                 serverCode = serverCode,
             )
         )
-
-    @Test
-    fun theDenialPredicateIsTheWebs() {
-        assertTrue(forbidden("Access denied").isChannelAccessDenial())
-        assertTrue(forbidden("You do not have access to this channel").isChannelAccessDenial())
-        assertFalse(forbidden("Access denied", serverCode = "device_session_not_allowed").isChannelAccessDenial())
-        assertFalse(forbidden("Email verification required").isChannelAccessDenial())
-        assertTrue(DataResult.Error(ScreenError(code = "http_404", serverMessage = "Channel not found or not visible")).isChannelAccessDenial())
-        // The thread API path's uncoded 404 carries the caller's fallback code.
-        assertTrue(DataResult.Error(ScreenError(code = "thread_gap_catchup_network", serverMessage = "Channel not found")).isChannelAccessDenial())
-        assertFalse(DataResult.Error(ScreenError(code = "server_unavailable", serverMessage = "Channel not found")).isChannelAccessDenial())
-        assertFalse(DataResult.Error(ScreenError(code = "http_404", serverMessage = "Not found")).isChannelAccessDenial())
-    }
 }

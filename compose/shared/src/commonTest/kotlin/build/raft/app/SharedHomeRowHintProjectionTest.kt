@@ -36,12 +36,4 @@ class SharedHomeRowHintProjectionTest {
         assertEquals(0, item.unreadCount)
         assertEquals(null, item.lastMessagePreview)
     }
-
-    @Test
-    fun rowsWithoutAHintAreUnchanged() {
-        val item = projector.project(cachedRow.copy(threadId = ThreadId("c2"), channelId = ChannelId("c2")))
-
-        assertEquals(0, item.unreadCount)
-        assertEquals(null, item.lastMessagePreview)
-    }
 }

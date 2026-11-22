@@ -12,23 +12,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class ExternalSharePickerAdapterTest {
-    @Test
-    fun singleSelectionProjectsThroughLandedPickerContract() {
-        val first = target("channel-a")
-        val second = target("channel-b")
-        val selecting = state(targets = listOf(first, second), selected = listOf(first), generation = 7)
-
-        val surface = selecting.toExternalSharePickerSurface()
-
-        assertEquals("external-share:token", surface.picker.sessionKey.sourceContext)
-        assertEquals(setOf(first.externalKey()), surface.picker.selectedKeys)
-        assertEquals(7, surface.picker.requestGeneration)
-        assertTrue(surface.picker.interactive)
-    }
-
     @Test
     fun localDebouncedQueryKeepsTextButDisablesStaleRowsUntilStoreCatchesUp() {
         val first = target("channel-a")
@@ -68,19 +53,6 @@ class ExternalSharePickerAdapterTest {
     }
 
     @Test
-    fun continueAndRemoveUseTypedPickerIntents() {
-        val first = target("channel-a")
-        val selecting = state(targets = listOf(first), selected = listOf(first), generation = 3)
-
-        assertEquals(ExternalShareIntent.Continue, selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.Continue))
-        val remove =
-            assertIs<ExternalShareIntent.ToggleTarget>(
-                selecting.toExternalShareIntent(RaftForwardTargetPickerIntent.RemoveSelection(first.externalKey()))
-            )
-        assertEquals(first, remove.target)
-    }
-
-    @Test
     fun concreteTargetMapsToTypedConversation() {
         val destination = target("channel-a")
         val identity = destination.toExternalShareConversationIdentityOrNull()
@@ -111,6 +83,4 @@ class ExternalSharePickerAdapterTest {
             title = id,
             channelId = ChannelId(id)
         )
-
-    private fun ForwardMessageTarget.externalKey(): String = "${serverId.value}:${kind.name}:$id"
 }

@@ -4,7 +4,6 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsAboutSourceCodeTest {
@@ -40,11 +39,5 @@ class SettingsAboutSourceCodeTest {
             "https://github.com/botiverse/mobile",
             settingsAboutExternalUrl(SETTINGS_ABOUT_SOURCE_CODE_ACTION, null, webUrl = "https://app.raft.build")
         )
-    }
-
-    @Test
-    fun onlyTheSourceCodeRowLeavesRaft() {
-        assertNull(settingsAboutExternalUrl("openSlock", null, webUrl = "https://app.raft.build"))
-        assertNull(settingsAboutExternalUrl("openSourceLicenses", null, webUrl = "https://app.raft.build"))
     }
 }

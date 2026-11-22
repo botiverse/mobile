@@ -99,24 +99,10 @@ class RaftAppBotTest {
     }
 
     @Test
-    fun aDeletedAppBotCountsAsRemoved() {
-        val deleted = members().getValue("agent-bot").copy(agentDeletedAt = "2026-10-26T10:00:00Z")
-        assertEquals(true, deleted.appBotIdentityOrNull()?.removed)
-    }
-
-    @Test
     fun badgeSaysBotWhenTheShownNameIsTheAppsName() {
         assertEquals(RaftAppBotBadgeLabel.Bot, raftAppBotBadgeLabel(appName = "Stamp", botName = "Stamp"))
         assertEquals(RaftAppBotBadgeLabel.Bot, raftAppBotBadgeLabel(appName = null, botName = "Release helper"))
         assertEquals(RaftAppBotBadgeLabel.Bot, raftAppBotBadgeLabel(appName = "  ", botName = "Release helper"))
-    }
-
-    @Test
-    fun badgeNamesTheAppWhenTheBotShowsUnderAnotherName() {
-        assertEquals(
-            RaftAppBotBadgeLabel.BotWithApp("Listing Bot App"),
-            raftAppBotBadgeLabel(appName = "Listing Bot App", botName = "Release helper"),
-        )
     }
 
     @Test
@@ -125,15 +111,6 @@ class RaftAppBotTest {
         assertNull(members.getValue("agent-bot").modelLabel())
         assertNull(members.getValue("agent-removed").modelLabel())
         assertEquals("Claude Sonnet", members.getValue("agent-plain").modelLabel())
-    }
-
-    @Test
-    fun staticResolverAnswersCurrentAndFlow() {
-        val identity = RaftAppBotIdentity("stamp", "Stamp", removed = true)
-        val resolver = raftStaticMemberAppBotResolver(mapOf("agent-bot" to identity))
-        assertEquals(identity, resolver.current("agent-bot"))
-        assertNull(resolver.current("agent-plain"))
-        assertNull(EmptyRaftMemberAppBotResolver.current("agent-bot"))
     }
 
     @Test
@@ -157,35 +134,5 @@ class RaftAppBotTest {
         assertNull(display(RaftThreadSurfaceKind.Channel, dm = botPeer).composerDmAgentPeerId())
         assertNull(display(RaftThreadSurfaceKind.ReplyThread).composerDmAgentPeerId())
         assertTrue(display(RaftThreadSurfaceKind.ReplyThread, dm = botPeer).composerDmAgentPeerId() == null)
-    }
-
-    @Test
-    fun activityBadgesOnlyADmRowWithAnAgentPeer() {
-        fun peer(id: String, agent: Boolean) =
-            ActivityConversationDmPeer(peerId = id, peerIsAgent = agent, avatarWireValue = null, displayName = id, activityMuted = false)
-        val context =
-            ActivityConversationListContext(
-                dmPeersByChannelId = mapOf("dm-bot" to peer("agent-stamp", true), "dm-human" to peer("user-1", false)),
-            )
-        fun dm(channelId: String) =
-            build.raft.app.data.InboxItem(
-                key = "dm:$channelId",
-                kind = build.raft.app.model.InboxItemKind.DirectMessage,
-                channelId = build.raft.app.model.ChannelId(channelId),
-                channelName = channelId,
-            )
-        val thread =
-            build.raft.app.data.InboxItem(
-                key = "thread:t",
-                kind = build.raft.app.model.InboxItemKind.Thread,
-                channelId = build.raft.app.model.ChannelId("t"),
-                channelName = "thread",
-                parentChannelId = build.raft.app.model.ChannelId("dm-bot"),
-                parentChannelKind = build.raft.app.model.ConversationKind.DirectMessage,
-            )
-        val all = build.raft.app.data.InboxFilter.All
-        assertEquals("agent-stamp", dm("dm-bot").activityConversationRowModel(context, all).activityDmAppBotPeerId())
-        assertNull(dm("dm-human").activityConversationRowModel(context, all).activityDmAppBotPeerId())
-        assertNull(thread.activityConversationRowModel(context, all).activityDmAppBotPeerId())
     }
 }

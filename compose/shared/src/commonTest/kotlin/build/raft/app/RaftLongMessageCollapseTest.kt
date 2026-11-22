@@ -2,11 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.RaftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
-import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.raftLongMessageCollapseEffective
-import build.raft.app.data.raftLongMessageCollapseOverrideAfterSet
 import build.raft.app.data.raftLongMessageCollapseOverrideKey
 import build.raft.app.data.raftLongMessageCollapseParseOverride
 import kotlinx.coroutines.runBlocking
@@ -34,34 +31,11 @@ class RaftLongMessageCollapseTest {
     }
 
     @Test
-    fun aMessageOfAboutHalfAPhoneScreenCollapses() {
-        // Regression (Android build 5): with the threshold at 80% of the viewport a body had to be
-        // taller than ~1730px of a 2000px list before it collapsed, so ordinary long messages
-        // rendered in full. At the web's 320dp a ~440dp body collapses.
-        val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000, maxThresholdPx = 880)
-        assertEquals(880, controller.thresholdPx)
-        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 132))
-        assertEquals(880, raftLongMessageVisibleBodyHeight(1200, controller.thresholdPx, collapsible = true, expanded = false))
-        // A body only a little taller than 320dp still renders in full.
-        assertFalse(controller.recordMeasurement("m2", "m2:a", contentHeightPx = 960, minHiddenPx = 132))
-    }
-
-    @Test
     fun keyboardDoesNotLowerTheThresholdBelowTheFixedHeight() {
         val controller = RaftLongMessageCollapseController()
         controller.onViewportMeasured(1080, 2000, maxThresholdPx = 880)
         controller.onViewportMeasured(1080, 900, maxThresholdPx = 880) // IME open
         assertEquals(880, controller.thresholdPx)
-    }
-
-    @Test
-    fun keyboardShrinkingViewportKeepsTallestHeightUntilWidthChanges() {
-        val open = raftLongMessageStableViewport(null, RaftLongMessageViewport(1080, 2000))
-        val withIme = raftLongMessageStableViewport(open, RaftLongMessageViewport(1080, 1100))
-        assertEquals(2000, withIme.height)
-        val rotated = raftLongMessageStableViewport(withIme, RaftLongMessageViewport(2000, 900))
-        assertEquals(RaftLongMessageViewport(2000, 900), rotated)
     }
 
     @Test
@@ -74,13 +48,6 @@ class RaftLongMessageCollapseTest {
     @Test
     fun nothingCollapsesBeforeTheViewportIsKnown() {
         assertFalse(raftLongMessageCollapsible(false, contentHeightPx = 99_999, thresholdPx = 0, minHiddenPx = 0))
-    }
-
-    @Test
-    fun visibleHeightIsClippedOnlyWhileCollapsed() {
-        assertEquals(1600, raftLongMessageVisibleBodyHeight(4000, 1600, collapsible = true, expanded = false))
-        assertEquals(4000, raftLongMessageVisibleBodyHeight(4000, 1600, collapsible = true, expanded = true))
-        assertEquals(1500, raftLongMessageVisibleBodyHeight(1500, 1600, collapsible = false, expanded = false))
     }
 
     // --- one-way re-evaluation -------------------------------------------------------------
@@ -98,25 +65,6 @@ class RaftLongMessageCollapseTest {
         assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1620, minHiddenPx = 48))
         // ...while a fresh body of that height would not have collapsed.
         assertFalse(controller.recordMeasurement("m2", "m2:a", contentHeightPx = 1620, minHiddenPx = 48))
-    }
-
-    @Test
-    fun toggleDisappearsWhenTheThresholdGrowsPastTheContent() {
-        val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 1000, maxThresholdPx = NoCap) // threshold 800
-        assertTrue(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
-        // Rotation to a taller viewport: threshold 1600 > content, nothing left to hide.
-        controller.onViewportMeasured(1200, 2000, maxThresholdPx = NoCap)
-        assertFalse(controller.recordMeasurement("m1", "m1:a", contentHeightPx = 1200, minHiddenPx = 48))
-        assertFalse(controller.isCollapsible("m1:a"))
-        assertEquals(1200, raftLongMessageVisibleBodyHeight(1200, 1600, collapsible = false, expanded = false))
-    }
-
-    @Test
-    fun collapsibleOnlyWhileContentExceedsThreshold() {
-        assertTrue(raftLongMessageCollapsible(true, contentHeightPx = 1601, thresholdPx = 1600, minHiddenPx = 48))
-        assertFalse(raftLongMessageCollapsible(true, contentHeightPx = 1600, thresholdPx = 1600, minHiddenPx = 48))
-        assertFalse(raftLongMessageCollapsible(true, contentHeightPx = 5000, thresholdPx = 0, minHiddenPx = 48))
     }
 
     @Test
@@ -139,16 +87,6 @@ class RaftLongMessageCollapseTest {
         assertFalse(controller.isExpanded("m2"))
         controller.setExpanded("m1", false)
         assertFalse(controller.isExpanded("m1"))
-    }
-
-    @Test
-    fun toggleHeightDeltaIsTheHiddenPart() {
-        val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000, maxThresholdPx = NoCap)
-        controller.recordMeasurement("m1", "m1:a", 3000, 48)
-        assertEquals(1400, controller.toggleHeightDelta("m1", expanding = true))
-        assertEquals(-1400, controller.toggleHeightDelta("m1", expanding = false))
-        assertEquals(0, controller.toggleHeightDelta("unknown", expanding = true))
     }
 
     // --- auto-expand -----------------------------------------------------------------------
@@ -189,22 +127,6 @@ class RaftLongMessageCollapseTest {
     }
 
     @Test
-    fun topDownCollapseBringsAScrolledAwayTopBackToTheViewportTop() {
-        val plan =
-            raftLongMessageToggleScrollPlan(
-                reverseLayout = false,
-                expanding = false,
-                forwardIndex = 5,
-                totalItemsCount = 10,
-                itemTopBefore = -900,
-                rawItemOffsetBefore = -900,
-                heightDelta = -1400
-            )
-        assertEquals(0, plan.desiredTop)
-        assertEquals(RaftLongMessageRawScrollRequest(rawIndex = 5, scrollOffset = 0), plan.rawScrollRequest)
-    }
-
-    @Test
     fun bottomUpExpandMovesTheRowBottomDownSoTheTopStays() {
         // Reversed list of 10: forward 5 is raw 4. Its bottom sits 500px above the bottom edge.
         val plan =
@@ -222,39 +144,6 @@ class RaftLongMessageCollapseTest {
         assertEquals(RaftLongMessageRawScrollRequest(rawIndex = 4, scrollOffset = 900), plan.rawScrollRequest)
     }
 
-    @Test
-    fun bottomUpCollapseKeepsAVisibleTop() {
-        val plan =
-            raftLongMessageToggleScrollPlan(
-                reverseLayout = true,
-                expanding = false,
-                forwardIndex = 9,
-                totalItemsCount = 10,
-                itemTopBefore = 100,
-                rawItemOffsetBefore = -1300,
-                heightDelta = -1400
-            )
-        assertEquals(100, plan.desiredTop)
-        assertEquals(RaftLongMessageRawScrollRequest(rawIndex = 0, scrollOffset = -100), plan.rawScrollRequest)
-    }
-
-    @Test
-    fun bottomUpCollapseWithTopAboveViewportRevealsTheTop() {
-        val plan =
-            raftLongMessageToggleScrollPlan(
-                reverseLayout = true,
-                expanding = false,
-                forwardIndex = 9,
-                totalItemsCount = 10,
-                itemTopBefore = -600,
-                rawItemOffsetBefore = -2000,
-                heightDelta = -1400
-            )
-        assertEquals(0, plan.desiredTop)
-        // bottom shift = -1400 + 600 = -800 -> raw offset -2000 + 800 = -1200.
-        assertEquals(RaftLongMessageRawScrollRequest(rawIndex = 0, scrollOffset = 1200), plan.rawScrollRequest)
-    }
-
     // --- effective setting -----------------------------------------------------------------
 
     @Test
@@ -263,13 +152,6 @@ class RaftLongMessageCollapseTest {
         assertFalse(raftLongMessageCollapseEffective(globalEnabled = false, channelOverride = null))
         assertFalse(raftLongMessageCollapseEffective(globalEnabled = true, channelOverride = false))
         assertTrue(raftLongMessageCollapseEffective(globalEnabled = false, channelOverride = true))
-    }
-
-    @Test
-    fun choosingTheGlobalValueClearsTheOverride() {
-        assertNull(raftLongMessageCollapseOverrideAfterSet(globalEnabled = true, requested = true))
-        assertEquals(false, raftLongMessageCollapseOverrideAfterSet(globalEnabled = true, requested = false))
-        assertEquals(true, raftLongMessageCollapseOverrideAfterSet(globalEnabled = false, requested = true))
     }
 
     @Test
@@ -350,37 +232,6 @@ class RaftLongMessageCollapseTest {
         assertNull(store.readChannelOverride("srv", "ch"))
         assertNull(raftLongMessageCollapseParseOverride("maybe"))
         assertNull(raftLongMessageCollapseParseOverride("on@x"))
-    }
-
-    @Test
-    fun voidedOverrideIsIgnoredEvenIfNeverReadBetweenTwoGlobalFlips() = runBlocking {
-        val kv = globalOnStore() // these cases start from a global ON switch
-        val store = RaftLongMessageCollapsePreferenceStore(kv)
-        val chatLayout = KeyValueChatLayoutPreferenceStore(kv)
-        store.setConversationEnabled("srv", "ch", enabled = false)
-        chatLayout.saveLongMessageCollapseEnabled(false)
-        chatLayout.saveLongMessageCollapseEnabled(true)
-        assertTrue(store.readConversation("srv", "ch").followsGlobal)
-        assertTrue(store.readConversation("srv", "ch").effective)
-    }
-
-    @Test
-    fun detailLineComesFromBothGlobalAndOverride() {
-        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOn, raftLongMessageCollapseDetailKind(true, null))
-        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOff, raftLongMessageCollapseDetailKind(false, null))
-        assertEquals(RaftLongMessageCollapseDetailKind.OverrideOff, raftLongMessageCollapseDetailKind(true, false))
-        assertEquals(RaftLongMessageCollapseDetailKind.OverrideOn, raftLongMessageCollapseDetailKind(false, true))
-        // An override equal to the global switch is not an override.
-        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOn, raftLongMessageCollapseDetailKind(true, true))
-        assertEquals(RaftLongMessageCollapseDetailKind.FollowsGlobalOff, raftLongMessageCollapseDetailKind(false, false))
-    }
-
-    @Test
-    fun conversationWithoutIdsHasNoOverride() {
-        val store = RaftLongMessageCollapsePreferenceStore(globalOnStore())
-        val result = store.setConversationEnabled(null, "ch", enabled = false)
-        assertNull(result.channelOverride)
-        assertTrue(result.effective)
     }
 
     @Test

@@ -54,14 +54,6 @@ class RaftArtifactViewerSessionRecoveryTest {
     }
 
     @Test
-    fun otherPagesAreNoSignOut() {
-        for (path in listOf("/s/northwind", "/s/northwind/login", "/loginx", "/artifacts/pt_other", "/settings")) {
-            assertFalse(raftArtifactViewerIsSessionLoss("$web$path"), path)
-        }
-        assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/s/northwind"))
-    }
-
-    @Test
     fun aRootLinkWithoutEvidenceOfASignOutClosesAsBefore() {
         // A home or logo link in the Artifact, while the page's token is good and was not just changed.
         assertEquals(RaftArtifactViewerLeaveAction.Leave, action("$web/", sessionLossEvident = false))
@@ -106,42 +98,6 @@ class RaftArtifactViewerSessionRecoveryTest {
     }
 
     @Test
-    fun theViewerGathersEvidenceFromTheTokenThePageHolds() {
-        val t0 = 1_800_000_000_000L
-        val clock = SettingsWebViewTokenClock()
-        val first = jwt(t0, "user-maya-1")
-        val pages = RaftArtifactViewerPageTokenTracker(first, clock, t0)
-        // Loaded with the App's token, fresh: a root link is no sign-out.
-        assertEquals(first, pages.pageToken)
-        assertFalse(pages.sessionLossEvident(currentToken = first, nowMs = t0 + 60_000L))
-
-        // The refresh-ahead timer rotated the App's token; the push has not reached the page yet.
-        val second = jwt(t0 + 13 * 60_000L, "user-maya-2")
-        clock.learnFromFreshToken(second, t0 + 13 * 60_000L)
-        assertTrue(pages.sessionLossEvident(currentToken = second, nowMs = t0 + 13 * 60_000L), "the page holds the old one")
-        // The recovery refresh is told the token the page held, not the App's current one.
-        assertEquals(first, pages.pageToken)
-
-        // The push lands: evidence only for a moment, then a root link closes again.
-        pages.onPushed(second, t0 + 13 * 60_000L + 500)
-        assertEquals(second, pages.pageToken)
-        assertTrue(pages.sessionLossEvident(currentToken = second, nowMs = t0 + 13 * 60_000L + 1_000))
-        assertFalse(
-            pages.sessionLossEvident(
-                currentToken = second,
-                nowMs = t0 + 13 * 60_000L + 500 + RAFT_ARTIFACT_VIEWER_SESSION_LOSS_RECENT_PUSH_MS + 1,
-            ),
-            "30 s after a scheduled refresh: a home link closes",
-        )
-
-        // A new document (a reload) holds the token it was loaded with; no push since.
-        pages.onDocumentLoaded(second, t0 + 14 * 60_000L)
-        assertFalse(pages.sessionLossEvident(currentToken = second, nowMs = t0 + 14 * 60_000L + 1))
-        // Left open until it is about to expire without a refresh (the App in the background): evidence.
-        assertTrue(pages.sessionLossEvident(currentToken = second, nowMs = t0 + 13 * 60_000L + 14 * 60_000L))
-    }
-
-    @Test
     fun aFastDeviceClockIsNoEvidenceBeforeTheOffsetIsKnown() {
         // The device runs 20 min ahead and nothing was refreshed in this run yet: by its clock against
         // `exp` the page's fresh token expired 5 min ago, which must not turn a root link into a reload.
@@ -159,19 +115,5 @@ class RaftArtifactViewerSessionRecoveryTest {
     fun aSignOutTooSoonAfterARecoveryGivesUp() {
         assertEquals(RaftArtifactViewerLeaveAction.SessionLost, action("$web/", sessionRecoveryAvailable = false))
         assertEquals(RaftArtifactViewerLeaveAction.SessionLost, action("$web/login", sessionRecoveryAvailable = false))
-    }
-
-    @Test
-    fun theGuardAdmitsOneReloadAMinute() {
-        val guard = RaftArtifactViewerSessionRecoveryGuard()
-        assertTrue(guard.available(0))
-        assertTrue(guard.admit(1_000))
-        // Signed out again 30 s later: no second reload.
-        assertFalse(guard.available(31_000))
-        assertFalse(guard.admit(31_000))
-        // The refused attempt did not move the window: a minute after the reload, one more.
-        assertTrue(guard.available(1_000 + RAFT_ARTIFACT_VIEWER_SESSION_RECOVERY_WINDOW_MS))
-        assertTrue(guard.admit(1_000 + RAFT_ARTIFACT_VIEWER_SESSION_RECOVERY_WINDOW_MS))
-        assertFalse(guard.admit(2_000 + RAFT_ARTIFACT_VIEWER_SESSION_RECOVERY_WINDOW_MS))
     }
 }

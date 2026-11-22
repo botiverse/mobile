@@ -27,7 +27,7 @@ import kotlinx.atomicfu.locks.synchronized
  * principalId, distinct non-blank server ids in order); token refreshes and the *selected* server are
  * not part of it. First identity seen is generation 1, every identity change is +1, A→B→A yields
  * 1, 2, 3. It is NOT the registry, and it must not be read as a mirror of anything but that counting
- * rule over that identity (pinned by `SharedThreadTestIdentityAuthorityTest`).
+ * rule over that identity.
  *
  * Holder scope: one holder per [RaftAuthSessionStore] INSTANCE (see
  * [testThreadReplyCacheIdentityAuthority]). The store instance is the test's stand-in for "one

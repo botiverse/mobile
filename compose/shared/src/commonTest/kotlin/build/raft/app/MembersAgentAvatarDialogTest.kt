@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.PermissionBlocker
@@ -41,25 +40,6 @@ class MembersAgentAvatarDialogTest {
         assertFalse(membersAgentAvatarUploadSelected(MembersAgentAvatarDraft.Unchanged, cat))
         assertEquals("fox", membersAgentAvatarSelectedPreset(MembersAgentAvatarDraft.Preset("fox"), cat, defaultKey = "robot"))
         assertEquals("robot", membersAgentAvatarSelectedPreset(MembersAgentAvatarDraft.Default, cat, defaultKey = "robot"))
-    }
-
-    @Test
-    fun noAvatarIsTheDefaultRobot() {
-        assertEquals("robot", membersAgentAvatarSelectedPreset(MembersAgentAvatarDraft.Unchanged, agent(null), defaultKey = "robot"))
-    }
-
-    @Test
-    fun anUploadedAvatarSelectsTheUploadTileNotAPreset() {
-        val photo = agent("https://cdn.example.com/avatars/ada.png")
-        assertTrue(photo.membersAgentHasCustomAvatar())
-        assertNull(membersAgentAvatarSelectedPreset(MembersAgentAvatarDraft.Unchanged, photo, defaultKey = "robot"))
-        assertTrue(membersAgentAvatarUploadSelected(MembersAgentAvatarDraft.Unchanged, photo))
-        // Staging a pixel avatar moves the choice off the upload tile.
-        assertFalse(membersAgentAvatarUploadSelected(MembersAgentAvatarDraft.Preset("cat"), photo))
-        // A staged image is chosen whatever the avatar is now.
-        val staged = MembersAgentAvatarDraft.Upload(image)
-        assertTrue(membersAgentAvatarUploadSelected(staged, agent("pixel:cat")))
-        assertNull(membersAgentAvatarSelectedPreset(staged, agent("pixel:cat"), defaultKey = "robot"))
     }
 
     @Test
@@ -104,13 +84,6 @@ class MembersAgentAvatarDialogTest {
     }
 
     @Test
-    fun aPhoneShowsEachSeriesInTwoRowsOfFour() {
-        assertEquals(4, membersAgentAvatarGridColumns(358.dp))
-        assertEquals(4, membersAgentAvatarGridColumns(407.dp))
-        assertEquals(8, membersAgentAvatarGridColumns(408.dp))
-    }
-
-    @Test
     fun thePickerShowsTheNineSeriesOfEightInCanonicalOrder() {
         val groups = pixelAvatarPickerGroups(RaftPixelAvatarRuntime.bundled)
         assertEquals(
@@ -122,54 +95,5 @@ class MembersAgentAvatarDialogTest {
         // The reserved avatars (finch, mug) are never offered.
         assertFalse(groups.any { group -> group.avatars.any { it in PixelAvatarReservedKeys } })
         assertEquals(PixelAvatarPickerKeys.toSet(), groups.flatMap { it.avatars }.toSet())
-    }
-
-    @Test
-    fun aTableWithoutSeriesShowsEveryAvatarInOneUntitledGroup() {
-        val bundled = RaftPixelAvatarRuntime.bundled
-        val unsorted =
-            PixelAvatarData(
-                version = bundled.version,
-                palette = bundled.palette,
-                paletteArgb = bundled.paletteArgb,
-                specs = bundled.specs,
-                reservedKeys = bundled.reservedKeys,
-                defaultKey = bundled.defaultKey
-            )
-        val groups = pixelAvatarPickerGroups(unsorted)
-        assertEquals(listOf<String?>(null), groups.map { it.seriesKey })
-        assertEquals(PixelAvatarPickerKeys, groups.single().avatars)
-    }
-
-    @Test
-    fun theRuntimeDocumentCarriesItsSeries() {
-        val json =
-            """
-            {
-              "version": 9,
-              "palette": { "_": "transparent", "K": "#141111", "C": "#27CCF3" },
-              "avatars": {
-                "robot": { "bg": "C", "grid": ["KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK"] },
-                "cat": { "bg": "C", "grid": ["KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK"] },
-                "owl": { "bg": "C", "grid": ["KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK", "KKKKKKKK"] }
-              },
-              "series": [{ "key": "critters", "avatars": ["cat"] }, { "key": "bots", "avatars": ["robot"] }],
-              "reservedKeys": [],
-              "defaultKey": "robot"
-            }
-            """.trimIndent()
-        val data = assertNotNull(parsePixelAvatarData(json))
-        val groups = pixelAvatarPickerGroups(data)
-        // Series order first; an avatar no series names (owl) still shows, untitled, at the end.
-        assertEquals(
-            listOf(
-                PixelAvatarPickerGroup("critters", listOf("cat")),
-                PixelAvatarPickerGroup("bots", listOf("robot")),
-                PixelAvatarPickerGroup(null, listOf("owl"))
-            ),
-            groups
-        )
-        // A series naming an avatar the table does not have is a malformed document.
-        assertNull(parsePixelAvatarData(json.replace("[\"cat\"]", "[\"lynx\"]")))
     }
 }

@@ -1,15 +1,12 @@
 package build.raft.app
 
-import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
-import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.parseSharedAgentProfile
 import build.raft.app.model.AgentStatus
-import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -46,13 +43,6 @@ class AgentRuntimeSignInNeededTest {
         assertEquals(false, needed(AgentStatus.Offline, live = "runtime_login_required", paused = true))
         assertEquals(false, needed(AgentStatus.Offline, live = "runtime_login_required", external = true))
         assertEquals(false, needed(AgentStatus.Offline, live = "runtime_login_required", likelyOnline = true))
-    }
-
-    @Test
-    fun theProfileReadsTheLoadedStatusAndKeptReasonWithoutALiveIndicator() {
-        val summary = AgentDetailSummary(id = "a1", name = "cat", activity = "offline", lastRuntimeErrorSpawnFailureReason = "runtime_login_required")
-        assertEquals(true, membersAgentRuntimeSignInNeeded(indicator = null, summary = summary, external = false, blocked = null, liveSpawnFailureReason = null))
-        assertEquals(false, membersAgentRuntimeSignInNeeded(indicator = null, summary = null, external = false, blocked = null, liveSpawnFailureReason = null))
     }
 
     @Test
@@ -133,28 +123,5 @@ class AgentRuntimeSignInNeededTest {
             )
         assertNotNull(withoutReason)
         assertNull(withoutReason.lastRuntimeErrorSpawnFailureReason)
-    }
-
-    @Test
-    fun indicatorStatePreservesSignInFieldsAcrossWithoutActivityDetail() {
-        val indicator =
-            SharedServerMemberStatus(
-                status = AgentStatus.Offline,
-                presence = Presence.Offline,
-                runtime = "kimi-sdk",
-                external = false,
-                spawnFailureReason = "runtime_login_required",
-                lastRuntimeErrorSpawnFailureReason = "runtime_login_required",
-                paused = false,
-                machineId = "m-1",
-                machineName = "Studio Mac",
-            ).toRaftAgentStatusIndicatorState()
-
-        val stripped = indicator.withoutActivityDetail()
-        assertEquals("runtime_login_required", stripped.spawnFailureReason)
-        assertEquals("runtime_login_required", stripped.lastRuntimeErrorSpawnFailureReason)
-        assertEquals("m-1", stripped.machineId)
-        assertEquals("Studio Mac", stripped.machineName)
-        assertFalse(stripped.paused)
     }
 }

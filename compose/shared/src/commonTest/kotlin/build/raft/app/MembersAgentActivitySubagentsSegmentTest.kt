@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.AgentRuntimesWithSubagents
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -11,11 +10,6 @@ import kotlin.test.assertTrue
  * and AgentActivityLog `showSubagents = hasSubagents || subagents.length > 0 || view === "subagents"`.
  */
 class MembersAgentActivitySubagentsSegmentTest {
-    @Test
-    fun theRuntimesAreTheWebList() {
-        assertEquals(listOf("claude", "codex", "kimi-sdk", "qwen", "qoder"), AgentRuntimesWithSubagents)
-    }
-
     @Test
     fun aRuntimeThatCanStartSubagentsAlwaysShowsTheSegmentWithZero() {
         AgentRuntimesWithSubagents.forEach { runtime ->

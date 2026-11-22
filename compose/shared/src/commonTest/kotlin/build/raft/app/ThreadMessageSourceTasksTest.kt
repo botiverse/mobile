@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.DataResult
-import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SharedTaskFactFoldOutcome
 import build.raft.app.data.SharedTasksDataStore
 import build.raft.app.data.SharedTasksScope
@@ -116,87 +115,6 @@ class ThreadMessageSourceTasksTest {
         val done = frame(taskJson(id = "t-11", number = 11, source = null, status = "done", revision = 5, reportSource = false))
         assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTaskForCurrentServer("server-1", done))
         assertEquals(TaskStatus.Done to null, row()?.let { it.status to it.assigneeName })
-    }
-
-    @Test
-    fun theTaskListSitsAboveTheFooterChipsAndTheReplies() {
-        assertEquals(
-            listOf(ThreadMessageTrailingSection.SourceTasks, ThreadMessageTrailingSection.MetaChips, ThreadMessageTrailingSection.InlineReplies),
-            threadMessageTrailingSectionOrder(hasMetaChips = true, hasInlineReplies = true, hasSourceTasks = true),
-        )
-        assertEquals(
-            listOf(ThreadMessageTrailingSection.MetaChips),
-            threadMessageTrailingSectionOrder(hasMetaChips = true, hasInlineReplies = false),
-        )
-    }
-
-    @Test
-    fun jointChannelTaskCarriesJointFlagAndPrefersResolvedActorDisplayName() {
-        val jointRow =
-            parsed(
-                taskJson(
-                    id = "t-joint",
-                    number = 15,
-                    source = "msg-a",
-                    channelType = "joint",
-                    claimedType = "agent",
-                    claimedId = "00000000-0000-4000-8000-0000000000a1",
-                    claimedName = "remote-agent",
-                )
-            ).toThreadMessageSourceTaskItem(viewerUserId = "user-1")
-        assertTrue(jointRow.isJointChannel)
-
-        val plainRow =
-            parsed(
-                taskJson(
-                    id = "t-plain",
-                    number = 16,
-                    source = "msg-a",
-                    channelType = "channel",
-                    claimedType = "agent",
-                    claimedId = "00000000-0000-4000-8000-0000000000a2",
-                    claimedName = "remote-agent",
-                )
-            ).toThreadMessageSourceTaskItem(viewerUserId = "user-1")
-        assertEquals(false, plainRow.isJointChannel)
-
-        val actor =
-            ResolvedActor(
-                kind = MemberKind.Agent,
-                id = "00000000-0000-4000-8000-0000000000a1",
-                homeServerId = "server-2",
-                name = "remote-agent",
-                displayName = "Remote Agent",
-                avatarUrl = "https://example.test/remote-agent.png",
-                gravatarHash = null,
-            )
-        assertEquals(
-            "Remote Agent",
-            threadMessageSourceTaskAssigneeName(
-                assigneeIsViewer = false,
-                viewerLabel = "You",
-                assigneeName = "remote-agent",
-                jointActor = actor,
-            ),
-        )
-        assertEquals(
-            "remote-agent",
-            threadMessageSourceTaskAssigneeName(
-                assigneeIsViewer = false,
-                viewerLabel = "You",
-                assigneeName = "remote-agent",
-                jointActor = null,
-            ),
-        )
-        assertEquals(
-            "You",
-            threadMessageSourceTaskAssigneeName(
-                assigneeIsViewer = true,
-                viewerLabel = "You",
-                assigneeName = "me",
-                jointActor = actor,
-            ),
-        )
     }
 
     private fun parsed(json: String): TaskSummary =

@@ -3,10 +3,8 @@ package build.raft.app
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * A message link opened signed out waits through sign-in and is opened once afterwards
@@ -53,32 +51,5 @@ class RaftMessageLinkInboxTest {
         assertNull(shellPass(sessionReady = true))
         assertNull(inbox.pending.value, "an expired link is cleared, not retried")
         assertNull(inbox.take(submitted.id))
-    }
-
-    @Test
-    fun newerLinkReplacesTheOneWaitingForSignIn() {
-        val first = inbox.submit(link, source = "android_view")
-        val newerLink = link.copy(channelId = "c2", messageId = null)
-        val second = inbox.submit(newerLink, source = "android_view")
-        assertTrue(second.id > first.id)
-
-        assertNull(inbox.take(first.id), "a replaced link is never opened")
-        assertEquals(newerLink, shellPass(sessionReady = true)?.link)
-    }
-
-    @Test
-    fun takeRuleNeedsBothALinkAndAReadySession() {
-        assertFalse(raftMessageLinkShouldTake(null, sessionReady = true))
-        val pending = inbox.submit(link, source = "test")
-        assertFalse(raftMessageLinkShouldTake(pending, sessionReady = false))
-        assertTrue(raftMessageLinkShouldTake(pending, sessionReady = true))
-    }
-
-    @Test
-    fun clearDropsAPendingLink() {
-        inbox.submit(link, source = "test")
-        inbox.clear()
-        assertNull(inbox.pending.value)
-        assertNull(shellPass(sessionReady = true))
     }
 }

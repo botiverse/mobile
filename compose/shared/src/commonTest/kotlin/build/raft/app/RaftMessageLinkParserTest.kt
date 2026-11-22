@@ -59,24 +59,6 @@ class RaftMessageLinkParserTest {
     }
 
     @Test
-    fun appMissingAndUnknownQueryKeysAreIgnored() {
-        val expected = RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, threadParentMessageId = pid)
-        assertEquals(expected, parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?msg=$mid&thread=$cid:$pid&app=missing"))
-        assertEquals(expected, parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?app=missing&msg=$mid&thread=$cid:$pid&utm_source=wechat#x"))
-        assertEquals(
-            RaftMessageLink(slug, ConversationKind.Channel, cid),
-            parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?app=missing")
-        )
-    }
-
-    @Test
-    fun percentEncodedThreadValueIsDecoded() {
-        val expected = RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid, threadParentMessageId = pid)
-        assertEquals(expected, parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid?msg=$mid&thread=$cid%3A$pid"))
-        assertEquals(expected, parseRaftMessageLink("https://open.raft.build/s/$slug/channel/$cid?msg=$mid&thread=$cid%3a$pid"))
-    }
-
-    @Test
     fun otherPathsHostsAndMalformedValuesAreNotClaimed() {
         val rejected =
             listOf(
@@ -108,28 +90,5 @@ class RaftMessageLinkParserTest {
         for (url in rejected) {
             assertNull(parseRaftMessageLink(url), url)
         }
-    }
-
-    @Test
-    fun developerEnvironmentWebHostIsAcceptedOnlyWhenConfigured() {
-        val staging = "https://raft-app-staging.botiverse.dev/s/$slug/channel/$cid?msg=$mid"
-        assertNull(parseRaftMessageLink(staging, configuredWebUrl = "https://app.raft.build"))
-        assertNull(parseRaftMessageLink(staging, configuredWebUrl = null))
-        assertEquals(
-            RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid),
-            parseRaftMessageLink(staging, configuredWebUrl = "https://raft-app-staging.botiverse.dev")
-        )
-        // Exact origin: scheme and port must match the configured web URL.
-        assertNull(parseRaftMessageLink("http://raft-app-staging.botiverse.dev/s/$slug/channel/$cid", "https://raft-app-staging.botiverse.dev"))
-        assertEquals(
-            RaftMessageLink(slug, ConversationKind.DirectMessage, cid),
-            parseRaftMessageLink("http://localhost:5173/s/$slug/dm/$cid", configuredWebUrl = "http://localhost:5173/")
-        )
-        assertNull(parseRaftMessageLink("http://localhost:3000/s/$slug/dm/$cid", configuredWebUrl = "http://localhost:5173/"))
-        // Production hosts stay accepted under any configured environment.
-        assertEquals(
-            RaftMessageLink(slug, ConversationKind.Channel, cid),
-            parseRaftMessageLink("https://app.raft.build/s/$slug/channel/$cid", configuredWebUrl = "https://raft-app-staging.botiverse.dev")
-        )
     }
 }

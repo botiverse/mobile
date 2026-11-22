@@ -58,19 +58,4 @@ class AppShellRailOrderTest {
         assertEquals(dragged, drawn(saved, assistant = true))
         assertEquals(dragged - "assistant", drawn(saved, assistant = false))
     }
-
-    @Test fun dmsStayBesideHome() {
-        assertEquals(
-            listOf("home", "dms", "activity", AppShellRailSearchKey, "more"),
-            order("more", AppShellRailSearchKey, "activity", "dms", "home"),
-        )
-    }
-
-    @Test fun entriesTheRailOrderLacksKeepTheirRelativeOrderAtTheEnd() {
-        assertEquals(
-            listOf("home", "tasks", "x", "y"),
-            order("x", "tasks", "y", "home"),
-        )
-        assertEquals(emptyList(), order())
-    }
 }

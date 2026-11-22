@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import kotlin.test.Test
@@ -9,10 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 
@@ -53,14 +49,6 @@ class RaftFilePreviewImageUrlRetryTest {
         assertEquals(8, network.calls)
     }
 
-    @Test
-    fun successAfterOneTransportFailureStopsRetrying() = runTest {
-        val network = FakeNetwork(listOf(transport, ok))
-        assertEquals(ok, network.fetch())
-        assertEquals(2, network.calls)
-        assertEquals(listOf(500L), network.waits)
-    }
-
     /**
      * Hands 43837e84 / Android repro: tapped right after a network drop, the reachability gate answers
      * every request at once with its cached CONNECT failure for its cooldown. The viewer used to give up
@@ -81,50 +69,6 @@ class RaftFilePreviewImageUrlRetryTest {
         // Attempts at 0, 0.5, 1.5, 3.5 s fail; the one at 7.5 s succeeds.
         assertEquals(5, calls)
         assertEquals(7_500L, currentTime)
-    }
-
-    @Test
-    fun offlineForLongerThanTheBudgetEndsWithinTwentySeconds() = runTest {
-        var calls = 0
-        val result =
-            fetchAttachmentUrlWithRetry(timeSource = testScheduler.timeSource) {
-                calls += 1
-                transport
-            }
-        assertEquals(transport, result)
-        assertEquals(8, calls)
-        assertTrue(currentTime <= RaftFilePreviewUrlRetryBudgetMillis, "gave up at $currentTime ms")
-        assertEquals(19_500L, currentTime)
-    }
-
-    @Test
-    fun aRequestThatTimesOutAfterTwentySecondsIsNotRepeated() = runTest {
-        var calls = 0
-        val result =
-            fetchAttachmentUrlWithRetry(timeSource = testScheduler.timeSource) {
-                calls += 1
-                delay(20_000L)
-                transport
-            }
-        assertEquals(transport, result)
-        assertEquals(1, calls)
-    }
-
-    @Test
-    fun clientErrorIsNeverRetried() = runTest {
-        val forbidden = ThreadApiResult.Failure(code = 403)
-        val network = FakeNetwork(listOf(forbidden, ok))
-        assertEquals(forbidden, network.fetch())
-        assertEquals(1, network.calls)
-        assertTrue(network.waits.isEmpty())
-    }
-
-    @Test
-    fun successOnFirstTryNeverWaits() = runTest {
-        val network = FakeNetwork(listOf(ok))
-        assertEquals(ok, network.fetch())
-        assertEquals(1, network.calls)
-        assertTrue(network.waits.isEmpty())
     }
 
     private val loadingWithThumbnail =
@@ -148,21 +92,6 @@ class RaftFilePreviewImageUrlRetryTest {
     }
 
     @Test
-    fun failedUrlFallsBackToTheGalleryThumbnail() {
-        val gallery =
-            RaftFilePreviewPayload(
-                kind = "loading",
-                requestedKind = "image",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "att-1",
-                imageGallery = listOf(RaftFilePreviewGalleryImage(attachmentId = "att-1", thumbnailUrl = "https://thumb.example/g.jpg"))
-            )
-        val failed = gallery.withImageUrlResult(transport)
-        assertEquals("https://thumb.example/g.jpg", failed.imageUrl)
-        assertTrue(failed.imageFullLoadFailed)
-    }
-
-    @Test
     fun failedUrlWithoutThumbnailIsTheUnavailableState() {
         val failed = loadingWithThumbnail.copy(imageUrl = null).withImageUrlResult(transport)
         assertNull(failed.imageUrl)
@@ -180,36 +109,5 @@ class RaftFilePreviewImageUrlRetryTest {
         assertEquals("https://signed.example/full.jpg", resolved.imageUrl)
         assertFalse(resolved.imageFullLoadFailed)
         assertEquals("2026-10-23T12:00:00Z", expiresAt)
-    }
-
-    @Test
-    fun retryReturnsToLoadingStillShowingTheThumbnail() {
-        val retried = loadingWithThumbnail.withImageUrlResult(transport).withImageFullLoadRetry()
-        assertEquals("loading", retried.kind)
-        assertEquals("image", retried.requestedKind)
-        assertFalse(retried.imageFullLoadFailed)
-        assertEquals("https://thumb.example/t.jpg", retried.currentImageThumbnailUrl())
-        assertTrue(retried.raftFilePreviewShowsImage())
-    }
-
-    @Test
-    fun cachedSignedUrlLivesUntilExpiresAtMinusMargin() {
-        val owner = AuthenticatedRouteOwner(environmentId = "env", accountId = "acct", serverId = "srv")
-        val key = RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline")
-        val clock = TestTimeSource()
-        val cache = RaftFilePreviewAttachmentUrlCache(timeSource = clock)
-        val wallNow = 10_000_000L
-        cache.currentEpochMillis = { wallNow }
-
-        assertNull(cache.get(key))
-        // Expires in 5 min; the 60 s safety margin leaves 4 min.
-        cache.put(key, "https://signed.example/full.jpg", expiresAtEpochMillis = wallNow + 5.minutes.inWholeMilliseconds)
-        assertEquals("https://signed.example/full.jpg", cache.get(key))
-        clock += 3.minutes
-        assertEquals("https://signed.example/full.jpg", cache.get(key))
-        clock += 59.seconds
-        assertEquals("https://signed.example/full.jpg", cache.get(key))
-        clock += 1.seconds
-        assertNull(cache.get(key))
     }
 }

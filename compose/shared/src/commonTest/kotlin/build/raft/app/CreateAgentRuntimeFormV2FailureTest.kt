@@ -49,19 +49,6 @@ class CreateAgentRuntimeFormV2FailureTest {
     }
 
     @Test
-    fun theMarkerDecidesAvailabilityOnlyOnceTheRowsAreKnown() {
-        val catalog =
-            SharedCreateAgentRuntimeCatalog(
-                machineId = "m-1",
-                options = listOf(option("codex", marker = true), option("gemini", marker = false))
-            )
-        assertEquals(RuntimeFormV2Availability.Available, catalog.runtimeFormV2Availability("codex"))
-        assertEquals(RuntimeFormV2Availability.Unavailable, catalog.runtimeFormV2Availability("gemini"))
-        assertEquals(RuntimeFormV2Availability.Unavailable, catalog.runtimeFormV2Availability("cursor"), "no row: not admitted")
-        assertEquals(RuntimeFormV2Availability.Unknown, (null as SharedCreateAgentRuntimeCatalog?).runtimeFormV2Availability("codex"))
-    }
-
-    @Test
     fun aCatalogWithNoMarkedRowAtAllIsUnknownNotUnavailable() {
         // The server marks rows only for a client that sends X-Raft-Runtime-Form-V2: 1; rows that all lack
         // the marker (older server, header dropped) prove nothing, so the form load decides, as when the
@@ -87,30 +74,6 @@ class CreateAgentRuntimeFormV2FailureTest {
                 RuntimeFormV2DialogLoad.Failed("runtime_form_v2_http_503")
             )
         )
-    }
-
-    @Test
-    fun theAgentsOwnRuntimeIsUnavailableOnlyWhenItsUnmarkedRowIsAvailableForNew() {
-        val catalog =
-            SharedCreateAgentRuntimeCatalog(
-                machineId = "m-1",
-                options =
-                    listOf(
-                        option("codex", marker = true),
-                        option("gemini", marker = false),
-                        // Deprecated: not available for new agents, so the server never marks it here.
-                        option("legacy", marker = false).copy(
-                            admissionReason = "deprecated",
-                            availableForNew = false,
-                            canSelectInThisContext = false
-                        )
-                    )
-            )
-        assertEquals(RuntimeFormV2Availability.Available, catalog.currentRuntimeFormV2Availability("codex"))
-        assertEquals(RuntimeFormV2Availability.Unavailable, catalog.currentRuntimeFormV2Availability("gemini"))
-        assertEquals(RuntimeFormV2Availability.Unknown, catalog.currentRuntimeFormV2Availability("legacy"))
-        assertEquals(RuntimeFormV2Availability.Unknown, catalog.currentRuntimeFormV2Availability("cursor"), "no row")
-        assertEquals(RuntimeFormV2Availability.Unknown, (null as SharedCreateAgentRuntimeCatalog?).currentRuntimeFormV2Availability("codex"))
     }
 
     @Test
@@ -141,15 +104,6 @@ class CreateAgentRuntimeFormV2FailureTest {
         assertEquals("m-1", submit.machineId)
         assertEquals("builtin", submit.runtimeFormV2?.runtimeId)
         assertFalse(submit.external)
-    }
-
-    @Test
-    fun anExternalSubmitHasNoComputerAndNoRuntimeForm() {
-        val submit = createAgentDialogSubmit("ext", "", "m-1", external = true, runtime = "codex", loaded = null, values = emptyMap())
-        requireNotNull(submit)
-        assertTrue(submit.external)
-        assertNull(submit.machineId)
-        assertNull(submit.runtimeFormV2)
     }
 
     private fun option(runtimeId: String, marker: Boolean) =

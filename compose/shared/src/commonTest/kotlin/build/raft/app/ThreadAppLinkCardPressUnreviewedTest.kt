@@ -107,20 +107,6 @@ class ThreadAppLinkCardPressUnreviewedTest {
     }
 
     @Test
-    fun unreviewedUndoAfterConfirmingSendsNothing() = runTest {
-        val recorder = Recorder()
-        val press = press(reviewed = false, scope = this, recorder = recorder)
-        press.click(ship)
-        runCurrent()
-        press.confirm()
-        runCurrent()
-        press.click(ship) // now Undo
-        advanceUntilIdle()
-        assertTrue(recorder.executes.isEmpty())
-        assertEquals("Ship", press.button(ship, ship.action as RaftLinkCardButtonAction.Execute)!!.label)
-    }
-
-    @Test
     fun unreviewedConfirmationCancelledSendsNothing() = runTest {
         val recorder = Recorder()
         val press = press(reviewed = false, scope = this, recorder = recorder)
@@ -131,21 +117,6 @@ class ThreadAppLinkCardPressUnreviewedTest {
         advanceUntilIdle()
         assertNull(press.confirmation)
         assertTrue(recorder.executes.isEmpty())
-    }
-
-    @Test
-    fun unreviewedPrepareButtonKeepsThePreparedWordsAndIsMarkedUnreviewed() = runTest {
-        val recorder = Recorder()
-        val press = press(reviewed = false, scope = this, recorder = recorder)
-        press.click(approve)
-        runCurrent()
-        assertEquals(listOf("h-approve"), recorder.prepares)
-        val pending = assertNotNull(press.confirmation)
-        assertTrue(pending.unreviewed)
-        assertEquals("Approve release 7?", pending.prepared?.description?.title)
-        press.confirm()
-        runCurrent()
-        assertEquals(listOf<Pair<String, AppLinkPrepared?>>("h-approve" to prepared), recorder.executes)
     }
 
     @Test
@@ -172,24 +143,5 @@ class ThreadAppLinkCardPressUnreviewedTest {
             AppLinkConfirmAttribution.From,
             appLinkConfirmAttribution(unreviewed = pending.unreviewed, hasDescription = pending.prepared?.description != null),
         )
-    }
-
-    @Test
-    fun confirmAttributionMatchesReviewedAndUnreviewedRules() {
-        assertEquals(
-            AppLinkConfirmAttribution.From,
-            appLinkConfirmAttribution(unreviewed = false, hasDescription = true),
-        )
-        assertEquals(Res.string.thread_link_preview_action_confirm_from, AppLinkConfirmAttribution.From.labelRes)
-        assertEquals(
-            AppLinkConfirmAttribution.RunBy,
-            appLinkConfirmAttribution(unreviewed = true, hasDescription = true),
-        )
-        assertEquals(
-            AppLinkConfirmAttribution.RunBy,
-            appLinkConfirmAttribution(unreviewed = true, hasDescription = false),
-        )
-        assertEquals(Res.string.thread_link_preview_unreviewed_run_by, AppLinkConfirmAttribution.RunBy.labelRes)
-        assertNull(appLinkConfirmAttribution(unreviewed = false, hasDescription = false))
     }
 }

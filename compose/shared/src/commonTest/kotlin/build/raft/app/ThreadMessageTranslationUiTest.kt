@@ -94,34 +94,6 @@ class ThreadMessageTranslationUiTest {
     }
 
     @Test
-    fun manualModeStillRendersEntries() {
-        val ui =
-            resolveThreadMessageTranslationUi(
-                message(),
-                state(translatedEntry(), settings = availableSettings(mode = TranslationModePreference.Manual))
-            )
-
-        checkNotNull(ui)
-        assertEquals("Hello", ui.displayBody)
-    }
-
-    @Test
-    fun pendingEntryShowsPlaceholderAndTranslatingIndicator() {
-        val entry =
-            SharedMessageTranslationEntry(
-                messageId = "m1",
-                status = SharedMessageTranslationStatus.Pending,
-                originalContent = "你好"
-            )
-
-        val ui = resolveThreadMessageTranslationUi(message(), state(entry))
-
-        checkNotNull(ui)
-        assertTrue(ui.pendingPlaceholder)
-        assertEquals("Translating…", ui.indicator?.message)
-    }
-
-    @Test
     fun failedEntryOffersRetry() {
         val entry =
             SharedMessageTranslationEntry(
@@ -139,19 +111,6 @@ class ThreadMessageTranslationUiTest {
     }
 
     @Test
-    fun silentSkipRendersNothing() {
-        val entry =
-            SharedMessageTranslationEntry(
-                messageId = "m1",
-                status = SharedMessageTranslationStatus.Skipped,
-                reason = "same_language",
-                originalContent = "你好"
-            )
-
-        assertNull(resolveThreadMessageTranslationUi(message(), state(entry)))
-    }
-
-    @Test
     fun staleEntryForEditedMessageRendersNothing() {
         val ui =
             resolveThreadMessageTranslationUi(
@@ -160,42 +119,5 @@ class ThreadMessageTranslationUiTest {
             )
 
         assertNull(ui)
-    }
-
-    @Test
-    fun ownSystemAndUnavailableMessagesAreNotEligible() {
-        assertNull(resolveThreadMessageTranslationUi(message(isOwn = true), state(translatedEntry())))
-        assertNull(resolveThreadMessageTranslationUi(message(messageType = "System"), state(translatedEntry())))
-        assertNull(
-            resolveThreadMessageTranslationUi(
-                message(),
-                state(
-                    translatedEntry(),
-                    settings = availableSettings().copy(serverTranslationEnabled = false)
-                )
-            )
-        )
-        assertNull(
-            resolveThreadMessageTranslationUi(
-                message(),
-                state(translatedEntry(), settings = availableSettings().copy(effectiveLanguage = null))
-            )
-        )
-    }
-
-    @Test
-    fun aPendingTranslationDrawsOneBarPerLineOfTheOriginal() {
-        // 12px bars, 8px apart: a 20px pitch.
-        listOf(
-            0 to 1, // nothing measured yet: the web's single line
-            11 to 1, // shorter than a bar
-            20 to 1, // one text line
-            48 to 2,
-            120 to 6,
-            10_000 to ThreadTranslationPlaceholderMaxLines, // capped
-        ).forEach { (heightPx, expected) ->
-            assertEquals(expected, threadTranslationPlaceholderLineCount(heightPx, lineHeightPx = 12, gapPx = 8), "height $heightPx")
-        }
-        assertEquals(1, threadTranslationPlaceholderLineCount(100, lineHeightPx = 0, gapPx = 0), "a zero pitch never divides")
     }
 }

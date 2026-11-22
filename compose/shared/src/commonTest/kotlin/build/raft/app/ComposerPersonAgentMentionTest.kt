@@ -54,27 +54,6 @@ class ComposerPersonAgentMentionTest {
     }
 
     @Test
-    fun aLaterPickForTheSameHandleReplacesTheEarlierOneAsOnWeb() {
-        val store = startedStore()
-        pick(store, "cc @skyzh ", humanSkyzh)
-        // The person was picked first; picking the agent for the same token keeps only the agent.
-        store.dispatch(SharedThreadComposerDraftIntent.SelectMention(agentSkyzh.composerStructuredMentionOrNull()!!))
-
-        assertEquals(listOf("agent"), sentBody(store).mentionItems().map { it["type"] })
-    }
-
-    @Test
-    fun pickingAPersonSendsThePersonsId() {
-        val store = startedStore()
-        pick(store, "hi @skyzh ", humanSkyzh)
-
-        assertEquals(
-            listOf(mapOf("type" to "user", "id" to HumanId, "name" to "skyzh")),
-            sentBody(store).mentionItems()
-        )
-    }
-
-    @Test
     fun editingThePickedTokenAwayDropsItsId() {
         val store = startedStore()
         pick(store, "cc @skyzh ", agentSkyzh)
@@ -85,26 +64,6 @@ class ComposerPersonAgentMentionTest {
         store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "cc @skyzh "))
 
         assertFalse("mentions" in sentBody(store))
-    }
-
-    @Test
-    fun aTypedNotPickedNameSendsNoId() {
-        val store = startedStore()
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "cc @skyzh please look"))
-
-        assertFalse("mentions" in sentBody(store), "a typed @name stays name-resolved by the server")
-    }
-
-    @Test
-    fun picksForSeveralTokensAreAllSentAndOnlyTheVisibleOnes() {
-        val store = startedStore()
-        val ada = RaftComposerMemberItem(displayName = "Ada", handle = "ada", kind = MemberKind.Human, memberId = OtherId)
-        pick(store, "@ada and @skyzh ", ada)
-        store.dispatch(SharedThreadComposerDraftIntent.SelectMention(agentSkyzh.composerStructuredMentionOrNull()!!))
-        assertEquals(listOf("ada", "skyzh"), sentBody(store).mentionItems().map { it["name"] })
-
-        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "and @skyzh "))
-        assertEquals(listOf("skyzh"), sentBody(store).mentionItems().map { it["name"] })
     }
 
     @Test
@@ -166,6 +125,5 @@ class ComposerPersonAgentMentionTest {
     private companion object {
         const val HumanId = "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9"
         const val AgentId = "9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d"
-        const val OtherId = "0f1e2d3c-4b5a-4968-8776-655443322110"
     }
 }

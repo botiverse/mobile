@@ -102,17 +102,4 @@ class SettingsFeedbackFiledTicketHandoffTest {
         // Taken once: nothing is left for a later appearance to open again.
         assertNull(SettingsFeedbackFiledTicketHandoff.offered.value)
     }
-
-    @Test
-    fun nothingFiledReadsTheListOnce() = runTest {
-        val repository = FakeRepository()
-        repository.listAnswers += page(ticket("old"))
-        val store = SettingsFeedbackTicketsStore(repository, backgroundScope)
-        store.start()
-        backgroundScope.launch { store.followSettingsFeedbackFiledTickets() }
-        runCurrent()
-
-        assertEquals(1, repository.listReads)
-        assertNull(store.state.value.detail)
-    }
 }

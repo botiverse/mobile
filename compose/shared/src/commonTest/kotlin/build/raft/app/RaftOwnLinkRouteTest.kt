@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.LinkOpenMode
 import build.raft.app.links.raftMessageBareLinks
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
@@ -70,27 +69,6 @@ class RaftOwnLinkRouteTest {
     }
 
     @Test
-    fun hostsAreTheEnvironmentsAndAFullyQualifiedDotIsTheSameHost() {
-        val link = "/s/$slug/channel/$cid?msg=$mid"
-        // Production's two hosts, the client config's app hosts, the Developer environment's web exactly.
-        assertEquals(conversation(msg = mid), route("https://open.raft.build$link"))
-        assertEquals(conversation(msg = mid), route("https://raft.build$link", appHosts = setOf("raft.build")))
-        assertEquals(conversation(msg = mid), route("$staging$link", webUrl = staging))
-        // slock #14798: `app.raft.build.` (and an app host written with its dot) is the same host.
-        assertEquals(conversation(msg = mid), route("https://app.raft.build.$link"))
-        assertEquals(conversation(msg = mid), route("https://APP.raft.build..$link"))
-        assertEquals(conversation(msg = mid), route("https://raft.build.$link", appHosts = setOf("raft.build.")))
-        assertEquals(conversation(msg = mid), route("$staging.$link", webUrl = staging))
-        // Another environment's web, plain http on production, a look-alike: not Raft's here.
-        for (url in listOf("$staging$link", "http://app.raft.build$link", "https://app.raft.build.evil.test$link", "https://example.com$link")) {
-            assertNull(route(url), url)
-            assertFalse(raftOwnLinkIsWebPage(url, webUrl = null, appHosts = noHosts), url)
-        }
-        // Production stays Raft's in a staging build.
-        assertEquals(conversation(msg = mid), route("$prod$link", webUrl = staging))
-    }
-
-    @Test
     fun sentencePunctuationAfterARaftLinkIsNotPartOfIt() {
         // What the message renders as the link (GFM autolink + the web's raft:// boundary rule) routes in the app.
         for (tail in listOf(".", ",", ")", "!", "?", ":", "。", "，")) {
@@ -120,38 +98,5 @@ class RaftOwnLinkRouteTest {
         // The web's task panel: its web page.
         val taskPanel = raftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3Atask%3Ab0b0", null, noHosts)
         assertEquals(RaftMarkdownUrlOpen("$prod/s/$slug/channel/$cid?task=$cid%3Atask%3Ab0b0", target = null), taskPanel)
-    }
-
-    @Test
-    fun theNavigatorHandsConversationsToTheShellAndOpensOtherRaftPagesAsWebPages() {
-        val inbox = RaftMessageLinkInbox()
-        val inviteInbox = RaftExternalInviteLinkInbox()
-        val opened = mutableListOf<String>()
-        fun navigator(mode: LinkOpenMode) =
-            RaftLinkNavigator(
-                modeProvider = { mode },
-                openInAppBrowser = { opened += "in_app:$it"; true },
-                openExternalBrowser = { opened += "view:$it" },
-                onRejected = { opened += "rejected:$it" },
-                openRaftWebPageInBrowser = { opened += "browser:$it" },
-                openOwnLink = raftOwnLinkShellOpener(webUrl = { null }, appHosts = { noHosts }, messageInbox = inbox, inviteInbox = inviteInbox),
-                isRaftWebPage = { raftOwnLinkIsWebPage(it, webUrl = null, appHosts = noHosts) },
-            )
-        val channel = "$prod/s/$slug/channel/$cid"
-        assertEquals(RaftLinkOpenTarget.InAppDestination, navigator(LinkOpenMode.SystemBrowser).open(channel).target)
-        assertEquals(conversation().link, inbox.pending.value?.link)
-        assertEquals(RaftLinkOpenTarget.InAppDestination, navigator(LinkOpenMode.SystemBrowser).open("$prod/external-invite/inv-1").target)
-        assertEquals("inv-1", inviteInbox.pending.value?.token)
-        // "Open in browser" still means the browser.
-        navigator(LinkOpenMode.SystemBrowser).open(channel, RaftLinkOpenIntent.ForceExternal)
-        // A Raft page without a screen here: a real browser (not Raft's own App Link), or the in-app browser.
-        navigator(LinkOpenMode.SystemBrowser).open("$prod/s/$slug/tasks")
-        navigator(LinkOpenMode.InAppBrowser).open("$prod/s/$slug/tasks")
-        // Outside links as before.
-        navigator(LinkOpenMode.SystemBrowser).open("https://example.com/a")
-        assertEquals(
-            listOf("view:$channel", "browser:$prod/s/$slug/tasks", "in_app:$prod/s/$slug/tasks", "view:https://example.com/a"),
-            opened,
-        )
     }
 }

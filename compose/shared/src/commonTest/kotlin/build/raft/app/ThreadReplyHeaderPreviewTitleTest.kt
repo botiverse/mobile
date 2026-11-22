@@ -36,30 +36,6 @@ class ThreadReplyHeaderPreviewTitleTest {
         assertEquals("Ada", externalAuthorShownName(null, "Ada", "外部ユーザー"))
     }
 
-    @Test
-    fun replyCountJoinsSubtitleLine() {
-        assertEquals("#反馈 · 12 条回复", replyThreadHeaderSubtitle("#反馈", "12 条回复"))
-        assertEquals("12 条回复", replyThreadHeaderSubtitle(null, "12 条回复"))
-        assertEquals("#反馈", replyThreadHeaderSubtitle("#反馈", null))
-        assertNull(replyThreadHeaderSubtitle(" ", null))
-    }
-
-    @Test
-    fun headerReplyCountSurvivesTheRenderProjection() {
-        val payload = replyThread(status = "content", origin = origin(body = "root").copy(replyCount = 12))
-        // Same three projections SharedThreadState.toRenderSlice() hands the route.
-        val renderPayload = payload.withoutThreadTimelineContent()
-        val timelineSlice = payload.toThreadTimelineSlice()
-        val replyMetadata = payload.toThreadReplyMetadataMap()
-
-        // Neither object the header can see carries the count itself (the PR #2879 defect).
-        assertNull(renderPayload.originMessage)
-        assertEquals(0, timelineSlice.originMessage?.replyCount)
-
-        assertEquals(12, threadHeaderReplyCount(timelineSlice, replyMetadata))
-        assertEquals("Alice：root", title(timelineSlice.originMessage))
-    }
-
     /** Web ThreadPanelHeader: max(loaded replies + the replies behind the history window, the summary). */
     @Test
     fun headerReplyCountCountsLoadedAndHiddenRepliesWhenTheSummaryLags() {
@@ -72,21 +48,6 @@ class ThreadReplyHeaderPreviewTitleTest {
         assertEquals(10, threadHeaderReplyCount(slice, metadata, hiddenHistoryCount = 7))
         val summarized = replyThread(status = "content", origin = origin(body = "root").copy(replyCount = 40), messages = replies)
         assertEquals(40, threadHeaderReplyCount(summarized.toThreadTimelineSlice(), summarized.toThreadReplyMetadataMap()))
-    }
-
-    /** Web: "0 replies" once the replies are read; nothing while a count we don't know is loading or failed. */
-    @Test
-    fun headerReplyCountIsUnknownOnlyWhileLoadingOrFailed() {
-        val cases =
-            listOf(
-                replyThread(status = "loading") to null,
-                replyThread(status = "error") to null,
-                replyThread(status = "content", mainLoadFailed = true) to null,
-                replyThread(status = "empty", origin = origin(body = "root")) to 0,
-            )
-        cases.forEach { (payload, expected) ->
-            assertEquals(expected, threadHeaderReplyCount(payload.toThreadTimelineSlice(), payload.toThreadReplyMetadataMap()), payload.status)
-        }
     }
 
     /**

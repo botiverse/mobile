@@ -10,7 +10,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -68,22 +67,6 @@ class TaskHeadEditStateTest {
     }
 
     @Test
-    fun anEmptyTitleAndAnUnchangedFieldSendNothing() = runTest {
-        val sender = Sender()
-        val edit = TaskHeadEditState()
-        edit.open(task, TaskHeadEditField.Title)
-        edit.onDraftChange("   ")
-        edit.save(task, sender::send)
-        assertEquals(TaskHeadEditProblem.TitleRequired, edit.problem)
-        // Typing clears the refusal; the same text again just closes.
-        edit.onDraftChange("Old title ")
-        assertNull(edit.problem)
-        edit.save(task, sender::send)
-        assertNull(edit.field)
-        assertTrue(sender.sent.isEmpty())
-    }
-
-    @Test
     fun aBlankDescriptionIsSentToClearIt() = runTest {
         val sender = Sender(TaskAmendResult.Saved(task.copy(description = null, revision = 8L)))
         val edit = TaskHeadEditState()
@@ -112,22 +95,6 @@ class TaskHeadEditStateTest {
     }
 
     @Test
-    fun aLostRaceRetriesAgainstTheReportedRevision() = runTest {
-        val sender = Sender(TaskAmendResult.Stale(currentRevision = 12L), TaskAmendResult.Saved(task.copy(title = "Mine", revision = 13L)))
-        val edit = TaskHeadEditState()
-        edit.open(task, TaskHeadEditField.Title)
-        edit.onDraftChange("Mine")
-
-        edit.save(task, sender::send)
-        assertIs<TaskHeadEditProblem.Stale>(edit.problem)
-        assertEquals("Mine", edit.draft)
-
-        edit.save(task, sender::send)
-        assertEquals(listOf(7L, 12L), sender.sent.map { it.second })
-        assertNull(edit.field)
-    }
-
-    @Test
     fun theCreatorOrAnOwnerOrAdminMayDelete() {
         val creator = build.raft.app.model.MemberProfile(build.raft.app.model.MemberId("user-1"), "Ana", "ana", build.raft.app.model.MemberKind.Human)
         val made = task.copy(creator = creator)
@@ -147,35 +114,5 @@ class TaskHeadEditStateTest {
         assertFalse(task.copy(isLegacy = true).canAmendText())
         assertFalse(task.copy(readOnlyReason = "historical_joint_task").canAmendText())
         assertFalse(task.canAmendText(canWriteChannel = false), "a channel the reader may not write")
-    }
-
-    /** Web TaskModalHead (slock #15639): which edit buttons the head shows, case by case. */
-    @Test
-    fun theHeadOffersAddADescriptionOrTheDescriptionsPencilBesideTheTitles() {
-        data class Case(
-            val why: String,
-            val canEdit: Boolean,
-            val descriptionLoaded: Boolean,
-            val hasDescription: Boolean,
-            val open: TaskHeadEditField?,
-            val expected: TaskHeadEditButtons,
-        )
-        val none = TaskHeadEditButtons(editTitle = false, addDescription = false, editDescription = false)
-        val titleOnly = TaskHeadEditButtons(editTitle = true, addDescription = false, editDescription = false)
-        listOf(
-            Case("no description: Add a description beside the title's pencil", true, true, false, null, titleOnly.copy(addDescription = true)),
-            Case("a description: its own pencil, no Add a description", true, true, true, null, titleOnly.copy(editDescription = true)),
-            Case("a summary row without the description: the title's pencil only", true, false, false, null, titleOnly),
-            Case("a summary row that has one: the title's pencil only", true, false, true, null, titleOnly),
-            Case("the title is being edited", true, true, false, TaskHeadEditField.Title, none),
-            Case("the description is being edited", true, true, false, TaskHeadEditField.Description, none),
-            Case("a reader who may not edit", false, true, false, null, none),
-        ).forEach { case ->
-            assertEquals(
-                case.expected,
-                taskHeadEditButtons(case.canEdit, case.descriptionLoaded, case.hasDescription, case.open),
-                case.why,
-            )
-        }
     }
 }

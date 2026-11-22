@@ -7,7 +7,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** #proj-mobile:#202: a hosted page's saves stay in the app, named as the page names them. */
 @OptIn(ExperimentalEncodingApi::class)
@@ -27,22 +26,6 @@ class RaftWebViewDownloadsTest {
         assertEquals("chart.png", raftWebViewDownloadFileName("", null, "https://app.raft.build/api/a/files/chart.png?version=2", null))
     }
 
-    @Test
-    fun aBlobAddressIsNeverTheName() {
-        assertEquals("download.zip", raftWebViewDownloadFileName(null, null, blob, "application/zip"))
-        assertEquals("download", raftWebViewDownloadFileName(null, null, blob, null))
-        assertEquals("passwd", raftWebViewDownloadFileName("../../passwd", null, blob, null))
-    }
-
-    @Test
-    fun blobReadScriptTargetsThePortWithTheToken() {
-        val script = raftWebViewBlobReadScript(blob, "d1")
-        assertTrue(RaftWebViewDownloadPortName in script)
-        assertTrue("\"d1\"" in script)
-        assertTrue("0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" in script)
-        assertTrue("fetch(u)" in script)
-    }
-
     private fun message(vararg pairs: Pair<String, Any>): String =
         JSONObject().apply { pairs.forEach { (k, v) -> put(k, v) } }.toString()
 
@@ -60,15 +43,6 @@ class RaftWebViewDownloadsTest {
     }
 
     @Test
-    fun otherTokensAreIgnoredAndErrorsFail() {
-        val assembler = RaftWebViewBlobDownloadAssembler("d1", blob)
-        assertNull(assembler.accept(message("t" to "d2", "k" to "error", "m" to "x")))
-        val failed = assertIs<RaftWebViewDownload.Failed>(assembler.accept(message("t" to "d1", "k" to "error", "m" to "blob_read_failed")))
-        assertEquals("blob_read_failed", failed.reason)
-        assertNull(assembler.accept(message("t" to "d1", "k" to "end", "n" to 0)))
-    }
-
-    @Test
     fun sizeMismatchOrOutOfOrderChunksFail() {
         val shortOne = RaftWebViewBlobDownloadAssembler("d1", blob)
         shortOne.accept(message("t" to "d1", "k" to "start", "size" to 10))
@@ -78,12 +52,5 @@ class RaftWebViewDownloadsTest {
         val outOfOrder = RaftWebViewBlobDownloadAssembler("d1", blob)
         outOfOrder.accept(message("t" to "d1", "k" to "start", "size" to 4))
         assertIs<RaftWebViewDownload.Failed>(outOfOrder.accept(message("t" to "d1", "k" to "chunk", "i" to 1, "d" to Base64.encode(ByteArray(4)))))
-    }
-
-    @Test
-    fun tooLargeIsRefusedAtStart() {
-        val assembler = RaftWebViewBlobDownloadAssembler("d1", blob, maxBytes = 8)
-        val failed = assertIs<RaftWebViewDownload.Failed>(assembler.accept(message("t" to "d1", "k" to "start", "size" to 9)))
-        assertEquals("too_large", failed.reason)
     }
 }

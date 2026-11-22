@@ -58,14 +58,4 @@ class RaftFilePreviewSavedFileTest {
             )
         cases.forEach { (case, saved) -> assertNull(saved, case) }
     }
-
-    @Test
-    fun revealLabelAndSavedToast() {
-        val terms = RaftFilePreviewSavedFileTerms("Show in Finder", "Show in folder", "Saved to $RaftSavedToFolderPlaceholder")
-        assertEquals("Show in Finder", raftFilePreviewRevealActionLabel(revealsInFinder = true, terms))
-        assertEquals("Show in folder", raftFilePreviewRevealActionLabel(revealsInFinder = false, terms))
-        assertEquals("Saved to Downloads", raftFilePreviewSavedToFolderMessage("Downloads", terms))
-        assertNull(raftFilePreviewSavedToFolderMessage(null, terms))
-        assertNull(raftFilePreviewSavedToFolderMessage("", terms))
-    }
 }

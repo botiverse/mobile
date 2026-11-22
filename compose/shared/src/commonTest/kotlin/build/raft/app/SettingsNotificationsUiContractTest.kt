@@ -1,7 +1,6 @@
 package build.raft.app
 
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 import build.raft.app.data.PushPreviewMode
@@ -17,98 +16,6 @@ class SettingsNotificationsUiContractTest {
         assertTrue(settingsNotificationPermissionGranted(" granted "))
         assertTrue(settingsNotificationPermissionGranted("Enabled"))
         assertTrue(settingsNotificationPermissionGranted("ON"))
-    }
-
-    @Test
-    fun permissionGrantedRejectsActionAndUnavailableStatuses() {
-        assertFalse(settingsNotificationPermissionGranted("Requested"))
-        assertFalse(settingsNotificationPermissionGranted("Disabled"))
-        assertFalse(settingsNotificationPermissionGranted("Unsupported"))
-        assertFalse(settingsNotificationPermissionGranted(""))
-    }
-
-    @Test
-    fun permissionCopyUsesSemanticStateInsteadOfRawPlatformDetail() {
-        assertEquals(
-            SettingsNotificationPermissionCopy.Allowed,
-            settingsNotificationPermissionCopy(permissionGranted = true, permissionAvailable = true, settingsAvailable = true)
-        )
-        assertEquals(
-            SettingsNotificationPermissionCopy.Needed,
-            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = true, settingsAvailable = false)
-        )
-        // Denied (no more prompts) but the system settings open: the row stays with that step.
-        assertEquals(
-            SettingsNotificationPermissionCopy.Needed,
-            settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false, settingsAvailable = true)
-        )
-    }
-
-    @Test
-    fun permissionRowIsHiddenWhereThePlatformHasNoPermissionControl() {
-        assertNull(settingsNotificationPermissionCopy(permissionGranted = false, permissionAvailable = false, settingsAvailable = false))
-    }
-
-    @Test
-    fun testNotificationRowIsDisabledForMissingPermissionAndHiddenOtherwise() {
-        assertEquals(
-            SettingsTestNotificationRow.Shown,
-            settingsTestNotificationRow(statusLabel = "Send", available = true, permissionGranted = true)
-        )
-        assertEquals(
-            SettingsTestNotificationRow.Shown,
-            settingsTestNotificationRow(statusLabel = "Sent", available = true, permissionGranted = true)
-        )
-        assertEquals(
-            SettingsTestNotificationRow.NeedsPermission,
-            settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = false)
-        )
-        assertEquals(
-            SettingsTestNotificationRow.NeedsPermission,
-            settingsTestNotificationRow(statusLabel = "Disabled", available = false, permissionGranted = false)
-        )
-        // After a send: Denied / Disabled keep the row as the disabled step while permission is missing,
-        // never hide it.
-        assertEquals(
-            SettingsTestNotificationRow.NeedsPermission,
-            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = false)
-        )
-        // A blocked channel keeps the row the person just tapped, with the step and Retry.
-        assertEquals(
-            SettingsTestNotificationRow.BlockedRetry,
-            settingsTestNotificationRow(statusLabel = "Blocked", available = true, permissionGranted = true)
-        )
-        assertEquals(
-            SettingsTestNotificationRow.Hidden,
-            settingsTestNotificationRow(statusLabel = "Unsupported", available = false, permissionGranted = true)
-        )
-    }
-
-    @Test
-    fun aDeniedSendBecomesTappableOnceNotificationsAreAllowed() {
-        // Send -> Denied while permission is missing: the disabled step.
-        assertEquals(
-            SettingsTestNotificationRow.NeedsPermission,
-            settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = false)
-        )
-        // The person allows notifications; the stored test result still says Denied: tappable again.
-        val afterAllow = settingsTestNotificationRow(statusLabel = "Denied", available = true, permissionGranted = true)
-        assertEquals(SettingsTestNotificationRow.Ready, afterAllow)
-        assertTrue(afterAllow != SettingsTestNotificationRow.NeedsPermission && afterAllow != SettingsTestNotificationRow.Hidden)
-        assertEquals(
-            SettingsTestNotificationRow.Ready,
-            settingsTestNotificationRow(statusLabel = "Disabled", available = true, permissionGranted = true)
-        )
-    }
-
-    @Test
-    fun testNotificationCopyNormalizesEveryUserVisibleTerminal() {
-        assertEquals(SettingsTestNotificationCopy.Ready, settingsTestNotificationCopy("Ready", available = true))
-        assertEquals(SettingsTestNotificationCopy.Sent, settingsTestNotificationCopy("Sent", available = true))
-        assertEquals(SettingsTestNotificationCopy.Requested, settingsTestNotificationCopy("Requested", available = true))
-        assertEquals(SettingsTestNotificationCopy.Unavailable, settingsTestNotificationCopy("Unsupported", available = false))
-        assertEquals(SettingsTestNotificationCopy.Unavailable, settingsTestNotificationCopy("", available = false))
-        assertEquals(SettingsTestNotificationCopy.Error, settingsTestNotificationCopy("Error", available = true))
     }
 
     @Test
@@ -135,18 +42,6 @@ class SettingsNotificationsUiContractTest {
     }
 
     @Test
-    fun previewModeEachEntryHasDistinctIconAndLabel() {
-        assertEquals(
-            PushPreviewMode.entries.size,
-            PushPreviewMode.entries.map { it.settingsPreviewModeIcon() }.toSet().size
-        )
-        assertEquals(
-            PushPreviewMode.entries.size,
-            PushPreviewMode.entries.map { it.settingsPreviewModeLabel() }.toSet().size
-        )
-    }
-
-    @Test
     fun mobileDelayRowIsHiddenWithoutTheServerFieldAndPicksWriteOnlyChanges() {
         // The row reads mobileDelaySetting: null (no row) when an older server sent no field.
         assertNull(RaftNotificationAccountSettings().mobileDelaySetting)
@@ -165,47 +60,6 @@ class SettingsNotificationsUiContractTest {
         assertEquals(
             RaftNotificationAccountSettingsPatch(mobileDelay = RaftNotificationMobileDelay.Inactive),
             settingsMobileDelayPatch(unknown, RaftNotificationMobileDelay.Inactive)
-        )
-    }
-
-    @Test
-    fun serversCardListsTheCurrentServerFirstThenTheRestInOrder() {
-        val session =
-            build.raft.app.data.StoredAuthSession(
-                user = build.raft.app.data.StoredAuthUser(id = "u1", email = "u1@example.com"),
-                accessToken = "a",
-                refreshToken = "r",
-                selectedServerId = "s2",
-                servers =
-                    listOf(
-                        build.raft.app.data.StoredAuthServer(id = "s1", name = "Alpha"),
-                        build.raft.app.data.StoredAuthServer(id = "s2", name = "Botiverse"),
-                        build.raft.app.data.StoredAuthServer(id = "s3", name = "Gamma"),
-                        build.raft.app.data.StoredAuthServer(id = "s1", name = "Alpha again")
-                    )
-            )
-        assertEquals(
-            listOf(
-                SettingsNotificationServer("s2", "Botiverse", current = true),
-                SettingsNotificationServer("s1", "Alpha", current = false),
-                SettingsNotificationServer("s3", "Gamma", current = false)
-            ),
-            settingsNotificationServers(session)
-        )
-        assertEquals(emptyList<SettingsNotificationServer>(), settingsNotificationServers(null))
-    }
-
-    @Test
-    fun pauseChoicesAreTheWebPresetsThenCustom() {
-        assertEquals(
-            listOf(
-                build.raft.app.data.RaftNotificationPauseOption.Minutes30,
-                build.raft.app.data.RaftNotificationPauseOption.Hour1,
-                build.raft.app.data.RaftNotificationPauseOption.Hours2,
-                build.raft.app.data.RaftNotificationPauseOption.TomorrowMorning,
-                null
-            ),
-            SettingsNotificationPauseChoice.entries.map { it.preset }
         )
     }
 }

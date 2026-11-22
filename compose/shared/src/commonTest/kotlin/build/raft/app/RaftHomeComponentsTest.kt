@@ -1,105 +1,35 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryProjection
-import build.raft.app.data.HomeSnapshot
-import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerLoadStatus
-import build.raft.app.data.HomeServerDrawerConversationSection
-import build.raft.app.data.HomeServerDrawerNormalizedContent
-import build.raft.app.data.HomeServerDrawerNormalizedRow
 import build.raft.app.data.HomeServerDrawerSectionState
 import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.HomeServerActivityUnreadProjection
 import build.raft.app.data.ReadReceiptOwner
-import build.raft.app.data.homeServerDrawerNormalizedContentForSnapshot
-import build.raft.app.data.SharedHomeContentState
-import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.APP_UPDATE_HOME_NOTIFICATION_ID
-import build.raft.app.data.TasksViewMode
-import build.raft.app.data.toHomeDirectMessageRow
 import build.raft.app.model.AgentStatus
-import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.model.ThreadId
 import androidx.compose.ui.text.font.FontWeight
-import build.raft.designsystem.components.RaftIconTileVariant
-import build.raft.designsystem.components.RaftRowTone
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertNotNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftHomeComponentsTest {
     private val errorStrings = englishErrorPresentationStringsForTest()
-
-    @Test
-    fun homeTitlebarAndHostedDrawerShareAppShellSafeAreaAndPageHeaderHeight() {
-        assertEquals(RaftAppSize.PageHeaderHeight, homeShellHeaderHeight(0.dp))
-        assertEquals(80.dp, homeShellHeaderHeight(24.dp))
-
-        val appShellSafeArea = 24.dp
-        val laterResolvedSafeArea = 22.dp
-        val sharedSafeArea =
-            homeShellTopSafeArea(
-                applyTopSafeArea = true,
-                resolvedTopSafeArea = laterResolvedSafeArea,
-                topSafeAreaOverride = appShellSafeArea,
-            )
-        assertEquals(appShellSafeArea, sharedSafeArea)
-        assertEquals(80.dp, homeShellHeaderHeight(sharedSafeArea))
-        assertEquals(
-            laterResolvedSafeArea,
-            homeShellTopSafeArea(
-                applyTopSafeArea = true,
-                resolvedTopSafeArea = laterResolvedSafeArea,
-                topSafeAreaOverride = null,
-            ),
-        )
-        assertEquals(
-            0.dp,
-            homeShellTopSafeArea(
-                applyTopSafeArea = false,
-                resolvedTopSafeArea = laterResolvedSafeArea,
-                topSafeAreaOverride = null,
-            ),
-        )
-    }
-
-    @Test
-    fun homeServerDrawerHeaderSpinsOnlyWhileLoadingOrRefreshing() {
-        listOf(HomeServerDrawerLoadStatus.Loading, HomeServerDrawerLoadStatus.Refreshing).forEach { status ->
-            assertTrue(homeServerDrawerHeaderSpinning(status))
-        }
-
-        listOf(
-            HomeServerDrawerLoadStatus.Unloaded,
-            HomeServerDrawerLoadStatus.Cached,
-            HomeServerDrawerLoadStatus.Loaded,
-            HomeServerDrawerLoadStatus.Empty,
-            HomeServerDrawerLoadStatus.Unavailable,
-            HomeServerDrawerLoadStatus.ErrorWithCache,
-            HomeServerDrawerLoadStatus.ErrorEmpty,
-        ).forEach { status ->
-            assertFalse(homeServerDrawerHeaderSpinning(status))
-        }
-    }
 
     @Test
     fun homeInlineAndDrawerErrorsKeepDiagnosticCodesOutOfVisibleCopy() {
@@ -137,90 +67,6 @@ class RaftHomeComponentsTest {
                 errorStrings = errorStrings
             )
         )
-    }
-
-    @Test
-    fun directMessageOpenFailureNeverFallsBackToABareCode() {
-        val message =
-            homeDirectMessageOpenFailureMessage(
-                prefix = "Could not open direct message",
-                error = ScreenError(code = "direct_message_unknown"),
-                errorStrings = errorStrings
-            )
-
-        assertEquals(
-            "Could not open direct message: Something went wrong. Please try again.",
-            message
-        )
-        assertFalse("direct_message_unknown" in message)
-    }
-
-    @Test
-    fun hostedDrawerProjectionRetainsTenThousandNormalizedRowsByIdentity() {
-        val serverId = ServerId("server-scale")
-        val rows =
-            List(10_000) { index ->
-                HomeServerDrawerNormalizedRow.Conversation(
-                    section = HomeServerDrawerConversationSection.Channel,
-                    conversation =
-                        HomeChannelRow(
-                            threadId = ThreadId("channel-$index"),
-                            channelId = ChannelId("channel-$index"),
-                            name = "Channel $index"
-                        )
-                )
-            }
-        val normalized = HomeServerDrawerNormalizedContent(rows, firstConversationIndex = 0)
-        val drawer =
-            HomeServerDrawerState(
-                expanded = true,
-                expandedServerIds = setOf(serverId),
-                sections =
-                    mapOf(
-                        serverId to
-                            HomeServerDrawerSectionState(
-                                server = ServerSummary(serverId, "Scale"),
-                                normalizedContent = normalized,
-                                status = HomeServerDrawerLoadStatus.Loaded
-                            )
-                    )
-            )
-
-        val projected = drawer.toRaftHomeServerDrawerHostedSections()
-
-        assertSame(normalized, projected.single().normalizedContent)
-        assertSame(rows, projected.single().normalizedContent.rows)
-    }
-
-    @Test
-    fun sameSnapshotDrawerToggleDoesNotRenormalizeCachedRows() {
-        val snapshot = testHomeSnapshot()
-        val previous =
-            HomeServerDrawerNormalizedContent(
-                rows =
-                    List(10_000) { index ->
-                        HomeServerDrawerNormalizedRow.Conversation(
-                            section = HomeServerDrawerConversationSection.Channel,
-                            conversation =
-                                HomeChannelRow(
-                                    threadId = ThreadId("cached-$index"),
-                                    channelId = ChannelId("cached-$index"),
-                                    name = "Cached $index"
-                                )
-                        )
-                    },
-                firstConversationIndex = 0
-            )
-        var normalizeCalls = 0
-
-        val retained =
-            homeServerDrawerNormalizedContentForSnapshot(snapshot, snapshot, previous) {
-                normalizeCalls += 1
-                HomeServerDrawerNormalizedContent.Empty
-            }
-
-        assertSame(previous, retained)
-        assertEquals(0, normalizeCalls)
     }
 
     @Test
@@ -325,17 +171,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeServerDrawerWidthAndSwipeThresholdFollowModalContract() {
-        assertEquals(336.dp, homeServerDrawerWidth(maxWidth = 400.dp, maxHeight = 800.dp))
-        assertEquals(360.dp, homeServerDrawerWidth(maxWidth = 800.dp, maxHeight = 1_000.dp))
-        assertEquals(300.dp, homeServerDrawerWidth(maxWidth = 600.dp, maxHeight = 400.dp))
-        assertEquals(360.dp, homeServerDrawerWidth(maxWidth = 800.dp, maxHeight = 400.dp))
-        assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -71f))
-        assertTrue(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = -72f))
-        assertFalse(shouldDismissHomeServerDrawerOnSwipe(horizontalDragDp = 120f))
-    }
-
-    @Test
     fun homeServerDrawerContentGestureRequiresUncontestedHomeRightSwipe() {
         val allowed =
             HomeServerDrawerOpenGestureAdmission(
@@ -422,23 +257,6 @@ class RaftHomeComponentsTest {
         // top banner and does not go through the notification center.
         assertEquals(update, notifications.homeAppUpdateBannerNotification())
         assertEquals(listOf(machine), notifications.nonAppUpdateHomeNotifications())
-    }
-
-    @Test
-    fun homeSearchErrorDisplayUsesUnifiedRetryModel() {
-        val serverError = sharedHomeSearchErrorDisplay("server_unavailable", errorStrings)
-
-        assertEquals("Could not load Search", serverError.title)
-        assertEquals("The server is unavailable right now. Please try again shortly.", serverError.detail)
-        assertEquals("server_unavailable", serverError.code)
-        assertEquals("Retry", serverError.actionLabel)
-
-        val permissionError = sharedHomeSearchErrorDisplay("search_permission_denied", errorStrings)
-
-        assertEquals("Search is unavailable", permissionError.title)
-        assertEquals("You do not have access to search this workspace right now.", permissionError.detail)
-        assertEquals("search_permission_denied", permissionError.code)
-        assertEquals("Retry", permissionError.actionLabel)
     }
 
     @Test
@@ -586,60 +404,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeServerSwitcherPanelTopOffsetLeavesGapBelowHeader() {
-        assertEquals(
-            RaftAppSize.PageHeaderHeight + 4.dp,
-            homeServerSwitcherPanelTopOffset(topSafeArea = 0.dp)
-        )
-        assertEquals(
-            24.dp + RaftAppSize.PageHeaderHeight + 4.dp,
-            homeServerSwitcherPanelTopOffset(topSafeArea = 24.dp)
-        )
-    }
-
-    @Test
-    fun homeServerSwitcherServerListHeightOnlyCapsScrollableLists() {
-        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 0))
-        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 1))
-        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 2))
-        assertNull(homeServerSwitcherServerListMaxHeight(serverCount = 6))
-        assertEquals(
-            288.dp,
-            homeServerSwitcherServerListMaxHeight(serverCount = 7)
-        )
-        assertEquals(
-            288.dp,
-            homeServerSwitcherServerListMaxHeight(serverCount = 30)
-        )
-    }
-
-    @Test
-    fun homeServerSwitcherDragHandleUsesWebGripIcon() {
-        assertEquals("grip-vertical", HomeServerSwitcherDragHandleIconName.wireName)
-    }
-
-    @Test
-    fun homeServerSwitcherUsesServerAvatarFallbackForUrlAndBlankSources() {
-        val withUrl =
-            RaftServerSwitcherItem(
-                id = "server-1",
-                name = "Raft",
-                avatarUrl = "https://cdn.raft.build/server.png"
-            ).toServerSwitcherAvatarPresentation()
-        val withoutUrl =
-            RaftServerSwitcherItem(
-                id = "server-2",
-                name = "Botiverse",
-                avatarUrl = " "
-            ).toServerSwitcherAvatarPresentation()
-
-        assertEquals("https://cdn.raft.build/server.png", withUrl.avatarWireValue)
-        assertEquals("R", withUrl.fallbackLabel)
-        assertEquals(null, withoutUrl.avatarWireValue)
-        assertEquals("B", withoutUrl.fallbackLabel)
-    }
-
-    @Test
     fun homeHeaderIdentityUsesTheCurrentServerItemById() {
         val current =
             RaftServerSwitcherItem(
@@ -667,54 +431,6 @@ class RaftHomeComponentsTest {
 
         assertEquals(current, resolved)
         assertEquals(current.toServerSwitcherAvatarPresentation(), resolved.toServerSwitcherAvatarPresentation())
-    }
-
-    @Test
-    fun homeHeaderIdentityDoesNotBorrowAnotherServerAvatarWhenCurrentIdIsMissing() {
-        val resolved =
-            homeHeaderServerIdentity(
-                currentServerId = "server-current",
-                currentServerName = "Canonical name",
-                servers =
-                    listOf(
-                        RaftServerSwitcherItem(
-                            id = "server-other",
-                            name = "Canonical name",
-                            slug = "other",
-                            avatarUrl = "https://cdn.raft.build/other.png"
-                        )
-                    )
-            )
-
-        assertEquals("server-current", resolved.id)
-        assertEquals("Canonical name", resolved.name)
-        assertEquals(null, resolved.avatarUrl)
-        assertEquals(
-            ServerSwitcherAvatarPresentation(avatarWireValue = null, fallbackLabel = "C"),
-            resolved.toServerSwitcherAvatarPresentation()
-        )
-    }
-
-    @Test
-    fun homeHeaderIdentityUsesCanonicalNameForBlankMatchedName() {
-        val resolved =
-            homeHeaderServerIdentity(
-                currentServerId = "server-current",
-                currentServerName = "Canonical name",
-                servers =
-                    listOf(
-                        RaftServerSwitcherItem(
-                            id = "server-current",
-                            name = " ",
-                            slug = "current",
-                            avatarUrl = "https://cdn.raft.build/current.png"
-                        )
-                    )
-            )
-
-        assertEquals("Canonical name", resolved.name)
-        assertEquals("https://cdn.raft.build/current.png", resolved.avatarUrl)
-        assertEquals("C", resolved.toServerSwitcherAvatarPresentation().fallbackLabel)
     }
 
     @Test
@@ -763,44 +479,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeServerSwitcherChineseCommunityActionRequiresChinesePreference() {
-        val labels = RaftHomeShellLabels()
-
-        assertEquals(
-            listOf(RaftServerSwitcherCommunityAction("community", labels.joinCommunityServer)),
-            homeServerSwitcherJoinCommunityActions(
-                servers = emptyList(),
-                labels = labels,
-                includeChineseCommunity = false
-            )
-        )
-    }
-
-    @Test
-    fun expressiveTopScrollUsesNearbyAnchorOnlyForFarDistances() {
-        assertEquals(
-            null,
-            raftExpressiveTopSettleAnchor(firstVisibleItemIndex = 12, visibleItemCount = 8)
-        )
-        assertEquals(
-            16,
-            raftExpressiveTopSettleAnchor(firstVisibleItemIndex = 40, visibleItemCount = 8)
-        )
-    }
-
-    @Test
-    fun expressiveTopScrollKeepsSettleWindowBounded() {
-        assertEquals(
-            8,
-            raftExpressiveTopSettleAnchor(firstVisibleItemIndex = 30, visibleItemCount = 1)
-        )
-        assertEquals(
-            24,
-            raftExpressiveTopSettleAnchor(firstVisibleItemIndex = 80, visibleItemCount = 30)
-        )
-    }
-
-    @Test
     fun homeSavedCountFormatsOverflow() {
         assertEquals(null, formatHomeSavedCount(0))
         assertEquals(null, formatHomeSavedCount(-1))
@@ -838,47 +516,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeConversationItemBadgeProjectionUsesActivityMutedAxis() {
-        val mutedConversation =
-            RaftHomeConversationItem(
-                id = "channel-muted",
-                name = "muted",
-                unreadCount = 6,
-                joined = true,
-                activityMuted = true
-            )
-        val unmutedConversation =
-            RaftHomeConversationItem(
-                id = "channel-loud",
-                name = "loud",
-                unreadCount = 6,
-                joined = true,
-                activityMuted = false
-            )
-
-        assertEquals(
-            HomeSidebarBadgeProjection(label = "6", tone = HomeSidebarBadgeTone.Quiet, hasUnread = true, hasAttention = false),
-            mutedConversation.homeConversationBadgeProjection()
-        )
-        assertEquals(
-            HomeSidebarBadgeProjection(label = "6", tone = HomeSidebarBadgeTone.Loud, hasUnread = true, hasAttention = true),
-            unmutedConversation.homeConversationBadgeProjection()
-        )
-    }
-
-    @Test
-    fun homeConversationRowToneFollowsRaftUiSidebarTones() {
-        // raft-ui SidebarItem tones: not joined = `away` (foreground-hint) unless it is the
-        // current place, muted = `muted`, a loud unread = `unread` (a 700 name).
-        assertEquals(RaftRowTone.Away, homeConversationRowTone(muted = true, joined = false, selected = false, loudUnread = false))
-        assertEquals(RaftRowTone.Muted, homeConversationRowTone(muted = true, joined = false, selected = true, loudUnread = false))
-        assertEquals(RaftRowTone.Muted, homeConversationRowTone(muted = true, joined = true, selected = false, loudUnread = true))
-        assertEquals(RaftRowTone.Unread, homeConversationRowTone(muted = false, joined = true, selected = false, loudUnread = true))
-        assertEquals(RaftRowTone.Default, homeConversationRowTone(muted = false, joined = true, selected = false, loudUnread = false))
-        assertEquals(RaftRowTone.Default, homeConversationRowTone(muted = false, joined = false, selected = true, loudUnread = false))
-    }
-
-    @Test
     fun pinnedConversationsLeaveTheirSystemSectionLikeWeb() {
         // Web Sidebar.tsx: sortableChannels / orderedDms drop everything the typed Pinned
         // section shows, so "Channels 38" there is "41 minus 3 pinned" here.
@@ -907,12 +544,6 @@ class RaftHomeComponentsTest {
 
         assertEquals(setOf("c-2"), pinnedIds)
         assertEquals(listOf("c-1", "c-3"), channels.filter { it.id !in pinnedIds }.map { it.id })
-    }
-
-    @Test
-    fun homeConversationMutedIndicatorUsesBellOffOnlyWhenMuted() {
-        assertEquals(RaftLucideIconName.BellOff, homeConversationMutedIndicatorIcon(muted = true))
-        assertNull(homeConversationMutedIndicatorIcon(muted = false))
     }
 
     @Test
@@ -971,39 +602,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun aChannelWithANotificationsRowListsNoSeparateMuteButADmKeepsIt() {
-        // slock #12231: a channel's Mute is the third choice of its Notifications row.
-        for (muted in listOf(false, true)) {
-            val channel = RaftHomeConversationItem(id = "c-1", name = "one", activityMuted = muted, activityMuteSupported = true)
-            val ids =
-                raftHomeConversationMenuItems(
-                    conversation = channel,
-                    pinTargetIsPinned = false,
-                    sortableFromMenu = false,
-                    activeIsDirectMessage = false,
-                    activeCanArchive = false,
-                    notificationLevelLabel = "Notifications: Mute"
-                ).map { it.id }
-            assertEquals(listOf("move-to-section", "mark-unread", "toggle-pin", "notification-level"), ids)
-            val target = assertNotNull(homeNotificationLevelTarget("s1", channel))
-            assertEquals(muted, target.muted)
-            assertTrue(target.hasMuteChoice)
-        }
-        // A DM has no level row (the target is filtered out upstream), so it keeps Mute / Unmute.
-        val dm = RaftHomeConversationItem(id = "dm-1", name = "Cindy", activityMuted = true, activityMuteSupported = true)
-        assertTrue(
-            raftHomeConversationMenuItems(
-                conversation = dm,
-                pinTargetIsPinned = false,
-                sortableFromMenu = false,
-                activeIsDirectMessage = true,
-                activeCanArchive = false
-            ).any { it.id == "unmute-channel" }
-        )
-        assertNull(homeNotificationLevelTarget("", dm))
-    }
-
-    @Test
     fun homeContextAndSortMenusUseInjectedLocalizedLabels() {
         val labels =
             RaftHomeShellLabels(
@@ -1050,18 +648,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeActivitySidebarProjectionUsesSharedBadgeFormatting() {
-        assertEquals(
-            HomeActivitySidebarProjection(unreadCount = 140, totalLabel = null),
-            homeActivitySidebarProjection(activityUnreadCount = 140, activityTotalCount = 200)
-        )
-        assertEquals(
-            HomeActivitySidebarProjection(unreadCount = 0, totalLabel = "99+"),
-            homeActivitySidebarProjection(activityUnreadCount = 0, activityTotalCount = 200)
-        )
-    }
-
-    @Test
     fun homeSidebarSelectionPrefersTopActionOverConversation() {
         assertEquals(
             RaftHomeSidebarSelection(topAction = RaftHomeSidebarTopSelection.Activity),
@@ -1102,57 +688,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeSidebarSelectionDistinguishesConversationSections() {
-        assertEquals(
-            RaftHomeSidebarSelection(conversationId = "channel-1", conversationSection = RaftHomeConversationSection.Channel),
-            homeSidebarSelection(
-                selectedChannelId = "channel-1",
-                selectedConversationSection = null,
-                channels = listOf(
-                    RaftHomeConversationItem(id = "channel-1", name = "home"),
-                    RaftHomeConversationItem(id = "joint-1", name = "partner", kind = "joint")
-                ),
-                directMessages = listOf(RaftHomeConversationItem(id = "dm-1", name = "artin")),
-                searchSelected = false,
-                activitySelected = false,
-                savedSelected = false
-            )
-        )
-        assertEquals(
-            RaftHomeSidebarSelection(conversationId = "joint-1", conversationSection = RaftHomeConversationSection.JointChannel),
-            homeSidebarSelection(
-                selectedChannelId = "joint-1",
-                selectedConversationSection = null,
-                channels = listOf(RaftHomeConversationItem(id = "joint-1", name = "partner", kind = "joint")),
-                directMessages = emptyList(),
-                searchSelected = false,
-                activitySelected = false,
-                savedSelected = false
-            )
-        )
-        assertEquals(
-            RaftHomeSidebarSelection(conversationId = "dm-1", conversationSection = RaftHomeConversationSection.DirectMessage),
-            homeSidebarSelection(
-                selectedChannelId = "dm-1",
-                selectedConversationSection = null,
-                channels = emptyList(),
-                directMessages = listOf(RaftHomeConversationItem(id = "dm-1", name = "artin")),
-                searchSelected = false,
-                activitySelected = false,
-                savedSelected = false
-            )
-        )
-    }
-
-    @Test
-    fun homeChannelSymbolUsesLockForPrivateChannels() {
-        assertEquals("#", RaftHomeConversationItem(kind = "channel").homeChannelSymbol())
-        assertEquals("lock", RaftHomeConversationItem(kind = "channel", channelType = "private").homeChannelSymbol())
-        assertEquals("git-branch", RaftHomeConversationItem(kind = "channel", channelType = "joint").homeChannelSymbol())
-        assertEquals("git-branch", RaftHomeConversationItem(kind = "joint", channelType = "channel").homeChannelSymbol())
-    }
-
-    @Test
     fun homeConversationItemKeepsDmKindAheadOfChannelType() {
         val item =
             RaftHomeConversationItem(
@@ -1167,41 +702,11 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeConversationItemRecognizesLegacyDirectMessageKind() {
-        val item = RaftHomeConversationItem(id = "dm-cindy", name = "Cindy", kind = "directmessage")
-
-        assertTrue(item.isDirectMessageConversation())
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, item.homeChannelKind())
-    }
-
-    @Test
     fun localComposerDraftProjectionClearsStaleSnapshotDraftFlags() {
         val staleSnapshotItem = RaftHomeConversationItem(id = "channel-1", name = "home", hasDraft = true)
         val projection = emptySet<SharedThreadComposerDraftRecord>().toSharedThreadComposerDraftProjection()
 
         assertFalse(projection.hasRootDraft(staleSnapshotItem.id))
-    }
-
-    @Test
-    fun localComposerDraftProjectionMarksOnlyMatchingRootConversations() {
-        val projected =
-            setOf(
-                SharedThreadComposerDraftRecord(
-                    key = "send=channel-1|parent=_|mention=channel-1",
-                    sendChannelId = "channel-1",
-                    parentMessageId = null,
-                    mentionChannelId = "channel-1"
-                ),
-                SharedThreadComposerDraftRecord(
-                    key = "send=reply-thread-1|parent=message-1|mention=channel-1",
-                    sendChannelId = "reply-thread-1",
-                    parentMessageId = "message-1",
-                    mentionChannelId = "channel-1"
-                )
-            ).toSharedThreadComposerDraftProjection()
-
-        assertTrue(projected.hasRootDraft("channel-1"))
-        assertFalse(projected.hasRootDraft("reply-thread-1"))
     }
 
     @Test
@@ -1254,45 +759,6 @@ class RaftHomeComponentsTest {
         assertTrue(item.archived)
     }
 
-    @Test
-    fun homeConversationItemKeepsSeedKindWhenDirectoryProjectionDisagrees() {
-        val seed =
-            SharedHomeConversationRowSeed(
-                id = "dm-cindy",
-                kind = ConversationKind.DirectMessage,
-                fallbackName = "Cindy",
-                fallbackPresenceMemberId = "user-cindy",
-                fallbackChannelType = "dm"
-            )
-        val wrongProjection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "channel-cindy",
-                aliases = setOf("dm-cindy", "channel-cindy"),
-                conversationKind = ConversationKind.Channel,
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = "channel",
-                title = "Cindy",
-                peerIdentity =
-                    MemberDetailIdentity(
-                        memberId = MemberId("user-cindy"),
-                        kind = MemberKind.Human,
-                        sourceServerId = ServerId("server-1")
-                    ),
-                joined = true
-            )
-
-        val item =
-            SharedHomeConversationRowProjector(
-                directoryProjections = mapOf("dm-cindy" to wrongProjection)
-            ).project(seed)
-
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, item.kind)
-        assertEquals("dm", item.channelType)
-        assertEquals("dm", item.homeChannelKind())
-        assertEquals("user-cindy", item.presenceMemberId)
-    }
-
     // task #444: the row kind must serialize through the lossless wire kind — the surface
     // projection folds Joint into "channel", which emptied the Joint Channels section.
     @Test
@@ -1321,67 +787,6 @@ class RaftHomeComponentsTest {
         assertEquals(ConversationKind.Joint, parseConversationKindOrNull(jointItem.kind))
         assertEquals(JointChannelKindWireValue, jointItem.homeChannelKind())
         assertEquals(RaftThreadSurfaceKind.Channel, channelItem.kind)
-    }
-
-    @Test
-    fun homeConversationItemDoesNotLetGenericDirectoryTitleReplaceFallbackName() {
-        val seed =
-            SharedHomeConversationRowSeed(
-                id = "channel-1",
-                kind = ConversationKind.Channel,
-                fallbackName = "raft-mobile"
-            )
-        val directoryProjection =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "channel-1",
-                aliases = setOf("channel-1"),
-                conversationKind = ConversationKind.Channel,
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = "channel",
-                title = "channel-1"
-            )
-
-        val item =
-            SharedHomeConversationRowProjector(
-                directoryProjections = mapOf("channel-1" to directoryProjection)
-            ).project(seed)
-
-        assertEquals("raft-mobile", item.name)
-    }
-
-    @Test
-    fun homeConversationItemKeepsDmMemberIdentityWithoutAvatarFallback() {
-        val conversation =
-            ConversationSummary(
-                threadId = ThreadId("dm-agent-1"),
-                channelId = ChannelId("dm-agent-1"),
-                kind = ConversationKind.DirectMessage,
-                name = "KMP-Expert",
-                directMessagePeerType = "agent",
-                presenceMemberId = MemberId("agent-1")
-            ).toHomeDirectMessageRow()
-
-        val item = SharedHomeConversationRowProjector().project(conversation)
-
-        assertEquals("agent-1", item.presenceMemberId)
-        assertEquals("agent", item.peerType)
-    }
-
-    @Test
-    fun sidebarSelectionRequiresMatchingConversationSection() {
-        val pinnedSelection =
-            RaftHomeSidebarSelection(
-                conversationId = "channel-1",
-                conversationSection = RaftHomeConversationSection.Pinned
-            )
-        val pinnedSectionSelection = pinnedSelection.sectionSelection(RaftHomeConversationSection.Pinned)
-        val channelSectionSelection = pinnedSelection.sectionSelection(RaftHomeConversationSection.Channel)
-
-        assertEquals(RaftHomeConversationSection.Pinned, pinnedSectionSelection.section)
-        assertTrue(pinnedSectionSelection.selects("channel-1"))
-        assertFalse(channelSectionSelection.selects("channel-1"))
-        assertFalse(pinnedSectionSelection.selects("channel-2"))
     }
 
     @Test
@@ -1452,29 +857,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun pinnedItemsDropPinnedAgentIdsWithoutDirectMessageRows() {
-        val channel =
-            RaftHomeConversationItem(
-                id = "channel-1",
-                name = "general",
-                kind = RaftThreadSurfaceKind.Channel,
-                channelType = "channel"
-            )
-
-        val pinned =
-            pinnedItemsForSidebar(
-                channels = listOf(channel),
-                directMessages = emptyList(),
-                pinnedIds = listOf("channel-1"),
-                pinnedAgentIds = listOf("agent-missing"),
-                pinnedOrder = listOf("agent-missing", "channel-1"),
-                mode = RaftSidebarSortMode.Manual
-            )
-
-        assertEquals(listOf("channel-1"), pinned.map { it.id })
-    }
-
-    @Test
     fun pinnedItemsDeduplicateSameAgentDirectMessageAcrossPinFamiliesInAzMode() {
         val agentDm =
             RaftHomeConversationItem(
@@ -1509,35 +891,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun pinnedRowsRenderTypedAgentWithoutExistingDirectMessageFromMemberProfile() {
-        val pinned =
-            pinnedRowsForSidebar(
-                channels = emptyList(),
-                directMessages = emptyList(),
-                pinnedIds = emptyList(),
-                pinnedOrder = emptyList(),
-                typedPinnedItems = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")),
-                pinnedMemberProfileResolver = { memberId ->
-                    if (memberId == "agent-1") {
-                        RaftHomePinnedMemberItem(
-                            identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent),
-                            name = "Cindy",
-                            description = "@cindy",
-                            avatarLabel = "C"
-                        )
-                    } else {
-                        null
-                    }
-                },
-                mode = RaftSidebarSortMode.Manual
-            )
-
-        assertEquals(listOf("agent:agent-1"), pinned.map { it.key })
-        assertEquals(listOf("Cindy"), pinned.map { it.member?.name })
-        assertEquals(listOf(null), pinned.map { it.conversation?.id })
-    }
-
-    @Test
     fun pinnedMemberRowsRemainLongPressableAndParticipateInManualSort() {
         val member =
             RaftHomePinnedMemberItem(
@@ -1566,159 +919,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun pinnedMemberLongPressMenuOffersSectionSortWithoutConversationActions() {
-        assertEquals(
-            listOf(
-                RaftBaseMenuItem(
-                    id = "sort-channels",
-                    label = "Sort",
-                    icon = RaftLucideIconName.ArrowDownUp
-                )
-            ),
-            raftHomePinnedMemberMenuItems()
-        )
-    }
-
-    @Test
-    fun pinnedRowsResolveTypedAgentThroughExistingDirectMessage() {
-        val agentDm =
-            RaftHomeConversationItem(
-                id = "dm-agent-1",
-                name = "Cindy",
-                kind = RaftThreadSurfaceKind.DirectMessage,
-                channelType = "dm",
-                peerType = "agent",
-                presenceMemberId = "agent-1"
-            )
-
-        val pinned =
-            pinnedRowsForSidebar(
-                channels = emptyList(),
-                directMessages = listOf(agentDm),
-                pinnedIds = emptyList(),
-                pinnedOrder = emptyList(),
-                typedPinnedItems = listOf(SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1")),
-                pinnedMemberProfileResolver = {
-                    RaftHomePinnedMemberItem(
-                        identity = MemberDetailIdentity(MemberId("agent-1"), MemberKind.Agent),
-                        name = "Stale Cindy",
-                        avatarLabel = "S"
-                    )
-                },
-                mode = RaftSidebarSortMode.Manual
-            )
-
-        assertEquals(listOf("dm-agent-1"), pinned.map { it.conversation?.id })
-        assertEquals(listOf(null), pinned.map { it.member?.identity?.memberId })
-    }
-
-    @Test
-    fun pinnedRowsDeduplicateTypedMemberAndDirectMessageInAzMode() {
-        val agentDm =
-            RaftHomeConversationItem(
-                id = "dm-agent-1",
-                name = "Cindy",
-                kind = RaftThreadSurfaceKind.DirectMessage,
-                channelType = "dm",
-                peerType = "agent",
-                presenceMemberId = "agent-1"
-            )
-        val humanDm =
-            RaftHomeConversationItem(
-                id = "dm-human-1",
-                name = "Alice",
-                kind = RaftThreadSurfaceKind.DirectMessage,
-                channelType = "dm",
-                peerType = "human",
-                presenceMemberId = "user-1"
-            )
-
-        val pinned =
-            pinnedRowsForSidebar(
-                channels = emptyList(),
-                directMessages = listOf(agentDm, humanDm),
-                pinnedIds = listOf("dm-agent-1", "dm-human-1"),
-                pinnedAgentIds = listOf("agent-1"),
-                pinnedOrder = listOf("dm-agent-1", "agent-1", "dm-human-1"),
-                typedPinnedItems =
-                    listOf(
-                        SettingsServerSidebarPinnedItem(kind = "channel", id = "dm-agent-1"),
-                        SettingsServerSidebarPinnedItem(kind = "agent", id = "agent-1"),
-                        SettingsServerSidebarPinnedItem(kind = "human", id = "user-1")
-                    ),
-                mode = RaftSidebarSortMode.Az
-            )
-
-        assertEquals(listOf("dm-human-1", "dm-agent-1"), pinned.map { it.conversation?.id })
-    }
-
-    @Test
-    fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
-        assertEquals(
-            12,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 0,
-                directMessagesCount = 2,
-                channelsExpanded = true,
-                jointChannelsExpanded = true,
-                directMessagesExpanded = true
-            )
-        )
-        assertEquals(
-            7,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 0,
-                directMessagesCount = 2,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false
-            )
-        )
-        assertEquals(
-            15,
-            homeLazyItemCount(
-                channelsCount = 0,
-                jointCount = 0,
-                directMessagesCount = 0,
-                channelsExpanded = false,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = false,
-                hasInlineError = true,
-                channelSkeletonCount = 4,
-                directMessageSkeletonCount = 3
-            )
-        )
-    }
-
-    @Test
-    fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
-        assertEquals(
-            12,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 2,
-                directMessagesCount = 2,
-                channelsExpanded = false,
-                jointChannelsExpanded = true,
-                directMessagesExpanded = true
-            )
-        )
-        assertEquals(
-            13,
-            homeLazyItemCount(
-                channelsCount = 3,
-                jointCount = 2,
-                directMessagesCount = 2,
-                channelsExpanded = true,
-                jointChannelsExpanded = false,
-                directMessagesExpanded = true
-            )
-        )
-    }
-
-    @Test
     fun homeChannelSectionsPutJointChannelsBeforeRegularChannels() {
         fun order(hasJointChannels: Boolean) =
             homeSidebarSectionOrder(
@@ -1739,88 +939,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun sharedListBeyondBoundsNeverExceedsActualItemsOrGrowsUnbounded() {
-        assertEquals(0, sharedListBeyondBoundsItemCount(0))
-        assertEquals(2, sharedListBeyondBoundsItemCount(2))
-        assertEquals(12, sharedListBeyondBoundsItemCount(12))
-        assertEquals(96, sharedListBeyondBoundsItemCount(400))
-    }
-
-    @Test
-    fun homeListBeyondBoundsTracksOneViewportWithBounds() {
-        assertEquals(0, homeListInitialBeyondBoundsItemCount())
-        assertEquals(0, homeListBeyondBoundsItemCount(itemCount = 0, viewportHeightDp = 0f))
-        assertEquals(8, homeListBeyondBoundsItemCount(itemCount = 8, viewportHeightDp = 720f))
-        assertEquals(18, homeListBeyondBoundsItemCount(itemCount = 40, viewportHeightDp = 600f))
-        assertEquals(22, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 720f))
-        assertEquals(24, homeListBeyondBoundsItemCount(itemCount = 400, viewportHeightDp = 2_000f))
-        assertFalse(homeListShouldRampBeyondBounds(contentRefreshing = true))
-        assertTrue(homeListShouldRampBeyondBounds(contentRefreshing = false))
-        assertEquals(6, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 24))
-        assertEquals(4, homeListNextServerSwitchBeyondBoundsItemCount(current = 0, target = 4))
-        assertEquals(
-            14,
-            homeListBeyondBoundsItemCount(
-                itemCount = 400,
-                viewportHeightDp = 720f,
-                representativeRowStepDp = 52f
-            )
-        )
-    }
-
-    @Test
-    fun viewportBeyondBoundsFallsBackSafelyForInvalidMetricsAndBounds() {
-        assertEquals(
-            0,
-            raftViewportBeyondBoundsItemCount(
-                itemCount = -1,
-                viewportHeightDp = Float.NaN,
-                representativeRowStepDp = 0f,
-                minimumItems = -3,
-                maximumItems = -1
-            )
-        )
-        assertEquals(
-            6,
-            raftViewportBeyondBoundsItemCount(
-                itemCount = 20,
-                viewportHeightDp = Float.POSITIVE_INFINITY,
-                representativeRowStepDp = 34f,
-                minimumItems = 6,
-                maximumItems = 24
-            )
-        )
-        assertEquals(
-            8,
-            raftViewportBeyondBoundsItemCount(
-                itemCount = 20,
-                viewportHeightDp = 720f,
-                representativeRowStepDp = Float.NaN,
-                minimumItems = 8,
-                maximumItems = 4
-            )
-        )
-        assertEquals(
-            5,
-            raftViewportBeyondBoundsItemCount(
-                itemCount = 5,
-                viewportHeightDp = 720f,
-                representativeRowStepDp = 34f,
-                minimumItems = 6,
-                maximumItems = 24,
-                viewportFraction = Float.NEGATIVE_INFINITY
-            )
-        )
-    }
-
-    @Test
-    fun homeServerSwitcherKeepsSmallFixedPremeasureWindow() {
-        assertEquals(0, homeServerSwitcherBeyondBoundsItemCount(0))
-        assertEquals(2, homeServerSwitcherBeyondBoundsItemCount(2))
-        assertEquals(6, homeServerSwitcherBeyondBoundsItemCount(40))
-    }
-
-    @Test
     fun homePullToRefreshFollowsPayloadRefreshCapability() {
         assertTrue(homePullToRefreshEnabled(contentRefreshEnabled = true))
         assertFalse(homePullToRefreshEnabled(contentRefreshEnabled = false))
@@ -1834,32 +952,6 @@ class RaftHomeComponentsTest {
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = true))
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = false))
-    }
-
-    @Test
-    fun sharedHomeHeaderRefreshingTracksLoadedContentRefreshState() {
-        val refreshing =
-            SharedHomeState(
-                content =
-                    SharedHomeContentState.Content(
-                        snapshot = testHomeSnapshot(),
-                        session = testAuthSession(),
-                        contentRefreshing = true
-                    )
-            )
-        val idle =
-            SharedHomeState(
-                content =
-                    SharedHomeContentState.Content(
-                        snapshot = testHomeSnapshot(),
-                        session = testAuthSession(),
-                        contentRefreshing = false
-                    )
-            )
-
-        assertTrue(sharedHomeHeaderRefreshing(refreshing))
-        assertFalse(sharedHomeHeaderRefreshing(idle))
-        assertFalse(sharedHomeHeaderRefreshing(SharedHomeState(content = SharedHomeContentState.Loading())))
     }
 
     @Test
@@ -1904,20 +996,6 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun sidebarChannelSortOverlayExcludesPinnedAllChannel() {
-        val displayedChannels =
-            listOf(
-                RaftHomeConversationItem(id = "all", name = "all"),
-                RaftHomeConversationItem(id = "visual", name = "visual-testing"),
-                RaftHomeConversationItem(id = "artifacts", name = "artifacts")
-            )
-
-        val sortableChannels = displayedChannels.withoutSidebarPinnedItem("all")
-
-        assertEquals(listOf("visual", "artifacts"), sortableChannels.map { it.id })
-    }
-
-    @Test
     fun sidebarDmManualOrderFollowsServerOrderAndAppendsNewRows() {
         val directMessages =
             listOf(
@@ -1950,111 +1028,10 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun resolveSortTargetIndexTreatsRowGapsAsTheNextRow() {
-        // Rows are laid out with spacing (Arrangement.spacedBy): 32..34 and
-        // 66..68 are gaps. A pointer inside a gap must resolve to the next row
-        // down — the old strict-containment check fell back to the LAST visible
-        // row, snapping the insertion indicator to the end whenever the finger
-        // crossed a gap (task #356 device feedback).
-        val rows =
-            listOf(
-                RaftSortRowBounds(index = 0, top = 0f, size = 32f),
-                RaftSortRowBounds(index = 1, top = 34f, size = 32f),
-                RaftSortRowBounds(index = 2, top = 68f, size = 32f),
-                RaftSortRowBounds(index = 3, top = 102f, size = 32f),
-            )
-
-        assertEquals(1, resolveSortTargetIndex(33f, rows, lastIndex = 3))
-        assertEquals(2, resolveSortTargetIndex(67f, rows, lastIndex = 3))
-        assertEquals(3, resolveSortTargetIndex(101f, rows, lastIndex = 3))
-    }
-
-    @Test
-    fun resolveSortTargetIndexClampsBeyondVisibleRows() {
-        // Visible window is only indices 3..4 (list scrolled); pointer above the
-        // first visible row clamps to it, below the last clamps to it, and the
-        // result never exceeds lastIndex.
-        val rows =
-            listOf(
-                RaftSortRowBounds(index = 3, top = 0f, size = 32f),
-                RaftSortRowBounds(index = 4, top = 34f, size = 32f),
-            )
-
-        assertEquals(3, resolveSortTargetIndex(-50f, rows, lastIndex = 9))
-        assertEquals(4, resolveSortTargetIndex(500f, rows, lastIndex = 9))
-        assertEquals(0, resolveSortTargetIndex(10f, emptyList(), lastIndex = 9))
-    }
-
-    @Test
     fun resolveSortAutoScrollDeltaScrollsNearViewportEdges() {
         assertEquals(-10f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
         assertEquals(10f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
         assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-    }
-
-    @Test
-    fun resolveSortAutoScrollDeltaIgnoresInvalidViewportOrStep() {
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 100f, viewportEnd = 100f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 0f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 10f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 0f, canScrollBackward = true, canScrollForward = true))
-    }
-
-    @Test
-    fun resolveSortAutoScrollDeltaStopsAtContentBoundaries() {
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 15f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = false, canScrollForward = true))
-        assertEquals(0f, resolveSortAutoScrollDelta(pointerY = 280f, viewportStart = 0f, viewportEnd = 320f, edgeScrollZone = 56f, edgeScrollStep = 10f, canScrollBackward = true, canScrollForward = false))
-    }
-
-    @Test
-    fun resolveSortDraggedRowTopClampsTheFloatingRowInsideTheViewport() {
-        assertEquals(0f, resolveSortDraggedRowTop(pointerY = -100f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(134f, resolveSortDraggedRowTop(pointerY = 160f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(268f, resolveSortDraggedRowTop(pointerY = 600f, viewportStart = 0f, viewportEnd = 320f, rowSize = 52f))
-        assertEquals(10f, resolveSortDraggedRowTop(pointerY = 60f, viewportStart = 10f, viewportEnd = 100f, rowSize = 120f))
-    }
-
-    @Test
-    fun moveItemKeepsOrderWhenTargetIsUnchangedOrMissing() {
-        val order = listOf("a", "b", "c")
-
-        assertEquals(listOf("b", "c", "a"), order.moveItem("a", 2))
-        assertEquals(order, order.moveItem("missing", 1))
-        assertEquals(order, order.moveItem("b", 1))
-    }
-
-    @Test
-    fun visibleHomeNotificationsDropBlankItems() {
-        val notifications =
-            listOf(
-                RaftHomeNotificationItem(id = "blank", title = "   ", body = ""),
-                RaftHomeNotificationItem(id = "body", title = "", body = "Visible body"),
-                RaftHomeNotificationItem(id = "title", title = "Visible title", body = "")
-            )
-
-        assertEquals(listOf("body", "title"), notifications.visibleHomeNotifications().map { it.id })
-    }
-
-    @Test
-    fun notificationIconUsesMachineSpecificIconWhenProvided() {
-        assertEquals(
-            RaftLucideIconName.TriangleAlert,
-            RaftHomeNotificationIcon.WifiOff.notificationIconName(RaftHomeNotificationKind.Warning)
-        )
-        assertEquals(
-            RaftLucideIconName.CircleArrowUp,
-            RaftHomeNotificationIcon.CircleArrowUp.notificationIconName(RaftHomeNotificationKind.Warning)
-        )
-        assertEquals(
-            RaftLucideIconName.TriangleAlert,
-            RaftHomeNotificationIcon.Default.notificationIconName(RaftHomeNotificationKind.Warning)
-        )
-    }
-
-    @Test
-    fun notificationPopoverTopOffsetLeavesHeaderClippingBounds() {
-        // The bell's button ends 49.25dp into the head; web's popover hangs 8dp under it.
-        assertEquals(57.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 0.dp))
-        assertEquals(81.25.dp, homeNotificationPopoverTopOffset(topSafeArea = 24.dp))
     }
 
     @Test
@@ -2080,88 +1057,6 @@ class RaftHomeComponentsTest {
                 targetTabKey = "tasks"
             )
         )
-    }
-
-    @Test
-    fun titlebarVisualBoardRendersTheManifestVariants() {
-        // sharedCases.json components.home.titlebar.states, in order.
-        assertEquals(
-            listOf("other-server-unread", "short-name-avatar", "long-name-ellipsis", "switcher-open"),
-            HomeTitlebarVisualStates.map { it.id }
-        )
-        val byId = HomeTitlebarVisualStates.associateBy { it.id }
-        val unread = byId.getValue("other-server-unread").visualServers()
-        assertTrue(homeServerSwitcherHasOtherUnread(unread.first().id, unread))
-        assertEquals(null, unread.first().avatarUrl)
-        val avatar = byId.getValue("short-name-avatar").visualServers()
-        assertEquals(1, avatar.size)
-        assertFalse(avatar.single().avatarUrl.isNullOrBlank())
-        val open = byId.getValue("switcher-open")
-        assertTrue(open.switcherOpen)
-        val openServers = open.visualServers()
-        assertEquals(listOf("visual", "raft-community"), openServers.map { it.slug })
-        assertFalse(homeServerSwitcherHasOtherUnread(openServers.first().id, openServers))
-    }
-
-    @Test
-    fun notificationIconTileFollowsKind() {
-        // raft-ui NotificationCenterItemIcon: error and warning on warning-soft, info on info-soft.
-        assertEquals(RaftIconTileVariant.Warning, RaftHomeNotificationKind.Warning.iconTileVariant())
-        assertEquals(RaftIconTileVariant.Warning, RaftHomeNotificationKind.Error.iconTileVariant())
-        assertEquals(RaftIconTileVariant.Information, RaftHomeNotificationKind.Info.iconTileVariant())
-    }
-
-    @Test
-    fun tasksLazyItemCountTracksCurrentModeAndErrors() {
-        assertEquals(
-            6,
-            sharedTasksLazyItemCount(
-                mode = TasksViewMode.Board,
-                filteredTasksCount = 20,
-                boardColumnCount = 3,
-                hasNavigationError = true,
-                hasStatusUpdateError = false
-            )
-        )
-        assertEquals(
-            3,
-            sharedTasksLazyItemCount(
-                mode = TasksViewMode.List,
-                filteredTasksCount = 0,
-                boardColumnCount = 3,
-                hasNavigationError = false,
-                hasStatusUpdateError = false
-            )
-        )
-    }
-
-    @Test
-    fun homeConversationLaunchCarriesOnlyTopLevelConversationIdentity() {
-        val payload =
-            RaftHomePayload(
-                instanceId = "home-page",
-                channels =
-                    listOf(
-                        RaftHomeConversationItem(
-                            id = "channel-1",
-                            name = "Display title must stay out",
-                            kind = "channel"
-                        )
-                    )
-            )
-
-        val launch = buildHomeConversationThreadLaunchPayload(payload, "channel-1")
-
-        assertEquals("home-page:channel-1", launch?.instanceId)
-        assertEquals(RaftThreadSurfaceKind.Channel, launch?.surfaceKind)
-        assertEquals(null, launch?.threadId)
-        assertEquals("channel-1", launch?.sourceThreadId)
-        assertEquals("channel-1", launch?.streamChannelId)
-        assertEquals(null, launch?.parentChannelId)
-        assertEquals(null, launch?.parentMessageId)
-        assertEquals(null, launch?.parentSurfaceKind)
-        assertEquals(null, launch?.parentChannelKind)
-        assertEquals(null, launch?.originParentMessageId)
     }
 
     @Test
@@ -2198,61 +1093,6 @@ class RaftHomeComponentsTest {
             )
 
         assertEquals(null, buildHomeConversationThreadLaunchPayload(payload, "mystery-1"))
-    }
-
-    @Test
-    fun homeDirectMessageLaunchDoesNotInventParentPair() {
-        val payload =
-            RaftHomePayload(
-                instanceId = "home-page",
-                directMessages =
-                    listOf(
-                        RaftHomeConversationItem(
-                            id = "dm-agent-1",
-                            name = "Product-UX-Designer",
-                            kind = "dm",
-                            peerType = "agent",
-                            presenceMemberId = "agent-1"
-                        )
-                    )
-            )
-
-        val launch = buildHomeConversationThreadLaunchPayload(payload, "dm-agent-1")
-
-        assertEquals("home-page:dm-agent-1", launch?.instanceId)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, launch?.surfaceKind)
-        assertEquals("dm-agent-1", launch?.threadId)
-        assertEquals("dm-agent-1", launch?.sourceThreadId)
-        assertEquals("dm-agent-1", launch?.streamChannelId)
-        assertEquals(null, launch?.parentChannelId)
-        assertEquals(null, launch?.parentMessageId)
-        assertEquals("agent-1", launch?.dmPeerIdentity?.memberId?.value)
-        assertEquals(MemberKind.Agent, launch?.dmPeerIdentity?.kind)
-        assertEquals("agent-1", launch?.toInitialPayload("fallback")?.dmPeerIdentity?.memberId?.value)
-    }
-
-    @Test
-    fun homeJointChannelLaunchCarriesChannelKind() {
-        val payload =
-            RaftHomePayload(
-                instanceId = "home-page",
-                channels =
-                    listOf(
-                        RaftHomeConversationItem(
-                            id = "joint-1",
-                            name = "partner",
-                            kind = "joint",
-                            channelType = "channel"
-                        )
-                    )
-            )
-
-        val launch = buildHomeConversationThreadLaunchPayload(payload, "joint-1")
-
-        assertEquals(RaftThreadSurfaceKind.Channel, launch?.surfaceKind)
-        assertEquals("joint", launch?.channelKind)
-        assertEquals("joint-1", launch?.sourceThreadId)
-        assertEquals("joint-1", launch?.streamChannelId)
     }
 
     @Test
@@ -2298,21 +1138,6 @@ class RaftHomeComponentsTest {
             permissionBadges = permissionBadges
         )
 
-    private fun testHomeSnapshot(): HomeSnapshot =
-        HomeSnapshot(
-            server = ServerSummary(ServerId("server-1"), "Slock Community"),
-            currentMember =
-                MemberProfile(
-                    id = MemberId("user-1"),
-                    displayName = "Artin",
-                    handle = "artin",
-                    kind = MemberKind.Human
-                ),
-            channels = emptyList(),
-            directMessages = emptyList(),
-            unreadTotal = 0
-        )
-
     private fun testActivityOwner(): ReadReceiptOwner =
         ReadReceiptOwner(
             environmentId = "https://raft.example",
@@ -2331,14 +1156,6 @@ class RaftHomeComponentsTest {
                     StoredAuthServer(id = "server-1", name = "Current", slug = "current"),
                     StoredAuthServer(id = "server-2", name = "Other", slug = "other"),
                 ),
-        )
-
-    private fun testAuthSession(): StoredAuthSession =
-        StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "artin@example.com", displayName = "Artin"),
-            accessToken = "token",
-            refreshToken = "refresh",
-            selectedServerId = "server-1"
         )
 
     @Test

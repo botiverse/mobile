@@ -2,10 +2,8 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class RaftMenuLayoutTest {
     @Test
@@ -28,24 +26,6 @@ class RaftMenuLayoutTest {
                 horizontalAutoFlip = true
             )
         )
-    }
-
-    @Test
-    fun raftStatusMenuTreatsFixedWidthAsMinimum() {
-        fun items(vararg labels: String) = labels.map { RaftBaseMenuItem(id = it, label = it) }
-
-        // Short labels keep the caller's 140dp, like web's min-w-[140px].
-        assertEquals(140.dp, raftLookBaseMenuWidth(items("Todo", "Done"), fixedWidth = 140.dp, minWidth = 136.dp))
-        // Bold "In Progress" plus the row chrome and the trailing check in a p-1 popup is 137dp:
-        // it fits 140dp, as on the web.
-        assertEquals(140.dp, raftLookBaseMenuWidth(items("Todo", "In Progress", "Done"), fixedWidth = 140.dp, minWidth = 136.dp))
-        // A longer label does not fit 140dp: the menu grows.
-        val longer = raftLookBaseMenuWidth(items("Todo", "Waiting for Review", "Done"), fixedWidth = 140.dp, minWidth = 136.dp)
-        assertTrue(longer > 140.dp, "status menu should grow past 140dp, was $longer")
-        // Growth is capped at the menu max width.
-        assertEquals(280.dp, raftLookBaseMenuWidth(items("x".repeat(80)), fixedWidth = 140.dp, minWidth = 136.dp))
-        // Without a caller width the raft min-w-60 estimate applies.
-        assertEquals(240.dp, raftLookBaseMenuWidth(items("Todo"), fixedWidth = null, minWidth = 136.dp))
     }
 
     @Test

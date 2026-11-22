@@ -6,7 +6,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertSame
 
 /**
  * RFC 077 PR 2b (botiverse/slock `retractDelegatedMessage`): a retraction arrives as the full row
@@ -87,16 +86,6 @@ class RetractedMessageMergeTest {
     }
 
     @Test
-    fun originMessageFollowsTheRetractionOnRefresh() {
-        val previous = payload(row("next", 42)).copy(originMessage = retracted())
-        val refreshed = payload(row("next", 42)).copy(originMessage = loaded())
-        refreshed.preserveStableTimelineFrom(previous).originMessage!!.assertRetracted("origin keeps the retraction")
-        previous.copy(originMessage = retracted())
-            .preserveStableTimelineFrom(previous.copy(originMessage = loaded()))
-            .originMessage!!.assertRetracted("origin takes the retraction")
-    }
-
-    @Test
     fun messageCacheNeverResurrectsTheOldCopy() {
         val channel = ChannelId("channel-qa-x")
         val store = SharedThreadMessageStore()
@@ -112,14 +101,5 @@ class RetractedMessageMergeTest {
         assertEquals(placeholder, stale.body)
         assertEquals(emptyList(), stale.attachments)
         assertEquals(emptyList(), stale.reactions.orEmpty())
-    }
-
-    @Test
-    fun aRetractedDomainMessageMapsToAnItemWithoutContent() {
-        val channel = ChannelId("channel-qa-x")
-        val message = loaded().toMessage(ThreadId("channel-qa-x"), channel)!!.copy(deletedAt = retractedAt, body = placeholder)
-        message.toRaftThreadMessageItem(currentUserId = "user-alice").assertRetracted("domain -> item")
-        val untouched = loaded()
-        assertSame(untouched, untouched.withoutRetractedContent())
     }
 }

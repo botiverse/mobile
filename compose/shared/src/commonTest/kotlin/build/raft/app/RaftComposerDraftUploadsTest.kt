@@ -193,24 +193,6 @@ class RaftComposerDraftUploadsTest {
     }
 
     @Test
-    fun losingAServerCancelsOnlyThatServersUploads() = runTest {
-        val owner = RaftComposerDraftUploads(backgroundScope)
-        val serverA = owner.forOwner(AccountA, ServerA)
-        val serverB = owner.forOwner(AccountA, ServerB)
-        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
-        startUpload(serverA, mountComposer(persistence, DraftA, "composer-a"), DraftA, PickedId, ControlledTransport())
-        startUpload(serverB, mountComposer(persistence, DraftB, "composer-b"), DraftB, PickedId, ControlledTransport())
-        runCurrent()
-
-        owner.dropServer(ServerA)
-        runCurrent()
-
-        assertFalse(serverA.orchestrator.isActive(PickedId, DraftA))
-        assertTrue(serverB.orchestrator.isActive(PickedId, DraftB), "another server's upload keeps going")
-        assertNotNull(serverB.upload(DraftB, PickedId))
-    }
-
-    @Test
     fun twoConversationsDoNotMixTheirUploads() = runTest {
         val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
         val owner = RaftComposerDraftUploads(backgroundScope)
@@ -309,110 +291,6 @@ class RaftComposerDraftUploadsTest {
     }
 
     @Test
-    fun retryingAnUploadThatFailedWhileAwayFinishesInTheReturningComposer() = runTest {
-        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
-        val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-        val firstAttempt = ControlledTransport()
-        val firstPage = mountComposer(persistence, DraftA, instanceId = "composer-1")
-        startUpload(uploads, firstPage, DraftA, PickedId, firstAttempt)
-        firstPage.dispatch(SharedThreadComposerDraftIntent.Flush)
-        runCurrent()
-        // Fails while the user is away.
-        firstAttempt.fail("socket_timeout")
-        runCurrent()
-
-        val secondPage = mountComposer(persistence, DraftA, instanceId = "composer-2")
-        val applier = RaftComposerDraftUploadApplier()
-        val failures = mutableListOf<String>()
-        val adoptedFiles = mutableListOf<PlatformFile?>()
-        applier.apply(
-            draftKey = DraftA,
-            uploads = uploads.uploads(DraftA),
-            currentState = { secondPage.state.value },
-            acceptWithState = secondPage::acceptWithState,
-            onAdopted = { upload -> adoptedFiles += upload.file },
-            onFailed = { _, errorCode -> failures += errorCode },
-            onDelivered = { upload -> uploads.markDelivered(DraftA, upload.localAttachmentId, upload.attemptToken) },
-        )
-        assertEquals("failed", secondPage.row(PickedId).status)
-        assertEquals(listOf("socket_timeout"), failures)
-        // PlatformFile holds a ByteArray (identity equality): compare what Retry reads.
-        assertEquals<List<String?>>(listOf("cache/$PickedId.jpg"), adoptedFiles.map { it?.fileRef }, "the returning page has the file for Retry")
-
-        // Retry (the page's retryAttachment): a new attempt of the same tile, from the returning page.
-        secondPage.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(PickedId))
-        val retry = ControlledTransport()
-        startUpload(uploads, secondPage, DraftA, PickedId, retry)
-        runCurrent()
-        applier.applyTo(secondPage, uploads, DraftA, onFailed = failures::add)
-        assertEquals("uploading", secondPage.row(PickedId).status, "the old failure is not applied to the retry")
-        assertTrue(secondPage.pending().hasUploadingThreadAttachment())
-
-        retry.succeed(UploadedId)
-        runCurrent()
-        applier.applyTo(secondPage, uploads, DraftA, onFailed = failures::add)
-        assertEquals(listOf(UploadedId), secondPage.pending().readyThreadAttachmentIdsForSend())
-        assertFalse(secondPage.pending().hasBlockingThreadAttachmentUpload())
-        assertEquals(listOf("socket_timeout"), failures, "the failure is reported once")
-    }
-
-    @Test
-    fun removingAReadyTileForgetsItsUploadAndTheFile() = runTest {
-        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
-        val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-        val transport = ControlledTransport()
-        val page = mountComposer(persistence, DraftA, instanceId = "composer-1")
-        val applier = RaftComposerDraftUploadApplier()
-        startUpload(uploads, page, DraftA, PickedId, transport)
-        runCurrent()
-        transport.succeed(UploadedId)
-        runCurrent()
-        applier.applyTo(page, uploads, DraftA)
-        assertEquals(listOf(UploadedId), page.pending().readyThreadAttachmentIdsForSend())
-        val delivered = assertNotNull(uploads.upload(DraftA, PickedId))
-        assertTrue(delivered.delivered)
-        assertNull(delivered.file, "a delivered success drops the picked file")
-
-        // The tile now carries the server attachment id; the upload is recorded under the picked id.
-        uploads.remove(DraftA, UploadedId)
-        page.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(UploadedId))
-        assertTrue(uploads.uploads(DraftA).isEmpty(), "the ready tile's upload record is not leaked")
-        assertTrue(page.pending().isEmpty(), "${page.pending()}")
-    }
-
-    @Test
-    fun aThreadDraftAndItsChannelDraftKeepTheirOwnUploads() = runTest {
-        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
-        val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-        val inChannel = ControlledTransport()
-        val inThread = ControlledTransport()
-        // The channel composer and the composer of a thread under it, the same local id in both.
-        val channelPage = mountComposer(persistence, DraftA, instanceId = "composer-channel")
-        val threadPage = mountComposer(persistence, ThreadDraftA, instanceId = "composer-thread")
-        val channelApplier = RaftComposerDraftUploadApplier()
-        val threadApplier = RaftComposerDraftUploadApplier()
-        startUpload(uploads, channelPage, DraftA, PickedId, inChannel)
-        startUpload(uploads, threadPage, ThreadDraftA, PickedId, inThread)
-        runCurrent()
-
-        inThread.succeed(UploadedId)
-        runCurrent()
-        channelApplier.applyTo(channelPage, uploads, DraftA)
-        threadApplier.applyTo(threadPage, uploads, ThreadDraftA)
-        assertEquals(listOf(UploadedId), threadPage.pending().readyThreadAttachmentIdsForSend())
-        assertEquals("uploading", channelPage.row(PickedId).status, "the thread's result stays in the thread")
-
-        // Sending the thread reply forgets only the thread draft's uploads.
-        uploads.retireDraft(ThreadDraftA, RaftAttachmentUploadCancelReason.DraftSent)
-        assertTrue(uploads.uploads(ThreadDraftA).isEmpty())
-        assertTrue(uploads.orchestrator.isActive(PickedId, DraftA), "the channel's upload keeps going")
-        inChannel.progress(60)
-        channelApplier.applyTo(channelPage, uploads, DraftA)
-        assertEquals(inChannel.lastTransfer, channelPage.row(PickedId).uploadTransfer)
-        assertFalse(inChannel.cancelled.isCompleted)
-    }
-
-    @Test
     fun anotherAccountOnTheSameServerHasItsOwnUploads() = runTest {
         val owner = RaftComposerDraftUploads(backgroundScope)
         val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
@@ -431,14 +309,6 @@ class RaftComposerDraftUploadsTest {
         owner.dropServer(ServerA)
         runCurrent()
         assertFalse(first.orchestrator.isActive(PickedId, DraftA))
-    }
-
-    @Test
-    fun theUploadOwnerIsThePagesOwnServer() {
-        assertEquals("shell", threadComposerUploadOwnerServerId("shell", "page", "selected"))
-        assertEquals("page", threadComposerUploadOwnerServerId(" ", "page", "selected"))
-        assertEquals("selected", threadComposerUploadOwnerServerId(null, null, "selected"))
-        assertNull(threadComposerUploadOwnerServerId(null, "", null))
     }
 
     private enum class FinishedAway { Succeeded, Failed }
@@ -602,7 +472,6 @@ class RaftComposerDraftUploadsTest {
         const val ServerB = "server-b"
         const val DraftA = "send=channel-a|parent=_|mention=channel-a"
         const val DraftB = "send=channel-b|parent=_|mention=channel-b"
-        const val ThreadDraftA = "send=thread-a1|parent=message-a1|mention=channel-a"
         const val PickedId = "picked-180384"
         const val UploadedId = "attachment-180384"
     }

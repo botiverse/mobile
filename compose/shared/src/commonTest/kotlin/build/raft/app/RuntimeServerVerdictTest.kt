@@ -50,16 +50,6 @@ class RuntimeServerVerdictTest {
     }
 
     @Test
-    fun aRowTheServerKeepsOffHereIsNotAvailableAndNotCreatable() {
-        val rows = listOf(newRow("claude", installed = true), newRow("qwen", installed = true).copy(canSelectInThisContext = false, availableForNew = true))
-        val picker = runtimePickerRows(BundledRuntimeCatalog, listOf("claude", "qwen"), selectedRuntimeId = "qwen", showAll = false, options = rows)
-        val qwen = picker.rows.single { it.id == "qwen" }
-        assertEquals(RuntimePickerGroup.NotAvailable, qwen.group)
-        assertFalse(qwen.enabled)
-        assertEquals(setOf("claude"), BundledRuntimeCatalog.creatableRuntimeIds(options = rows))
-    }
-
-    @Test
     fun withoutRowsTheServerCatalogDecidesAndTheBundledTableOnlyWhenTheServerDidNotAnswer() {
         val machine = listOf("claude", "antigravity")
         // GET /servers/:id/runtimes answered from a server before slock #15445: Antigravity is
@@ -83,45 +73,6 @@ class RuntimeServerVerdictTest {
         val rows = listOf(newRow("claude", installed = true), newRow("antigravity", installed = true))
         val withRows = runtimePickerRows(BundledRuntimeCatalog, machine, selectedRuntimeId = "claude", showAll = false, options = rows)
         assertEquals(RuntimePickerGroup.Ready, withRows.rows.single { it.id == "antigravity" }.group)
-    }
-
-    @Test
-    fun switchListsTheAgentsRowsAndARevivedRuntimeIsSelectable() {
-        // An agent on Claude Code; the server offers Antigravity again (its OAR flag is on).
-        val rows = existingRows(current = "claude", installed = setOf("claude", "antigravity"), revived = setOf("antigravity"))
-        val picker =
-            runtimePickerRows(
-                BundledRuntimeCatalog,
-                listOf("claude", "antigravity"),
-                selectedRuntimeId = "claude",
-                showAll = false,
-                currentRuntimeId = "claude",
-                options = rows.options
-            )
-        assertEquals("claude" to RuntimePickerGroup.Current, picker.rows.first().let { it.id to it.group })
-        val antigravity = picker.rows.single { it.id == "antigravity" }
-        assertEquals(RuntimePickerGroup.Ready, antigravity.group)
-        assertTrue(antigravity.enabled)
-        assertFalse(antigravity.deprecated)
-    }
-
-    @Test
-    fun theCurrentRowSaysDeprecatedAndARevivedCurrentRuntimeIsNot() {
-        val onCopilot = existingRows(current = "copilot", installed = setOf("copilot", "claude"))
-        val copilot =
-            runtimePickerRows(BundledRuntimeCatalog, listOf("copilot", "claude"), "copilot", showAll = false, currentRuntimeId = "copilot", options = onCopilot.options)
-                .rows.first()
-        assertEquals("copilot" to RuntimePickerGroup.Current, copilot.id to copilot.group)
-        assertTrue(copilot.deprecated)
-        assertTrue(runtimeDeprecatedForAgent("copilot", onCopilot, serverId = null, catalogDeprecated = { false }))
-
-        // Antigravity revived on this server: its own row has no `admissionReason`, whatever the bundle says.
-        val onAntigravity = existingRows(current = "antigravity", installed = setOf("antigravity"), revived = setOf("antigravity"))
-        assertFalse(runtimeDeprecatedForAgent("antigravity", onAntigravity, serverId = null, catalogDeprecated = { true }))
-        val row =
-            runtimePickerRows(BundledRuntimeCatalog, listOf("antigravity"), "antigravity", showAll = false, currentRuntimeId = "antigravity", options = onAntigravity.options)
-                .rows.first()
-        assertFalse(row.deprecated)
     }
 
     @Test

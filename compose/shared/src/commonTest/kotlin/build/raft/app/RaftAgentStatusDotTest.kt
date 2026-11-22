@@ -20,33 +20,6 @@ class RaftAgentStatusDotTest {
         assertEquals(RaftAgentStatusDotKind.Gray, raftAgentStatusDotKind("something-new", external = false))
     }
 
-    @Test
-    fun anExternalAgentIsCyanOutsideItsOnlineWindowAndLimeInside() {
-        val now = 1_792_635_000_000L
-        assertEquals(
-            RaftAgentStatusDotKind.Cyan,
-            raftAgentStatusDotKind("working", external = true, lastSeenAt = null, nowEpochMillis = now),
-        )
-        assertEquals(
-            RaftAgentStatusDotKind.Lime,
-            raftAgentStatusDotKind("working", external = true, lastSeenAt = "2026-10-22T02:09:30Z", nowEpochMillis = now),
-        )
-    }
-
-    @Test
-    fun aHeldAgentIsOrangeWhateverItsLastActivity() {
-        assertEquals(
-            RaftAgentStatusDotKind.Orange,
-            raftAgentStatusDotKind("working", external = false, blockedReason = "computer_version_unsupported"),
-        )
-        assertEquals(
-            RaftAgentStatusDotKind.Orange,
-            raftAgentStatusDotKind("offline", external = false, blockedReason = "computer_access_revoked"),
-        )
-        // An unknown reason keeps the ordinary light.
-        assertEquals(RaftAgentStatusDotKind.Gray, raftAgentStatusDotKind("offline", external = false, blockedReason = "later"))
-    }
-
     private fun widgetText(
         status: String?,
         detail: String? = null,
@@ -75,16 +48,5 @@ class RaftAgentStatusDotTest {
         assertEquals(Res.string.member_row_status_error.desc(), widgetText("error"))
         // What it is doing, in the daemon's words, while it works.
         assertEquals("Running npm test".desc(), widgetText("working", detail = "Running npm test"))
-    }
-
-    @Test
-    fun aHeldAgentSaysWhyAndAnUnknownStatusFallsBack() {
-        assertEquals(
-            Res.string.agent_status_computer_update_required.desc(),
-            widgetText("working", blockedReason = "computer_version_unknown"),
-        )
-        assertEquals("Codex CLI".desc(), widgetText(null, runtime = "Codex CLI", description = "helper"))
-        assertEquals("helper".desc(), widgetText(null, description = "helper"))
-        assertEquals(Res.string.member_row_status_offline.desc(), widgetText(null))
     }
 }

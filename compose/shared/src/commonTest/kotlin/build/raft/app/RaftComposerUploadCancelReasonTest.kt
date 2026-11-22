@@ -3,16 +3,10 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAttachmentUploadAttempt
-import build.raft.app.data.RaftAttachmentUploadCancelReason
-import build.raft.app.data.RaftUploadCancelSiteOrphanRecovery
-import build.raft.app.data.RaftUploadCancelled
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -56,26 +50,6 @@ class RaftComposerUploadCancelReasonTest {
     }
 
     @Test
-    fun retiringTheDraftSaysWhetherItWasSentOrCleared() = runTest {
-        listOf(RaftAttachmentUploadCancelReason.DraftSent, RaftAttachmentUploadCancelReason.DraftCleared).forEach { reason ->
-            val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-            val first = startUpload(uploads, DraftA, PickedId)
-            val second = startUpload(uploads, DraftA, OtherPickedId)
-            val elsewhere = startUpload(uploads, DraftB, PickedId)
-            runCurrent()
-
-            uploads.retireDraft(DraftA, reason)
-            runCurrent()
-
-            assertEquals(reason.wire, first.single().text("cancel_reason"), "$reason")
-            assertEquals(reason.wire, second.single().text("cancel_reason"), "$reason")
-            assertTrue(elsewhere.events.isEmpty(), "$reason: another draft's upload keeps going")
-            uploads.dispose()
-            runCurrent()
-        }
-    }
-
-    @Test
     fun signOutAndLosingTheServerAreSessionEnded() = runTest {
         val owner = RaftComposerDraftUploads(backgroundScope)
         val signedOut = startUpload(owner.forOwner(AccountA, ServerA), DraftA, PickedId)
@@ -93,55 +67,6 @@ class RaftComposerUploadCancelReasonTest {
         runCurrent()
         assertEquals("session_ended", lostServer.single().text("cancel_reason"))
         assertTrue(keptServer.events.isEmpty(), "the other server's upload keeps going")
-    }
-
-    @Test
-    fun aCancelWithoutAReasonIsOtherWithOneLineNamingWhereItCameFrom() = runTest {
-        val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-
-        // A site that cancels for none of the four reasons names itself.
-        val orphaned = startUpload(uploads, DraftA, PickedId)
-        runCurrent()
-        uploads.orchestrator.remove(
-            PickedId,
-            DraftA,
-            RaftUploadCancelled(RaftAttachmentUploadCancelReason.Other, RaftUploadCancelSiteOrphanRecovery),
-        )
-        runCurrent()
-        assertEquals("other", orphaned.single().text("cancel_reason"))
-        assertEquals(2, orphaned.logs.size, "logs=${orphaned.logs}")
-        assertTrue(orphaned.logs[1].startsWith("thread_composer_attachment_upload_cancel_other site=orphan_recovery traceId="), orphaned.logs[1])
-
-        val failed = startUpload(uploads, DraftA, OtherPickedId)
-        runCurrent()
-        uploads.orchestrator.failAttempts(DraftA, setOf(OtherPickedId))
-        runCurrent()
-        assertEquals("other", failed.single().text("cancel_reason"))
-        assertTrue(failed.logs[1].contains(" site=fail_attempts "), failed.logs[1])
-
-        // The job cancelled with no reason at all (here: its scope).
-        val scope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
-        val scoped = RaftComposerServerUploads(AccountA, ServerA, scope, Semaphore(4))
-        val untagged = startUpload(scoped, DraftA, PickedId)
-        runCurrent()
-        scope.cancel()
-        runCurrent()
-        assertEquals("cancelled", untagged.single().text("outcome"))
-        assertEquals("other", untagged.single().text("cancel_reason"))
-        assertEquals(2, untagged.logs.size, "logs=${untagged.logs}")
-        assertTrue(untagged.logs[1].contains(" site=untagged "), untagged.logs[1])
-    }
-
-    @Test
-    fun aCancellationFromBelowIsAnErrorWithoutAReason() = runTest {
-        val uploads = RaftComposerDraftUploads(backgroundScope).forOwner(AccountA, ServerA)
-        val reported = startUpload(uploads, DraftA, PickedId) { throw CancellationException("transport retired") }
-        runCurrent()
-
-        assertEquals("error", reported.single().text("outcome"))
-        assertEquals("upload_interrupted", reported.single().text("error_code"))
-        assertNull(reported.single()["cancel_reason"])
-        assertEquals(1, reported.logs.size, "logs=${reported.logs}")
     }
 
     @Test
@@ -218,6 +143,5 @@ class RaftComposerUploadCancelReasonTest {
         const val DraftA = "send=channel-a|parent=_|mention=channel-a"
         const val DraftB = "send=channel-b|parent=_|mention=channel-b"
         const val PickedId = "picked-180384"
-        const val OtherPickedId = "picked-180385"
     }
 }

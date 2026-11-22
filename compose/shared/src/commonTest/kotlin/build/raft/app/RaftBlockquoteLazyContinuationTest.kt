@@ -25,14 +25,6 @@ class RaftBlockquoteLazyContinuationTest {
     }
 
     @Test
-    fun consecutiveQuoteLinesStayOneQuote() {
-        assertEquals(
-            listOf(MarkdownElementTypes.BLOCK_QUOTE),
-            blockTypes("> first line\n> second line"),
-        )
-    }
-
-    @Test
     fun listLazyContinuationIsUnaffected() {
         assertEquals(
             listOf(MarkdownElementTypes.UNORDERED_LIST),

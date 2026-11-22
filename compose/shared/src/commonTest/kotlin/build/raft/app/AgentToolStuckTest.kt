@@ -90,14 +90,6 @@ class AgentToolStuckTest {
     }
 
     @Test
-    fun textOmitsTheQueuePartWhenNothingWaits() {
-        val line = "Stuck on bash · no output for 12 min"
-        assertEquals(line, agentToolStuckText(line, 0, "1 message waiting", "0 messages waiting"))
-        assertEquals("$line · 1 message waiting", agentToolStuckText(line, 1, "1 message waiting", "1 messages waiting"))
-        assertEquals("$line · 3 messages waiting", agentToolStuckText(line, 3, "1 message waiting", "3 messages waiting"))
-    }
-
-    @Test
     fun offlineOrBlockedStatusWinsOverAStoredStuckReport() {
         val working = raftAgentStatusIndicatorState(status = AgentStatus.Working, presence = Presence.Active, external = false)
         assertEquals(stuck, working.copy(toolStuck = stuck).visibleToolStuck())

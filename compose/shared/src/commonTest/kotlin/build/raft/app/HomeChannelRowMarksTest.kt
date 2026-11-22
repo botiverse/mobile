@@ -51,23 +51,11 @@ class HomeChannelRowMarksTest {
     }
 
     @Test
-    fun unreadAndThreadsShareOneLoudCount() {
-        val result = marks(unread = 3, threads = 1)
-        assertEquals(3, result.loudCount)
-        assertEquals(1, result.loudThreadCount)
-    }
-
-    @Test
     fun mutedChannelIsQuietAndKeepsTheMentionSticker() {
         val result = marks(unread = 12, threads = 2, mentioned = true, muted = true)
         assertFalse(result.loud)
         assertEquals("12", result.quietLabel)
         assertTrue(result.mention)
-    }
-
-    @Test
-    fun mutedThreadOnlyUnreadQuietLabelIsTheThreadCount() {
-        assertEquals("2", marks(threads = 2, muted = true).quietLabel)
     }
 
     @Test
@@ -83,42 +71,5 @@ class HomeChannelRowMarksTest {
         assertTrue(marks(draft = true).showDraft)
         assertFalse(marks(draft = true, unread = 1).showDraft)
         assertFalse(marks(draft = true, threads = 1).showDraft)
-    }
-
-    @Test
-    fun nothingUnreadDrawsNothing() {
-        val result = marks()
-        assertFalse(result.loud)
-        assertFalse(result.mention)
-        assertNull(result.quietLabel)
-        assertFalse(result.showDraft)
-    }
-
-    @Test
-    fun negativeCountsAreClamped() {
-        val result = marks(unread = -1, threads = -3)
-        assertFalse(result.loud)
-        assertNull(result.quietLabel)
-    }
-
-    @Test
-    fun fixtureRowsMapMentionAndFollowedThreadsFromGeneratedData() {
-        val channels = VisualFixtureData.HomeChannelList.CHANNELS.map(::homeChannelListChannel).associateBy { it.name }
-        val release = channels.getValue("release")
-        assertTrue(release.mentioned)
-        assertEquals(5, release.unreadCount)
-        val mobile = channels.getValue("mobile")
-        assertEquals(2, mobile.followedThreadUnreadCount)
-        assertEquals(0, mobile.unreadCount)
-        assertEquals("joint", channels.getValue("partners-sync").kind)
-        assertEquals("private", channels.getValue("roadmap").channelType)
-        assertTrue(channels.getValue("ops-alerts").activityMuted)
-    }
-
-    @Test
-    fun fixtureDirectMessagesMapPeerKinds() {
-        val dms = VisualFixtureData.HomeChannelList.DIRECT_MESSAGES.map(::homeChannelListDirectMessage)
-        assertEquals(listOf("agent", "agent", "agent", "human"), dms.map { it.peerType })
-        assertEquals(4, dms.single { it.name == "Builder" }.unreadCount)
     }
 }

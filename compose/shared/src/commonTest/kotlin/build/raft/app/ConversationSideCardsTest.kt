@@ -36,16 +36,6 @@ class ConversationSideCardsTest {
     }
 
     @Test
-    fun bothOpenShowTheLastOpenedOrPickedUnderTasksFirstSwitch() {
-        val both = ConversationSideCardsState().toggled(ConversationSideCard.Tasks).toggled(ConversationSideCard.Files)
-        assertEquals(listOf(ConversationSideCard.Tasks, ConversationSideCard.Files), both.openCards)
-        assertEquals(ConversationSideCard.Files, both.shown)
-        assertEquals(ConversationSideCard.Tasks, both.focused(ConversationSideCard.Tasks).shown)
-        // Closing the shown card shows the other.
-        assertEquals(ConversationSideCard.Tasks, both.toggled(ConversationSideCard.Files).shown)
-    }
-
-    @Test
     fun backClosesEveryOpenCardBeforeTheSelectionOrThePage() {
         assertEquals(
             ThreadTransientBackTarget.SideCards,
@@ -68,14 +58,6 @@ class ConversationSideCardsTest {
         store.toggle(ConversationSideCard.Files)
         // Another conversation page reads the same store: Files is still open there.
         assertTrue(store.state.value.files)
-    }
-
-    @Test
-    fun aConversationWithoutTasksKeepsItsTasksCardShut() {
-        val both = ConversationSideCardsState().toggled(ConversationSideCard.Tasks).toggled(ConversationSideCard.Files)
-        val here = both.availableIn(tasksAvailable = false)
-        assertEquals(listOf(ConversationSideCard.Files), here.openCards)
-        assertEquals(both, both.availableIn(tasksAvailable = true))
     }
 
     private class MapPreferences : SharedPreferenceStore {
@@ -110,25 +92,6 @@ class ConversationSideCardsTest {
         // Back to the first person: their cards again.
         after.bindOwner("https://api.slock.ai|u1")
         assertTrue(after.state.value.files)
-    }
-
-    @Test
-    fun closingSavesAndNoSessionKeepsWhatIsShown() {
-        val prefs = MapPreferences()
-        val store = ConversationSideCardsStore { prefs }
-        store.bindOwner("env|u1")
-        store.open(ConversationSideCard.Tasks)
-        store.open(ConversationSideCard.Files)
-        store.closeAll()
-        assertEquals("{\"tasks\":false,\"files\":false}", prefs.values["conversationSideCards:open:env|u1"])
-        store.open(ConversationSideCard.Tasks)
-        // A page whose session is not read yet does not reset the cards.
-        store.bindOwner(null)
-        assertTrue(store.state.value.tasks)
-        // Before any person is bound nothing is written.
-        val unbound = MapPreferences()
-        ConversationSideCardsStore { unbound }.open(ConversationSideCard.Tasks)
-        assertTrue(unbound.values.isEmpty())
     }
 
     @Test

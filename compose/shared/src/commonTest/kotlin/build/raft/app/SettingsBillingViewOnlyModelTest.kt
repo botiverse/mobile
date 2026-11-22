@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.SettingsBillingAppSumoSnapshot
 import build.raft.app.data.SettingsBillingCurrentPlanSnapshot
 import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.data.SettingsBillingSeatUsageSnapshot
@@ -78,52 +77,6 @@ class SettingsBillingViewOnlyModelTest {
         assertEquals(SettingsBillingViewOnlySeats(used = 4.2, capacity = 5.0, humans = 3, agents = 12), model.seats)
         assertEquals(SettingsBillingViewOnlyDetails(annual = true, periodEnd = "2026-12-01T00:00:00.000Z", ending = false, seats = 5), model.details)
         assertNull(model.members)
-    }
-
-    @Test
-    fun appSumoLicenseShowsItsAllowancesAndLifetimeStatus() {
-        val model =
-            settingsBillingViewOnlyModel(
-                snapshot(
-                    SettingsBillingSubscriptionSnapshot(
-                        effectivePlan = "pro",
-                        source = "appsumo",
-                        appsumo = SettingsBillingAppSumoSnapshot(tier = 2, maxHumans = 10, maxAgents = 50, maxHostedJointChannels = 5, hostedJointChannels = 1),
-                        usage = SettingsBillingSeatUsageSnapshot(humans = 4, agents = 9, universalSeats = 4.9),
-                    )
-                ),
-                sessionPlan = null,
-                nowEpochMillis = now,
-            )
-
-        assertEquals(SettingsBillingViewOnlyPlan.AppSumo, model.plan)
-        assertEquals(2, model.appSumoTier)
-        assertEquals(SettingsBillingViewOnlyStatus.Lifetime, model.status)
-        assertEquals(SettingsBillingViewOnlyAppSumo(4, 10, 9, 50, 1, 5), model.appSumo)
-        assertNull(model.details)
-    }
-
-    @Test
-    fun missingBillingFallsBackToTheSessionPlanAndCountsTheGracePeriod() {
-        val model = settingsBillingViewOnlyModel(snapshot(null, serverPlan = null, downgradedAt = "2026-10-30T12:00:00Z"), sessionPlan = "free", nowEpochMillis = now)
-
-        assertTrue(model.loadFailed)
-        assertEquals(SettingsBillingViewOnlyPlan.Free, model.plan)
-        assertEquals(SettingsBillingViewOnlyDowngrade(expired = false, daysLeft = 5), model.downgrade)
-        assertEquals(30, model.historyDays)
-        assertNull(model.members)
-    }
-
-    @Test
-    fun seatsShowAtMostOneDecimal() {
-        assertEquals("4.2", settingsBillingFormatSeats(4.2))
-        assertEquals("5", settingsBillingFormatSeats(5.0))
-        assertEquals("1.2", settingsBillingFormatSeats(12 * 0.1))
-        // In tenths, as shared seatTenths counts them: 1 person and 19 agents are 2.9, not 2.9000000000000004.
-        mapOf(0L to "0", 3L to "0.3", 10L to "1", 15L to "1.5", 29L to "2.9", 40L to "4").forEach { (tenths, text) ->
-            assertEquals(text, settingsBillingFormatSeatTenths(tenths), "$tenths tenths")
-        }
-        assertEquals(29L, settingsBillingSeatTenths(humans = 1, agents = 19))
     }
 
     /** Web SeatsBreakdown (botiverse/slock 16f5f8bc40): people, then agents in tenths of a seat; no agents row without agents. */

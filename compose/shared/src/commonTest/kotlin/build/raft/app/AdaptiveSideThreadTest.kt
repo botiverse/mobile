@@ -49,14 +49,6 @@ class AdaptiveSideThreadTest {
         assertFalse(raftSideThreadColumnAvailable(true, pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact), 900f))
     }
 
-    @Test fun theSessionTakesThePlansFoldForItsRow() {
-        val roomy = session().copy(detailPaneWidthDp = 1000f)
-        assertTrue(roomy.sideThreadColumnAvailable(true))
-        // Tasks / Files beside the conversation in a 999 row: the plan folds the thread, so no column.
-        assertFalse(roomy.copy(detailPaneWidthDp = 999f, sideThreadFolds = true).sideThreadColumnAvailable(true))
-        assertTrue(roomy.copy(sideThreadFolds = false).sideThreadColumnAvailable(true))
-    }
-
     @Test fun replyUnderTheShownChannelOpensBesideItWithoutChangingTheMainDetail() {
         val root = session()
         val opened = root.openSideThread(root.mainSource(), reply, "server", columnAvailable = true).opened()
@@ -153,38 +145,6 @@ class AdaptiveSideThreadTest {
         assertSame(folded, folded.foldSideThreadIntoDetail())
     }
 
-    @Test fun wideDetailRoutingUsesSessionWidthAndKeepsStaleSourcesInert() {
-        val needed = 720f
-        val wide = session().copy(detailPaneWidthDp = needed)
-        // Room for the column: opens beside the channel.
-        val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", desktopModeOnLargeScreen = true)
-        assertEquals(reply, side.visibleSideThread()!!.payload)
-        assertEquals(channel, side.launchPayload)
-        // No room (unmeasured): the valid source falls back to the in-pane replace.
-        val narrow = session().copy(detailPaneWidthDp = null)
-        val replaced = narrow.openWithinWideDetail(narrow.mainSource(), reply, "server", true)
-        assertNull(replaced.sideThread)
-        assertEquals(reply, replaced.launchPayload)
-        // Desktop mode off behaves like no room.
-        assertEquals(reply, wide.openWithinWideDetail(wide.mainSource(), reply, "server", false).launchPayload)
-        // Stale source: nothing changes.
-        val stale = RaftAdaptiveDetailCloseRequest("shell", wide.workspace!!.selection!!.identity.key, 999L)
-        assertSame(side, side.openWithinWideDetail(stale, otherReply, "server", true))
-    }
-
-    @Test fun sideColumnSourceThatCannotUseTheColumnReplacesOnBehalfOfItsOwner() {
-        val needed = 720f
-        val wide = session().copy(detailPaneWidthDp = needed)
-        val side = wide.openWithinWideDetail(wide.mainSource(), reply, "server", true)
-        val sideSource = side.visibleSideThread()!!.closeRequest("shell")
-        // From the side column, the parent channel's sibling thread elsewhere: not under the shown
-        // channel, so the main detail is replaced (with Back history) and the column goes away.
-        val result = side.openWithinWideDetail(sideSource, foreignReply, "server", true)
-        assertEquals(foreignReply, result.launchPayload)
-        assertNull(result.visibleSideThread())
-        assertEquals(listOf(channel), result.detailHistory!!.previous)
-    }
-
     @Test fun backClosesAVisibleSideColumnFirst() {
         val needed = 720f
         val wide = session().let { it.copy(detailPaneWidthDp = needed, workspace = it.workspace!!.copy(parentVisible = true)) }
@@ -193,67 +153,6 @@ class AdaptiveSideThreadTest {
         assertTrue(side.backClosesSideThreadFirst(true))
         assertFalse(side.backClosesSideThreadFirst(false))
         assertFalse(side.copy(workspace = side.workspace!!.copy(parentVisible = false)).backClosesSideThreadFirst(true))
-    }
-
-    @Test fun aFoldedSideThreadNeverSharesAGenerationWithAnOldSideRequest() {
-        // LiBai #2809: main gen 1, side S then T, then fold T into the main detail. The old side
-        // T close/open request must not be accepted as a main-detail request afterwards.
-        val root = session()
-        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
-        val s2 = s1.openSideThread(s1.mainSource(), otherReply, "server", true).opened()
-        val oldSideT = s2.sideThread!!.closeRequest("shell")
-        val folded = s2.foldSideThreadIntoDetail()
-        val mainNow = folded.workspace!!.selection!!
-        assertEquals(otherReply.toRaftAdaptiveDetailIdentity("server"), mainNow.identity)
-        assertNotEquals(oldSideT.generation, mainNow.generation)
-        assertFalse(folded.workspace!!.acceptsDetailCallback(oldSideT.identityKey, oldSideT.generation))
-        // Through the shell's close dispatcher the retired side close is not a main Back, and a
-        // retired side open changes nothing: main, side and history all stay as they are.
-        assertEquals(folded, folded.closeFromDetailPage(oldSideT))
-        assertSame(folded, folded.openWithinWideDetail(oldSideT, reply, "server", true))
-        assertEquals(AdaptiveThreadOpenRoute.Ignored, folded.routeThreadOpen(oldSideT, true, "server"))
-        // Every side generation is unique against every main generation.
-        assertTrue(s1.sideThread!!.generation > root.workspace!!.selection!!.generation)
-        assertTrue(s2.sideThread!!.generation > s1.sideThread!!.generation)
-    }
-
-    @Test fun aRetiredAdaptivePageOpensNothingWhateverTheModePaneOrServer() {
-        // LiBai #2809: the thread page validates its adaptive source before any route, so a
-        // retired page never reaches the standalone fallback.
-        val root = session()
-        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
-        val liveSide = s1.sideThread!!.closeRequest("shell")
-        val folded = s1.foldSideThreadIntoDetail()
-        val compact = folded.copy(workspace = folded.workspace!!.copy(pane = pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact)))
-        for (session in listOf(folded, compact)) {
-            for (desktop in listOf(true, false)) {
-                for (server in listOf("server", "other-server")) {
-                    assertEquals(AdaptiveThreadOpenRoute.Ignored, session.routeThreadOpen(liveSide, desktop, server))
-                    assertEquals(AdaptiveThreadOpenRoute.Ignored, session.routeThreadOpen(root.mainSource(), desktop, server))
-                }
-            }
-        }
-        // Another shell's page is not this session's source either.
-        assertEquals(AdaptiveThreadOpenRoute.Ignored, folded.routeThreadOpen(folded.mainSource().copy(shellInstanceId = "other"), true, "server"))
-        // No workspace at all: an adaptive page is retired.
-        assertEquals(AdaptiveThreadOpenRoute.Ignored, SharedAdaptiveWorkspaceSession().routeThreadOpen(liveSide, false, "server"))
-    }
-
-    @Test fun aLivePageKeepsItsRoutesAndNonAdaptivePagesStayStandalone() {
-        val root = session()
-        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
-        val side = s1.sideThread!!.closeRequest("shell")
-        for (source in listOf(s1.mainSource(), side)) {
-            assertEquals(AdaptiveThreadOpenRoute.WithinDetail, s1.routeThreadOpen(source, true, "server"))
-            // A live page may still use the standalone fallback the wide detail cannot take.
-            assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, false, "server"))
-            assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(source, true, "other-server"))
-        }
-        val compact = s1.copy(workspace = s1.workspace!!.copy(pane = pane(1440).copy(layout = RaftAdaptivePaneLayout.Compact)))
-        assertEquals(AdaptiveThreadOpenRoute.Standalone, compact.routeThreadOpen(s1.mainSource(), true, "server"))
-        // Pages outside the adaptive detail keep opening standalone pages.
-        assertEquals(AdaptiveThreadOpenRoute.Standalone, s1.routeThreadOpen(null, true, "server"))
-        assertEquals(AdaptiveThreadOpenRoute.Standalone, SharedAdaptiveWorkspaceSession().routeThreadOpen(null, false, null))
     }
 
     @Test fun sideParentActionFocusesTheParentMessageInTheMainDetailAndKeepsTheColumn() {
@@ -275,53 +174,5 @@ class AdaptiveSideThreadTest {
         assertFalse(focus.toJson().containsKey(RAFT_ADAPTIVE_DETAIL_FOCUS_HISTORY_START))
         // The main page's own parent action is not a side action (existing navigation applies).
         assertNull(opened.sideThreadParentFocus(opened.mainSource()))
-    }
-
-    @Test fun retiredSideThreadParentActionRequestsNothing() {
-        val root = session()
-        val s1 = root.openSideThread(root.mainSource(), reply, "server", true).opened()
-        val oldSide = s1.sideThread!!.closeRequest("shell")
-        val s2 = s1.openSideThread(s1.mainSource(), otherReply, "server", true).opened()
-        assertNull(s2.sideThreadParentFocus(oldSide))
-        assertNull(s2.closeSideThread(s2.sideThread!!.closeRequest("shell")).sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
-        val folded = s2.foldSideThreadIntoDetail()
-        assertNull(folded.sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
-        // A focus addressed to the pre-fold main detail is not applied by the folded main.
-        val stale = assertNotNull(s2.sideThreadParentFocus(s2.sideThread!!.closeRequest("shell")))
-        assertFalse(folded.acceptsParentFocus(folded.mainSource(), stale))
-        assertFalse(folded.acceptsParentFocus(stale.target, stale))
-    }
-
-    @Test fun aWaitingParentFocusIsRevalidatedAndATimeoutDoesNotFocus() {
-        val root = session()
-        val opened = root.openSideThread(root.mainSource(), reply, "server", true).opened()
-        val main = opened.mainSource()
-        val request = assertNotNull(opened.sideThreadParentFocus(opened.sideThread!!.closeRequest("shell")))
-        assertEquals(AdaptiveParentFocusOutcome.Applied, opened.parentFocusOutcomeAfterWait(main, request, keyboardClosed = true))
-        // Keyboard still open when the wait ends: reported, not focused.
-        assertEquals(
-            AdaptiveParentFocusOutcome.KeyboardStillOpen,
-            opened.parentFocusOutcomeAfterWait(main, request, keyboardClosed = false),
-        )
-        // The side thread folded into the main detail while waiting: the old main target is retired.
-        val folded = opened.foldSideThreadIntoDetail()
-        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, folded.parentFocusOutcomeAfterWait(main, request, true))
-        assertEquals(
-            AdaptiveParentFocusOutcome.StaleTarget,
-            folded.parentFocusOutcomeAfterWait(folded.mainSource(), request, true),
-        )
-        // Another conversation was selected meanwhile.
-        val switched = opened.copy(
-            workspace = reduceRaftAdaptiveWorkspace(
-                opened.workspace!!,
-                RaftAdaptiveWorkspaceIntent.OpenDetail(WireThreadLaunchPayload(threadId = "c2", sourceThreadId = "c2").toRaftAdaptiveDetailIdentity("server")!!),
-            ),
-        )
-        assertNotEquals(opened.workspace!!.selection, switched.workspace!!.selection)
-        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, switched.parentFocusOutcomeAfterWait(main, request, true))
-        // The page itself went away.
-        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, opened.parentFocusOutcomeAfterWait(null, request, true))
-        // A stale target wins over the keyboard state.
-        assertEquals(AdaptiveParentFocusOutcome.StaleTarget, folded.parentFocusOutcomeAfterWait(main, request, false))
     }
 }

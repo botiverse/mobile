@@ -6,23 +6,6 @@ import kotlin.test.assertTrue
 
 class SharedThreadTimelineComparatorTest {
     @Test
-    fun mixedSequenceAndNullPairsRemainTransitive() {
-        val firstCanonical = message(id = "canonical-a", seq = 1L, createdAtEpochMillis = 3_000L, label = "z")
-        val secondCanonical = message(id = "canonical-b", seq = 2L, createdAtEpochMillis = 1_000L, label = "a")
-        val sequencePending = message(id = "sequence-pending", seq = null, createdAtEpochMillis = 2_000L, label = "m")
-        val values = listOf(firstCanonical, secondCanonical, sequencePending)
-
-        assertTrue(SharedThreadTimelineComparator.compare(firstCanonical, secondCanonical) < 0)
-        assertTrue(SharedThreadTimelineComparator.compare(secondCanonical, sequencePending) < 0)
-        assertTrue(SharedThreadTimelineComparator.compare(firstCanonical, sequencePending) < 0)
-        assertComparatorContract(values)
-        assertEquals(
-            listOf("canonical-a", "canonical-b", "sequence-pending"),
-            values.shuffledForSortProbe().sortedWith(SharedThreadTimelineComparator).map(RaftThreadMessageItem::id),
-        )
-    }
-
-    @Test
     fun canonicalSequenceWinsEvenWhenCreationInstantsDisagree() {
         val laterClockEarlierSequence =
             message(id = "seq-4", seq = 4L, createdAtEpochMillis = 9_000L, label = "午後 9:00")

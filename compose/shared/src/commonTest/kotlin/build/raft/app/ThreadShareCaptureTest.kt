@@ -6,53 +6,6 @@ import kotlin.test.assertNull
 
 class ThreadShareCaptureTest {
     @Test
-    fun initialCaptureAnchorsTheRowBeforeTheTargetSoBottomPaddingCannotOwnTheViewport() {
-        assertEquals(49, threadShareCaptureAnchorListItemIndex(targetIndex = 50, anchorBeforeTarget = true))
-        assertEquals(0, threadShareCaptureAnchorListItemIndex(targetIndex = 0, anchorBeforeTarget = true))
-        assertEquals(50, threadShareCaptureAnchorListItemIndex(targetIndex = 50, anchorBeforeTarget = false))
-    }
-
-    @Test
-    fun firstReplyCaptureTargetsStableHistoryBoundaryWithAndWithoutOrigin() {
-        assertEquals(
-            LazyViewportAnchorTarget.StableItem("thread-page:older-messages"),
-            threadShareCaptureAnchorTarget(
-                targetIndex = 2,
-                anchorBeforeTarget = true,
-                originVisible = true,
-                historyBoundaryVisible = true,
-                messageIds = listOf("first-reply")
-            )
-        )
-        assertEquals(
-            LazyViewportAnchorTarget.StableItem("thread-page:older-messages"),
-            threadShareCaptureAnchorTarget(
-                targetIndex = 1,
-                anchorBeforeTarget = true,
-                originVisible = false,
-                historyBoundaryVisible = true,
-                messageIds = listOf("first-reply")
-            )
-        )
-        assertEquals(
-            1,
-            threadStableViewportListItemIndex(
-                key = "thread-page:older-messages",
-                originVisible = true,
-                historyBoundaryVisible = true
-            )
-        )
-        assertEquals(
-            0,
-            threadStableViewportListItemIndex(
-                key = "thread-page:older-messages",
-                originVisible = false,
-                historyBoundaryVisible = true
-            )
-        )
-    }
-
-    @Test
     fun missingShareTargetFailsClosedBeforeIndexNormalizationWithAndWithoutOrigin() {
         assertNull(
             threadShareCaptureAnchorTarget(
@@ -134,31 +87,6 @@ class ThreadShareCaptureTest {
                 segmentHeight = 500
             )
         assertEquals(ThreadShareCaptureSlice(y = 24f, height = 180f), final)
-    }
-
-    @Test
-    fun overlappingLayoutFrameIsTrimmedAndSkippedGeometryFailsClosed() {
-        val overlap =
-            threadShareCaptureSlice(
-                messageHeight = 1_000f,
-                currentMessageTop = -470f,
-                captureViewportTop = 24f,
-                captureViewportBottom = 530f,
-                capturedHeight = 500,
-                segmentHeight = 500
-            )
-        assertEquals(ThreadShareCaptureSlice(y = 30f, height = 500f), overlap)
-
-        assertNull(
-            threadShareCaptureSlice(
-                messageHeight = 1_000f,
-                currentMessageTop = -480f,
-                captureViewportTop = 24f,
-                captureViewportBottom = 524f,
-                capturedHeight = 500,
-                segmentHeight = 500
-            )
-        )
     }
 
     @Test

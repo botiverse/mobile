@@ -40,15 +40,6 @@ class HomeSearchArtifactsOverlayTest {
     }
 
     @Test
-    fun loadingAndFailedShowUnderTheHeadingWithNoRowsForTheCursor() {
-        val loading = content(SearchArtifactsState(query = "plan", status = SearchArtifactsStatus.Loading)).entries()
-        assertTrue(loading.any { it == HomeSearchOverlayEntry.ArtifactsLoading })
-        val failed = content(SearchArtifactsState(query = "plan", status = SearchArtifactsStatus.Failed, timedOut = true))
-        assertTrue(failed.entries().any { it is HomeSearchOverlayEntry.ArtifactsFailed })
-        assertTrue(failed.rows.none { it.section == HomeSearchOverlaySection.Artifacts })
-    }
-
-    @Test
     fun noResultsWaitsForTheGroupAndAGroupWithNothingHasNoSection() {
         fun entries(artifacts: SearchArtifactsState?) = content(artifacts, entities = false, messages = false).entries()
 

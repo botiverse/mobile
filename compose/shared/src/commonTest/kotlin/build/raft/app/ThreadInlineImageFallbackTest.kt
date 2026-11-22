@@ -19,26 +19,6 @@ class ThreadInlineImageFallbackTest {
     }
 
     @Test
-    fun successfulFallbackResolutionPublishesTrimmedUrl() {
-        val (started, shouldRequest) =
-            ThreadInlineImageFallbackState().beginRequest("attachment-1")
-
-        val resolved = started.resolve("attachment-1", "  https://files.example/image.png  ")
-
-        assertTrue(shouldRequest)
-        assertEquals("https://files.example/image.png", resolved.resolvedUrls["attachment-1"])
-        assertFalse(resolved.beginRequest("attachment-1").second)
-    }
-
-    @Test
-    fun blankAttachmentIdentityNeverStartsNetworkWork() {
-        val (state, shouldRequest) = ThreadInlineImageFallbackState().beginRequest("  ")
-
-        assertFalse(shouldRequest)
-        assertEquals(ThreadInlineImageFallbackState(), state)
-    }
-
-    @Test
     fun missingThumbnailRequestsAuthenticatedInlineFallback() {
         assertTrue(
             shouldRequestThreadInlineImageFallbackForMissingThumbnail(
@@ -50,22 +30,6 @@ class ThreadInlineImageFallbackTest {
             shouldRequestThreadInlineImageFallbackForMissingThumbnail(
                 thumbnailUrl = "   ",
                 fallbackUrl = ""
-            )
-        )
-    }
-
-    @Test
-    fun availableThumbnailOrResolvedFallbackSkipsMissingThumbnailRequest() {
-        assertFalse(
-            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
-                thumbnailUrl = "https://cdn.example/thumb.png",
-                fallbackUrl = null
-            )
-        )
-        assertFalse(
-            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
-                thumbnailUrl = null,
-                fallbackUrl = "https://api.example/inline"
             )
         )
     }

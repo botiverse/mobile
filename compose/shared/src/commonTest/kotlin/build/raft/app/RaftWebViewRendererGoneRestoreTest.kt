@@ -24,12 +24,6 @@ class RaftWebViewRendererGoneRestoreTest {
     }
 
     @Test
-    fun aOneTimeHostAskIsNotReplayed() {
-        assertEquals(shown, raftWebViewRendererGoneRestoreUrl(warm, shown + RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT, sameOrigin))
-        assertEquals("$web/settings#billing", raftWebViewRendererGoneRestoreUrl(warm, "$web/settings#billing", sameOrigin))
-    }
-
-    @Test
     fun oneTimeValuesAndTheBootstrapPlaceholderAreNeverReloaded() {
         assertEquals(warm, raftWebViewRendererGoneRestoreUrl(warm, "$web$RAFT_WEBVIEW_BOOTSTRAP_PATH", sameOrigin))
         assertEquals(

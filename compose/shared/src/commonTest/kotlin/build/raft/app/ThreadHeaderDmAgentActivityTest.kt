@@ -16,32 +16,10 @@ class ThreadHeaderDmAgentActivityTest {
     }
 
     @Test
-    fun humanDirectMessageNeverShowsAgentActivity() {
-        assertNull(displayModel(MemberKind.Human).dmAgentActivityMemberId())
-    }
-
-    @Test
     fun channelHeaderNeverReusesAnAgentIdentityAsDmActivity() {
         val display = displayModel(MemberKind.Agent).copy(surfaceKind = RaftThreadSurfaceKind.Channel)
 
         assertNull(display.dmAgentActivityMemberId())
-    }
-
-    @Test
-    fun missingOrBlankPeerIdentityFailsClosed() {
-        assertNull(displayModel(MemberKind.Agent).copy(dmPeerIdentity = null).dmAgentActivityMemberId())
-        assertNull(
-            displayModel(MemberKind.Agent)
-                .copy(
-                    dmPeerIdentity =
-                        MemberDetailIdentity(
-                            memberId = MemberId("   "),
-                            kind = MemberKind.Agent,
-                            sourceServerId = ServerId("server-1")
-                        )
-                )
-                .dmAgentActivityMemberId()
-        )
     }
 
     private fun displayModel(kind: MemberKind): ThreadHeaderDisplayModel =

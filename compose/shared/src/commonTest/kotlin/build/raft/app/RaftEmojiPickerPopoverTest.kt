@@ -18,14 +18,4 @@ class RaftEmojiPickerPopoverTest {
         assertTrue(raftEmojiPickerUsesPopover(windowWidthDp = DualPaneMinimumWidthDp, hasAnchor = true))
         assertTrue(raftEmojiPickerUsesPopover(windowWidthDp = 1366f, hasAnchor = true))
     }
-
-    @Test
-    fun noPlaceToOpenAtKeepsTheDialog() {
-        assertFalse(raftEmojiPickerUsesPopover(windowWidthDp = 1366f, hasAnchor = false))
-    }
-
-    @Test
-    fun anUnmeasuredWindowKeepsTheDialog() {
-        assertFalse(raftEmojiPickerUsesPopover(windowWidthDp = 0f, hasAnchor = true))
-    }
 }

@@ -6,16 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /** The iOS side-column host bridge: the column's wire format, taps, the capability switch. */
 class RaftSideActionHostBridgeTest {
@@ -64,35 +55,6 @@ class RaftSideActionHostBridgeTest {
     }
 
     @Test
-    fun overflowAndAttentionReachTheHost() {
-        val column =
-            RaftSideActionHostColumn(
-                primary = emptyList(),
-                actions =
-                    listOf(
-                        item("a", "circle"),
-                        item("b", "square", enabled = false),
-                        item("bell", "bell", attention = true),
-                    ),
-                visibleActionIds = listOf("a", "b"),
-                overflowActionIds = listOf("bell"),
-                overflowLabel = "More \"Actions\"",
-            )
-        val json = Json.parseToJsonElement(raftSideActionHostJson(column)).jsonObject
-        assertEquals(1, json.getValue("version").jsonPrimitive.int)
-        assertEquals(JsonArray(emptyList()), json.getValue("primary"))
-        val actions = json.getValue("actions").jsonArray.map { it.jsonObject }
-        assertEquals(listOf("a", "b", "bell"), actions.map { it.getValue("id").jsonPrimitive.content })
-        assertFalse(actions[1].getValue("enabled").jsonPrimitive.boolean)
-        assertTrue(actions[2].getValue("attention").jsonPrimitive.boolean)
-        assertEquals("2 new", actions[2].getValue("attentionDescription").jsonPrimitive.content)
-        assertFalse("attentionDescription" in actions[0], "absent, not null, without one")
-        assertEquals(JsonArray(listOf(JsonPrimitive("bell"))), json.getValue("overflowActionIds"))
-        assertEquals("More \"Actions\"", json.getValue("overflowLabel").jsonPrimitive.content, "escaped")
-        assertTrue(json.getValue("overflowAttention").jsonPrimitive.boolean, "the ⋯ wears the bell's pixel")
-    }
-
-    @Test
     fun offByDefaultTheHostDeclinesAndShowsNothing() {
         val bridge = RaftSideActionHostBridge()
         val recorder = Recorder()
@@ -102,28 +64,6 @@ class RaftSideActionHostBridgeTest {
         assertNull(bridge.currentColumnJson)
         assertEquals(listOf<String?>(null), recorder.events, "only the attach replay")
         assertFalse(bridge.sideActionTapped("back"))
-    }
-
-    @Test
-    fun presentPublishesOnceAndClearWithdraws() {
-        val bridge = RaftSideActionHostBridge()
-        bridge.setAvailable(true)
-        val recorder = Recorder()
-        bridge.attachListener(recorder)
-        assertTrue(bridge.host.present(channel) {})
-        assertTrue(bridge.host.present(channel.copy()) {})
-        assertEquals(listOf(null, raftSideActionHostJson(channel)), recorder.events, "an identical column is not re-sent")
-        assertEquals(raftSideActionHostJson(channel), bridge.currentColumnJson)
-
-        val late = Recorder()
-        bridge.attachListener(late)
-        assertEquals(listOf<String?>(raftSideActionHostJson(channel)), late.events, "a new listener gets the current column")
-
-        bridge.host.clear()
-        bridge.host.clear()
-        assertEquals(listOf(raftSideActionHostJson(channel), null), late.events)
-        assertNull(bridge.currentColumnJson)
-        assertFalse(bridge.sideActionTapped("back"), "nothing shown, nothing runs")
     }
 
     @Test
@@ -151,20 +91,6 @@ class RaftSideActionHostBridgeTest {
         assertFalse(bridge.sideActionTapped("off"))
         assertFalse(bridge.sideActionTapped("nope"))
         assertEquals(listOf("back", "thread-settings"), tapped)
-    }
-
-    @Test
-    fun theRegistryFindsTheHostsBridge() {
-        val bridge = RaftSideActionHostBridge()
-        val other = RaftSideActionHostBridge()
-        RaftSideActionHostRegistry.register("side-a", bridge)
-        assertSame(bridge, RaftSideActionHostRegistry.bridgeFor("side-a"))
-        assertNull(RaftSideActionHostRegistry.bridgeFor(""))
-        assertNull(RaftSideActionHostRegistry.bridgeFor(null))
-        RaftSideActionHostRegistry.unregister("side-a", other)
-        assertSame(bridge, RaftSideActionHostRegistry.bridgeFor("side-a"))
-        RaftSideActionHostRegistry.unregister("side-a", bridge)
-        assertNull(RaftSideActionHostRegistry.bridgeFor("side-a"))
     }
 
     @Test

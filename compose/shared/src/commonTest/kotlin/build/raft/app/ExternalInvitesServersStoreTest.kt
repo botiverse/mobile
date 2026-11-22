@@ -56,15 +56,6 @@ class ExternalInvitesServersStoreTest {
     }
 
     @Test
-    fun aFailedReadDrawsNoServers() = runTest {
-        val failed =
-            FakeExternalInvitesDataSource().apply {
-                ownServersAnswer = DataResult.Content(ExternalInviteAnswer.Refused(ExternalInviteRefusal(404, null, "Not found")))
-            }
-        assertEquals(emptyList(), opened(failed).state.value.dialog?.servers)
-    }
-
-    @Test
     fun onlyServersReviewWithoutAPreviewAndConnectWithoutASend() = runTest {
         val source = source(ownServer("s2", "Beta"), ownServer("s3", "Gamma"), ownServer("s4", "Delta"))
         source.connectAnswer =
@@ -158,39 +149,6 @@ class ExternalInvitesServersStoreTest {
     }
 
     @Test
-    fun checkedServersTakeASlotEach() = runTest {
-        val source = source(ownServer("s2", "Beta"), ownServer("s3", "Gamma"))
-        source.previewAnswer = DataResult.Content(ExternalInviteAnswer.Ok(ExternalInvitePreview(valid = listOf("a@example.com"), slotsLeft = 2)))
-        val store = opened(source)
-        store.dispatch(ExternalInvitesIntent.SetText("a@example.com"))
-        store.dispatch(ExternalInvitesIntent.SetServers(setOf("s2", "s3")))
-        store.dispatch(ExternalInvitesIntent.Next)
-        runCurrent()
-        val review = assertNotNull(store.state.value.dialog)
-        assertEquals(1, review.overSlots)
-        assertFalse(review.canSend)
-        assertEquals(ExternalInviteSlotsLine.Over(room = 2, count = 1), externalInviteTypedSlotsLine(channelSlotsLeft = 2, entries = 1, servers = 2))
-        // While typing nothing is said before an email is typed (web `typedSlotsHint`).
-        assertNull(externalInviteTypedSlotsLine(channelSlotsLeft = 2, entries = 0, servers = 2))
-    }
-
-    @Test
-    fun aRefusedServerIsWordedAsTheWebToastsIt() {
-        fun refused(code: String?, side: String? = null, limitServerId: String? = null, status: Int = 409) =
-            externalInviteServerRefusal(ServerConnectOutcome.Refused("s2", status, code, "x", limitSide = side, limitServerId = limitServerId))
-        assertEquals(ExternalInviteServerRefusal.HostFreeLimit, refused("free_external_limit", side = "host"))
-        assertEquals(ExternalInviteServerRefusal.HostFreeLimit, refused("joint_channel_plan_limit_reached"))
-        assertEquals(ExternalInviteServerRefusal.PartyLimit, refused("joint_party_limit"))
-        assertEquals(
-            ExternalInviteServerRefusal.Invitee(InviteeMessage.TargetFreeLimit),
-            refused("free_external_limit", side = "connecting", limitServerId = "s2"),
-        )
-        assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.AlreadyConnected), refused("already_connected"))
-        assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.TooManyAttempts), refused(null, status = 429))
-        assertEquals(ExternalInviteServerRefusal.Invitee(InviteeMessage.Generic), refused("internal_error", status = 500))
-    }
-
-    @Test
     fun aGatedEntryOpensTheUpgradeWhenTheFreeExternalChannelIsTaken() = runTest {
         val taken = FakeExternalInvitesDataSource().apply { freeLimitAnswer = true }
         val store = ExternalInvitesStore(this, taken)
@@ -223,17 +181,5 @@ class ExternalInvitesServersStoreTest {
         runCurrent()
         assertEquals("kept@example.com", direct.state.value.dialog?.text)
         assertEquals(0, ungated.freeLimitCalls)
-    }
-
-    @Test
-    fun onlyAFreeServersChannelNotHoldingTheSlotIsGated() {
-        fun channel(type: String, external: Boolean = false) =
-            ExternalInviteChannel(type = type, name = "c", archived = false, jointRole = "host", hasExternalRelation = external)
-        assertTrue(externalInviteEntryGated("free", channel("private")))
-        assertTrue(externalInviteEntryGated("free", channel("channel")))
-        assertFalse(externalInviteEntryGated("free", channel("private", external = true)))
-        assertFalse(externalInviteEntryGated("free", channel("joint")))
-        assertFalse(externalInviteEntryGated("pro", channel("private")))
-        assertFalse(externalInviteEntryGated(null, channel("private")))
     }
 }

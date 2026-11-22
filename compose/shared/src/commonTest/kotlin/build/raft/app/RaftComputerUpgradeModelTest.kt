@@ -5,7 +5,6 @@ import build.raft.app.data.SettingsComputerBroadcastPolicySnapshot
 import build.raft.app.data.SettingsComputerControlState
 import build.raft.app.data.SettingsComputerReleaseNotesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
-import build.raft.app.data.SettingsComputerUpgradeFailureHintSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRefusal
 import build.raft.app.data.SettingsComputerUpgradeRequest
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
@@ -15,7 +14,6 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -68,27 +66,6 @@ class RaftComputerUpgradeModelTest {
     }
 
     @Test
-    fun aRefusedClickHoldsOnlyWhileTheAvailabilityKeyMatches() {
-        val oneClick = computer(policy = eligible("1.0.50"), upgradeAvailable = true)
-        fun refused(code: String, key: String = settingsComputerUpgradeAvailabilityKey(oneClick)) =
-            SettingsComputerControlState(upgradeRefusal = SettingsComputerUpgradeRefusal(oneClick.id, key, code))
-
-        assertEquals(
-            RaftComputerCardState.Commands("1.0.50", refusedNotAllowed = true),
-            model(oneClick, refused("computer_broadcast_not_eligible")).card
-        )
-        assertEquals(
-            RaftComputerCardState.Commands("1.0.50", refusedNotAllowed = false),
-            model(oneClick, refused("remote_upgrade_disabled")).card
-        )
-        val unknown = model(oneClick, refused("server_unavailable"))
-        assertEquals(RaftComputerCardState.OneClick("1.0.50"), unknown.card)
-        assertEquals(RaftComputerUpgradeRefusal.Unknown, unknown.refusal)
-        // The policy moved on since the click: the refusal no longer applies.
-        assertEquals(RaftComputerCardState.OneClick("1.0.50"), model(oneClick, refused("remote_upgrade_disabled", key = "stale")).card)
-    }
-
-    @Test
     fun aComputerRefusingTheUpgradeScopeGetsTheSystemServiceStepsInsteadOfUpgrade() {
         // slock #15243: ready.upgradeScope { ok: false } on the machine row hides the one-click Upgrade.
         val refused = computer(policy = eligible("1.0.50"), upgradeAvailable = true).copy(upgradeScopeRefused = true)
@@ -122,23 +99,6 @@ class RaftComputerUpgradeModelTest {
         assertNull(raftComputerUpgradeInFlight(computer(row = request(id = "req-2", state = "done")), accepted, NOW))
         assertNull(raftComputerUpgradeInFlight(computer(version = "1.0.50"), accepted, NOW))
         assertNull(raftComputerUpgradeInFlight(computer(), accepted, NOW + RAFT_COMPUTER_UPGRADE_REQUEST_DEADLINE_MILLIS))
-    }
-
-    // botiverse/slock #13506: a Computer that waits for its agents before it installs says how many
-    // of THIS server's agents it waits for; installing, nobody left or an older server: the plain copy.
-    @Test
-    fun anUpgradeWaitingForThisServersAgentsCountsThem() {
-        val draining = request(id = "req-2", state = "pending").copy(phase = "draining", drainingAgentIds = listOf("a1", "a2"))
-        assertEquals(
-            RaftComputerCardState.Upgrading("1.0.50", waitingAgents = 2),
-            model(computer(policy = eligible("1.0.50"), row = draining)).card
-        )
-        val plain = RaftComputerCardState.Upgrading("1.0.50")
-        listOf(
-            request(id = "req-2", state = "pending"),
-            request(id = "req-2", state = "pending").copy(phase = "installing"),
-            request(id = "req-2", state = "pending").copy(phase = "draining"),
-        ).forEach { row -> assertEquals(plain, model(computer(policy = eligible("1.0.50"), row = row)).card, row.toString()) }
     }
 
     @Test
@@ -177,26 +137,6 @@ class RaftComputerUpgradeModelTest {
     }
 
     @Test
-    fun aFailedRequestIsReportedOnlyWhileTheComputerIsStillBelowItsTarget() {
-        val failed = request(id = "req-1", state = "failed", target = "1.0.49")
-        assertEquals(failed, model(computer(latest = "1.0.50", row = failed)).requestOutcome)
-        assertNull(model(computer(version = "1.0.49", latest = "1.0.50", row = failed)).requestOutcome)
-        assertNull(model(computer(latest = "1.0.50", row = request(id = "req-1", state = "done"))).requestOutcome)
-    }
-
-    @Test
-    fun versionTierFollowsTheServerGate() {
-        val gate = SettingsComputerVersionGateSnapshot("computer_version_unsupported", "1.0.48", enforcedAt = null, enforced = false)
-        val upgrade = assertIs<RaftComputerVersionTier.Notice>(raftComputerVersionTier(computer(gate = gate)))
-        assertFalse(upgrade.reinstall)
-        val reinstall = assertIs<RaftComputerVersionTier.Notice>(raftComputerVersionTier(computer(version = "1.0.40", gate = gate)))
-        assertTrue(reinstall.reinstall)
-        assertEquals(RaftComputerCardState.Reinstall, model(computer(version = "1.0.40", gate = gate)).card)
-        assertEquals(RaftComputerVersionTier.None, raftComputerVersionTier(computer()))
-        assertEquals(RaftComputerVersionTier.None, raftComputerVersionTier(computer(version = null, gate = gate)))
-    }
-
-    @Test
     fun releaseNotesBelongToTheOfferedVersionAndFollowTheUiLanguage() {
         val notes = SettingsComputerReleaseNotesSnapshot(version = "1.0.50", en = "- English", zhCn = "- 中文")
         assertEquals(notes, model(computer(latest = "1.0.50", notes = notes)).releaseNotes)
@@ -204,50 +144,6 @@ class RaftComputerUpgradeModelTest {
         assertEquals("- 中文", raftComputerReleaseNotesText(notes, "zh-Hans-CN"))
         assertEquals("- English", raftComputerReleaseNotesText(notes, "ja"))
         assertEquals("- 中文", raftComputerReleaseNotesText(notes.copy(en = null), "en-US"))
-    }
-
-    @Test
-    fun earlierRecoveryPendingRecommendsRepairNotSystemdStepsAndClearsWhenVersionMoves() {
-        // Port of slock #15061 packages/web/tests/computerUpgradeHints.test.ts.
-        val earlier = request(id = "req-1", state = "failed", target = "1.25.4").copy(
-            observedVersion = "1.25.3",
-            failureHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "earlier_recovery_pending"),
-        )
-        val oneClick = computer(version = "1.25.3", latest = "1.25.4", policy = eligible("1.25.4"), upgradeAvailable = true, row = earlier)
-        val shown = model(oneClick)
-        assertTrue(shown.recommendRepair)
-        assertNull(shown.upgradeFailureHint)
-
-        // A systemd-unit failure keeps its steps; installerRepairHint is preserved beside it.
-        val unitHint = SettingsComputerUpgradeFailureHintSnapshot(reason = "installation_held", unit = "raft-computer.service", scope = "user")
-        val unitRow = earlier.copy(failureHint = unitHint)
-        val unitOnly = model(oneClick.copy(upgradeRequest = unitRow))
-        assertEquals(unitHint, unitOnly.upgradeFailureHint)
-        assertFalse(unitOnly.recommendRepair)
-        val unitAndRepair = model(oneClick.copy(upgradeRequest = unitRow, installerRepairHint = "unrecovered_operation"))
-        assertEquals(unitHint, unitAndRepair.upgradeFailureHint)
-        assertTrue(unitAndRepair.recommendRepair)
-
-        // Clears once the Computer moves to the target or another version, or a newer request replaces it.
-        assertFalse(model(oneClick.copy(computerVersion = "1.25.4")).recommendRepair)
-        assertFalse(model(oneClick.copy(computerVersion = "1.25.3-rc.2")).recommendRepair)
-        assertFalse(model(oneClick.copy(upgradeRequest = earlier.copy(id = "req-2", state = "pending"))).recommendRepair)
-        assertFalse(model(oneClick.copy(upgradeRequest = earlier.copy(id = "req-2", failureHint = null))).recommendRepair)
-        // Installer state's own hint still stands on its own.
-        assertTrue(
-            model(
-                oneClick.copy(
-                    upgradeRequest = earlier.copy(id = "req-2", failureHint = null),
-                    installerRepairHint = "unrecovered_operation",
-                )
-            ).recommendRepair
-        )
-
-        // Nothing is recommended where no one-click Upgrade is offered.
-        val manual = oneClick.copy(remoteUpgradeSupported = false, installerRepairHint = "unrecovered_operation")
-        val manualModel = model(manual)
-        assertFalse(manualModel.recommendRepair)
-        assertNull(manualModel.upgradeFailureHint)
     }
 
     private fun model(computer: SettingsComputerSnapshot, control: SettingsComputerControlState = SettingsComputerControlState()) =

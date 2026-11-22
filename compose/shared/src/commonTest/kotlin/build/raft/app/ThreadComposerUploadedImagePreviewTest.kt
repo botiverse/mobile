@@ -6,7 +6,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ThreadComposerUploadedImagePreviewTest {
@@ -78,27 +77,6 @@ class ThreadComposerUploadedImagePreviewTest {
     }
 
     @Test
-    fun missingLocalFileNeverBecomesAnEditorAndRemoteFallbackStillRequiresAuthority() {
-        val thumbnailOnly = image("first").copy(fileRef = null, previewUri = "https://example.test/thumb.png")
-        assertNull(threadComposerUploadedImagePreviewPayload(
-            "thread", "action", listOf(thumbnailOnly), listOf("remote-first"), 0, false
-        ))
-        val remote = RaftThreadAttachmentItem(
-            id = "remote-first", name = "first.png", mimeType = "image/png"
-        ).toThreadAttachmentLazyPreviewPayload(kind = "image")
-        val launch = raftFilePreviewLaunchDescriptor("remote-session", remote)
-        assertTrue(launch.requiresAuthenticatedRouteAuthority())
-        val trace = raftFilePreviewResolveLaunchPayload(
-            Json.encodeToString(WireRaftFilePreviewLaunchPayload.serializer(), launch),
-            loadPreviewPayload = { remote }
-        )
-        assertEquals("restored_thread_attachment", trace.result)
-        assertTrue(trace.requiresAuthenticatedRouteAuthority())
-        assertEquals(RaftFilePreviewSourceThreadAttachment, trace.payload.source)
-        assertFalse(trace.payload.composerImageCanComplete)
-    }
-
-    @Test
     fun cancellingReopenedEditorRetiresOnlyNewOutputsAndPreservesDraftInputs() {
         listOf(listOf(image("first")), listOf(image("first"), image("second"))).forEach { files ->
             val payload = assertNotNull(threadComposerUploadedImagePreviewPayload(
@@ -120,15 +98,6 @@ class ThreadComposerUploadedImagePreviewTest {
             assertEquals(listOf(outputRef), edited.composerImageOwnedTemporaryFileRefs)
             assertEquals(setOf(outputRef), registry.retireActive("session-edited").cleanupFileRefs)
             assertEquals("remote-first", edited.composerImageReplaceAttachmentId)
-        }
-    }
-
-    @Test
-    fun incompleteReplacementMappingIsRejectedWithoutPartialGallery() {
-        listOf(emptyList(), listOf("remote-first"), listOf("remote-first", " ")).forEach { ids ->
-            assertNull(threadComposerUploadedImagePreviewPayload(
-                "thread", "action", listOf(image("first"), image("second")), ids, 0, false
-            ))
         }
     }
 

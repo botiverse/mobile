@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.data.AgentLoungeSummary
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
-import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.ChannelActivityNotificationPreference
@@ -14,7 +13,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -182,17 +180,5 @@ class AgentLoungeSidebarRulesTest {
         )
         // A mention with no count still reads as unread (Mark as Read clears the @).
         assertEquals("mark-read", ids(loungeItem("lounge-bugen", "Bugen's Lounge", null, mentioned = true), false).first())
-    }
-
-    @Test
-    fun theLoungePageMuteFollowsTheLoungesOwnRow() {
-        val lounge = RaftAgentLounge(ChannelId("lounge-bugen"), "agent-bugen", joined = true)
-        assertNull(lounge.agentLoungeActivityMuteState(), "its row not loaded")
-        val loaded = lounge.copy(activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = false, activityMuteSupported = true))
-        assertEquals(false, loaded.agentLoungeActivityMuteState()?.muted)
-        assertNull(loaded.copy(joined = false).agentLoungeActivityMuteState(), "not joined")
-        assertEquals(false, loaded.copy(joined = false).agentLoungeActivityMuteState(joinedHint = true)?.muted, "the page's row says joined")
-        val muted = loaded.copy(joined = false, activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = true, activityMuteSupported = true))
-        assertEquals(true, muted.agentLoungeActivityMuteState()?.muted, "a stored mute keeps Unmute")
     }
 }

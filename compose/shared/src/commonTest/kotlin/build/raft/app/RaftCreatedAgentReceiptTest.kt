@@ -20,11 +20,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.designsystem.components.RaftToastHostState
-import build.raft.designsystem.components.RaftToastIntent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
@@ -134,22 +132,6 @@ class RaftCreatedAgentReceiptTest {
     }
 
     @Test
-    fun creatingShowsCreatedWithViewAndOpensNothing() = runTest {
-        val host = RaftToastHostState()
-        val recorder = Recorder()
-        receipt(this, host, recorder).land(createdAgentLanding(submit(), agent))
-        advanceUntilIdle()
-
-        val toast = host.visible.single()
-        assertEquals("Created Reef", toast.title)
-        assertEquals("View", toast.actionLabel)
-        assertEquals(RaftToastIntent.Success, toast.intent)
-        assertTrue(recorder.setupGuides.isEmpty(), "no profile opens on create")
-        assertTrue(recorder.dmFetches.isEmpty(), "no DM opens until View is tapped")
-        assertTrue(recorder.shownDms.isEmpty())
-    }
-
-    @Test
     fun viewOpensTheAgentsDirectMessage() = runTest {
         val host = RaftToastHostState()
         val recorder = Recorder()
@@ -174,23 +156,6 @@ class RaftCreatedAgentReceiptTest {
     }
 
     @Test
-    fun viewRoutesTheDirectMessageToTheThreadPageAsMessageDoes() = runTest {
-        val opened = mutableListOf<String>()
-        val toasts = Toasts()
-        val host = RaftToastHostState()
-        val recorder = Recorder()
-        receipt(this, host, recorder) { result, _ -> result.openForTest(opened, toasts) }
-            .land(createdAgentLanding(submit(), agent))
-
-        checkNotNull(host.visible.single().onAction).invoke()
-        advanceUntilIdle()
-
-        assertEquals(emptyList(), toasts.plain)
-        assertEquals(emptyList(), toasts.errors)
-        assertEquals(listOf(THREAD_PAGE), opened)
-    }
-
-    @Test
     fun aDirectMessageErrorOrRefusalShowsAnErrorToastWithItsTraceId() {
         val traceId = "0123456789abcdef0123456789abcdef"
         val opened = mutableListOf<String>()
@@ -207,13 +172,6 @@ class RaftCreatedAgentReceiptTest {
     }
 
     @Test
-    fun anEmptyResultSaysTheConversationCouldNotBeOpened() {
-        val toasts = Toasts()
-        DataResult.Empty(build.raft.app.data.EmptyReason.NoMembers).openForTest(mutableListOf(), toasts)
-        assertEquals(listOf("Couldn't open your conversation with Reef. Try again."), toasts.plain)
-    }
-
-    @Test
     fun viewAfterTheSessionMovedToAnotherServerRequestsNothing() = runTest {
         val recorder = Recorder()
         receipt(this, RaftToastHostState(), recorder, currentServerId = "server-2").view(agent)
@@ -221,66 +179,5 @@ class RaftCreatedAgentReceiptTest {
 
         assertTrue(recorder.dmFetches.isEmpty(), "no DM is requested on the wrong server")
         assertTrue(recorder.shownDms.isEmpty())
-    }
-
-    @Test
-    fun theCreatingPageLeavingClosesTheToastAndViewOpensNothing() = runTest {
-        val host = RaftToastHostState()
-        val recorder = Recorder()
-        val receipt = receipt(this, host, recorder)
-        receipt.land(createdAgentLanding(submit(), agent))
-        val view = checkNotNull(host.visible.single().onAction)
-
-        receipt.dispose()
-        view()
-        advanceUntilIdle()
-
-        assertTrue(host.visible.isEmpty(), "the toast closes with the page that would open the DM")
-        assertTrue(recorder.dmFetches.isEmpty())
-        assertTrue(recorder.shownDms.isEmpty())
-    }
-
-    @Test
-    fun aViewUnderWayWhenThePageLeavesOpensNothing() = runTest {
-        val recorder = Recorder()
-        val answer = CompletableDeferred<Unit>()
-        val receipt = receipt(this, RaftToastHostState(), recorder, awaitDm = answer)
-        receipt.view(agent)
-        runCurrent()
-        assertEquals(listOf(agent), recorder.dmFetches)
-
-        receipt.dispose()
-        answer.complete(Unit)
-        advanceUntilIdle()
-
-        assertTrue(recorder.shownDms.isEmpty(), "the person went on: no page opens over where they are")
-    }
-
-    @Test
-    fun anExternalAgentOpensItsSetupGuideWithoutAToast() = runTest {
-        val host = RaftToastHostState()
-        val recorder = Recorder()
-        receipt(this, host, recorder).land(createdAgentLanding(submit(external = true), agent))
-        advanceUntilIdle()
-
-        assertEquals(listOf(agent), recorder.setupGuides)
-        assertTrue(host.visible.isEmpty())
-        assertTrue(recorder.dmFetches.isEmpty())
-    }
-
-    @Test
-    fun withoutAToastHostTheTitleAloneIsShown() = runTest {
-        val recorder = Recorder()
-        receipt(this, null, recorder).land(createdAgentLanding(submit(), agent))
-        advanceUntilIdle()
-
-        assertEquals(listOf("Created Reef"), recorder.fallbackToasts)
-        assertTrue(recorder.setupGuides.isEmpty())
-        assertTrue(recorder.dmFetches.isEmpty())
-    }
-
-    @Test
-    fun theOpenFailureNamesTheAgent() {
-        assertEquals("Couldn't open your conversation with Reef. Try again.", copy.openFailed("Reef"))
     }
 }

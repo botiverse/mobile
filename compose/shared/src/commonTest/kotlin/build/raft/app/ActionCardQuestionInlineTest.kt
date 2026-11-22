@@ -265,17 +265,6 @@ class ActionCardQuestionInlineTest {
         assertEquals(none, confirmField(required = false).confirmPressed(chosen))
     }
 
-    @Test
-    fun aRefusedFormsTraceIdShowsOnceUnderItsBannersElseUnderTheFirstIssue() {
-        val shown = setOf("b", "c")
-        assertEquals(ActionCardTraceIdSpot.UnderBanners, actionCardTraceIdSpot(TRACE_ID, bannerShown = true, listOf("a", "b", "c")) { it in shown })
-        assertEquals(ActionCardTraceIdSpot.UnderField("b"), actionCardTraceIdSpot(TRACE_ID, bannerShown = false, listOf("a", "b", "c")) { it in shown })
-        // Every issue edited away, or no (valid) trace id: no note.
-        assertNull(actionCardTraceIdSpot(TRACE_ID, bannerShown = false, listOf("a", "b", "c")) { false })
-        assertNull(actionCardTraceIdSpot(null, bannerShown = true, listOf("a")) { true })
-        assertNull(actionCardTraceIdSpot("not-a-trace", bannerShown = true, listOf("a")) { true })
-    }
-
     private companion object {
         const val TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736"
     }

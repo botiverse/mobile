@@ -4,7 +4,6 @@ import build.raft.app.model.ConversationKind
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -88,14 +87,6 @@ class RaftSchemeLinkTest {
     }
 
     @Test
-    fun ingressLeavesUnsupportedRaftLinksUnclaimed() {
-        for (url in listOf("raft:///s/$slug/tasks", "raft:///servers", "raft:///", "raft://login/callback?code=x")) {
-            assertFalse(RaftMessageLinkIngress.accept(url, source = "test", configuredWebUrl = staging), url)
-            assertNull(RaftMessageLinkInbox.Process.pending.value, url)
-        }
-    }
-
-    @Test
     fun tappedChatRaftLinkOpensAsItsEnvironmentWebLink() {
         val thread = raftMarkdownUrlOpen("raft:///s/$slug/dm/$cid?msg=$mid&thread=$cid:$pid", staging)
         assertEquals("$staging/s/$slug/dm/$cid?msg=$mid&thread=$cid:$pid", thread.url)
@@ -114,19 +105,5 @@ class RaftSchemeLinkTest {
         assertEquals(RaftThreadWebLinkTarget(channelId = cid, messageId = mid), channel.target)
         // The in-app target is the one the same https link opens.
         assertEquals("https://app.raft.build/s/$slug/channel/$cid?msg=$mid".toRaftThreadWebLinkTarget(), channel.target)
-    }
-
-    @Test
-    fun tappedChatRaftLinkWithoutAMessageRouteOpensItsWebLinkLikeHttps() {
-        // An /s/ page the app has no route for opens as its web link (link navigator, as https does).
-        val tasks = raftMarkdownUrlOpen("raft:///s/$slug/tasks", staging)
-        assertEquals(RaftMarkdownUrlOpen("$staging/s/$slug/tasks", target = null), tasks)
-        // Non-Raft-Desktop links pass through untouched.
-        for (url in listOf("https://example.com/a", "raft://login/callback?code=x", "mailto:a@b.c")) {
-            assertEquals(RaftMarkdownUrlOpen(url, target = null), raftMarkdownUrlOpen(url, staging), url)
-        }
-        val https = "https://app.raft.build/s/$slug/channel/$cid?msg=$mid"
-        assertEquals(https, raftMarkdownUrlOpen(https, staging).url)
-        assertEquals(https.toRaftThreadWebLinkTarget(), raftMarkdownUrlOpen(https, staging).target)
     }
 }

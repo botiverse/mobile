@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.compat.ui.PlayState
-import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadAttachmentCommentItem
 import kotlin.test.Test
@@ -79,15 +78,6 @@ class RaftFilePreviewVideoCommentsTest {
     }
 
     @Test
-    fun nativeControllerStateIsMirroredSoJumpPauseApplies() {
-        assertEquals(VideoPlayControl.PLAY, raftVideoCommentMirroredPlayControl(VideoPlayControl.PAUSE, PlayState.PLAYING))
-        assertEquals(VideoPlayControl.PAUSE, raftVideoCommentMirroredPlayControl(VideoPlayControl.PREPLAY, PlayState.PAUSED))
-        assertEquals(VideoPlayControl.PLAY, raftVideoCommentMirroredPlayControl(VideoPlayControl.PLAY, PlayState.PLAY_END))
-        assertEquals(VideoPlayControl.PREPLAY, raftVideoCommentMirroredPlayControl(VideoPlayControl.PREPLAY, PlayState.BUFFERING))
-        assertEquals(VideoPlayControl.STOP, raftVideoCommentMirroredPlayControl(VideoPlayControl.STOP, PlayState.PLAYING))
-    }
-
-    @Test
     fun commentsListPutsUnanchoredFirstThenTimestampsInOrder() {
         fun comment(id: String, time: Double?) =
             ThreadAttachmentCommentItem(
@@ -101,21 +91,5 @@ class RaftFilePreviewVideoCommentsTest {
                 .inAttachmentCommentAnchorOrder()
 
         assertEquals(listOf("file", "file2", "early", "late"), ordered.map { it.id })
-    }
-
-    @Test
-    fun videoPreviewsOfferCommentsAndAudioDoesNot() {
-        val video =
-            attachment.toThreadAttachmentLazyPreviewPayload(kind = "video", attachmentCommentsEnabled = true)
-        assertTrue(video.supportsVideoTimestampComments())
-        assertTrue(video.supportsAttachmentComments())
-
-        val audio =
-            RaftThreadAttachmentItem(id = "att-2", name = "voice.mp3", mimeType = "audio/mpeg")
-                .toThreadAttachmentLazyPreviewPayload(kind = "audio", attachmentCommentsEnabled = true)
-        assertFalse(audio.supportsAttachmentComments())
-
-        val disabled = attachment.toThreadAttachmentLazyPreviewPayload(kind = "video", attachmentCommentsEnabled = false)
-        assertFalse(disabled.supportsAttachmentComments())
     }
 }

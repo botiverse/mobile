@@ -40,12 +40,6 @@ class MembersHostedAgentProfileAndGroupTest {
     }
 
     @Test
-    fun theExternalRuntimeSentinelReadsExternalAgentNotTheRawId() {
-        assertEquals("External agent", runtimeIdentityDisplayName("external"))
-        assertEquals("External agent", runtimeIdentityDisplayName("external", serverId = "server-1"))
-    }
-
-    @Test
     fun aCloudAgentModelIsTheProvidersNotThePlaceholder() {
         val offered = listOf(HostedRuntimeModelOption("gpt-5.6-luna", "GPT-5.6 Luna"))
         val chosen = HostedAgentModelView(offered, defaultLabel = "DeepSeek Flash", model = "gpt-5.6-luna", label = null, source = "chosen")

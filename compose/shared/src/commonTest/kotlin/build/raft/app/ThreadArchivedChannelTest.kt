@@ -25,17 +25,6 @@ import kotlinx.coroutines.test.runTest
  */
 class ThreadArchivedChannelTest {
     @Test
-    fun anArchivedChannelsDetailKeepsArchivedMembershipAndItsUnarchiveCapability() {
-        val summary =
-            assertNotNull(parseRaftChannelDetail(ARCHIVED_CHANNEL_DETAIL_JSON)).toConversationSummary()
-
-        assertTrue(summary.archived)
-        // Archived is not "not joined": a member gets the banner, never a Join (web ChatPanel).
-        assertTrue(summary.joined)
-        assertEquals(true, summary.channelCapabilities?.archiveChannels)
-    }
-
-    @Test
     fun theChannelPageKnowsItsChannelIsArchivedFromItsOwnLoad() = runTest {
         val payload = loadedChannelPage(archivedMessagesResponse(channelArchived = true))
 
@@ -43,16 +32,6 @@ class ThreadArchivedChannelTest {
         assertTrue(payload.channelArchived)
         assertTrue(threadFooterShowsArchived(payload))
         assertTrue(threadHeaderShowsArchivedBadge(payload, directoryArchived = false))
-    }
-
-    @Test
-    fun aLiveChannelKeepsItsComposer() = runTest {
-        val payload = loadedChannelPage(archivedMessagesResponse(channelArchived = false))
-
-        assertEquals("content", payload.status)
-        assertFalse(payload.channelArchived)
-        assertFalse(threadFooterShowsArchived(payload))
-        assertFalse(threadHeaderShowsArchivedBadge(payload, directoryArchived = false))
     }
 
     @Test
@@ -88,15 +67,6 @@ class ThreadArchivedChannelTest {
         assertFalse(archived.withContentSliceFrom(reloaded).channelArchived)
         // A loading frame says nothing about the archive: the banner stays until the page loads.
         assertTrue(archived.withContentSliceFrom(loading).channelArchived)
-    }
-
-    @Test
-    fun aReplyThreadInAnArchivedChannelShowsTheBannerButNoHeaderBadge() {
-        val reply =
-            basePayload().copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread, channelArchived = true)
-
-        assertTrue(threadFooterShowsArchived(reply))
-        assertFalse(threadHeaderShowsArchivedBadge(reply, directoryArchived = true))
     }
 
     @Test

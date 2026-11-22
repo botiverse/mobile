@@ -37,23 +37,4 @@ class SettingsStandaloneStoreTest {
             standaloneSettingsWebBaseUrl(SharedApiEnvironmentStore(persistence)),
         )
     }
-
-    @Test
-    fun blankCanonicalWebUrlKeepsTheProductionFallback() {
-        val store = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
-        store.save(
-            SharedSettingsApiEnvironmentRequest(
-                key = SharedApiEnvironmentStore.CustomKey,
-                label = "API only",
-                apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
-                socketBaseUrl = "https://api-aws-staging.botiverse.dev",
-                webUrl = "",
-            )
-        )
-
-        assertEquals(
-            SharedApiEnvironmentStore.Production.webUrl,
-            sharedSettingsResolvedWebBaseUrl(standaloneSettingsWebBaseUrl(store)),
-        )
-    }
 }

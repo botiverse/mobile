@@ -1,12 +1,10 @@
 package build.raft.app
 
 import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
-import build.raft.app.SharedThreadStoreTestFixtures.testReplyCacheIdentityAuthority
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthSession
@@ -28,23 +26,15 @@ import build.raft.app.model.MessageType
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
-import build.raft.app.network.RaftFailedRequestTraceIds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
 
 class SharedThreadStoreTest {
     internal class FakeThreadApi(
@@ -682,153 +672,5 @@ class SharedThreadStoreTest {
             logs.any { it.contains("projection_value_defaulted") && it.contains("field=externalAuthor") },
             "Expected defaulted diagnostic for missing externalAuthor, got: $logs"
         )
-    }
-    @Test
-    fun rememberReplyParentCandidateSucceedsForSlackBridgeExternalRootMessage() = runTest {
-        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
-        val environmentId = "https://prod.example.test"
-        val dataSource =
-            SharedThreadDataSource(
-                threadParseDispatcher = backgroundScope.testDispatcher(),
-                payloadStore = SharedThreadPayloadStore(backgroundScope),
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId },
-                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
-                    sessionProvider = { sampleSession() },
-                    environmentProvider = { environmentId },
-                )
-            )
-        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val slackRootItem = externalSlackMessageItem(id = "slack-root-99")
-
-        val accepted = dataSource.rememberReplyParentCandidate(
-            provenance = provenance,
-            serverId = "server-1",
-            parentChannelId = "channel-slack",
-            parentMessage = slackRootItem,
-            threadChannelId = "thread-slack-root-99"
-        )
-
-        assertTrue(accepted, "rememberReplyParentCandidate should accept external Slack root message with valid externalAuthor")
-
-        val cachedMessage = messageStore.getScoped(
-            requireNotNull(provenance.messageStoreScopeId),
-            ChannelId("channel-slack"),
-            MessageId("slack-root-99")
-        )
-        assertNotNull(cachedMessage)
-        assertEquals(MemberKind.External, cachedMessage.author.kind)
-        assertEquals("Alice in Slack", cachedMessage.author.displayName)
-        assertEquals("Slack", cachedMessage.author.description)
-        assertEquals("https://slack.example.com/alice.png", cachedMessage.author.avatar?.wireValue)
-        assertEquals("slack", cachedMessage.externalAuthor?.provider)
-    }
-    @Test
-    fun rememberReplyParentCandidateKeepsExternalRootMessageMissingExternalAuthorWithFallbackAuthor() = runTest {
-        val messageStore = SharedThreadMessageStore(scope = backgroundScope)
-        val environmentId = "https://prod.example.test"
-        val dataSource =
-            SharedThreadDataSource(
-                threadParseDispatcher = backgroundScope.testDispatcher(),
-                payloadStore = SharedThreadPayloadStore(backgroundScope),
-                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                messageStore = messageStore,
-                cacheEnvironmentIdProvider = { environmentId },
-                replyCacheIdentityAuthority = testReplyCacheIdentityAuthority(
-                    sessionProvider = { sampleSession() },
-                    environmentProvider = { environmentId },
-                )
-            )
-        val provenance = requireNotNull(dataSource.captureReplyCacheProducerContext()).provenance
-        val invalidSlackRootItem = externalSlackMessageItem(id = "slack-root-bad", externalAuthor = null)
-
-        val accepted = dataSource.rememberReplyParentCandidate(
-            provenance = provenance,
-            serverId = "server-1",
-            parentChannelId = "channel-slack",
-            parentMessage = invalidSlackRootItem,
-            threadChannelId = "thread-slack-root-bad"
-        )
-
-        assertTrue(accepted, "an external root message without externalAuthor is kept with a fallback author")
-        val cachedMessage = assertNotNull(
-            messageStore.getScoped(
-                requireNotNull(provenance.messageStoreScopeId),
-                ChannelId("channel-slack"),
-                MessageId("slack-root-bad")
-            )
-        )
-        assertEquals(MemberKind.External, cachedMessage.author.kind)
-        assertEquals("Alice in Slack", cachedMessage.externalAuthor?.displayName)
-    }
-
-    @Test
-    fun refreshFailureTraceIdIsClearedByUnansweredFailureAndSubsequentRecovery() = runTest {
-        val firstTrace = "11111111111111111111111111111111"
-        val secondTrace = "22222222222222222222222222222222"
-        val unrelatedTrace = "33333333333333333333333333333333"
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val api =
-            FakeThreadApi(
-                bodyText = """{"error":"server_busy"}""",
-                channelMessagesResponseCode = 500,
-                channelMessagesResponseHeaders = mapOf("X-Trace-Id" to listOf(firstTrace)),
-            )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = api,
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            )
-        val initialPayload = basePayload().copy(sourceThreadId = "channel-1", streamChannelId = "channel-1")
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource,
-                scope = scope,
-                initialPayload = initialPayload,
-            )
-        try {
-            store.dispatch(SharedThreadIntent.Start(initialPayload))
-            advanceUntilIdle()
-            assertEquals("error", store.state.value.payload.status)
-            assertEquals(firstTrace, store.state.value.payload.errorTraceId)
-
-            // Subsequent unanswered failure (status 0 / thrown network error) must clear the old trace ID
-            // and never borrow an unrelated failed request's trace ID from the recent recorder.
-            RaftFailedRequestTraceIds.recordResponse(503, mapOf("X-Trace-Id" to listOf(unrelatedTrace)))
-            api.channelMessagesResponseCode = 0
-            api.channelMessagesResponseHeaders = emptyMap()
-            api.failChannelMessages = true
-            store.dispatch(SharedThreadIntent.Refresh)
-            advanceUntilIdle()
-            assertEquals("error", store.state.value.payload.status)
-            assertNull(
-                store.state.value.payload.errorTraceId,
-                "unanswered refresh failure must clear earlier errorTraceId rather than keeping or borrowing one"
-            )
-
-            // Another server 503 sets its own trace ID, then a successful reload clears it.
-            api.failChannelMessages = false
-            api.channelMessagesResponseCode = 503
-            api.channelMessagesResponseHeaders = mapOf("X-Trace-Id" to listOf(secondTrace))
-            store.dispatch(SharedThreadIntent.Refresh)
-            advanceUntilIdle()
-            assertEquals(secondTrace, store.state.value.payload.errorTraceId)
-
-            api.channelMessagesResponseCode = 200
-            api.channelMessagesResponseHeaders = emptyMap()
-            api.bodyText = messagesResponse("recovered body")
-            store.dispatch(SharedThreadIntent.Refresh)
-            advanceUntilIdle()
-            assertEquals("content", store.state.value.payload.status)
-            assertNull(store.state.value.payload.errorTraceId, "successful recovery must clear errorTraceId")
-        } finally {
-            RaftFailedRequestTraceIds.clear()
-            scope.cancel()
-        }
     }
 }

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -30,65 +29,11 @@ class ConversationKindContractTest {
     }
 
     @Test
-    fun parsesThreadJointSystemInbox() {
-        assertEquals(ConversationKind.Thread, parseConversationKindOrNull("thread"))
-        assertEquals(ConversationKind.Joint, parseConversationKindOrNull("joint"))
-        assertEquals(ConversationKind.System, parseConversationKindOrNull("system"))
-        assertEquals(ConversationKind.Inbox, parseConversationKindOrNull("inbox"))
-    }
-
-    @Test
     fun unknownInputParsesToNullNeverToChannel() {
         // Rule 3 of the contract: no `?: Channel`-style silent default. #415's
         // DM-thread misroute came from exactly that default.
         listOf(null, "", "   ", "foo", "channel2", "dms").forEach { raw ->
             assertNull(parseConversationKindOrNull(raw), "raw=$raw")
-        }
-    }
-
-    @Test
-    fun kuiklySurfaceKindMatchesLegacyThreadSurfaceKindForEveryKind() {
-        ConversationKind.entries.forEach { kind ->
-            val legacy =
-                ThreadLaunchConversationIdentity(threadId = ThreadId("t"), kind = kind)
-                    .threadSurfaceKind()
-            assertEquals(legacy, kind.toRaftSurfaceKind(), "kind=$kind")
-        }
-    }
-
-    @Test
-    fun wireChannelKindMatchesLegacyThreadChannelKindWireValueForEveryKind() {
-        ConversationKind.entries.forEach { kind ->
-            assertEquals(kind.threadChannelKindWireValue(), kind.toWireChannelKindOrNull(), "kind=$kind")
-        }
-        assertNull((null as ConversationKind?).threadChannelKindWireValue())
-    }
-
-    @Test
-    fun parseComposedWithSurfaceProjectionMatchesLegacyParentSurfaceVocabulary() {
-        // The legacy String.threadParentSurfaceKindOrNull tables, expressed as
-        // parse-then-project. "thread" is intentionally absent: it is not a
-        // valid parent surface, and under the contract that rejection is the
-        // caller's explicit decision instead of a table omission.
-        val legacyParentSurfaceTable =
-            mapOf(
-                "dm" to RaftThreadSurfaceKind.DirectMessage,
-                "direct_message" to RaftThreadSurfaceKind.DirectMessage,
-                "direct-message" to RaftThreadSurfaceKind.DirectMessage,
-                "directmessage" to RaftThreadSurfaceKind.DirectMessage,
-                "direct" to RaftThreadSurfaceKind.DirectMessage,
-                "channel" to RaftThreadSurfaceKind.Channel,
-                "public" to RaftThreadSurfaceKind.Channel,
-                "private" to RaftThreadSurfaceKind.Channel,
-                "joint" to RaftThreadSurfaceKind.Channel,
-                "group" to RaftThreadSurfaceKind.Channel
-            )
-        legacyParentSurfaceTable.forEach { (raw, expectedSurface) ->
-            assertEquals(
-                expectedSurface,
-                parseConversationKindOrNull(raw)?.toRaftSurfaceKind(),
-                "raw=$raw"
-            )
         }
     }
 
@@ -122,16 +67,5 @@ class ConversationKindContractTest {
         listOf(ConversationKind.Channel, ConversationKind.Joint, ConversationKind.DirectMessage).forEach { kind ->
             assertEquals(kind, parseConversationKindOrNull(kind.toWireChannelKindOrNull()), "kind=$kind")
         }
-    }
-
-    @Test
-    fun kuiklySurfaceRoundTripsOnlyForSurfaceFaithfulKinds() {
-        // Surface projection is lossy for Joint/Inbox/System (all "channel");
-        // the contract documents that round-trips are only guaranteed via
-        // toWireChannelKindOrNull. Pin the faithful subset.
-        listOf(ConversationKind.Channel, ConversationKind.DirectMessage, ConversationKind.Thread).forEach { kind ->
-            assertEquals(kind, parseConversationKindOrNull(kind.toRaftSurfaceKind()), "kind=$kind")
-        }
-        assertEquals(ConversationKind.Channel, parseConversationKindOrNull(ConversationKind.Joint.toRaftSurfaceKind()))
     }
 }

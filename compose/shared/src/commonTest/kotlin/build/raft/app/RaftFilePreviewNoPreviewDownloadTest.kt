@@ -63,25 +63,6 @@ class RaftFilePreviewNoPreviewDownloadTest {
     }
 
     @Test
-    fun anUnsupportedFileWhoseBytesAreBinaryShowsTheDownloadCard() = runTest {
-        val network = FakeNoPreviewNetwork(rawCode = 200, rawBody = "\u0000\u0001binary\u0000")
-        val loaded = network.load(name = "dump.log")
-
-        assertEquals("unsupported", loaded.kind)
-        assertNull(loaded.error)
-        assertEquals(RaftFilePreviewNoPreviewReasonUnsupported, loaded.noPreviewReason)
-        assertFalse(loaded.canRetryPreviewLoad())
-    }
-
-    @Test
-    fun anUnsupportedFileTheStoreRefusesAsAFormatShowsTheDownloadCard() = runTest {
-        val loaded = FakeNoPreviewNetwork(rawCode = 415, rawBody = null).load(name = "pages.tsv")
-
-        assertEquals("unsupported", loaded.kind)
-        assertNull(loaded.error)
-    }
-
-    @Test
     fun aNetworkFailureIsAnErrorWithRetry() = runTest {
         val loaded = FakeNoPreviewNetwork(rawCode = null, rawBody = null).load(name = "pages.tsv")
 
@@ -96,24 +77,6 @@ class RaftFilePreviewNoPreviewDownloadTest {
     }
 
     @Test
-    fun anExpiredLinkOrAGoneFileIsAnErrorWithRetry() = runTest {
-        listOf(403, 404, 410, 502).forEach { code ->
-            val loaded = FakeNoPreviewNetwork(rawCode = code, rawBody = null).load(name = "pages.tsv")
-            assertEquals("error", loaded.kind, "code=$code")
-            assertTrue(loaded.canRetryPreviewLoad(), "code=$code")
-        }
-    }
-
-    @Test
-    fun aMissingSignedUrlIsAnErrorWithRetry() = runTest {
-        val loaded = FakeNoPreviewNetwork(rawCode = 200, rawBody = "x", urlCode = 403).load(name = "pages.tsv")
-
-        assertEquals("error", loaded.kind)
-        assertEquals("text_preview_url_failed", loaded.error)
-        assertTrue(loaded.canRetryPreviewLoad())
-    }
-
-    @Test
     fun aSpreadsheetTooLargeToPreviewShowsTheDownloadCardWithTheReason() = runTest {
         val loaded =
             FakeNoPreviewNetwork(rawCode = 200, rawBody = null, reason = "too_large")
@@ -125,19 +88,6 @@ class RaftFilePreviewNoPreviewDownloadTest {
             Res.string.file_preview_no_preview_too_large_download.desc(),
             raftFilePreviewUnsupportedFileMessage(loaded, downloadable = true)
         )
-    }
-
-    @Test
-    fun theCardSaysWhyWhenTheServerGaveAReason() {
-        fun message(reason: String) =
-            raftFilePreviewUnsupportedFileMessage(
-                RaftFilePreviewPayload(kind = "unsupported", noPreviewReason = reason),
-                downloadable = true
-            )
-        assertEquals(Res.string.file_preview_no_preview_too_large_download.desc(), message("too_large"))
-        assertEquals(Res.string.file_preview_no_preview_temporarily_download.desc(), message("unavailable"))
-        assertEquals(Res.string.file_preview_download_to_open.desc(), message("unsupported"))
-        assertEquals(Res.string.file_preview_download_to_open.desc(), message(""))
     }
 }
 

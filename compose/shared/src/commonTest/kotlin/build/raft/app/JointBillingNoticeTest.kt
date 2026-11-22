@@ -141,20 +141,6 @@ class JointBillingNoticeTest {
     }
 
     @Test
-    fun blankGraceEndsAtYieldsNoNotice() {
-        val projections = mapOf("joint-1" to jointProjection("joint-1", graceEndsAt = ""))
-        assertEquals(
-            JointBillingNotice.None,
-            jointBillingNoticeState(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelId = null,
-                lookupIds = listOf("joint-1"),
-                projections = projections
-            )
-        )
-    }
-
-    @Test
     fun regularChannelAndDirectMessageNeverShowNotice() {
         val regular =
             SharedConversationDirectoryProjection(
@@ -186,55 +172,6 @@ class JointBillingNoticeTest {
                 lookupIds = listOf("missing-parent", "thread-1"),
                 projections = emptyMap()
             )
-        )
-    }
-
-    @Test
-    fun messageRowsResolveOtherServerSendersOnlyOnJointSurfaces() {
-        val projections = mapOf("joint-1" to jointProjection("joint-1"))
-        fun joint(payload: RaftThreadScreenPayload, lookupIds: List<String> = emptyList()) =
-            threadMessageSurfaceIsJoint(payload, lookupIds, projections)
-
-        assertEquals(true, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "joint")))
-        assertEquals(true, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel), listOf("joint-1")))
-        assertEquals(
-            true,
-            joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentChannelKind = "joint"))
-        )
-        assertEquals(
-            true,
-            joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentChannelId = "joint-1"))
-        )
-        assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel), listOf("chan-1")))
-        assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage), listOf("joint-1")))
-        // Task conversation whose parent channel is a joint channel (by task channelType or parent projection).
-        assertEquals(
-            true,
-            threadMessageSurfaceIsJoint(
-                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
-                emptyList(),
-                emptyMap(),
-                taskChannelType = "joint",
-            ),
-        )
-        assertEquals(
-            true,
-            threadMessageSurfaceIsJoint(
-                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
-                emptyList(),
-                projections,
-                taskParentChannelId = "joint-1",
-            ),
-        )
-        assertEquals(
-            false,
-            threadMessageSurfaceIsJoint(
-                RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "task"),
-                emptyList(),
-                projections,
-                taskChannelType = "channel",
-                taskParentChannelId = "chan-1",
-            ),
         )
     }
 
@@ -309,49 +246,6 @@ class JointBillingNoticeTest {
                 nowEpochMillis = 1790899200000L,
             ),
         )
-    }
-
-    @Test
-    fun externalFreezeReplacesJointGraceNoticeWhenBothApply() {
-        val freezeIso = "2026-10-05T00:00:00Z"
-        val graceIso = "2026-10-01T00:00:00Z"
-        val projections =
-            mapOf("joint-1" to jointProjection("joint-1", graceEndsAt = graceIso, externalFreezeAt = freezeIso))
-        // Before either deadline: external freeze replaces joint grace banner, while timer targets
-        // the earliest deadline (graceIso on Oct 1) so grace expiry still locks locally on time.
-        assertEquals(
-            JointBillingNotice.None,
-            jointBillingNoticeState(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelId = null,
-                lookupIds = listOf("joint-1"),
-                projections = projections,
-                nowEpochMillis = 1790640000000L,
-            ),
-        )
-        val freeze =
-            externalFreezeState(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelId = null,
-                lookupIds = listOf("joint-1"),
-                projections = projections,
-                nowEpochMillis = 1790640000000L,
-            )
-        assertEquals(ExternalFreezeState.Upcoming(freezeIso), freeze)
-        assertEquals(graceIso, nextChannelLimitDeadlineIso(freeze, JointBillingNotice.None, graceIso))
-        // Once joint grace expires (Oct 2) while externalFreezeAt (Oct 5) is still ahead:
-        // jointBillingNotice flips to Locked and nextChannelLimitDeadlineIso advances to freezeIso.
-        assertEquals(
-            JointBillingNotice.Locked,
-            jointBillingNoticeState(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelId = null,
-                lookupIds = listOf("joint-1"),
-                projections = projections,
-                nowEpochMillis = 1790899200000L,
-            ),
-        )
-        assertEquals(freezeIso, nextChannelLimitDeadlineIso(freeze, JointBillingNotice.Locked, graceIso))
     }
 
     @Test

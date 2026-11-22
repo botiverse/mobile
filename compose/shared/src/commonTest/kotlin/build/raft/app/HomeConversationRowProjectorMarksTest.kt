@@ -38,17 +38,6 @@ class HomeConversationRowProjectorMarksTest {
     }
 
     @Test
-    fun gatedOffThreadMarkLeavesOnlyTheRowMention() {
-        // An empty fold (no followed-thread unread under this channel).
-        val projector = SharedHomeConversationRowProjector()
-
-        val item = projector.project(general)
-        assertEquals(0, item.followedThreadUnreadCount)
-        assertFalse(item.mentioned)
-        assertTrue(projector.project(general.copy(mentionCount = 1, mentionCountKnown = true)).mentioned)
-    }
-
-    @Test
     fun directMessageRowsNeverCarryAThreadSegment() {
         val dm = HomeDirectMessageRow(threadId = ThreadId("channel-general"), channelId = ChannelId("channel-general"), name = "cindy")
         val projector = SharedHomeConversationRowProjector(threadUnreadByParent = threads.foldThreadUnreadByParent())

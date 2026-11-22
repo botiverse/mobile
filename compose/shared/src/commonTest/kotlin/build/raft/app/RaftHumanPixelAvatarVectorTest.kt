@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberKind
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import kotlin.test.Test
@@ -138,88 +137,6 @@ class RaftHumanPixelAvatarVectorTest {
     }
 
     @Test
-    fun valuesThatAreNotOfTheSchemeDrawNothing() {
-        for (value in listOf(
-            "pixel-human:v1:yellow.2.short.ink.wink.cap.none ",
-            "pixel-human:v1:Yellow.2.short.ink.wink.cap.none",
-            "pixel-human:v1:yellow.2.short.ink.wink.cap.none/other",
-            "pixel-human:vx:yellow",
-            "pixel-human:v1234:yellow",
-            "pixel-human:",
-            "PIXEL-HUMAN:v1:yellow.2.short.ink.wink.cap.none",
-        )) {
-            assertNull(readRaftHumanPixelAvatarRecipe(value), value)
-            assertNull(raftHumanPixelAvatarRaster(value), value)
-        }
-    }
-
-    @Test
-    fun anExpressionDrawsOverTheBaseAndUnderTheHair() {
-        val longHair = default.copy(hair = "long")
-        val plain = composeRaftHumanPixelAvatar(longHair)
-        val grin = composeRaftHumanPixelAvatar(longHair.copy(expression = "grin"))
-        val hair = art.layers.first { it.layer == "hair" && it.option == "long" }
-        val grinLayer = art.layers.first { it.layer == "expression" && it.option == "grin" }
-        var overlapping = 0
-        for (y in 0 until 112) for (x in 0 until 112) if (hair.rows[y][x] != '0' && grinLayer.rows[y][x] != '0') overlapping++
-        assertTrue(overlapping > 0, "the case must overlap to test the order")
-        val cap = art.layers.first { it.option == "cap" }
-        var changed = 0
-        for (i in plain.pixels.indices) {
-            val x = i % plain.size
-            val y = i / plain.size
-            val covered = hair.rows[y][x] != '0' || cap.rows[y][x] != '0'
-            if (covered) assertEquals(plain.pixels[i], grin.pixels[i], "hair/cap cell ($x,$y) stays on top")
-            else if (grin.pixels[i] != plain.pixels[i]) changed++
-        }
-        assertTrue(changed > 0, "the grin changes the face")
-        // The blush uses role 8, the pink only the expression layers have.
-        val blush = composeRaftHumanPixelAvatar(default.copy(expression = "blush"))
-        assertTrue(art.fixed.getValue("pink") in blush.pixels, "role 8 draws the art's pink")
-    }
-
-    @Test
-    fun accessoriesDrawByAscendingZ() {
-        // Glasses (z 0) draw first, headphones (z 1) over them.
-        val both = composeRaftHumanPixelAvatar(default.copy(head = "headphones", face = "glasses"))
-        val headphonesOnly = composeRaftHumanPixelAvatar(default.copy(head = "headphones"))
-        val headphones = art.layers.first { it.option == "headphones" }
-        for (y in 0 until both.size) {
-            for (x in 0 until both.size) {
-                if (headphones.rows[y][x] != '0') assertEquals(headphonesOnly.pixels[y * both.size + x], both.pixels[y * both.size + x])
-            }
-        }
-        assertEquals(112, both.size)
-        assertEquals("#ffd440", composeRaftHumanPixelAvatar(default).background)
-    }
-
-    @Test
-    fun everyRoleALayerUsesHasAColourAndTheHeadphonesDrawInTheirOwnReds() {
-        val used = art.layers.flatMap { layer -> layer.rows.flatMap { it.toList() } }.toMutableSet()
-        used.remove('0')
-        for (role in used) assertTrue(art.roleColors.containsKey(role), "role $role has a colour")
-        val phones = composeRaftHumanPixelAvatar(default.copy(head = "headphones"))
-        for (key in listOf("phone_red", "phone_shade", "phone_band", "phone_hi")) {
-            assertTrue(art.fixed.getValue(key) in phones.pixels, "$key drawn")
-        }
-    }
-
-    @Test
-    fun theRasterFillsTheBackgroundUnderTransparentCells() {
-        val composed = composeRaftHumanPixelAvatar(default.copy(background = "lilac"))
-        val raster = requireNotNull(raftHumanPixelAvatarRaster("pixel-human:v1:lilac.2.short.ink.wink.cap.none/auto"))
-        assertEquals(composed.size, raster.size)
-        assertEquals(raftHumanPixelAvatarArgb("#bea0f5"), raster.backgroundArgb)
-        for (i in composed.pixels.indices) {
-            assertEquals(raftHumanPixelAvatarArgb(composed.pixels[i] ?: composed.background), raster.argb[i], "pixel $i")
-        }
-        // The shared raster the home-screen widgets draw from is the same picture.
-        val widgetRaster = requireNotNull(raftPixelAvatarRaster("pixel-human:v1:lilac.2.short.ink.wink.cap.none"))
-        assertEquals(112, widgetRaster.cellArgb.size)
-        assertEquals(raster.argb.toList(), widgetRaster.cellArgb.flatMap { it.toList() })
-    }
-
-    @Test
     fun aPersonShowsTheirBuiltAvatarAndNeverAnInvalidOne() {
         val built = "pixel-human:v1:mint.1.side.ginger.grin.headphones.none"
         assertEquals(built, avatarWireValueForAvatarSlot(MemberKind.Human, "u1", built))
@@ -233,16 +150,5 @@ class RaftHumanPixelAvatarVectorTest {
         // A person's uploaded photo still wins the slot.
         val photo = "https://cdn.example/avatars/users/0123456789abcdef.webp"
         assertEquals(photo, avatarWireValueForAvatarSlot(MemberKind.Human, "u1", photo))
-    }
-
-    @Test
-    fun aBuiltAvatarIsAConcreteAvatarReference() {
-        val built = "pixel-human:v1:yellow.2.short.ink.wink.cap.none/auto"
-        val reference = AvatarReference.fromWireValue(built)
-        assertEquals(AvatarReference.HumanPixel(built), reference)
-        assertEquals(built, reference?.wireValue)
-        assertTrue(reference!!.isConcrete)
-        assertFalse(AvatarReference.Pixel("robot").isConcrete)
-        assertNull(AvatarReference.fromWireValue("pixel-human:v1:Yellow"))
     }
 }

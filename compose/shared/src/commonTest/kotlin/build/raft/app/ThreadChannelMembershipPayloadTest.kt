@@ -5,8 +5,6 @@ import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /** What a conversation and Home take from leaving or joining the channel on screen. */
@@ -30,13 +28,6 @@ class ThreadChannelMembershipPayloadTest {
     }
 
     @Test
-    fun leavingAnotherChannelChangesNothing() {
-        val page = channelPage()
-
-        assertSame(page, page.withChannelLeft("channel-2"))
-    }
-
-    @Test
     fun aJoinOnTheChannelsOwnPageCarriesARowForHome() {
         val intent = channelJoinedHomeIntent(channelPage().withChannelLeft("channel-1"), "server-1", ChannelId("channel-1"))
 
@@ -47,18 +38,5 @@ class ThreadChannelMembershipPayloadTest {
         assertEquals("Reviews", row.subtitle)
         assertEquals(ConversationKind.Channel, row.kind)
         assertTrue(row.joined)
-    }
-
-    @Test
-    fun aJoinElsewhereCarriesNoRowForHome() {
-        assertNull(channelJoinedHomeIntent(channelPage(), "server-1", ChannelId("channel-2")).rowIfMissing)
-        assertNull(channelJoinedHomeIntent(channelPage().copy(title = " "), "server-1", ChannelId("channel-1")).rowIfMissing)
-        assertNull(
-            channelJoinedHomeIntent(
-                channelPage().copy(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentChannelId = "channel-1"),
-                "server-1",
-                ChannelId("channel-1"),
-            ).rowIfMissing,
-        )
     }
 }

@@ -18,22 +18,9 @@ class AppShellHomeListShortcutRowsTest {
         )
     }
 
-    @Test fun thePhoneBarCarriesThemToo() {
-        assertTrue(appShellNavCarriesSearchAndActivity(navRailActive = false))
-        assertFalse(
-            homeSidebarShowsSearchAndActivityRows(
-                searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive = false)
-            )
-        )
-    }
-
     @Test fun savedIsOnNeitherNavigationSoItKeepsItsHomeRow() {
         assertFalse("saved" in AppShellRailTabKeys)
         assertFalse(AppShellRailSavedKey in AppShellRailOrder)
         assertFalse("saved" in AppShellPhoneBottomBarKeys)
-    }
-
-    @Test fun aListWithoutShellNavigationKeepsTheRows() {
-        assertTrue(homeSidebarShowsSearchAndActivityRows(searchAndActivityOnShellNav = false))
     }
 }

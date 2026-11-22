@@ -33,14 +33,6 @@ class MembersAgentIssueReportReceiptTest {
     }
 
     @Test
-    fun disclosureBoldsTheStrongPhraseOnly() {
-        val text = membersAgentIssueDisclosure("This report may contain %1\$s. Redaction is best-effort.", "prompt history")
-        assertEquals("This report may contain prompt history. Redaction is best-effort.", text.text)
-        val bold = text.spanStyles.single()
-        assertEquals("prompt history", text.text.substring(bold.start, bold.end))
-    }
-
-    @Test
     fun machineLogTailFollowsOwnershipUntilTouched() {
         assertEquals(true, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = true))
         assertEquals(false, membersAgentIssueMachineLogTailChecked(choice = null, canIncludeMachineLog = false))

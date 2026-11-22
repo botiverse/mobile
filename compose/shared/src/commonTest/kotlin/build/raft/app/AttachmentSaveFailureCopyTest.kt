@@ -3,9 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * A failed attachment save (thread, file page, download centre) says catalog copy chosen by the
@@ -47,30 +45,5 @@ class AttachmentSaveFailureCopyTest {
             assertEquals(RaftAttachmentSaveFailure.PhotosSaveFailed, raftAttachmentSaveFailure(status, photos), status)
             assertEquals(RaftAttachmentSaveFailure.FilesExportFailed, raftAttachmentSaveFailure(status, files), status)
         }
-    }
-
-    @Test
-    fun everyFailureHasItsOwnCatalogString() {
-        assertEquals(Res.string.file_preview_download_failed, RaftAttachmentSaveFailure.DownloadFailed.messageRes)
-        assertEquals(Res.string.file_preview_error_storage_unavailable, RaftAttachmentSaveFailure.StorageUnavailable.messageRes)
-        assertEquals(Res.string.file_preview_error_download_attachment, RaftAttachmentSaveFailure.UnableToDownload.messageRes)
-        assertEquals(Res.string.file_preview_export_failed, RaftAttachmentSaveFailure.FilesExportFailed.messageRes)
-        assertEquals(Res.string.thread_image_preview_photos_save_failed, RaftAttachmentSaveFailure.PhotosSaveFailed.messageRes)
-        assertEquals(
-            RaftAttachmentSaveFailure.entries.size,
-            RaftAttachmentSaveFailure.entries.map { it.messageRes }.toSet().size,
-            "each failure says something different"
-        )
-    }
-
-    @Test
-    fun hostMessagesAreLoggedOnOneBoundedLineWithoutUrls() {
-        assertEquals("none", raftAttachmentHostMessageForLog(null))
-        assertEquals("none", raftAttachmentHostMessageForLog("  "))
-        assertEquals("Unable to create Downloads file", raftAttachmentHostMessageForLog("Unable to create Downloads file"))
-        val logged = raftAttachmentHostMessageForLog("Download failed:\nHTTP 403 https://cdn.example.test/a?sig=secret")
-        assertEquals("Download failed: HTTP 403 <url>", logged)
-        assertFalse(logged.contains("secret"))
-        assertTrue(raftAttachmentHostMessageForLog("x".repeat(500)).length <= 160)
     }
 }

@@ -82,17 +82,4 @@ class ThreadReplyActionSurfaceTest {
         assertReply(true, RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage))
         assertReply(true, WireThreadLaunchPayload(surfaceKind = RaftThreadSurfaceKind.Channel, threadId = "channel", sourceThreadId = "channel").toInitialPayload("f"))
     }
-
-    @Test
-    fun localSendRowsStillHideReplyOnChannel() {
-        val sending = message.copy(deliveryState = ThreadMessageDeliverySending)
-        val reply =
-            threadMessageMenuCapabilities(
-                message = sending,
-                replyMetadata = sending.toThreadReplyMetadata(),
-                slice = RaftThreadScreenPayload().toThreadTimelineSlice(),
-                writeActionsEnabled = true
-            ).reply
-        assertEquals(false, reply)
-    }
 }

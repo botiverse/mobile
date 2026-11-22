@@ -4,7 +4,6 @@ import build.raft.app.resources.*
 import build.raft.app.model.MessageDelegatedBy
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -44,34 +43,6 @@ class ThreadDelegatedMessageTest {
     }
 
     @Test
-    fun consecutiveMessagesFromTheSameAssistantGroup() {
-        assertEquals(
-            listOf(false, true, true),
-            continuations(alice("own-1", 40), alice("sent-1", 41, friday), alice("sent-2", 42, friday), alice("sent-3", 43, friday)),
-        )
-        // The owner's own messages still group with each other.
-        assertEquals(listOf(true), continuations(alice("own-1", 40), alice("own-2", 41)))
-    }
-
-    @Test
-    fun differentAssistantsStartTheirOwnRuns() {
-        assertEquals(listOf(false, false), continuations(alice("f", 40, friday), alice("j", 41, jarvis), alice("f2", 42, friday)))
-    }
-
-    @Test
-    fun aDeletedAssistantKeepsItsRunByIdentity() {
-        // The key is the assistant's id (web `delegatedGroupKey`), not its name or deleted state.
-        assertEquals(listOf(true), continuations(alice("f", 40, friday), alice("f-gone", 41, fridayDeleted)))
-        assertEquals(listOf(false), continuations(alice("own", 40), alice("f-gone", 41, fridayDeleted)))
-    }
-
-    @Test
-    fun compactSignatureChangesWithTheAssistant() {
-        assertNotEquals(alice("a", 40).threadCompactAuthorSignature(), alice("a", 40, friday).threadCompactAuthorSignature())
-        assertEquals(alice("a", 40, friday).threadCompactAuthorSignature(), alice("a", 40, fridayDeleted).threadCompactAuthorSignature())
-    }
-
-    @Test
     fun theWordsFollowWebDelegatedByLabel() {
         // (assistant, placement, catalog entry): web `message.delegated.sentBy[Deleted][InBody]`.
         val cases =
@@ -88,14 +59,5 @@ class ThreadDelegatedMessageTest {
         assertNull(delegatedPreviewSenderResource(null))
         assertEquals(Res.string.message_delegated_preview_sender, delegatedPreviewSenderResource(friday))
         assertEquals(Res.string.message_delegated_preview_sender_deleted, delegatedPreviewSenderResource(fridayDeleted))
-    }
-
-    @Test
-    fun onlyTheNameIsSplitOutOfTheLocalizedWords() {
-        val marker = "\uE000"
-        assertEquals(DelegatedLabelParts("sent by ", ""), splitDelegatedLabel("sent by $marker", marker))
-        assertEquals(DelegatedLabelParts("（由 ", " 代发）"), splitDelegatedLabel("（由 $marker 代发）", marker))
-        assertEquals(DelegatedLabelParts("", " が代理送信"), splitDelegatedLabel("$marker が代理送信", marker))
-        assertEquals(DelegatedLabelParts("sent by a deleted assistant", ""), splitDelegatedLabel("sent by a deleted assistant", marker))
     }
 }

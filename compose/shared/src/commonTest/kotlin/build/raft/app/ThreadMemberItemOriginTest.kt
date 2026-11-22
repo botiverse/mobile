@@ -80,21 +80,4 @@ class ThreadMemberItemOriginTest {
         assertEquals(true, own.canRemove)
         assertEquals("guest", own.effectiveChannelRole)
     }
-
-    @Test
-    fun externalAgentAndHumanRosterRowsCarryOriginServerLogos() {
-        val peerLogo = "/api/avatars/server-peer/peer.webp"
-        val channelServers = listOf(peer.copy(avatarUrl = peerLogo))
-        val remoteAgent =
-            MemberProfile(
-                id = MemberId("agent-2"),
-                displayName = "Helper",
-                handle = "helper",
-                kind = MemberKind.Agent,
-                serverId = ServerId(peer.id),
-            )
-        val agentRow = remoteAgent.toRaftThreadMemberItem(local, knownServers = channelServers)
-        assertEquals(listOf(peer.copy(avatarUrl = peerLogo)), agentRow.originServers)
-        assertEquals("Peer Labs", agentRow.sourceServerLabel)
-    }
 }

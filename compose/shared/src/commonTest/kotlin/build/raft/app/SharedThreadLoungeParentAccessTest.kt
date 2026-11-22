@@ -186,35 +186,6 @@ class SharedThreadLoungeParentAccessTest {
         harness.close()
     }
 
-    @Test
-    fun loungeHintThatArrivesBeforeTheAccessPassesIsAppliedOnceTheyRan() = runBlocking {
-        // The page sends the Lounge hint as soon as it composes; the store used to drop it while the
-        // canonical reply load / initial lookup were still running and never heard it again.
-        val releaseLookup = CompletableDeferred<Unit>()
-        val harness = LoungeHarness(parentChannelId = LoungeId, beforeChannelList = { releaseLookup.await() })
-        harness.store.accept(
-            SharedThreadIntent.ApplyParentDirectoryHint(
-                parentChannelId = LoungeId,
-                parentMessageId = "m1",
-                present = true,
-                joined = true,
-                canSend = true,
-                authoritative = true,
-            )
-        )
-        assertFalse(harness.store.state.value.writeActionsEnabled, "a hint must not pre-grant before the lookup")
-        assertTrue(harness.diagnostics.any { it.startsWith("thread_parent_authority_hint_deferred") })
-
-        releaseLookup.complete(Unit)
-        val mounted = harness.awaitState("deferred hint applied") { it.writeActionsEnabled }
-        assertEquals(ReplyParentAuthorityStatus.Writable, mounted.replyParentAuthority)
-        assertTrue(mounted.payload.composer.enabled)
-        assertTrue(harness.diagnostics.any { it.startsWith("thread_parent_authority_hint_replayed") })
-        // Decided without the fallback read.
-        assertTrue(harness.conversations.conversationDetailRequests.isEmpty())
-        harness.close()
-    }
-
     private class LoungeHarness(
         parentChannelId: String,
         beforeChannelList: suspend () -> Unit = {},

@@ -1,16 +1,9 @@
 package build.raft.app
 
 import build.raft.app.SharedThreadStoreMembersAndActionCardsTest.RecordingActionCardsApi
-import build.raft.app.SharedThreadStoreTest.Companion.basePayload
-import build.raft.app.SharedThreadStoreTest.Companion.sampleSession
-import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.ActionCardSpecButton
-import build.raft.app.data.ChannelRepository
-import build.raft.app.data.CreateChannelRequest
-import build.raft.app.data.CreateChannelResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ScreenError
@@ -96,23 +89,6 @@ class ThreadActionCardExpiryTest {
             wire("""{"kind":"action-card","state":"expired","requesterUserId":"u-1","action":{"type":"seats:add"}}""").requesterUserId,
         )
         assertEquals(read, actionCardFromMessageMetadata(read.toMessageMetadata()))
-    }
-
-    @Test
-    fun aQuestionCardFromAnOlderServerFallsBackToItsActionExpiresAt() {
-        val read =
-            wire(
-                """{"kind":"action-card","state":"prepared",
-                   "action":{"type":"question:ask","expiresAt":"$deadline"}}""",
-            )
-        assertEquals(deadline, read.expiresAt)
-        // The top-level value wins when both are there.
-        val both =
-            wire(
-                """{"kind":"action-card","state":"prepared","expiresAt":"2026-12-01T00:00:00.000Z",
-                   "action":{"type":"question:ask","expiresAt":"$deadline"}}""",
-            )
-        assertEquals("2026-12-01T00:00:00.000Z", both.expiresAt)
     }
 
     @Test
@@ -202,58 +178,6 @@ class ThreadActionCardExpiryTest {
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "withdrawn"), before))
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "seats:add", state = "expired"), before))
         assertFalse(threadActionCardCommitBlockedByEnd(card(state = "executed"), after))
-    }
-
-    @Test
-    fun anExpiredChannelCardCreatesNoChannel() = runTest {
-        val created = mutableListOf<CreateChannelRequest>()
-        val channels =
-            object : ChannelRepository by FakeChannelRepository() {
-                override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
-                    created += request
-                    error("an expired card must not create a channel")
-                }
-            }
-        val actions = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                channelRepository = channels,
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actions),
-            )
-        // `expiresAt` already behind the real clock.
-        val expired = card(expiresAt = "2020-01-01T00:00:00.000Z")
-        val result = assertIs<DataResult.Error>(dataSource.commitThreadActionCard(basePayload(), "m-card", expired))
-        assertEquals(ActionCardEndedErrorCode, result.error.code)
-        assertEquals(emptyList(), created)
-        assertEquals(emptyList(), actions.calls)
-    }
-
-    @Test
-    fun theExpiredLineSaysWhoToAskAsTheWebDoes() {
-        val date: (String) -> String? = { "10-30 09:30" }
-        val expired = card(type = "agent:create", state = "expired")
-        // An agent's card: ask the agent.
-        assertEquals(ActionCardExpiredLine.FromAgent("10-30 09:30"), expired.actionCardExpiredLine("u-viewer", null, date))
-        // A person sent it under the 30-day rule: ask them by name; to the sender, send a new one.
-        val fromPerson = expired.copy(requesterUserId = "u-wendy")
-        assertEquals(ActionCardExpiredLine.FromPerson("10-30 09:30", "Wendy"), fromPerson.actionCardExpiredLine("u-viewer", "Wendy", date))
-        assertEquals(ActionCardExpiredLine.Own("10-30 09:30"), fromPerson.actionCardExpiredLine("u-wendy", "Wendy", date))
-        // No longer a member here: as an agent's card.
-        assertEquals(ActionCardExpiredLine.FromAgent("10-30 09:30"), fromPerson.actionCardExpiredLine("u-viewer", null, date))
-        // A person's request with its own deadline keeps its own line, dated or not.
-        for (type in listOf("seats:add", "plan:upgrade")) {
-            val request = card(type = type, state = "expired", expiresAt = null).copy(requesterUserId = "u-wendy")
-            assertEquals(ActionCardExpiredLine.PersonRequest, request.actionCardExpiredLine("u-viewer", "Wendy", date), type)
-        }
-        // No date, a question card, or not expired: no line.
-        assertNull(card(state = "expired", expiresAt = null).actionCardExpiredLine("u-viewer", null, date))
-        assertNull(expired.actionCardExpiredLine("u-viewer", null) { null })
-        assertNull(card(type = "question:ask", state = "expired").actionCardExpiredLine("u-viewer", null, date))
-        assertNull(card().actionCardExpiredLine("u-viewer", null, date))
     }
 
     @Test

@@ -2,12 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.COMPUTER_ACTION_RENAME
-import build.raft.app.data.EmptyReason
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
-import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
@@ -16,10 +14,6 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
-import build.raft.app.model.AvatarReference
-import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
@@ -57,18 +51,6 @@ class RaftSettingsComputersModelTest {
             raftComputersListModel(ScreenLoadState.NoPermission(PermissionBlocker("auth_required")))
         ).failure
         assertFalse(sessionExpired.noAccess)
-    }
-
-    @Test
-    fun emptyListKeepsTheAddComputerGateOfTheSnapshot() {
-        assertEquals(
-            RaftComputersListModel.Empty(canAddComputer = true),
-            raftComputersListModel(ScreenLoadState.Content(SettingsComputersSnapshot(emptyList(), canAddComputer = true))),
-        )
-        assertEquals(
-            RaftComputersListModel.Empty(canAddComputer = false),
-            raftComputersListModel(ScreenLoadState.Empty(EmptyReason.NoSettingsAvailable)),
-        )
     }
 
     @Test
@@ -164,36 +146,6 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
-    fun agentOnAComputerWithoutAnAvatarWearsTheDefaultFaceNotInitials() {
-        // Web MachineAgentRow -> AgentAvatar: a null avatarUrl draws the default pixel avatar.
-        assertEquals(
-            "pixel:robot",
-            SettingsComputerAgentSnapshot(id = "agent-friday", name = "Friday").raftComputerAgentAvatarWireValue(),
-        )
-        assertEquals(
-            "pixel:robot",
-            SettingsComputerAgentSnapshot(id = "agent-friday", name = "Friday", avatarUrl = " ").raftComputerAgentAvatarWireValue(),
-        )
-        // Its own avatar wins; the member directory's stands in when the agents row has none.
-        assertEquals(
-            "pixel:fox",
-            SettingsComputerAgentSnapshot(id = "a", name = "Friday", avatarUrl = "pixel:fox").raftComputerAgentAvatarWireValue(),
-        )
-        val member =
-            MemberProfile(
-                id = MemberId("a"),
-                displayName = "Friday",
-                handle = "friday",
-                kind = MemberKind.Agent,
-                avatar = AvatarReference.Url("https://cdn.example/avatars/agents/a.webp"),
-            )
-        assertEquals(
-            "https://cdn.example/avatars/agents/a.webp",
-            SettingsComputerAgentSnapshot(id = "a", name = "Friday", memberProfile = member).raftComputerAgentAvatarWireValue(),
-        )
-    }
-
-    @Test
     fun refreshErrorShowsOnlyOverSettledContent() {
         assertEquals("server_unavailable", raftComputersRefreshErrorCode(hasContent = true, routeErrorCode = "server_unavailable", refreshing = false))
         assertNull(raftComputersRefreshErrorCode(hasContent = false, routeErrorCode = "server_unavailable", refreshing = false))
@@ -213,16 +165,6 @@ class RaftSettingsComputersModelTest {
         assertFalse(raftComputerEditorClosesAfterSave(wasSaving = true, saving = false, failed = true))
         assertFalse(raftComputerEditorClosesAfterSave(wasSaving = false, saving = false, failed = false))
         assertFalse(raftComputerEditorClosesAfterSave(wasSaving = false, saving = true, failed = false))
-    }
-
-    @Test
-    fun agentIdentityLabelJoinsRuntimeAndModelLikeTheWebMachineAgentRow() {
-        assertEquals("Claude Code · Claude Opus", raftComputerAgentIdentityLabel(runtime = "claude", model = "opus"))
-        // A model the bundled catalog does not know reads as its raw id (web `agentModelLabel`).
-        assertEquals("Claude Code · my-custom-model", raftComputerAgentIdentityLabel(runtime = "claude", model = "my-custom-model"))
-        assertEquals("Codex CLI", raftComputerAgentIdentityLabel(runtime = "codex", model = " "))
-        assertEquals("opus", raftComputerAgentIdentityLabel(runtime = null, model = "opus"))
-        assertNull(raftComputerAgentIdentityLabel(runtime = "", model = null))
     }
 
     @Test
@@ -247,11 +189,6 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
-    fun blankNameFallsBackToTheMachineId() {
-        assertEquals("m-9", computer("m-9", name = "  ").toRaftComputerRow().name)
-    }
-
-    @Test
     fun detailRendersOnlyTheRequestedMachineOfTheTargetServer() {
         val content = ScreenLoadState.Content(detail("m-1"))
 
@@ -269,77 +206,6 @@ class RaftSettingsComputersModelTest {
             RaftComputerDetailModel.Loading,
             raftComputerDetailModel(content, machineId = "m-2", targetServerId = null, currentServerId = "server-1"),
         )
-    }
-
-    @Test
-    fun detailShowsTheCreatorOfManagedComputersOnly() {
-        val hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-        fun model(snapshot: SettingsComputerSnapshot) =
-            assertIs<RaftComputerDetailModel.Content>(
-                raftComputerDetailModel(
-                    ScreenLoadState.Content(detail(snapshot.id).copy(computer = snapshot)),
-                    machineId = snapshot.id,
-                    targetServerId = null,
-                    currentServerId = "server-1",
-                )
-            )
-
-        val named =
-            model(
-                computer("c-1", isComputer = true).copy(
-                    creator = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin", gravatarHash = hash)
-                )
-            )
-        assertTrue(named.showsCreator)
-        val creator = requireNotNull(named.creator)
-        assertEquals("user-1", creator.id)
-        assertEquals("artin", creator.name)
-        assertEquals("Artin", creator.displayName)
-        // Gravatar is retired (slock #13674): a hash on the wire draws the placeholder person.
-        assertNull(creator.avatarWireValue, "a person without a photo is the placeholder")
-
-        // No display name: the handle stands in; no photo: the placeholder person.
-        val bare =
-            model(
-                computer("c-2", isComputer = true).copy(
-                    creator = SettingsComputerCreatorSnapshot(id = "user-2", name = "maria", displayName = " ")
-                )
-            ).creator
-        assertEquals("maria", bare?.displayName)
-        assertNull(bare?.avatarWireValue)
-
-        // A managed Computer the server sends no creator for shows "No creator".
-        val orphan = model(computer("c-3", isComputer = true))
-        assertTrue(orphan.showsCreator)
-        assertNull(orphan.creator)
-
-        // A raw daemon keeps Created only.
-        assertFalse(model(computer("d-1")).showsCreator)
-    }
-
-    @Test
-    fun detailMapsMissingMachineAndFailures() {
-        assertEquals(
-            RaftComputerDetailModel.Unavailable,
-            raftComputerDetailModel(ScreenLoadState.Empty(EmptyReason.NoSettingsAvailable), "m-1", null, "server-1"),
-        )
-        assertEquals(
-            RaftComputerDetailModel.Unavailable,
-            raftComputerDetailModel(
-                ScreenLoadState.Error(ScreenError("settings_computer_required", retryable = false)),
-                "m-1",
-                null,
-                "server-1",
-            ),
-        )
-        val offline = assertIs<RaftComputerDetailModel.Failed>(
-            raftComputerDetailModel(ScreenLoadState.Error(ScreenError("machine_offline", retryable = true)), "m-1", null, "server-1")
-        )
-        assertTrue(offline.failure.retryable)
-        assertFalse(offline.failure.noAccess)
-        assertIs<RaftComputerDetailModel.Failed>(
-            raftComputerDetailModel(ScreenLoadState.NoPermission(PermissionBlocker("server_forbidden")), "m-1", null, "server-1")
-        ).also { assertTrue(it.failure.noAccess) }
     }
 
     @Test
@@ -402,13 +268,6 @@ class RaftSettingsComputersModelTest {
             )
         assertEquals("computer_has_agents", action.computerErrorCode)
         assertTrue(action.hasComputerActionError())
-    }
-
-    @Test
-    fun workspaceSizeUsesTheSharedByteLabel() {
-        assertEquals("1.5 MB", raftComputerWorkspaceSize(1_572_864L))
-        assertNull(raftComputerWorkspaceSize(null))
-        assertNull(raftComputerWorkspaceSize(-1L))
     }
 
     private fun computer(

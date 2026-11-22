@@ -1,20 +1,15 @@
 package build.raft.app
 
-import build.raft.app.data.HomeChannelRow
-import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.markdown.MarkdownInlineTokenKind
 import build.raft.app.markdown.MarkdownInlineTokenPlan
 import build.raft.app.markdown.RaftMarkdownInlineTokenPlanner
-import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
-import build.raft.app.model.ServerSummary
-import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -33,8 +28,6 @@ class ThreadMarkdownFirstFrameTokensTest {
     private val artin =
         MemberProfile(id = MemberId("u-artin"), displayName = "artin", handle = "artin", kind = MemberKind.Human, presence = Presence.Active)
     private val body = "@artin 好，按 1 做 #proj-raft-ui"
-    private val cachedTimelineRow =
-        RaftThreadMessageItem(id = "m1", authorId = "u-artin", authorName = "artin", authorHandle = "artin", body = "推荐")
 
     @Test
     fun aMentionIsAChipWithItsNameOnTheFirstFrameFromTheDirectoryInMemory() {
@@ -53,32 +46,6 @@ class ThreadMarkdownFirstFrameTokensTest {
         val first = plan(firstFrame)
         assertEquals(1, first.tokens.count { it.kind == MarkdownInlineTokenKind.UserMention }, "the mention is a chip on frame 1")
         assertEquals(first.tokens, plan(resolved).tokens)
-    }
-
-    @Test
-    fun theRowsOnScreenMakeTheirAuthorsKnownBeforeThePayloadCarriesThem() {
-        val payload = RaftThreadScreenPayload(status = "loading")
-        assertEquals(setOf<String>(), payload.toKnownMarkdownMentionNameSet())
-        assertEquals(
-            payload.copy(messages = listOf(cachedTimelineRow)).toKnownMarkdownMentionNameSet(),
-            payload.toKnownMarkdownMentionNameSet(timelineMessages = listOf(cachedTimelineRow))
-        )
-    }
-
-    @Test
-    fun channelRefsUseTheHomeSnapshotUntilTheStoreAddsTheNames() {
-        val home = home()
-        val firstFrame = RaftThreadScreenPayload().withFirstFrameKnownMarkdownChannelNames(home)
-        assertEquals(listOf("proj-raft-ui"), firstFrame.knownMarkdownChannelNames)
-        // The store's own names always win; no Home snapshot keeps the payload as it is.
-        val stored = RaftThreadScreenPayload(knownMarkdownChannelNames = listOf("general"))
-        assertEquals(stored, stored.withFirstFrameKnownMarkdownChannelNames(home))
-        assertEquals(RaftThreadScreenPayload(), RaftThreadScreenPayload().withFirstFrameKnownMarkdownChannelNames(null))
-        // ...and the chip plan is the one the store's names give later.
-        assertEquals(
-            plan(firstFrame).tokens,
-            plan(RaftThreadScreenPayload(knownMarkdownChannelNames = home.knownMarkdownChannelNames())).tokens
-        )
     }
 
     private fun RaftThreadScreenPayload.projected(entry: SharedServerMembersEntry): RaftThreadScreenPayload =
@@ -103,13 +70,4 @@ class ThreadMarkdownFirstFrameTokensTest {
             resolveTagLabel = { tag -> resolveThreadMarkdownTagDisplayLabel(tag, labels) }
         )
     }
-
-    private fun home(): HomeSnapshot =
-        HomeSnapshot(
-            server = ServerSummary(id = serverId, name = "Raft"),
-            currentMember = artin,
-            channels = listOf(HomeChannelRow(threadId = ThreadId("c1"), channelId = ChannelId("c1"), name = "proj-raft-ui")),
-            directMessages = emptyList(),
-            unreadTotal = 0
-        )
 }

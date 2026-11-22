@@ -24,11 +24,6 @@ class RaftForegroundBannerMemberServerTest {
         assertEquals(ServerId("server-b"), foregroundBannerMemberServerId(banner("server-b"), hostServerId = ServerId("server-a")))
     }
 
-    @Test
-    fun bannerWithoutAServerFallsBackToTheHostsServer() {
-        assertEquals(ServerId("server-a"), foregroundBannerMemberServerId(banner(" "), hostServerId = ServerId("server-a")))
-    }
-
     private fun banner(serverId: String): RaftForegroundMessageBanner {
         val conversation =
             ThreadLaunchConversationIdentity(

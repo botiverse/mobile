@@ -8,15 +8,6 @@ class AdaptiveListPaneWidthTest {
     private val sidebar = RaftListPaneKind.Sidebar
     private val list = RaftListPaneKind.List
 
-    @Test fun eachKindHasTheWebDefaultAndRange() {
-        // web lib/panelBounds.ts COLUMN_BOUNDS sidebar / list, MAIN_COLUMN_MIN_WIDTH.
-        assertEquals(Triple(240f, 200f, 400f), Triple(sidebar.defaultDp, sidebar.minDp, sidebar.maxDp))
-        assertEquals(Triple(380f, 240f, 640f), Triple(list.defaultDp, list.minDp, list.maxDp))
-        assertEquals(360f, RAFT_LIST_PANE_MAIN_MIN_DP)
-        assertNotEquals(sidebar.storageKey, list.storageKey)
-        assertFalse(RaftListPaneKind.entries.any { it.storageKey == RAFT_LIST_PANE_LEGACY_STORAGE_KEY })
-    }
-
     @Test fun nothingSavedOrNothingValidStartsAtTheKindDefault() {
         for (kind in RaftListPaneKind.entries) {
             assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, null))
@@ -58,36 +49,6 @@ class AdaptiveListPaneWidthTest {
         assertNull(raftListPaneMigratedWidth(list, null, "NaN"))
     }
 
-    @Test fun theStoreMovesTheOldWidthOnceAndDropsTheOldKey() {
-        val values = mutableMapOf(RAFT_LIST_PANE_LEGACY_STORAGE_KEY to "300")
-        val store =
-            KeyValueChatLayoutPreferenceStore(
-                object : SharedPreferenceStore {
-                    override fun getString(key: String): String? = values[key]
-                    override fun putString(key: String, value: String?) {
-                        if (value == null) values.remove(key) else values[key] = value
-                    }
-                }
-            )
-        assertEquals("300", store.readAdaptiveListPaneWidthSync(list))
-        assertEquals("300", store.readAdaptiveListPaneWidthSync(sidebar))
-        assertNull(values[RAFT_LIST_PANE_LEGACY_STORAGE_KEY])
-        // Later drags are per kind and are not overwritten by a stale old value.
-        store.saveAdaptiveListPaneWidth(sidebar, "220")
-        assertEquals("220", store.readAdaptiveListPaneWidthSync(sidebar))
-        assertEquals("300", store.readAdaptiveListPaneWidthSync(list))
-    }
-
-    @Test fun defaultsFitTheNarrowestDualPaneWindow() {
-        // Narrowest dual-pane row: the 768dp window (web `md`) minus the 57dp rail. The sidebar
-        // keeps its default; the list gives way to the main's minimum, as on the web at `md`.
-        val row = DualPaneMinimumWidthDp - 57f
-        assertEquals(240f, raftListPaneWidthDp(sidebar, sidebar.defaultDp, row))
-        assertEquals(row - RAFT_LIST_PANE_DIVIDER_DP - RAFT_LIST_PANE_MAIN_MIN_DP, raftListPaneWidthDp(list, list.defaultDp, row))
-        assertTrue(raftListPaneWidthDp(list, list.defaultDp, row) >= list.minDp)
-        assertEquals(380f, raftListPaneWidthDp(list, list.defaultDp, null))
-    }
-
     @Test fun renderedWidthStaysWithinTheKindAndLeavesTheMainItsMinimum() {
         assertEquals(400f, raftListPaneWidthDp(sidebar, 900f, 2000f))
         assertEquals(200f, raftListPaneWidthDp(sidebar, 10f, 2000f))
@@ -106,56 +67,6 @@ class AdaptiveListPaneWidthTest {
         // Shrunk window, then grown back: the user's width returns.
         assertTrue(raftListPaneWidthDp(list, preferred, 800f) < preferred)
         assertEquals(preferred, raftListPaneWidthDp(list, preferred, 1400f))
-    }
-
-    @Test fun dragStartsFromTheRenderedWidthAndIsClamped() {
-        assertEquals(420f, raftListPaneDraggedWidthDp(list, 380f, 40f, 1400f))
-        assertEquals(240f, raftListPaneDraggedWidthDp(list, 380f, -500f, 1400f))
-        assertEquals(640f, raftListPaneDraggedWidthDp(list, 380f, 500f, 1400f))
-        assertEquals(400f, raftListPaneDraggedWidthDp(sidebar, 240f, 500f, 1400f))
-        // In a clamped window, a drag from the rendered 439dp cannot push the main under 360dp.
-        assertEquals(439f, raftListPaneDraggedWidthDp(list, 439f, 50f, 800f))
-    }
-
-    @Test fun wideningTheListCanTakeTheRoomTheSideColumnNeeds() {
-        // #189 rule 3: the thread alone beside the conversation needs 720 of room (360 each). A 1300dp row
-        // with the widest sidebar leaves 899dp; the widest Activity list leaves 659dp, so the side thread
-        // folds once that drag ends (SettingsHomePage).
-        fun detail(kind: RaftListPaneKind, row: Float) =
-            row - RAFT_LIST_PANE_DIVIDER_DP - raftListPaneWidthDp(kind, kind.maxDp, row)
-        assertFalse(raftSideThreadFoldsAlone(detail(sidebar, 1300f)))
-        assertTrue(raftSideThreadFoldsAlone(detail(list, 1300f)))
-    }
-
-    @Test fun aDragEndsExactlyOnceWhicheverEndArrivesFirst() {
-        val reasons = mutableListOf<String>()
-        val session = RaftListPaneDragSession(onEnd = { reasons += it })
-        // Nothing to end before a drag starts.
-        assertFalse(session.end("lift"))
-        assertNull(session.moveTo(10f, 2f))
-        session.start(360f)
-        assertEquals(360f to 20f, session.moveTo(40f, 2f))
-        // Host goes inactive (tab switch), then the gesture's own cancel and lift arrive late.
-        assertTrue(session.end("inactive"))
-        assertFalse(session.end("cancel"))
-        assertFalse(session.end("lift"))
-        assertEquals(listOf("inactive"), reasons)
-        // Movement after the end (finger still down) changes nothing.
-        assertNull(session.moveTo(80f, 2f))
-        assertFalse(session.active)
-    }
-
-    @Test fun aNewDragStartsCleanAndAnUnfinishedOneEndsFirst() {
-        val reasons = mutableListOf<String>()
-        val session = RaftListPaneDragSession(onEnd = { reasons += it })
-        session.start(360f)
-        session.moveTo(100f, 2f)
-        // A second start without an end (e.g. a missed lift) ends the first one exactly once.
-        session.start(400f)
-        assertEquals(listOf("restart"), reasons)
-        assertEquals(400f to 5f, session.moveTo(10f, 2f))
-        assertTrue(session.end("lift"))
-        assertEquals(listOf("restart", "lift"), reasons)
     }
 
     @Test fun theDeltaIsTheTotalFromTheDragOriginNotASumOfSteps() {

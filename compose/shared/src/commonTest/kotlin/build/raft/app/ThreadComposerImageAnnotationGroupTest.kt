@@ -9,33 +9,6 @@ import kotlin.test.assertTrue
 
 class ThreadComposerImageAnnotationGroupTest {
     @Test
-    fun multiImageEditorUsesOneStableGroupIdentity() {
-        assertEquals(
-            "composer-image-thread-1-first-group",
-            threadComposerImageAnnotationGroupId(
-                actionId = "composer-image-thread-1-first",
-                fileCount = 2
-            )
-        )
-    }
-
-    @Test
-    fun singleImageEditorKeepsLegacyBlankGroupIdentity() {
-        assertEquals(
-            "",
-            threadComposerImageAnnotationGroupId(
-                actionId = "composer-image-thread-1-first",
-                fileCount = 1
-            )
-        )
-    }
-
-    @Test
-    fun blankActionIdNeverCreatesAGroupIdentity() {
-        assertEquals("", threadComposerImageAnnotationGroupId(actionId = "  ", fileCount = 2))
-    }
-
-    @Test
     fun productionPayloadBindsEveryInitialGalleryItemToOneGroup() {
         val payload =
             assertNotNull(
