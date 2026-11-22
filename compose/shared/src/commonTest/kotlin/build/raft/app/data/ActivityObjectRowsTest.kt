@@ -262,19 +262,18 @@ class ActivityObjectRowsTest {
         val snapB =
             snapshot(parsedB.items, totalCount = 0, totalUnreadCount = 0)
                 .copy(server = build.raft.app.model.ServerSummary(ServerId("server-b"), "Server B"), objectCounts = parsedB.objectCounts)
-        val authStore =
-            InMemoryRaftAuthSessionStore(
-                StoredAuthSession(
-                    user = StoredAuthUser(id = "user-1", email = "user-1@slock.local", displayName = "User One"),
-                    accessToken = "access",
-                    refreshToken = "refresh",
-                    selectedServerId = "server-a",
-                    servers = listOf(
-                        StoredAuthServer(id = "server-a", name = "Server A"),
-                        StoredAuthServer(id = "server-b", name = "Server B"),
-                    ),
-                )
+        val initialSession =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "user-1@slock.local", displayName = "User One"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-a",
+                servers = listOf(
+                    StoredAuthServer(id = "server-a", name = "Server A"),
+                    StoredAuthServer(id = "server-b", name = "Server B"),
+                ),
             )
+        val authStore = InMemoryRaftAuthSessionStore(initialSession)
         val repository = FakeObjectsRepository()
         val store =
             activityStore(
@@ -289,6 +288,7 @@ class ActivityObjectRowsTest {
         val objectA = store.state.value.items.first { it.kind == InboxItemKind.Object }
 
         // User switches to Server B while Server A's object row exit is still animating.
+        authStore.saveSession(initialSession.copy(selectedServerId = "server-b"))
         store.dispatch(SharedActivityIntent.ServerSelected("server-b"))
         runCurrent()
         assertEquals("server-b", store.state.value.ownerServerId)
