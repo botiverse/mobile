@@ -259,7 +259,9 @@ internal class MembersAgentMigrationBinding(
     val onOpenBilling: () -> Unit,
     val onAgentPlacementChanged: () -> Unit,
     /** The agents on each computer, for a target's details (its avatars open their profiles). */
-    val computerAgents: AgentMigrationComputerAgents? = null
+    val computerAgents: AgentMigrationComputerAgents? = null,
+    /** The server's migration log, opened on this agent; null for anyone but owners and admins. */
+    val onOpenLog: (() -> Unit)? = null
 )
 
 @Composable
@@ -1438,7 +1440,8 @@ internal fun MembersDetailContent(
                                                     liveTime?.current
                                                     defaultNowMillis()
                                                 },
-                                                computerAgents = migrationBinding.computerAgents
+                                                computerAgents = migrationBinding.computerAgents,
+                                                onOpenMigrationLog = migrationBinding.onOpenLog
                                             ),
                                         // The list's own item spacing is the web section's `py-4` bottom.
                                         bottomPadding = 0.dp

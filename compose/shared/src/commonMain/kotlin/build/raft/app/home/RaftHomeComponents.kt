@@ -5497,6 +5497,8 @@ private fun HomeNativeNavBarHead(
             // The Compose head's bell (its count is the bar button's badge).
             icon = RaftLucideIconName.Bell,
         )
+    val leading = homeNativeNavBarServerLeading(serverIdentity)
+    var nativeTitleImage by remember(leading) { mutableStateOf<RaftNativeTabBarAvatar?>(null) }
     val drawn =
         raftNativeNavBarPublish(
             title = serverName,
@@ -5504,15 +5506,18 @@ private fun HomeNativeNavBarHead(
             actions = listOf(bell),
             extras =
                 RaftNativeNavBarTitleExtras(
-                    leading = homeNativeNavBarServerLeading(serverIdentity),
+                    leading = leading,
                     refreshing = refreshing,
                     chevron = if (serverSwitcherOpen) RaftNativeNavBarTitleChevron.Up else RaftNativeNavBarTitleChevron.Down,
                 ),
             onTitleClick = onServerSwitcherToggle,
+            titleImage = nativeTitleImage,
         )
     val bridge = LocalRaftNativeNavBar.current
     if (drawn && bridge != null) {
-        RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea)
+        RaftNativeNavBarHeadSpacer(bridge = bridge, modifier = Modifier.fillMaxWidth(), liveTop = topSafeArea) {
+            RaftNativeNavBarTitleImageCapture(leading) { nativeTitleImage = it }
+        }
     }
 }
 
@@ -5521,7 +5526,10 @@ internal fun homeNativeNavBarServerLeading(server: RaftServerSwitcherItem): Raft
     val presentation = server.toServerSwitcherAvatarPresentation()
     return RaftNativeNavBarTitleLeading.Server(
         label = presentation.fallbackLabel,
-        imageUrl = presentation.avatarWireValue?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
+        imageUrl =
+            presentation.avatarWireValue?.takeIf {
+                it.startsWith("https://") || it.startsWith("http://") || it.isRelativeAppAvatarPath()
+            },
     )
 }
 
@@ -7185,7 +7193,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem, size: Dp =
                     cacheServerId = server.id,
                     serverDiagnosticsId = server.id,
                     fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel, size) },
-                    placeholder = { ServerAvatarFallbackLabel(presentation.fallbackLabel, size) }
+                    placeholder = {}
                 )
             }
         }
@@ -8115,14 +8123,25 @@ private fun HomeSidebarSortRow(
                     val memberId = item.presenceMemberId
                     val isAgent = item.peerType.equals("agent", ignoreCase = true)
                     val isAppBot = rememberRaftMemberAppBot(memberId?.takeIf { isAgent }) != null
+                    val dmAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
+                    val dmAvatarPending =
+                        isAgent &&
+                            dmAvatarWireValue.isNullOrBlank() &&
+                            rememberRaftMemberAvatarPending(
+                                memberAvatarResolver = memberAvatarResolver,
+                                kind = MemberKind.Agent,
+                                memberId = memberId,
+                                jointSurface = false,
+                            )
                     DirectMessageAvatar(
                         agentMemberId = raftHomeDmPresenceAgentId(memberId, isAgent = isAgent, isAppBot = isAppBot),
                         agentStatusResolver = agentStatusResolver,
-                        avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId),
+                        avatarWireValue = dmAvatarWireValue,
                         avatarLabel = item.name.ifBlank { item.avatarLabel },
                         cacheSubject = raftMemberAvatarCacheSubject(item.peerType.homeDmPeerMemberKindOrNull(), memberId),
                         cacheServerId = cacheServerId,
-                        kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human
+                        kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human,
+                        avatarPending = dmAvatarPending,
                     )
                 } else {
                     HomeSidebarChannelGlyph(item.homeChannelSymbol())
@@ -8167,6 +8186,15 @@ internal fun HomeSidebarDirectMessageRow(
             HomeConversationBadgeInput(unreadCount = unreadCount, muted = muted, markedUnread = markedUnread)
         )
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
+    val avatarPending =
+        isAgent &&
+            avatarWireValue.isNullOrBlank() &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = memberAvatarResolver,
+                kind = MemberKind.Agent,
+                memberId = memberId,
+                jointSurface = false,
+            )
     // botiverse/slock #11273 (web `DmRow` / `AgentDmRow`): an App Bot's name carries the Bot
     // badge; it shows no status pixel and no runtime or activity meta.
     val appBot = rememberRaftMemberAppBot(memberId?.takeIf { isAgent })
@@ -8220,7 +8248,8 @@ internal fun HomeSidebarDirectMessageRow(
                     avatarLabel = name.ifBlank { avatarLabel },
                     cacheSubject = raftMemberAvatarCacheSubject(peerType.homeDmPeerMemberKindOrNull(), memberId),
                     cacheServerId = cacheServerId,
-                    kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human
+                    kind = if (isAgent) RaftAvatarKind.Agent else RaftAvatarKind.Human,
+                    avatarPending = avatarPending,
                 )
             },
             trailing =
@@ -8294,7 +8323,8 @@ private fun DirectMessageAvatar(
     avatarLabel: String,
     cacheSubject: RaftAvatarCacheSubject.Member?,
     cacheServerId: String?,
-    kind: RaftAvatarKind
+    kind: RaftAvatarKind,
+    avatarPending: Boolean = false,
 ) {
     val status = rememberDirectMessageAgentStatus(agentStatusResolver, agentMemberId)
     val holdingReadiness = effectiveHoldingReadiness(status)
@@ -8319,6 +8349,7 @@ private fun DirectMessageAvatar(
             label = avatarLabel,
             cacheSubject = cacheSubject,
             cacheServerId = cacheServerId,
+            avatarPending = avatarPending,
         )
     }
 }
@@ -8469,6 +8500,10 @@ internal fun RaftAppAvatar(
     // The sticker fill under a photo or the fallback: the kind's (raft-ui `type`). Only the
     // design-system specimens ([build.raft.app.components.RaftUiAvatar]) set it.
     fallbackFill: Color = kind.fill,
+    // #proj-mobile:#290: true while an agent's real avatar has not yet been confirmed absent by
+    // the server roster or joint-actor directory; keeps a neutral frame instead of flashing the
+    // default pixel robot.
+    avatarPending: Boolean = false,
 ) {
     // #192 trace scope extension: per-phase attribution for avatar rendering. The
     // avatar is rendered for every channel row in Home + every participant in
@@ -8476,7 +8511,11 @@ internal fun RaftAppAvatar(
     // it's the identify / http-fetch / render / fallback-default that's hot.
     // The kind's rule ([raftAvatarFaceWireValue]): a retired Gravatar value is none; an agent
     // without a face wears the default robot; a person shows only an avatar Raft stores.
-    val displayAvatarWireValue = remember(kind, avatarWireValue) { raftAvatarFaceWireValue(kind, avatarWireValue) }
+    val pending = avatarPending && avatarWireValue.isNullOrBlank()
+    val displayAvatarWireValue =
+        remember(kind, avatarWireValue, pending) {
+            if (pending) null else raftAvatarFaceWireValue(kind, avatarWireValue)
+        }
     val httpAvatarSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.takeIf {
             it.startsWith("http://") || it.startsWith("https://") || it.isRelativeAppAvatarPath()
@@ -8495,6 +8534,7 @@ internal fun RaftAppAvatar(
     val humanPixelPicture = remember(displayAvatarWireValue) { raftHumanPixelAvatarPicture(displayAvatarWireValue) }
     val fill = fallbackFill
     when {
+        pending -> RaftAppAvatarFrame(modifier, avatarSize, borderWidth, fill) {}
         humanPixelPicture != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
             RaftAppAvatarFrame(modifier, avatarSize, borderWidth, humanPixelPicture.background) {
                 RaftNativeHumanPixelAvatar(humanPixelPicture)
