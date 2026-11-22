@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">Esta migración ya no está esperando tu confirmación. Actualiza la página para ver en qué estado está.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">El MEMORY.md del agente no se puede llevar a la nube: es demasiado grande, no es texto sin formato o la nube lo rechazó. Pide al agente que recorte MEMORY.md y lo deje en texto sin formato, e inténtalo de nuevo.</string>
     <string name="agent_migration_error_not_cancelable">El agente ya se movió a la nube, así que esta migración ya no se puede cancelar.</string>
+    <string name="agent_migration_error_superseded">Se inició una migración más reciente después de esta. Actualiza el estado de la migración.</string>
+    <string name="agent_migration_error_not_dismissible">Solo se puede descartar una migración fallida. Actualiza el estado de la migración.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft no pudo descartar esta migración. Actualiza el estado de la migración e inténtalo de nuevo.</string>
+    <string name="agent_migration_dismiss_failed">Descartar</string>
     <string name="agent_migration_error_already_in_progress">Este agente ya tiene una migración en curso. Espera a que termine antes de volver a intentarlo.</string>
     <string name="agent_migration_error_pro_plan_required">La migración de agentes requiere el plan Pro. Mejora este servidor a Pro antes de volver a intentarlo.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">La migración de agentes requiere el plan Pro.</string>

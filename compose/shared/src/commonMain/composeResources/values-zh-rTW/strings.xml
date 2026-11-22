@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">這次遷移已不再等待你確認。請重新整理以查看目前狀態。</string>
     <string name="agent_migration_error_hosted_memory_unimportable">Agent 的 MEMORY.md 無法遷移到雲端：檔案太大、不是純文字，或遭雲端拒絕。請讓 Agent 將 MEMORY.md 精簡為純文字，然後再試一次。</string>
     <string name="agent_migration_error_not_cancelable">Agent 已遷移到雲端，因此無法再取消這次遷移。</string>
+    <string name="agent_migration_error_superseded">這次遷移之後又發起了新的遷移。請重新整理遷移狀態。</string>
+    <string name="agent_migration_error_not_dismissible">只有失敗的遷移才能關閉。請重新整理遷移狀態。</string>
+    <string name="agent_migration_error_dismiss_failed">Raft 無法關閉這筆遷移紀錄。請重新整理遷移狀態，然後再試一次。</string>
+    <string name="agent_migration_dismiss_failed">關閉</string>
     <string name="agent_migration_error_already_in_progress">這個 Agent 已有正在進行的遷移。請等它完成後再試。</string>
     <string name="agent_migration_error_pro_plan_required">Agent 遷移需要 Pro 方案。請先將此伺服器升級至 Pro，然後再試一次。</string>
     <string name="agent_migration_error_pro_plan_required_neutral">Agent 遷移需要 Pro 方案。</string>

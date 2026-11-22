@@ -622,6 +622,9 @@ private object MembersVisualFixtureMigrationDataSource : AgentMigrationDataSourc
     override suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> =
         DataResult.Error(refused)
 
+    override suspend fun dismissMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> =
+        DataResult.Content(Unit)
+
     override suspend fun confirmHostedMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> =
         DataResult.Error(refused)
 

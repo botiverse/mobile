@@ -4328,6 +4328,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">This migration is not waiting for your confirmation any more. Refresh to see where it stands.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">The agent's MEMORY.md can't be brought to the cloud: it is too large, is not plain text, or the cloud refused it. Ask the agent to trim MEMORY.md to plain text, then try again.</string>
     <string name="agent_migration_error_not_cancelable">The agent already moved to the cloud, so this migration can no longer be canceled.</string>
+    <string name="agent_migration_error_superseded">A newer migration started after this one. Refresh the migration status.</string>
+    <string name="agent_migration_error_not_dismissible">Only a failed migration can be dismissed. Refresh the migration status.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft could not dismiss this migration. Refresh the migration status and try again.</string>
+    <string name="agent_migration_dismiss_failed">Dismiss</string>
     <string name="agent_migration_error_already_in_progress">This agent already has a migration in progress. Wait for it to finish before trying again.</string>
     <string name="agent_migration_error_pro_plan_required">Agent migration requires the Pro plan. Upgrade this Server to Pro before trying again.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">Agent migration requires the Pro plan.</string>
