@@ -773,11 +773,8 @@ struct iOSApp: App {
         // Hands was installed without launch uploads: they run once every signed-in server
         // answered privacy mode off (RAFT_PRIVACY_MODE), else wait for the next launch.
         RaftIosHandsLaunchUploads.shared.start { RaftIosRunHandsLaunchUploads() }
-        // task #436: register the SVG coder with SDWebImage, which the durable avatar store
-        // (RaftIosAvatarCacheProvider) decodes committed avatar bytes with; SVG avatars are
-        // otherwise rejected (UIImage has no native SVG support).
+        // task #436: register the SVG coder with SDWebImage for any remaining native SVG decode.
         SDImageCodersManager.shared.addCoder(SDImageSVGCoder.shared)
-        RaftIosAvatarCacheHost.shared.install()
         RaftIosAppScopeMMKV.install()
         // WebM / MKV / ... attachments play in-app through MobileVLCKit (AVPlayer cannot demux them);
         // registered before the first page decides which attachments are previewable videos.
@@ -798,13 +795,23 @@ struct iOSApp: App {
         RaftIosPushHost.install()
         RaftIosSharedLogBridge.install()
         // Every page renders through Compose Multiplatform: install the :shared page registry
-        // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
-        // before the first page.
-        // Kotlin unhandled exceptions are recorded into diagnostics before termination.
+        // (RaftPageRegistry) and crash diagnostics before the first page (#proj-mobile:#294:
+        // slock-avatar-render-v1 is retired; Coil's disk cache owns avatar caching).
         RaftIosHostHooks.shared.install(
-            managedImages: RaftIosAvatarCacheHost.shared,
+            managedImages: nil,
             unhandledExceptions: RaftIosUnhandledExceptionRecorder()
         )
+        // #proj-mobile:#294: one-time off-main-thread cleanup of the retired durable avatar directory
+        // (Application Support/Raft/AvatarDurableV1) left on disk by earlier builds.
+        DispatchQueue.global(qos: .utility).async {
+            guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+                return
+            }
+            let legacyAvatarDir = support.appendingPathComponent("Raft/AvatarDurableV1", isDirectory: true)
+            if FileManager.default.fileExists(atPath: legacyAvatarDir.path) {
+                try? FileManager.default.removeItem(at: legacyAvatarDir)
+            }
+        }
         RaftIosDiagnosticsRecord("info", "SlockIosDiagnostics", "ios_diagnostics_initialized backend=jsonl")
         #if RAFT_QA_SESSION_BOOTSTRAP
         // Debug Simulator QA harness only: start consuming the launch's QA session envelope before

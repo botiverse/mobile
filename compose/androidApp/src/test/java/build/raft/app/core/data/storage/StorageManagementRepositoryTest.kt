@@ -1,6 +1,7 @@
 package build.raft.app.core.data.storage
 
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
+import build.raft.app.shared.cleanupLegacyAndroidAvatarCacheDir
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -109,6 +110,24 @@ class StorageManagementRepositoryTest {
             assertEquals(null, failedFencedClear)
             assertTrue(attachment.exists())
             assertEquals(12L, repository.snapshot().attachmentDownloadBytes)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun cleanupLegacyAndroidAvatarCacheDirDeletesOnlyRetiredAvatarDirectory() {
+        val root = Files.createTempDirectory("slock-legacy-avatar-cleanup-test").toFile()
+        try {
+            val legacyAvatarDir = root.resolve("image_cache").resolve("avatar_durable_v1").also { it.mkdirs() }
+            legacyAvatarDir.resolve("entry.bin").writeBytesOfSize(16)
+            val siblingCache = root.resolve("raft_image_cache").also { it.mkdirs() }
+            val coilEntry = siblingCache.resolve("coil.bin").writeBytesOfSize(8)
+
+            assertTrue(cleanupLegacyAndroidAvatarCacheDir(root))
+            assertFalse(legacyAvatarDir.exists())
+            assertTrue(coilEntry.exists())
+            assertFalse(cleanupLegacyAndroidAvatarCacheDir(root))
         } finally {
             root.deleteRecursively()
         }

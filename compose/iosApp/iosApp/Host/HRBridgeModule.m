@@ -4084,12 +4084,11 @@ NSString *const RaftBridgeCallbackKey = @"callback";
 }
 
 - (void)avatarCacheCapability:(NSDictionary *)args {
-    NSDictionary *params = RaftBridgeParams(args);
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) return;
-    [[RaftIosAvatarCacheHost shared] handleLegacyCommand:params completion:^(NSDictionary<NSString *, id> *result) {
-        callback(result);
-    }];
+    // #proj-mobile:#294: slock-avatar-render-v1 is retired; never lazily construct
+    // RaftIosAvatarCacheHost.shared (doing so would recreate Application Support/Raft/AvatarDurableV1).
+    callback(@{@"status" : @"unsupported"});
 }
 
 - (void)settingsCapability:(NSDictionary *)args {
@@ -4989,10 +4988,10 @@ static void RaftStorageRemoveStaleFeedbackDiagnosticsArchives(void) {
 static RaftStorageUsage RaftStorageMeasure(void) {
     RaftStorageUsage usage;
     usage.database = RaftStorageTreeBytes(RaftStorageDatabaseDirectoryPath());
-    // Avatars are counted here but cleared only by the shared avatar runtime (store.clearAll),
-    // which SharedSettingsDataSource.clearStorage runs before this host's imageCache clear.
-    usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize] +
-        RaftStorageTreeBytes(RaftIosAvatarCacheHost.shared.rootPath);
+    // #proj-mobile:#294: slock-avatar-render-v1 is retired (Coil owns avatar disk caching).
+    // Never touch RaftIosAvatarCacheHost.shared here, as its lazy init would recreate
+    // Application Support/Raft/AvatarDurableV1 on disk.
+    usage.imageCache = (unsigned long long)[SDImageCache.sharedImageCache totalDiskSize];
     usage.attachmentDownloads = RaftStorageTreeBytes(RaftAttachmentStoreRoot()) +
         RaftStorageTreeBytes(RaftAttachmentExportRootPath());
     // Picked attachments and camera captures belong to composer drafts (retired through

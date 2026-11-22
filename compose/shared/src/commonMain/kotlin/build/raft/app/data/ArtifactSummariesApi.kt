@@ -362,26 +362,47 @@ internal fun encodeArtifactSummariesRequest(targets: List<ArtifactLinkTarget>): 
  * whole can't be read (a failed request). A summary this client can't read answers [Unavailable]:
  * the link stays a plain link.
  */
-fun parseArtifactSummariesAnswer(bodyText: String?): Map<String, ArtifactSummaryAnswer>? {
+fun parseArtifactSummariesAnswer(bodyText: String?): Map<String, ArtifactSummaryAnswer>? =
+    parseArtifactSummariesAnswerWithRawEntries(bodyText)?.mapValues { (_, pair) -> pair.first }
+
+/**
+ * Same as [parseArtifactSummariesAnswer], also returning each `Ok`/`Deleted` entry's raw JSON
+ * object so [SharedArtifactSummaryStore] can persist summaries on disk for stale-while-revalidate.
+ */
+internal fun parseArtifactSummariesAnswerWithRawEntries(
+    bodyText: String?,
+): Map<String, Pair<ArtifactSummaryAnswer, String?>>? {
     val root = bodyText?.let { runCatching { artifactSummariesJson.parseToJsonElement(it) }.getOrNull() } as? JsonObject ?: return null
     if ((root["kind"] as? JsonPrimitive)?.content != "artifact") return null
     val summaries = root["summaries"] as? kotlinx.serialization.json.JsonArray ?: return null
-    val answers = LinkedHashMap<String, ArtifactSummaryAnswer>()
+    val answers = LinkedHashMap<String, Pair<ArtifactSummaryAnswer, String?>>()
     for (element in summaries) {
         val entry = element as? JsonObject ?: continue
         val ref = entry["ref"]?.let { runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactObjectRefWireDto.serializer(), it) }.getOrNull() } ?: continue
         val key = ArtifactLinkTarget(ref.id, ref.version).key
-        val ok = (entry["ok"] as? JsonPrimitive)?.booleanOrNull
-        answers[key] =
-            when {
-                ok == true -> entry["summary"]?.toArtifactSummaryOrNull()?.let(ArtifactSummaryAnswer::Ok) ?: ArtifactSummaryAnswer.Unavailable
-                (entry["reason"] as? JsonPrimitive)?.content == "deleted" ->
-                    artifactDeletedShownOrNull(entry["deleted"])?.let(ArtifactSummaryAnswer::Deleted) ?: ArtifactSummaryAnswer.Unavailable
-                // Any other reason, including one this client doesn't know.
-                else -> ArtifactSummaryAnswer.Unavailable
-            }
+        val answer = parseSingleArtifactSummaryJsonObject(entry)
+        val raw = entry.toString().takeIf { answer is ArtifactSummaryAnswer.Ok || answer is ArtifactSummaryAnswer.Deleted }
+        answers[key] = answer to raw
     }
     return answers
+}
+
+internal fun parsePersistedArtifactSummaryEntry(rawEntryJson: String): ArtifactSummaryAnswer? {
+    val entry = runCatching { artifactSummariesJson.parseToJsonElement(rawEntryJson) }.getOrNull() as? JsonObject ?: return null
+    return parseSingleArtifactSummaryJsonObject(entry).takeIf {
+        it is ArtifactSummaryAnswer.Ok || it is ArtifactSummaryAnswer.Deleted
+    }
+}
+
+private fun parseSingleArtifactSummaryJsonObject(entry: JsonObject): ArtifactSummaryAnswer {
+    val ok = (entry["ok"] as? JsonPrimitive)?.booleanOrNull
+    return when {
+        ok == true -> entry["summary"]?.toArtifactSummaryOrNull()?.let(ArtifactSummaryAnswer::Ok) ?: ArtifactSummaryAnswer.Unavailable
+        (entry["reason"] as? JsonPrimitive)?.content == "deleted" ->
+            artifactDeletedShownOrNull(entry["deleted"])?.let(ArtifactSummaryAnswer::Deleted) ?: ArtifactSummaryAnswer.Unavailable
+        // Any other reason, including one this client doesn't know.
+        else -> ArtifactSummaryAnswer.Unavailable
+    }
 }
 
 /**
