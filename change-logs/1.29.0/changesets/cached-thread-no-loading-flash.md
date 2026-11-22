@@ -2,7 +2,7 @@
 type: fixed
 area: thread
 platforms: [android, ios, desktop]
-pull_request: 0
+pull_request: 5308
 rollout: full
 ---
 
