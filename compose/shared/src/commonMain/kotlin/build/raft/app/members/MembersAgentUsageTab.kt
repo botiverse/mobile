@@ -936,7 +936,7 @@ private fun AgentUsageUnsupportedEmptyState(
 
 /** The usage tab's [RaftEmptyState] (web `EmptyState`). */
 @Composable
-private fun AgentUsageEmptyState(
+internal fun AgentUsageEmptyState(
     title: String,
     action: (@Composable () -> Unit)?,
     modifier: Modifier = Modifier,

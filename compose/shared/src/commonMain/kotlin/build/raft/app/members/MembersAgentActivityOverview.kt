@@ -1194,7 +1194,7 @@ private fun MembersAgentActivityAppLogo(event: AgentActivityAppEvent) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MembersAgentActivityOverviewEmpty(
+internal fun MembersAgentActivityOverviewEmpty(
     title: String,
     detail: String,
     actions: (@Composable () -> Unit)? = null,
