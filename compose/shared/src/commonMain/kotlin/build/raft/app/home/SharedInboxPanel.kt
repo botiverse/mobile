@@ -1378,15 +1378,12 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
 }
 
 /**
- * The Activity toolbar's height, its seam included: 54 on a phone (unchanged); on the wide layout
- * raft-design's list toolbar line, 49 with a finger and 44 under a mouse or trackpad.
+ * The Activity toolbar's height, its seam included: raft-design's list toolbar line (web
+ * ThreadsInbox `h-[calc(--spacing(12)+1px)] md:pointer-fine:h-(--header-height)`), 49 on a phone
+ * and on the wide layout with a finger, 44 only on the wide layout under a mouse or trackpad.
  */
 internal fun activityFilterBarHeight(scale: RaftScale, pointerInput: RaftPointerInput): Dp =
-    when {
-        scale != RaftScale.Wide -> 54.dp
-        pointerInput == RaftPointerInput.Fine -> 44.dp
-        else -> 49.dp
-    }
+    if (scale == RaftScale.Wide && pointerInput == RaftPointerInput.Fine) 44.dp else 49.dp
 
 /**
  * The Activity column's margin, where its toolbar and its rows start (raft-design lists.md, One
@@ -1420,13 +1417,13 @@ internal fun SharedActivityFilterBar(
     menuExpanded: Boolean = false,
     onMenuExpandedChange: (Boolean) -> Unit = {},
 ) {
-    // web inbox toolbar: a 1dp seam inside it, 16dp edges, its controls centred. 54dp on a phone;
-    // on the wide layout raft-design's list toolbar line (spacing.md): 49 with a finger (web
-    // `h-[calc(--spacing(12)+1px)]`), the 44 head height under a mouse or trackpad
-    // (`md:pointer-fine:h-(--header-height)`).
+    // web inbox toolbar: a 1dp seam inside it, its controls centred. raft-design's list toolbar
+    // line (spacing.md): 49 with a finger, on a phone too (web `h-[calc(--spacing(12)+1px)]`: a
+    // 32dp button 8dp from the top and from the seam), the 44 head height on the wide layout
+    // under a mouse or trackpad (`md:pointer-fine:h-(--header-height)`).
     val toolbarHeight = activityFilterBarHeight(RaftTheme.scale, RaftTheme.pointerInput)
-    // Its sides are the list column's margin (web `px-(--column-margin)`): 16 on a phone; on the
-    // wide layout 20 with a finger and 16 under a mouse or trackpad.
+    // Its sides are the list column's margin (web `px-(--column-margin)`): 20, and 16 only on the
+    // wide layout under a mouse or trackpad.
     val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite)) {
         val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth, edge)
