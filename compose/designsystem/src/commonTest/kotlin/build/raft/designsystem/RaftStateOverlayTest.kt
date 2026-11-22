@@ -4,7 +4,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerType
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftPressSurface
-import build.raft.designsystem.components.raftHoverFadeMillis
 import build.raft.designsystem.components.raftMediumOverlayColor
 import build.raft.designsystem.components.raftPointerTypeHovers
 import build.raft.designsystem.components.raftPressOverlayColor
@@ -110,15 +109,6 @@ class RaftStateOverlayTest {
 
         val cell = raftStateOverlayColors(RaftHoverTier.Cell, RaftPressSurface.Paper, dark)
         assertEquals(Color.Transparent, raftStateOverlayTarget(cell, RaftHoverTier.Cell, pressed = true, hovered = true, selected = true, highlighted = true))
-    }
-
-    @Test
-    fun fadesFollowRaftUiDurations() {
-        assertEquals(100, raftHoverFadeMillis(RaftHoverTier.Medium))
-        assertEquals(100, raftHoverFadeMillis(RaftHoverTier.Subtle))
-        assertEquals(100, raftHoverFadeMillis(RaftHoverTier.Highlight))
-        assertEquals(150, raftHoverFadeMillis(RaftHoverTier.Cell))
-        assertEquals(75, raftHoverFadeMillis(RaftHoverTier.Media))
     }
 
     /** CSS `@media (hover: hover)`: a mouse, a trackpad or a pen hovers; a finger never does. */

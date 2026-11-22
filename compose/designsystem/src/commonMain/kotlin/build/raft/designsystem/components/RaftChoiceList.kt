@@ -17,6 +17,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftOpacity
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
@@ -426,7 +428,8 @@ private fun <T> ChoiceListRow(
                     } else {
                         RaftRadioBox(selected, enabled, focused = focused, modifier = Modifier)
                     }
-                    item.media?.invoke()
+                    // `in-data-disabled:opacity-dimmed` (raft-ui 0.102.14): a full-colour avatar beside grey text looks live.
+                    item.media?.let { media -> Box(Modifier.alpha(if (enabled) 1f else RaftOpacity.Dimmed)) { media() } }
                 }
             },
         ) {

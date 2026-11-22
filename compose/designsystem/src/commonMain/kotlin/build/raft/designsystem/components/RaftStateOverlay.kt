@@ -1,11 +1,5 @@
 package build.raft.designsystem.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.AnimationSpec
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Easing
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.Interaction
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,7 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -28,7 +22,6 @@ import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
-import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.designsystem.tokens.RaftUiThemeColors
@@ -64,11 +57,11 @@ enum class RaftHoverTier {
 
     /**
      * A list cell (sidebar rows, inbox items, search results): `fill-cell-hover`, press
-     * `fill-cell-press`, faded over 150ms with ease-out. A selected cell takes neither.
+     * `fill-cell-press`. A selected cell takes neither.
      */
     Cell,
 
-    /** Media (an image in a gallery): `ink-8` (`hover:bg-ink-8`), faded over 75ms. */
+    /** Media (an image in a gallery): `ink-8` (`hover:bg-ink-8`). */
     Media,
 }
 
@@ -132,31 +125,13 @@ internal fun raftStateOverlayTarget(
     }
 
 /**
- * How long a hover takes to fade in and out (raft-ui motion.md: press and hover 90ms to
- * 120ms): `duration-100` on controls, `duration-150` on list cells, `duration-75` on media.
- * Press shows at once (`active:transition-none`).
- */
-internal fun raftHoverFadeMillis(tier: RaftHoverTier): Int =
-    when (tier) {
-        RaftHoverTier.Cell -> 150
-        RaftHoverTier.Media -> 75
-        else -> 100
-    }
-
-/** Tailwind's default `transition-colors` curve, `cubic-bezier(0.4, 0, 0.2, 1)`. */
-private val RaftHoverEase: Easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
-
-/** Tailwind `ease-out`, `cubic-bezier(0, 0, 0.2, 1)`: list cells. */
-private val RaftHoverEaseOut: Easing = CubicBezierEasing(0f, 0f, 0.2f, 1f)
-
-/**
  * A component's hover and press overlay, from [interactionSource]: draw it with
  * [raftStateOverlay] over the fill and under the content and border, and attach
  * [raftPointerHover] (or a `clickable` plus [raftPointerHover]) on the same source.
  *
- * Press shows at once and for at least [RaftPressMinimumMillis]; hover fades in and out over
- * [fadeMillis] ([raftHoverFadeMillis] for the tier; at once with reduced motion). [enabled], [selected] and
- * [highlighted] as [raftStateOverlayTarget]. Screenshot fixtures force press and hover
+ * Hover and press change at once, with no fade (raft-ui 0.102.13, raft-design #1347); a press
+ * shows for at least [RaftPressMinimumMillis]. [enabled], [selected] and [highlighted] as
+ * [raftStateOverlayTarget]. Screenshot fixtures force press and hover
  * through the same preview locals as [raftIsPressed] / [raftIsHovered].
  */
 @Composable
@@ -167,12 +142,10 @@ fun rememberRaftStateOverlay(
     enabled: Boolean = true,
     selected: Boolean = false,
     highlighted: Boolean = false,
-    fadeMillis: Int = raftHoverFadeMillis(tier),
 ): State<Color> {
     // Read unconditionally, so the slot table stays put as enabled / selected flip (#3356).
     val pressed = raftIsPressed(interactionSource)
     val hovered = raftIsHovered(interactionSource)
-    val reducedMotion = rememberRaftReducedMotion()
     val colors = RaftTheme.colors
     val overlay = raftStateOverlayColors(tier, surface, colors)
     val target =
@@ -185,44 +158,12 @@ fun rememberRaftStateOverlay(
             selected = selected,
             highlighted = highlighted,
         )
-    // Fade to the same colour at 0 alpha, not to transparent black: a dark-mode paper
-    // overlay would turn gray on its way out.
-    val last = remember { RaftLastOverlay() }
-    val shown =
-        if (target.alpha > 0f) {
-            last.color = target
-            target
-        } else {
-            val hue =
-                when {
-                    last.color.alpha > 0f -> last.color
-                    overlay.hover.alpha > 0f -> overlay.hover
-                    else -> overlay.press
-                }
-            hue.copy(alpha = 0f)
-        }
-    val instant = reducedMotion || (enabled && pressed)
-    val spec: AnimationSpec<Color> =
-        if (instant) {
-            snap()
-        } else {
-            tween(
-                durationMillis = fadeMillis,
-                easing = if (tier == RaftHoverTier.Cell) RaftHoverEaseOut else RaftHoverEase,
-            )
-        }
-    return animateColorAsState(shown, spec, label = "raftStateOverlay")
-}
-
-/** The last visible overlay colour, so a fade out keeps its hue. Not state: read in composition only. */
-private class RaftLastOverlay {
-    var color: Color = Color.Transparent
+    return rememberUpdatedState(target)
 }
 
 /**
  * Draws [overlay] (from [rememberRaftStateOverlay]) in [shape] behind the content. Chain it
- * after the fill and before the border. Reads the colour at draw time, so a fade redraws
- * without recomposing.
+ * after the fill and before the border. Reads the colour at draw time.
  */
 fun Modifier.raftStateOverlay(overlay: State<Color>, shape: Shape): Modifier =
     drawWithCache {
