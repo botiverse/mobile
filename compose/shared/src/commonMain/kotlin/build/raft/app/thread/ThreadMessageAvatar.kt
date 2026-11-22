@@ -10,10 +10,13 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -34,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftAvatarTrigger
+import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
 import build.raft.designsystem.components.RaftMessageDelegatedAvatarDefaults
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -220,6 +225,8 @@ internal fun ThreadMessageAvatar(
     val accessibilityName =
         if (profileActions) stringResource(Res.string.thread_message_avatar_view_profile, avatarLabel) else avatarLabel
     val mentionActionLabel = stringResource(Res.string.thread_message_avatar_mention, avatarLabel)
+    // Web `group/avatar-trigger` on the message avatar's button: hover and press lay `ink-8` over the face.
+    val interactionSource = remember { MutableInteractionSource() }
     Box(
         modifier =
             Modifier
@@ -243,12 +250,22 @@ internal fun ThreadMessageAvatar(
                             )
                     }
                 }
+                .raftPointerHover(interactionSource)
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<ThreadMessageAvatarGestureCallbacks>? = null
                     detectTapGestures(
-                        onPress = {
+                        onPress = { position ->
                             gesture = owner.beginGesture()
-                            tryAwaitRelease()
+                            val press = PressInteraction.Press(position)
+                            interactionSource.tryEmit(press)
+                            var released = false
+                            try {
+                                released = tryAwaitRelease()
+                            } finally {
+                                interactionSource.tryEmit(
+                                    if (released) PressInteraction.Release(press) else PressInteraction.Cancel(press)
+                                )
+                            }
                         },
                         onTap = {
                             (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick()
@@ -268,15 +285,17 @@ internal fun ThreadMessageAvatar(
                 avatarSize = RaftAvatarSize.Md.edge,
             ) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    RaftAppAvatar(
-                        kind = avatarKind,
-                        avatarWireValue = avatarWireValue,
-                        label = avatarLabel,
-                        diagnostics = avatarDiagnostics,
-                        modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                        avatarSize = RaftAvatarSize.Md.edge,
-                        cacheSubject = cacheSubject,
-                    )
+                    RaftAvatarTrigger(interactionSource) {
+                        RaftAppAvatar(
+                            kind = avatarKind,
+                            avatarWireValue = avatarWireValue,
+                            label = avatarLabel,
+                            diagnostics = avatarDiagnostics,
+                            modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
+                            avatarSize = RaftAvatarSize.Md.edge,
+                            cacheSubject = cacheSubject,
+                        )
+                    }
                     if (muted) {
                         Box(
                             modifier =

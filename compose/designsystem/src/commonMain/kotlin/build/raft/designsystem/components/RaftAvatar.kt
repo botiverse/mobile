@@ -165,7 +165,11 @@ fun RaftAvatar(
             },
     ) {
         Box(
-            Modifier.fillMaxSize().clip(RoundedCornerShape(RaftRadius.Xs)).clearAndSetSemantics { },
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(RaftRadius.Xs))
+                .then(raftAvatarTriggerFace())
+                .clearAndSetSemantics { },
             contentAlignment = Alignment.Center,
         ) {
             when {
