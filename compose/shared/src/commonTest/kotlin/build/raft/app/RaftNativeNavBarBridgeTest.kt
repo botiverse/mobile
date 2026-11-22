@@ -456,7 +456,7 @@ class RaftNativeNavBarBridgeTest {
         val taskPayload =
             RaftThreadScreenPayload(
                 instanceId = "task-1",
-                title = "Task #282",
+                title = "",
                 status = "loading",
                 surfaceKind = RaftThreadSurfaceKind.Channel,
                 channelKind = RaftTaskConversationChannelKind,
@@ -466,15 +466,37 @@ class RaftNativeNavBarBridgeTest {
                 showModeTabs = false,
                 showSettingsAction = false,
             )
+        val taskProjection =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "task-1",
+                aliases = setOf("task-1"),
+                conversationKind = build.raft.app.model.ConversationKind.Task,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                title = "Task #282",
+            )
         val taskHead =
             buildThreadNativeNavBarPrefillHead(
                 payload = taskPayload,
+                directoryProjection = taskProjection,
                 strings = strings,
             )
         assertEquals("Task #282", taskHead.title)
         assertEquals(
             liveIdsFor(taskPayload, RaftThreadSurfaceKind.Channel, taskHasViewInChannel = true),
             taskHead.actions.map { it.id },
+        )
+        // Without a directory projection while still loading, prefill matches the live header's generic fallback.
+        val taskLoadingFallbackHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = taskPayload,
+                strings = strings,
+            )
+        assertEquals("Channel", taskLoadingFallbackHead.title)
+        assertEquals(
+            liveIdsFor(taskPayload, RaftThreadSurfaceKind.Channel, taskHasViewInChannel = true),
+            taskLoadingFallbackHead.actions.map { it.id },
         )
 
         // 5. Pushed Members and Channel Details pages
