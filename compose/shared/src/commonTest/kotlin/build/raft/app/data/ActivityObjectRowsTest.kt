@@ -193,15 +193,24 @@ class ActivityObjectRowsTest {
         assertEquals(setOf("kind", "objectId"), read.keys)
     }
 
-    private class FakeObjectsRepository : ActivityObjectsRepository {
+    private class FakeObjectsRepository(
+        var failForServerId: String? = null,
+    ) : ActivityObjectsRepository {
         val calls = mutableListOf<String>()
+        val serverScopedCalls = mutableListOf<String>()
         override suspend fun act(serverId: String, action: ActivityObjectAction, row: ActivityObjectRow): DataResult<Unit> {
             calls += "${action.name}:${row.objectId}"
-            return DataResult.Content(Unit)
+            serverScopedCalls += "$serverId:${action.name}:${row.objectId}"
+            return if (failForServerId == serverId) {
+                DataResult.Error(ScreenError("object_done_failed"))
+            } else {
+                DataResult.Content(Unit)
+            }
         }
 
         override suspend fun unfollow(serverId: String, row: ActivityObjectRow): DataResult<Unit> {
             calls += "Unfollow:${row.objectId}"
+            serverScopedCalls += "$serverId:Unfollow:${row.objectId}"
             return DataResult.Content(Unit)
         }
     }
@@ -239,5 +248,134 @@ class ActivityObjectRowsTest {
         store.dispatch(SharedActivityIntent.UnfollowObject(read))
         runCurrent()
         assertEquals(listOf("Read:$objectId", "Done:$objectId", "Undone:$objectId", "Unfollow:$objectId"), repository.calls)
+    }
+
+    @Test
+    fun objectDoneFlushedAfterServerSwitchTargetsCapturedServerWithoutCorruptingActiveServer() = runTest {
+        val parsedA = parseSharedInboxSnapshot("""{"items":[${objectRow()},$channelRow],"totalCount":1,"totalUnreadCount":3,"objectUnreadCount":1,"objectCount":1}""")!!
+        val otherObjectId = "pt_99999999-1c1a-4c4e-9a65-0f5e2b1d7a22"
+        val objectRowB = objectRow().replace(objectId, otherObjectId)
+        val parsedB = parseSharedInboxSnapshot("""{"items":[$objectRowB],"totalCount":0,"totalUnreadCount":0,"objectUnreadCount":2,"objectCount":2}""")!!
+        val snapA =
+            snapshot(parsedA.items, totalCount = 1, totalUnreadCount = 3)
+                .copy(server = build.raft.app.model.ServerSummary(ServerId("server-a"), "Server A"), objectCounts = parsedA.objectCounts)
+        val snapB =
+            snapshot(parsedB.items, totalCount = 0, totalUnreadCount = 0)
+                .copy(server = build.raft.app.model.ServerSummary(ServerId("server-b"), "Server B"), objectCounts = parsedB.objectCounts)
+        val authStore =
+            InMemoryRaftAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user-1@slock.local", displayName = "User One"),
+                    accessToken = "access",
+                    refreshToken = "refresh",
+                    selectedServerId = "server-a",
+                    servers = listOf(
+                        StoredAuthServer(id = "server-a", name = "Server A"),
+                        StoredAuthServer(id = "server-b", name = "Server B"),
+                    ),
+                )
+            )
+        val repository = FakeObjectsRepository()
+        val store =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapA, snapB)),
+                activityObjectsRepository = repository,
+                authStore = authStore,
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val objectA = store.state.value.items.first { it.kind == InboxItemKind.Object }
+
+        // User switches to Server B while Server A's object row exit is still animating.
+        store.dispatch(SharedActivityIntent.ServerSelected("server-b"))
+        runCurrent()
+        assertEquals("server-b", store.state.value.ownerServerId)
+        assertEquals(2, store.state.value.snapshot!!.objectCounts!!.objectCount)
+
+        // Disposal flushes Server A's object Done with its captured owner.
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = objectA,
+                listOwnerUserId = "user-1",
+                listOwnerServerId = "server-a",
+            )
+        )
+        runCurrent()
+
+        assertEquals(listOf("server-a:Done:$objectId"), repository.serverScopedCalls)
+        assertEquals(2, store.state.value.snapshot!!.objectCounts!!.objectCount, "Server B counts must stay intact")
+        assertEquals(1, store.state.value.items.size, "Server B object row must stay intact")
+        assertNull(store.state.value.errorCode)
+
+        // Even if the cross-server Done request fails on Server A, Server B must not show an error banner.
+        repository.failForServerId = "server-a"
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = objectA,
+                listOwnerUserId = "user-1",
+                listOwnerServerId = "server-a",
+            )
+        )
+        runCurrent()
+        assertNull(store.state.value.errorCode, "failure on Server A must not corrupt Server B errorCode")
+        assertEquals(2, store.state.value.snapshot!!.objectCounts!!.objectCount)
+
+        // Different account flush must be dropped without sending any request.
+        val callsBeforeWrongAccount = repository.serverScopedCalls.size
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = objectA,
+                listOwnerUserId = "other-user",
+                listOwnerServerId = "server-a",
+            )
+        )
+        runCurrent()
+        assertEquals(callsBeforeWrongAccount, repository.serverScopedCalls.size)
+    }
+
+    @Test
+    fun conversationDoneFlushedAfterFilterSwitchCommitsWithoutRowNotHeldDrop() = runTest {
+        val parsedAll = parseSharedInboxSnapshot("""{"items":[$channelRow],"totalCount":1,"totalUnreadCount":3}""")!!
+        val snapAll = snapshot(parsedAll.items, totalCount = 1, totalUnreadCount = 3)
+        val snapMentionsEmpty = snapshot(emptyList(), totalCount = 0, totalUnreadCount = 0)
+        val inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapAll, snapMentionsEmpty))
+        val store =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = inboxRepository,
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val row = store.state.value.items.single()
+
+        // Switch to Mentions (where the row is not held).
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        runCurrent()
+        assertTrue(store.state.value.items.isEmpty())
+
+        // Flushing Done with captured same-owner identity still commits instead of dropping with row_not_held.
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = row,
+                listOwnerUserId = "user-1",
+                listOwnerServerId = "server-1",
+            )
+        )
+        runCurrent()
+        assertEquals(listOf(row.channelId), inboxRepository.doneChannelIds)
+
+        // Flushing with a different account must be dropped.
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = row,
+                listOwnerUserId = "other-user",
+                listOwnerServerId = "server-1",
+            )
+        )
+        runCurrent()
+        assertEquals(1, inboxRepository.doneChannelIds.size)
     }
 }

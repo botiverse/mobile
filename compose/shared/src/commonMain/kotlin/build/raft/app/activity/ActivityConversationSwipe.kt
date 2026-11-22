@@ -698,7 +698,14 @@ internal fun activitySwipeListedItems(
  */
 internal fun activitySwipeDeferredCommitIntent(pending: ActivityPendingSwipeDone, current: InboxItem?): SharedActivityIntent? =
     when (pending.action) {
-        ActivitySwipeDeferredAction.Done -> activitySwipeDoneCommitItem(pending.item, current)?.let(SharedActivityIntent::MarkDone)
+        ActivitySwipeDeferredAction.Done ->
+            activitySwipeDoneCommitItem(pending.item, current)?.let { item ->
+                SharedActivityIntent.MarkDone(
+                    item = item,
+                    listOwnerUserId = pending.listOwnerUserId,
+                    listOwnerServerId = pending.listOwnerServerId,
+                )
+            }
         ActivitySwipeDeferredAction.Unfollow ->
             SharedActivityIntent.UnfollowThread(
                 item = current?.takeIf { it.isFollowedActivityThread } ?: pending.item,
@@ -1181,6 +1188,7 @@ internal class ActivitySwipeRowController(
                 settleVersion += 1
             }
         }
+        if (generation != myGen) return
         activeJob =
             scope.launch {
                 try {
@@ -1245,6 +1253,7 @@ internal class ActivitySwipeRowController(
                 settleVersion += 1
             }
         }
+        if (generation != myGen) return
         activeJob =
             scope.launch {
                 try {
@@ -1296,6 +1305,7 @@ internal class ActivitySwipeRowController(
                 settleVersion += 1
             }
         }
+        if (generation != myGen) return
         activeJob =
             scope.launch {
                 try {
@@ -1324,6 +1334,7 @@ internal class ActivitySwipeRowController(
 internal class ActivitySwipeListHostState {
     var openRow by mutableStateOf(ActivitySwipeOpenRow())
     val geometry = ActivitySwipeOpenRowGeometry()
+    internal var beforeFilterChangeFlush: (() -> Unit)? = null
 
     fun updateOpenRow(next: ActivitySwipeOpenRow) {
         if (next != openRow) openRow = next
@@ -1332,6 +1343,10 @@ internal class ActivitySwipeListHostState {
 
     fun close() {
         updateOpenRow(openRow.close())
+    }
+
+    fun flushBeforeFilterChange() {
+        beforeFilterChangeFlush?.invoke()
     }
 }
 
@@ -1557,6 +1572,9 @@ internal fun ActivitySwipeActionsBox(
     val exitLifecycle = remember(stateKey) { ActivitySwipeExitLifecycle() }
     if (exiting) exitLifecycle.hasEnteredExit = true
     if (buttons.isEmpty() && startButton == null && !exiting && !exitLifecycle.hasEnteredExit) {
+        LaunchedEffect(openSide) {
+            if (openSide != null) onOpenChange(null)
+        }
         Box(modifier) { content() }
         return
     }
@@ -1696,15 +1714,14 @@ internal fun ActivitySwipeActionsBox(
             .onSizeChanged { widthPxState.intValue = it.width }
             .then(
                 if (isExiting) {
-                    // Block taps, long-presses, buttons, and screen-reader actions while collapsing/exited.
+                    // Swallow taps and clear semantics while collapsing/exited without blocking
+                    // vertical list drags that begin on the exiting row.
                     Modifier
                         .clearAndSetSemantics {}
                         .pointerInput(controller) {
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    event.changes.forEach { it.consume() }
-                                }
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                activitySwipeSwallowTap(down.id, down.position)
                             }
                         }
                 } else {
@@ -1778,7 +1795,13 @@ internal fun ActivitySwipeActionsBox(
                                 if (!controller.beginDrag()) return@awaitEachGesture
                                 var target = controller.revealPx
                                 // This row is the open one now: any other open row closes as this one slides.
-                                currentOnOpenChange(activitySwipeDragSide(target, claimedTowardStart))
+                                val claimedSide =
+                                    when {
+                                        !hasStart && !claimedTowardStart -> ActivitySwipeSide.End
+                                        !hasEnd && claimedTowardStart -> ActivitySwipeSide.Start
+                                        else -> activitySwipeDragSide(target, claimedTowardStart)
+                                    }
+                                currentOnOpenChange(claimedSide)
                                 // Where the row goes on release (a value, not a lambda: Kotlin/Native miscasts a captured
                                 // function-typed var here).
                                 var settleSide: ActivitySwipeSide? = null
@@ -1790,6 +1813,8 @@ internal fun ActivitySwipeActionsBox(
                                     while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Main)
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        // Consumed by an ancestor or system cancellation: reset cleanly instead of committing.
+                                        if (change.isConsumed) break
                                         val rowWidthPx = widthPxState.intValue.toFloat()
                                         if (!change.pressed) {
                                             change.consume()

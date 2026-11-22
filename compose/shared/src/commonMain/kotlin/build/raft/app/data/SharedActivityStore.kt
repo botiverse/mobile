@@ -807,7 +807,7 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone ->
-                if (intent.item.kind == InboxItemKind.Object) markObjectDone(intent.item) else markDone(intent.item)
+                if (intent.item.kind == InboxItemKind.Object) markObjectDone(intent) else markDone(intent)
             is SharedActivityIntent.UnfollowThread -> unfollowThread(intent)
             is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead ->
@@ -4973,36 +4973,55 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun markDone(requestedItem: InboxItem) {
+    private fun markDone(intent: SharedActivityIntent.MarkDone) {
+        val requestedItem = intent.item
         val previous = _state.value
-        if (previous.snapshot == null) return
-        val overlayOwner = overlayOwner(previous)
+        if (intent.listOwnerUserId != null && previous.ownerUserId != null && intent.listOwnerUserId != previous.ownerUserId) {
+            return
+        }
+        val activeServerId = previous.ownerServerId ?: previous.snapshot?.server?.id?.value
+        val sameListAccount =
+            intent.listOwnerUserId != null &&
+                intent.listOwnerServerId != null &&
+                intent.listOwnerUserId == previous.ownerUserId
+        val sameListServer =
+            intent.listOwnerServerId == null ||
+                (sameListAccount && intent.listOwnerServerId == activeServerId)
+        val overlayOwner = if (sameListServer) overlayOwner(previous) else null
+        val heldItem = if (sameListServer) previous.items.firstOrNull { it.key == requestedItem.key } else null
         if (requestedItem.kind == InboxItemKind.MentionAction) {
             // Local-only resolution: there is no server write and no newer marker
             // that could ever retire it, so it lives outside the expiring overlay
             // (a 90s hold would let the unresolved row come back).
-            if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, requestedItem.key)
-            removeItemOptimistically(requestedItem)
+            if (sameListServer && previous.snapshot != null) {
+                if (overlayOwner != null) rememberResolvedMentionAction(overlayOwner, requestedItem.key)
+                if (heldItem != null) removeItemOptimistically(heldItem)
+            }
             return
         }
+        if (previous.snapshot == null && !sameListAccount) return
         // Web inboxStore.markDone (slock 1bb70cbeb, inboxStore.ts:1417-1470):
         // bind Done to the row this store currently holds and name its
         // storage-space frontier. A row from a server that predates
         // `doneFrontierSeq` takes the legacy body; a present-but-unusable
-        // frontier (or a row no longer held) refreshes and writes nothing.
-        val item = previous.items.firstOrNull { it.key == requestedItem.key }
+        // frontier (or a row no longer held without same-owner capture) refreshes and writes nothing.
+        val item = heldItem ?: requestedItem.takeIf { sameListAccount }
         val frontier = item?.activityDoneRequestFrontier()?.toInboxDoneFrontier()
         if (item == null || frontier == null) {
             diagnosticsLogger(
                 "activity_mark_done result=refused reason=${if (item == null) "row_not_held" else "invalid_done_frontier"} " +
                     "itemKey=${requestedItem.key}"
             )
-            load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+            if (sameListServer && previous.snapshot != null) {
+                load(refresh = true, pullRefresh = false, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+            }
             return
         }
         val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
-            refreshAfterFailure(previous, "activity_thread_channel_missing")
+            if (sameListServer && previous.snapshot != null) {
+                refreshAfterFailure(previous, "activity_thread_channel_missing")
+            }
             return
         }
         // The overlay entry is pending until the server confirms the Done;
@@ -5012,7 +5031,7 @@ class SharedActivityStore internal constructor(
                 ?.let { owner -> doneOverlay.remember(owner, item) }
                 ?.let { generation -> mapOf(item.key to generation) }
                 .orEmpty()
-        removeItemOptimistically(item)
+        if (heldItem != null) removeItemOptimistically(heldItem)
         scope.launch {
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
                 val result =
@@ -5025,12 +5044,20 @@ class SharedActivityStore internal constructor(
                     // 409/412 (frontier moved / space required) land here too: like
                     // web, drop the hold and take the refreshed row; never replay.
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
-                    refreshAfterFailure(previous, "activity_mark_done_failed")
+                    if (sameListServer && previous.snapshot != null) {
+                        refreshAfterFailure(previous, "activity_mark_done_failed")
+                    } else {
+                        diagnosticsLogger(
+                            "activity_mark_done_other_owner result=failed serverId=${intent.listOwnerServerId} key=${item.key}"
+                        )
+                    }
                 } else {
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
-                    // Web refreshes after a confirmed Done with the hold still armed.
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                    if (sameListServer && previous.snapshot != null) {
+                        // Web refreshes after a confirmed Done with the hold still armed.
+                        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                    }
                 }
             }
         }
@@ -5040,25 +5067,42 @@ class SharedActivityStore internal constructor(
      * Done on an object row (web `markObjectRowDone`): out of the list at once, through its newest
      * event (`doneFrontierSeq`), held against a lagging list by the Done overlay; a failure brings it
      * back with a refresh. The object counts move with it.
+     *
+     * When flushed across a server switch (`listOwnerServerId != activeServerId` within the same
+     * account), sends Done to the captured server without mutating or refreshing the newly active
+     * server's snapshot or `objectCounts`.
      */
-    private fun markObjectDone(requestedItem: InboxItem) {
+    private fun markObjectDone(intent: SharedActivityIntent.MarkDone) {
+        val requestedItem = intent.item
         val previous = _state.value
-        val item = previous.items.firstOrNull { it.key == requestedItem.key } ?: requestedItem
+        if (intent.listOwnerUserId != null && previous.ownerUserId != null && intent.listOwnerUserId != previous.ownerUserId) {
+            return
+        }
+        val activeServerId = previous.ownerServerId ?: previous.snapshot?.server?.id?.value
+        val targetServerId = intent.listOwnerServerId ?: activeServerId ?: return
+        val sameServer = intent.listOwnerServerId == null || intent.listOwnerServerId == activeServerId
+        val heldItem = if (sameServer) previous.items.firstOrNull { it.key == requestedItem.key } else null
+        val item = heldItem ?: requestedItem
         val row = item.activityObject ?: return
-        val serverId = previous.ownerServerId ?: previous.snapshot?.server?.id?.value ?: return
-        val overlayOwner = overlayOwner(previous)
+        val overlayOwner = if (sameServer) overlayOwner(previous) else null
         val doneGenerations =
             overlayOwner
                 ?.let { owner -> doneOverlay.remember(owner, item) }
                 ?.let { generation -> mapOf(item.key to generation) }
                 .orEmpty()
-        removeObjectRowOptimistically(item)
+        if (sameServer) removeObjectRowOptimistically(item)
         scope.launch {
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
-                val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Done, row)
+                val result = activityObjectsRepository?.act(targetServerId, ActivityObjectAction.Done, row)
                 if (result !is DataResult.Content) {
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
-                    refreshAfterFailure(previous, "activity_object_done_failed")
+                    if (sameServer) {
+                        refreshAfterFailure(previous, "activity_object_done_failed")
+                    } else {
+                        diagnosticsLogger(
+                            "activity_object_done_other_server result=failed serverId=$targetServerId key=${item.key}"
+                        )
+                    }
                 } else {
                     doneOverlay.confirmAll(overlayOwner, doneGenerations)
                     onUnreadCountsChanged()
@@ -6661,7 +6705,16 @@ sealed interface SharedActivityIntent {
     data object LoadMore : SharedActivityIntent
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
-    data class MarkDone(val item: InboxItem) : SharedActivityIntent
+    /**
+     * Mark [item] Done. When flushed after a filter or server change within the same account,
+     * [listOwnerUserId] / [listOwnerServerId] identify the list that held [item] so the write lands
+     * on the right server without mutating or failing the newly active server's state.
+     */
+    data class MarkDone(
+        val item: InboxItem,
+        val listOwnerUserId: String? = null,
+        val listOwnerServerId: String? = null,
+    ) : SharedActivityIntent
     /**
      * Unfollow [item]'s thread. A row the store no longer lists (a deferred Unfollow sent after the
      * filter changed) is still unfollowed when [listOwnerUserId] / [listOwnerServerId] name the

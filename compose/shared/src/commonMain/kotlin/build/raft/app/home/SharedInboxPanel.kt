@@ -1100,7 +1100,10 @@ private fun SharedActivityPanelContent(
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
             totalUnreadCount = state.activityConversationUnreadCount(),
-            onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
+            onFilterSelected = { nextFilter ->
+                swipeHostState.flushBeforeFilterChange()
+                onIntent(SharedActivityIntent.SetFilter(nextFilter))
+            },
             onMarkAllRead = {
                 swipeHostState.close()
                 RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
@@ -2082,13 +2085,26 @@ internal fun SharedActivityList(
     }
     // Workspace Artifacts: an object row's Done goes out at once (web `markObjectRowDone`); its
     // toast's Undo sends `undone`. Its Unfollow waits for its toast to end and is only sent then.
-    fun objectRowDone(item: InboxItem) {
+    fun objectRowDone(
+        item: InboxItem,
+        listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
+        listOwnerServerId: String? = presentationServerId,
+        showUndoToast: Boolean = true,
+    ) {
         swipeEndUndo = swipeEndUndo.dismiss()
         applySwipeDone(swipeDoneUndo.flush())
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
-        latestOnIntent(SharedActivityIntent.MarkDone(item))
-        objectUndo = objectUndo.done(item)
+        latestOnIntent(
+            SharedActivityIntent.MarkDone(
+                item = item,
+                listOwnerUserId = listOwnerUserId,
+                listOwnerServerId = listOwnerServerId,
+            )
+        )
+        if (showUndoToast) {
+            objectUndo = objectUndo.done(item)
+        }
     }
     fun objectRowUnfollow(item: InboxItem) {
         swipeEndUndo = swipeEndUndo.dismiss()
@@ -2130,32 +2146,58 @@ internal fun SharedActivityList(
         actionId: String,
         listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
         listOwnerServerId: String? = presentationServerId,
+        fromOwnerDisposal: Boolean = false,
     ) {
-        if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
+        if (item.kind == InboxItemKind.Object && actionId == "done") {
+            return objectRowDone(
+                item = item,
+                listOwnerUserId = listOwnerUserId,
+                listOwnerServerId = listOwnerServerId,
+                showUndoToast = !fromOwnerDisposal,
+            )
+        }
         if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
         if (actionId == "unfollow-thread") return deferThreadUnfollow(item, listOwnerUserId, listOwnerServerId)
         if (actionId == "done") {
-            // One toast at a time: an end swipe's toast gives way (its action stands).
+            // One toast at a time: an end swipe's or object's toast gives way (waiting Unfollow commits first).
             swipeEndUndo = swipeEndUndo.dismiss()
-            applySwipeDone(swipeDoneUndo.swipe(item))
+            objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+            applySwipeDone(
+                swipeDoneUndo.swipe(
+                    item = item,
+                    listOwnerUserId = listOwnerUserId,
+                    listOwnerServerId = listOwnerServerId,
+                )
+            )
             return
         }
         val write = activityRowActionWrite(item, actionId)
         write.markAction?.let(RaftProductEvents::activityMark)
         runSwipeEndCommand(write.command)
     }
-    fun commitPendingRowExit(pending: ActivityPendingRowExit) {
+    fun commitPendingRowExit(pending: ActivityPendingRowExit, fromOwnerDisposal: Boolean = false) {
         commitRowAction(
             item = pending.item,
             actionId = pending.actionId,
             listOwnerUserId = pending.listOwnerUserId,
             listOwnerServerId = pending.listOwnerServerId,
+            fromOwnerDisposal = fromOwnerDisposal,
         )
     }
     fun completePendingRowExit(key: String) {
         val (nextExits, pending) = pendingRowExits.complete(key)
         pendingRowExits = nextExits
         if (pending != null) commitPendingRowExit(pending)
+    }
+    fun flushAllPendingForOwnerChange() {
+        val (clearedExits, flushedExits) = pendingRowExits.flushAll()
+        pendingRowExits = clearedExits
+        flushedExits.forEach { pending -> commitPendingRowExit(pending, fromOwnerDisposal = true) }
+        // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
+        objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
+        applySwipeDone(swipeDoneUndo.flush())
+        swipeEndUndo = swipeEndUndo.dismiss()
+        effectiveSwipeHost.close()
     }
     fun startSwipeDone(renderedItemKey: String): Boolean {
         if (pendingRowExits.isExiting(renderedItemKey)) return false
@@ -2188,25 +2230,31 @@ internal fun SharedActivityList(
         return true
     }
     // The swipe's Unfollow / Mute Activity button: Unfollow was captured at gesture commit into
-    // pendingRowExits and finishes via completePendingRowExit; Mute writes immediately with Undo.
-    fun finishSwipeEnd(renderedItemKey: String) {
-        if (pendingRowExits.isExiting(renderedItemKey)) {
-            completePendingRowExit(renderedItemKey)
+    // pendingRowExits and finishes via completePendingRowExit; Mute writes immediately with Undo
+    // (and must never prematurely commit a same-frame Done exit on the same row).
+    fun finishSwipeEnd(renderedItemKey: String, action: ActivitySwipeEndAction) {
+        if (activitySwipeEndActionRemovesRow(action)) {
+            if (pendingRowExits.isExiting(renderedItemKey)) {
+                completePendingRowExit(renderedItemKey)
+            }
             return
         }
+        if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
-        val action = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
-        if (activitySwipeEndActionRemovesRow(action)) return
+        val liveAction = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
+        if (liveAction != action) return
         // One toast at a time: a waiting Done or Unfollow is committed now rather than lost.
+        objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         applySwipeDone(swipeDoneUndo.flush())
-        runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, action))
-        swipeEndUndo = swipeEndUndo.swipe(currentItem, action)
+        runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, liveAction))
+        swipeEndUndo = swipeEndUndo.swipe(currentItem, liveAction)
     }
     // raft-design #793: the swipe toward the end marks the row read, or unread when it is read, through
     // the menu's Mark as read / unread write and analytics. No toast, no Undo: the row stays in place
     // (in Unread too: the store keeps a row read this visit listed until the user moves on), and
     // swiping again switches it back.
     fun swipeRowToggleRead(renderedItemKey: String) {
+        if (pendingRowExits.isExiting(renderedItemKey)) return
         val currentItem = committedRowItem(renderedItemKey) ?: return
         if (currentItem.activitySwipeStartButton() == null) return
         RaftProductEvents.activityMark(activityReadToggleMarkAction(currentItem))
@@ -2271,18 +2319,23 @@ internal fun SharedActivityList(
         delay(ActivitySwipeDoneUndoWindowMillis)
         objectUndo = objectUndo.expire(token) { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
     }
+    val latestFlushAllPendingForOwnerChange by rememberUpdatedState<() -> Unit> {
+        flushAllPendingForOwnerChange()
+    }
+    DisposableEffect(effectiveSwipeHost) {
+        val callback: () -> Unit = { latestFlushAllPendingForOwnerChange() }
+        effectiveSwipeHost.beforeFilterChangeFlush = callback
+        onDispose {
+            if (effectiveSwipeHost.beforeFilterChangeFlush === callback) {
+                effectiveSwipeHost.beforeFilterChangeFlush = null
+            }
+        }
+    }
     DisposableEffect(presentationOwnerIdentity) {
         onDispose {
             // Commit any row mid-exit animation (swipe Done, swipe Unfollow, or non-swipe collapse)
-            // before flushing Undo queues so leaving Activity or switching filters never drops it.
-            val (clearedExits, flushedExits) = pendingRowExits.flushAll()
-            pendingRowExits = clearedExits
-            flushedExits.forEach(::commitPendingRowExit)
-            // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
-            objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
-            applySwipeDone(swipeDoneUndo.flush())
-            swipeEndUndo = swipeEndUndo.dismiss()
-            effectiveSwipeHost.close()
+            // before flushing Undo queues so leaving Activity or switching servers/filters never drops it.
+            flushAllPendingForOwnerChange()
         }
     }
     // Switching away from the Activity tab (keep-alive inactive) closes any open swipe row or menu.
@@ -2338,6 +2391,9 @@ internal fun SharedActivityList(
             // A touch while the list still flings only stops it: neither a row's swipe nor the filter
             // pager takes that gesture (artin, #proj-mobile:34aed863; iOS / RecyclerView behaviour).
             val listScrolling = remember(listState) { { listState.isScrollInProgress } }
+            val latestCompletePendingRowExit by rememberUpdatedState<(String) -> Unit> { key ->
+                completePendingRowExit(key)
+            }
             val rowLayout = activityRowLayout
             CompositionLocalProvider(LocalRaftScrollInProgress provides listScrolling) {
                 LazyColumn(
@@ -2362,6 +2418,13 @@ internal fun SharedActivityList(
                                 activityDayHeadingItem(entry, RaftColor.SurfaceWhite, horizontalPadding = rowLayout.contentEdge)
                             is ActivityConversationListEntry.Row -> item(key = entry.key, contentType = "activity_row") {
                                 val item = entry.item
+                                // Guarantees zero-drop even if LazyColumn disposes a collapsing row on the
+                                // same frame before ActivitySwipeActionsBox recomposes with exiting = true.
+                                DisposableEffect(item.key) {
+                                    onDispose {
+                                        latestCompletePendingRowExit(item.key)
+                                    }
+                                }
                                 val model =
                                     remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames) {
                                         item.activityConversationRowModel(
@@ -2395,7 +2458,7 @@ internal fun SharedActivityList(
                                     onRowDone = { rowDoneButton(item.key) },
                                     swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                     onSwipeEndStart = { action -> startSwipeEndExit(item.key, action) },
-                                    onSwipeEnd = { finishSwipeEnd(item.key) },
+                                    onSwipeEndAction = { action -> finishSwipeEnd(item.key, action) },
                                     onSwipeToggleRead = { swipeRowToggleRead(item.key) },
                                     accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
                                     onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },

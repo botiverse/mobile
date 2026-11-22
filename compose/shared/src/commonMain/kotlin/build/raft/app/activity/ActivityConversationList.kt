@@ -992,6 +992,8 @@ internal fun ActivityConversationListRow(
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
+    /** Typed variant of [onSwipeEnd] carrying the tapped [ActivitySwipeEndAction]. */
+    onSwipeEndAction: ((ActivitySwipeEndAction) -> Unit)? = null,
     /** Called synchronously at swipe-Unfollow commit time; returning false cancels the exit cleanly. */
     onSwipeEndStart: ((ActivitySwipeEndAction) -> Boolean)? = null,
     /**
@@ -1094,7 +1096,7 @@ internal fun ActivityConversationListRow(
     val swipeButtons =
         activitySwipeButtons(
             doneEnabled = canMarkDone && onSwipeDone != null,
-            endActions = listOfNotNull(swipeEndAction.takeIf { onSwipeEnd != null }),
+            endActions = listOfNotNull(swipeEndAction.takeIf { onSwipeEnd != null || onSwipeEndAction != null }),
         )
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
@@ -1103,7 +1105,7 @@ internal fun ActivityConversationListRow(
         openSide = swipeOpenSide,
         onOpenChange = onSwipeOpenChange,
         onDone = { onSwipeDone?.invoke() },
-        onAction = { onSwipeEnd?.invoke() },
+        onAction = { action -> onSwipeEndAction?.invoke(action) ?: onSwipeEnd?.invoke() },
         startButton = item.activitySwipeStartButton().takeIf { onSwipeToggleRead != null },
         onToggleRead = { onSwipeToggleRead?.invoke() },
         modifier = modifier.fillMaxWidth(),

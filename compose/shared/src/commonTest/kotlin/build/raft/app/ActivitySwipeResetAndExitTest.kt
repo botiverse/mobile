@@ -1,6 +1,5 @@
 package build.raft.app
 
-import androidx.compose.ui.geometry.Offset
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
@@ -20,8 +19,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -33,6 +32,12 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ActivitySwipeResetAndExitTest {
+
+    /** Controller jobs run in `backgroundScope`, which `advanceUntilIdle()` skips in coroutines-test 1.11. */
+    private fun TestScope.settle(millis: Long = 10_000L) {
+        advanceTimeBy(millis)
+        runCurrent()
+    }
 
     private enum class OpKind {
         SnapReveal,
@@ -169,7 +174,7 @@ class ActivitySwipeResetAndExitTest {
 
         assertEquals(ActivitySwipePhase.Idle, controller.phase)
         assertEquals(1, controller.settleVersion)
-        advanceUntilIdle()
+        settle()
 
         assertEquals(0f, controller.revealPx)
         assertTrue(
@@ -191,7 +196,7 @@ class ActivitySwipeResetAndExitTest {
         // End drag within the same composition frame (openSide stayed null across frames).
         controller.endDrag(0f)
         assertEquals(ActivitySwipePhase.Idle, controller.phase)
-        advanceUntilIdle()
+        settle()
 
         assertEquals(0f, controller.revealPx)
         assertTrue(
@@ -229,7 +234,7 @@ class ActivitySwipeResetAndExitTest {
 
         // Release the in-flight snap: later coalesced drag targets must NOT run, and settle animates to 0.
         snapGate.complete(Unit)
-        advanceUntilIdle()
+        settle()
 
         assertEquals(0f, controller.revealPx)
         assertEquals(ActivitySwipePhase.Idle, controller.phase)
@@ -245,7 +250,7 @@ class ActivitySwipeResetAndExitTest {
         val controller = ActivitySwipeRowController(driver = driver, scope = backgroundScope)
 
         controller.syncRest(0f)
-        advanceUntilIdle()
+        settle()
 
         assertEquals(0f, controller.revealPx)
         assertEquals(1f, controller.collapseProgress)
@@ -267,7 +272,7 @@ class ActivitySwipeResetAndExitTest {
         assertNull(host.openRow.openSide("row-a"))
 
         controller.syncRest(0f)
-        advanceUntilIdle()
+        settle()
         assertEquals(0f, controller.revealPx)
 
         // An already-committed Done animation must NOT be aborted by a concurrent syncRest(0f).
@@ -389,7 +394,7 @@ class ActivitySwipeResetAndExitTest {
 
         // Row leaves LazyColumn and disposes its scope cleanly.
         rowScope.cancel()
-        advanceUntilIdle()
+        settle()
         assertTrue(
             driver.ops.none { it.kind == OpKind.SnapReveal && it.target == 0f },
             "disposed row must never snap back to 0f, ops=${driver.ops}",
@@ -413,7 +418,7 @@ class ActivitySwipeResetAndExitTest {
         assertEquals(0f, controller.collapseProgress)
 
         // Past the hold window, a row that was not removed restores cleanly to closed rest.
-        advanceUntilIdle()
+        settle()
         assertEquals(ActivitySwipePhase.Idle, controller.phase)
         assertEquals(0f, controller.revealPx)
         assertEquals(0f, controller.fullDoneProgress)
@@ -436,7 +441,7 @@ class ActivitySwipeResetAndExitTest {
         assertTrue(toggleController.settleVersion > 0)
         // Self-healing syncRest recovers the offset cleanly back to 0.
         toggleController.syncRest(0f)
-        advanceUntilIdle()
+        settle()
         assertEquals(0f, toggleController.revealPx)
         assertTrue(toggleController.beginDrag(), "row must remain interactive after toggle error")
 
@@ -470,7 +475,7 @@ class ActivitySwipeResetAndExitTest {
             onBeforeDone = {},
             onDone = { throw IllegalStateException("done boom") },
         )
-        advanceUntilIdle()
+        settle()
 
         assertEquals(1, uncaught.size)
         assertEquals(ActivitySwipePhase.Idle, controller.phase, "try/finally must clear Exited on onDone exception")
@@ -478,7 +483,7 @@ class ActivitySwipeResetAndExitTest {
 
         // Self-healing syncRest restores offset and collapse progress so the row is not permanently stuck.
         controller.syncRest(0f)
-        advanceUntilIdle()
+        settle()
         assertEquals(0f, controller.revealPx)
         assertEquals(1f, controller.collapseProgress)
         assertTrue(controller.beginDrag(), "row must remain interactive after onDone failure")
@@ -507,7 +512,7 @@ class ActivitySwipeResetAndExitTest {
 
         animDriver.animateRevealGate = null
         animGate.complete(Unit)
-        advanceUntilIdle()
+        settle()
         assertEquals(80f, animController.revealPx)
         assertEquals(1, animDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
 
@@ -530,7 +535,7 @@ class ActivitySwipeResetAndExitTest {
 
         endDriver.animateRevealGate = null
         endGate.complete(Unit)
-        advanceUntilIdle()
+        settle()
         assertEquals(0f, endController.revealPx)
         assertEquals(1, endDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
 
@@ -556,7 +561,7 @@ class ActivitySwipeResetAndExitTest {
 
         snapDriver.snapRevealGate = null
         snapGate.complete(Unit)
-        advanceUntilIdle()
+        settle()
         assertEquals(92f, snapController.revealPx)
         assertEquals(1, snapDriver.maxConcurrentRevealDrivers, "driver must never run concurrently")
     }
@@ -589,7 +594,7 @@ class ActivitySwipeResetAndExitTest {
         assertEquals(ActivitySwipePhase.CompletingToggle, controller.phase)
         assertFalse(controller.beginDrag(), "beginDrag must stay rejected while toggle springs back")
 
-        advanceUntilIdle()
+        settle()
         assertEquals(ActivitySwipePhase.Idle, controller.phase)
         assertEquals(0f, controller.revealPx)
         assertEquals(1, toggles)
@@ -603,7 +608,7 @@ class ActivitySwipeResetAndExitTest {
         advanceTimeBy(30L)
         runCurrent()
         cancelController.cancel()
-        advanceUntilIdle()
+        settle()
         assertEquals(1, cancelledToggles, "cancelling spring-back must never drop onToggleRead")
         assertEquals(ActivitySwipePhase.Idle, cancelController.phase)
     }
@@ -623,7 +628,7 @@ class ActivitySwipeResetAndExitTest {
         val doneOpsAfterCancel = doneDriver.ops.size
         assertEquals(ActivitySwipePhase.Idle, doneController.phase)
 
-        advanceUntilIdle()
+        settle()
         assertEquals(0, zombieDone, "cancelled controller must never fire zombie onDone on a new row")
         assertEquals(doneOpsAfterCancel, doneDriver.ops.size, "cancelled controller must not keep driving animations")
 
@@ -640,7 +645,7 @@ class ActivitySwipeResetAndExitTest {
         val exitOpsAfterCancel = exitDriver.ops.size
         assertEquals(ActivitySwipePhase.Idle, exitController.phase)
 
-        advanceUntilIdle()
+        settle()
         assertEquals(0, zombieExit, "cancelled controller must never fire zombie onExit")
         assertEquals(exitOpsAfterCancel, exitDriver.ops.size)
     }
@@ -823,19 +828,94 @@ class ActivitySwipeResetAndExitTest {
     }
 
     @Test
-    fun activitySwipeListHostStateUpdateAndCloseClearOpenRowAndGeometry() {
+    fun activitySwipeListHostStateUpdateCloseAndBeforeFilterChangeFlushWorkTogether() {
         val host = ActivitySwipeListHostState()
         host.updateOpenRow(host.openRow.change("row-a", ActivitySwipeSide.End))
         assertEquals("row-a", host.openRow.key)
         assertEquals(ActivitySwipeSide.End, host.openRow.openSide("row-a"))
 
-        host.close()
+        var flushed = 0
+        host.beforeFilterChangeFlush = {
+            flushed += 1
+            host.close()
+        }
+        host.flushBeforeFilterChange()
+        assertEquals(1, flushed)
         assertNull(host.openRow.key)
-        assertFalse(host.geometry.containsInOpenRow(Offset.Zero, expectedKey = "row-a"))
+        assertNull(host.openRow.openSide("row-a"))
 
         host.updateOpenRow(host.openRow.change("row-b", ActivitySwipeSide.Start))
         assertEquals(ActivitySwipeSide.Start, host.openRow.openSide("row-b"))
         host.updateOpenRow(host.openRow.retain(emptyList()))
         assertNull(host.openRow.key)
+    }
+
+    @Test
+    fun onBeforeAndOnExitFailureOrSynchronousCancelLeaveControllerClean() = runTest {
+        // 1. onBeforeDone throwing resets phase and bumps settleVersion without launching activeJob.
+        val beforeDoneDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val beforeDoneController = ActivitySwipeRowController(driver = beforeDoneDriver, scope = backgroundScope)
+        assertFailsWith<IllegalStateException> {
+            beforeDoneController.completeDone(
+                widthPx = 390f,
+                onBeforeDone = { throw IllegalStateException("before done boom") },
+                onDone = {},
+            )
+        }
+        assertEquals(ActivitySwipePhase.Idle, beforeDoneController.phase)
+        assertTrue(beforeDoneController.settleVersion > 0)
+        settle()
+        assertTrue(beforeDoneDriver.ops.isEmpty())
+
+        // 2. Synchronous cancel() inside onBeforeDone must not launch a zombie activeJob.
+        val syncCancelDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val syncCancelController = ActivitySwipeRowController(driver = syncCancelDriver, scope = backgroundScope)
+        var syncCancelDoneCalls = 0
+        syncCancelController.completeDone(
+            widthPx = 390f,
+            onBeforeDone = { syncCancelController.cancel() },
+            onDone = { syncCancelDoneCalls += 1 },
+        )
+        settle()
+        assertEquals(0, syncCancelDoneCalls)
+        assertTrue(syncCancelDriver.ops.isEmpty())
+        assertEquals(ActivitySwipePhase.Idle, syncCancelController.phase)
+
+        // 3. onExit throwing inside completeCollapseExit clears Exited and allows recovery.
+        val uncaught = mutableListOf<Throwable>()
+        val safeScope =
+            CoroutineScope(
+                backgroundScope.coroutineContext +
+                    SupervisorJob() +
+                    CoroutineExceptionHandler { _, throwable -> uncaught += throwable },
+            )
+        val exitDriver = FakeRevealDriver(initialRevealPx = 144f)
+        val exitController = ActivitySwipeRowController(driver = exitDriver, scope = safeScope)
+        exitController.completeCollapseExit(
+            onBeforeExit = {},
+            onExit = { throw IllegalStateException("exit boom") },
+        )
+        settle()
+        assertEquals(1, uncaught.size)
+        assertEquals(ActivitySwipePhase.Idle, exitController.phase)
+        exitController.syncRest(0f)
+        settle()
+        assertEquals(0f, exitController.revealPx)
+        assertEquals(1f, exitController.collapseProgress)
+        assertTrue(exitController.beginDrag())
+        safeScope.cancel()
+
+        // 4. Rapid syncFullDone toggles retire the prior job cleanly and converge to the latest target.
+        val fullDoneDriver = FakeRevealDriver(initialRevealPx = 200f, initialFullDone = 0f)
+        val fullDoneController = ActivitySwipeRowController(driver = fullDoneDriver, scope = backgroundScope)
+        fullDoneController.syncFullDone(true)
+        advanceTimeBy(ActivitySwipeFullDoneExpandMillis.toLong() / 2)
+        runCurrent()
+        fullDoneController.syncFullDone(false)
+        settle()
+        assertEquals(0f, fullDoneController.fullDoneProgress)
+        fullDoneController.syncFullDone(true)
+        settle()
+        assertEquals(1f, fullDoneController.fullDoneProgress)
     }
 }
