@@ -88,17 +88,29 @@ class RaftFilePreviewPdfTest {
     @Test
     fun shareIsOfferedOnceThePdfIsOnTheDevice() {
         val ready = RaftFilePreviewPdfState.Ready("/cache/att/spec.pdf")
+        val idle = RaftFilePreviewPdfState.Idle
         val downloading = RaftFilePreviewPdfState.Downloading()
         // (canOpenWith, public download state, preview state) -> Share shown.
         listOf(
             Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, ready) to true, // the cached copy on screen
             Triple(true, RaftFilePreviewDownloadUiState.Downloaded, downloading) to true, // saved to Downloads
-            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, downloading) to false, // nothing on the device yet
+            Triple(true, RaftFilePreviewDownloadUiState.Downloaded, idle) to true, // saved to Downloads before preview prepares
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, idle) to false, // preview preparation not started yet
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, downloading) to false, // preview download in progress
             Triple(true, RaftFilePreviewDownloadUiState.Downloading, ready) to false, // a save is running
             Triple(false, RaftFilePreviewDownloadUiState.Downloaded, ready) to false, // not an attachment
         ).forEach { (input, expected) ->
             val (canOpenWith, downloadState, pdfState) = input
-            assertEquals(expected, raftFilePreviewPdfShowsShareAction(canOpenWith, downloadState, pdfState), "$input")
+            assertEquals(
+                expected,
+                raftFilePreviewOverflowShowsShare(
+                    canOpenWith = canOpenWith,
+                    downloadState = downloadState,
+                    supportsAttachmentShare = true,
+                    previewPreparing = pdfState is RaftFilePreviewPdfState.Idle || pdfState is RaftFilePreviewPdfState.Downloading
+                ),
+                "$input"
+            )
         }
     }
 }

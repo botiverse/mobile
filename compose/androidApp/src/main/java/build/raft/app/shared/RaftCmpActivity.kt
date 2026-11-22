@@ -8323,7 +8323,11 @@ internal class RaftBridgeModule(
         val identity = request.publicAttachmentIdentity(owner)
         val authority = ProcessAndroidAttachmentPublicDownloads.get(appContext)
         val privateTarget =
-                attachmentCacheFile(request, owner.principalKey)
+                attachmentCacheFile(
+                        attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment",
+                        principalKey = owner.principalKey,
+                        cacheDir = attachmentOpenCacheDir()
+                )
         val privateCached = privateTarget.isUsableAttachmentCacheFile()
         return runCatching {
                     authority.withIdentityLock(identity) {
@@ -8433,6 +8437,9 @@ internal class RaftBridgeModule(
         val downloadId = request.optString("downloadId").takeIf { it.isNotBlank() }
                 ?: return mapOf("status" to "failed", "message" to "Missing download id")
         val action = request.optString("action").lowercase(Locale.US)
+        if (action == "cancel" || action == "stop") {
+            ProcessAndroidAttachmentOpenCancellation.markCancelled(downloadId)
+        }
         val expectedAttemptToken = request.optString("attemptToken").takeIf { it.isNotBlank() }
         val commonHandled = request.optBoolean("commonHandled", false)
         val downloadStatus =
@@ -8498,6 +8505,15 @@ internal class RaftBridgeModule(
                         cacheDir
                 )
         val wasCached = targetFile.isUsableAttachmentCacheFile()
+        if (!wasCached && urlText.startsWith("file://", ignoreCase = true)) {
+            return AttachmentPreparationResult.Terminal(
+                    mapOf(
+                            "status" to "missing",
+                            "message" to "Cached attachment is unavailable",
+                            "cached" to false
+                    )
+            )
+        }
         val directCompletion =
                 if (!wasCached) {
                     try {
@@ -8580,12 +8596,18 @@ internal class RaftBridgeModule(
     ): AndroidAttachmentOpenDispatch {
         val owner = request.attachmentOwnerLease()
                 ?: return AndroidAttachmentOpenDispatch.Complete(AndroidAttachmentOpenResult.failed())
+        val openDownloadId = request.optString("downloadId").takeIf(String::isNotBlank)
+        val operationIsCurrent = { !ProcessAndroidAttachmentOpenCancellation.isCancelled(openDownloadId) }
+        try {
+        if (!operationIsCurrent()) {
+            return AndroidAttachmentOpenDispatch.Complete(AndroidAttachmentOpenResult.cancelled())
+        }
         val identity = request.publicAttachmentIdentity(owner)
         val authority = ProcessAndroidAttachmentPublicDownloads.get(appContext)
         var resolverEmptySource: AndroidAttachmentContentUriSource? = null
         val coordinator =
                 AndroidAttachmentOpenCoordinator<AttachmentPreparationResult.Ready>(
-                        ownerIsCurrent = { ProcessAndroidAttachmentOwners.admit(owner) },
+                        ownerIsCurrent = { ProcessAndroidAttachmentOwners.admit(owner) && operationIsCurrent() },
                         withIdentityLock = { requestedIdentity, block ->
                             authority.withIdentityLock(requestedIdentity) { block() }
                         },
@@ -8599,6 +8621,7 @@ internal class RaftBridgeModule(
                                             prepareAttachment(
                                                     request = request,
                                                     cacheDir = attachmentOpenCacheDir(),
+                                                    operationIsCurrent = operationIsCurrent,
                                                     progressCallback = progressCallback
                                             )
                             ) {
@@ -8622,7 +8645,8 @@ internal class RaftBridgeModule(
                                     request = request,
                                     owner = owner,
                                     source = source,
-                                    privateSourceFile = privatePreparation?.targetFile
+                                    privateSourceFile = privatePreparation?.targetFile,
+                                    operationIsCurrent = operationIsCurrent
                             ).also { result ->
                                 if (result.status == AndroidAttachmentOpenStatus.NoApp) {
                                     resolverEmptySource = source
@@ -8660,6 +8684,9 @@ internal class RaftBridgeModule(
                 owner = owner,
                 attachmentId = identity.attachmentId
         )
+        } finally {
+            ProcessAndroidAttachmentOpenCancellation.clear(openDownloadId)
+        }
     }
 
     /**
@@ -8712,8 +8739,10 @@ internal class RaftBridgeModule(
             request: JSONObject,
             owner: AndroidAttachmentOwnerLease,
             source: AndroidAttachmentContentUriSource,
-            privateSourceFile: File? = null
+            privateSourceFile: File? = null,
+            operationIsCurrent: () -> Boolean = { true }
     ): AndroidAttachmentOpenResult {
+        if (!operationIsCurrent()) return AndroidAttachmentOpenResult.cancelled()
         val share = request.optBoolean("share", false)
         val packageArchive = !share && isAndroidPackageArchive(source.displayName, source.mimeType)
         if (!packageArchive) {
@@ -8745,21 +8774,26 @@ internal class RaftBridgeModule(
                         )
                         return AndroidAttachmentOpenResult.storageFailed()
                     }
-            return launchResolvedAttachment(
-                    request = request,
-                    owner = owner,
-                    source = androidAttachmentShareSource(appContext, staged, shareMimeType),
-                    privateSourceFile = staged
-            )
+            if (!operationIsCurrent()) return AndroidAttachmentOpenResult.cancelled()
+            val stagedResult =
+                    launchResolvedAttachment(
+                            request = request,
+                            owner = owner,
+                            source = androidAttachmentShareSource(appContext, staged, shareMimeType),
+                            privateSourceFile = staged,
+                            operationIsCurrent = operationIsCurrent
+                    )
+            return preserveAndroidAttachmentOriginResult(stagedResult, source)
         }
-        return launchResolvedAttachment(request, owner, source, privateSourceFile)
+        return launchResolvedAttachment(request, owner, source, privateSourceFile, operationIsCurrent)
     }
 
     private fun launchResolvedAttachment(
             request: JSONObject,
             owner: AndroidAttachmentOwnerLease,
             source: AndroidAttachmentContentUriSource,
-            privateSourceFile: File?
+            privateSourceFile: File?,
+            operationIsCurrent: () -> Boolean = { true }
     ): AndroidAttachmentOpenResult {
         val attachmentId = request.optString("attachmentId").ifBlank { "attachment" }
         val startedAt = System.currentTimeMillis()
@@ -8794,7 +8828,21 @@ internal class RaftBridgeModule(
                                     .isNotEmpty()
                         },
                         runIfOwnerCurrent = { block ->
-                            ProcessAndroidAttachmentOwners.runIfLaunchable(owner, block)
+                            if (!operationIsCurrent()) {
+                                null
+                            } else {
+                                var cancelled = false
+                                val value =
+                                    ProcessAndroidAttachmentOwners.runIfLaunchable(owner) {
+                                        if (!operationIsCurrent()) {
+                                            cancelled = true
+                                            null
+                                        } else {
+                                            block()
+                                        }
+                                    }
+                                if (cancelled) null else value
+                            }
                         },
                         launchSource = {
                             executeAndroidAttachmentPlatformLaunch(

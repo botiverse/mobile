@@ -143,19 +143,6 @@ internal fun RaftFilePreviewPdfState.onPdfRenderError(error: RaftPdfDocumentErro
 internal val RaftFilePreviewPdfState.canRetry: Boolean
     get() = this is RaftFilePreviewPdfState.Failed && reason == RaftFilePreviewPdfFailure.Download
 
-/**
- * Share in the PDF preview menu: once the file is on the device, either saved to Downloads or
- * as the cached copy the viewer shows.
- */
-internal fun raftFilePreviewPdfShowsShareAction(
-    canOpenWith: Boolean,
-    downloadState: RaftFilePreviewDownloadUiState?,
-    pdfState: RaftFilePreviewPdfState
-): Boolean =
-    canOpenWith &&
-        downloadState != RaftFilePreviewDownloadUiState.Downloading &&
-        (downloadState == RaftFilePreviewDownloadUiState.Downloaded || pdfState is RaftFilePreviewPdfState.Ready)
-
 /** "3 / 12" for a zero-based [currentPage], or null before the page count is known. */
 internal fun raftFilePreviewPdfPageIndicatorArgs(currentPage: Int, pageCount: Int): Pair<String, String>? =
     if (pageCount <= 0) null else ((currentPage.coerceIn(0, pageCount - 1) + 1).toString() to pageCount.toString())

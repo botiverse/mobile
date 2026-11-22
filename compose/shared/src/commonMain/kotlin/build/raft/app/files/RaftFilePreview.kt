@@ -721,6 +721,25 @@ internal fun raftFilePreviewShouldRetireExternalOperation(
     visible: RaftFilePreviewExternalOperationIdentity?
 ): Boolean = active != null && active != visible
 
+private data class ActiveOpenCancelTarget(
+    val operation: AttachmentOperationToken,
+    val downloadId: String,
+    val attemptToken: String? = null,
+    val recordVersion: Long? = null,
+    val hostOpenStarted: Boolean = false,
+    val stopRequested: Boolean = false
+)
+
+internal fun raftFilePreviewPdfIsPreparing(
+    payload: RaftFilePreviewPayload,
+    pdfState: RaftFilePreviewPdfState
+): Boolean =
+    (
+        payload.kind == RaftFilePreviewPdfKind ||
+            (payload.kind == "loading" && payload.requestedKind == RaftFilePreviewPdfKind)
+        ) &&
+        (pdfState is RaftFilePreviewPdfState.Idle || pdfState is RaftFilePreviewPdfState.Downloading)
+
 internal fun raftFilePreviewPhotosActionState(
     supported: Boolean,
     eligible: Boolean,
@@ -1956,6 +1975,9 @@ private fun RaftFilePreviewStandalonePageContent() {
     var activeAttachmentOperation by remember {
         mutableStateOf<AttachmentOperationToken?>(null)
     }
+    val activeOpenCancelTarget = remember {
+        mutableStateOf<ActiveOpenCancelTarget?>(null)
+    }
     var activeExportOperation by remember {
         mutableStateOf<AttachmentOperationToken?>(null)
     }
@@ -2059,6 +2081,17 @@ private fun RaftFilePreviewStandalonePageContent() {
                 owner = owner
             )
         }
+    fun cancelActiveOpenOperation() {
+        val target = activeOpenCancelTarget.value ?: return
+        activeOpenCancelTarget.value = null
+        bridge.attachmentDownloadControlDetached(
+            downloadId = raftAttachmentHostDownloadId(target.operation.owner, target.downloadId),
+            owner = target.operation.owner,
+            expectedAttemptToken = target.attemptToken,
+            expectedRecordVersion = target.recordVersion,
+            action = "stop"
+        )
+    }
     LaunchedEffect(visibleExternalOperationIdentity) {
         if (
             raftFilePreviewShouldRetireExternalOperation(
@@ -2066,6 +2099,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 visible = visibleExternalOperationIdentity
             )
         ) {
+            cancelActiveOpenOperation()
             val retiringJob = activeExternalOperationJob.value
             activeAttachmentOperation = null
             activeExportOperation = null
@@ -2082,6 +2116,7 @@ private fun RaftFilePreviewStandalonePageContent() {
     }
     DisposableEffect(Unit) {
         onDispose {
+            cancelActiveOpenOperation()
             val retiringJob = activeExternalOperationJob.value
             activeAttachmentOperation = null
             activeExportOperation = null
@@ -2117,6 +2152,16 @@ private fun RaftFilePreviewStandalonePageContent() {
                     activeDownloadId = expectedDownloadId
                 )
             attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
+            val currentCancelTarget = activeOpenCancelTarget.value
+            if (currentCancelTarget != null && currentCancelTarget.operation.operationId == operation.operationId) {
+                activeOpenCancelTarget.value =
+                    currentCancelTarget.copy(
+                        attemptToken =
+                            downloadProgress?.attemptToken?.takeIf(String::isNotBlank)
+                                ?: currentCancelTarget.attemptToken,
+                        recordVersion = downloadProgress?.recordVersion ?: currentCancelTarget.recordVersion
+                    )
+            }
         }
     }
     LaunchedEffect(downloadProgress?.downloadId, downloadProgress?.downloadedBytes) {
@@ -2597,14 +2642,76 @@ private fun RaftFilePreviewStandalonePageContent() {
         currentPayload: RaftFilePreviewPayload,
         policy: RaftFilePreviewExternalOpenPolicy,
         operation: AttachmentOperationToken,
-        share: Boolean = false
+        share: Boolean = false,
+        onRemoteDownloadStarting: () -> Unit = {}
     ): String? {
-        val downloadId =
-            if (policy.trackProgress) {
-                activeDownloadId ?: currentPayload.filePreviewDownloadId()
-            } else {
-                null
+        val downloadId = activeDownloadId ?: currentPayload.filePreviewDownloadId()
+        // Probe the private open cache before showing download chrome or requesting a signed URL:
+        // an already-cached PDF or previously shared attachment launches immediately (and offline)
+        // without flashing the download progress overlay.
+        if (!policy.requirePublicDownload && currentPayload.source == RaftFilePreviewSourceThreadAttachment) {
+            val privateCachedUrl =
+                raftFilePreviewPrivateCachedOpenUrl(
+                    payload = currentPayload,
+                    owner = operation.owner
+                )
+            if (privateCachedUrl != null) {
+                val preProbeTarget = activeOpenCancelTarget.value
+                if (preProbeTarget != null && preProbeTarget.operation.operationId == operation.operationId) {
+                    if (preProbeTarget.stopRequested) return downloadStopped
+                    activeOpenCancelTarget.value = preProbeTarget.copy(hostOpenStarted = true)
+                }
+                val cachedResult =
+                    bridge.openAttachment(
+                        url = privateCachedUrl,
+                        attachmentId = currentPayload.attachmentCacheId(),
+                        fileName = currentPayload.attachmentCacheFileName(),
+                        owner = operation.owner,
+                        mimeType = currentPayload.externalMimeType,
+                        downloadId = downloadId,
+                        requirePublicDownload = false,
+                        share = share,
+                        onProgress = null
+                    )
+                val cachedStatus = cachedResult?.optString("status").orEmpty()
+                if (cachedStatus != "missing") {
+                    if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
+                    publicDownloadState = raftFilePreviewPublicDownloadStateAfterOpen(visiblePublicDownloadState, cachedResult)
+                    observedPublicDownloadQuery = publicDownloadQuery
+                    return when (cachedStatus) {
+                        "opened", "", "install_permission_required", "install_via_files" -> {
+                            if (cachedResult?.optBoolean("cached", false) == true) {
+                                publicDownloadQuery?.let { refreshPublicDownloadState(it) }
+                            }
+                            activeDownloadId = null
+                            null
+                        }
+                        "cancelled" -> {
+                            activeDownloadId = null
+                            raftAttachmentOpenResultMessage("cancelled", attachmentOpenResultTerms)
+                        }
+                        "save_cancelled" -> {
+                            activeDownloadId = null
+                            null
+                        }
+                        else -> {
+                            activeDownloadId = null
+                            raftAttachmentOpenResultMessage(cachedStatus, attachmentOpenResultTerms)
+                                ?: unableToOpenAttachment
+                        }
+                    }
+                }
+                val postProbeTarget = activeOpenCancelTarget.value
+                if (postProbeTarget != null && postProbeTarget.operation.operationId == operation.operationId) {
+                    if (postProbeTarget.stopRequested) return downloadStopped
+                    activeOpenCancelTarget.value = postProbeTarget.copy(hostOpenStarted = false)
+                }
             }
+            if (policy.trackProgress) {
+                if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return null
+                onRemoteDownloadStarting()
+            }
+        }
         val tracedResult =
             runRaftFilePreviewExternalOpenTraceFlow(
                 policy = policy,
@@ -2614,15 +2721,6 @@ private fun RaftFilePreviewStandalonePageContent() {
                         // Native code will fail closed before private materialization if readback misses.
                         currentPayload.externalUrl.orEmpty()
                     } else if (currentPayload.source == RaftFilePreviewSourceThreadAttachment) {
-                        // task #319: a private staging copy may already exist for an
-                        // attachment the user already opened/downloaded. Probe the cache
-                        // before resolving a fresh signed URL — on a hit we can open the
-                        // local file directly and skip the attachments/{id}/url round-trip
-                        // (and the no-op download flow it used to spin up).
-                        raftFilePreviewPrivateCachedOpenUrl(
-                            payload = currentPayload,
-                            owner = operation.owner
-                        ) ?:
                         // A URL hydrated for rendering is not durable action authority. Resolve a
                         // fresh attachment URL inside the authenticated pre/post-operation fence.
                         resolveRemoteExternalUrl(currentPayload)
@@ -2642,22 +2740,34 @@ private fun RaftFilePreviewStandalonePageContent() {
                     }
                 },
                 openHost = { externalUrl ->
-                    bridge.openAttachment(
-                        url = externalUrl,
-                        attachmentId = currentPayload.attachmentCacheId(),
-                        fileName = currentPayload.attachmentCacheFileName(),
-                        owner = operation.owner,
-                        mimeType = currentPayload.externalMimeType,
-                        downloadId = downloadId,
-                        requirePublicDownload = policy.requirePublicDownload,
-                        share = share,
-                        onProgress =
-                            if (policy.trackProgress) {
-                                { progress -> downloadProgressMailbox.offer(operation, progress) }
-                            } else {
-                                null
-                            }
-                    )
+                    val preHostTarget = activeOpenCancelTarget.value
+                    if (
+                        preHostTarget != null &&
+                        preHostTarget.operation.operationId == operation.operationId &&
+                        preHostTarget.stopRequested
+                    ) {
+                        JSONObject().put("status", "cancelled")
+                    } else {
+                        if (preHostTarget != null && preHostTarget.operation.operationId == operation.operationId) {
+                            activeOpenCancelTarget.value = preHostTarget.copy(hostOpenStarted = true)
+                        }
+                        bridge.openAttachment(
+                            url = externalUrl,
+                            attachmentId = currentPayload.attachmentCacheId(),
+                            fileName = currentPayload.attachmentCacheFileName(),
+                            owner = operation.owner,
+                            mimeType = currentPayload.externalMimeType,
+                            downloadId = downloadId,
+                            requirePublicDownload = policy.requirePublicDownload,
+                            share = share,
+                            onProgress =
+                                if (policy.trackProgress) {
+                                    { progress -> downloadProgressMailbox.offer(operation, progress) }
+                                } else {
+                                    null
+                                }
+                        )
+                    }
                 },
                 statusOf = { result -> result?.optString("status") },
                 errorKindOf = { result -> result?.optString("errorKind") },
@@ -3097,10 +3207,9 @@ private fun RaftFilePreviewStandalonePageContent() {
         if (!traceRaftFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
         val admittedPolicy = policy ?: return
-        // Share hands over the file already on the device; it never starts a download. A shown
-        // PDF is on the device already: its cached copy is shared.
-        val sharesPdfPreviewCopy = payload.kind == RaftFilePreviewPdfKind && pdfState is RaftFilePreviewPdfState.Ready
-        if (share && !admittedPolicy.requirePublicDownload && !sharesPdfPreviewCopy) return
+        // Share reuses the public download or private cached copy when already on the device,
+        // and otherwise fetches into the private cache (with progress) before launching the
+        // system share sheet (Android ACTION_SEND / iOS UIActivityViewController).
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -3112,10 +3221,16 @@ private fun RaftFilePreviewStandalonePageContent() {
         )
         // Cached opens still cross an irreversible native launch boundary. Keep them non-idle
         // so a second tap cannot supersede this operation token before URI grant/startActivity
-        // completes, but use a non-download status so Install/Open never flashes download chrome.
-        downloadStatus = raftFilePreviewExternalOpenAdmissionStatus(admittedPolicy.trackProgress)
+        // completes, and hold off flipping to "downloading" on thread attachments until the
+        // private cache probe misses so already-cached PDFs/files never flash download chrome.
+        val deferDownloadChrome =
+            admittedPolicy.trackProgress && payload.source == RaftFilePreviewSourceThreadAttachment
+        downloadStatus =
+            raftFilePreviewExternalOpenAdmissionStatus(
+                admittedPolicy.trackProgress && !deferDownloadChrome
+            )
         activeDownloadStartedAt = TimeSource.Monotonic.markNow()
-        if (admittedPolicy.trackProgress) {
+        if (admittedPolicy.trackProgress && !deferDownloadChrome) {
             firstBridgeDownloadId = null
             firstRenderedDownloadId = null
             downloadProgress = RaftFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
@@ -3123,12 +3238,30 @@ private fun RaftFilePreviewStandalonePageContent() {
             downloadProgress = null
         }
         val operation = activeAttachmentOperation ?: return
+        activeOpenCancelTarget.value =
+            ActiveOpenCancelTarget(
+                operation = operation,
+                downloadId = operation.downloadId
+            )
         val requestPayload = payload
         activeExternalOperationIdentity = visibleExternalOperationIdentity
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val error = openPayloadExternally(requestPayload, admittedPolicy, operation, share)
+                    val error =
+                        openPayloadExternally(
+                            currentPayload = requestPayload,
+                            policy = admittedPolicy,
+                            operation = operation,
+                            share = share,
+                            onRemoteDownloadStarting = {
+                                downloadStatus = raftFilePreviewExternalOpenAdmissionStatus(trackProgress = true)
+                                firstBridgeDownloadId = null
+                                firstRenderedDownloadId = null
+                                downloadProgress =
+                                    RaftFilePreviewInitialDownloadProgress.copy(downloadId = operation.downloadId)
+                            }
+                        )
                     if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
                     if (error == null) {
                         downloadStatus = "idle"
@@ -3142,9 +3275,14 @@ private fun RaftFilePreviewStandalonePageContent() {
                         downloadProgress = null
                         activeDownloadId = null
                         activeAttachmentOperation = null
-                        bridge.toast(error)
+                        if (error != downloadStopped) {
+                            bridge.errorToast(error)
+                        }
                     }
                 } finally {
+                    if (activeOpenCancelTarget.value?.operation?.operationId == operation.operationId) {
+                        activeOpenCancelTarget.value = null
+                    }
                     if (activeExternalOperationJob.value == currentCoroutineContext()[Job]) {
                         activeExternalOperationJob.value = null
                         activeExternalOperationIdentity = null
@@ -3185,23 +3323,68 @@ private fun RaftFilePreviewStandalonePageContent() {
             // fake Paused state while the native copy continues.
             return
         }
+        val progressSnapshot = downloadProgress
+        val isExternalOpen = externalOperation == "open"
+        val cancelTarget = activeOpenCancelTarget.value?.takeIf { it.operation.operationId == operation.operationId }
         when (action) {
             "pause" -> downloadStatus = "paused"
             "resume" -> downloadStatus = "downloading"
             "stop" -> {
-                downloadStatus = "idle"
+                if (isExternalOpen && cancelTarget != null && !cancelTarget.hostOpenStarted) {
+                    // Stop arrived during URL resolution before host openAttachment started;
+                    // abort immediately so a slow network does not leave the page stuck in "opening".
+                    activeOpenCancelTarget.value = null
+                    val retiringJob = activeExternalOperationJob.value
+                    activeAttachmentOperation = null
+                    activeExternalOperationIdentity = null
+                    activeExternalOperationJob.value = null
+                    activeDownloadId = null
+                    downloadProgress = null
+                    downloadStatus = "idle"
+                    downloadMessage = downloadStopped
+                    externalOperation = null
+                    retiringJob?.cancel()
+                    return
+                }
+                if (isExternalOpen && cancelTarget != null) {
+                    activeOpenCancelTarget.value = cancelTarget.copy(stopRequested = true)
+                }
+                // Keep external "open" non-idle until the host finishes cancelling its active
+                // slot so an immediate second Share tap never collides with "busy".
+                downloadStatus = if (isExternalOpen) "opening" else "idle"
                 downloadMessage = downloadStopped
+                if (isExternalOpen) {
+                    downloadProgress = null
+                }
             }
         }
         coroutineScope.launch {
-            bridge.attachmentDownloadControl(
-                // The host runs the download under its principal-scoped id.
-                downloadId = raftAttachmentHostDownloadId(operation.owner, downloadId),
-                owner = operation.owner,
-                expectedAttemptToken = downloadProgress?.attemptToken,
-                expectedRecordVersion = downloadProgress?.recordVersion,
-                action = action
-            )
+            val controlResult =
+                bridge.attachmentDownloadControl(
+                    // The host runs the download under its principal-scoped id.
+                    downloadId = raftAttachmentHostDownloadId(operation.owner, downloadId),
+                    owner = operation.owner,
+                    expectedAttemptToken =
+                        progressSnapshot?.attemptToken?.takeIf(String::isNotBlank) ?: cancelTarget?.attemptToken,
+                    expectedRecordVersion = progressSnapshot?.recordVersion ?: cancelTarget?.recordVersion,
+                    action = action
+                )
+            val controlStatus = controlResult.optString("status")
+            if (
+                action == "stop" &&
+                isExternalOpen &&
+                (controlStatus == "missing" || controlStatus == "failed") &&
+                activeAttachmentOperation?.operationId == operation.operationId &&
+                activeExternalOperationJob.value?.isActive != true
+            ) {
+                downloadStatus = "idle"
+                activeDownloadId = null
+                activeAttachmentOperation = null
+                if (activeOpenCancelTarget.value?.operation?.operationId == operation.operationId) {
+                    activeOpenCancelTarget.value = null
+                }
+                externalOperation = null
+            }
         }
     }
     fun requestDeleteDownload() {
@@ -3239,6 +3422,7 @@ private fun RaftFilePreviewStandalonePageContent() {
     }
     fun selectImageGalleryIndex(index: Int) {
         payload.withImageGalleryIndex(index, imageGalleryResolutionState.resolvedPayloadByAttachmentId)?.let { nextPayload ->
+            cancelActiveOpenOperation()
             val retiringJob = activeExternalOperationJob.value
             activeAttachmentOperation = null
             activeExportOperation = null
@@ -4108,7 +4292,15 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewPdfShowsShareAction(canOpenWith, downloadUiState, pdfState)) {
+                if (
+                    raftFilePreviewOverflowShowsShare(
+                        canOpenWith = canOpenWith,
+                        downloadState = downloadUiState,
+                        supportsAttachmentShare =
+                            supportsPublicDownloadReadback && raftFilePreviewPayloadSupportsRemoteShare(payload),
+                        previewPreparing = raftFilePreviewPdfIsPreparing(payload, pdfState)
+                    )
+                ) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewShareActionId,
                         label = stringResource(Res.string.common_share),
@@ -8941,8 +9133,8 @@ internal fun RaftFilePreviewPayloadContent(
             when {
                 pagePayload.raftFilePreviewShowsImage() ->
                     RaftFilePreviewDownloadStatusOverlay(
-                        statusLabel = downloadStatusLabel.takeIf { selected && pagePayload.kind == "image" },
-                        showProgress = selected && pagePayload.kind == "image" && downloadInProgress,
+                        statusLabel = downloadStatusLabel.takeIf { selected },
+                        showProgress = selected && downloadInProgress,
                         downloadView = downloadView,
                         downloadPaused = downloadPaused,
                         onToggleDownload = onToggleDownload,
@@ -9007,7 +9199,18 @@ internal fun RaftFilePreviewPayloadContent(
                         onStopDownload = onStopDownload,
                         modifier = Modifier.fillMaxSize().padding(RaftAppSpacing.Md)
                     )
-                else -> RaftFilePreviewLoadingIndicator(modifier = Modifier.fillMaxSize())
+                else ->
+                    RaftFilePreviewDownloadStatusOverlay(
+                        statusLabel = downloadStatusLabel.takeIf { selected },
+                        showProgress = selected && downloadInProgress,
+                        downloadView = downloadView,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        RaftFilePreviewLoadingIndicator(modifier = Modifier.fillMaxSize())
+                    }
             }
         }
         return
@@ -9219,18 +9422,28 @@ internal fun RaftFilePreviewPayloadContent(
                 )
             }
         "error" ->
-            RaftFilePreviewMessage(
-                iconName = RaftLucideIconName.TriangleAlert,
-                title = stringResource(Res.string.file_preview_unavailable),
-                detail =
-                    raftFilePreviewVisibleErrorDetail(
-                        localizedMessage = payload.localizedMessage(),
-                        fallbackMessage = stringResource(Res.string.file_preview_error_load_generic)
-                    ),
-                actionLabel = onRetryLoad?.let { stringResource(Res.string.common_retry) },
-                onAction = onRetryLoad,
-                modifier = modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
-            )
+            RaftFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                downloadView = downloadView,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                RaftFilePreviewMessage(
+                    iconName = RaftLucideIconName.TriangleAlert,
+                    title = stringResource(Res.string.file_preview_unavailable),
+                    detail =
+                        raftFilePreviewVisibleErrorDetail(
+                            localizedMessage = payload.localizedMessage(),
+                            fallbackMessage = stringResource(Res.string.file_preview_error_load_generic)
+                        ),
+                    actionLabel = onRetryLoad?.let { stringResource(Res.string.common_retry) },
+                    onAction = onRetryLoad,
+                    modifier = Modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
+                )
+            }
         else -> {
             // An unplayable video (WebM on iPhone) offers Download and Open in another app (the
             // system share sheet / open-in), not Open in browser: the browser cannot play it either.
@@ -11119,6 +11332,36 @@ internal fun raftFilePreviewOverflowShowsDownload(
     canOpenWith &&
         downloadState == RaftFilePreviewDownloadUiState.NotDownloaded &&
         (kind == RaftFilePreviewPdfKind || kind == "video")
+
+/**
+ * Only remote-fetchable payloads (thread attachments or HTTP/HTTPS URLs) can go through
+ * `bridge.openAttachment` for Share. Local Feedback draft URIs (`file://` / `content://`) set
+ * `externalUrl` for inline preview but are not downloadable via HTTP and must not expose Share.
+ */
+internal fun raftFilePreviewPayloadSupportsRemoteShare(payload: RaftFilePreviewPayload): Boolean {
+    if (payload.source == RaftFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank()) return true
+    val externalUrl = payload.externalUrl?.trim().orEmpty()
+    return externalUrl.startsWith("http://", ignoreCase = true) ||
+        externalUrl.startsWith("https://", ignoreCase = true)
+}
+
+/**
+ * Share in the top-right overflow menu across all previewable and downloadable attachment kinds
+ * on mobile hosts (Android ACTION_SEND / iOS UIActivityViewController). Hidden on desktop hosts
+ * that do not implement `openAttachment`, while a download is running, or while an un-downloaded
+ * PDF is still preparing its initial preview copy.
+ */
+internal fun raftFilePreviewOverflowShowsShare(
+    canOpenWith: Boolean,
+    downloadState: RaftFilePreviewDownloadUiState?,
+    supportsAttachmentShare: Boolean = true,
+    previewPreparing: Boolean = false
+): Boolean =
+    supportsAttachmentShare &&
+        canOpenWith &&
+        downloadState != null &&
+        downloadState != RaftFilePreviewDownloadUiState.Downloading &&
+        (downloadState == RaftFilePreviewDownloadUiState.Downloaded || !previewPreparing)
 
 internal fun raftFilePreviewOverflowActionLabel(
     payload: RaftFilePreviewPayload,
