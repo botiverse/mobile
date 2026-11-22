@@ -199,6 +199,49 @@ class SharedWindowNavigationCoordinatorTest {
         assertTrue(windowNavigationHomeReady("server-b", "server-b", "server-b", "server-b"))
     }
 
+    @Test
+    fun hasReadyOpenRequestIsTrueOnlyForImmediatelyResolvableOpensAndAdvancesStateVersion() {
+        val coordinator = SharedWindowNavigationCoordinator()
+        val initialVersion = coordinator.stateVersion.value
+        val readyB = readyReadiness("server-b")
+
+        assertFalse(coordinator.hasReadyOpenRequest(readyB))
+
+        assertTrue(coordinator.enqueue(hydratingThreadNotificationIntent("server-b")))
+        assertTrue(coordinator.stateVersion.value > initialVersion)
+
+        // Wrong server or unready Home -> false (activation / EnsureHome needed first).
+        assertFalse(coordinator.hasReadyOpenRequest(readiness(canonicalServerId = "server-a")))
+        assertFalse(
+            coordinator.hasReadyOpenRequest(
+                readiness(
+                    canonicalServerId = "server-b",
+                    homeSnapshotServerId = "server-a",
+                    homeSessionServerId = "server-b",
+                )
+            )
+        )
+
+        // Unresolvable Pending route (missing from directory) -> false so default landing never hangs.
+        val unresolvableReadiness =
+            readiness(
+                canonicalServerId = "server-b",
+                homeSnapshotServerId = "server-b",
+                homeSessionServerId = "server-b",
+            )
+        assertFalse(coordinator.hasReadyOpenRequest(unresolvableReadiness))
+
+        // Once the directory resolves the conversation, hasReadyOpenRequest becomes true until advance opens it.
+        val resolvableReadiness =
+            unresolvableReadiness.copy(conversationDirectory = hydratedThreadDirectoryFor("server-b"))
+        assertTrue(coordinator.hasReadyOpenRequest(resolvableReadiness))
+
+        val beforeAdvance = coordinator.stateVersion.value
+        assertIs<WindowNavigationAction.OpenConversation>(coordinator.advance(resolvableReadiness))
+        assertTrue(coordinator.stateVersion.value > beforeAdvance)
+        assertFalse(coordinator.hasReadyOpenRequest(resolvableReadiness))
+    }
+
     private fun notificationIntent(serverId: String): WindowNavigationIntent =
         WindowNavigationIntent(
             serverId = serverId,

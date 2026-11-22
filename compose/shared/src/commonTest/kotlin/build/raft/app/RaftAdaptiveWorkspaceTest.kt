@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.StoredAuthServer
+import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -414,6 +418,242 @@ class RaftAdaptiveWorkspaceTest {
         assertEquals(RaftAdaptiveWorkspacePresentation.DetailOnly, compact.presentation)
         assertEquals(identity, compact.selection?.identity)
     }
+
+    @Test
+    fun shouldSuppressWideAdaptiveEmptyStateCoversLandingEligibilityRestoreAndServerSwitches() {
+        val loading = SharedHomeContentState.Loading()
+        val serverAEmpty = SharedHomeContentState.Empty(sessionForServer("server-a"))
+        val serverBEmpty = SharedHomeContentState.Empty(sessionForServer("server-b"))
+        val serverAError = SharedHomeContentState.Error("home_network", sessionForServer("server-a"))
+        val serverBError = SharedHomeContentState.Error("home_network", sessionForServer("server-b"))
+        val unattributedError = SharedHomeContentState.Error("home_network", session = null)
+
+        // Pending cold start on wide Home suppresses empty placeholder.
+        assertTrue(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = loading,
+            )
+        )
+
+        // CachedRestorePending (authoritativeHomeStartAllowed = false) suppresses until authority lands.
+        assertTrue(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = false,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = "server-a",
+                homeContent = loading,
+            )
+        )
+        assertTrue(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = null,
+                adaptiveDefaultLandingServerId = null,
+                homeContent = loading,
+            )
+        )
+
+        // Once default landing settles for the active server, the empty state is shown again.
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = "server-a",
+                homeContent = loading,
+            )
+        )
+
+        // Server switch (server-a -> server-b): stale Empty and stale Error from server-a keep
+        // suppressing until server-b resolves, whereas current-server Empty/Error or global Error do not.
+        assertTrue(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-b",
+                adaptiveDefaultLandingServerId = "server-a",
+                homeContent = serverAEmpty,
+            )
+        )
+        assertTrue(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-b",
+                adaptiveDefaultLandingServerId = "server-a",
+                homeContent = serverAError,
+            )
+        )
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-b",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = serverBEmpty,
+            )
+        )
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-b",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = serverBError,
+            )
+        )
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-b",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = unattributedError,
+            )
+        )
+
+        // Desktop mode off, declined detail, or non-Home surface (Activity/Tasks) never suppress.
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = false,
+                detailAccepted = true,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = loading,
+            )
+        )
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = false,
+                defaultLandingEligible = true,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = loading,
+            )
+        )
+        assertFalse(
+            shouldSuppressWideAdaptiveEmptyState(
+                desktopModeOnLargeScreen = true,
+                detailAccepted = true,
+                defaultLandingEligible = false,
+                authoritativeHomeStartAllowed = true,
+                readyServerId = "server-a",
+                adaptiveDefaultLandingServerId = null,
+                homeContent = loading,
+            )
+        )
+    }
+
+    @Test
+    fun defaultLandingDroppedDetectsOnlySameServerNarrowDropOfUntouchedLanding() {
+        val compact = widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
+        val landed =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(detailIdentity("all")))
+        val userOpened =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+
+        // Untouched default landing narrowed to Compact -> true.
+        val landedNarrowed = landed.reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(compact))
+        assertTrue(raftAdaptiveDefaultLandingDropped(landed, landedNarrowed))
+
+        // User-selected conversation narrowed to Compact (retained as DetailOnly) -> false.
+        val userNarrowed = userOpened.reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(compact))
+        assertFalse(raftAdaptiveDefaultLandingDropped(userOpened, userNarrowed))
+
+        // Authority switch followed by narrow -> false (different serverId).
+        val switchedAndNarrowed =
+            landed
+                .reduce(RaftAdaptiveWorkspaceIntent.AuthorityChanged("server-b"))
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(compact))
+        assertFalse(raftAdaptiveDefaultLandingDropped(landed, switchedAndNarrowed))
+
+        // Explicit close in DualPane -> false (still DualPane).
+        val explicitlyClosed = landed.reduce(RaftAdaptiveWorkspaceIntent.DismissDetail)
+        assertFalse(raftAdaptiveDefaultLandingDropped(landed, explicitlyClosed))
+        val closedByEnvelope =
+            landed.reduce(
+                RaftAdaptiveWorkspaceIntent.CloseDetail(
+                    identityKey = landed.selection!!.identity.key,
+                    generation = landed.selection.generation,
+                )
+            )
+        assertFalse(raftAdaptiveDefaultLandingDropped(landed, closedByEnvelope))
+
+        // Null bounds never report a drop.
+        assertFalse(raftAdaptiveDefaultLandingDropped(null, landedNarrowed))
+        assertFalse(raftAdaptiveDefaultLandingDropped(landed, null))
+    }
+
+    @Test
+    fun selectionForReadyServerBlocksCrossServerMountOnServerSwitchFrame() {
+        val opened =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+        val selection = opened.selection ?: error("selection missing")
+
+        assertEquals(
+            selection,
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-a", detailAccepted = true),
+        )
+        assertEquals(
+            selection,
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "  server-a  ", detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-b", detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "server-a", detailAccepted = false),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = null, detailAccepted = true),
+        )
+        assertNull(
+            raftAdaptiveSelectionForReadyServer(opened, readyServerId = "   ", detailAccepted = true),
+        )
+    }
+
+    private fun sessionForServer(serverId: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "reef@raft.build"),
+            accessToken = "token",
+            refreshToken = "refresh",
+            selectedServerId = serverId,
+            servers = listOf(StoredAuthServer(id = serverId, name = "$serverId server")),
+        )
 
     private fun initialState(): RaftAdaptiveWorkspaceState =
         RaftAdaptiveWorkspaceState(

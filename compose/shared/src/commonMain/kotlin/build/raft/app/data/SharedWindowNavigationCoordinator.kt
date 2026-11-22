@@ -5,6 +5,9 @@ import build.raft.app.HomeMessageOpenRequest
 import build.raft.app.resolveOpenRequest
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Identity-only navigation request owned by one AppShell/window scope.
@@ -93,6 +96,8 @@ internal class SharedWindowNavigationCoordinator {
     private val lock = SynchronizedObject()
     private val requests = linkedMapOf<String, RequestState>()
     private var released = false
+    private val _stateVersion = MutableStateFlow(0)
+    val stateVersion: StateFlow<Int> = _stateVersion.asStateFlow()
 
     val requestCount: Int
         get() = synchronized(lock) { requests.size }
@@ -103,8 +108,41 @@ internal class SharedWindowNavigationCoordinator {
             false
         } else {
             requests[intent.key] = RequestState(intent = intent)
+            _stateVersion.value += 1
             true
         }
+    }
+
+    /**
+     * True when the next non-terminal queued request is immediately resolvable as a
+     * [WindowNavigationAction.OpenConversation] against [readiness].
+     *
+     * Used by wide default landing to yield while an incoming notification/shortcut/deep-link open
+     * is about to claim the detail pane, without ever stalling on an unresolvable (`Pending`) route.
+     */
+    fun hasReadyOpenRequest(readiness: WindowNavigationReadiness): Boolean = synchronized(lock) {
+        if (released) return false
+        val state = requests.values.firstOrNull { !it.stage.terminal } ?: return false
+        val intent = state.intent
+        if (intent.sourceIdentity.lookupIds().isEmpty()) return false
+        if (readiness.knownServerIds.isNotEmpty() && intent.serverId !in readiness.knownServerIds) return false
+        val canonicalServerId = readiness.canonicalServerId ?: return false
+        if (canonicalServerId != intent.serverId) return false
+        if (
+            !windowNavigationHomeReady(
+                targetServerId = intent.serverId,
+                canonicalServerId = canonicalServerId,
+                homeSnapshotServerId = readiness.homeSnapshotServerId,
+                homeSessionServerId = readiness.homeSessionServerId
+            )
+        ) {
+            return false
+        }
+        resolveOpenRequest(
+            serverId = intent.serverId,
+            sourceMessageIdentity = intent.sourceIdentity,
+            conversationDirectory = readiness.conversationDirectory
+        ) is build.raft.app.ConversationOpenResolution.Resolved
     }
 
     /**
@@ -118,11 +156,13 @@ internal class SharedWindowNavigationCoordinator {
 
         if (intent.sourceIdentity.lookupIds().isEmpty()) {
             state.stage = RequestStage.Rejected
+            _stateVersion.value += 1
             return WindowNavigationAction.Reject(intent, "conversation_identity_missing")
         }
 
         if (readiness.knownServerIds.isNotEmpty() && intent.serverId !in readiness.knownServerIds) {
             state.stage = RequestStage.Rejected
+            _stateVersion.value += 1
             return WindowNavigationAction.Reject(intent, "server_unavailable")
         }
 
@@ -133,6 +173,7 @@ internal class SharedWindowNavigationCoordinator {
         if (canonicalServerId != intent.serverId) {
             if (state.activationRequested) return null
             state.activationRequested = true
+            _stateVersion.value += 1
             return WindowNavigationAction.ActivateServer(intent)
         }
 
@@ -146,6 +187,7 @@ internal class SharedWindowNavigationCoordinator {
         ) {
             if (state.homeStartRequested) return null
             state.homeStartRequested = true
+            _stateVersion.value += 1
             return WindowNavigationAction.EnsureHome(intent)
         }
 
@@ -159,6 +201,7 @@ internal class SharedWindowNavigationCoordinator {
         ) {
             is build.raft.app.ConversationOpenResolution.Resolved -> {
                 state.stage = RequestStage.Opened
+                _stateVersion.value += 1
                 WindowNavigationAction.OpenConversation(intent, resolution.request)
             }
             // Directory snapshots can lag a ready Home/server projection. Keep this request
@@ -174,6 +217,7 @@ internal class SharedWindowNavigationCoordinator {
         val state = requests[intentKey] ?: return null
         if (state.stage.terminal) return null
         state.stage = RequestStage.Rejected
+        _stateVersion.value += 1
         WindowNavigationAction.Reject(state.intent, reason)
     }
 
@@ -184,6 +228,7 @@ internal class SharedWindowNavigationCoordinator {
     fun clear() = synchronized(lock) {
         released = true
         requests.clear()
+        _stateVersion.value += 1
     }
 
     private data class RequestState(

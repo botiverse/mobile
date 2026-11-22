@@ -102,7 +102,12 @@ fun main(args: Array<String>) {
             RaftWindowFocusScope(modifier = Modifier.fillMaxSize(), coordinator = windowFocusCoordinator) {
                 RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
                     Box(Modifier.fillMaxSize().then(hitTest)) {
-                        RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+                        RaftDesktopHostLifecycle {
+                            RaftDesktopHost(
+                                navigator = navigator,
+                                fallbackWindowSize = { windowState.size },
+                            )
+                        }
                     }
                 }
             }

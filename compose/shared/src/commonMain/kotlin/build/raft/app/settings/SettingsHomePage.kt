@@ -667,7 +667,6 @@ private fun RaftAppShellReadyContent(
     var observedHomeServerSwitchId by observedHomeServerSwitchIdState
     var tasksListPosition by remember { mutableStateOf(AppShellLazyListPosition()) }
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
-    var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val tasksSurfaceActive = selectedTab == "tasks"
     // D1a (raft-design #712): the server panel the current-server tab (phone bar) or the rail's
@@ -721,6 +720,7 @@ private fun RaftAppShellReadyContent(
     val adaptiveWorkspaceSession by adaptiveWorkspaceSessionState
     val adaptiveWorkspaceState = adaptiveWorkspaceSession.workspace
     val adaptiveDetailLaunchPayload = adaptiveWorkspaceSession.launchPayload
+    val adaptiveDefaultLandingServerId = adaptiveWorkspaceSession.defaultLandingServerId
     // task #34: a task opened from the Tasks page owns the task column beside the list (web
     // TasksRoute: the task a column of the row, the list the conversation's). Expanded, it fills
     // the row (web Expand, the thread's Focus mode). The id only marks the open task's card.
@@ -1679,21 +1679,28 @@ private fun RaftAppShellReadyContent(
             selectionPresent = adaptiveWorkspaceState?.selection != null,
             columnActive = tasksDetailColumnActive,
         )
+    val adaptiveParentVisible =
+        appShellSharedDetailSurfaceVisible(
+            pageVisible = pageVisible,
+            selectedTab = selectedTab,
+            selectedHomeDestination = selectedHomeDestination,
+            railInlineSecondaryDestination = railInlineSecondaryDestination,
+            tasksDetailColumnOpen = tasksDetailColumnOpen,
+        )
     LaunchedEffect(
         desktopModeOnLargeScreen,
         storeScope.shellInstanceId,
         readyServerId,
         adaptivePane,
-        pageVisible,
-        selectedTab,
-        selectedHomeDestination,
+        adaptiveParentVisible,
         authoritativeHomeStartAllowed,
-        railInlineSecondaryDestination,
-        tasksDetailColumnOpen,
     ) {
         if (!authoritativeHomeStartAllowed) {
             releaseAdaptiveHandoffLease()
-            adaptiveDefaultLandingServerId = null
+            adaptiveWorkspaceStore.update { current ->
+                if (current.defaultLandingServerId == null) current
+                else current.copy(defaultLandingServerId = null)
+            }
             return@LaunchedEffect
         }
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank)
@@ -1715,29 +1722,22 @@ private fun RaftAppShellReadyContent(
                         },
                     launchPayload = null,
                     pendingDetailOpens = emptyMap(),
+                    defaultLandingServerId = null,
                 )
             }
             rejectPendingAdaptiveDetailOpens(droppedOpens, "workspace_reset")
             releaseAdaptiveHandoffLease()
-            adaptiveDefaultLandingServerId = null
             return@LaunchedEffect
         }
         // Reduce window/visibility on the store's CURRENT workspace inside the atomic
         // update — seeding from the compose snapshot (`adaptiveWorkspaceState`) here is a
         // lost-update race: a concurrently-written selection (e.g. a rail Search/Activity
         // open landing between snapshot read and update) would be silently overwritten.
-        val parentVisible =
-            appShellSharedDetailSurfaceVisible(
-                pageVisible = pageVisible,
-                selectedTab = selectedTab,
-                selectedHomeDestination = selectedHomeDestination,
-                railInlineSecondaryDestination = railInlineSecondaryDestination,
-                tasksDetailColumnOpen = tasksDetailColumnOpen,
-            )
         // Capture the dropped pending opens BEFORE the update so the reject/nack path
         // can still see them (they are cleared inside the update for the authority change).
         val droppedOpens = adaptiveWorkspaceStore.snapshot().pendingDetailOpens
         var authorityChanged = false
+        var defaultLandingDropped = false
         adaptiveWorkspaceStore.update { current ->
             var next =
                 current.workspace
@@ -1746,35 +1746,44 @@ private fun RaftAppShellReadyContent(
                         serverId = serverId,
                     )
             val changed = next.serverId != serverId
+            authorityChanged = changed
             if (changed) {
                 next =
                     reduceRaftAdaptiveWorkspace(
                         next,
                         RaftAdaptiveWorkspaceIntent.AuthorityChanged(serverId),
                     )
-                authorityChanged = true
             }
+            val beforeWindow = next
             next =
                 reduceRaftAdaptiveWorkspace(
                     next,
                     RaftAdaptiveWorkspaceIntent.WindowChanged(adaptivePane),
                 )
+            // Uses the same [raftAdaptiveDefaultLandingDropped] predicate as
+            // [SharedAdaptiveWorkspaceStore.update] (the canonical normalizer for launchPayload and
+            // defaultLandingServerId) so handoff-lease release stays in lockstep with store resets.
+            val dropped = raftAdaptiveDefaultLandingDropped(beforeWindow, next)
+            defaultLandingDropped = dropped
             next =
                 reduceRaftAdaptiveWorkspace(
                     next,
-                    RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged(parentVisible),
+                    RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged(adaptiveParentVisible),
                 )
             current.copy(
                 workspace = next,
-                launchPayload = if (changed) null else current.launchPayload,
+                launchPayload = if (changed || dropped) null else current.launchPayload,
                 pendingDetailOpens =
                     if (changed) emptyMap() else current.pendingDetailOpens,
+                defaultLandingServerId =
+                    if (changed || dropped) null else current.defaultLandingServerId,
             )
         }
         if (authorityChanged) {
             rejectPendingAdaptiveDetailOpens(droppedOpens, "authority_changed")
             releaseAdaptiveHandoffLease()
-            adaptiveDefaultLandingServerId = null
+        } else if (defaultLandingDropped) {
+            releaseAdaptiveHandoffLease()
         }
     }
     fun postShellAdaptiveTrace(
@@ -2455,10 +2464,10 @@ private fun RaftAppShellReadyContent(
                         reduceRaftAdaptiveWorkspace(state, RaftAdaptiveWorkspaceIntent.TerminalReset)
                     },
                 launchPayload = null,
+                defaultLandingServerId = null,
             )
         }
         releaseAdaptiveHandoffLease()
-        adaptiveDefaultLandingServerId = null
         realtimeConnectionFamilyId = null
         pendingRealtimeAuthRefreshReason = null
         pendingRealtimeAuthRefreshPreviousFamilyId = null
@@ -2820,71 +2829,6 @@ private fun RaftAppShellReadyContent(
         )
     }
 
-    LaunchedEffect(
-        desktopModeOnLargeScreen,
-        adaptiveWorkspaceState?.pane,
-        adaptiveWorkspaceState?.selection,
-        adaptiveWorkspaceState?.parentVisible,
-        adaptiveDefaultLandingServerId,
-        readyServerId,
-        selectedHomeConversationId,
-        homeState.content,
-        authoritativeHomeStartAllowed,
-    ) {
-        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
-        val workspace = adaptiveWorkspaceState ?: return@LaunchedEffect
-        val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
-        if (
-            !desktopModeOnLargeScreen ||
-            !workspace.acceptsAdaptiveDefaultLanding() ||
-            adaptiveDefaultLandingServerId == serverId
-        ) {
-            return@LaunchedEffect
-        }
-        val content = homeState.content as? SharedHomeContentState.Content ?: return@LaunchedEffect
-        if (content.snapshot.server.id.value != serverId) return@LaunchedEffect
-        val conversations: List<HomeConversationRow> =
-            content.snapshot.channels + content.snapshot.directMessages
-        // Switching servers clears the selection; the server's remembered conversation (web
-        // `slock:serverSurface:v1:<slug>`) comes back instead of #all while it is still listed.
-        val remembered = serverLastConversationRepository.read(serverLastConversationOwnerKey, serverId)
-        val resolution =
-            resolveRaftAdaptiveHomeLanding(
-                selectedThreadId = selectedHomeConversationId,
-                remembered = remembered,
-                candidates =
-                    conversations.map { row ->
-                        RaftAdaptiveHomeLandingCandidate(
-                            threadId = row.threadId.value,
-                            name = row.name,
-                            kind = row.kind,
-                        )
-                    },
-            )
-        if (resolution.rememberedUnavailable) {
-            bridge.log("server_last_conversation_forget serverId=$serverId reason=not_listed")
-            serverLastConversationRepository.forget(serverLastConversationOwnerKey, serverId)
-        }
-        adaptiveDefaultLandingServerId = serverId
-        val landingConversation =
-            when (val landing = resolution.landing) {
-                is RaftAdaptiveHomeLanding.Row ->
-                    conversations
-                        .firstOrNull { row -> row.threadId.value == landing.threadId }
-                        ?.toThreadLaunchConversationIdentity()
-                is RaftAdaptiveHomeLanding.ReplyThread -> landing.toThreadLaunchConversationIdentity()
-                null -> null
-            }
-        landingConversation?.let { conversation ->
-            openHomeConversation(
-                conversation = conversation,
-                source = "adaptive_default_landing",
-                recordForwardHistory = false,
-                adaptiveDefaultLanding = true,
-            )
-        }
-    }
-
     // Every conversation the wide detail shows becomes its server's last conversation.
     AppShellAdaptiveSelectionEffect(
         adaptiveWorkspaceState = adaptiveWorkspaceState,
@@ -3164,6 +3108,111 @@ private fun RaftAppShellReadyContent(
         latestMessageLinkSessionReadyState = latestMessageLinkSessionReadyState,
         latestResolveMessageLinkState = latestResolveMessageLinkState,
     )
+
+    // Wide Home default landing runs AFTER AppShellChatLayoutEffect & AppShellExternalLinkNavigationEffects
+    // so launch notification/shortcut intents are enqueued first and any immediately-resolvable
+    // OpenConversation claims the detail pane before default landing falls back to #all (task #243).
+    val windowNavigationStateVersion by windowNavigationCoordinator.stateVersion.collectAsState()
+    LaunchedEffect(
+        desktopModeOnLargeScreen,
+        adaptivePane,
+        adaptiveParentVisible,
+        adaptiveWorkspaceState?.pane,
+        adaptiveWorkspaceState?.selection,
+        adaptiveWorkspaceState?.parentVisible,
+        adaptiveDefaultLandingServerId,
+        readyServerId,
+        selectedHomeConversationId,
+        homeState.content,
+        authoritativeHomeStartAllowed,
+        windowNavigationStateVersion,
+    ) {
+        if (!authoritativeHomeStartAllowed) return@LaunchedEffect
+        val liveSession = adaptiveWorkspaceStore.snapshot()
+        val workspace = liveSession.workspace ?: return@LaunchedEffect
+        val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
+        if (
+            !desktopModeOnLargeScreen ||
+            workspace.serverId != serverId ||
+            !workspace.acceptsAdaptiveDefaultLanding() ||
+            liveSession.defaultLandingServerId == serverId
+        ) {
+            return@LaunchedEffect
+        }
+        val content = homeState.content as? SharedHomeContentState.Content ?: return@LaunchedEffect
+        if (content.snapshot.server.id.value != serverId) return@LaunchedEffect
+        // If an incoming notification/shortcut/deep-link OpenConversation is already resolvable
+        // for this server, let navigationIntake claim the pane first. Only resolvable opens pause
+        // default landing (unresolvable Pending routes never stall it), and advancing bumps
+        // windowNavigationStateVersion so this effect always re-runs if the open falls through.
+        if (latestNavigationReadiness()?.let(windowNavigationCoordinator::hasReadyOpenRequest) == true) {
+            navigationIntake.wake()
+            return@LaunchedEffect
+        }
+        val conversations: List<HomeConversationRow> =
+            content.snapshot.channels + content.snapshot.directMessages
+        // Switching servers clears the selection; the server's remembered conversation (web
+        // `slock:serverSurface:v1:<slug>`) comes back instead of #all while it is still listed.
+        val remembered = serverLastConversationRepository.read(serverLastConversationOwnerKey, serverId)
+        val resolution =
+            resolveRaftAdaptiveHomeLanding(
+                selectedThreadId = selectedHomeConversationId,
+                remembered = remembered,
+                candidates =
+                    conversations.map { row ->
+                        RaftAdaptiveHomeLandingCandidate(
+                            threadId = row.threadId.value,
+                            name = row.name,
+                            kind = row.kind,
+                        )
+                    },
+            )
+        if (resolution.rememberedUnavailable) {
+            bridge.log("server_last_conversation_forget serverId=$serverId reason=not_listed")
+            serverLastConversationRepository.forget(serverLastConversationOwnerKey, serverId)
+        }
+        val landingConversation =
+            when (val landing = resolution.landing) {
+                is RaftAdaptiveHomeLanding.Row ->
+                    conversations
+                        .firstOrNull { row -> row.threadId.value == landing.threadId }
+                        ?.toThreadLaunchConversationIdentity()
+                is RaftAdaptiveHomeLanding.ReplyThread -> landing.toThreadLaunchConversationIdentity()
+                null -> null
+            }
+        if (landingConversation == null) {
+            adaptiveWorkspaceStore.update { current ->
+                if (current.workspace?.serverId == serverId) {
+                    current.copy(defaultLandingServerId = serverId)
+                } else {
+                    current
+                }
+            }
+        } else {
+            openHomeConversation(
+                conversation = landingConversation,
+                source = "adaptive_default_landing",
+                recordForwardHistory = false,
+                adaptiveDefaultLanding = true,
+            )
+            // openHomeConversation records defaultLandingServerId atomically when it installs the
+            // detail. If payload construction returned early while the pane still accepts landing
+            // for this server, settle the guard so the empty pane never stays suppressed.
+            adaptiveWorkspaceStore.update { current ->
+                val currentWorkspace = current.workspace
+                if (
+                    currentWorkspace != null &&
+                    currentWorkspace.serverId == serverId &&
+                    currentWorkspace.acceptsAdaptiveDefaultLanding() &&
+                    current.defaultLandingServerId != serverId
+                ) {
+                    current.copy(defaultLandingServerId = serverId)
+                } else {
+                    current
+                }
+            }
+        }
+    }
 
     fun dismissAdaptiveDetailSelection() {
         val current = adaptiveWorkspaceStore.snapshot().workspace
@@ -5537,14 +5586,29 @@ private fun RaftAppShellReadyContent(
                     // task #36: the main detail plus, when it fits, the reply-thread side column.
                     // [allowSideColumn] is false on hosts that cannot show one (the task column);
                     // the active host reports its measured width for the column decision.
-                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn ->
+                    val adaptiveDetailPane: @Composable (Modifier, Boolean, Boolean, Boolean, Boolean) -> Unit = { paneModifier, active, detailAccepted, allowSideColumn, defaultLandingEligible ->
                         val density = LocalDensity.current
+                        val workspace = adaptiveWorkspaceState
+                        // task #33: a surface may decline the shared selection (the DMs tab shows only
+                        // DMs); a declined selection renders the empty placeholder, never its composer.
+                        // task #243: fence selection/payload on readyServerId so Frame T0 of a server
+                        // switch immediately unmounts the previous server's detail before Effect #1
+                        // applies AuthorityChanged.
+                        val selection =
+                            raftAdaptiveSelectionForReadyServer(
+                                workspace = workspace,
+                                readyServerId = readyServerId,
+                                detailAccepted = detailAccepted,
+                            )
+                        val detailPayload = adaptiveDetailLaunchPayload?.takeIf { selection != null }
                         // Only the selected tab's pane hosts the reply-thread column: every kept-alive tab
                         // (Home, Activity, ...) composes this pane, and each composed its own thread page
                         // for the same side thread (desktop freeze on opening a reply, 11-03).
                         val tabSelected = LocalRaftAppShellTabSelected.current
                         val sideThread: AdaptiveSideThread? =
-                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf { allowSideColumn && detailAccepted && tabSelected }
+                            adaptiveWorkspaceSession.visibleSideThread()?.takeIf {
+                                allowSideColumn && detailAccepted && tabSelected && selection != null
+                            }
                         val showSideColumn =
                             sideThread != null &&
                                 (adaptiveWorkspaceSession.sideThreadColumnAvailable(desktopModeOnLargeScreen) ||
@@ -5591,22 +5655,28 @@ private fun RaftAppShellReadyContent(
                                     },
                         ) {
                         val detailModifier = Modifier.fillMaxSize()
-                        val workspace = adaptiveWorkspaceState
-                        // task #33: a surface may decline the shared selection (the DMs tab shows only
-                        // DMs); a declined selection renders the empty placeholder, never its composer.
-                        val selection = workspace?.selection?.takeIf { detailAccepted }
-                        val detailPayload = adaptiveDetailLaunchPayload?.takeIf { detailAccepted }
                         val childActive =
                             active && workspace?.presentation != RaftAdaptiveWorkspacePresentation.Inactive
                         val adaptiveEmptyLabel = stringResource(Res.string.home_adaptive_select_conversation)
+                        val suppressEmptyState =
+                            shouldSuppressWideAdaptiveEmptyState(
+                                desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+                                detailAccepted = detailAccepted,
+                                defaultLandingEligible = defaultLandingEligible,
+                                authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
+                                readyServerId = readyServerId,
+                                adaptiveDefaultLandingServerId = adaptiveDefaultLandingServerId,
+                                homeContent = homeState.content,
+                            )
                         val detailPageData =
                             remember(
                                 detailPayload,
                                 selection,
+                                workspace?.shellInstanceId,
                                 navigationStoreScope.shellInstanceId,
                                 navigationStoreScope.initialServerId,
                             ) {
-                                if (detailPayload == null || selection == null) {
+                                if (workspace == null || detailPayload == null || selection == null) {
                                     null
                                 } else {
                                     threadLaunchPageData(detailPayload)
@@ -5710,13 +5780,20 @@ private fun RaftAppShellReadyContent(
                             },
                         ) {
                             if (detailPageData == null) {
-                                // The wide detail with nothing open: the shared empty state (icon,
-                                // muted title) on the pane's surface, not a bare line of text.
-                                RaftEmptyState(
-                                    title = adaptiveEmptyLabel,
-                                    modifier = Modifier.fillMaxSize(),
-                                    icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
-                                )
+                                if (suppressEmptyState) {
+                                    // task #243: keep the pane's themed surface blank while Home
+                                    // default landing is still pending, avoiding a transient flash
+                                    // of "Select a conversation" on cold start or server switch.
+                                    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite))
+                                } else {
+                                    // The wide detail with nothing open: the shared empty state (icon,
+                                    // muted title) on the pane's surface, not a bare line of text.
+                                    RaftEmptyState(
+                                        title = adaptiveEmptyLabel,
+                                        modifier = Modifier.fillMaxSize(),
+                                        icon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare, size = RaftEmptyStateDefaults.IconSize) },
+                                    )
+                                }
                             } else {
                                 RaftFocusRegionHost(
                                     region = RaftFocusRegion.Conversation,
@@ -5915,6 +5992,7 @@ private fun RaftAppShellReadyContent(
                                     active,
                                     true,
                                     false,
+                                    false,
                                 )
                             },
                         ) {
@@ -6018,22 +6096,33 @@ private fun RaftAppShellReadyContent(
                             active: Boolean,
                             listPane: @Composable (Boolean) -> Unit,
                             detailAccepted: Boolean,
+                            defaultLandingEligible: Boolean,
                             listKind: RaftListPaneKind,
                             fillListWhenNothingPicked: Boolean,
                             collapseColumn: RaftCollapsibleColumn?,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked, collapseColumn ->
+                        ) -> Unit = { enabled, active, listPane, detailAccepted, defaultLandingEligible, listKind, fillListWhenNothingPicked, collapseColumn ->
                         val workspace = adaptiveWorkspaceState
-                        val selection = workspace?.selection?.takeIf { detailAccepted }
+                        val selection =
+                            raftAdaptiveSelectionForReadyServer(
+                                workspace = workspace,
+                                readyServerId = readyServerId,
+                                detailAccepted = detailAccepted,
+                            )
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
-                            adaptiveDetailPane(modifier, active, detailAccepted, true)
+                            adaptiveDetailPane(modifier, active, detailAccepted, true, defaultLandingEligible)
                         }
                         if (enabled) {
                             // task #37 / artin task #20: per-kind list width and the split live in
                             // RaftAdaptiveListDetailSplit.kt.
+                            // task #243: fall back to adaptivePane when workspace is still null
+                            // (Frame 1 / CachedRestorePending) so wide layouts render split panes
+                            // immediately in lockstep with navRailActive and tasksDetailColumnOpen.
+                            val dualPane =
+                                (workspace?.pane ?: adaptivePane).layout == RaftAdaptivePaneLayout.DualPane
                             RaftAdaptiveListDetailSplit(
                                 kind = listKind,
                                 widths = adaptiveListPaneWidths,
-                                dualPane = workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane,
+                                dualPane = dualPane,
                                 active = active,
                                 hasSelection = selection != null,
                                 detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
@@ -6315,6 +6404,7 @@ private fun RaftAppShellReadyContent(
                             active,
                             homeListPane,
                             true,
+                            selectedHomeDestination == null,
                             RaftListPaneKind.Sidebar,
                             false,
                             RaftCollapsibleColumn.Sidebar,
@@ -6376,6 +6466,7 @@ private fun RaftAppShellReadyContent(
                             active,
                             { listActive -> activityListPane(listActive, activityArrivalVisits) },
                             true,
+                            false,
                             // Web Activity is two columns at every desktop width (slock #10842).
                             RaftListPaneKind.List,
                             false,
@@ -6798,6 +6889,7 @@ private fun RaftAppShellReadyContent(
                             pageVisible,
                             searchListPane,
                             true,
+                            false,
                             // Web Search fills the width until a result is picked (searchMasterDetail).
                             RaftListPaneKind.List,
                             true,
