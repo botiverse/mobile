@@ -128,11 +128,27 @@ private data class RaftResolvedResourceEnvironment(
     val region: String,
 )
 
-private data class RaftResolvedStringCacheKey(
+private class RaftResolvedStringCacheKey(
     val language: String,
     val region: String,
     val stringRes: StringResource,
-)
+) {
+    // Compare StringResource by reference identity: generated Res.string.* values are singletons,
+    // while synthetic StringResource copies with trimmed catalog items (e.g. locale fallback tests)
+    // share the same id/equals and must not hit the full catalog's cached entry.
+    override fun equals(other: Any?): Boolean =
+        other is RaftResolvedStringCacheKey &&
+            language == other.language &&
+            region == other.region &&
+            stringRes === other.stringRes
+
+    override fun hashCode(): Int {
+        var result = language.hashCode()
+        result = 31 * result + region.hashCode()
+        result = 31 * result + stringRes.hashCode()
+        return result
+    }
+}
 
 private const val RaftResolvedStringCacheMaxEntries = 4096
 

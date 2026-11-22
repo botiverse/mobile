@@ -435,6 +435,16 @@ internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
  */
 internal val LocalThreadViewerServerId = compositionLocalOf<String?> { null }
 
+/**
+ * Public entry point so the Android host stack root ([build.raft.app.shared.RaftAndroidNav3StackContent])
+ * can hoist and share one decoded reaction sprite atlas across all pushed conversations without
+ * running bitmap decode inside low-level navigation tests.
+ */
+@Composable
+fun RaftReactionAtlasProvider(content: @Composable () -> Unit) {
+    ThreadReactionAtlasProvider(content)
+}
+
 @Composable
 internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
     // task #376/#380: decode the reaction sprite atlas once at a stable root and

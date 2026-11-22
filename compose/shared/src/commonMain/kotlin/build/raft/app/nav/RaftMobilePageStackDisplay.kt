@@ -27,7 +27,6 @@ import androidx.navigation3.runtime.get
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.ui.NavDisplay
 import build.raft.app.RAFT_OPEN_WITHOUT_ANIMATION
-import build.raft.app.ThreadReactionAtlasProvider
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.resources.RaftProvideResourceEnvironment
 import kotlinx.serialization.json.JsonPrimitive
@@ -92,10 +91,10 @@ fun RaftMobilePageStackDisplay(
     }
     val saveableStateHolder = rememberSaveableStateHolder()
     val entryDecorators = remember(saveableStateHolder) { listOf(raftMobileStackSaveableDecorator<RaftStackPage>(saveableStateHolder)) }
-    // Share one locale observer and one decoded reaction sprite atlas across the whole phone stack
-    // so every pushed page skips per-string collectAsState coroutines and redundant atlas decodes.
+    // Share one locale observer across the whole phone stack so every pushed page skips
+    // per-string collectAsState coroutines; the Android host stack wraps this in
+    // RaftReactionAtlasProvider so bitmap decoding stays out of headless navigation tests.
     RaftProvideResourceEnvironment {
-    ThreadReactionAtlasProvider {
     Box(Modifier.fillMaxSize()) {
         NavDisplay(
             backStack = stack.pages,
@@ -133,7 +132,6 @@ fun RaftMobilePageStackDisplay(
         // After NavDisplay: its back handler registers first, and this reads the target scene's
         // RaftMobileStackMotion.rootShown of this same composition.
         RaftMobileStackRootPage(stack, motion, Modifier.zIndex(-1f), pageContent)
-    }
     }
     }
 }
