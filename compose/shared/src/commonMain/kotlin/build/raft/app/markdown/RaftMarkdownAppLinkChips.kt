@@ -244,10 +244,14 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                     }
                 }
                 // A card chip's words carry its URL: a mouse resting on them shows the card
-                // (RaftMarkdownAppLinkHoverCards, web AppLinkHoverCard).
+                // (RaftMarkdownAppLinkHoverCards, web AppLinkHoverCard). A consent chip's words
+                // carry its URL for the link hover status and long-press link menu.
                 val hoverUrl = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.url
+                val consentUrl = (result as? AppLinkResult.Consent)?.url
                 if (hoverUrl != null) pushStringAnnotation(RaftAppLinkHoverTag, hoverUrl)
+                if (consentUrl != null) pushStringAnnotation(RaftMarkdownLinkUrlTag, consentUrl)
                 if (annotation != null) withLink(annotation) { chip() } else chip()
+                if (consentUrl != null) pop()
                 if (hoverUrl != null) pop()
             }
         }

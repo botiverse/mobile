@@ -9,10 +9,14 @@ import build.raft.app.RaftColor
 import build.raft.app.data.AppLinkApp
 import build.raft.app.data.AppLinkPromptApp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.data.ArtifactHome
+import build.raft.app.data.ArtifactKind
+import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.RaftAppLinkCardElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -115,10 +119,103 @@ class RaftMarkdownAppLinkChipsTest {
         val chip = source().withRaftAppLinkChipContent(host(result) { asked += it }) { error("must not open") }
 
         assertEquals("See stamp.build/botiverse/slock/pull/10449 now", chip.text.visibleText())
-        val link = chip.text.getLinkAnnotations(0, chip.text.length).single().item as LinkAnnotation.Clickable
+        val range = chip.text.getLinkAnnotations(0, chip.text.length).single()
+        val link = range.item as LinkAnnotation.Clickable
+        assertEquals(RaftAppLinkConsentTag, link.tag)
         link.linkInteractionListener!!.onClick(link)
         assertEquals(listOf(result), asked)
         assertEquals(RaftColor.InactiveSoft, chip.text.raftInlineBoxRanges().single().item.backgroundColor)
+        assertEquals(
+            listOf(pr),
+            chip.text.getStringAnnotations(RaftMarkdownLinkUrlTag, range.start, range.end).map { it.item },
+        )
+        assertTrue(chip.text.getStringAnnotations(RaftAppLinkHoverTag, 0, chip.text.length).isEmpty())
+    }
+
+    @Test
+    fun longPressOnConsentCardAndArtifactChipsResolvesUrlOnBodyAndPaintedFlanks() {
+        val artifactId = "pt_0b6e0f7e-1c1a-4c4e-9a65-0f5e2b1d7a11"
+        val artifactUrl = "https://artifacts.raft.build/$artifactId"
+        val cardUrl = "https://stamp.build/botiverse/slock/pull/10449"
+        val consentUrl = "https://github.com/botiverse/mobile/pull/5295"
+        val summary =
+            ArtifactSummary(
+                id = artifactId,
+                title = "Q3 report",
+                description = null,
+                kind = ArtifactKind.Html,
+                version = 4,
+                pinned = false,
+                latestVersion = 4,
+                home = ArtifactHome.Conversation("proj-mobile", dm = false),
+            )
+        val body = RaftAppLinkCard(root = "state", elements = mapOf("state" to RaftAppLinkCardElement.Badge("Merged")))
+        val chipHost =
+            RaftAppLinkChipHost(
+                results =
+                    mapOf(
+                        cardUrl to AppLinkResult.Card(cardUrl, AppLinkApp("Stamp", null), "Fix hover", card = body),
+                        consentUrl to AppLinkResult.Consent(consentUrl, AppLinkPromptApp("client-gh", "GitHub", null)),
+                    ),
+                onAsk = {},
+                onOpenCard = {},
+                artifacts = mapOf(artifactId to summary),
+                artifactHosts = listOf("app.raft.build"),
+                onOpenArtifact = {},
+            )
+        val rendered =
+            buildAnnotatedString {
+                append("See ")
+                withLink(LinkAnnotation.Url(consentUrl)) { append(consentUrl) }
+                append(" ")
+                withLink(LinkAnnotation.Url(cardUrl)) { append(cardUrl) }
+                append(" ")
+                withLink(LinkAnnotation.Url(artifactUrl)) { append(artifactUrl) }
+                append(" done")
+            }
+                .withRaftAppLinkChipContent(chipHost) {}
+                .text
+                .withRaftInlineChipGapLinks()
+                .withRaftMarkdownBodyClick {}
+
+        // Plain body text returns null (body click is never a link).
+        assertNull(rendered.raftMarkdownPressedLinkAt(0))
+        assertNull(rendered.raftMarkdownPressedLinkAt(rendered.length - 1))
+
+        // Hover card spans must stay one per card chip (never duplicated onto painted flanks).
+        assertEquals(listOf(cardUrl), rendered.raftMarkdownAppLinkSpans().map { it.url })
+
+        val extents = rendered.raftInlineChipExtents()
+        assertEquals(3, extents.size)
+        listOf(consentUrl, cardUrl, artifactUrl).forEachIndexed { index, expectedUrl ->
+            val extent = extents[index]
+            assertEquals("\uFFFC\u2060", rendered.text.substring(extent.first, extent.first + 2), expectedUrl)
+            assertEquals("\u2060\uFFFC", rendered.text.substring(extent.last - 1, extent.last + 1), expectedUrl)
+            // Leading painted flank (\uFFFC and \u2060), chip body, and trailing painted flank (\u2060 and \uFFFC).
+            for (offset in listOf(extent.first, extent.first + 1, (extent.first + extent.last) / 2, extent.last - 1, extent.last)) {
+                assertEquals(
+                    RaftMarkdownPressedLink(expectedUrl),
+                    rendered.raftMarkdownPressedLinkAt(offset),
+                    "url=$expectedUrl offset=$offset",
+                )
+            }
+        }
+
+        // An adjacent non-URL clickable chip starting with '\u2060' (e.g. a Skia-spaced task chip)
+        // must never borrow a neighbouring labelled Artifact link's URL.
+        val adjacent =
+            buildAnnotatedString {
+                pushStringAnnotation(RaftMarkdownLinkUrlTag, artifactUrl)
+                withLink(LinkAnnotation.Clickable(RaftArtifactLabelledLinkTag, linkInteractionListener = null)) {
+                    append("report")
+                }
+                pop()
+                withLink(LinkAnnotation.Clickable("task-243", linkInteractionListener = null)) {
+                    append("\u2060#243\u2060")
+                }
+            }
+        assertEquals(RaftMarkdownPressedLink(artifactUrl), adjacent.raftMarkdownPressedLinkAt(0))
+        assertEquals(RaftMarkdownPressedLink(url = null), adjacent.raftMarkdownPressedLinkAt(6))
     }
 
     @Test
