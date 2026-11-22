@@ -262,11 +262,14 @@ fun RaftCachedImage(
     contentScale: ContentScale = ContentScale.Fit,
     colorFilter: ColorFilter? = null,
     /**
-     * Ask for animated decoding (GIF / animated WebP; the image viewer only). False keeps the
-     * plain static request, byte-for-byte today's path.
+     * Ask for animated decoding (GIF / animated WebP: the image viewer, a message thumbnail, an
+     * announcement image). False keeps the plain static request, byte-for-byte today's path.
      */
     animated: Boolean = false,
-    /** With [animated]: whether it plays now (the selected pager page); it also pauses in the background. */
+    /**
+     * With [animated]: whether it plays now (the selected pager page, a message thumbnail on
+     * screen); it also pauses in the background.
+     */
     animationActive: Boolean = true,
     /**
      * Optional stable memory/disk cache key (#proj-mobile:#293: original attachment images key on
@@ -336,7 +339,7 @@ internal fun RaftAspectFitImagePreviewSurface(
     showLoadingIndicator: Boolean = false,
     /** Play [source] if it is an animated GIF / WebP (never the fallback / underlay thumbnail). */
     animateSource: Boolean = false,
-    /** With [animateSource]: whether the animation runs now (the selected pager page). */
+    /** With [animateSource]: whether the animation runs now (the selected pager page, a tile on screen). */
     animationActive: Boolean = true,
     /** Optional stable cache key for [source] (e.g. `raftAttachmentOriginalImageCacheKey`). */
     sourceCacheKey: String? = null,
