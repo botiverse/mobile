@@ -148,7 +148,7 @@ internal fun raftMemberAvatarResolver(
                         null
                     }
                 if (cachedJoint != null) {
-                    cachedJoint.renderedAvatarWireValue()
+                    cachedJoint.explicitAvatarWireValue()
                 } else {
                     resolution.resolvedAvatarWireValue()
                         ?: store.durableMemberAvatarWireValue(cleanServerId, memberId)
@@ -187,7 +187,7 @@ internal fun raftMemberAvatarResolver(
                         // avatar also outranks any stale non-authoritative candidate.
                         val liveAvatarWireValue =
                             if (cachedJoint != null) {
-                                cachedJoint.renderedAvatarWireValue()
+                                cachedJoint.explicitAvatarWireValue()
                             } else {
                                 resolution.resolvedAvatarWireValue()
                             }

@@ -203,9 +203,17 @@ internal fun ThreadQuotedPermalinkCard(
                         stringResource(Res.string.thread_quoted_permalink_channel_fallback)
                     }
             val senderKind = item.authorKind.parsedMemberKindOrNull()
+            val jointAuthor =
+                rememberRaftJointActor(
+                    memberAvatarResolver = memberAvatarResolver,
+                    kind = senderKind,
+                    memberId = item.authorId,
+                    enabled = memberAvatarResolver.jointSurface,
+                )
             val avatarWireValue =
                 resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
-                    ?: item.avatarWireValue
+                    ?: item.avatarWireValue?.appAvatarWireValueOrNull()
+                    ?: jointAuthor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
             val quotedAvatarPending =
                 avatarWireValue.isNullOrBlank() &&
                     rememberRaftMemberAvatarPending(

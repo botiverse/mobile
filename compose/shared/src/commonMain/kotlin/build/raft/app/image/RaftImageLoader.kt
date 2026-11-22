@@ -23,7 +23,9 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,6 +43,9 @@ internal val RaftAvatarDecodeSize: Size = Size(256, 256)
 
 private val raftImageLoaderInstalled = atomic(false)
 private val raftStartupAvatarPrewarmStarted = atomic(false)
+private val raftPrewarmLock = SynchronizedObject()
+private var raftPrewarmJob: Job? = null
+private var raftPrewarmGeneration = 0L
 private val raftPrewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
 /** The loader [raftBuildImageLoader] built last (the singleton), for [raftClearImageCaches]. */
@@ -85,7 +90,7 @@ internal suspend fun raftPrewarmCachedImagesFromDisk(
         for (rawUrl in urls) {
             if (seenKeys.size >= maxCount) break
             val url = rawUrl.trim()
-            if (url.isEmpty()) continue
+            if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) continue
             val cacheKey = raftNetworkImageCacheKey(url)
             if (!seenKeys.add(cacheKey)) continue
             if (memoryCache?.get(MemoryCache.Key(cacheKey)) != null) continue
@@ -117,14 +122,26 @@ internal fun raftScheduleStartupAvatarPrewarm(
     urlsProvider: () -> Collection<String>,
 ) {
     if (!raftStartupAvatarPrewarmStarted.compareAndSet(expect = false, update = true)) return
-    raftPrewarmScope.launch {
-        val urls = runCatching { urlsProvider() }.getOrNull().orEmpty()
-        if (urls.isEmpty()) {
-            // Nothing persisted / session not hydrated yet: allow one retry once stores are ready.
-            raftStartupAvatarPrewarmStarted.value = false
-            return@launch
+    val generation = synchronized(raftPrewarmLock) { raftPrewarmGeneration }
+    val job =
+        raftPrewarmScope.launch {
+            val urls = runCatching { urlsProvider() }.getOrNull().orEmpty()
+            if (urls.isEmpty()) {
+                synchronized(raftPrewarmLock) {
+                    if (raftPrewarmGeneration == generation) {
+                        raftStartupAvatarPrewarmStarted.value = false
+                    }
+                }
+                return@launch
+            }
+            runCatching { raftPrewarmCachedImagesFromDisk(context, urls) }
         }
-        runCatching { raftPrewarmCachedImagesFromDisk(context, urls) }
+    synchronized(raftPrewarmLock) {
+        if (raftPrewarmGeneration != generation) {
+            job.cancel()
+        } else {
+            raftPrewarmJob = job
+        }
     }
 }
 
@@ -135,7 +152,13 @@ internal fun raftScheduleStartupAvatarPrewarm(
  */
 suspend fun raftClearImageCaches() {
     RaftSentAttachmentLocalImages.registry.clear()
-    raftStartupAvatarPrewarmStarted.value = false
+    val runningPrewarm =
+        synchronized(raftPrewarmLock) {
+            raftPrewarmGeneration += 1L
+            raftStartupAvatarPrewarmStarted.value = false
+            raftPrewarmJob.also { raftPrewarmJob = null }
+        }
+    runCatching { runningPrewarm?.cancelAndJoin() }
     val loader = raftBuiltImageLoader.value ?: return
     withContext(Dispatchers.Default) {
         runCatching { loader.memoryCache?.clear() }
@@ -167,8 +190,13 @@ fun raftInstallImageLoader() {
  * clean process state. Pair with Coil's `SingletonImageLoader.reset()`. Never call from app code.
  */
 internal fun resetRaftImageLoaderForTest() {
+    synchronized(raftPrewarmLock) {
+        raftPrewarmGeneration += 1L
+        raftPrewarmJob?.cancel()
+        raftPrewarmJob = null
+        raftStartupAvatarPrewarmStarted.value = false
+    }
     raftImageLoaderInstalled.value = false
-    raftStartupAvatarPrewarmStarted.value = false
     raftBuiltImageLoader.value = null
 }
 

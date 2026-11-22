@@ -854,9 +854,9 @@ internal fun ActivityMemberFace(
             enabled = identity.jointSurface,
         )
     val explicitAvatar =
-        memberAvatar?.takeIf { it.isNotBlank() }
-            ?: identity.avatarWireValue?.takeIf { it.isNotBlank() }
-            ?: jointActor?.renderedAvatarWireValue()
+        memberAvatar?.appAvatarWireValueOrNull()
+            ?: identity.avatarWireValue?.appAvatarWireValueOrNull()
+            ?: jointActor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
     val avatarPending =
         explicitAvatar == null &&
             rememberRaftMemberAvatarPending(

@@ -1,6 +1,7 @@
 package build.raft.app.image
 
 import android.graphics.Bitmap
+import coil3.SingletonImageLoader
 import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
@@ -22,7 +23,9 @@ class RaftAvatarStartupPrewarmTest {
     fun restartedImageLoaderPrewarmsDiskCachedAvatarIntoMemoryForSyncFrameOneHit() = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val avatarUrl = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
+        val retiredHostUrl = "https://content.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
         val cacheKey = raftNetworkImageCacheKey(avatarUrl)
+        assertEquals(cacheKey, raftNetworkImageCacheKey(retiredHostUrl), "retired content.raft.build host must share cache key")
         val pngBytes =
             ByteArrayOutputStream().use { out ->
                 val bmp = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
@@ -42,6 +45,7 @@ class RaftAvatarStartupPrewarmTest {
             }
             editor.commit()
             loader.memoryCache?.clear()
+            loader.shutdown()
 
             // Simulated cold restart: fresh ImageLoader with an empty memory cache over the same disk cache.
             loader = raftBuildImageLoader(context)
@@ -50,11 +54,11 @@ class RaftAvatarStartupPrewarmTest {
             val promoted =
                 raftPrewarmCachedImagesFromDisk(
                     context = context,
-                    urls = listOf(avatarUrl, "https://cdn.raft.build/avatars/agents/ffffffffffffffffffffffffffffffff.webp"),
+                    urls = listOf(retiredHostUrl, "pixel:robot", "https://cdn.raft.build/avatars/agents/ffffffffffffffffffffffffffffffff.webp"),
                     imageLoader = loader,
                 )
 
-            assertEquals(1, promoted, "only disk-cached avatar promotes into memory; uncached URL never hits network")
+            assertEquals(1, promoted, "only disk-cached avatar promotes into memory; non-HTTP and uncached URLs never hit network")
             assertNotNull(
                 raftAvatarMemoryCacheBitmap(cacheKey),
                 "restarted frame 1 hits Coil memory cache synchronously after disk prewarm",
@@ -62,7 +66,10 @@ class RaftAvatarStartupPrewarmTest {
         } finally {
             runCatching { loader.memoryCache?.clear() }
             runCatching { loader.diskCache?.remove(cacheKey) }
+            runCatching { loader.shutdown() }
             resetRaftImageLoaderForTest()
+            SingletonImageLoader.reset()
+            raftInstallImageLoader()
         }
     }
 }

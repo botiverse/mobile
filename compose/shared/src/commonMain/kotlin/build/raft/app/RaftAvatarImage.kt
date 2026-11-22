@@ -95,6 +95,18 @@ internal fun RaftAvatarHttpImage(
     val cachedMemoryBitmap = remember(cacheKey, round) { raftAvatarMemoryCacheBitmap(cacheKey) }
     if (cachedMemoryBitmap != null) {
         LaunchedEffect(cacheKey) {
+            val message =
+                "source=${source.raftAvatarDiagnosticsSource()} candidate=$candidateIndex " +
+                    "round=$round painter=success dataSource=memory_cache"
+            diagnostics?.let { row ->
+                row.logger("thread_avatar_painter messageHash=${row.messageHash} authorHash=${row.authorHash} $message")
+            }
+            serverDiagnosticsId?.let { serverId ->
+                raftLogInfo(
+                    "SlockServerAvatar",
+                    "server_avatar_painter serverHash=${serverId.raftAvatarDiagnosticsHash()} role=$diagnosticsRole $message"
+                )
+            }
             raftAvatarFailureCooldown.recordSuccess(cooldownKey)
         }
         Image(

@@ -701,15 +701,17 @@ private fun ThreadInlineReplyRow(
     rowHeight: Dp,
 ) {
     val timestampPositionReporter = LocalThreadInlineReplyTimestampReporter.current
+    val senderKind =
+        participant?.kind?.parsedMemberKindOrNull()
+            ?: when (reply.senderType.trim().lowercase()) {
+                "user", "human" -> MemberKind.Human
+                "agent" -> MemberKind.Agent
+                else -> null
+            }
     val jointSender =
         rememberRaftJointActor(
             memberAvatarResolver = memberAvatarResolver,
-            kind =
-                when (reply.senderType.trim().lowercase()) {
-                    "user", "human" -> MemberKind.Human
-                    "agent" -> MemberKind.Agent
-                    else -> null
-                },
+            kind = senderKind,
             memberId = reply.senderId,
             enabled = memberAvatarResolver.jointSurface
         )
@@ -718,7 +720,7 @@ private fun ThreadInlineReplyRow(
             reply = reply,
             memberAvatarWireValue =
                 rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
-                    ?: jointSender?.renderedAvatarWireValue(),
+                    ?: jointSender?.explicitAvatarWireValue(),
         )
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
@@ -726,13 +728,6 @@ private fun ThreadInlineReplyRow(
             ?: reply.senderName.trim().ifBlank { reply.senderId }
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(resolvedAvatar)
-    val senderKind =
-        participant?.kind?.parsedMemberKindOrNull()
-            ?: when (reply.senderType?.trim()?.lowercase()) {
-                "human", "user" -> MemberKind.Human
-                "agent" -> MemberKind.Agent
-                else -> null
-            }
     val replyAvatarPending =
         avatarWireValue.isNullOrBlank() &&
             rememberRaftMemberAvatarPending(

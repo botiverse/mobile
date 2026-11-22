@@ -75,14 +75,16 @@ internal class RaftJointActorRefStore(
         }
     }
 
-    /** Most recently recorded http(s) avatar URLs across persisted servers (for startup disk-to-memory prewarm). */
-    fun recentHttpAvatarUrls(maxCount: Int): List<String> {
+    /** Most recently recorded http(s) avatar URLs across persisted servers matching [ownerKey] (for startup disk-to-memory prewarm). */
+    fun recentHttpAvatarUrls(maxCount: Int, ownerKey: String? = null): List<String> {
         if (maxCount <= 0) return emptyList()
+        val expectedOwner = ownerKey?.trim()?.takeIf { it.isNotEmpty() }
         return synchronized(lock) {
             val urls = LinkedHashSet<String>()
             val serverIds = indexedServerIdsLocked().asReversed()
             for (serverKey in serverIds) {
                 val page = pageLocked(serverKey)
+                if (expectedOwner != null && page.owner != expectedOwner) continue
                 val entries = page.actors.values.toList()
                 for (index in entries.lastIndex downTo 0) {
                     val url = entries[index].avatarUrl?.trim()?.takeIf { it.isHttpOrRelativeAvatarUrl() } ?: continue

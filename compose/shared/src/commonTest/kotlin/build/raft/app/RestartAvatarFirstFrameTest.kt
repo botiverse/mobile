@@ -88,8 +88,9 @@ class RestartAvatarFirstFrameTest {
         assertFalse(session1Resolver.isAgentAvatarPending(remoteAgentId, joint = true))
         collector.cancel()
 
-        // Session 2 (cold restart over the same preferences, network offline):
-        // frame 1 resolves the real remote agent avatar synchronously without calling actors/resolve.
+        // Session 2 (cold restart over the same preferences):
+        // frame 1 resolves the persisted remote agent avatar synchronously without waiting on
+        // network, then background revalidation refreshes it if the avatar changed while offline.
         val session2Scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         var session2Calls = 0
         val session2Store =
@@ -99,9 +100,21 @@ class RestartAvatarFirstFrameTest {
                 presenceOwnerFlow = { MutableStateFlow(owner) },
                 avatarRefStore = RaftMemberAvatarRefStore(prefs),
                 jointActorRefStore = RaftJointActorRefStore(prefs),
-                actorResolve = { _, _ ->
+                actorResolve = { _, refs ->
                     session2Calls += 1
-                    ActorResolveOutcome.Unavailable
+                    ActorResolveOutcome.Resolved(
+                        refs.map { ref ->
+                            ResolvedActor(
+                                kind = ref.kind,
+                                id = ref.id,
+                                homeServerId = "server-2",
+                                name = "Imprint",
+                                displayName = "Imprint",
+                                avatarUrl = updatedAvatar,
+                                gravatarHash = null,
+                            )
+                        }
+                    )
                 },
                 actorResolveScope = session2Scope,
             )
@@ -110,47 +123,41 @@ class RestartAvatarFirstFrameTest {
         assertFalse(session2Resolver.isAgentAvatarPending(remoteAgentId, joint = true))
         val session2Collector = launch { session2Resolver.jointActor(MemberKind.Agent, remoteAgentId).collect {} }
         advanceUntilIdle()
-        assertEquals(0, session2Calls)
+        assertEquals(1, session2Calls)
+        assertEquals(updatedAvatar, session2Resolver.current(remoteAgentId))
         session2Collector.cancel()
 
-        // Realtime actor:updated updates the persisted row for the next restart.
-        session2Store.jointActors?.applyActorUpdated(
-            serverId,
-            ResolvedActor(
-                kind = MemberKind.Agent,
-                id = remoteAgentId,
-                homeServerId = "server-2",
-                name = "Imprint",
-                displayName = "Imprint",
-                avatarUrl = updatedAvatar,
-                gravatarHash = null,
-            ),
-        )
+        // Persisted row reflects the refreshed avatar, and ownerKey scoping prevents cross-account prewarm reads.
+        val ownerKey = "${owner.environmentId}|${owner.accountId}"
         val session3RefStore = RaftJointActorRefStore(prefs)
-        assertEquals(updatedAvatar, session3RefStore.readServer(ServerKey, "${owner.environmentId}|${owner.accountId}")[remoteAgentId]?.avatarUrl)
-        assertEquals(listOf(updatedAvatar), session3RefStore.recentHttpAvatarUrls(maxCount = 8))
+        assertEquals(updatedAvatar, session3RefStore.readServer(ServerKey, ownerKey)[remoteAgentId]?.avatarUrl)
+        assertEquals(listOf(updatedAvatar), session3RefStore.recentHttpAvatarUrls(maxCount = 8, ownerKey = ownerKey))
+        assertTrue(session3RefStore.recentHttpAvatarUrls(maxCount = 8, ownerKey = "${owner.environmentId}|user-2").isEmpty())
 
         // Different account cannot read the previous account's persisted joint actors; sign-out clears all.
         assertTrue(session3RefStore.readServer(ServerKey, "${owner.environmentId}|user-2").isEmpty())
         session3RefStore.clearAll()
-        assertTrue(session3RefStore.readServer(ServerKey, "${owner.environmentId}|${owner.accountId}").isEmpty())
+        assertTrue(session3RefStore.readServer(ServerKey, ownerKey).isEmpty())
     }
 
     @Test
-    fun unconfirmedAgentStaysPendingAndNonAuthoritativeCandidateNeverOverwritesCachedAvatar() {
+    fun unconfirmedAgentStaysPendingAndSparseUpdatesNeverOverwriteCachedAvatar() {
         val prefs = InMemoryRaftKeyValueStore()
         val serverId = ServerId(ServerKey)
+        val owner = ProcessServerMembersOwner(environmentId = "https://api.raft.build", accountId = "user-1", serverId = ServerKey)
+        val ownerKey = "${owner.environmentId}|${owner.accountId}"
         val cachedAgentId = "agent-with-real-avatar"
         val bareAgentId = "agent-without-avatar"
         val deletedAgentId = "agent-deleted"
         val realAvatar = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
 
-        // Session 1: authoritative roster persists the real avatar, then a non-authoritative
-        // message-author candidate with avatar=null arrives. It must NOT overwrite the real ref
-        // with pixel:robot.
+        // Session 1: authoritative roster persists the real avatar, then a sparse authoritative
+        // profile cache update with avatar=null arrives. It must NOT overwrite the real ref with
+        // pixel:robot.
         val session1Store =
             SharedServerMembersStore(
                 memberRepository = PresenceNoopMemberRepository,
+                presenceOwner = { owner },
                 avatarRefStore = RaftMemberAvatarRefStore(prefs),
             )
         session1Store.seed(
@@ -159,9 +166,10 @@ class RestartAvatarFirstFrameTest {
                 listOf(agent(cachedAgentId, AvatarReference.fromWireValue(realAvatar))),
             )
         )
-        session1Store.seedProfileCandidates(
-            serverId,
-            listOf(agent(cachedAgentId, avatar = null).copy(serverId = serverId)),
+        session1Store.cacheProfiles(
+            serverId = serverId,
+            profiles = listOf(agent(cachedAgentId, avatar = null).copy(serverId = serverId)),
+            authoritativeAvatar = true,
         )
 
         // Session 2 (cold restart): cached agent paints its real avatar on frame 1; unconfirmed
@@ -169,6 +177,7 @@ class RestartAvatarFirstFrameTest {
         val coldStore =
             SharedServerMembersStore(
                 memberRepository = PresenceNoopMemberRepository,
+                presenceOwner = { owner },
                 avatarRefStore = RaftMemberAvatarRefStore(prefs),
             )
         val resolver = raftMemberAvatarResolver(coldStore, ServerKey)
@@ -176,7 +185,8 @@ class RestartAvatarFirstFrameTest {
         assertFalse(resolver.isAgentAvatarPending(cachedAgentId))
         assertNull(resolver.current(bareAgentId))
         assertTrue(resolver.isAgentAvatarPending(bareAgentId))
-        assertEquals(listOf(realAvatar), RaftMemberAvatarRefStore(prefs).recentHttpAvatarUrls(maxCount = 8))
+        assertEquals(listOf(realAvatar), RaftMemberAvatarRefStore(prefs).recentHttpAvatarUrls(maxCount = 8, ownerKey = ownerKey))
+        assertTrue(RaftMemberAvatarRefStore(prefs).recentHttpAvatarUrls(maxCount = 8, ownerKey = "${owner.environmentId}|user-2").isEmpty())
 
         // Once the live roster lands, the avatar-less agent is confirmed as pixel:robot and a
         // missing/deleted agent stops being pending so it never stays blank.

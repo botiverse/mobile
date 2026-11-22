@@ -173,7 +173,6 @@ private fun RaftNativeNavBarServerTile(
             Modifier
                 .size(tileSize)
                 .clip(shape)
-                .background(RaftColor.StickerInk, shape)
                 .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
         contentAlignment = Alignment.Center,
     ) {
@@ -184,7 +183,9 @@ private fun RaftNativeNavBarServerTile(
                 source = source,
                 modifier = Modifier.fillMaxSize(),
                 fallback = fallbackLabel,
-                placeholder = {},
+                placeholder = {
+                    Box(Modifier.fillMaxSize().background(RaftColor.StickerInk, shape))
+                },
             )
         }
     }

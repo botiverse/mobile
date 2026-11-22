@@ -120,16 +120,19 @@ internal class RaftMemberAvatarRefStore(
     }
 
     /**
-     * Most recently confirmed http(s) / relative avatar URLs across persisted servers (for startup
-     * disk-to-memory prewarm in [build.raft.app.image.raftPrewarmCachedImagesFromDisk]).
+     * Most recently confirmed http(s) / relative avatar URLs across persisted servers owned by
+     * [ownerKey] (when provided) for startup disk-to-memory prewarm in
+     * [build.raft.app.image.raftPrewarmCachedImagesFromDisk].
      */
-    fun recentHttpAvatarUrls(maxCount: Int): List<String> {
+    fun recentHttpAvatarUrls(maxCount: Int, ownerKey: String? = null): List<String> {
         if (maxCount <= 0) return emptyList()
+        val expectedOwner = ownerKey?.trim()?.takeIf { it.isNotEmpty() }
         return synchronized(lock) {
             val urls = LinkedHashSet<String>()
             val serverIds = indexedServerIdsLocked().asReversed()
             for (serverKey in serverIds) {
                 val page = pageLocked(serverKey)
+                if (expectedOwner != null && page.owner != expectedOwner) continue
                 val values = page.refs.values.toList()
                 for (index in values.lastIndex downTo 0) {
                     val value = values[index].trim()

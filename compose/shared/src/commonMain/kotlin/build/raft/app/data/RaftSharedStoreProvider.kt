@@ -819,22 +819,35 @@ internal class RaftSharedStoreProvider private constructor(
         maxMemberUrls: Int = 48,
         maxJointUrls: Int = 16,
     ): List<String> {
-        val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')
-        val session = authStore.readCommittedSessionSnapshot()
+        val session = authStore.readCommittedSessionSnapshot() ?: return emptyList()
+        val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+        val accountId = session.user.id.trim().takeIf { it.isNotEmpty() } ?: return emptyList()
+        val ownerKey = currentAccountBindingOrNull()?.let { (env, acc) -> "$env|$acc" } ?: "$apiBaseUrl|$accountId"
         val rawUrls = ArrayList<String>()
-        if (session != null) {
-            val selectedId = session.currentServerId
-            session.servers
-                .sortedByDescending { it.id == selectedId }
-                .forEach { server -> server.avatarUrl?.let(rawUrls::add) }
-            session.user.avatarUrl?.let(rawUrls::add)
+        val selectedId = session.currentServerId
+        fun String?.addIfHttpOrRelative() {
+            val clean = this?.trim()?.takeIf { it.isNotEmpty() } ?: return
+            if (
+                clean.startsWith("http://", ignoreCase = true) ||
+                clean.startsWith("https://", ignoreCase = true) ||
+                clean.startsWith("/api/avatars/", ignoreCase = true) ||
+                clean.startsWith("/avatars/", ignoreCase = true)
+            ) {
+                rawUrls.add(clean)
+            }
         }
-        rawUrls += memberAvatarRefStore.recentHttpAvatarUrls(maxMemberUrls)
-        rawUrls += jointActorRefStore.recentHttpAvatarUrls(maxJointUrls)
+        session.servers
+            .sortedByDescending { it.id == selectedId }
+            .forEach { server -> server.avatarUrl.addIfHttpOrRelative() }
+        session.user.avatarUrl.addIfHttpOrRelative()
+        rawUrls += memberAvatarRefStore.recentHttpAvatarUrls(maxMemberUrls, ownerKey = ownerKey)
+        rawUrls += jointActorRefStore.recentHttpAvatarUrls(maxJointUrls, ownerKey = ownerKey)
         val resolved = LinkedHashSet<String>()
         for (raw in rawUrls) {
             val candidate = raftAvatarImageCandidates(raw, apiBaseUrl).firstOrNull() ?: continue
-            resolved += candidate
+            if (candidate.startsWith("http://", ignoreCase = true) || candidate.startsWith("https://", ignoreCase = true)) {
+                resolved += candidate
+            }
         }
         return resolved.toList()
     }

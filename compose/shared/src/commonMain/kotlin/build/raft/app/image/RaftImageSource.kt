@@ -122,11 +122,12 @@ private const val SVG_DATA_URI_MIME = "image/svg+xml"
  * owner context for a bare URL (accepted trade-off in the design, §5).
  */
 internal fun raftNetworkImageCacheKey(url: String): String {
-    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(url) }.getOrNull()
+    val canonical = raftRewriteRetiredContentHost(url.trim())
+    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(canonical) }.getOrNull()
     return if (identity != null) {
         "raft-img-v1:url:${identity.kind.storageValue}:${identity.fingerprint}"
     } else {
-        "raft-img-v1:url-raw:${url.trim().substringBefore('#')}"
+        "raft-img-v1:url-raw:${canonical.substringBefore('#')}"
     }
 }
 

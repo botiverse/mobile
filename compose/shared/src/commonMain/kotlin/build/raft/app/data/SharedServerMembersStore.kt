@@ -2026,7 +2026,11 @@ class SharedServerMembersStore internal constructor(
      */
     internal fun isServerRosterSettled(serverId: ServerId): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return true
+        val owner = presenceOwner(ServerId(key))
+        val binding = currentDirectoryOwnerBinding(ServerId(key))
+        if (owner != null && binding != null && !binding.matches(owner)) return true
         val entry = _state.value.entriesByServerId[key] ?: return false
+        if (binding != null && !entry.matches(binding)) return false
         return (entry.status == SharedServerMembersLoadStatus.Loaded && !entry.seededFromDurable) ||
             entry.status == SharedServerMembersLoadStatus.Error
     }
@@ -2035,8 +2039,12 @@ class SharedServerMembersStore internal constructor(
         val key = serverId.value.normalizedServerMembersId() ?: return flowOf(true)
         return _state
             .map { current ->
+                val owner = presenceOwner(ServerId(key))
+                val binding = currentDirectoryOwnerBinding(ServerId(key))
+                if (owner != null && binding != null && !binding.matches(owner)) return@map true
                 val entry = current.entriesByServerId[key]
                 entry != null &&
+                    (binding == null || entry.matches(binding)) &&
                     ((entry.status == SharedServerMembersLoadStatus.Loaded && !entry.seededFromDurable) ||
                         entry.status == SharedServerMembersLoadStatus.Error)
             }
