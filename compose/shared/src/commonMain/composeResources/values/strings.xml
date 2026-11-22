@@ -2254,7 +2254,7 @@
     <string name="agent_create_label_environment_variables">Environment variables</string>
     <string name="agent_create_placeholder_name">e.g. Alice</string>
     <string name="agent_create_placeholder_select_computer">Select computer</string>
-    <string name="agent_create_placeholder_select_runtime">Select runtime</string>
+    <string name="agent_create_placeholder_select_runtime">Select…</string>
     <string name="agent_create_title">Create agent</string>
     <string name="agent_create_title_external">Create External Agent</string>
     <string name="agent_create_auto_join_channel">Will join %1$s automatically after it is created</string>
@@ -2336,7 +2336,7 @@
     <string name="agent_create_error_name_reserved">Agent name @%1$s is reserved. Choose another name.</string>
     <string name="agent_create_error_name_min">Agent name must be at least 1 character</string>
     <string name="agent_create_error_name_max">Agent name must be at most 32 characters</string>
-    <string name="agent_create_error_name_characters">Agent name must start with a letter and can only contain letters, numbers, hyphens, and underscores</string>
+    <string name="agent_create_error_name_characters">Start with a letter, then letters, numbers, - or _</string>
     <string name="agent_create_label_advanced">Advanced</string>
     <string name="agent_create_action_add_env_var">+ Add env var</string>
     <string name="agent_create_reasoning_off">No reasoning</string>
@@ -4328,6 +4328,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">This migration is not waiting for your confirmation any more. Refresh to see where it stands.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">The agent's MEMORY.md can't be brought to the cloud: it is too large, is not plain text, or the cloud refused it. Ask the agent to trim MEMORY.md to plain text, then try again.</string>
     <string name="agent_migration_error_not_cancelable">The agent already moved to the cloud, so this migration can no longer be canceled.</string>
+    <string name="agent_migration_error_superseded">A newer migration started after this one. Refresh the migration status.</string>
+    <string name="agent_migration_error_not_dismissible">Only a failed migration can be dismissed. Refresh the migration status.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft could not dismiss this migration. Refresh the migration status and try again.</string>
+    <string name="agent_migration_dismiss_failed">Dismiss</string>
     <string name="agent_migration_error_already_in_progress">This agent already has a migration in progress. Wait for it to finish before trying again.</string>
     <string name="agent_migration_error_pro_plan_required">Agent migration requires the Pro plan. Upgrade this Server to Pro before trying again.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">Agent migration requires the Pro plan.</string>

@@ -2250,7 +2250,7 @@
     <string name="agent_create_label_environment_variables">Переменные окружения</string>
     <string name="agent_create_placeholder_name">Например, Alice</string>
     <string name="agent_create_placeholder_select_computer">Выберите компьютер</string>
-    <string name="agent_create_placeholder_select_runtime">Выберите среду выполнения</string>
+    <string name="agent_create_placeholder_select_runtime">Выберите…</string>
     <string name="agent_create_title">Создать агента</string>
     <string name="agent_create_title_external">Создать внешнего агента</string>
     <string name="agent_create_auto_join_channel">После создания агент автоматически присоединится к каналу %1$s</string>
@@ -2332,7 +2332,7 @@
     <string name="agent_create_error_name_reserved">Имя агента @%1$s зарезервировано. Выберите другое.</string>
     <string name="agent_create_error_name_min">Имя агента должно содержать хотя бы 1 символ</string>
     <string name="agent_create_error_name_max">Имя агента должно быть не длиннее 32 символов</string>
-    <string name="agent_create_error_name_characters">Имя агента должно начинаться с буквы и может содержать только буквы, цифры, дефисы и подчёркивания</string>
+    <string name="agent_create_error_name_characters">Начните с буквы; допустимы буквы, цифры, - и _</string>
     <string name="agent_create_label_advanced">Дополнительно</string>
     <string name="agent_create_action_add_env_var">+ Добавить переменную</string>
     <string name="agent_create_reasoning_off">Без рассуждений</string>
@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">Этот перенос больше не ждёт вашего подтверждения. Обновите страницу, чтобы увидеть текущий статус.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">Файл MEMORY.md агента нельзя перенести в облако: он слишком большой, содержит не только обычный текст или был отклонён облаком. Попросите агента сократить MEMORY.md и оставить в нём только обычный текст, затем попробуйте ещё раз.</string>
     <string name="agent_migration_error_not_cancelable">Агент уже перешёл в облако, поэтому этот перенос больше нельзя отменить.</string>
+    <string name="agent_migration_error_superseded">После этого переноса был запущен новый. Обновите статус переноса.</string>
+    <string name="agent_migration_error_not_dismissible">Скрыть можно только неудавшийся перенос. Обновите статус переноса.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft не удалось скрыть этот перенос. Обновите статус переноса и попробуйте ещё раз.</string>
+    <string name="agent_migration_dismiss_failed">Скрыть</string>
     <string name="agent_migration_error_already_in_progress">У этого агента уже идёт перенос. Дождитесь его завершения и попробуйте ещё раз.</string>
     <string name="agent_migration_error_pro_plan_required">Перенос агентов доступен только на тарифе Pro. Переведите этот сервер на Pro и попробуйте ещё раз.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">Перенос агентов доступен только на тарифе Pro.</string>

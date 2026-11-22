@@ -2250,7 +2250,7 @@
     <string name="agent_create_label_environment_variables">Variables de entorno</string>
     <string name="agent_create_placeholder_name">p. ej., Alice</string>
     <string name="agent_create_placeholder_select_computer">Seleccionar computadora</string>
-    <string name="agent_create_placeholder_select_runtime">Seleccionar runtime</string>
+    <string name="agent_create_placeholder_select_runtime">Seleccionar…</string>
     <string name="agent_create_title">Crear agente</string>
     <string name="agent_create_title_external">Crear agente externo</string>
     <string name="agent_create_auto_join_channel">Se unirá automáticamente a %1$s después de crearse</string>
@@ -2332,7 +2332,7 @@
     <string name="agent_create_error_name_reserved">El nombre de agente @%1$s está reservado. Elige otro.</string>
     <string name="agent_create_error_name_min">El nombre del agente debe tener al menos 1 carácter</string>
     <string name="agent_create_error_name_max">El nombre del agente debe tener como máximo 32 caracteres</string>
-    <string name="agent_create_error_name_characters">El nombre del agente debe empezar con una letra y solo puede contener letras, números, guiones y guiones bajos</string>
+    <string name="agent_create_error_name_characters">Empieza con una letra, seguida de letras, números, - o _</string>
     <string name="agent_create_label_advanced">Avanzado</string>
     <string name="agent_create_action_add_env_var">+ Agregar variable de entorno</string>
     <string name="agent_create_reasoning_off">Sin razonamiento</string>
@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">Esta migración ya no está esperando tu confirmación. Actualiza la página para ver en qué estado está.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">El MEMORY.md del agente no se puede llevar a la nube: es demasiado grande, no es texto sin formato o la nube lo rechazó. Pide al agente que recorte MEMORY.md y lo deje en texto sin formato, e inténtalo de nuevo.</string>
     <string name="agent_migration_error_not_cancelable">El agente ya se movió a la nube, así que esta migración ya no se puede cancelar.</string>
+    <string name="agent_migration_error_superseded">Se inició una migración más reciente después de esta. Actualiza el estado de la migración.</string>
+    <string name="agent_migration_error_not_dismissible">Solo se puede descartar una migración fallida. Actualiza el estado de la migración.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft no pudo descartar esta migración. Actualiza el estado de la migración e inténtalo de nuevo.</string>
+    <string name="agent_migration_dismiss_failed">Descartar</string>
     <string name="agent_migration_error_already_in_progress">Este agente ya tiene una migración en curso. Espera a que termine antes de volver a intentarlo.</string>
     <string name="agent_migration_error_pro_plan_required">La migración de agentes requiere el plan Pro. Mejora este servidor a Pro antes de volver a intentarlo.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">La migración de agentes requiere el plan Pro.</string>

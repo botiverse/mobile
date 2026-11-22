@@ -2250,7 +2250,7 @@
     <string name="agent_create_label_environment_variables">환경 변수</string>
     <string name="agent_create_placeholder_name">예: Alice</string>
     <string name="agent_create_placeholder_select_computer">컴퓨터 선택</string>
-    <string name="agent_create_placeholder_select_runtime">런타임 선택</string>
+    <string name="agent_create_placeholder_select_runtime">선택…</string>
     <string name="agent_create_title">에이전트 만들기</string>
     <string name="agent_create_title_external">외부 에이전트 만들기</string>
     <string name="agent_create_auto_join_channel">만들고 나면 %1$s에 자동으로 참여해요</string>
@@ -2332,7 +2332,7 @@
     <string name="agent_create_error_name_reserved">에이전트 이름 @%1$s은(는) 예약되어 있어요. 다른 이름을 선택해 주세요.</string>
     <string name="agent_create_error_name_min">에이전트 이름은 1자 이상이어야 해요</string>
     <string name="agent_create_error_name_max">에이전트 이름은 32자 이하여야 해요</string>
-    <string name="agent_create_error_name_characters">에이전트 이름은 영문자로 시작해야 하며 영문자, 숫자, 하이픈, 밑줄만 사용할 수 있어요</string>
+    <string name="agent_create_error_name_characters">영문자로 시작해야 하며 영문자, 숫자, -, _만 사용할 수 있어요</string>
     <string name="agent_create_label_advanced">고급</string>
     <string name="agent_create_action_add_env_var">+ 환경 변수 추가</string>
     <string name="agent_create_reasoning_off">추론 안 함</string>
@@ -4148,6 +4148,10 @@
     <string name="agent_migration_error_hosted_review_not_ready">이 마이그레이션은 더 이상 확정을 기다리고 있지 않아요. 새로고침해서 현재 상태를 확인해 주세요.</string>
     <string name="agent_migration_error_hosted_memory_unimportable">에이전트의 MEMORY.md를 클라우드로 옮길 수 없어요. 파일이 너무 크거나, 일반 텍스트가 아니거나, 클라우드에서 거부했어요. 에이전트에게 MEMORY.md를 일반 텍스트로 줄여 달라고 요청한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_not_cancelable">에이전트가 이미 클라우드로 옮겨져서 이 마이그레이션은 더 이상 취소할 수 없어요.</string>
+    <string name="agent_migration_error_superseded">이 마이그레이션 이후에 새 마이그레이션이 시작됐어요. 마이그레이션 상태를 새로고침해 주세요.</string>
+    <string name="agent_migration_error_not_dismissible">실패한 마이그레이션만 닫을 수 있어요. 마이그레이션 상태를 새로고침해 주세요.</string>
+    <string name="agent_migration_error_dismiss_failed">Raft가 이 마이그레이션을 닫지 못했어요. 마이그레이션 상태를 새로고침한 뒤 다시 시도해 주세요.</string>
+    <string name="agent_migration_dismiss_failed">닫기</string>
     <string name="agent_migration_error_already_in_progress">이 에이전트는 이미 마이그레이션이 진행 중이에요. 끝날 때까지 기다린 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_pro_plan_required">에이전트 마이그레이션은 Pro 요금제에서 사용할 수 있어요. 이 서버를 Pro로 업그레이드한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_pro_plan_required_neutral">에이전트 마이그레이션에는 Pro 요금제가 필요해요.</string>

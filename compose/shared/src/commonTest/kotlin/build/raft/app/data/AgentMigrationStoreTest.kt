@@ -236,6 +236,66 @@ class AgentMigrationStoreTest {
     }
 
     @Test
+    fun dismissPostsTheShownRevisionAndTheClosedMoveReadsAsNone() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        val dismissPath = "agents/${agentId.value}/migration/dismiss"
+        network.respond("GET", statusPath, 200, notice("failed", revision = 4))
+        network.respond("GET", statusPath, 200, notice("failed", revision = 5, extra = ""","dismissedAt":"2026-11-22T10:00:00.000Z""""))
+        network.respond("POST", dismissPath, 200, notice("failed", revision = 5))
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
+        runCurrent()
+        assertFalse(store.state.value.notice!!.isDismissed())
+
+        store.dispatch(AgentMigrationIntent.Dismiss)
+        runCurrent()
+
+        val body = Json.parseToJsonElement(network.requests.single { it.path == dismissPath }.bodyText!!).jsonObject
+        assertEquals(migrateRef, body.getValue("migrationRef").jsonPrimitive.content)
+        assertEquals(4, body.getValue("expectedRevision").jsonPrimitive.int)
+        assertNull(store.state.value.dismissError)
+        assertTrue(store.state.value.notice!!.isDismissed())
+
+        // Closed already: nothing to send.
+        store.dispatch(AgentMigrationIntent.Dismiss)
+        runCurrent()
+        assertEquals(1, network.requests.count { it.path == dismissPath })
+    }
+
+    @Test
+    fun aRefusedDismissSaysWhyAndReadsAgain() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        val dismissPath = "agents/${agentId.value}/migration/dismiss"
+        network.respond("GET", statusPath, 200, notice("failed", revision = 4))
+        network.respond("GET", statusPath, 200, notice("provisioning", revision = 0))
+        network.respond("POST", dismissPath, 409, """{"error":"A newer migration started","code":"MIGRATION_SUPERSEDED"}""")
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
+        runCurrent()
+
+        store.dispatch(AgentMigrationIntent.Dismiss)
+        runCurrent()
+
+        assertEquals("MIGRATION_SUPERSEDED", store.state.value.dismissError?.code)
+        assertFalse(store.state.value.dismissing)
+        assertEquals("provisioning", store.state.value.notice?.state)
+    }
+
+    @Test
+    fun onlyAFailedMoveIsDismissed() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, notice("completed", extra = ""","dismissedAt":"2026-11-22T10:00:00.000Z""""))
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
+        runCurrent()
+
+        assertFalse(store.state.value.notice!!.isDismissed())
+        store.dispatch(AgentMigrationIntent.Dismiss)
+        runCurrent()
+        assertTrue(network.requests.none { it.method == "POST" })
+    }
+
+    @Test
     fun confirmHostedPostsTheShownRevision() = runTest {
         val network = ScriptedAgentControlsNetworkClient()
         val confirmPath = "agents/${agentId.value}/migration/confirm-hosted"
