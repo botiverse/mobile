@@ -24,6 +24,7 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.backFromDetail
 import build.raft.app.data.closeFromDetailPage
+import build.raft.app.data.closeSideThread
 import build.raft.app.data.backClosesSideThreadFirst
 import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
@@ -5615,6 +5616,21 @@ private fun RaftAppShellReadyContent(
                                 // review): captured, a tab switched away and back could leave the column's page
                                 // inactive and blank. The column object stays the same; the page follows the state.
                                 val sideThreadActive by rememberUpdatedState(childActive)
+                                // The column is a side pane of one page (web layout-memory "Close and Back"): its head's
+                                // Close closes the column only, the channel staying; it never steps the detail back.
+                                val sideThreadShown by rememberUpdatedState<AdaptiveSideThread>(sideThread)
+                                val sideThreadShellId by rememberUpdatedState(workspace.shellInstanceId)
+                                val sideThreadPane =
+                                    remember {
+                                        RaftSidePanePage(depth = 1) {
+                                            val shellId = sideThreadShellId
+                                            if (shellId.isNotBlank()) {
+                                                val request = sideThreadShown.closeRequest(shellId)
+                                                adaptiveWorkspaceStore.update { current -> current.closeSideThread(request) }
+                                            }
+                                            bridge.log("wide_side_thread_close from=head")
+                                        }
+                                    }
                                 val sideThreadResizeLabel = stringResource(Res.string.thread_side_thread_resize)
                                 // Its tab where the row is short of 160 per column (#189 rule 4; web RowTabs "Thread").
                                 val sideThreadTabLabel = stringResource(Res.string.thread_reply_title)
@@ -5630,12 +5646,14 @@ private fun RaftAppShellReadyContent(
                                                         region = RaftFocusRegion.SideThread,
                                                         modifier = Modifier.fillMaxSize(),
                                                     ) {
-                                                        RaftChildPage(
-                                                            pageName = THREAD_PAGE,
-                                                            pageData = sideThreadPageData,
-                                                            modifier = Modifier.fillMaxSize(),
-                                                            active = sideThreadActive,
-                                                        )
+                                                        CompositionLocalProvider(LocalRaftSidePanePage provides sideThreadPane) {
+                                                            RaftChildPage(
+                                                                pageName = THREAD_PAGE,
+                                                                pageData = sideThreadPageData,
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                active = sideThreadActive,
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             ),

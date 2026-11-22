@@ -110,17 +110,27 @@ internal fun raftTopPageHeaderFrameMetrics(
 }
 
 /**
- * A top bar's leading Back. On the first page of a cell of the wide profile column Back closes the
- * cell, so it is the design system's leading Close (web ChannelSideCard ×); pages pushed in the
- * cell, and every page elsewhere, keep Back. For heads that place the Back themselves (the member profile).
+ * A top bar's leading Back, for heads that place the Back themselves (the member profile). In a wide side pane
+ * ([LocalRaftSidePanePage]) only over a page of the pane's own stack, where it goes back one page in the pane; the
+ * pane's first page has none ([raftSidePaneShowsBack]), and its head ends in [RaftSidePaneCloseButton] instead.
+ * [RaftTopPageHeader] and [RaftPanelBackHeader] decide their Back the same way.
  */
 @Composable
 internal fun RaftPaneAwareBackButton(onClick: () -> Unit) {
-    if (LocalRaftPaneBackCloses.current) {
-        RaftBackButton(onClick = onClick, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
-    } else {
+    if (raftSidePaneShowsBack()) {
         RaftBackButton(onClick = onClick, label = stringResource(Res.string.common_back))
     }
+}
+
+/**
+ * A wide side pane's Close (×), the last control of its page's head (web PanelHeader actions: …, ⋯, Expand, Close):
+ * closes the pane, and only it, the conversation beside it staying ([RaftSidePanePage.close]). Nothing outside a side
+ * pane.
+ */
+@Composable
+internal fun RaftSidePaneCloseButton() {
+    val pane = LocalRaftSidePanePage.current ?: return
+    RaftBackButton(onClick = pane.close, label = stringResource(Res.string.common_close), glyph = RaftGlyph.X)
 }
 
 @Composable
@@ -139,10 +149,12 @@ internal fun RaftTopPageHeader(
     topSafeAreaOverride: Dp? = null,
     // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
     headerHeight: Dp = RaftTheme.controls.headHeight,
-    // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it.
-    contentStartPadding: Dp = if (onBack != null) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
-    contentEndPadding: Dp = RaftTopPageHeaderContentEndPadding,
-    contentSpacing: Dp = if (onBack != null) RaftTopPageHeaderBackContentSpacing else RaftTopPageHeaderContentSpacing,
+    // [onBack] sets the Back button's 3dp edge inset and the 6dp gap after it (none on a wide side pane's first page,
+    // which has no Back: raftSidePaneShowsBack).
+    contentStartPadding: Dp = if (onBack != null && raftSidePaneShowsBack()) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentStartPadding,
+    // In a wide side pane the pane's Close ends the head: its glyph on the 16dp line, as Back's at the start.
+    contentEndPadding: Dp = if (raftSidePaneHeadCloses(onBack)) RaftBackButtonDefaults.EdgeInset else RaftTopPageHeaderContentEndPadding,
+    contentSpacing: Dp = if (onBack != null && raftSidePaneShowsBack()) RaftTopPageHeaderBackContentSpacing else RaftTopPageHeaderContentSpacing,
     // Web PanelHeader: `text-headline` 17/22 700 (it was 18/22).
     titleStyle: TextStyle = RaftType.Headline,
     refreshing: Boolean = false,
@@ -175,12 +187,16 @@ internal fun RaftTopPageHeader(
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
             .coerceAtLeast(0.dp)
+    // A wide side pane (LocalRaftSidePanePage, web layout-memory "Close and Back"): Back only over a page of the pane's
+    // own stack, and the pane's Close ends a head that has a way out of its page.
+    val shownBack = onBack?.takeIf { raftSidePaneShowsBack() }
+    val paneCloses = raftSidePaneHeadCloses(onBack)
     // iOS native navigation (mobile_ios_native_nav_v1): the host's UINavigationBar draws this head
     // (title, Back, actions). The page's top safe area already includes the bar, so only that space
     // is kept. A head with Compose buttons but no bar buttons mapped keeps its Compose head (and
     // the host hides its bar) instead of losing those buttons.
     // iPhone Duo side column: the column holds Back and the actions, so the Compose head stays.
-    val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+    val nativeHeadMapped = !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
     if (!nativeHeadMapped) RaftNativeNavBarDecline()
     // The title's channel tile / DM avatar as this head draws it, captured offscreen for the bar.
     val nativeTitleLeading = nativeTitleExtras.leading
@@ -217,7 +233,7 @@ internal fun RaftTopPageHeader(
     }
     // iPhone Duo (raft-design #859): with the system's side column, Back is the column's first
     // button, and the header keeps the title from the 16dp margin.
-    val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
+    val backInColumn = shownBack != null && raftSideColumnControls(back = raftSideColumnBackAction(shownBack))
     // In a pane of the wide row laid out wider than it shows (#189 rule 2), the head fits what shows: never clipped.
     Column(modifier = Modifier.raftPaneGridFitHead().fillMaxWidth()) {
         RaftTopPageHeaderFrame(
@@ -230,7 +246,7 @@ internal fun RaftTopPageHeader(
             contentSpacing = if (backInColumn) RaftTopPageHeaderContentSpacing else contentSpacing,
         ) {
             when {
-                onBack != null && !backInColumn -> RaftPaneAwareBackButton(onClick = onBack)
+                shownBack != null && !backInColumn -> RaftPaneAwareBackButton(onClick = shownBack)
                 leadingContent != null ->
                     Box(
                         modifier = Modifier.size(RaftAppSize.HeaderIcon),
@@ -326,13 +342,29 @@ internal fun RaftTopPageHeader(
             if (refreshing) {
                 RaftHeaderRefreshSlot()
             }
-            if (trailingContent != null) {
+            if (paneCloses) {
+                RaftSidePaneHeadEnd(trailingContent)
+            } else if (trailingContent != null) {
                 Box(content = trailingContent)
             }
         }
         if (showBodyTopBanner) {
             RaftAppShellBodyTopBanner()
         }
+    }
+}
+
+// raft-ui `panelHeadActions` (`gap-0.5`): between a head's last action and the side pane's Close after it.
+private val RaftSidePaneHeadActionGap = 2.dp
+
+/** The end of a wide side pane's head: its own [actions], then the pane's Close ([RaftSidePaneCloseButton]). */
+@Composable
+private fun RaftSidePaneHeadEnd(actions: (@Composable BoxScope.() -> Unit)?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftSidePaneHeadActionGap)) {
+        if (actions != null) {
+            Box(content = actions)
+        }
+        RaftSidePaneCloseButton()
     }
 }
 
@@ -361,10 +393,14 @@ internal fun RaftPanelBackHeader(
     nativeActions: List<RaftNativeNavBarAction> = emptyList(),
 ) {
     val safeTop = topSafeArea.coerceAtLeast(0.dp)
+    // A wide side pane: Back only over a page of the pane's own stack, and the pane's Close ends the head (as
+    // RaftTopPageHeader).
+    val shownBack = onBack?.takeIf { raftSidePaneShowsBack() }
+    val paneCloses = raftSidePaneHeadCloses(onBack)
     // iOS native navigation: the host's UINavigationBar draws this head (unless its Compose
     // buttons have no bar buttons mapped, see RaftTopPageHeader).
     val nativeHeadMapped =
-        leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null, nativeActions)
+        leadingContent == null && !raftSideColumnActive() && raftNativeNavBarHeadMapped(trailingContent != null || paneCloses, nativeActions)
     if (!nativeHeadMapped) RaftNativeNavBarDecline()
     if (
         nativeHeadMapped &&
@@ -378,9 +414,9 @@ internal fun RaftPanelBackHeader(
         return
     }
     // iPhone Duo: Back moves to the system's side column (raft-design #859).
-    val backInColumn = onBack != null && raftSideColumnControls(back = raftSideColumnBackAction(onBack))
+    val backInColumn = shownBack != null && raftSideColumnControls(back = raftSideColumnBackAction(shownBack))
     @Suppress("NAME_SHADOWING")
-    val onBack = onBack.takeUnless { backInColumn }
+    val onBack = shownBack.takeUnless { backInColumn }
     Box(
         modifier =
             modifier
@@ -442,7 +478,13 @@ internal fun RaftPanelBackHeader(
                 if (refreshing) {
                     RaftHeaderRefreshSlot()
                 }
-                if (trailingContent != null) {
+                if (paneCloses) {
+                    // The head's actions, then the side pane's Close.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftSidePaneHeadActionGap)) {
+                        trailingContent?.invoke(this)
+                        RaftSidePaneCloseButton()
+                    }
+                } else if (trailingContent != null) {
                     Row(verticalAlignment = Alignment.CenterVertically, content = trailingContent)
                 }
             }

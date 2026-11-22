@@ -94,9 +94,10 @@ class WideChannelSettingsPaneScreenshotTest {
                                     listPane = { FixtureSidebar() },
                                     detailPane = { modifier ->
                                         // The cell's first page, as RaftProfileColumnCellStack provides it.
+                                        val sidePane = remember { RaftSidePanePage(depth = 1) {} }
                                         val column =
                                             raftProfileColumn(listOf(pane.cell)) {
-                                                CompositionLocalProvider(LocalRaftPaneBackCloses provides true) { pane.content() }
+                                                CompositionLocalProvider(LocalRaftSidePanePage provides sidePane) { pane.content() }
                                             }
                                         RaftPaneGrid(columns = listOfNotNull(column), modifier = modifier.fillMaxSize()) {
                                             FixtureConversation(Modifier.fillMaxSize(), pane.lines)

@@ -1071,11 +1071,15 @@ internal fun ThreadMembersPageContent(
     // with compose/designsystem parts (ChannelMembersPage.kt).
     RaftDesignSystemTheme {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-        // In Add Member the header's Back returns to the roster (web `add-member-back`), also when
-        // the members page is the first page of the wide layout's profile column cell (no Close there).
-        CompositionLocalProvider(
-            LocalRaftPaneBackCloses provides (LocalRaftPaneBackCloses.current && !addDialogVisible),
-        ) {
+        // In Add Member the header's Back returns to the roster (web `add-member-back`): a step inside
+        // the page, so in the wide layout's profile column it has Back also on the cell's first page,
+        // and the cell's Close still ends the head (raftSidePaneHeadButtons).
+        val sidePane = LocalRaftSidePanePage.current
+        val headSidePane =
+            remember(sidePane, addDialogVisible) {
+                if (sidePane != null && addDialogVisible) RaftSidePanePage(sidePane.depth + 1, sidePane.close) else sidePane
+            }
+        CompositionLocalProvider(LocalRaftSidePanePage provides headSidePane) {
             ChannelMembersPageHeader(
                 title = stringResource(if (addDialogVisible) Res.string.thread_action_add_member else Res.string.thread_members_heading),
                 count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },

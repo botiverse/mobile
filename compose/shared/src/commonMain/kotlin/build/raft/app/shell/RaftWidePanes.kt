@@ -8,12 +8,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import build.raft.app.base.BridgeModule
@@ -246,11 +247,49 @@ internal fun RaftPaneHost(
     CompositionLocalProvider(LocalRaftHost provides host, content = content)
 }
 
-/**
- * True on the first page of a profile column cell, where the page's Back closes the cell: its head
- * shows the leading Close (×, web ChannelSideCard) instead of the Back arrow (RaftTopPageHeader).
+/*
+ * Close and Back in a wide side pane (web docs/frontend/layout-memory.md "Close and Back"; PanelHeader
+ * `backButtonVisibility`, ThreadPanelHeader, ChannelSideCard): the reply thread's column, a profile column cell and
+ * the Artifact column are each a pane beside the conversation. × (and Esc) closes its own pane and stays on the page:
+ * the conversation beside it stays, nothing steps back to another page. ‹ is there only while the pane itself has a
+ * step to go back to (a page pushed inside it) and goes back that one step; otherwise the head shows × only. System
+ * Back, Esc and Cmd+[ keep [raftWideBackStep]'s order (the pane opened last first, then its top page).
  */
-internal val LocalRaftPaneBackCloses = staticCompositionLocalOf { false }
+
+/**
+ * A page in a wide side pane, as the pane hosts it: [depth] is its place in the pane's own stack (1: the pane's first
+ * page, with nothing under it; while it is the top page, the stack's size), [close] closes the whole pane and only it.
+ */
+@Stable
+internal class RaftSidePanePage(val depth: Int, val close: () -> Unit)
+
+/** The side pane a page is in ([RaftSidePanePage]); null outside one (a page of its own, the conversation). */
+internal val LocalRaftSidePanePage = compositionLocalOf<RaftSidePanePage?> { null }
+
+/** A button of a side pane's head: Back (‹) at its start, Close (×) at its end. */
+internal enum class RaftSidePaneHeadButton { Back, Close }
+
+/**
+ * What the head of a side pane's page at [depth] shows: Close always, which closes the pane; Back only over a page of
+ * the pane's own stack ([depth] > 1, `RaftPaneStack.entries.size > 1` for its top page), which goes back one page in
+ * the pane.
+ */
+internal fun raftSidePaneHeadButtons(depth: Int): Set<RaftSidePaneHeadButton> =
+    if (depth > 1) setOf(RaftSidePaneHeadButton.Back, RaftSidePaneHeadButton.Close) else setOf(RaftSidePaneHeadButton.Close)
+
+/** Whether a head here leads with Back: always outside a side pane, in one only over a page of its stack. */
+@Composable
+@ReadOnlyComposable
+internal fun raftSidePaneShowsBack(): Boolean =
+    LocalRaftSidePanePage.current?.let { RaftSidePaneHeadButton.Back in raftSidePaneHeadButtons(it.depth) } ?: true
+
+/**
+ * Whether a head with [onBack] (a way out of its page) ends in its side pane's Close ([RaftSidePaneCloseButton]): in a
+ * side pane, where Close is the way out of the pane.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun raftSidePaneHeadCloses(onBack: (() -> Unit)?): Boolean = onBack != null && LocalRaftSidePanePage.current != null
 
 /*
  * The profile column (#189 step 3; web channelSideLayout's `[profile, context, details]` column, 400 wide, at least
@@ -421,6 +460,10 @@ internal fun raftProfileColumn(
  * dialog) are composed after it and win. [panes] is read when it is needed, so two Backs in a row each act on the
  * pages as they are, not as they were drawn. [page] draws an entry: the page itself ([RaftChildPage]); a test's
  * fixture.
+ *
+ * The cell is a side pane ([LocalRaftSidePanePage]): each page's head ends in Close, which closes this cell only (the
+ * other cell and the conversation stay), and a page pushed in the cell also leads with Back, which closes it and
+ * shows the one under it ([raftSidePaneHeadButtons]).
  */
 @Composable
 internal fun RaftProfileColumnCellStack(
@@ -449,11 +492,12 @@ internal fun RaftProfileColumnCellStack(
         currentOnChange(currentPanes().back())
     }
     val stack = now.stack(cell)
-    val first = stack.entries.firstOrNull()
     val top = stack.entries.lastOrNull()
     Box(Modifier.fillMaxSize()) {
-        stack.entries.forEach { entry ->
+        stack.entries.forEachIndexed { index, entry ->
             key(entry.id) {
+                // An entry keeps its place in the stack for its life (pages are only pushed on and closed off the top).
+                val sidePane = remember(cell, index) { RaftSidePanePage(depth = index + 1) { currentOnChange(currentPanes().closeCell(cell)) } }
                 RaftPaneHost(
                     wide = true,
                     openInPane = { role, name, data ->
@@ -466,7 +510,7 @@ internal fun RaftProfileColumnCellStack(
                     close = { currentOnChange(currentPanes().close(cell, entry.id)) },
                     roleOf = ::raftProfileColumnRole,
                 ) {
-                    CompositionLocalProvider(LocalRaftPaneBackCloses provides (entry == first)) {
+                    CompositionLocalProvider(LocalRaftSidePanePage provides sidePane) {
                         page(entry, active && shown && entry == top)
                     }
                 }
@@ -536,9 +580,11 @@ internal fun raftArtifactColumn(content: @Composable () -> Unit): RaftPaneGridCo
 }
 
 /**
- * The Artifact column's cell: the viewer in [pane] as a child page whose `closePage` closes the column (its head's
- * leading Close: [LocalRaftPaneBackCloses]) and whose `openPage` opens another Artifact in its place, a page with the
- * Supporting role in the profile column ([openSupporting]) and any other page on the platform stack. Back closes it
+ * The Artifact column's cell: the viewer in [pane] as a child page whose `closePage` closes the column and whose
+ * `openPage` opens another Artifact in its place, a page with the Supporting role in the profile column
+ * ([openSupporting]) and any other page on the platform stack. It is a side pane of one page ([LocalRaftSidePanePage]:
+ * another Artifact replaces it, nothing is pushed), so its head ends in Close, which closes the column, and has no
+ * Back ([raftSidePaneHeadButtons]). Back closes it
  * while it is on screen ([LocalRaftPaneGridColumnShown]: not a row tab not shown) and
  * [backOn] (the profile column did not open a page after it); the viewer's own Back is off in a column
  * ([LocalRaftArtifactViewerInColumn]), so it is this one. [pane] is read when it is needed.
@@ -566,6 +612,7 @@ internal fun RaftArtifactColumnCell(
     }
     if (entry == null) return
     key(entry.id) {
+        val sidePane = remember { RaftSidePanePage(depth = 1) { currentOnChange(currentPane().close(entry.id)) } }
         RaftPaneHost(
             wide = true,
             openInPane = { role, name, data ->
@@ -580,7 +627,7 @@ internal fun RaftArtifactColumnCell(
             // The page lays out at the column's width (its content keeps 480 and clips), which decides Desktop Mode.
             BoxWithConstraints(Modifier.fillMaxSize().testTag(RAFT_ARTIFACT_COLUMN_PAGE_TEST_TAG)) {
                 CompositionLocalProvider(
-                    LocalRaftPaneBackCloses provides true,
+                    LocalRaftSidePanePage provides sidePane,
                     LocalRaftArtifactViewerInColumn provides true,
                     LocalRaftArtifactViewerColumnWidthDp provides maxWidth.value,
                 ) {

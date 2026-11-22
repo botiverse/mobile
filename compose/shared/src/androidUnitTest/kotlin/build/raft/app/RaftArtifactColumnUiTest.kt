@@ -244,13 +244,17 @@ class RaftArtifactColumnUiTest {
         }
     }
 
-    /** A page in a column, closing through its host as the real pages do; a column's first page shows Close. */
+    /**
+     * A page in a column, closing through its host as the real pages do; its head's buttons as a side pane's
+     * ([raftSidePaneHeadButtons]): Back (its own `closePage`) over a page of the pane's stack, Close (the pane's).
+     */
     @Composable
     private fun FixturePage(entry: RaftPaneEntry) {
         val navigator = LocalRaftHost.current.navigator
-        val closes = LocalRaftPaneBackCloses.current
+        val pane = LocalRaftSidePanePage.current
         Column(Modifier.fillMaxSize().testTag("page:${entry.pageName}")) {
-            Button(if (closes) "close:${entry.pageName}" else "back:${entry.pageName}") { navigator.closePage() }
+            if (raftSidePaneShowsBack()) Button("back:${entry.pageName}") { navigator.closePage() }
+            if (pane != null) Button("close:${entry.pageName}") { pane.close() }
         }
     }
 

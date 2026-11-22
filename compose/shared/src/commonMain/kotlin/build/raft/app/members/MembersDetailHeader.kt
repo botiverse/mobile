@@ -93,10 +93,15 @@ private val MembersHumanHeaderEdgeInset = 3.dp
 
 private val MembersHumanHeaderContentSpacing = 6.dp
 
+// A profile head that starts without Back (the first page of the wide layout's profile column):
+// the avatar on the 16dp content margin (raft-ui head edges), as the channel details' title under it.
+private val MembersHeaderContentMargin = 16.dp
+
 /**
  * The human profile head (web HumanDetailPanel `PanelHeader`): Back, the `md` avatar sticker,
  * the name (PanelTitle) over the `@handle` (Space Mono 12/16 hint), and the Message action
- * as a ghost PanelAction.
+ * as a ghost PanelAction. In the wide layout's profile column (a side pane, [LocalRaftSidePanePage])
+ * the head ends in the pane's Close and has Back only over a page of the cell's own stack.
  */
 @Composable
 internal fun MembersHumanDetailHeader(
@@ -119,6 +124,20 @@ internal fun MembersHumanDetailHeader(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val messageLabel = stringResource(Res.string.member_label_message)
+    val showsBack = raftSidePaneShowsBack()
+    val paneCloses = LocalRaftSidePanePage.current != null
+    val messageButton: @Composable () -> Unit = {
+        RaftIconButton(
+            onClick = onOpenDirectMessage,
+            tooltip = messageLabel,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftIconButtonSize.Lg,
+            loading = directMessageOpening
+        ) {
+            // raft-ui `DirectMessageIcon`, 22px (web HumanDetailPanel).
+            MembersHumanGlyph(RaftLucideIconName.DirectMessage, 22.dp)
+        }
+    }
     RaftTopPageHeader(
         title = member.displayName,
         // PROTOTYPE (native nav bar): the @handle under the name, Message as the bar button.
@@ -131,8 +150,8 @@ internal fun MembersHumanDetailHeader(
             },
         nativeOnBack = onBack,
         backgroundColor = RaftColor.Canvas,
-        contentStartPadding = MembersHumanHeaderEdgeInset,
-        contentEndPadding = if (canMessage) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
+        contentStartPadding = if (showsBack) MembersHumanHeaderEdgeInset else MembersHeaderContentMargin,
+        contentEndPadding = if (canMessage || paneCloses) MembersHumanHeaderEdgeInset else RaftTopPageHeaderContentEndPadding,
         contentSpacing = MembersHumanHeaderContentSpacing,
         showBodyTopBanner = false,
         titleLeadingContent = {
@@ -160,21 +179,22 @@ internal fun MembersHumanDetailHeader(
             }
         },
         trailingContent =
-            if (canMessage) {
-                {
-                    RaftIconButton(
-                        onClick = onOpenDirectMessage,
-                        tooltip = messageLabel,
-                        variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Lg,
-                        loading = directMessageOpening
-                    ) {
-                        // raft-ui `DirectMessageIcon`, 22px (web HumanDetailPanel).
-                        MembersHumanGlyph(RaftLucideIconName.DirectMessage, 22.dp)
+            when {
+                paneCloses -> {
+                    {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (canMessage) messageButton()
+                            RaftSidePaneCloseButton()
+                        }
                     }
                 }
-            } else {
-                null
+                canMessage -> {
+                    { messageButton() }
+                }
+                else -> null
             }
     )
 }
@@ -281,6 +301,9 @@ internal fun MembersDetailHeader(
     // under it; Back, the 35dp avatar, the title (`text-headline` bold) over one line of
     // meta (`text-caption`, `foreground-hint`), then 44dp ghost PanelActions 2dp apart.
     // The web head's Start / Stop and Restart / Reset sit in the More menu at phone width.
+    // In the wide layout's profile column (a side pane) the actions end in the pane's Close, and
+    // Back shows only over a page of the cell's own stack (raftSidePaneHeadButtons).
+    val showsBack = raftSidePaneShowsBack()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -294,8 +317,12 @@ internal fun MembersDetailHeader(
                     .fillMaxWidth()
                     // 56 with a finger, 44 under a mouse or trackpad (sizing v12, raft-ui 0.65 desktop density).
                     .height(RaftTheme.controls.headHeight - RaftStroke.Hairline)
-                    // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12).
-                    .padding(horizontal = RaftBackButtonDefaults.EdgeInset - 2.dp),
+                    // 3dp for a finger's 44dp buttons; 8dp for the 28dp bar buttons (sizing v12). Without
+                    // Back the avatar starts on the 16dp content margin.
+                    .padding(
+                        start = if (showsBack) RaftBackButtonDefaults.EdgeInset - 2.dp else MembersHeaderContentMargin,
+                        end = RaftBackButtonDefaults.EdgeInset - 2.dp,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
@@ -389,6 +416,8 @@ internal fun MembersDetailHeader(
                             RaftContentLucideIcon(RaftLucideIconName.EllipsisVertical, size = 22.dp)
                         }
                     }
+                    // web AgentDetailPanel: the side pane's Close ends the head (nothing outside one).
+                    RaftSidePaneCloseButton()
                 }
             }
         }
