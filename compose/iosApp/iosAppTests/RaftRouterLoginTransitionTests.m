@@ -1,4 +1,5 @@
 #import <XCTest/XCTest.h>
+#import <SafariServices/SafariServices.h>
 #import "../iosApp/Cmp/RaftPageRouter.h"
 #import "../iosApp/Cmp/RaftPageViewController.h"
 
@@ -49,6 +50,18 @@
                   completion:(void (^)(void))completion {
     self.presentationCount += 1;
     self.recordedPresentation = viewControllerToPresent;
+}
+
+@end
+
+@interface RaftStubPresentedPageViewController : RaftPageViewController
+@property (nonatomic, strong, nullable) UIViewController *stubPresentedViewController;
+@end
+
+@implementation RaftStubPresentedPageViewController
+
+- (UIViewController *)presentedViewController {
+    return self.stubPresentedViewController ?: [super presentedViewController];
 }
 
 @end
@@ -381,6 +394,34 @@
     XCTAssertNotEqual(navigation.topViewController, coveringPage,
                       @"Ordinary replaceCurrent from an embedded child controller must still replace the top entry");
     XCTAssertTrue(((RaftPageViewController *)navigation.topViewController).raftIsAppShellPage);
+}
+
+- (void)testViewWillDisappearSkipsCoverHookWhenPresentingSafariViewController {
+    RaftStubPresentedPageViewController *page =
+        [[RaftStubPresentedPageViewController alloc] initWithPageName:@"compose_settings_computers" pageData:@{}];
+    __block NSUInteger coverCount = 0;
+    page.raftPageWillBeCoveredHook = ^{
+        coverCount += 1;
+    };
+
+    // Presenting SFSafariViewController (e.g. runtime OAuth "Open Sign-in Page") must keep the
+    // page's open sign-in dialog and Computer login session alive until the user closes Safari.
+    page.stubPresentedViewController =
+        [[SFSafariViewController alloc] initWithURL:[NSURL URLWithString:@"https://accounts.google.com/o/oauth2/v2/auth"]];
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 0u,
+                   @"Presenting SFSafariViewController must not fire raftPageWillBeCoveredHook");
+
+    // A normal navigation push (no Safari modal) and a non-Safari modal presentation still fire it.
+    page.stubPresentedViewController = nil;
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 1u,
+                   @"A normal page cover must still fire raftPageWillBeCoveredHook");
+
+    page.stubPresentedViewController = [UINavigationController new];
+    [page viewWillDisappear:NO];
+    XCTAssertEqual(coverCount, 2u,
+                   @"A non-Safari modal presentation must still fire raftPageWillBeCoveredHook");
 }
 
 @end

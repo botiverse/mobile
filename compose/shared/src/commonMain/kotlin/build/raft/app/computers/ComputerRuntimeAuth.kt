@@ -881,6 +881,7 @@ internal class ComputerRuntimeAuthController(
     }
 
     fun openSignIn() {
+        dispose()
         dialog =
             if (runtime.perProvider) {
                 val session =
@@ -921,6 +922,7 @@ internal class ComputerRuntimeAuthController(
 
     fun openSignOut(provider: RuntimeAuthSignedInProvider? = null) {
         if (runtime.perProvider && provider == null) return
+        dispose()
         dialog = ComputerRuntimeAuthDialog.SignOut(ComputerRuntimeSignOutState(provider = provider))
     }
 
