@@ -5153,6 +5153,8 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     return @{
         @"status" : @"ok",
         @"cached" : @YES,
+        @"privateCached" : @YES,
+        @"privatePath" : filePath,
         @"recordVersion" : mtimeMs,
         @"sizeBytes" : size,
         @"uri" : [NSURL fileURLWithPath:filePath].absoluteString ?: @"",
@@ -5241,6 +5243,14 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         self.raft_sharePresenterController = nil;
         self.raft_attachmentExportPresenterCaptured = NO;
         callback(@{ @"status" : @"failed", @"reason" : @"missing_url" });
+        return;
+    }
+    if ([urlText.lowercaseString hasPrefix:@"file://"]) {
+        // Local-cache probe missed between cache-status check and openAttachment; let caller
+        // fall back to resolving a fresh remote URL instead of passing file:// to the downloader.
+        self.raft_sharePresenterController = nil;
+        self.raft_attachmentExportPresenterCaptured = NO;
+        callback(@{ @"status" : @"missing" });
         return;
     }
     // The download sink creates `<cachedPath>.part-<token>` with posix creat, which does not
@@ -5708,7 +5718,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             UIViewController *capturedPresenter = strongSelf.raft_sharePresenterController;
             BOOL presenterDismissed = strongSelf.raft_attachmentExportPresenterCaptured &&
                 (capturedPresenter == nil || capturedPresenter.viewIfLoaded.window == nil ||
-                 capturedPresenter.isBeingDismissed);
+                 capturedPresenter.isBeingDismissed || capturedPresenter.isMovingFromParentViewController);
             BOOL shouldPresent = !strongSelf.raft_attachmentExportCancelled && !presenterDismissed;
             if (shouldPresent) {
                 [strongSelf raft_presentShareItems:@[ RaftAttachmentHandoffURL(
@@ -6417,7 +6427,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         }
         return;
     }
-    if ([action isEqualToString:@"cancel"] || [action isEqualToString:@"stop"]) {
+    NSString *normalizedAction = action.lowercaseString;
+    if ([normalizedAction isEqualToString:@"cancel"] || [normalizedAction isEqualToString:@"stop"]) {
         __weak typeof(self) weakSelf = self;
         RaftBridgeRunOnMain(^{
             __strong typeof(weakSelf) strongSelf = weakSelf;

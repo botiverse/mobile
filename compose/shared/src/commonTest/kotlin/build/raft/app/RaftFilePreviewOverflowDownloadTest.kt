@@ -130,4 +130,29 @@ class RaftFilePreviewOverflowDownloadTest {
             )
         )
     }
+
+    @Test
+    fun lazyPdfLoadingPayloadMarksPreviewPreparingUntilReady() {
+        val lazyPdfLoading =
+            RaftFilePreviewPayload(
+                source = RaftFilePreviewSourceThreadAttachment,
+                attachmentId = "att-pdf",
+                kind = "loading",
+                requestedKind = RaftFilePreviewPdfKind,
+                name = "spec.pdf"
+            )
+        val nonPdfLoading =
+            RaftFilePreviewPayload(
+                source = RaftFilePreviewSourceThreadAttachment,
+                attachmentId = "att-bin",
+                kind = "loading",
+                requestedKind = "text",
+                name = "notes.txt"
+            )
+        assertEquals(true, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Idle))
+        assertEquals(true, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Downloading))
+        assertEquals(false, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Ready("/tmp/spec.pdf")))
+        assertEquals(false, raftFilePreviewPdfIsPreparing(lazyPdfLoading, RaftFilePreviewPdfState.Failed("err")))
+        assertEquals(false, raftFilePreviewPdfIsPreparing(nonPdfLoading, RaftFilePreviewPdfState.Idle))
+    }
 }
