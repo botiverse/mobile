@@ -138,12 +138,11 @@ class ThreadHeaderParentLinkUiTest {
         }
 
     /**
-     * #proj-mobile:#162 (artin): a channel's Members button on the iOS bar showed its member count
-     * as the system's red badge, which reads as 28 unread. It carries the count as the web header
-     * does, a plain number beside the glyph ("count"), and no badge.
+     * #proj-mobile:#281: the conversation head on the iOS native bar follows web Task v2 order
+     * (Search, Tasks, Files, Settings — no Members button), folding from the last into ⋯.
      */
     @Test
-    fun theNativeBarMembersButtonCarriesThePlainMemberCountNotARedBadge() =
+    fun theNativeBarChannelActionsFollowWebTaskV2OrderWithoutMembers() =
         runRobolectricComposeUiTest {
             val bridge = RaftNativeNavBarBridge()
             var actions: String? = null
@@ -189,10 +188,8 @@ class ThreadHeaderParentLinkUiTest {
                     ),
             )
             runOnIdle {
-                val members =
-                    Json.parseToJsonElement(actions!!).jsonArray.map { it.jsonObject }.single { it["id"] == JsonPrimitive("members") }
-                assertEquals(JsonPrimitive("28"), members["count"], members.toString())
-                assertEquals(null, members["badge"], "the member count is not an unread badge: $members")
+                val ids = Json.parseToJsonElement(actions!!).jsonArray.map { it.jsonObject["id"] }
+                assertEquals(listOf(JsonPrimitive("thread-search"), JsonPrimitive("thread-settings")), ids, actions!!)
             }
         }
 }
