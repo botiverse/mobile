@@ -814,8 +814,10 @@ private fun SharedTasksLoadedBodyContent(
             SharedTasksHeader(
                 subtitle =
                     if (queryState != null) {
-                        // Web TasksPage head: the view's count, "N / total" when narrowed.
-                        queryState.headNumber().orEmpty()
+                        // Web TasksPage head: the view's count, "N / total" when narrowed. Under the
+                        // title it is named as tasks, so it reads as a count (artin 11-22: a bare
+                        // "111" under "Tasks" said nothing; the web's narrow head has the same line).
+                        queryState.headNumber()?.let { stringResource(Res.string.tasks_header_view_count, it) }.orEmpty()
                     } else {
                         localizedTasksHeaderSubtitle(
                             totalTasks = content.tasks.size,
