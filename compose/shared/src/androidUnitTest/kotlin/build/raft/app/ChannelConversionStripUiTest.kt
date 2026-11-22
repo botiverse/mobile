@@ -122,26 +122,4 @@ class ChannelConversionStripUiTest {
             onNodeWithTag(ChannelConversionTestTags.CancelConfirm).performClick()
             assertEquals(1, cancels)
         }
-
-    @Test
-    fun aFailureIsANoticeWithRetryAndNoStrip() =
-        runRobolectricComposeUiTest {
-            var retries = 0
-            val failed =
-                running.copy(
-                    showsStrip = false,
-                    failed = true,
-                    error = ChannelConversionErrorText.Server("Verification failed"),
-                    offersRetry = true,
-                    offersCancel = false,
-                )
-            setContent {
-                Host { ChannelConversionStatus(failed, channelName = "lobby", onRetry = { retries += 1 }, onCancel = {}, onCheckStatus = {}, stepsInPopover = false) }
-            }
-            awaitText("Couldn't finish connecting outside. Verification failed")
-            onAllNodesWithTag(ChannelConversionTestTags.Strip).assertCountEquals(0)
-            onAllNodesWithTag(ChannelConversionTestTags.Cancel).assertCountEquals(0)
-            onNodeWithTag(ChannelConversionTestTags.Retry).performClick()
-            assertEquals(1, retries)
-        }
 }

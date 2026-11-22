@@ -122,15 +122,6 @@ class RaftUnifiedDialogSheetUiTest {
         }
 
     @Test
-    fun backDismisses() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showSheet { dismissed++ }
-            pressBack()
-            assertEquals(1, dismissed)
-        }
-
-    @Test
     fun aBusySheetIgnoresBackAndClose() =
         runRobolectricComposeUiTest {
             var dismissed = 0

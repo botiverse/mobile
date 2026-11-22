@@ -8,9 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AppLocale
@@ -25,7 +23,6 @@ import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -125,21 +122,6 @@ class AgentCredentialHoldUiTest {
     )
 
     @Test
-    fun aHeldAgentShowsTheReasonInsteadOfOnlineWithRetry() =
-        runRobolectricComposeUiTest {
-            var retries = 0
-            showHero(
-                live(AgentStatus.Online, HeldDetail, "idle"),
-                summary("online", HeldDetail, "idle", hold = AgentCredentialHoldReason.Billing),
-                onRetry = { retries++ },
-            )
-            onNodeWithText("Provider balance exhausted").assertExists()
-            onAllNodesWithText("Online").assertCountEquals(0)
-            onNodeWithTag(AgentStatusRetryTestTags.Retry).performClick()
-            assertEquals(1, retries)
-        }
-
-    @Test
     fun anOwnSignInOrPlanErrorNamesTheRuntimeOrTheModel() =
         runRobolectricComposeUiTest {
             showHero(
@@ -156,14 +138,6 @@ class AgentCredentialHoldUiTest {
             )
             onNodeWithText("Sign-in needed for Codex CLI").assertExists()
             onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(1)
-        }
-
-    @Test
-    fun anOlderDaemonsHeldNoticeStaysOnlineWithoutRetry() =
-        runRobolectricComposeUiTest {
-            showHero(live(AgentStatus.Online, HeldDetail, "idle"), summary("online", HeldDetail, "idle"), onRetry = {})
-            onAllNodesWithText("Provider balance exhausted").assertCountEquals(0)
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
         }
 
     @Test

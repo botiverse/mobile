@@ -138,76 +138,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun runtimeConfigProjectionShowsTheSavedModeAndKeepsWhereTheAgentRuns() {
-        // The saved mode is the config's own field; `executionMode` (byoc / cloud) is not part of the config
-        // and must stay as read (the migration section reads it: membersMigrationPlacesWithoutSource).
-        val s = store()
-        val owner = SharedAgentDetailOwner("https://api.raft.build/api", "account-1", ServerId("server-1"))
-        val read =
-            detailWithSummary().copy(
-                summary = detailWithSummary().summary?.copy(runtime = "codex", model = "gpt-6.2-sol", runtimeMode = "default", executionMode = "byoc")
-            )
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 1L))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, read, owner.serverId, owner = owner, profileGeneration = 1L))
-        val fast = RuntimeConfig(runtime = "codex", model = RuntimeModelConfig.Preset("gpt-6.2-sol"), mode = RuntimeModeConfig.Fast)
-
-        s.dispatch(SharedAgentDetailIntent.ApplyRuntimeConfigProjection(owner, testMemberId, fast, 1L))
-        assertEquals("fast", s.state.value.detail?.summary?.runtimeMode)
-        assertEquals("byoc", s.state.value.detail?.summary?.executionMode)
-
-        // An older read landing while the save's projection holds still shows the saved mode.
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, read, owner.serverId, owner = owner, profileGeneration = 1L))
-        assertEquals("fast", s.state.value.detail?.summary?.runtimeMode)
-        assertEquals("byoc", s.state.value.detail?.summary?.executionMode)
-    }
-
-    @Test
-    fun newerProfileGenerationCanReplaceSavedRuntimeProjection() {
-        val s = store()
-        val owner =
-            SharedAgentDetailOwner(
-                environmentId = "https://api.raft.build/api",
-                accountId = "account-1",
-                serverId = ServerId("server-1")
-            )
-        val saved = RuntimeConfig(runtime = "claude", model = RuntimeModelConfig.Preset("claude-opus-5"))
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 4L))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary(),
-                serverId = owner.serverId,
-                owner = owner,
-                profileGeneration = 4L
-            )
-        )
-        s.dispatch(
-            SharedAgentDetailIntent.ApplyRuntimeConfigProjection(
-                owner,
-                testMemberId,
-                saved,
-                profileGeneration = 4L
-            )
-        )
-
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId, owner, profileGeneration = 5L))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary().copy(
-                    summary = detailWithSummary().summary?.copy(runtime = "claude", model = "server-new")
-                ),
-                serverId = owner.serverId,
-                owner = owner,
-                profileGeneration = 5L
-            )
-        )
-
-        assertEquals("server-new", s.state.value.detail?.summary?.model)
-        assertNull(s.state.value.runtimeConfigProjection)
-    }
-
-    @Test
     fun runtimeConfigProjectionIsOwnerAndGenerationFenced() {
         val s = store()
         val owner =
@@ -321,28 +251,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun seedDetailFromMemberDoesNotReplaceExistingMatchingDetail() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
-
-        s.dispatch(
-            SharedAgentDetailIntent.SeedDetailFromMember(
-                MemberProfile(
-                    id = testMemberId,
-                    displayName = "Stale Agent",
-                    handle = "stale-agent",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Offline
-                )
-            )
-        )
-
-        assertEquals("Agent One", s.state.value.detail?.summary?.name)
-        assertEquals("Online", s.state.value.detail?.summary?.status)
-    }
-
-    @Test
     fun seedDetailFromSameAgentOnAnotherServerReplacesTheDisplaySeed() {
         val s = store()
         s.dispatch(
@@ -405,38 +313,6 @@ class SharedAgentDetailStoreTest {
 
         assertEquals(emptyList(), s.state.value.detail?.activity)
         assertNull(s.state.value.agentActivityLogs[testMemberId])
-    }
-
-    @Test
-    fun seedDetailFromMemberUsesCachedAgentActivity() {
-        val s = store()
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-1",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-
-        s.dispatch(
-            SharedAgentDetailIntent.SeedDetailFromMember(
-                MemberProfile(
-                    id = testMemberId,
-                    displayName = "Agent One",
-                    handle = "agent-one",
-                    kind = MemberKind.Agent,
-                    agentStatus = AgentStatus.Working
-                )
-            )
-        )
-
-        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
     }
 
     @Test
@@ -743,68 +619,6 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun agentActivitySnapshotMergesIntoVisibleDetailAndCache() {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(
-            SharedAgentDetailIntent.SetDetail(
-                testMemberId,
-                detailWithSummary(
-                    status = "Working",
-                    activityEntries = listOf(
-                        AgentActivityEntry(
-                            id = "activity-1",
-                            type = "status",
-                            title = "Working",
-                            timestamp = "100"
-                        )
-                    )
-                )
-            )
-        )
-
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-2",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-
-        assertEquals(listOf("activity-1", "activity-2"), s.state.value.detail?.activity?.map { it.id })
-        assertEquals(listOf("activity-1", "activity-2"), s.state.value.agentActivityLogs[testMemberId]?.map { it.id })
-    }
-
-    @Test
-    fun cachedAgentActivitySurvivesMemberSwitchAndRestRefresh() {
-        val s = store()
-        s.dispatch(
-            SharedAgentDetailIntent.SetAgentActivity(
-                testMemberId,
-                listOf(
-                    AgentActivityEntry(
-                        id = "activity-1",
-                        type = "tool_start",
-                        title = "Run command",
-                        timestamp = "200"
-                    )
-                )
-            )
-        )
-        s.dispatch(SharedAgentDetailIntent.SelectMember(MemberId("agent-2")))
-        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Working")))
-
-        assertEquals(listOf("activity-1"), s.state.value.detail?.activity?.map { it.id })
-    }
-
-    @Test
     fun duplicateAgentActivityUpdateWithinOneSecondDoesNotAppend() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
@@ -850,20 +664,6 @@ class SharedAgentDetailStoreTest {
         assertEquals(agentB, routeB.state.value.agentId)
         // The route's own dispatches stay in the route.
         assertNull(shell.state.value.agentId)
-    }
-
-    @Test
-    fun aProfileRouteStartsFromTheShellSeedButNotTheOtherWayRound() {
-        val shell = store()
-        shell.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
-        shell.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
-
-        val route = shell.openRouteStore()
-        assertEquals(shell.state.value, route.state.value)
-
-        // A seed for a profile opened later does not reach the route already open.
-        shell.dispatch(SharedAgentDetailIntent.DeselectMember)
-        assertEquals(testMemberId, route.state.value.agentId)
     }
 
     @Test

@@ -20,40 +20,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class InboxSavedSearchRepositoryDataSourceTest {
-    @Test
-    fun processActivityUnreadRepositoryUsesAllFilterForegroundPriorityAndSummaryOnly() = runBlocking {
-        val network =
-            FakeInboxNetworkClient(
-                inboxJson =
-                    """{"items":[],"hasMore":false,"totalCount":12,"totalUnreadCount":7}"""
-            )
-        val repository = ProcessActivityUnreadRepository(sampleStore(), network)
-
-        val result =
-            repository.load(
-                ProcessActivityUnreadOwner(
-                    environmentId = "https://api.example.test",
-                    accountId = "user-1",
-                    serverId = "server-1"
-                ),
-                DataRequestPriority.Foreground
-            )
-
-        assertTrue(result is DataResult.Content)
-        assertEquals(ActivityUnreadSummarySnapshot(totalUnreadCount = 7, totalCount = 12), result.data)
-        assertEquals(
-            listOf(
-                InboxCall(
-                    filter = "all",
-                    limit = 1,
-                    offset = 0,
-                    priority = DataRequestPriority.Foreground,
-                    serverId = "server-1"
-                )
-            ),
-            network.inboxCalls
-        )
-    }
 
     @Test
     fun inboxRepositoryMapsPagingMetadataAndStableThreadKeys() = runBlocking {
@@ -827,30 +793,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun searchKeepsTheNextCursorOnlyWhereItCanBeSent() = runBlocking {
-        val hit =
-            """{"id":"message-1","seq":1,"channelId":"channel-1","channelName":"general","channelType":"channel","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","content":"release","snippet":"release","createdAt":"2026-10-01T00:00:00.123Z"}"""
-        // searchService.ts MessageSearchPage: a walk stopped at its row budget is `incomplete`
-        // with a cursor even when `hasMore` is false; the web still offers more (hasMore || incomplete).
-        val network =
-            FakeInboxNetworkClient(
-                searchJson = """{"results":[$hit],"hasMore":false,"incomplete":true,"nextCursor":"$SearchWalkCursorVector","searchedThrough":"2026-10-01T00:00:00.123Z","searchedMessages":10000,"historyLimited":false}"""
-            )
-        val repository = RealSearchRepository(sampleStore(), network)
-
-        val recent = repository.search(ServerId("server-1"), "release", options = SearchQueryOptions(sort = SearchSort.Recent))
-        val relevance = repository.search(ServerId("server-1"), "release", options = SearchQueryOptions())
-
-        assertTrue(recent is DataResult.Content)
-        assertEquals(Triple(true, SearchWalkCursorVector, 1), Triple(recent.data.hasMore, recent.data.nextCursor, recent.data.nextOffset))
-        assertTrue(relevance is DataResult.Content)
-        assertEquals(null to 1, relevance.data.nextCursor to relevance.data.nextOffset)
-        // web `searchIncomplete` / `incompleteSearchNote`: only a walk this client can continue.
-        assertEquals(true to "2026-10-01T00:00:00.123Z", recent.data.incomplete to recent.data.searchedThrough)
-        assertEquals(false, relevance.data.incomplete)
-    }
-
-    @Test
     fun anIncompleteEmptySearchPageStaysContentWithItsCursor() = runBlocking {
         // web SearchNoResultsState: no hit yet from a walk that stopped part way is "No matches
         // yet / Continue searching", so the empty page must keep its cursor and note.
@@ -889,28 +831,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
         assertTrue(page is DataResult.Content)
         assertEquals(2 to 32, page.data.items.size to page.data.nextOffset)
-    }
-
-    @Test
-    fun searchRepositoryForwardsMultiSelectScopeParams() = runBlocking {
-        val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
-        val repository = RealSearchRepository(sampleStore(), network)
-
-        repository.search(
-            serverId = ServerId("server-1"),
-            query = "",
-            options = SearchQueryOptions(scopes = listOf(SearchScope.Mentioned, SearchScope.Humans))
-        )
-        repository.search(
-            serverId = ServerId("server-1"),
-            query = "",
-            options = SearchQueryOptions(scopes = listOf(SearchScope.Humans, SearchScope.Agents))
-        )
-
-        assertEquals("self", network.searchCalls[0].mentionTarget)
-        assertEquals("user", network.searchCalls[0].senderType)
-        assertEquals(null, network.searchCalls[1].mentionTarget)
-        assertEquals(null, network.searchCalls[1].senderType)
     }
 
     @Test

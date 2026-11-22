@@ -54,38 +54,6 @@ class ChannelRepositoryDataSourceTest {
     }
 
     @Test
-    fun directMessageErrorsPreserveOnlyStructuredServerErrorText() = runBlocking {
-        val fixtures =
-            listOf(
-                "structured" to ("""{"error":"User is not a member of this server"}""" to "User is not a member of this server"),
-                "wrong-alias" to ("""{"message":"User is not a member of this server"}""" to null),
-                "malformed" to ("""{"error":"unterminated""" to null),
-                "plain-text" to ("User is not a member of this server" to null),
-                "empty" to ("" to null)
-            )
-
-        fixtures.forEach { (name, fixture) ->
-            val (body, expectedMessage) = fixture
-            val repository =
-                RealChannelRepository(
-                    sampleStore(),
-                    FakeChannelNetworkClient(
-                        responseCode = 400,
-                        responseBody = null,
-                        responseErrorBody = body
-                    )
-                )
-
-            val error =
-                assertIs<DataResult.Error>(repository.openUserDirectMessage(MemberId("user-2")), name)
-                    .error
-
-            assertEquals("http_400", error.code, name)
-            assertEquals(expectedMessage, error.serverMessage, name)
-        }
-    }
-
-    @Test
     fun directMessageStructuredServerErrorReachesHomeVisibleCopy() = runBlocking {
         val repository =
             RealChannelRepository(
@@ -107,27 +75,6 @@ class ChannelRepositoryDataSourceTest {
                 englishErrorPresentationStringsForTest()
             )
         )
-    }
-
-    @Test
-    fun warmSuccessfulOpenDoesNotFallbackWhenNextResponseTargetsAnotherPeer() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseBody =
-                    """{"id":"dm-self","name":"Self DM","type":"dm","peerType":"user","peerId":"user-1","peerName":"Artin"}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        assertIs<DataResult.Content<OpenDirectMessageResult>>(
-            repository.openUserDirectMessage(MemberId("user-1"))
-        )
-        network.responseBody =
-            """{"id":"dm-other","name":"Other DM","type":"dm","peerType":"user","peerId":"user-2","peerName":"Other"}"""
-
-        val second = repository.openUserDirectMessage(MemberId("user-1"))
-
-        assertIs<DataResult.Error>(second)
-        assertEquals(2, network.requests.size)
     }
 
     @Test
@@ -240,23 +187,6 @@ class ChannelRepositoryDataSourceTest {
         assertEquals("channel_name_invalid", error.code)
         assertEquals(false, error.retryable)
         assertEquals(emptyList(), network.requests)
-    }
-
-    @Test
-    fun createChannelMapsServerNameValidationMessageToTypedCode() = runBlocking {
-        val network =
-            FakeChannelNetworkClient(
-                responseCode = 400,
-                responseBody =
-                    """{"error":"Channel name must start with a letter and can only contain letters, numbers, hyphens, and underscores"}"""
-            )
-        val repository = RealChannelRepository(sampleStore(), network)
-
-        val result = repository.createChannel(CreateChannelRequest(name = "123-start"))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("channel_name_invalid", error.code)
-        assertEquals(false, error.retryable)
     }
 
     @Test

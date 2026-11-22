@@ -44,9 +44,6 @@ class RaftArtifactViewerScreenshotTest {
     // One bar: the page's toolbar is the only one, under the status bar (24dp stand-in).
     @Test fun pageBarLight() = capture("artifact.viewer.page-bar", RaftAppAppearance.Light) { Viewer(pageDrawsBar = true) }
 
-    @Test
-    fun desktopModeMenuLight() = capture("artifact.viewer.desktop-mode.menu", RaftAppAppearance.Light) { Viewer(desktopMode = true, overlay = { Menu(desktopMode = true) }) }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme { content() }

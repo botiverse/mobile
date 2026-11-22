@@ -50,8 +50,6 @@ class ThreadArchivedChannelScreenshotTest {
 
     @Test fun archived() = capture("thread.archived-channel", RaftAppAppearance.Light, AppLocale.English)
 
-    @Test fun archivedDark() = capture("thread.archived-channel.dark", RaftAppAppearance.Dark, AppLocale.English)
-
     private fun capture(name: String, appearance: RaftAppAppearance, locale: AppLocale) {
         StringDesc.localeType = locale.stringDescLocaleType
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

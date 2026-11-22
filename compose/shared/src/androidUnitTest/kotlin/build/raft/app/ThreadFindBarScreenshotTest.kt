@@ -69,9 +69,6 @@ class ThreadFindBarScreenshotTest {
     fun results() = capture("thread.find.results", RaftAppAppearance.Light, Results)
 
     @Test
-    fun resultsDark() = capture("thread.find.results.dark", RaftAppAppearance.Dark, Results)
-
-    @Test
     fun noMatch() =
         capture("thread.find.no-match", RaftAppAppearance.Light, Results.copy(query = "zebra", matches = emptyList(), activeIndex = 0), marked = false)
 

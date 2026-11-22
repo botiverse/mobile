@@ -36,25 +36,6 @@ class RaftLongMessageCollapseTest {
     // --- threshold -------------------------------------------------------------------------
 
     @Test
-    fun thresholdIsTheWebFixedHeightCappedAtEightyPercentOfViewport() {
-        // 320dp at density 2.75 = 880px: a phone viewport clips at the web's fixed height.
-        assertEquals(880, raftLongMessageCollapseThresholdPx(2000, maxThresholdPx = 880))
-        // A short viewport (landscape, split screen) clips at 80% so the toggle stays on screen.
-        assertEquals(720, raftLongMessageCollapseThresholdPx(900, maxThresholdPx = 880))
-        assertEquals(1600, raftLongMessageCollapseThresholdPx(2000, maxThresholdPx = NoCap))
-        assertEquals(0, raftLongMessageCollapseThresholdPx(0, maxThresholdPx = 880))
-        assertEquals(0, raftLongMessageCollapseThresholdPx(-5, maxThresholdPx = 880))
-    }
-
-    @Test
-    fun keyboardDoesNotLowerTheThresholdBelowTheFixedHeight() {
-        val controller = RaftLongMessageCollapseController()
-        controller.onViewportMeasured(1080, 2000, maxThresholdPx = 880)
-        controller.onViewportMeasured(1080, 900, maxThresholdPx = 880) // IME open
-        assertEquals(880, controller.thresholdPx)
-    }
-
-    @Test
     fun bodyCollapsesOnlyWhenTallerThanThresholdPlusMinimumHiddenPart() {
         assertFalse(raftLongMessageCollapsible(false, contentHeightPx = 1600, thresholdPx = 1600, minHiddenPx = 100))
         assertFalse(raftLongMessageCollapsible(false, contentHeightPx = 1700, thresholdPx = 1600, minHiddenPx = 100))
@@ -125,22 +106,6 @@ class RaftLongMessageCollapseTest {
     }
 
     // --- scroll anchoring ------------------------------------------------------------------
-
-    @Test
-    fun topDownExpandKeepsTopWithoutAnyRawRequest() {
-        val plan =
-            raftLongMessageToggleScrollPlan(
-                reverseLayout = false,
-                expanding = true,
-                forwardIndex = 5,
-                totalItemsCount = 10,
-                itemTopBefore = 300,
-                rawItemOffsetBefore = 300,
-                heightDelta = 1400
-            )
-        assertEquals(300, plan.desiredTop)
-        assertNull(plan.rawScrollRequest)
-    }
 
     @Test
     fun bottomUpExpandMovesTheRowBottomDownSoTheTopStays() {

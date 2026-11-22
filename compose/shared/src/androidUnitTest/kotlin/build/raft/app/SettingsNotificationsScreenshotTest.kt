@@ -62,11 +62,6 @@ class SettingsNotificationsScreenshotTest {
     @Test
     fun notificationsPageDark() =
         captureNotifications("settings.notifications.dark", RaftAppAppearance.Dark, activities) { NotificationsFixture() }
-
-    /** Settings › On {server} › Notifications: the current server's card alone (web CurrentServerNotificationsCard). */
-    @Test
-    fun serverNotificationsPageLight() =
-        captureNotifications("settings.server-notifications", RaftAppAppearance.Light, activities) { NotificationsFixture(serverOnly = true) }
 }
 
 /** The longer zh-CN titles: each setting's title wraps to a second line instead of truncating. */

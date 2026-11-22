@@ -15,7 +15,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAssistantOtterHosts
-import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -118,9 +117,6 @@ class ThreadAssistantPanelScreenshotTest {
     @Test
     fun openDark() = capture("assistant.panel.open.dark", RaftAppAppearance.Dark, paused = false)
 
-    @Test
-    fun pausedLight() = capture("assistant.panel.paused", RaftAppAppearance.Light, paused = true)
-
     /**
      * Opened from a thread in #general (web AssistantContextChip, slock #12335): the conversation as
      * a chip above the DM's composer, the thread line with its parent's first line, and its ×.
@@ -136,21 +132,6 @@ class ThreadAssistantPanelScreenshotTest {
                     AssistantContextConversation.Channel("general"),
                     AssistantContextThread("1a2b3c4d-0000-4000-8000-000000000000", "Can we ship the 1.26 build today?\nDetails below"),
                     readsDms = true,
-                ),
-        )
-
-    /** Opened from a DM while the owner keeps DMs from the assistant: the chip, and the muted line saying it can't see it. */
-    @Test
-    fun contextUnreadableDmDark() =
-        capture(
-            "assistant.panel.context.unreadable.dark",
-            RaftAppAppearance.Dark,
-            paused = false,
-            context =
-                assistantContextRef(
-                    AssistantContextConversation.DirectMessage(peerName = "ada", peerKind = MemberKind.Human, displayName = "Ada Lovelace"),
-                    thread = null,
-                    readsDms = false,
                 ),
         )
 

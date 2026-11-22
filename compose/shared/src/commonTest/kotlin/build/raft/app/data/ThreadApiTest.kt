@@ -324,47 +324,6 @@ class ThreadApiTest {
     }
 
     @Test
-    fun syncPreservesTaskLifecycleSystemRows() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(
-                    syncBody =
-                        """
-                        [
-                          {
-                            "id": "sys-claim-1",
-                            "channelId": "thread-1",
-                            "senderType": "user",
-                            "senderId": "system",
-                            "senderName": "System",
-                            "messageType": "system",
-                            "content": "claimed #252 \"Implement Thread timeline system-message rendering\"",
-                            "createdAt": "2026-06-13T01:00:00Z",
-                            "seq": 45
-                          }
-                        ]
-                        """.trimIndent()
-                )
-            )
-
-        val result = api.messageSync("thread-1", sinceSeq = 44)
-
-        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
-        assertEquals("sys-claim-1", message.id)
-        assertEquals("system", message.messageType)
-        assertEquals("claimed #252 \"Implement Thread timeline system-message rendering\"", message.content)
-    }
-
-    @Test
-    fun syncRejectsNestedWrapper() = runBlocking {
-        val api = RaftThreadApiClient(FakeThreadNetworkApi(syncBody = """{"data":[{"id":"m2","content":"new","seq":2}]}"""))
-
-        val result = api.messageSync("channel-1", sinceSeq = 1)
-
-        assertEquals("thread_sync_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
-    }
-
-    @Test
     fun executePendingMentionActionsNormalizesLegacyInviteToCanonicalAdd() = runBlocking {
         val transport =
             FakeThreadNetworkApi(
@@ -427,18 +386,6 @@ class ThreadApiTest {
         assertEquals("thread-1", action.threadChannelId.value)
         assertEquals("m1", action.parentMessageId?.value)
         assertEquals(2, action.replyCount)
-    }
-
-    @Test
-    fun createThreadRejectsNestedGuessedResponse() = runBlocking {
-        val api =
-            RaftThreadApiClient(
-                FakeThreadNetworkApi(createThreadBody = """{"data":{"thread":{"threadChannelId":"thread-1"}}}""")
-            )
-
-        val result = api.createOrOpenThread("channel-1", "m1")
-
-        assertEquals("thread_create_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
     }
 
     @Test

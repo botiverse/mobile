@@ -119,6 +119,7 @@ import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.isRelativeAppAvatarPath
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
@@ -8478,7 +8479,7 @@ internal fun RaftAppAvatar(
     val displayAvatarWireValue = remember(kind, avatarWireValue) { raftAvatarFaceWireValue(kind, avatarWireValue) }
     val httpAvatarSource = remember(displayAvatarWireValue) {
         displayAvatarWireValue?.takeIf {
-            it.startsWith("http://") || it.startsWith("https://")
+            it.startsWith("http://") || it.startsWith("https://") || it.isRelativeAppAvatarPath()
         }
     }
     val isPixelWire = remember(displayAvatarWireValue) {

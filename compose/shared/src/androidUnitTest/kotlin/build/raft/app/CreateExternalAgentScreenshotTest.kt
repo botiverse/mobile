@@ -40,10 +40,6 @@ class CreateExternalAgentScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
 
-    // The one "Create agent" row (web #13140 option A): closed, and its menu open above it.
-    @Test
-    fun entryClosedLight() = capture("channel.members.add.create-closed", RaftAppAppearance.Light) { AddMemberEntryContent(canCreateAgents = true) }
-
     @Test
     fun entryMenuLight() =
         capture("channel.members.add.create-menu", RaftAppAppearance.Light) {

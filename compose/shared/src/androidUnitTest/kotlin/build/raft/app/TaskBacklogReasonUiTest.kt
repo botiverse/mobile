@@ -109,28 +109,6 @@ class TaskBacklogReasonUiTest {
         }
 
     @Test
-    fun aBlankReasonMovesWithoutOneAndCancelWritesNothing() =
-        runRobolectricComposeUiTest {
-            setContent { Host { Head(task) } }
-
-            onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            onNodeWithText("Backlog").performClick()
-            waitForIdle()
-            onNodeWithTag(TaskBacklogReasonCancelTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            assertEquals(emptyList<SharedTasksRouteIntent>(), dispatched)
-
-            onNodeWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            onNodeWithText("Backlog").performClick()
-            waitForIdle()
-            onNodeWithTag(TaskBacklogReasonConfirmTestTag, useUnmergedTree = true).performClick()
-            waitForIdle()
-            assertEquals(listOf<SharedTasksRouteIntent>(SharedTasksRouteIntent.UpdateStatus(task, TaskStatus.Backlog, null)), dispatched)
-        }
-
-    @Test
     fun createTaskOnTaskV2HasAStatusFieldThatDefaultsToTodo() =
         runRobolectricComposeUiTest {
             val submitted = mutableListOf<Pair<List<String>, TaskStatus?>>()

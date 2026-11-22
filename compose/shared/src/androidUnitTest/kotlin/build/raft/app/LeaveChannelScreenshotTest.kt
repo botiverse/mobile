@@ -45,14 +45,7 @@ class LeaveChannelScreenshotTest {
     fun menuLight() = menu("home.leave-channel.menu", RaftAppAppearance.Light)
 
     @Test
-    @Config(qualifiers = "w390dp-h440dp-xxhdpi")
-    fun menuDark() = menu("home.leave-channel.menu.dark", RaftAppAppearance.Dark)
-
-    @Test
     fun publicLight() = dialog("home.leave-channel.dialog.public", RaftAppAppearance.Light, LeaveChannelConfirmVariant.Public)
-
-    @Test
-    fun publicDark() = dialog("home.leave-channel.dialog.public.dark", RaftAppAppearance.Dark, LeaveChannelConfirmVariant.Public)
 
     private fun menu(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

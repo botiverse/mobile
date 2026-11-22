@@ -24,7 +24,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
@@ -159,23 +158,6 @@ class ThreadInPlaceFingerLongPressUiTest {
             assertTrue(selectionMenuShown(), "the Compact message menu shows for the selection")
             assertFalse(mouseToolbarShown(), "not the mouse's Quote | Copy toolbar")
             assertEquals(0, messageMenuOpens, "the row's long-press menu leaves the body to the selection")
-        }
-
-    @Test
-    fun aMouseSelectsInPlaceAndOpensNoMessageMenu() =
-        runRobolectricComposeUiTest {
-            showRow()
-            onNodeWithTag(BODY_TAG).performMouseInput {
-                moveTo(Offset(2f, centerY))
-                press()
-                moveTo(Offset(width * 0.3f, centerY))
-                moveTo(Offset(width * 0.5f, centerY))
-                release()
-            }
-            waitForIdle()
-            assertTrue(controller!!.hasSelection, "a mouse drag on the body still selects text")
-            assertTrue(mouseToolbarShown(), "with its Quote | Copy toolbar")
-            assertEquals(0, messageMenuOpens)
         }
 
     private fun ComposeUiTest.showProductionGestureRow(

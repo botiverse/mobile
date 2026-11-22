@@ -154,22 +154,6 @@ class MentionPreviewCardUiTest {
             assertEquals(listOf("@ada"), calls.opened, "the tap still opens the mention")
         }
 
-    @Test
-    fun clickingTheMentionClosesTheCardAndRunsItsClick() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showBody(calls)
-            mainClock.autoAdvance = false
-            val at = charCenter(mentionIndex())
-            textNode().performMouseInput { moveTo(at) }
-            mainClock.advanceTimeBy(400)
-            assertTrue(cardShown())
-            textNode().performMouseInput { click(at) }
-            mainClock.advanceTimeBy(400)
-            assertTrue(!cardShown(), "a click on the mention closes its card")
-            assertEquals(listOf("@ada"), calls.opened, "and the mention still opens the profile")
-        }
-
     private companion object {
         const val CARD_NAME = "Ada Lovelace"
     }

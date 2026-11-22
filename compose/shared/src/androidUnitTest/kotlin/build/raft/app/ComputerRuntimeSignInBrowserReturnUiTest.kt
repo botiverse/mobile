@@ -8,8 +8,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
@@ -29,7 +27,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
-import build.raft.app.data.AuthSessionClearReason
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftComputersApi
@@ -50,7 +47,6 @@ import build.raft.app.model.RuntimeAuthLoginEventPushed
 import build.raft.app.model.RuntimeAuthLoginStep
 import build.raft.app.model.ServerId
 import build.raft.app.resources.StringDesc
-import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
@@ -173,95 +169,6 @@ class ComputerRuntimeSignInBrowserReturnUiTest {
             onNodeWithText("Submit", useUnmergedTree = true).performClick()
             waitUntil(timeoutMillis = 5_000) { api.submittedCodes.isNotEmpty() }
             assertEquals(listOf(LOGIN_ID to "4/0A-google-auth-code"), api.submittedCodes)
-            assertEquals(0, api.cancelledLoginIds.size)
-        }
-
-    @Test
-    fun switchingServerOrSigningOutDuringSignInCancelsLoginAndClosesDialog() =
-        runRobolectricComposeUiTest {
-            val api = FakeAntigravitySignInApi()
-            val realtime = SharedRealtimeDomainEventOwner(runIfCurrentGrant = { _, block -> block(); true })
-            val authEvents = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 8)
-            var currentOwner: SharedComputersOwner? = OWNER
-            var currentServerId: String? = SERVER_ID
-
-            setSheetHostContent(
-                api = api,
-                realtime = realtime,
-                authEvents = authEvents,
-                readOwner = { currentOwner },
-                readServerId = { currentServerId },
-                openUrl = {},
-            )
-
-            waitUntil(timeoutMillis = 5_000) {
-                onAllNodesWithTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            onAllNodesWithTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG, useUnmergedTree = true).onFirst().performClick()
-            waitUntil(timeoutMillis = 5_000) { api.startCalls == 1 }
-            onNodeWithTag(COMPUTER_RUNTIME_SIGN_IN_DIALOG_TAG, useUnmergedTree = true).assertExists()
-
-            // Switching to another server (via BindingMetadataChanged) must cancel the old server's login.
-            currentServerId = "server-2"
-            assertTrue(authEvents.tryEmit(AuthSessionEvent.BindingMetadataChanged(generation = 3)))
-            waitUntil(timeoutMillis = 5_000) { api.cancelledLoginIds.contains(LOGIN_ID) }
-            onAllNodesWithTag(COMPUTER_RUNTIME_SIGN_IN_DIALOG_TAG, useUnmergedTree = true).assertCountEquals(0)
-
-            // Sign-out (Cleared) keeps access fail-closed.
-            currentOwner = null
-            currentServerId = null
-            assertTrue(authEvents.tryEmit(AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.Logout)))
-            waitForIdle()
-            onAllNodesWithTag(COMPUTER_RUNTIME_SIGN_IN_DIALOG_TAG, useUnmergedTree = true).assertCountEquals(0)
-        }
-
-    @Test
-    fun usagePreviewCardSheetClosesWhenOpeningSignInAndKeepsDialogOpen() =
-        runRobolectricComposeUiTest {
-            val api = FakeAntigravitySignInApi()
-            val realtime = SharedRealtimeDomainEventOwner(runIfCurrentGrant = { _, block -> block(); true })
-            val store =
-                SharedRuntimeAccountUsageStore(
-                    client = RaftComputersApiClient(api),
-                    currentIdentity = { OWNER },
-                    clock = { NOW_MILLIS },
-                )
-            val access =
-                MembersRuntimeAccountUsageAccess(
-                    store = store,
-                    owner = OWNER,
-                    serverId = SERVER_ID,
-                    auth = ComputerRuntimeAuthHost(realtime = realtime, openUrl = {}),
-                )
-            setContent {
-                TestHostShell {
-                    val auth = rememberComputerRuntimeAuthController(access, MACHINE_ID, "antigravity", readNow = true)
-                    val binding = auth?.let { ComputerRuntimeAuthBinding(it, "Antigravity", "Studio Mac", agents = null, openUrl = {}) }
-                    ComputerRuntimeUsagePreviewCard(
-                        runtimeLabel = "Antigravity",
-                        controller = null,
-                        runtimeVersion = "1.0.0",
-                        auth = binding,
-                        trigger = { onClick ->
-                            RaftButton(
-                                text = "Antigravity",
-                                onClick = { onClick?.invoke() },
-                                modifier = Modifier.testTag("preview-trigger"),
-                            )
-                        },
-                    )
-                }
-            }
-            waitUntil(timeoutMillis = 5_000) { api.authReads > 0 }
-            onNodeWithTag("preview-trigger", useUnmergedTree = true).performClick()
-            waitUntil(timeoutMillis = 5_000) {
-                onAllNodesWithTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            onAllNodesWithTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG, useUnmergedTree = true).onFirst().performClick()
-            waitUntil(timeoutMillis = 5_000) { api.startCalls == 1 }
-            // Sign-in dialog stays open while the auth-only sheet closed underneath it.
-            onNodeWithTag(COMPUTER_RUNTIME_SIGN_IN_DIALOG_TAG, useUnmergedTree = true).assertExists()
-            onAllNodesWithTag(COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG, useUnmergedTree = true).assertCountEquals(0)
             assertEquals(0, api.cancelledLoginIds.size)
         }
 

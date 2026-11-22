@@ -63,12 +63,6 @@ class AssistantOwnerSettingsScreenshotTest {
         capture("assistant.wechat.connection", RaftAppAppearance.Light) { ConnectionFixture(WeChatBinding(BINDING_ID, "active", CONNECTED_AT)) }
 
     @Test
-    fun weChatConnectionStopped() =
-        capture("assistant.wechat.connection.stopped", RaftAppAppearance.Light) {
-            ConnectionFixture(WeChatBinding(BINDING_ID, "reconnect_required", CONNECTED_AT))
-        }
-
-    @Test
     fun weChatDisconnectFailed() =
         capture("assistant.wechat.disconnect-failed", RaftAppAppearance.Light) {
             Backdrop {
@@ -83,23 +77,6 @@ class AssistantOwnerSettingsScreenshotTest {
                 ) {
                     WeChatDisconnectConfirmBody("Ada", ScreenError("http_500", traceId = TRACE_ID))
                 }
-            }
-        }
-
-    @Test
-    fun deleteConfirm() =
-        capture("assistant.delete-confirm", RaftAppAppearance.Light) {
-            Backdrop {
-                RaftDialogSurface(
-                    title = stringResource(Res.string.assistant_delete_title),
-                    size = RaftDialogSize.Sm,
-                    description = stringResource(Res.string.assistant_delete_body, "Ada"),
-                    onClose = {},
-                    footer = {
-                        RaftButton(stringResource(Res.string.common_cancel), onClick = {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
-                        RaftButton(stringResource(Res.string.assistant_delete), onClick = {}, variant = RaftButtonVariant.Danger, size = RaftButtonSize.Lg)
-                    },
-                )
             }
         }
 

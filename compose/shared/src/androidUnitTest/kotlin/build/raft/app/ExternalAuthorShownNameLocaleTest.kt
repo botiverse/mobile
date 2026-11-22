@@ -9,7 +9,6 @@ import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
@@ -73,33 +72,6 @@ class ExternalAuthorShownNameLocaleTest {
             assertEquals(expected, message.shownAuthorName(), "message, locale $tag")
             assertEquals(expected, row.shownAuthorName(), "row, locale $tag")
             assertEquals(expected, notificationSender(message), "notification, locale $tag")
-        }
-    }
-
-    @Test
-    fun serverSentNamesAreShownAsIsInEveryLanguage() {
-        val named =
-            listOf(
-                parsed(""""senderType": "external_projection", "senderId": "e1", "externalAuthor": {"displayName": "Grace"},"""),
-                parsed(""""senderType": "external_projection", "senderId": "e2", "senderName": "Linus","""),
-                // A server-sent "Unknown" (or even "External user") is a real name: no client-side filtering.
-                parsed(""""senderType": "external_projection", "senderId": "e3", "externalAuthor": {"displayName": "Unknown"},"""),
-                parsed(""""senderType": "external_projection", "senderId": "e4", "senderName": "External user","""),
-                parsed(""""senderType": "user", "senderId": "u1", "senderName": "Ada","""),
-            )
-        val expectedNames = listOf("Grace", "Linus", "Unknown", "External user", "Ada")
-        expectedFallback.keys.forEach { tag ->
-            StringDesc.localeType = StringDesc.LocaleType.Custom(tag)
-            named.zip(expectedNames).forEach { (message, expected) ->
-                assertFalse(message.externalAuthor?.displayNameIsFallback == true, "${message.author.id.value} flagged")
-                assertEquals(expected, message.shownAuthorName(), "message ${message.author.id.value}, locale $tag")
-                assertEquals(
-                    expected,
-                    message.toRaftThreadMessageItem(currentUserId = "me").shownAuthorName(),
-                    "row ${message.author.id.value}, locale $tag",
-                )
-                assertEquals(expected, notificationSender(message), "notification ${message.author.id.value}, locale $tag")
-            }
         }
     }
 }

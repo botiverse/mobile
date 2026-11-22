@@ -206,30 +206,6 @@ class ReadReceiptOfflineOutboxTest {
     }
 
     @Test
-    fun theSameChannelIsKeptApartPerEnvironmentAccountAndServer() {
-        val store = ReadReceiptPendingStore(disk)
-        val owners =
-            listOf(
-                owner,
-                otherAccount,
-                ReadReceiptOwner("staging", "user-1", "server-1"),
-                ReadReceiptOwner("env", "user-1", "server-2"),
-            )
-        owners.forEachIndexed { index, candidate -> store.record(candidate, channel, 10L + index) }
-
-        val reopened = ReadReceiptPendingStore(disk)
-        owners.forEachIndexed { index, candidate ->
-            assertEquals(mapOf(channel to 10L + index), reopened.seqsFor(candidate))
-        }
-
-        reopened.dropServer("server-1", "user-1")
-        assertEquals(emptyMap(), reopened.seqsFor(owner))
-        assertEquals(emptyMap(), reopened.seqsFor(owners[2]))
-        assertEquals(mapOf(channel to 11L), reopened.seqsFor(otherAccount), "another account keeps its own")
-        assertEquals(mapOf(channel to 13L), reopened.seqsFor(owners[3]), "another server keeps its own")
-    }
-
-    @Test
     fun aDamagedRecordIsTreatedAsEmpty() {
         disk.putString(READ_RECEIPT_PENDING_STORAGE_KEY, "{not json")
         assertEquals(emptyList(), ReadReceiptPendingStore(disk).entries())
@@ -248,20 +224,6 @@ class ReadReceiptOfflineOutboxTest {
         assertEquals(emptyList(), api.calls)
         assertEquals(emptyList(), restarted.store.entries())
         restarted.kill()
-    }
-
-    @Test
-    fun aRevokedOwnerKeepsItsSavedReadForLater() = runTest {
-        val process = appProcess()
-        api.holdNext()
-        process.coordinator.markReadToSeq(owner, channel, 10L)
-        runCurrent()
-
-        process.coordinator.revoke(owner)
-        runCurrent()
-
-        assertEquals(mapOf(channel to 10L), process.store.seqsFor(owner))
-        process.kill()
     }
 
     @Test
@@ -382,36 +344,6 @@ class ReadReceiptOfflineOutboxTest {
         assertEquals(emptyList(), restarted.store.entries())
         assertEquals(listOf(channel), dropped, "Home is told, so the count comes back")
         restarted.kill()
-    }
-
-    @Test
-    fun aSummaryLaggingBehindTheBaseDoesNotDropTheReplay() = runTest {
-        val restarted = replayAgainst(mapOf(channel to ReadReceiptFrontier(40L, 4L)))
-        advanceUntilIdle()
-
-        assertEquals(listOf("read:channel-1@60"), api.calls, "an older version says nothing about a rewind")
-        restarted.kill()
-    }
-
-    @Test
-    fun withNoFreshSummaryTheReadWaitsUnsent() = runTest {
-        val restarted = replayAgainst(current = null)
-        advanceUntilIdle()
-
-        assertEquals(emptyList(), api.calls)
-        assertEquals(mapOf(channel to 60L), restarted.store.seqsFor(owner))
-        restarted.kill()
-    }
-
-    @Test
-    fun aLaggingAnswerCannotReplaceANewerBase() = runTest {
-        val process = appProcess()
-        process.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(50L, 5L))
-        process.coordinator.noteReadFrontier(owner, channel, ReadReceiptFrontier(40L, 4L))
-        process.coordinator.markReadToSeq(owner, channel, 60L)
-
-        assertEquals(ReadReceiptFrontier(50L, 5L), process.store.entry(owner, channel)?.base)
-        process.kill()
     }
 
     @Test

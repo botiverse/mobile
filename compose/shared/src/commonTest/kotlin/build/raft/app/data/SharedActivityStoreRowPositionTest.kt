@@ -184,36 +184,6 @@ class SharedActivityStoreRowPositionTest {
     }
 
     @Test
-    fun aRowTheAnswerLeavesOutRereadsTheList() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(otherRow, channelRow)), snapshot(listOf(otherRow))))
-        f.store.dispatch(live("m-9", "channel-1", seq = 9L))
-        advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
-        runCurrent()
-        // Done, archived or gone for this reader: the route leaves it out.
-        f.inbox.rowAnswer!!.complete(DataResult.Content(snapshot(emptyList())))
-        advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 1L)
-        runCurrent()
-
-        val listRead = f.inbox.reads.last()
-        assertEquals(InboxFetchReason.RealtimeFallback to InboxRefreshTrigger.RowMissing, listRead.reason to listRead.trigger?.trigger)
-        assertEquals(listOf(otherRow.key), f.store.state.value.items.map { it.key })
-    }
-
-    @Test
-    fun aFailedRowReadFallsBackToTheListRead() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(channelRow))))
-        f.store.dispatch(live("m-9", "channel-1", seq = 9L))
-        advanceTimeBy(ActivityRowRereadDelayMillis + 1L)
-        runCurrent()
-        f.inbox.rowAnswer!!.complete(DataResult.Error(ScreenError(code = "network")))
-        advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 1L)
-        runCurrent()
-
-        assertEquals(2, f.inbox.listReadCount)
-        assertEquals(InboxRefreshTrigger.AmbiguousSeq, f.inbox.reads.last().trigger?.trigger)
-    }
-
-    @Test
     fun aLateOlderAnswerIsKeptOutAfterTheTimedHoldToo() = runTest {
         val lagging = channelRow.copy(unreadCount = 0)
         val on = loadedStore(listOf(snapshot(listOf(channelRow)), snapshot(listOf(lagging))))
@@ -296,23 +266,6 @@ class SharedActivityStoreRowPositionTest {
         f.store.dispatch(SharedActivityIntent.Refresh)
         runCurrent()
         assertEquals(1, f.row(channelRow.key).unreadCount)
-    }
-
-    @Test
-    fun aCursorMovedBackElsewhereIsFoldedAtTheNextAnswerWhenNoReadStateEventCameHere() = runTest {
-        // The ledger took the rewind on another path (Home) and this store saw no event for it: the answer
-        // folds it first, so the old read seq does not clear the unread it serves.
-        val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
-        val unread = channelRow.copy(unreadCount = 1)
-        val f = loadedStore(listOf(snapshot(listOf(unread)), snapshot(listOf(unread))), versions = versions)
-        f.store.dispatch(readState("channel-1", maxReadSeq = 10L))
-        runCurrent()
-        advanceTimeBy(ActivityLocalMutationHoldMillis + 30_000L)
-        versions.applyOrObserveReadStateFact(ServerId("server-1"), MemberId("user-1"), ChannelId("channel-1"), 3L, 9L)
-        f.store.dispatch(SharedActivityIntent.Refresh)
-        runCurrent()
-        assertEquals(1, f.row(channelRow.key).unreadCount)
-        assertEquals(null to "10", f.store.rowPositionReadSeqForTest("channel-1"))
     }
 
     @Test

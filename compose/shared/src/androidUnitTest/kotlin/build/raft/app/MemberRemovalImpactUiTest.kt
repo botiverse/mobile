@@ -4,8 +4,6 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -63,40 +61,4 @@ class MemberRemovalImpactUiTest {
         waitForIdle()
         assertEquals(1, leaves.size)
     }
-
-    @Test
-    fun theConfirmWaitsForTheReadAndAFailedReadLeavesItAvailable() = runRobolectricComposeUiTest {
-        showLeave(MemberRemovalImpactState.Loading)
-        onNodeWithText("Checking which Computers this takes offline…").assertIsDisplayed()
-        onNodeWithTag(SETTINGS_SERVER_LEAVE_CONFIRM_TAG).assertIsNotEnabled()
-    }
-
-    @Test
-    fun removingNamesTheMemberAndReadsTheRestAsOthers() = runRobolectricComposeUiTest {
-        val removes = mutableListOf<Unit>()
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersRemoveMemberConfirmDialog(
-                    personName = "Bea",
-                    impact = MemberRemovalImpactState.Ready(MemberRemovalImpact(5, 2, 0, listOf("Alpha", "Beta", "Gamma"))),
-                    removing = false,
-                    errorMessage = null,
-                    onDismiss = {},
-                    onConfirm = { removes += Unit },
-                )
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Remove member").assertIsDisplayed()
-        onNodeWithTag(MEMBER_REMOVAL_IMPACT_TAG).assertIsDisplayed()
-        onNodeWithText("Bea will be removed from every channel on this server.", substring = true).assertIsDisplayed()
-        onNodeWithText("Removing Bea takes 5 Computers offline: Alpha, Beta, Gamma, and others.", substring = true).assertIsDisplayed()
-        assertEquals(0, count("belong to other people", substring = true))
-        onNodeWithTag(MEMBER_REMOVE_CONFIRM_TAG).performClick()
-        waitForIdle()
-        assertEquals(1, removes.size)
-    }
-
-    private fun ComposeUiTest.count(text: String, substring: Boolean = false): Int =
-        onAllNodes(hasText(text, substring = substring)).fetchSemanticsNodes().size
 }

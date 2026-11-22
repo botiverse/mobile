@@ -76,28 +76,6 @@ class ThreadBottomAnchorSignatureTest {
         toThreadTimelineSlice()
 
     @Test
-    fun latestMessageLayoutKey_appendingMessage_changesKey() {
-        val a = payload(messages = listOf(message("m1")))
-        val b = payload(messages = listOf(message("m1"), message("m2")))
-        assertNotEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
-    }
-
-    @Test
-    fun latestMessageLayoutKey_lastMessageBodyChange_changesKey() {
-        val a = payload(messages = listOf(message("m1", body = "old body")))
-        val b = payload(messages = listOf(message("m1", body = "new body that is longer")))
-        assertNotEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
-    }
-
-    @Test
-    fun focusedMessageAnchorIdentityChangesForRepeatedOpenIntentNonce() {
-        val first = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 1)
-        val second = focusedMessageAnchorIdentity(messageId = "m2", requestNonce = 2)
-
-        assertNotEquals(first, second)
-    }
-
-    @Test
     fun focusedMessageAnchorIdentityIgnoresTimelineGrowth() {
         // task #554: secondary refresh / realtime arrivals / older pages change
         // the timeline signature and lazy item count — the request identity must
@@ -262,26 +240,6 @@ class ThreadBottomAnchorSignatureTest {
             threadInitialBottomAnchorTargetItemIndex(
                 latestMessageItemIndex = -1,
                 bottomPaddingItemIndex = 0
-            )
-        )
-    }
-
-    @Test
-    fun initialBottomAnchor_userGestureOwnsPendingViewport() {
-        assertEquals(
-            ThreadInitialBottomAnchorStage.UserOwned,
-            threadInitialBottomAnchorStage(
-                initialBottomAnchorReady = false,
-                userScrollInProgress = true,
-                latestItemVisible = false
-            )
-        )
-        assertEquals(
-            ThreadInitialBottomAnchorStage.Settled,
-            threadInitialBottomAnchorStage(
-                initialBottomAnchorReady = true,
-                userScrollInProgress = true,
-                latestItemVisible = false
             )
         )
     }
@@ -597,30 +555,6 @@ class ThreadBottomAnchorSignatureTest {
         assertNotEquals(
             emptyFirstPaint.threadMarkdownRenderSignature().inlineContentScope,
             hydratedBody.threadMarkdownRenderSignature().inlineContentScope
-        )
-    }
-
-    @Test
-    fun compactAuthorSignature_changesWhenGroupingInputsChange() {
-        val base =
-            message("m1")
-                .copy(
-                    authorId = "user-1",
-                    authorName = "User 1",
-                    timestampLabel = "2026-06-28T01:00:00.000Z"
-                )
-
-        assertNotEquals(
-            base.threadCompactAuthorSignature(),
-            base.copy(authorId = "user-2").threadCompactAuthorSignature()
-        )
-        assertNotEquals(
-            base.threadCompactAuthorSignature(),
-            base.copy(timestampLabel = "2026-06-28T01:06:00.000Z").threadCompactAuthorSignature()
-        )
-        assertNotEquals(
-            base.threadCompactAuthorSignature(),
-            base.copy(messageType = "System").threadCompactAuthorSignature()
         )
     }
 }

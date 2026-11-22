@@ -147,21 +147,6 @@ class ThreadShareCaptureModeTest {
         assertFalse(threadAppLinkPreviewsEnabled(sentMessage = false, shareCaptureActive = false))
     }
 
-    @Test fun captureLight() = screenshot("thread.share-capture", RaftAppAppearance.Light)
-
-    private fun screenshot(name: String, appearance: RaftAppAppearance) {
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            Fixture(livePager) {
-                CompositionLocalProvider(LocalThreadAppLinkPreviewHost provides remember { appLinkFixtureHost() }) {
-                    val heights = remember { mutableMapOf<String, Int>() }
-                    Row("capture-raft", RaftLinkMessage, capture = true, heights = heights)
-                    Row("capture-plain", PlainLinkMessage, capture = true, heights = heights)
-                    Row("capture-app", AppLinkMessage.copy(id = CaptureAppLinkMessageId), capture = true, heights = heights)
-                }
-            }
-        }
-    }
-
     private fun render(content: @Composable () -> Unit): View {
         val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)

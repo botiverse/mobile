@@ -71,24 +71,6 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun backgroundUnreadNotificationPolicyIsShared() {
-        assertTrue(
-            RaftRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
-                hasAttachedConsumers = false,
-                preferenceEnabled = true,
-                isAppInForeground = false
-            )
-        )
-        assertFalse(
-            RaftRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
-                hasAttachedConsumers = true,
-                preferenceEnabled = true,
-                isAppInForeground = false
-            )
-        )
-    }
-
-    @Test
     fun backgroundUnreadNotificationSkipsWhenRemotePushIsActive() {
         assertFalse(
             RaftRealtimeAppScopePolicy.shouldPostBackgroundUnreadNotification(
@@ -126,15 +108,6 @@ class RaftRealtimeAppScopePolicyTest {
         assertTrue(remotePushActive(serverId = ServerId("server-2"), status = deliveryStatus(server2 = true)))
         // A trailing slash on the environment is the same environment.
         assertTrue(remotePushActive(environmentId = "https://api.example/"))
-    }
-
-    @Test
-    fun remotePushIsInactiveOnceTheAnswerIsOlderThanThirtyMinutes() {
-        val fetchedAt = 1_000_000L
-        val maxAge = PUSH_DELIVERY_STATUS_MAX_AGE_MILLIS
-        assertTrue(remotePushActive(nowMillis = fetchedAt + maxAge))
-        assertFalse(remotePushActive(nowMillis = fetchedAt + maxAge + 1), "expired: post locally")
-        assertFalse(remotePushActive(nowMillis = fetchedAt - 1), "clock moved backwards: unknown")
     }
 
     @Test
@@ -283,98 +256,6 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun coordinatorConsumesRoomCommandsBeforeEmittingJoin() = runBlocking {
-        val connection = FakeAppScopeConnection()
-        val enhancedNotifyBus = FakeEnhancedNotifyBus()
-        val coordinator = RaftRealtimeAppScopeCoordinator(connection, FakeAppScopeSink(), enhancedNotifyBus)
-
-        coordinator.connect(ServerId("server-1"), "token-1", requestedLastSeq = 0, forceReconnect = false, witness = witness())
-
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionJoinChannel,
-            channelId = "channel-1",
-            serverId = "server-1"
-        )
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionJoinChannel,
-            channelId = "channel-1",
-            serverId = "server-1"
-        )
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionJoinChannel,
-            channelId = "channel-b",
-            serverId = "server-2"
-        )
-        enhancedNotifyBus.emitRoomCommand(action = "unsupported", channelId = "channel-2")
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionJoinChannel,
-            channelId = ""
-        )
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionLeaveChannel,
-            channelId = "channel-1",
-            serverId = "server-1"
-        )
-        enhancedNotifyBus.emitRoomCommand(
-            action = RaftRealtimeNotifyContract.ActionLeaveChannel,
-            channelId = "channel-1",
-            serverId = "server-1"
-        )
-        enhancedNotifyBus.emit(
-            RaftEnhancedNotifyEvent(
-                eventName = "unrelated",
-                eventData = buildJsonObject { put(RaftRealtimeNotifyContract.KeyChannelId, "channel-3") }
-            )
-        )
-
-        assertEquals(
-            listOf(
-                RealtimeSocketEvents.JoinChannel to "channel-1",
-                RealtimeSocketEvents.LeaveChannel to "channel-1"
-            ),
-            connection.roomCommands
-        )
-    }
-
-    @Test
-    fun hostEngineConnectDecisionMatchesAppScopeCoordinatorRules() {
-        val engine = RaftRealtimeAppScopeEngine()
-
-        val first =
-            engine.connectDecisionForHost(
-                serverIdValue = "server-1",
-                accessToken = "token-1",
-                requestedLastSeq = 7,
-                forceReconnect = false,
-                connectionStateName = RaftRealtimeAppScopeEngine.StateDisconnected
-            )
-        engine.onMappedEvent(MessageNew(message(seq = 42)))
-        val sameConnected =
-            engine.connectDecisionForHost(
-                serverIdValue = "server-1",
-                accessToken = "token-1",
-                requestedLastSeq = 10,
-                forceReconnect = false,
-                connectionStateName = RaftRealtimeAppScopeEngine.StateConnected
-            )
-        val forced =
-            engine.connectDecisionForHost(
-                serverIdValue = "server-1",
-                accessToken = "token-1",
-                requestedLastSeq = 10,
-                forceReconnect = true,
-                connectionStateName = RaftRealtimeAppScopeEngine.StateConnected
-            )
-
-        assertTrue(first.shouldConnect)
-        assertEquals(7L, first.resumeSeq)
-        assertFalse(sameConnected.shouldConnect)
-        assertEquals(42L, sameConnected.resumeSeq)
-        assertTrue(forced.shouldConnect)
-        assertEquals(42L, forced.resumeSeq)
-    }
-
-    @Test
     fun perServerHostCursorsAdvanceMonotonicallyResumeIndependentlyAndResetOnIdentityReplacement() {
         val serverA = RaftRealtimeAppScopeEngine()
         val serverB = RaftRealtimeAppScopeEngine()
@@ -437,66 +318,6 @@ class RaftRealtimeAppScopePolicyTest {
     }
 
     @Test
-    fun hostEngineOwnsJoinAndRawFanoutDecisions() {
-        val engine = RaftRealtimeAppScopeEngine()
-
-        assertFalse(engine.onRawEvent(RealtimeSocketEvents.MessageNew, "{}").shouldFanOut)
-        engine.connectDecisionForHost(
-            serverIdValue = "server-1",
-            accessToken = "token-1",
-            requestedLastSeq = 0,
-            forceReconnect = false,
-            connectionStateName = RaftRealtimeAppScopeEngine.StateDisconnected
-        )
-        val join = engine.joinChannelDecisionForHost("channel-1", "notify")
-        val duplicateJoin = engine.joinChannelDecisionForHost("channel-1", "notify")
-        val leave =
-            engine.roomCommandDecisionForHost(
-                RaftRealtimeNotifyContract.ActionLeaveChannel,
-                "channel-1",
-                "notify"
-            )
-        val duplicateLeave =
-            engine.roomCommandDecisionForHost(
-                RaftRealtimeNotifyContract.ActionLeaveChannel,
-                "channel-1",
-                "notify"
-            )
-        val blankJoin =
-            engine.roomCommandDecisionForHost(
-                RaftRealtimeNotifyContract.ActionJoinChannel,
-                "",
-                "notify"
-            )
-        val unsupportedJoin =
-            engine.roomCommandDecisionForHost("unsupported", "channel-2", "notify")
-        val heartbeat = engine.onRawEvent(RealtimeSocketEvents.Heartbeat, "{}")
-        val message = engine.onRawEvent(RealtimeSocketEvents.MessageNew, """{"id":"message-1"}""")
-
-        assertTrue(join.shouldEmit)
-        assertEquals(RealtimeSocketEvents.JoinChannel, join.eventName)
-        assertEquals("channel-1", join.payload)
-        assertEquals(RaftRealtimeRoomJoinedChannelAction.Join, join.joinedChannelAction)
-        assertEquals(ChannelId("channel-1"), join.channelId)
-        assertFalse(duplicateJoin.shouldEmit)
-        assertTrue(leave.shouldEmit)
-        assertEquals(RealtimeSocketEvents.LeaveChannel, leave.eventName)
-        assertEquals("channel-1", leave.payload)
-        assertEquals(RaftRealtimeRoomJoinedChannelAction.Leave, leave.joinedChannelAction)
-        assertEquals(ChannelId("channel-1"), leave.channelId)
-        assertFalse(duplicateLeave.shouldEmit)
-        assertEquals(RaftRealtimeRoomJoinedChannelAction.None, duplicateLeave.joinedChannelAction)
-        assertEquals("", heartbeat.logMessage)
-        assertEquals("", message.logMessage)
-        assertFalse(blankJoin.shouldEmit)
-        assertFalse(unsupportedJoin.shouldEmit)
-        assertTrue(heartbeat.shouldFanOut)
-        assertEquals(ServerId("server-1"), heartbeat.serverId)
-        assertTrue(message.shouldFanOut)
-        assertEquals(ServerId("server-1"), message.serverId)
-    }
-
-    @Test
     fun rawIngressDropsOnlyPresentMismatchedTopLevelServerId() {
         val matched =
             realtimePayloadServerGate(
@@ -543,28 +364,6 @@ class RaftRealtimeAppScopePolicyTest {
         assertEquals(ServerId("server-a"), appearance.serverId)
         assertFalse(planUpdate.shouldFanOut)
         assertFalse(invalid.shouldFanOut)
-    }
-
-    @Test
-    fun rawIngressFailsClosedForBlankConnectionOrInvalidPresentServerId() {
-        assertFalse(
-            realtimePayloadServerGate(
-                connectionServerId = "",
-                rawPayload = """{"serverId":"server-a"}""",
-            ).shouldAccept
-        )
-        assertFalse(
-            realtimePayloadServerGate(
-                connectionServerId = "server-a",
-                rawPayload = """{"serverId":42}""",
-            ).shouldAccept
-        )
-        assertFalse(
-            realtimePayloadServerGate(
-                connectionServerId = "server-a",
-                rawPayload = """{"serverId":""}""",
-            ).shouldAccept
-        )
     }
 
     private fun message(

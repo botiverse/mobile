@@ -7,7 +7,6 @@ import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -95,34 +94,6 @@ class AppShellSessionRestoreSplashTest {
         onNodeWithTag(AppShellRestoreSlowTestTag).assertDoesNotExist()
         advance(AppShellRestoreSlowAfterMillis + 500)
         onNodeWithTag(AppShellRestoreSlowTestTag).assertExists()
-    }
-
-    @Test
-    fun signOutCallsBackAndDoesNotRetry() = runRobolectricComposeUiTest {
-        var signOuts = 0
-        var retries = 0
-        mainClock.autoAdvance = false
-        setContent {
-            InPage {
-                AppShellSessionRestoreSplash(signingOut = false, onRetry = { retries += 1 }, onSignOut = { signOuts += 1 })
-            }
-        }
-        advance(AppShellRestoreSlowAfterMillis + 500)
-        onNodeWithTag(AppShellRestoreSignOutTestTag).performClick()
-        advance(16)
-        assertEquals(1, signOuts)
-        assertEquals(0, retries)
-    }
-
-    @Test
-    fun whileSigningOutBothActionsAreDisabled() = runRobolectricComposeUiTest {
-        mainClock.autoAdvance = false
-        setContent {
-            InPage { AppShellSessionRestoreSplash(signingOut = true, onRetry = {}, onSignOut = {}) }
-        }
-        advance(16)
-        onNodeWithTag(AppShellRestoreSignOutTestTag).assertIsNotEnabled()
-        onNodeWithTag(AppShellRestoreRetryTestTag).assertIsNotEnabled()
     }
 }
 

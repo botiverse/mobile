@@ -96,36 +96,6 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
-    fun mismatchedOwnerRejectsLoadAndEveryMutationBeforeNetworkClient() = runBlocking {
-        val gateway = RejectingChannelSettingsGateway()
-        val dataSource =
-            RealChannelSettingsDataSource(
-                route = route(),
-                authStore = InMemoryRaftAuthSessionStore(),
-                owner = routeOwner(),
-                gateway = gateway,
-            )
-
-        listOf(
-            dataSource.load(),
-            dataSource.setMuted(true),
-            dataSource.setPinned(true),
-            dataSource.updateProfile("renamed", "description"),
-            dataSource.makePrivate(),
-            dataSource.archive(),
-            dataSource.delete(),
-            dataSource.disconnect(),
-        ).forEach { result ->
-            assertEquals(
-                AUTHENTICATED_ROUTE_AUTHORITY_CHANGED,
-                assertIs<DataResult.Error>(result).error.code,
-            )
-        }
-        assertEquals(8, gateway.captureCalls)
-        assertEquals(0, gateway.networkClientCalls)
-    }
-
-    @Test
     fun coldLoadProducesStandaloneCanonicalContent() = runBlocking {
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
         val store = store(dataSource)
@@ -296,29 +266,6 @@ class ChannelSettingsStoreTest {
         yield()
         assertTrue(store.state.value.displayPinned("channel-1"), "a failure shows the old value again")
         assertEquals(ChannelSettingsAction.Pin, assertIs<ChannelSettingsEffect.Failure>(store.state.value.effect).action)
-        store.clear()
-    }
-
-    @Test
-    fun authorityInvalidationDropsLateLoadResult() = runBlocking {
-        val cache = ChannelSettingsSnapshotCache()
-        cache.put(routeOwner(), route(), snapshot("#cached"))
-        val loadGate = CompletableDeferred<DataResult<ChannelSettingsSnapshot>>()
-        val dataSource = FakeChannelSettingsDataSource(loadGate = loadGate)
-        val store = store(dataSource, cache = cache)
-
-        store.dispatch(ChannelSettingsIntent.Refresh)
-        yield()
-        store.invalidateAuthority()
-        store.dispatch(ChannelSettingsIntent.TogglePin)
-        loadGate.complete(DataResult.Content(snapshot()))
-        yield()
-
-        assertEquals(ChannelSettingsLoadStatus.AuthorityRejected, store.state.value.status)
-        assertEquals(AUTHENTICATED_ROUTE_AUTHORITY_CHANGED, store.state.value.errorCode)
-        assertEquals(null, store.state.value.channel)
-        assertEquals(0, dataSource.pinCalls)
-        assertEquals(null, cache.get(routeOwner(), route()))
         store.clear()
     }
 

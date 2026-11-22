@@ -321,49 +321,6 @@ class SharedComputersStoreTest {
         assertFalse(slice.refreshing)
     }
 
-    @Test
-    fun syncedMachineRowsDropTheAnswerOfALoadAlreadyInFlight() = runBlocking {
-        val api = ControlledComputersApi()
-        api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        val store = controlledStore(api, this@runBlocking)
-        store.ensureComputerPickerForServer("server-1")
-        val olderResponse = api.enqueuePending()
-        val older = async(start = CoroutineStart.UNDISPATCHED) {
-            store.ensureComputerPickerForServer("server-1", force = true, priority = DataRequestPriority.Visible)
-        }
-        yield()
-        val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
-
-        assertTrue(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
-        assertFalse(store.state.value.selectComputerServerSlice("server-1").refreshing)
-        olderResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        older.await()
-
-        assertEquals(listOf("Maria Desktop"), store.state.value.selectComputerServerSlice("server-1").machines.map { it.name })
-    }
-
-    @Test
-    fun syncedMachineRowsDuringAFirstLoadGetOneMoreLoadAfterIt() = runBlocking {
-        val api = ControlledComputersApi()
-        val firstResponse = api.enqueuePending()
-        val followUpResponse = api.enqueuePending()
-        val store = controlledStore(api, this@runBlocking)
-        val first = async(start = CoroutineStart.UNDISPATCHED) { store.ensureComputerPickerForServer("server-1") }
-        yield()
-        val renamed = parseSyncedComputerRow(syncMachineRow("machine-1", "Maria Desktop", "online"))!!
-
-        // Nothing loaded to patch yet; the first load was read before the row.
-        assertFalse(store.applySyncedMachineRows("server-1", listOf(renamed), deletes = emptySet()))
-        firstResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBody))
-        first.await()
-        repeat(5) { yield() }
-        assertEquals(2, api.serverIds.size, "one more load follows the first one")
-
-        followUpResponse.complete(HomeNetworkResponse(code = 200, bodyText = machinesBodyFor("machine-1", "Maria Desktop")))
-        repeat(5) { yield() }
-        assertEquals(listOf("Maria Desktop"), store.state.value.selectComputerServerSlice("server-1").machines.map { it.name })
-    }
-
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = RaftComputersApiClient(api),

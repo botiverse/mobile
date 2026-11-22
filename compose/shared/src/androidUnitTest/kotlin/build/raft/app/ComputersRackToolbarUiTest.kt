@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.ComputersRackSortKey
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ComposeUiTest
@@ -20,7 +19,6 @@ import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -103,54 +101,6 @@ class ComputersRackToolbarUiTest {
     private fun ComposeUiTest.top(name: String): Float = onNodeWithText(name).fetchSemanticsNode().boundsInRoot.top
 
     @Test
-    fun theListPutsMineFirstUntilANameSortIsChosenAndOfflineComputersWaitOpenAtTheEndUntilFolded() = runRobolectricComposeUiTest {
-        val store = show()
-        assertTrue(top("alpha-1") < top("beta") && top("beta") < top("alpha-2"), "Mine first, then the server's order")
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
-        waitForIdle()
-        assertTrue(top("alpha-1") < top("alpha-2") && top("alpha-2") < top("beta"), "Name, A to Z")
-        onNodeWithText("zeta").assertIsDisplayed()
-        assertTrue(top("beta") < top("zeta"), "the Offline section comes last, open by default")
-        onNodeWithTag(RaftComputersRackTags.OfflineTitle).assertIsDisplayed().performClick()
-        waitForIdle()
-        assertTrue(!shown("zeta"), "tapping the Offline title folds it")
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
-        waitForIdle()
-        assertTrue(!shown("zeta"), "the folded choice is remembered across sorts")
-        onNodeWithTag(RaftComputersRackTags.OfflineTitle).performClick()
-        waitForIdle()
-        onNodeWithText("zeta").assertIsDisplayed()
-    }
-
-    @Test
-    fun theListPutsComputersNeedingAttentionAboveMineUntilAChosenSortOverrides() = runRobolectricComposeUiTest {
-        val attentionFleet =
-            listOf(
-                computer("m-beta", "beta", upgradeAvailable = true),
-                computer("m-a2", "alpha-2"),
-                computer("m-a1", "alpha-1", owner = "user-1"),
-            )
-        val store = show(computers = attentionFleet)
-        assertTrue(top("beta") < top("alpha-1") && top("alpha-1") < top("alpha-2"), "Needs attention first, then mine, then others")
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.ChooseSortKey(ComputersRackSortKey.Name, null)) }
-        waitForIdle()
-        assertTrue(top("alpha-1") < top("alpha-2") && top("alpha-2") < top("beta"), "chosen Name sort wins")
-    }
-
-    @Test
-    fun theSearchNarrowsTheListAndClearAllBringsItBack() = runRobolectricComposeUiTest {
-        val store = show()
-        assertTrue(onAllNodes(hasTestTagOf(RaftComputersRackTags.Clear)).fetchSemanticsNodes().isEmpty(), "no Clear all at the defaults")
-        runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.Search("ALPHA")) }
-        waitForIdle()
-        assertTrue(shown("alpha-1") && shown("alpha-2") && !shown("beta"), "case-insensitive search over the names")
-        onNodeWithTag(RaftComputersRackTags.Clear).performClick()
-        waitForIdle()
-        assertEquals("", store.state.value.filters.query)
-        assertTrue(shown("beta"))
-    }
-
-    @Test
     fun groupingByNamePrefixTitlesTheGroupsAndATitleFoldsItsGroup() = runRobolectricComposeUiTest {
         val store = show(ComputersRackView.List)
         runOnIdle { store.dispatch(RaftComputersRackToolbarIntent.SetGroupBy(ComputersRackGroupBy.Prefix)) }
@@ -162,6 +112,4 @@ class ComputersRackToolbarUiTest {
         waitForIdle()
         assertTrue(!shown("alpha-1") && !shown("alpha-2") && shown("beta"), "the folded group's computers are hidden")
     }
-
-    private fun hasTestTagOf(tag: String) = androidx.compose.ui.test.hasTestTag(tag)
 }

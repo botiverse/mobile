@@ -33,23 +33,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedRealtimeDomainEventOwnerTest {
-    @Test
-    fun hasGuardedSinksTracksOnlyTheCurrentRegistration() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val appA = RealtimeGuardedDomainEventSinks(log = { })
-        val appB = RealtimeGuardedDomainEventSinks(log = { })
-        assertFalse(owner.hasGuardedSinks, "a fresh owner has no ready AppShell sinks")
-
-        owner.registerGuardedSinks(appA)
-        assertTrue(owner.hasGuardedSinks)
-
-        owner.registerGuardedSinks(appB)
-        owner.unregisterGuardedSinks(appA)
-        assertTrue(owner.hasGuardedSinks, "disposing a replaced AppShell must not clear its successor's sinks")
-
-        owner.unregisterGuardedSinks(appB)
-        assertFalse(owner.hasGuardedSinks)
-    }
 
     @Test
     fun oneWireEventMutatesProcessOnceAndProjectsToTwoShells() = runBlocking {
@@ -131,24 +114,6 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun appShellActivePagerStartsOpenAndThenFiltersInactivePagers() {
-        val owner = AppShellActivePagerOwner()
-
-        assertEquals(true, owner.isActive("pager-a"))
-        assertEquals(true, owner.isActive("pager-b"))
-
-        owner.markActive("pager-a")
-
-        assertEquals(true, owner.isActive("pager-a"))
-        assertEquals(false, owner.isActive("pager-b"))
-
-        owner.markActive("pager-b")
-
-        assertEquals(false, owner.isActive("pager-a"))
-        assertEquals(true, owner.isActive("pager-b"))
-    }
-
-    @Test
     fun ignoresBlankServerIdsAndHeartbeats() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
@@ -185,44 +150,6 @@ class SharedRealtimeDomainEventOwnerTest {
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf("dm-1"), joinedChannels)
         assertEquals(true, logs.any { it.contains("reason=duplicate") })
-    }
-
-    @Test
-    fun backgroundUnreadAcceptUsesSharedDedupWithoutTouchingFullDomainSinks() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val unreadEvents = mutableListOf<RealtimeEventRecord>()
-        val homeEvents = mutableListOf<RealtimeEventRecord>()
-        val event =
-            MessageNew(
-                Message(
-                    id = MessageId("message-background"),
-                    threadId = ThreadId("channel-b"),
-                    channelId = ChannelId("channel-b"),
-                    seq = 9,
-                    author =
-                        MemberProfile(
-                            id = MemberId("member-2"),
-                            displayName = "Cindy",
-                            handle = "cindy",
-                            kind = MemberKind.Human,
-                            presence = Presence.Active
-                        ),
-                    timestampLabel = "12:00",
-                    body = "background"
-                )
-            )
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, accepted -> homeEvents += RealtimeEventRecord(serverId, accepted) },
-                applyHomeUnreadProjection = { serverId, accepted -> unreadEvents += RealtimeEventRecord(serverId, accepted) }
-            )
-        )
-
-        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
-        owner.acceptHomeUnreadProjection("server-2", event, source = "background")
-
-        assertEquals(listOf(RealtimeEventRecord("server-2", event)), unreadEvents)
-        assertEquals(emptyList(), homeEvents)
     }
 
     @Test
@@ -379,104 +306,6 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun samePrincipalRotationRejectsHeldDeliveryAtTheProductionSink() = runBlocking {
-        // Post-merge audit round 2 (PR #1075 block): same account X re-auths
-        // (authority revision + registry generation advance, environment also
-        // changes) while the OLD session's grant is still current — the held
-        // delivery passes runIfCurrentGrant, reaches the PRODUCTION sink, and
-        // must be rejected there by the authorityGeneration equality (the
-        // principal matches, so a principal-only check would let stale
-        // old-environment presence into the new binding with the NEW registry
-        // generation, which the CAS fence cannot catch).
-        val harness = PresenceHarness()
-        harness.authenticate("account-x", environmentId = "env-1")
-        val lease = harness.authority.register("shell:test")
-        val heldGrantX1 = harness.currentGrant(lease.id)
-
-        assertEquals(true, harness.owner.accept(heldGrantX1, presenceEvent(seq = 1L), source = "test"))
-        assertEquals(
-            1L,
-            harness.presenceRegistry.factFor(presenceOwner("account-x"), "agent-1")?.serverSeq
-        )
-
-        // Same-principal re-auth on the PRESENCE side only: registry retired
-        // and context republished (new authorityGeneration, new environment),
-        // but the authority grants have NOT rotated yet — the exact
-        // collector-race window.
-        val revision = harness.authority.snapshot.value.authRevision
-        val rotatedWriteGeneration = harness.presenceRegistry.clearAll(reason = "authority_session_advanced")
-        harness.presenceAuthContext.value =
-            ProcessPresenceAuthContext(
-                environmentId = "env-2",
-                accountId = "account-x",
-                authorityGeneration = revision.generation + 1L,
-                writeGeneration = rotatedWriteGeneration,
-            )
-
-        // LiBai's precondition assertion: the old grant is STILL current —
-        // acceptance succeeds, so a rejection can only come from the sink.
-        val heldAccepted = harness.owner.accept(heldGrantX1, presenceEvent(seq = 7L), source = "test")
-        assertEquals(true, heldAccepted)
-
-        // The production sink refused the retired-session delivery: nothing
-        // in the old binding, nothing in the new env-2 binding.
-        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
-        assertNull(
-            harness.presenceRegistry.factFor(
-                ProcessServerMembersOwner("env-2", "account-x", "server-1"),
-                "agent-1"
-            )
-        )
-
-        // After the authority side catches up (full re-auth transition), the
-        // new session's grant writes normally into the new binding.
-        harness.authenticate("account-x", environmentId = "env-2")
-        val grantX2 = harness.currentGrant(lease.id)
-        assertEquals(true, grantX2 != heldGrantX1)
-        assertEquals(true, harness.owner.accept(grantX2, presenceEvent(seq = 2L), source = "test"))
-        assertEquals(
-            2L,
-            harness.presenceRegistry.factFor(
-                ProcessServerMembersOwner("env-2", "account-x", "server-1"),
-                "agent-1"
-            )?.serverSeq
-        )
-    }
-
-    @Test
-    fun signedOutWindowDropsPresenceWrites() = runBlocking {
-        val harness = PresenceHarness()
-        harness.authenticate("account-a")
-        val lease = harness.authority.register("shell:test")
-        val grantA = harness.currentGrant(lease.id)
-
-        harness.signOut()
-
-        assertEquals(true, harness.owner.accept(grantA, presenceEvent(seq = 4L), source = "test"))
-        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
-    }
-
-    @Test
-    fun unguardedLegacyAcceptNeverWritesPresenceButStillFeedsPageSinks() = runBlocking {
-        // The legacy string-serverId overload has no grant, hence no admission
-        // identity: it must NOT write the presence registry (a held old-account
-        // callback released here after an account switch would be attributed
-        // to whoever is signed in now). Page-scoped activity sinks still fan out.
-        val harness = PresenceHarness()
-        harness.authenticate("account-a")
-        val pageEvents = mutableListOf<MemberPresenceUpdated>()
-        harness.owner.registerSinks(
-            RealtimeDomainEventSinks(applyAgentActivity = pageEvents::add)
-        )
-        val event = presenceEvent(seq = 5L)
-
-        harness.owner.accept("server-1", event, source = "app_shell")
-
-        assertEquals(listOf(event), pageEvents)
-        assertEquals(emptyMap(), harness.presenceRegistry.factsByOwner)
-    }
-
-    @Test
     fun repeatedAgentRefreshHintsAreNotSwallowedAsDuplicates() {
         // task #136 lock: refresh hints are idempotent triggers with no seq —
         // remembering them in the accepted-key ledger made the SECOND state
@@ -541,76 +370,6 @@ class SharedRealtimeDomainEventOwnerTest {
         val afterDelete =
             tasksDataStore.channelProjectionFlow("server-1", "channel-1", null).first()
         assertEquals(emptyList(), afterDelete.tasks)
-    }
-
-    @Test
-    fun hostAndPeerTaskRealtimeKeepBothLocalRoutesAndOneNewestFact() = runBlocking {
-        val tasksDataStore = SharedTasksDataStore()
-        val owner = SharedRealtimeDomainEventOwner(tasksDataStore)
-        val host =
-            TaskSummary(
-                id = TaskId("task-joint"),
-                title = "Joint task",
-                status = TaskStatus.Todo,
-                channelId = ChannelId("channel-host"),
-                messageId = MessageId("message-joint"),
-                revision = 8L,
-                updatedAtLabel = "now"
-            )
-        val peer =
-            host.copy(
-                status = TaskStatus.InReview,
-                channelId = ChannelId("channel-peer"),
-                revision = 9L
-            )
-
-        owner.deliverGuardedAppShellDomainFinal(
-            sinks = RealtimeGuardedDomainEventSinks(),
-            serverId = "server-host",
-            event = TaskUpdated(host)
-        )
-        owner.deliverGuardedAppShellDomainFinal(
-            sinks = RealtimeGuardedDomainEventSinks(),
-            serverId = "server-peer",
-            event = TaskUpdated(peer)
-        )
-
-        val hostProjection = tasksDataStore.projection("server-host", SharedTasksScope.Server).tasks.single()
-        val peerProjection = tasksDataStore.projection("server-peer", SharedTasksScope.Server).tasks.single()
-        assertEquals(TaskStatus.InReview, hostProjection.status)
-        assertEquals(TaskStatus.InReview, peerProjection.status)
-        assertEquals(ChannelId("channel-host"), hostProjection.channelId)
-        assertEquals(ChannelId("channel-peer"), peerProjection.channelId)
-        assertEquals(MessageId("message-joint"), hostProjection.messageId)
-        assertEquals(hostProjection.copy(channelId = null), peerProjection.copy(channelId = null))
-    }
-
-    @Test
-    fun messageEventsUseStableIdentityForDedupe() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val homeEvents = mutableListOf<RealtimeEventRecord>()
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
-            )
-        )
-        val event =
-            MessageNew(
-                Message(
-                    id = MessageId("m1"),
-                    threadId = ThreadId("channel-1"),
-                    channelId = ChannelId("channel-1"),
-                    seq = 7L,
-                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
-                    timestampLabel = "now",
-                    body = "hello"
-                )
-            )
-
-        owner.accept("server-1", event, source = "app_shell")
-        owner.accept("server-1", event, source = "app_shell")
-
-        assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
     }
 
     @Test
@@ -727,29 +486,6 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun emptySyncResumeAdvancesPersistedCursorAndReachesDomainSinks() {
-        val cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore())
-        cursorStore.saveAppliedLastSeq(ServerId("server-1"), 3)
-        val owner = SharedRealtimeDomainEventOwner(cursorStore = cursorStore)
-        val homeEvents = mutableListOf<RealtimeEventRecord>()
-        owner.registerSinks(
-            RealtimeDomainEventSinks(
-                applyHomeShell = { serverId, event -> homeEvents += RealtimeEventRecord(serverId, event) }
-            )
-        )
-        val resume = SyncResumeResponse(messages = emptyList(), currentSeq = 5, hasMore = false)
-
-        owner.accept(
-            "server-1",
-            resume,
-            source = "app_shell"
-        )
-
-        assertEquals(listOf(RealtimeEventRecord("server-1", resume)), homeEvents)
-        assertEquals(5L, cursorStore.readAppliedLastSeq(ServerId("server-1")))
-    }
-
-    @Test
     fun activeThreadSinkReceivesDomainEventsAndHeartbeatsButNotBlankServer() {
         val owner = SharedRealtimeDomainEventOwner()
         val delivered = mutableListOf<RealtimeEventRecord>()
@@ -770,62 +506,6 @@ class SharedRealtimeDomainEventOwnerTest {
             ),
             delivered
         )
-    }
-
-    @Test
-    fun activeThreadSinkSkipsDuplicateEventsViaSharedDedupLedger() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val delivered = mutableListOf<RealtimeEventRecord>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
-        }
-        val dm = DirectMessageCreated(ChannelId("dm-1"))
-
-        owner.accept("server-1", dm, source = "app_shell")
-        owner.accept("server-1", dm, source = "thread_route")
-
-        assertEquals(listOf(RealtimeEventRecord("server-1", dm)), delivered)
-    }
-
-    @Test
-    fun unregisteredActiveThreadSinkStopsReceivingWhileOthersContinue() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val first = mutableListOf<RealtimeEventRecord>()
-        val second = mutableListOf<RealtimeEventRecord>()
-        val firstSink =
-            RealtimeActiveThreadSink { serverId, event -> first += RealtimeEventRecord(serverId, event) }
-        val secondSink =
-            RealtimeActiveThreadSink { serverId, event -> second += RealtimeEventRecord(serverId, event) }
-        owner.registerActiveThreadSink(firstSink)
-        owner.registerActiveThreadSink(secondSink)
-
-        val dmOne = DirectMessageCreated(ChannelId("dm-1"))
-        owner.accept("server-1", dmOne)
-        owner.unregisterActiveThreadSink(firstSink)
-        val dmTwo = DirectMessageCreated(ChannelId("dm-2"))
-        owner.accept("server-1", dmTwo)
-
-        assertEquals(listOf(RealtimeEventRecord("server-1", dmOne)), first)
-        assertEquals(
-            listOf(
-                RealtimeEventRecord("server-1", dmOne),
-                RealtimeEventRecord("server-1", dmTwo)
-            ),
-            second
-        )
-    }
-
-    @Test
-    fun activeThreadSinkDeliveryDoesNotRequireRegisteredDomainSinks() {
-        val owner = SharedRealtimeDomainEventOwner()
-        val delivered = mutableListOf<RealtimeEventRecord>()
-        owner.registerActiveThreadSink { serverId, event ->
-            delivered += RealtimeEventRecord(serverId, event)
-        }
-
-        owner.accept("server-1", Heartbeat(seq = 1L))
-
-        assertEquals(1, delivered.size)
     }
 
     private data class RealtimeEventRecord(

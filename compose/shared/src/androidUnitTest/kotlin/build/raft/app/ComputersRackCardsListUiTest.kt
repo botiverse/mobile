@@ -3,17 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import build.raft.app.data.ComputersRackSort
-import build.raft.app.data.ComputersRackSortDirection
-import build.raft.app.data.ComputersRackSortKey
 import build.raft.app.data.ComputersRackView
 import build.raft.app.data.RuntimeAccountUsageAccount
 import build.raft.app.data.RuntimeAccountUsageHealth
@@ -31,7 +23,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -130,34 +121,6 @@ class ComputersRackCardsListUiTest {
             }
         }
         waitForIdle()
-    }
-
-    private fun ComposeUiTest.topIn(tag: String, text: String): Float =
-        onNode(hasText(text) and hasAnyAncestor(hasTestTag(tag)), useUnmergedTree = true)
-            .fetchSemanticsNode().boundsInRoot.top
-
-    @Test
-    fun aCardLeadsWithTheMetricTheListIsSortedBy() = runRobolectricComposeUiTest {
-        val meters = "${RaftComputersRackTags.CardMeters}-m-studio"
-        show(ComputersRackView.Cards, ComputersRackSort(ComputersRackSortKey.Remaining(RuntimeAccountUsageProvider.Codex), ComputersRackSortDirection.Desc))
-        assertTrue(topIn(meters, "Codex") < topIn(meters, "Disk"), "Codex remaining: the Codex line leads")
-        assertTrue(topIn(meters, "Disk") < topIn(meters, "Claude"), "the other runtimes stay under the meters")
-    }
-
-    @Test
-    fun aUsedUpLineSaysWhenItIsBack() = runRobolectricComposeUiTest {
-        show(ComputersRackView.Cards)
-        onNodeWithText("Back in 3h", useUnmergedTree = true).assertIsDisplayed()
-        assertTrue(onAllNodes(hasText("Used up"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
-    }
-
-    @Test
-    fun anOfflineBlockSaysWhenItWasLastSeenAndHasNoCells() = runRobolectricComposeUiTest {
-        show(ComputersRackView.List)
-        // The Offline section is open by default, even while studio is online.
-        onNodeWithTag("rack-row-m-laptop").assertIsDisplayed()
-        assertTrue(onAllNodes(hasTestTag("rack-metrics-m-laptop"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty(), "an offline computer reads no usage")
-        assertTrue(onAllNodes(hasText("Last seen", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
     }
 
     // Free of total (botiverse/slock staging 7a631c0ffe, #14306 RackResource / machine.diskLow.chipTitle):

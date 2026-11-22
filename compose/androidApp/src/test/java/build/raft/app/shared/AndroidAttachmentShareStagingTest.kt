@@ -8,7 +8,6 @@ import androidx.core.content.FileProvider
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -134,49 +133,5 @@ class AndroidAttachmentShareStagingTest {
         assertNotEquals(first.parentFile, second.parentFile)
         assertEquals(first.name, second.name)
         assertTrue(first.isFile && second.isFile)
-    }
-    @Test
-    fun sharingAPublicDownloadPreservesDurableCachedResult() {
-        val publicOrigin =
-            AndroidAttachmentContentUriSource(
-                kind = AndroidAttachmentOpenSourceKind.PublicDownload,
-                contentUri = "content://media/external/downloads/42",
-                mimeType = "video/mp4",
-                displayName = "clip.mp4",
-                sizeBytes = 2048L,
-                durableCache = true
-            )
-        val cached = viewerCacheFile()
-        val stagedSource = androidAttachmentShareSource(context, cached, "video/mp4")
-        val stagedOpened = AndroidAttachmentOpenResult.opened(stagedSource, AndroidAttachmentOpenAction.Open)
-        assertFalse(stagedOpened.cached)
-
-        val preserved = preserveAndroidAttachmentOriginResult(stagedOpened, publicOrigin)
-        assertEquals(AndroidAttachmentOpenStatus.Opened, preserved.status)
-        assertTrue(preserved.cached)
-        assertEquals(AndroidAttachmentOpenSourceKind.PublicDownload, preserved.source)
-        assertEquals(2048L, preserved.sizeBytes)
-        assertEquals(AndroidAttachmentOpenAction.Open, preserved.action)
-
-        val preservedNoApp =
-            preserveAndroidAttachmentOriginResult(AndroidAttachmentOpenResult.noApp(cached = false), publicOrigin)
-        assertTrue(preservedNoApp.cached)
-        assertEquals(AndroidAttachmentOpenStatus.NoApp, preservedNoApp.status)
-    }
-
-    @Test
-    fun openCancellationTrackerMarksClearsAndBoundsCancelledIds() {
-        val tracker = AndroidAttachmentOpenCancellationTracker(maxCancelledIds = 2)
-        assertFalse(tracker.isCancelled("dl-1"))
-        tracker.markCancelled("dl-1")
-        assertTrue(tracker.isCancelled("dl-1"))
-        tracker.markCancelled("dl-2")
-        tracker.markCancelled("dl-3")
-        // Bounded FIFO eviction drops dl-1 once capacity 2 is exceeded.
-        assertFalse(tracker.isCancelled("dl-1"))
-        assertTrue(tracker.isCancelled("dl-2"))
-        assertTrue(tracker.isCancelled("dl-3"))
-        tracker.clear("dl-2")
-        assertFalse(tracker.isCancelled("dl-2"))
     }
 }

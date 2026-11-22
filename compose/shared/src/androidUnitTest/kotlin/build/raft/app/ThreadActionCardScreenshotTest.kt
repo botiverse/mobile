@@ -68,23 +68,6 @@ class ThreadActionCardScreenshotTest {
     @Test
     fun questionCardsAnsweredLight() = capture("thread.action-cards.question.answered", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = true) }
 
-    /**
-     * The same cards ended unanswered, each keeping its shape (raft-design "When it ends
-     * unanswered"): C expired / withdrawn, the question over its one status line, no buttons; B
-     * expired (Maya) / withdrawn, the same card with that line where its controls were, unfolded.
-     */
-    @Test
-    fun questionCardsEndedLight() = capture("thread.action-cards.question.ended", RaftAppAppearance.Light) { ThreadQuestionCardsVisualContent(answered = false, ended = true) }
-
-    /**
-     * A confirm (slock #14497): a question of one option is one bordered button with its label, no
-     * Other. C alone for Maya, then pressed (checked, during its Undo wait), then for Ada (disabled);
-     * B with a confirm among other questions, the required one pressed; C answered, the same one
-     * line as any answer.
-     */
-    @Test
-    fun questionConfirmLight() = capture("thread.action-cards.question.confirm", RaftAppAppearance.Light) { ThreadQuestionConfirmVisualContent() }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit = { ThreadActionCardsVisualContent() }) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

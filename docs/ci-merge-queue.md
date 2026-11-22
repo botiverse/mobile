@@ -9,7 +9,9 @@ branch or from an unreviewed payload.
 
 - A pull request with no Test-relevant paths reports `CI gate` after the plan
   and contract job only.
-- An ordinary product pull request runs the Android compile/unit tier.
+- An ordinary product pull request runs the Android compile and the plain JVM
+  unit tests only: no Robolectric test, no goldens (artin 2026-11-22;
+  `docs/ci-test-path-scoping.md`, "Android unit tier").
 - A `full-ci` label runs the deterministic full tier and emulator/connected
   jobs before queue admission.
 - A `merge_group` runs Android and iOS. Emulator/connected jobs remain excluded until their

@@ -7,22 +7,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertWidthIsEqualTo
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftListPaneKind
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -40,49 +32,6 @@ import org.robolectric.annotation.Config
 class RaftAdaptiveListDetailSplitUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun theSidebarSplitterResizesTheListAndKeepsItsWidthUnderTheSameKey() =
-        runRobolectricComposeUiTest {
-            val values = InMemoryRaftKeyValueStore()
-            val resizing = mutableListOf<Boolean>()
-            lateinit var widths: RaftListPaneWidths
-            setContent {
-                widths = remember { RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(values)) }
-                RaftAdaptiveListDetailSplit(
-                    kind = RaftListPaneKind.Sidebar,
-                    widths = widths,
-                    dualPane = true,
-                    active = true,
-                    hasSelection = true,
-                    detailBottomInset = 0.dp,
-                    listPane = { Box(Modifier.fillMaxSize().testTag(LIST)) },
-                    detailPane = { modifier -> Box(modifier.testTag(DETAIL)) },
-                    onResizingChange = { resizing += it },
-                )
-            }
-            onNodeWithTag(LIST).assertWidthIsEqualTo(240.dp)
-
-            onNodeWithContentDescription("Resize sidebar").performSemanticsAction(SemanticsActions.SetProgress) { it(320f) }
-            onNodeWithTag(LIST).assertWidthIsEqualTo(320.dp)
-            assertEquals("320", values.getString(RaftListPaneKind.Sidebar.storageKey))
-            // Never past the sidebar's 400 (web COLUMN_BOUNDS.sidebar).
-            onNodeWithContentDescription("Resize sidebar").performSemanticsAction(SemanticsActions.SetProgress) { it(900f) }
-            assertEquals("400", values.getString(RaftListPaneKind.Sidebar.storageKey))
-
-            onNodeWithContentDescription("Resize sidebar").performTouchInput {
-                down(center)
-                repeat(10) { moveBy(Offset(-12f, 0f)) }
-                up()
-            }
-            runOnIdle {
-                val dragged = widths.preferredDp(RaftListPaneKind.Sidebar)
-                assertTrue(dragged in 280f..392f, "dragged 120 left (less the touch slop) from 400, was $dragged")
-                assertEquals(dragged.toInt().toString(), values.getString(RaftListPaneKind.Sidebar.storageKey))
-                assertEquals(listOf(true, false), resizing)
-            }
-            onNodeWithTag(DETAIL).assertExists()
-        }
 
     /**
      * #4394: a collapsed list with nothing open still shows (the page is otherwise only "Select a

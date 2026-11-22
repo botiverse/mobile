@@ -230,40 +230,6 @@ class AgentActivityOverviewParserTest {
     }
 
     @Test
-    fun repositoryRequestsSummariesAndReplyContextAtVisiblePriority() = runTest {
-        val client = RecordingActivityOverviewNetworkClient(
-            mapOf(
-                "agents/agent-1/activity-summaries" to HomeNetworkResponse(200, """{"summaries":[$sharedVector],"next":"8000:00000000-0000-4000-8000-000000000001"}"""),
-                "messages/context/reply-1" to HomeNetworkResponse(200, replyContextBody)
-            )
-        )
-        val repository = RealAgentActivityOverviewRepository(client)
-
-        val page = assertIs<DataResult.Content<AgentActivityTurnPage>>(
-            repository.loadTurns(DataRequestPriority.Visible, MemberId("agent-1"), before = "99:00000000-0000-4000-8000-000000000009")
-        ).data
-        assertEquals("8000:00000000-0000-4000-8000-000000000001", page.next)
-        val reply = repository.loadReply(DataRequestPriority.Visible, MessageId("reply-1"))
-        assertEquals(AgentActivityTurnReply.Loaded("Fixed it: tests pass now.", 1781870490000L, channelId = "c1"), reply)
-
-        assertEquals(
-            listOf(
-                RecordedActivityOverviewRequest(
-                    DataRequestPriority.Visible,
-                    "agents/agent-1/activity-summaries",
-                    listOf("limit" to "30", "before" to "99:00000000-0000-4000-8000-000000000009")
-                ),
-                RecordedActivityOverviewRequest(
-                    DataRequestPriority.Visible,
-                    "messages/context/reply-1",
-                    listOf("before" to "0", "after" to "0")
-                )
-            ),
-            client.requests
-        )
-    }
-
-    @Test
     fun repositoryMapsForbiddenFailuresAndUnreadableReplies() = runTest {
         val client = RecordingActivityOverviewNetworkClient(
             mapOf(

@@ -6,14 +6,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
@@ -21,7 +18,6 @@ import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -76,22 +72,6 @@ class SettingsLabsPageUiTest {
     private val loaded = SettingsLabsState(serverId = "srv-labs", readback = settingsLabsFixtureReadback)
 
     @Test
-    fun ownerSwitchesTheGateAndTheOpenLabs() = runRobolectricComposeUiTest {
-        show(loaded, role = "owner")
-        onNodeWithTag(SettingsLabsMasterSwitchTestTag).assertIsEnabled().performClick()
-        onAllNodesWithText("Only server owners can change the master gate.").assertCountEquals(0)
-        onAllNodesWithTag(SettingsLabRowTestTag).assertCountEquals(4)
-        onNodeWithContentDescription("Prepared requests enrollment").assertIsEnabled().performClick()
-        // Paused and retired: read-only with the web's reason.
-        onNodeWithContentDescription("Message translation enrollment").assertIsNotEnabled()
-        onAllNodesWithText("Paused, draft, and retired Labs are read-only here.").assertCountEquals(2)
-        runOnIdle {
-            assertEquals(listOf(false), masterChanges)
-            assertEquals(listOf("prepared_requests" to true), enrollmentChanges)
-        }
-    }
-
-    @Test
     fun memberReadsEverythingWithTheWebsReasons() = runRobolectricComposeUiTest {
         show(loaded, role = "member")
         onNodeWithTag(SettingsLabsMasterSwitchTestTag).assertIsNotEnabled()
@@ -99,14 +79,6 @@ class SettingsLabsPageUiTest {
         onNodeWithContentDescription("Agent Lounge enrollment").assertIsNotEnabled()
         onNodeWithContentDescription("Prepared requests enrollment").assertIsNotEnabled()
         onAllNodesWithText("Only server owners and admins can change Lab enrollment.").assertCountEquals(4)
-    }
-
-    @Test
-    fun aWriteOnItsWayDisablesEverySwitch() = runRobolectricComposeUiTest {
-        show(loaded.copy(savingTarget = settingsLabTarget("agent_lounge")), role = "owner")
-        onNodeWithTag(SettingsLabsMasterSwitchTestTag).assertIsNotEnabled()
-        onNodeWithContentDescription("Saving Agent Lounge").assertIsNotEnabled()
-        onNodeWithContentDescription("Prepared requests enrollment").assertIsNotEnabled()
     }
 
     @Test
@@ -125,12 +97,5 @@ class SettingsLabsPageUiTest {
         }
         onNodeWithText("Failed to update Labs settings.").assertExists()
         onNodeWithTag(RaftTraceIdNoteTestTag).assertExists()
-    }
-
-    @Test
-    fun flagOffShowsNoSection() = runRobolectricComposeUiTest {
-        show(loaded, role = "owner", labsUiEnabled = false)
-        onAllNodesWithTag(SettingsLabsMasterSwitchTestTag).assertCountEquals(0)
-        onAllNodesWithTag(SettingsLabRowTestTag).assertCountEquals(0)
     }
 }

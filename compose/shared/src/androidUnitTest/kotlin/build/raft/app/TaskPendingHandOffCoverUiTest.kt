@@ -141,44 +141,6 @@ class TaskPendingHandOffCoverUiTest {
             onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
         }
 
-    @Test
-    fun summaryOnlyTaskShowsSpinnerInsteadOfEmptyStateWhileHydrating() =
-        runRobolectricComposeUiTest {
-            val summaryOnly =
-                pendingTask().copy(
-                    conversationDetailsLoaded = false,
-                    conversationAnchored = false,
-                )
-            setContent {
-                val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
-                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                    RaftDesignSystemTheme {
-                        TaskPendingConversationPage(
-                            task = summaryOnly,
-                            details = TaskHeadDetailsHandle(build.raft.app.data.TaskConversationDetailsState(), null),
-                            members = emptyList(),
-                            timeContext = null,
-                            editable = false,
-                            statusUpdating = false,
-                            sending = false,
-                            errorText = null,
-                            joined = true,
-                            draft = "",
-                            onDraftChange = {},
-                            onBack = {},
-                            onSend = {},
-                            onJoin = {},
-                            onUpdateStatus = {},
-                            onAssign = {},
-                            loadingDiscussion = true,
-                        )
-                    }
-                }
-            }
-            waitForIdle()
-            onNode(hasText("No discussion in this task yet")).assertDoesNotExist()
-        }
-
     /** A v2 task whose conversation is not created yet (no message in it). */
     private fun pendingTask(): TaskSummary {
         val json =

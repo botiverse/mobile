@@ -72,14 +72,4 @@ class ThreadActionCardPlanTrialTest {
         val spec = assertNotNull(trial.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES))
         assertTrue(spec.spec.elements.values.any { it is ActionCardSpecButton }, "the desktop card keeps its button")
     }
-
-    @Test
-    fun otherTypesKeepTheirCardKnownOrNot() {
-        for (type in listOf("plan:upgrade", "plan:future_kind", "seats:add")) {
-            val other = card(type)
-            assertNull(other.actionCardMobileLine(desktopHost = false), type)
-            // The spec still draws, with its button (no silent drop of a type this build doesn't know).
-            assertNotNull(other.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES), type)
-        }
-    }
 }

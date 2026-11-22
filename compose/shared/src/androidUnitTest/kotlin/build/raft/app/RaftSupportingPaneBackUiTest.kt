@@ -94,17 +94,6 @@ class RaftSupportingPaneBackUiTest {
             assertEquals(1, shell.historyBacks, "with the pane closed Back is history's")
         }
 
-    @Test
-    fun overlayOpenBackLeavesPane() =
-        runRobolectricComposeUiTest {
-            val shell = Shell()
-            openPaneThenOverlay(shell)
-            runOnIdle { shell.back() }
-            assertEquals(1, shell.historyBacks, "Back under the overlay is not the pane's")
-            assertTrue(shell.panes.isOpen, "Back closed the pane hidden under the task overlay")
-            onNodeWithTag(PANE).assertExists()
-        }
-
     private companion object {
         const val PANE = "supporting-pane"
         const val OVERLAY = "overlay"

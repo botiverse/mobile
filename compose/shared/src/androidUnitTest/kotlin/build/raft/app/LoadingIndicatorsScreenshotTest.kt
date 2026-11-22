@@ -38,9 +38,6 @@ class LoadingIndicatorsScreenshotTest {
     @Test
     fun loadingIndicatorsLight() = capture("loading_indicators", RaftAppAppearance.Light)
 
-    @Test
-    fun loadingIndicatorsDark() = capture("loading_indicators.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {

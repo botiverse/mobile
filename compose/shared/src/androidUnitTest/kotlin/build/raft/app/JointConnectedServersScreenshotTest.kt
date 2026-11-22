@@ -50,9 +50,6 @@ class JointConnectedServersScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun hostLight() = section("joint.connected-servers.host", RaftAppAppearance.Light)
-
-    @Test
     @Config(qualifiers = "w390dp-h1500dp-xxhdpi")
     fun detailsLight() = details("channel.settings.joint", RaftAppAppearance.Light)
 

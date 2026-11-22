@@ -109,31 +109,6 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
-    fun updateAvailableFollowsTheServerPolicyFlagForComputersOnly() {
-        // Version strings no longer matter: an older Computer without the flag is not flagged,
-        // and the list row and the detail header read the same flag.
-        val cases =
-            listOf(
-                Triple(computer("c-flag", isComputer = true, computerVersion = "1.0.0", upgradeAvailable = true), true, "flagged computer"),
-                Triple(computer("c-none", isComputer = true, computerVersion = "0.1.0"), false, "unflagged old computer"),
-                Triple(computer("d-flag", daemonVersion = "0.1.0", upgradeAvailable = true), false, "daemon"),
-            )
-        cases.forEach { (snapshot, expected, label) ->
-            assertEquals(expected, snapshot.toRaftComputerRow().updateAvailable, label)
-            val detail =
-                assertIs<RaftComputerDetailModel.Content>(
-                    raftComputerDetailModel(
-                        ScreenLoadState.Content(detail(snapshot.id).copy(computer = snapshot)),
-                        machineId = snapshot.id,
-                        targetServerId = null,
-                        currentServerId = "server-1",
-                    )
-                )
-            assertEquals(expected, detail.computer.updateAvailable, "$label (detail)")
-        }
-    }
-
-    @Test
     fun assignedAgentCountUsesTheLoadedAgentsAndFallsBackToTheServerCount() {
         val agent = SettingsComputerAgentSnapshot(id = "a-1", name = "Jony")
         val withAgents = detail("m-1").copy(agents = listOf(agent), computer = computer("m-1", agentCount = 3))

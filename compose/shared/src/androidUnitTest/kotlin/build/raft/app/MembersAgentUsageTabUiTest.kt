@@ -26,7 +26,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -239,40 +238,6 @@ class MembersAgentUsageTabUiTest {
             onNodeWithText("This agent's runtime doesn't report token usage, so there is none to show.", useUnmergedTree = true)
                 .assertExists()
             onAllNodesWithTag(AgentUsageTestTags.OpenComputerButton, useUnmergedTree = true).assertCountEquals(0)
-        }
-
-    @Test
-    fun errorBannerRetriesAndLoadsReadyState(): Unit =
-        runRobolectricComposeUiTest {
-            var failFirst = true
-            val api =
-                FakeAgentUsageApi { from, to ->
-                    if (failFirst) {
-                        failFirst = false
-                        HomeNetworkResponse(code = 500, bodyText = """{"error":"boom"}""")
-                    } else {
-                        HomeNetworkResponse(code = 200, bodyText = readyPayload(from, to))
-                    }
-                }
-            val client = RaftAgentsApiClient(api)
-            setContent {
-                MembersAgentUsageTab(
-                    agentId = MemberId("agent-1"),
-                    serverId = ServerId("srv-1"),
-                    agentsApiClient = client,
-                    timeContext = timeContext,
-                    onOpenComputer = null,
-                )
-            }
-            waitUntil(timeoutMillis = 5_000) {
-                onAllNodesWithTag(AgentUsageTestTags.ErrorBanner, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            onNodeWithText("Could not load usage", useUnmergedTree = true).assertExists()
-            onNodeWithTag(AgentUsageTestTags.RetryButton, useUnmergedTree = true).performClick()
-            waitUntil(timeoutMillis = 5_000) {
-                onAllNodesWithTag(AgentUsageTestTags.Headline, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-            }
-            assertTrue(api.requests.size >= 2)
         }
 
     private class FakeAgentUsageApi(

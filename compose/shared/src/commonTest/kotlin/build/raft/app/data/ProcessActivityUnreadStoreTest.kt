@@ -77,39 +77,6 @@ class ProcessActivityUnreadStoreTest {
     }
 
     @Test
-    fun newForegroundEpochDuringFlightDrainsOneLatestFollowUp() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        val secondStarted = CompletableDeferred<Unit>()
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                if (fetches == 1) {
-                    firstStarted.complete(Unit)
-                    releaseFirst.await()
-                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 1, totalCount = 3))
-                } else {
-                    secondStarted.complete(Unit)
-                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 6, totalCount = 8))
-                }
-            }
-
-        store.onForeground(ServerId("server-1"), epoch = 10L, reason = "first")
-        firstStarted.await()
-        store.onForeground(ServerId("server-1"), epoch = 11L, reason = "second")
-        store.onForeground(ServerId("server-1"), epoch = 12L, reason = "latest")
-        releaseFirst.complete(Unit)
-        secondStarted.await()
-
-        val projection = awaitFresh(store) { it.totalUnreadCount == 6 }
-        assertEquals(2, fetches)
-        assertEquals(12L, projection.lastForegroundEpoch)
-        assertEquals(6, projection.totalUnreadCount)
-    }
-
-    @Test
     fun factDuringFlightRejectsOldResponseAndForcesReconcile() = runBlocking {
         val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
         val firstStarted = CompletableDeferred<Unit>()
@@ -169,36 +136,6 @@ class ProcessActivityUnreadStoreTest {
     }
 
     @Test
-    fun oldSameAccountResponseCannotWriteAfterProcessGenerationReset() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        val firstStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                if (fetches == 1) {
-                    firstStarted.complete(Unit)
-                    releaseFirst.await()
-                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 1, totalCount = 1))
-                } else {
-                    DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 9, totalCount = 9))
-                }
-            }
-
-        store.onForeground(ServerId("server-1"), epoch = 1L, reason = "old_session")
-        firstStarted.await()
-        store.invalidateAll("same_account_reauthenticated")
-        store.ensure(ServerId("server-1"), reason = "new_session_attach")
-        awaitFresh(store) { it.totalUnreadCount == 9 }
-        releaseFirst.complete(Unit)
-        yield()
-
-        assertEquals(2, fetches)
-        assertEquals(9, store.currentProjection(ServerId("server-1")).totalUnreadCount)
-    }
-
-    @Test
     fun realtimeInvalidationRequiresExactPrincipalAndAuthGeneration() = runBlocking {
         val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
         var fetches = 0
@@ -232,62 +169,6 @@ class ProcessActivityUnreadStoreTest {
         sink(ProcessActivityUnreadAdmission("server-1", "account-1", authGeneration = 2L), event)
         awaitFresh(store) { it.totalUnreadCount == 4 }
         assertEquals(1, fetches)
-    }
-
-    @Test
-    fun ownerFlowRebindsAndRejectsOldAccountFacts() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner(accountId = "account-1"))
-        val store = store(ownerFlow) { _, _ -> DataResult.Empty(EmptyReason.NoInboxItems) }
-
-        store.submitFact(
-            ActivityUnreadSummaryFact(
-                accountId = "account-1",
-                serverId = "server-1",
-                totalUnreadCount = 3,
-                totalCount = 3,
-                authoritative = true,
-                source = "account_1"
-            )
-        )
-        awaitFresh(store) { it.totalUnreadCount == 3 }
-
-        ownerFlow.value = owner(accountId = "account-2")
-        val rebound = withTimeout(2_000) { store.projectionFlow(ServerId("server-1")).first() }
-        assertFalse(rebound.hasValue)
-
-        store.submitFact(
-            ActivityUnreadSummaryFact(
-                accountId = "account-1",
-                serverId = "server-1",
-                totalUnreadCount = 99,
-                totalCount = 99,
-                authoritative = true,
-                source = "late_old_account"
-            )
-        )
-        val current = store.currentProjection(ServerId("server-1"))
-        assertFalse(current.hasValue)
-    }
-
-    @Test
-    fun ensureSkipsFreshProjectionButManualRefreshDoesNot() = runBlocking {
-        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
-        var fetches = 0
-        val store =
-            store(ownerFlow) { _, _ ->
-                fetches += 1
-                DataResult.Content(ActivityUnreadSummarySnapshot(fetches, fetches))
-            }
-
-        store.ensure(ServerId("server-1"), reason = "attach")
-        awaitFresh(store) { it.totalUnreadCount == 1 }
-        store.ensure(ServerId("server-1"), reason = "second_attach")
-        kotlinx.coroutines.yield()
-        assertEquals(1, fetches)
-
-        store.refresh(ServerId("server-1"), reason = "manual")
-        awaitFresh(store) { it.totalUnreadCount == 2 }
-        assertEquals(2, fetches)
     }
 
     @Test

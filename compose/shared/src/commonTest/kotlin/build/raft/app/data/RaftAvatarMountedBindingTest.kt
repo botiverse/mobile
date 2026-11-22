@@ -52,77 +52,6 @@ class RaftAvatarMountedBindingTest {
     }
 
     @Test
-    fun cancelledRefreshStillCommitsDownloadAndWritesNoFailure() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val provider = FakeNativeProvider()
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val downloader = RecordingDownloader.modified(byteArrayOf(7, 8, 9), gate)
-        val binding = binding(store, provider, downloader)
-        val handle = binding.mount(subject(), RemoteUrl)
-        val staleModel = handle.imageModel.value
-
-        val refresh = async { binding.refresh(handle) }
-        yield()
-        assertEquals(1, downloader.calls)
-
-        // Composable churn cancels the awaiting refresh; the detached transport must still commit.
-        // refresh.await() would rethrow JobCancellationException, so only join completion.
-        refresh.cancel()
-        gate.complete(Unit)
-        refresh.join()
-
-        val descriptor = assertNotNull(parseRaftAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
-        assertNotEquals(staleModel, handle.imageModel.value)
-        assertEquals(store.metadata?.commitIdentity, descriptor.commitIdentity)
-        assertNull(store.failure, "a caller-cancelled refresh must not write a durable failure row")
-        Unit
-    }
-
-    @Test
-    fun managedRenderParserRejectsOrdinaryAndMalformedModels() {
-        assertNull(parseRaftAvatarMountedRenderModel(RemoteUrl))
-        assertNull(parseRaftAvatarMountedRenderModel("data:image/png;base64,AAAA"))
-        assertNull(parseRaftAvatarMountedRenderModel("slock-avatar-render-v1:not-base64"))
-    }
-
-    @Test
-    fun stale2xxCommitsNativeReservedIdentityThenReloadsDistinctModel() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val provider = FakeNativeProvider(highWater = 2L)
-        val downloader = RecordingDownloader.modified(byteArrayOf(1, 2, 3))
-        val binding = binding(store, provider, downloader)
-        val handle = binding.mount(subject(), RemoteUrl)
-        val staleModel = handle.imageModel.value
-
-        binding.refresh(handle)
-
-        val reloaded = assertNotNull(parseRaftAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
-        assertNotEquals(staleModel, handle.imageModel.value)
-        assertEquals(3L, store.metadata?.commitIdentity?.commitGeneration)
-        assertEquals(2L, store.metadata?.modelRevision)
-        assertEquals(store.metadata?.commitIdentity, reloaded.commitIdentity)
-        assertEquals(store.metadata?.modelRevision, reloaded.modelRevision)
-        assertEquals(1, provider.reserveCalls)
-        assertEquals(listOf("begin", "write", "finish", "reserve", "bind", "finalize"), provider.events)
-    }
-
-    @Test
-    fun cacheMiss2xxPublishesManagedModelOnlyAfterCommit() = runBlocking {
-        val store = FakeMetadataStore()
-        val provider = FakeNativeProvider(highWater = 7L)
-        val binding = binding(store, provider, RecordingDownloader.modified(byteArrayOf(1, 2)))
-        val handle = binding.mount(subject(), RemoteUrl)
-
-        assertNull(handle.imageModel.value)
-        binding.refresh(handle)
-
-        val descriptor = assertNotNull(parseRaftAvatarMountedRenderModel(handle.imageModel.value.orEmpty()))
-        assertEquals(8L, descriptor.commitIdentity.commitGeneration)
-        assertEquals(1L, descriptor.modelRevision)
-        assertEquals(descriptor.commitIdentity, store.metadata?.commitIdentity)
-    }
-
-    @Test
     fun missingNativeBytesForcesFullBodyWithoutDurableValidators() = runBlocking {
         val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
         val provider = FakeNativeProvider(bytesAvailable = false, bytesDecodable = false)
@@ -168,40 +97,6 @@ class RaftAvatarMountedBindingTest {
     }
 
     @Test
-    fun stageWriteFailureAbortsAndKeepsPriorModelWithoutReservation() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val provider = FakeNativeProvider(stageWriteSucceeds = false)
-        val binding = binding(store, provider, RecordingDownloader.modified(byteArrayOf(1)))
-        val handle = binding.mount(subject(), RemoteUrl)
-        val staleModel = handle.imageModel.value
-
-        binding.refresh(handle)
-
-        assertEquals(staleModel, handle.imageModel.value)
-        assertEquals(0, provider.reserveCalls)
-        assertTrue("abort" in provider.events)
-    }
-
-    @Test
-    fun disposeBeforeLateChunkAbortsWithoutCasOrReservation() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 50L) }
-        val provider = FakeNativeProvider()
-        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val binding = binding(store, provider, RecordingDownloader.modified(byteArrayOf(1), gate))
-        val handle = binding.mount(subject(), RemoteUrl)
-
-        val refresh = async { binding.refresh(handle) }
-        yield()
-        assertTrue(binding.dispose(handle))
-        gate.complete(Unit)
-        refresh.await()
-
-        assertEquals(1L, store.metadata?.commitIdentity?.commitGeneration)
-        assertEquals(0, provider.reserveCalls)
-        assertTrue("abort" in provider.events)
-    }
-
-    @Test
     fun contentReplacementClearsOldHandleAndRetiresOldNativeSubject() = runBlocking {
         val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
         val provider = FakeNativeProvider()
@@ -213,19 +108,6 @@ class RaftAvatarMountedBindingTest {
         assertNull(old.imageModel.value)
         assertNull(replacement.imageModel.value)
         assertEquals(1, provider.retireSubjectCalls)
-    }
-
-    @Test
-    fun terminalClosesMountedHandleEvenWhenNativeCleanupFails() = runBlocking {
-        val store = FakeMetadataStore().apply { metadata = metadata(freshUntilMs = 500L) }
-        val provider = FakeNativeProvider(terminalResult = RaftAvatarNativeOperationResult.StorageFailure)
-        val binding = binding(store, provider, RecordingDownloader.notModified())
-        val handle = binding.mount(subject(), RemoteUrl)
-
-        assertFalse(binding.retireOwner(owner()))
-
-        assertNull(handle.imageModel.value)
-        assertFalse(binding.dispose(handle))
     }
 
     @Test

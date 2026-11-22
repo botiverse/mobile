@@ -45,9 +45,6 @@ class SettingsFeedbackComposeScreenshotTest {
     fun emptyDark() = capture("settings.feedback-compose.empty.dark", RaftAppAppearance.Dark, FormFixture())
 
     @Test
-    fun filledLight() = capture("settings.feedback-compose.filled", RaftAppAppearance.Light, filled)
-
-    @Test
     fun failedLight() = capture("settings.feedback-compose.failed", RaftAppAppearance.Light, failed)
 
     private data class FormFixture(

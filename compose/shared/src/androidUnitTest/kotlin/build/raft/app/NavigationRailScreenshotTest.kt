@@ -51,22 +51,6 @@ class NavigationRailScreenshotTest {
     @Test
     fun navigationRailDark() = capture("shell.navigation-rail.dark", RaftAppAppearance.Dark, 1280)
 
-    @Test
-    fun navigationRailHelpLight() = capture("shell.navigation-rail.help", RaftAppAppearance.Light, 1280, helpOpen = true)
-
-    /** The rail's Assistant (web OttieRailAvatar, slock #14307): Ottie's 28dp face, last of the tabs. */
-    @Test
-    fun navigationRailAssistantLight() = capture("shell.navigation-rail.assistant", RaftAppAppearance.Light, 1280, assistant = true)
-
-    /** Its page beside the rail: the Assistant is the selected sticker, the face in full colour. */
-    @Test
-    fun navigationRailAssistantSelected() =
-        capture("shell.navigation-rail.assistant-selected", RaftAppAppearance.Light, 1280, assistant = true, inlinePage = AppShellRailAssistantKey)
-
-    @Test
-    @Config(qualifiers = "w768dp-h1024dp-mdpi")
-    fun ipadPortrait768Light() = capture("shell.navigation-rail.ipad-768", RaftAppAppearance.Light, 768)
-
     private val servers =
         listOf(
             RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L),

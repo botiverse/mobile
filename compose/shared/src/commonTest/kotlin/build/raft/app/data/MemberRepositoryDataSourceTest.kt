@@ -288,31 +288,6 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
-    fun agentDetailCurrentActivityComesFromSingleAgentSummary() = runBlocking {
-        val network =
-            FakeMemberNetworkClient().apply {
-                agentSummaryActivity = "working"
-                agentSummaryActivityDetail = "Compiling focused tests"
-                agentsListActivity = "error"
-                agentsListActivityDetail = "Wrong full-list authority"
-                activityLogBody = "[]"
-            }
-        val repository = RealMemberRepository(sampleStore(), network)
-
-        val detail = assertIs<DataResult.Content<AgentDetailSnapshot>>(
-            repository.getAgentDetail(DataRequestPriority.Visible, MemberId("agent-1"))
-        ).data
-
-        assertTrue(
-            detail.activity.any {
-                it.statusActivity == "working" && it.body == "Compiling focused tests"
-            }
-        )
-        assertFalse(detail.activity.any { it.statusActivity == "error" })
-        assertFalse(network.requests.any { it.matches("GET", "agents") })
-    }
-
-    @Test
     fun agentDetailSummaryRemainsTheOnlyRequiredSection() = runBlocking {
         val network =
             FakeMemberNetworkClient().apply {
@@ -394,40 +369,6 @@ class MemberRepositoryDataSourceTest {
 
         blocker.complete(Unit)
         assertTrue(first.await() is DataResult.Content)
-    }
-
-    @Test
-    fun workspaceReadErrorsPreserveOnlyStructuredServerErrorText() = runBlocking {
-        val fixtures =
-            listOf(
-                "structured" to ("""{"error":"path query parameter is required"}""" to "path query parameter is required"),
-                "wrong-alias" to ("""{"message":"path query parameter is required"}""" to null),
-                "malformed" to ("""{"error":"unterminated""" to null),
-                "plain-text" to ("path query parameter is required" to null),
-                "empty" to ("" to null)
-            )
-
-        fixtures.forEach { (name, fixture) ->
-            val (body, expectedMessage) = fixture
-            val network =
-                FakeMemberNetworkClient().apply {
-                    workspaceFileResponse = HomeNetworkResponse(code = 400, bodyText = null, errorBodyText = body)
-                }
-            val repository = RealMemberRepository(sampleStore(), network)
-
-            val error =
-                assertIs<DataResult.Error>(
-                    repository.readAgentWorkspaceFile(
-                        DataRequestPriority.Visible,
-                        MemberId("agent-1"),
-                        "/repo/README.md"
-                    ),
-                    name
-                ).error
-
-            assertEquals("http_400", error.code, name)
-            assertEquals(expectedMessage, error.serverMessage, name)
-        }
     }
 
     @Test

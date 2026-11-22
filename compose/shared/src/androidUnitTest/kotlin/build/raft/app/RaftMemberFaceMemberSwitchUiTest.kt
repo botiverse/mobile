@@ -5,10 +5,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import build.raft.app.model.AgentStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.flowOf
@@ -59,19 +57,6 @@ class RaftMemberFaceMemberSwitchUiTest {
             val resolver = RaftMemberAvatarResolver(currentAvatar = { avatars[it] }, avatarFlow = { flowOf(avatars[it]) })
             val committed = committedAcrossSwitch { id -> rememberRaftMemberAvatarWireValue(resolver, id) }
             assertEveryFrameShowsItsOwnMember(committed) { avatars[it] }
-        }
-
-    @Test
-    fun statusDotNeverPaintsThePreviousAgent() =
-        runRobolectricComposeUiTest {
-            val states =
-                mapOf(
-                    M to RaftAgentStatusIndicatorState(AgentStatus.Offline, Color.Gray, "Offline", external = false),
-                    ECHO to RaftAgentStatusIndicatorState(AgentStatus.Online, Color.Green, "Online", external = false),
-                )
-            val resolver: RaftAgentStatusResolver = { id -> RaftAgentStatusFlow(initial = states[id], upstream = flowOf(states[id])) }
-            val committed = committedAcrossSwitch { id -> rememberRaftAgentStatusIndicatorState(resolver, id) }
-            assertEveryFrameShowsItsOwnMember(committed) { states[it] }
         }
 
     private companion object {

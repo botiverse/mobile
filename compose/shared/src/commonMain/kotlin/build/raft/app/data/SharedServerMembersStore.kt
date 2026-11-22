@@ -188,9 +188,22 @@ data class SharedServerMembersState(
      * into [entriesByServerId].
      */
     val profileCacheByServerId: Map<String, Map<String, MemberProfile>> = emptyMap(),
+    /**
+     * Member ids in [profileCacheByServerId] confirmed by an authoritative server source
+     * (directory, [SharedServerMembersStore.seedProfiles], or durable roster) rather than only a
+     * message-author candidate ([SharedServerMembersStore.seedProfileCandidates]). Non-authoritative
+     * candidates — notably joint-channel senders from another server whose message payloads omit
+     * avatars — must not shadow channel rosters, block `POST /api/actors/resolve`, or synthesize a
+     * default `pixel:robot` avatar.
+     */
+    val authoritativeProfileCacheIdsByServerId: Map<String, Set<String>> = emptyMap(),
     val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap(),
     val channelMemberSlices: Map<SharedServerChannelMembersScope, SharedServerChannelMembersSlice> = emptyMap()
 ) {
+    internal data class ResolvedMemberProfile(
+        val profile: MemberProfile?,
+        val authoritative: Boolean
+    )
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
 
@@ -266,28 +279,49 @@ data class SharedServerMembersState(
         )
     }
 
+    internal fun resolveMemberProfile(
+        serverId: ServerId?,
+        memberId: String?
+    ): ResolvedMemberProfile {
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return ResolvedMemberProfile(null, authoritative = false)
+        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return ResolvedMemberProfile(null, authoritative = false)
+        val rosterMember = entriesByServerId[cleanServerId]?.membersById?.get(cleanMemberId)
+        if (rosterMember != null) return ResolvedMemberProfile(rosterMember, authoritative = true)
+        val cached = profileCacheByServerId[cleanServerId]?.get(cleanMemberId)
+        if (cached != null && cleanMemberId in authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
+            return ResolvedMemberProfile(cached, authoritative = true)
+        }
+        val matchingSlices =
+            channelMemberSlices
+                .asSequence()
+                .filter { it.key.serverId == cleanServerId }
+                .map { it.value }
+        val liveChannelMember =
+            matchingSlices
+                .filterNot { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        if (liveChannelMember != null) return ResolvedMemberProfile(liveChannelMember, authoritative = true)
+        val standInChannelMember =
+            matchingSlices
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return ResolvedMemberProfile(fallback, authoritative = false)
+    }
+
     fun memberProfile(
         serverId: ServerId?,
         memberId: String?
-    ): MemberProfile? {
-        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
-        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
-        val entries = listOfNotNull(entriesByServerId[cleanServerId])
-        return entries
-            .asSequence()
-            .mapNotNull { it.membersById[cleanMemberId] }
-            .firstOrNull()
-            ?: profileCacheByServerId
-                .asSequence()
-                .filter { it.key == cleanServerId }
-                .mapNotNull { it.value[cleanMemberId] }
-                .firstOrNull()
-            ?: channelMemberSlices
-                .asSequence()
-                .filter { it.key.serverId == cleanServerId }
-                .flatMap { it.value.members.asSequence() }
-                .firstOrNull { it.id.value.trim() == cleanMemberId }
-    }
+    ): MemberProfile? = resolveMemberProfile(serverId, memberId).profile
 
     internal fun canonicalMentionHandle(
         binding: SharedServerChannelMembersOwnerBinding?,
@@ -716,7 +750,7 @@ class SharedServerMembersStore internal constructor(
     private fun knowsActorLocally(serverId: ServerId, memberId: String): Boolean {
         val key = serverId.value.normalizedServerMembersId() ?: return false
         val id = memberId.normalizedServerMembersId() ?: return false
-        return _state.value.memberProfile(ServerId(key), id) != null ||
+        return currentAvatarMemberProfileResolution(ServerId(key), id).authoritative ||
             id in deletedAgentIdsByServerId.value[key].orEmpty()
     }
 
@@ -1294,6 +1328,8 @@ class SharedServerMembersStore internal constructor(
     private val memberReadFlowsLock = SynchronizedObject()
     private val memberStatusFlows = mutableMapOf<Pair<String, String>, Flow<SharedServerMemberStatus?>>()
     private val memberProfileFlows = mutableMapOf<Pair<String, String>, Flow<MemberProfile?>>()
+    private val memberAvatarProfileResolutionFlows =
+        mutableMapOf<Pair<String, String>, Flow<SharedServerMembersState.ResolvedMemberProfile>>()
 
     /**
      * Drops memoized per-member read flows. Call on session clear / account
@@ -1306,6 +1342,7 @@ class SharedServerMembersStore internal constructor(
         synchronized(memberReadFlowsLock) {
             memberStatusFlows.clear()
             memberProfileFlows.clear()
+            memberAvatarProfileResolutionFlows.clear()
         }
         // Same lifetime: resolved joint-channel senders belong to the retiring owner.
         jointActors?.clear()
@@ -1415,6 +1452,88 @@ class SharedServerMembersStore internal constructor(
             )
         }
     }
+
+    internal fun currentAvatarMemberProfileResolution(
+        serverId: ServerId?,
+        memberId: String?
+    ): SharedServerMembersState.ResolvedMemberProfile {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+            ?: return SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false)
+        val cleanMemberId = memberId.normalizedServerMembersId()
+            ?: return SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false)
+        val current = _state.value
+        val rosterMember = current.entriesByServerId[cleanServerId]?.membersById?.get(cleanMemberId)
+        if (rosterMember != null) {
+            return SharedServerMembersState.ResolvedMemberProfile(rosterMember, authoritative = true)
+        }
+        val cached = current.profileCacheByServerId[cleanServerId]?.get(cleanMemberId)
+        if (cached != null && cleanMemberId in current.authoritativeProfileCacheIdsByServerId[cleanServerId].orEmpty()) {
+            return SharedServerMembersState.ResolvedMemberProfile(cached, authoritative = true)
+        }
+        val slices = currentOwnerChannelMemberSlices(ServerId(cleanServerId))
+        val liveChannelMember =
+            slices
+                .asSequence()
+                .filterNot { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        if (liveChannelMember != null) {
+            return SharedServerMembersState.ResolvedMemberProfile(liveChannelMember, authoritative = true)
+        }
+        val standInChannelMember =
+            slices
+                .asSequence()
+                .filter { it.storedStandIn }
+                .flatMap { it.members.asSequence() }
+                .firstOrNull { it.id.value.trim() == cleanMemberId }
+        val fallback =
+            when {
+                standInChannelMember == null -> cached
+                cached == null -> standInChannelMember
+                standInChannelMember.avatarSlotResolution().displayAvatarWireValue != null -> standInChannelMember
+                cached.avatarSlotResolution().displayAvatarWireValue != null -> cached
+                else -> standInChannelMember
+            }
+        return SharedServerMembersState.ResolvedMemberProfile(fallback, authoritative = false)
+    }
+
+    internal fun memberAvatarProfileResolutionFlow(
+        serverId: ServerId?,
+        memberId: String?
+    ): Flow<SharedServerMembersState.ResolvedMemberProfile> {
+        val cleanServerId = serverId?.value.normalizedServerMembersId()
+        val cleanMemberId = memberId.normalizedServerMembersId()
+        if (cleanServerId == null || cleanMemberId == null) {
+            return flowOf(SharedServerMembersState.ResolvedMemberProfile(null, authoritative = false))
+        }
+        return synchronized(memberReadFlowsLock) {
+            memberAvatarProfileResolutionFlows.getOrPut(cleanServerId to cleanMemberId) {
+                buildMemberAvatarProfileResolutionFlow(ServerId(cleanServerId), cleanMemberId)
+            }
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun buildMemberAvatarProfileResolutionFlow(
+        serverId: ServerId,
+        memberId: String
+    ): Flow<SharedServerMembersState.ResolvedMemberProfile> =
+        flow {
+            emit(currentAvatarMemberProfileResolution(serverId, memberId))
+            emitAll(
+                serverMembersEntryFlow(serverId)
+                    .flatMapLatest { entry ->
+                        val rosterMember = entry.membersById[memberId]
+                        if (rosterMember != null) {
+                            flowOf(SharedServerMembersState.ResolvedMemberProfile(rosterMember, authoritative = true))
+                        } else {
+                            combine(state, channelMembersOwnerFlow(serverId)) { _, _ ->
+                                currentAvatarMemberProfileResolution(serverId, memberId)
+                            }.distinctUntilChanged()
+                        }
+                    }
+            )
+        }.distinctUntilChanged()
 
     fun memberProfileFlow(
         serverId: ServerId?,
@@ -1599,9 +1718,16 @@ class SharedServerMembersStore internal constructor(
         if (key.isBlank() || profiles.isEmpty()) return
         val current = _state.value
         val merged = current.profileCacheByServerId[key].orEmpty().toMutableMap()
+        val authoritativeIds =
+            if (authoritativeAvatar) {
+                current.authoritativeProfileCacheIdsByServerId[key].orEmpty().toMutableSet()
+            } else {
+                null
+            }
         profiles.forEach { profile ->
             val profileKey = profile.id.value.trim()
             if (profileKey.isNotBlank()) {
+                authoritativeIds?.add(profileKey)
                 merged[profileKey] =
                     merged[profileKey]?.let { existing ->
                         val next =
@@ -1621,9 +1747,16 @@ class SharedServerMembersStore internal constructor(
                     } ?: profile
             }
         }
+        val nextAuthoritativeByServerId =
+            if (authoritativeIds != null) {
+                current.authoritativeProfileCacheIdsByServerId + (key to authoritativeIds.toSet())
+            } else {
+                current.authoritativeProfileCacheIdsByServerId
+            }
         _state.value =
             current.copy(
-                profileCacheByServerId = current.profileCacheByServerId + (key to merged)
+                profileCacheByServerId = current.profileCacheByServerId + (key to merged),
+                authoritativeProfileCacheIdsByServerId = nextAuthoritativeByServerId
             )
         if (authoritativeAvatar) {
             recordDurableAvatarRefs(
@@ -1728,18 +1861,35 @@ class SharedServerMembersStore internal constructor(
                     }
                 }
             }
+        var removedFromProfileCache = false
         val nextProfileCache =
             current.profileCacheByServerId[serverKey]
                 ?.let { cache ->
                     val cached = cache[memberKey]
                     if (cached != null && (memberKind == null || cached.kind == memberKind)) {
                         changed = true
+                        removedFromProfileCache = true
                         current.profileCacheByServerId + (serverKey to (cache - memberKey))
                     } else {
                         current.profileCacheByServerId
                     }
                 }
                 ?: current.profileCacheByServerId
+        val nextAuthoritativeCacheIds =
+            if (removedFromProfileCache) {
+                current.authoritativeProfileCacheIdsByServerId[serverKey]
+                    ?.let { ids ->
+                        val remaining = ids - memberKey
+                        if (remaining.isEmpty()) {
+                            current.authoritativeProfileCacheIdsByServerId - serverKey
+                        } else {
+                            current.authoritativeProfileCacheIdsByServerId + (serverKey to remaining)
+                        }
+                    }
+                    ?: current.authoritativeProfileCacheIdsByServerId
+            } else {
+                current.authoritativeProfileCacheIdsByServerId
+            }
         // task #136: presence lives only in the registry — evict the deleted
         // member's fact from THIS server's owner partition (never cross-server).
         presenceWrite(serverId)?.let { write ->
@@ -1758,6 +1908,7 @@ class SharedServerMembersStore internal constructor(
             current.copy(
                 entriesByServerId = nextEntries,
                 profileCacheByServerId = nextProfileCache,
+                authoritativeProfileCacheIdsByServerId = nextAuthoritativeCacheIds,
                 memberSuggestionSlices = nextSuggestionSlices,
                 channelMemberSlices = nextChannelSlices
             )
@@ -1920,7 +2071,10 @@ class SharedServerMembersStore internal constructor(
                 val entryChanged = entry != null && nextMembers != entry.members
                 val cacheChanged = cache != null && nextCache != cache
                 val slicesChanged = nextSlices != current.channelMemberSlices
-                if (!entryChanged && !cacheChanged && !slicesChanged) return@withLock null
+                val cacheMatchedHuman = cache?.get(userKey)?.isPerson() == true
+                val currentAuthoritativeCacheIds = current.authoritativeProfileCacheIdsByServerId[key].orEmpty()
+                val authoritativeCacheChanged = cacheMatchedHuman && userKey !in currentAuthoritativeCacheIds
+                if (!entryChanged && !cacheChanged && !slicesChanged && !authoritativeCacheChanged) return@withLock null
                 changed = true
                 _state.value =
                     current.copy(
@@ -1935,6 +2089,12 @@ class SharedServerMembersStore internal constructor(
                                 current.profileCacheByServerId + (key to nextCache)
                             } else {
                                 current.profileCacheByServerId
+                            },
+                        authoritativeProfileCacheIdsByServerId =
+                            if (authoritativeCacheChanged) {
+                                current.authoritativeProfileCacheIdsByServerId + (key to (currentAuthoritativeCacheIds + userKey))
+                            } else {
+                                current.authoritativeProfileCacheIdsByServerId
                             },
                         channelMemberSlices = nextSlices,
                     )
@@ -4161,6 +4321,7 @@ class SharedServerMembersStore internal constructor(
                 current.copy(
                     entriesByServerId = current.entriesByServerId - victimSet,
                     profileCacheByServerId = current.profileCacheByServerId - victimSet,
+                    authoritativeProfileCacheIdsByServerId = current.authoritativeProfileCacheIdsByServerId - victimSet,
                     channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId !in victimSet },
                     memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId !in victimSet }
                 )
@@ -4247,6 +4408,7 @@ class SharedServerMembersStore internal constructor(
                     current.copy(
                         entriesByServerId = current.entriesByServerId - key,
                         profileCacheByServerId = current.profileCacheByServerId - key,
+                        authoritativeProfileCacheIdsByServerId = current.authoritativeProfileCacheIdsByServerId - key,
                         channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId != key },
                         memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId != key }
                     )
@@ -4351,6 +4513,7 @@ class SharedServerMembersStore internal constructor(
             _state.value.copy(
                 entriesByServerId = _state.value.entriesByServerId - key,
                 profileCacheByServerId = _state.value.profileCacheByServerId - key,
+                authoritativeProfileCacheIdsByServerId = _state.value.authoritativeProfileCacheIdsByServerId - key,
             )
     }
 

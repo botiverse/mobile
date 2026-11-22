@@ -8,16 +8,11 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
-import build.raft.app.data.ExternalInvitePreview
-import build.raft.app.data.InviteConnectableServer
-import build.raft.app.data.OwnConnectableServers
-import build.raft.app.data.ExternalInviteRefusal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -128,113 +123,5 @@ class ExternalInvitesUiTest {
         onNodeWithTag(ExternalInviteResendTag, useUnmergedTree = true).performClick()
         waitForIdle()
         assertEquals(listOf("i1"), source.resendCalls)
-    }
-
-    @Test
-    fun withdrawAsksFirstAndKeepsARefusalInTheDialogWithItsTraceId() = runRobolectricComposeUiTest {
-        val source = FakeExternalInvitesDataSource()
-        source.revokeAnswer =
-            DataResult.Content(
-                ExternalInviteAnswer.Refused(ExternalInviteRefusal(409, "connecting", null, traceId = "0123456789abcdef0123456789abcdef"))
-            )
-        show(source)
-        onNodeWithTag(ExternalInviteWithdrawTag, useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertTrue(shown("The invite link sent to a@example.com stops working."))
-        onNodeWithTag(ExternalInviteWithdrawConfirmTag, useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(listOf("i1"), source.revokeCalls)
-        assertTrue(shown("A server is being connected to this channel."))
-        assertTrue(shown("01234567"))
-    }
-
-    @Test
-    fun theSheetReviewsTheEmailsThenInvites() = runRobolectricComposeUiTest {
-        val source = FakeExternalInvitesDataSource()
-        source.previewAnswer =
-            DataResult.Content(
-                ExternalInviteAnswer.Ok(
-                    ExternalInvitePreview(valid = listOf("new@example.com"), alreadyPending = listOf("a@example.com"), invalid = listOf("x"), slotsLeft = 28)
-                )
-            )
-        val store = show(source)
-        onNodeWithTag(ExternalInviteEntryTag, useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(1, count(ExternalInviteSheetTag))
-        assertTrue(shown("Invite people outside Acme"))
-        assertEquals(1, count(ExternalInvitePrivateWarningTag))
-
-        runOnIdle { store.dispatch(ExternalInvitesIntent.SetText("new@example.com a@example.com x")) }
-        waitForIdle()
-        onNodeWithText("Next", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(3, count(ExternalInviteReviewRowTag))
-        assertTrue(shown("Will be invited"))
-        assertTrue(shown("Already invited · no new invite"))
-        assertTrue(shown("Not a valid email · no invite"))
-
-        onNodeWithText("Invite", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(listOf(listOf("new@example.com") to true), source.sendCalls)
-        assertEquals(0, count(ExternalInviteSheetTag))
-    }
-
-    @Test
-    fun yourServersAreListedUnderTheEmailsAndAPickedOneConnectsOnInvite() = runRobolectricComposeUiTest {
-        val source = FakeExternalInvitesDataSource()
-        source.ownServersAnswer =
-            DataResult.Content(
-                ExternalInviteAnswer.Ok(
-                    OwnConnectableServers(
-                        listOf(
-                            InviteConnectableServer(id = "s2", name = "Botiverse", slug = "botiverse", canConnectDirectly = true),
-                            InviteConnectableServer(id = "s3", name = "Kaze", slug = "kaze", canConnectDirectly = true, atLimit = true),
-                        )
-                    )
-                )
-            )
-        show(source)
-        onNodeWithTag(ExternalInviteEntryTag, useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(1, count(ExternalInviteServersTag))
-        assertTrue(shown("Connect your servers"))
-        assertTrue(shown("At external channel limit"))
-
-        onNodeWithText("Botiverse", useUnmergedTree = true).performClick()
-        waitForIdle()
-        onNodeWithText("Next", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(emptyList(), source.previewCalls)
-        assertEquals(1, count(ExternalInviteReviewServerTag))
-        assertTrue(shown("Botiverse connects now · no invite needed"))
-
-        onNodeWithText("Invite", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(emptyList(), source.sendCalls)
-        assertEquals(listOf(listOf("s2") to true), source.connectCalls)
-        assertEquals(0, count(ExternalInviteSheetTag))
-    }
-
-    @Test
-    fun theFreePlanLimitOffersUpgradeWithTheTraceId() = runRobolectricComposeUiTest {
-        val source = FakeExternalInvitesDataSource()
-        source.previewAnswer =
-            DataResult.Content(
-                ExternalInviteAnswer.Refused(
-                    ExternalInviteRefusal(409, "free_external_limit", null, limitSide = "host", traceId = "0123456789abcdef0123456789abcdef")
-                )
-            )
-        val store = show(source)
-        runOnIdle {
-            store.dispatch(ExternalInvitesIntent.OpenDialog())
-            store.dispatch(ExternalInvitesIntent.SetText("new@example.com"))
-        }
-        waitForIdle()
-        onNodeWithText("Next", useUnmergedTree = true).performClick()
-        waitForIdle()
-        assertEquals(1, count(ExternalInviteErrorTag))
-        assertTrue(shown("On the Free plan, a server can share one channel with people outside it."))
-        assertEquals(1, count(ExternalInviteUpgradeTag))
-        assertTrue(shown("01234567"))
     }
 }

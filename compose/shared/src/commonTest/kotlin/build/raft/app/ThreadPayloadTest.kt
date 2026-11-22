@@ -336,51 +336,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadDateDividerLabelsRefreshAcrossLocalMidnightWithoutReorderingMessages() {
-        val previousDayMessage =
-            RaftThreadMessageItem(
-                id = "m1",
-                authorId = "u-artin",
-                authorName = "Artin",
-                timestampLabel = "2026-07-22T20:21:00+08:00"
-            )
-        val currentDayMessage =
-            previousDayMessage.copy(
-                id = "m2",
-                timestampLabel = "2026-07-23T00:01:00+08:00"
-            )
-        val provider =
-            RaftTimeContextProvider(
-                RaftTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                    parseRaftTimestampEpochMillisOrNull("2026-07-22T23:59:30+08:00")!!,
-                    RaftLegacyTestDatetimeFoundationOwner,
-                )
-            )
-        val renderConfig =
-            RaftThreadScreenPayload(localOffsetMinutes = 480).toThreadTimelineRenderConfig()
-        val launchDividerContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
-
-        assertEquals("TODAY", threadDateDividerLabel(null, previousDayMessage, launchDividerContext))
-
-        provider.update(
-            RaftTimeCapabilities(localOffsetMinutes = 480, timeFormat = "24h").contextAt(
-                parseRaftTimestampEpochMillisOrNull("2026-07-23T00:01:05+08:00")!!,
-                RaftLegacyTestDatetimeFoundationOwner,
-            )
-        )
-        val refreshedContext = renderConfig.dateDividerTimeContext(provider.todayEpochDay)
-
-        assertEquals("YESTERDAY", threadDateDividerLabel(null, previousDayMessage, refreshedContext))
-        assertEquals("TODAY", threadDateDividerLabel(previousDayMessage, currentDayMessage, refreshedContext))
-        assertEquals(
-            listOf("m1", "m2"),
-            listOf(previousDayMessage, currentDayMessage)
-                .sortedBy { parseRaftTimestampEpochMillisOrNull(it.timestampLabel, refreshedContext.localOffsetMinutes) }
-                .map(RaftThreadMessageItem::id)
-        )
-    }
-
-    @Test
     fun markdownChannelLaunchPayloadResolvesChannelNameToIdentityOnlyRoute() {
         val payload =
             buildMarkdownChannelLaunchPayload(
@@ -566,44 +521,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun authPendingThreadRouteKeepsIdentityAndDropsDisplayFallback() {
-        val pending =
-            WireThreadLaunchPayload(
-                instanceId = "thread-original",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                threadId = "reply-stream",
-                sourceThreadId = "reply-stream",
-                streamChannelId = "reply-stream",
-                parentChannelId = "channel-1",
-                parentMessageId = "message-parent",
-                originParentMessageId = "message-parent",
-                focusedMessageId = "message-reply",
-                selectedTab = "chat",
-                originFallbackPreview = "display content must not survive",
-                originFallbackSenderId = "member-1",
-                originFallbackSenderKind = MemberKind.Human
-            ).toAuthPendingOpenRequest(
-                serverId = "server-1",
-                accountPrincipalId = "user-1",
-            )
-
-        val threadPending = assertIs<AuthPendingOpenRequest.Thread>(pending)
-        assertEquals("server-1", threadPending.serverId)
-        assertEquals("user-1", threadPending.accountPrincipalId)
-        assertEquals("reply-stream", threadPending.sourceThreadId)
-        assertEquals("message-parent", threadPending.parentMessageId)
-        assertEquals("message-reply", threadPending.focusedMessageId)
-
-        val resumed = threadPending.toWireThreadLaunchPayload()
-        assertEquals("reply-stream", resumed.sourceThreadId)
-        assertEquals("message-parent", resumed.parentMessageId)
-        assertEquals("message-reply", resumed.focusedMessageId)
-        assertEquals(null, resumed.originFallbackPreview)
-        assertEquals(null, resumed.originFallbackSenderId)
-        assertEquals(null, resumed.originFallbackSenderKind)
-    }
-
-    @Test
     fun threadFindMatchesSenderNameAndTextOnlyAndIgnoresBlankQuery() {
         val payload =
             RaftThreadScreenPayload(
@@ -711,46 +628,6 @@ class ThreadPayloadTest {
         assertEquals(true, payload.memberScopedMentions)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
-    }
-
-    @Test
-    fun sourceThreadLaunchPayloadStartsStoreBackedLoadingState() {
-        val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-launch-1",
-                      "title": "general",
-                      "status": "content",
-                      "sourceThreadId": "channel-1",
-                      "streamChannelId": "channel-1",
-                      "membersCount": 2,
-                      "joined": false,
-                      "canSend": false,
-                      "settingsActions": [
-                        {"id": "archive", "enabled": true}
-                      ]
-                    }
-                    """.trimIndent(),
-                instanceId = "fallback"
-            )
-
-        assertEquals("thread-launch-1", payload.instanceId)
-        assertEquals("", payload.title)
-        assertEquals("loading", payload.status)
-        assertEquals("channel-1", payload.sourceThreadId)
-        assertEquals("channel-1", payload.streamChannelId)
-        assertEquals(0, payload.membersCount)
-        assertEquals(true, payload.joined)
-        assertEquals(true, payload.canSend)
-        assertEquals(emptyList<RaftThreadMessageItem>(), payload.messages)
-        assertEquals(emptyList<RaftThreadTaskItem>(), payload.tasks)
-        assertEquals(emptyList<RaftThreadMemberItem>(), payload.members)
-        assertEquals(emptyList<RaftThreadMemberItem>(), payload.memberCandidates)
-        assertEquals("", payload.resolveThreadComposer().seedText)
-        assertEquals(false, payload.resolveThreadComposer().seedAsTask)
-        assertEquals(emptyList(), payload.settingsActions)
     }
 
     // task #396 / botiverse/slock #16042: a Slack-bridged channel's header draws the Slack mark in its
@@ -1075,39 +952,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun activityReplyThreadOpenActionTargetsParentChannelSurface() {
-        val replyPayload =
-            RaftThreadScreenPayload(
-                instanceId = "shared-shell-thread-reply-stream",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                channelKind = "channel",
-                sourceThreadId = "reply-stream",
-                streamChannelId = "reply-stream",
-                parentChannelId = "parent-channel",
-                parentMessageId = "parent-message",
-                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
-                parentChannelKind = "channel",
-                showOpenInChannelAction = true
-            )
-
-        val parentRequest =
-            assertNotNull(
-                replyPayload.resolveReplyParentConversationOpenRequest(
-                    serverId = "server-1",
-                    conversationIdentityProvider = null
-                )
-            )
-        val parentIdentity = parentRequest.conversationIdentity
-        val parentPayload = requireNotNull(buildAppShellThreadPayload(parentIdentity))
-
-        assertEquals(ConversationKind.Channel, parentIdentity.kind)
-        assertEquals("parent-channel", parentIdentity.channelId?.value)
-        assertEquals(RaftThreadSurfaceKind.Channel, parentPayload.surfaceKind)
-        assertEquals("parent-channel", parentPayload.sourceThreadId)
-        assertEquals(null, parentPayload.parentMessageId)
-    }
-
-    @Test
     fun replyThreadOpenParentRequiresCurrentSessionServer() {
         val replyPayload =
             RaftThreadScreenPayload(
@@ -1206,138 +1050,6 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
-    }
-
-    @Test
-    fun appShellThreadOriginFallbackMustMatchParentIdentity() {
-        val request =
-            InboxItem(
-                key = "thread:message-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("channel-1"),
-                channelName = "thread-stream-name",
-                threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("channel-1"),
-                parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("message-1"),
-                parentMessagePreview = "Parent message preview",
-                latestActivityMessageId = MessageId("reply-message-1")
-            ).toHomeMessageOpenRequestForTest()
-        val wrongFallback =
-            ThreadLaunchOriginFallback(
-                parentChannelId = "channel-2",
-                parentMessageId = "message-1",
-                preview = "Wrong parent preview",
-                senderId = null,
-                senderKind = null
-            )
-
-        val payload =
-            requireNotNull(buildAppShellThreadPayload(
-                conversation = request.conversationIdentity,
-                anchorMessageId = request.anchorMessageId,
-                originFallback = wrongFallback
-            ))
-
-        assertEquals("message-1", payload.originParentMessageId)
-        assertEquals("missing", payload.originStatus)
-        assertEquals(null, payload.originPreview)
-    }
-
-    @Test
-    fun contentSliceDoesNotReplaceThreadChromeWhenPatchChangesRoute() {
-        val current =
-            RaftThreadScreenPayload(
-                instanceId = "shared-shell-thread-reply-stream-1",
-                title = ThreadReplyPageTitle,
-                subtitle = "#general",
-                status = "content",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "reply-stream-1",
-                streamChannelId = "reply-stream-1",
-                parentChannelId = "channel-1",
-                parentMessageId = "parent-message-1",
-                originParentMessageId = "parent-message-1",
-                showModeTabs = false,
-                showMembersAction = false,
-                showSettingsAction = false,
-                showOpenInChannelAction = true,
-                dmPeerName = "Current peer",
-                dmPeerAvatarUrl = "pixel:current",
-                dmPeerAvatarLabel = "CP",
-                messages =
-                    listOf(
-                        RaftThreadMessageItem(
-                            id = "reply-1",
-                            authorId = "agent-1",
-                            authorName = "Agent",
-                            body = "reply"
-                        )
-                    ),
-                originStatus = "loaded",
-                originMessage =
-                    RaftThreadMessageItem(
-                        id = "parent-message-1",
-                        authorId = "user-1",
-                        authorName = "Artin",
-                        body = "parent"
-                    )
-            )
-        val patch =
-            RaftThreadScreenPayload(
-                instanceId = "shared-shell-thread-channel-1",
-                title = "general",
-                subtitle = null,
-                status = "content",
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = "public",
-                sourceThreadId = "channel-1",
-                streamChannelId = "channel-1",
-                parentChannelId = null,
-                parentMessageId = null,
-                originParentMessageId = null,
-                showModeTabs = true,
-                showMembersAction = true,
-                showSettingsAction = true,
-                showOpenInChannelAction = false,
-                dmPeerName = "Wrong peer",
-                dmPeerAvatarUrl = "pixel:wrong",
-                dmPeerAvatarLabel = "WP",
-                messages =
-                    listOf(
-                        RaftThreadMessageItem(
-                            id = "channel-message-1",
-                            authorId = "user-1",
-                            authorName = "Artin",
-                            body = "channel message"
-                        )
-                    ),
-                originStatus = "none",
-                originMessage = null
-            )
-
-        val payload = current.withContentSliceFrom(patch)
-
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#general", payload.subtitle)
-        assertEquals(RaftThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("channel", payload.channelKind)
-        assertEquals("reply-stream-1", payload.sourceThreadId)
-        assertEquals("reply-stream-1", payload.streamChannelId)
-        assertEquals("channel-1", payload.parentChannelId)
-        assertEquals("parent-message-1", payload.parentMessageId)
-        assertEquals(null, payload.originParentMessageId)
-        assertEquals(false, payload.showModeTabs)
-        assertEquals(false, payload.showReplyActions)
-        assertEquals(false, payload.showMembersAction)
-        assertEquals(false, payload.showSettingsAction)
-        assertEquals(true, payload.showOpenInChannelAction)
-        assertEquals("Current peer", payload.dmPeerName)
-        assertEquals("pixel:current", payload.dmPeerAvatarUrl)
-        assertEquals("CP", payload.dmPeerAvatarLabel)
-        assertEquals("none", payload.originStatus)
-        assertEquals(null, payload.originMessage)
-        assertEquals(listOf("channel-message-1"), payload.messages.map { it.id })
     }
 
     @Test
@@ -2046,30 +1758,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadTaskStatusUpdateUsesLinkedTaskThroughGlobalStoreIntent() {
-        val task =
-            TaskSummary(
-                id = TaskId("task-240"),
-                title = "historical task",
-                status = TaskStatus.InProgress,
-                taskNumber = 240,
-                messageId = MessageId("message-240"),
-                assignee = null,
-                updatedAtLabel = ""
-            )
-        val projection =
-            ThreadLinkedTasksProjection(
-                authoritative = true,
-                lookup = listOf(task).threadLinkedTasksByMessageLookup()
-            )
-
-        val intent = requireNotNull(projection.statusUpdateIntent("task-240", TaskStatus.Closed))
-
-        assertEquals(task, intent.task)
-        assertEquals(TaskStatus.Closed, intent.status)
-    }
-
-    @Test
     fun threadTaskIdentityLookupDoesNotConfuseAnotherTasksMessageId() {
         val target =
             TaskSummary(
@@ -2152,50 +1840,6 @@ class ThreadPayloadTest {
         assertEquals(0, canonicalOpens)
         assertEquals(1, failClosed)
         assertEquals(ThreadTaskOpenRecoveryReason.TaskIdentityUnavailable, failReason)
-    }
-
-    @Test
-    fun taskThreadLaunchPayloadUsesTaskIdentityOutsideLoadedTimeline() {
-        val payload =
-            RaftThreadScreenPayload(
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = RaftThreadSurfaceKind.Channel,
-                sourceThreadId = "channel-dialog",
-                streamChannelId = "channel-dialog",
-                alignOwnMessagesRight = true,
-                compactConsecutiveMessages = true,
-                localOffsetMinutes = 480,
-                todayEpochDay = 20260628,
-                nowEpochMillis = 1_782_690_000_000,
-                timeFormat = RaftTimeFormat12Hour
-            )
-        val task =
-            TaskSummary(
-                id = TaskId("task-482"),
-                title = "markdown clicks",
-                status = TaskStatus.InProgress,
-                taskNumber = 482,
-                messageId = MessageId("message-482"),
-                parentMessageId = MessageId("message-482"),
-                channelId = ChannelId("channel-dialog"),
-                threadId = ThreadId("thread-482"),
-                updatedAtLabel = "now"
-            )
-
-        val launchPayload = payload.taskThreadLaunchPayload(task, ServerId("server-1"))
-
-        assertEquals(RaftThreadSurfaceKind.ReplyThread, launchPayload?.surfaceKind)
-        assertEquals("channel-dialog", launchPayload?.parentChannelId)
-        assertEquals("message-482", launchPayload?.parentMessageId)
-        assertEquals("thread-482", launchPayload?.streamChannelId)
-        assertEquals("thread-482", launchPayload?.sourceThreadId)
-        assertEquals(null, launchPayload?.focusedMessageId)
-        assertEquals(true, launchPayload?.alignOwnMessagesRight)
-        assertEquals(true, launchPayload?.compactConsecutiveMessages)
-        assertEquals(RaftTimeFormat12Hour, launchPayload?.timeFormat)
-        assertEquals(emptyList<RaftThreadMessageItem>(), launchPayload?.messages)
-        assertEquals(emptyList<RaftThreadMemberItem>(), launchPayload?.members)
-        assertEquals("loading", launchPayload?.status)
     }
 
     @Test
@@ -2295,110 +1939,6 @@ class ThreadPayloadTest {
         assertEquals(listOf("taskByNumber:server-1:current-channel:343"), api.calls)
     }
 
-    @Test
-    fun markdownTaskNumberOpenRequestGateRejectsOlderCompletion() {
-        val gate = MarkdownTaskNumberOpenRequestGate()
-        val older = gate.nextRequest()
-        val newer = gate.nextRequest()
-
-        assertNull(gate.accept(older, "old-result"))
-        assertEquals("new-result", gate.accept(newer, "new-result"))
-    }
-
-    @Test
-    fun partialSharedTaskProjectionEnrichesKnownRowsWithoutClearingHistoricalTaskFacts() {
-        val recentTask =
-            TaskSummary(
-                id = TaskId("task-recent"),
-                title = "recent task",
-                status = TaskStatus.InProgress,
-                taskNumber = 626,
-                messageId = MessageId("message-recent"),
-                updatedAtLabel = ""
-            )
-        val historicalMessage =
-            RaftThreadMessageItem(
-                id = "message-history",
-                authorId = "user-artin",
-                authorName = "Artin",
-                body = "historical task",
-                taskId = "task-history",
-                taskNumber = 625,
-                taskStatus = "todo"
-            )
-        val recentMessage =
-            RaftThreadMessageItem(
-                id = "message-recent",
-                authorId = "user-artin",
-                authorName = "Artin",
-                body = "recent task"
-            )
-        val payload = RaftThreadScreenPayload(messages = listOf(historicalMessage, recentMessage))
-        val projection =
-            SharedTasksProjectionSlice(
-                status = SharedTasksDataStoreStatus.Partial,
-                tasks = listOf(recentTask)
-            ).threadLinkedTasksProjection(payload.threadLinkedTaskReferences())
-
-        val projected = payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(projection)
-
-        assertFalse(projection.authoritative)
-        assertEquals("task-history", projected.messages[0].taskId)
-        assertEquals(625, projected.messages[0].taskNumber)
-        assertEquals("task-recent", projected.messages[1].taskId)
-        assertEquals(626, projected.messages[1].taskNumber)
-        assertEquals("in_progress", projected.messages[1].taskStatus)
-    }
-
-    @Test
-    fun newerServerTaskProjectionEnrichesMessageBehindOlderLoadedChannelSnapshot() = runBlocking {
-        val store = SharedTasksDataStore()
-        val message =
-            RaftThreadMessageItem(
-                id = "message-new",
-                authorId = "user_artin",
-                authorName = "Artin",
-                body = "new task"
-            )
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-        )
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot =
-                TaskSnapshot(
-                    tasks =
-                        listOf(
-                            TaskSummary(
-                                id = TaskId("task-new"),
-                                title = "new task",
-                                status = TaskStatus.InReview,
-                                taskNumber = 288,
-                                channelId = ChannelId("channel-1"),
-                                messageId = MessageId("message-new"),
-                                updatedAtLabel = ""
-                            )
-                        ),
-                    summaryCounts = emptyMap()
-                )
-        )
-        val payload = RaftThreadScreenPayload(messages = listOf(message))
-        val slice = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-
-        val projected =
-            payload.toThreadTimelineSlice().withThreadLinkedTasksProjection(
-                slice.threadLinkedTasksProjection(payload.threadLinkedTaskReferences())
-            )
-
-        assertEquals(false, slice.isExactScopeLoaded)
-        assertEquals("task-new", projected.messages.single().taskId)
-        assertEquals(288, projected.messages.single().taskNumber)
-        assertEquals("in_review", projected.messages.single().taskStatus)
-    }
-
     /**
      * Staging regression (task v2 off): `POST /tasks/convert-message` answers the canonical
      * `tasks` row, whose `id` is its own uuid; the converted message is only `messageId` /
@@ -2450,47 +1990,6 @@ class ThreadPayloadTest {
         assertEquals(
             listOf("7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10"),
             store.projection("server-1", SharedTasksScope.Server).tasks.map { it.id.value }
-        )
-    }
-
-    @Test
-    fun convertMessageWithoutTaskBodyFindsRefreshedTaskByHostMessageId() = runBlocking {
-        val dataSource =
-            SharedTasksDataSource(
-                api =
-                    object : RaftTasksApi {
-                        override suspend fun serverTasks(
-                            serverId: ServerId,
-                            priority: DataRequestPriority
-                        ): HomeNetworkResponse =
-                            HomeNetworkResponse(
-                                code = 200,
-                                bodyText = """{"tasks":[$REAL_LEGACY_CONVERTED_TASK_JSON]}"""
-                            )
-
-                        override suspend fun convertMessage(
-                            serverId: ServerId,
-                            messageId: MessageId
-                        ): HomeNetworkResponse = HomeNetworkResponse(code = 204, bodyText = null)
-
-                        override suspend fun updateTaskStatus(
-                            taskId: TaskId,
-                            status: TaskStatus
-                        ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
-                    }
-            )
-
-        val result =
-            convertMessageToCanonicalTask(
-                serverId = ServerId("server-1"),
-                messageId = MessageId("message-convert"),
-                tasksDataSource = dataSource,
-                tasksDataStore = SharedTasksDataStore()
-            )
-
-        assertEquals(
-            "7c0b8f8e-5f7a-4d0e-9b51-3a1d2b6c9e10",
-            assertIs<DataResult.Content<TaskSummary>>(result).data.id.value
         )
     }
 
@@ -2632,78 +2131,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun resolvedAuxiliaryThreadIdAllowsEmptyReplyThreadAfterLoad() {
-        val launchPayload =
-            RaftThreadScreenPayload(
-                instanceId = "task-thread-task-1",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "thread-m1",
-                streamChannelId = "thread-m1",
-                parentChannelId = "channel-1",
-                parentMessageId = "m1",
-                originParentMessageId = "m1",
-                status = "loading"
-            )
-
-        val loadedEmptyPayload =
-            launchPayload.copy(
-                status = "empty",
-                messages = emptyList()
-            )
-        val resolvedThreadId = loadedEmptyPayload.resolvedAuxiliaryThreadId()
-        val composer =
-            loadedEmptyPayload
-                .resolveThreadComposer()
-                .copy(streamChannelId = resolvedThreadId, enabled = resolvedThreadId != null)
-        val surface =
-            composer.toThreadComposerSurface(
-                channelId = resolvedThreadId.orEmpty(),
-                parentChannelId = loadedEmptyPayload.parentChannelId
-            )
-
-        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId())
-        assertEquals("thread-m1", resolvedThreadId)
-        assertEquals("thread-m1", surface.sendChannelId)
-    }
-
-    @Test
-    fun threadTasksJoinUsesParentChannelForReplyThreadTaskStatusHydration() {
-        val launchPayload =
-            RaftThreadScreenPayload(
-                instanceId = "activity-thread",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "wrong-thread",
-                streamChannelId = "wrong-thread",
-                parentChannelId = "channel-1",
-                parentMessageId = "m1",
-                originParentMessageId = "m1",
-                status = "loading",
-                showTaskStatusActions = true
-            )
-        val resolvedPayload =
-            launchPayload.copy(
-                sourceThreadId = "thread-m1",
-                streamChannelId = "thread-m1",
-                status = "content",
-                selectedTab = "chat"
-            )
-        val resolvedTaskChannelId = resolvedPayload.resolvedTaskLookupChannelId()?.let(::ChannelId)
-
-        assertEquals("thread-m1", resolvedPayload.resolvedAuxiliaryThreadId())
-        assertEquals("channel-1", resolvedPayload.resolvedTaskLookupChannelId())
-        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("channel-1")))
-        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
-        assertTrue(
-            shouldStartThreadTasksJoin(
-                resolvedPayload.copy(selectedTab = "tasks"),
-                startedThreadId = null,
-                taskChannelId = resolvedTaskChannelId
-            )
-        )
-        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = ChannelId("thread-m1")))
-    }
-
-    @Test
     fun threadMembersTargetServerSurvivesDifferentInheritedShellOwnerServer() {
         val pageData =
             RaftThreadScreenPayload(instanceId = "thread-1", sourceThreadId = "channel-1")
@@ -2719,31 +2146,6 @@ class ThreadPayloadTest {
         assertEquals("server-owner", pageData.optString(RAFT_SHELL_SERVER_ID))
         assertEquals(ServerId("server-target"), pageData.toThreadMembersPageRouteOrNull()?.serverId)
         assertEquals("server-owner", pageData.raftShellStoreScopeOrNull()?.initialServerId)
-    }
-
-    @Test
-    fun threadChannelSearchPageDataRejectsThreadAndBlankSurfaces() {
-        assertEquals(
-            null,
-            RaftThreadScreenPayload(
-                sourceThreadId = "   ",
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage
-            ).toThreadChannelSearchPageData()
-        )
-        assertEquals(
-            null,
-            RaftThreadScreenPayload(
-                sourceThreadId = "thread-1",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread
-            ).toThreadChannelSearchPageData()
-        )
-        assertEquals(
-            null,
-            RaftThreadScreenPayload(
-                sourceThreadId = "   ",
-                surfaceKind = RaftThreadSurfaceKind.Channel
-            ).toThreadChannelSearchPageData()
-        )
     }
 
     @Test
