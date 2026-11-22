@@ -2172,13 +2172,16 @@ internal fun rememberMemberDetailTimeContextProvider(
                 null
             }
         }
-    val fallbackProvider =
-        rememberLiveRaftTimeContext(
-            capabilities = fallbackCapabilities,
-            pageVisibleTick = pageVisibleTick,
-            active = needsFallback && pageVisible,
-        )
-    return pinnedProvider ?: if (inheritedMatchesRuntime) inherited!! else fallbackProvider
+    return when {
+        pinnedProvider != null -> pinnedProvider
+        inheritedMatchesRuntime -> inherited!!
+        else ->
+            rememberLiveRaftTimeContext(
+                capabilities = fallbackCapabilities,
+                pageVisibleTick = pageVisibleTick,
+                active = pageVisible,
+            )
+    }
 }
 
 internal fun RaftMemberDetailPayload.toRaftTimeContextOrNull(): RaftTimeContext? {

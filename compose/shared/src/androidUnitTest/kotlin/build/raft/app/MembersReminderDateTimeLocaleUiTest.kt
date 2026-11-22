@@ -8,8 +8,10 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
 import build.raft.app.base.BridgeModule
+import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IModuleCreator
 import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
@@ -46,6 +48,7 @@ class MembersReminderDateTimeLocaleUiTest {
     private val livePager =
         object : Pager() {}.apply {
             pagerId = "members-reminder-datetime-locale"
+            pageData = PageData(JSONObject())
             registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
         }
 
