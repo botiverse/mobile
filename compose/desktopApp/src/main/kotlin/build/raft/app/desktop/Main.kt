@@ -95,7 +95,12 @@ fun main(args: Array<String>) {
             val titleBar = remember { RaftDesktopTitleBar.install(window) }
             RaftDesktopTitleBarProvider(titleBar, fullscreen = windowState.placement == WindowPlacement.Fullscreen) { hitTest ->
                 Box(Modifier.fillMaxSize().then(hitTest)) {
-                    RaftDesktopHostLifecycle { RaftDesktopHost(navigator) }
+                    RaftDesktopHostLifecycle {
+                        RaftDesktopHost(
+                            navigator = navigator,
+                            fallbackWindowSize = { windowState.size },
+                        )
+                    }
                 }
             }
         }

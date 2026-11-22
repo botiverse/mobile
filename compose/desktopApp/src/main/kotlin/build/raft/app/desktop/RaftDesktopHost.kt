@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +23,8 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntSize
 import build.raft.app.RaftDesktopDownloadBar
 import build.raft.app.cmp.RaftCmpRoot
@@ -40,11 +43,16 @@ import build.raft.designsystem.components.LocalRaftWindowTitleBar
  * buttons step through the shell's history ([RaftDesktopNavigator.history]).
  */
 @Composable
-fun RaftDesktopHost(navigator: RaftDesktopNavigator) {
+fun RaftDesktopHost(
+    navigator: RaftDesktopNavigator,
+    fallbackWindowSize: () -> DpSize = { DpSize.Unspecified },
+) {
     // The window's one toast host, over every page of the stack (each page's RaftCmpRoot uses it).
     RaftCmpToastLayer {
         Box(Modifier.fillMaxSize()) {
-            RaftDesktopNavDisplay(navigator) { page -> RaftDesktopPageContent(navigator, page) }
+            RaftDesktopNavDisplay(navigator) { page ->
+                RaftDesktopPageContent(navigator, page, fallbackWindowSize)
+            }
             // Downloads outlive their file page: the window says how they are going.
             RaftDesktopDownloadBar(Modifier.align(Alignment.BottomEnd))
         }
@@ -85,7 +93,11 @@ internal fun RaftDesktopNavDisplay(
 }
 
 @Composable
-private fun RaftDesktopPageContent(navigator: RaftDesktopNavigator, page: RaftDesktopPage) {
+private fun RaftDesktopPageContent(
+    navigator: RaftDesktopNavigator,
+    page: RaftDesktopPage,
+    fallbackWindowSize: () -> DpSize,
+) {
     val transport = remember { RaftDesktopBridgeTransport(onClosePage = { navigator.close(page) }) }
     val host =
         remember {
@@ -96,16 +108,44 @@ private fun RaftDesktopPageContent(navigator: RaftDesktopNavigator, page: RaftDe
                 events = page.events,
             )
         }
-    // Window facts for the adaptive layout (rail + split panes at >= 768dp): the page's size,
-    // republished on every resize. A page under the top one is 0x0 and publishes nothing.
-    val publisher = remember { RaftDesktopAdaptivePanePublisher(page.events::send) }
+    // Window facts for the adaptive layout (rail + split panes at >= 744dp): seed synchronously
+    // when constructing the publisher before RaftCmpRoot creates its pager (replayed via sticky
+    // events ahead of Frame 1), then republish on every resize. A page under the top one is 0x0
+    // and publishes nothing. Logging is deferred to LaunchedEffect so composition stays I/O-free.
     val density = LocalDensity.current.density
-    var size by remember { mutableStateOf(IntSize.Zero) }
+    val windowInfo = LocalWindowInfo.current
+    val initialSize =
+        remember {
+            Snapshot.withoutReadObservation {
+                raftDesktopInitialAdaptivePaneSize(
+                    isTopPage = navigator.pages.lastOrNull() === page,
+                    containerSize = windowInfo.containerSize,
+                    fallbackWindowSize = fallbackWindowSize(),
+                    density = density,
+                )
+            }
+        }
+    var size by remember { mutableStateOf(initialSize) }
+    val (publisher, seededInitialPane) =
+        remember {
+            val instance = RaftDesktopAdaptivePanePublisher(page.events::sendSticky)
+            val seeded = instance.publish(initialSize.width, initialSize.height, density)
+            instance to seeded
+        }
+    LaunchedEffect(Unit) {
+        if (seededInitialPane) {
+            log(
+                "adaptive pane seed page=${page.args.pageName} widthPx=${initialSize.width} " +
+                    "heightPx=${initialSize.height} density=$density"
+            )
+        }
+    }
     // macOS: the title bar's band over the window's top as the page's top safe area (a page header
     // starts under the traffic lights; the wide top bar covers the band itself).
     val insetsPublisher = remember { RaftDesktopWindowInsetsPublisher(page.events::send) }
     val titleBarBand = LocalRaftWindowTitleBar.current.height
-    // After the first composition is applied, i.e. after the page subscribed to page.events.
+    // After the first composition is applied, i.e. after the page subscribed to page.events
+    // (and after RaftAppSafeArea registered its pager-event observer for window insets).
     LaunchedEffect(size, density, titleBarBand) {
         val resized = publisher.publish(size.width, size.height, density)
         // Again with each resize: a page part that observes the insets may have joined since.

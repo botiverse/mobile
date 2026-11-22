@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.RaftAdaptiveWorkspaceState
 import build.raft.app.WireThreadLaunchPayload
+import build.raft.app.raftAdaptiveDefaultLandingDropped
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,14 @@ internal data class SharedAdaptiveWorkspaceSession(
      * their kept widths. Null where the host has no pane grid row; [detailPaneWidthDp] decides then.
      */
     val sideThreadFolds: Boolean? = null,
+    /**
+     * task #243: server id for which wide Home default landing has settled (either installed a
+     * conversation or confirmed none was eligible). Kept alongside [workspace] so selection and
+     * landing-settled state advance atomically in one emission — preventing a transient frame where
+     * landing appears settled before [workspace].selection arrives — and cleared whenever authority
+     * changes or narrowing drops a default-landing selection.
+     */
+    val defaultLandingServerId: String? = null,
 )
 
 /** One adoption request the shell accepted and is waiting to confirm before acking. */
@@ -81,16 +90,34 @@ internal class SharedAdaptiveWorkspaceStore {
         transform: (SharedAdaptiveWorkspaceSession) -> SharedAdaptiveWorkspaceSession,
     ): SharedAdaptiveWorkspaceSession =
         synchronized(lock) {
-            transform(_state.value).let { next ->
+            val previous = _state.value
+            transform(previous).let { next ->
                 val history = next.detailHistory
                 val withHistory = if (history != null && history.owner != next.workspace?.selection) {
                     next.copy(detailHistory = null)
                 } else next
                 // task #36: a side thread belongs to the selection it opened beside.
                 val side = withHistory.sideThread
-                val normalized = if (side != null && side.owner != withHistory.workspace?.selection) {
+                val withSide = if (side != null && side.owner != withHistory.workspace?.selection) {
                     withHistory.copy(sideThread = null)
                 } else withHistory
+                // task #243: canonical store-level normalization for defaultLandingServerId and
+                // narrow-drop launchPayload clearing via [raftAdaptiveDefaultLandingDropped].
+                // SettingsHomePage Effect #1 computes the same predicate only to know whether to
+                // release its handoff lease; keeping the invariant here prevents caller drift.
+                val landingDropped = raftAdaptiveDefaultLandingDropped(previous.workspace, withSide.workspace)
+                val normalized =
+                    when {
+                        landingDropped ->
+                            withSide.copy(
+                                launchPayload = null,
+                                defaultLandingServerId = null,
+                            )
+                        withSide.defaultLandingServerId != null &&
+                            withSide.workspace?.serverId != withSide.defaultLandingServerId ->
+                            withSide.copy(defaultLandingServerId = null)
+                        else -> withSide
+                    }
                 normalized.also { _state.value = it }
             }
         }
