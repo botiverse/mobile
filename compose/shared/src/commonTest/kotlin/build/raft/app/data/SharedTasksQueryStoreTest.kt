@@ -443,4 +443,37 @@ class SharedTasksQueryStoreTest {
         runCurrent()
         assertEquals(listOf(DataRequestPriority.Visible, DataRequestPriority.Background), repository.pageCalls.drop(reads).map { it.priority })
     }
+
+    @Test
+    fun returningToTasksRefetchesAndShowsUpdatedCounts() = runTest {
+        var currentCounts = FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 2))
+        val repository =
+            FakeTasksQueryRepository(
+                counts = { ServerTaskCountsResult.Counts(currentCounts) },
+            )
+        val store =
+            SharedTasksQueryStore(
+                scope = backgroundScope,
+                repository = repository,
+                serverId = { ServerId(TasksQueryTestFixtures.ServerUuid) },
+                viewerId = { ViewerId },
+                nowEpochMillis = { 1_794_000_000_000L + testScheduler.currentTime },
+            )
+        store.start()
+        runCurrent()
+        store.onProjection(emptyList(), bulk = false)
+        assertEquals(2, store.state.value.scopeCounts()[TasksPageScope.All])
+
+        // Leave Tasks; server counts change while away.
+        store.setVisible(false)
+        currentCounts = FakeTasksQueryRepository.zeroCounts(mapOf(TaskStatus.Todo to 5))
+        store.onProjection(listOf(task("x", creator = person("someone-else"))), bulk = false)
+        advanceTimeBy(SharedTasksQueryStore.CountsRefreshMinIntervalMs + 1_000L)
+        runCurrent()
+
+        // Return to Tasks: counts re-fetch and show the updated numbers instead of stale ones.
+        store.setVisible(true)
+        runCurrent()
+        assertEquals(5, store.state.value.scopeCounts()[TasksPageScope.All])
+    }
 }

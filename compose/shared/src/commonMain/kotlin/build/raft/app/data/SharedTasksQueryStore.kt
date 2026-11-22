@@ -70,11 +70,22 @@ class SharedTasksQueryStore(
     val state: StateFlow<TasksQueryState> = mutableState.asStateFlow()
 
     private var startRequested = false
+    /** Whether the Tasks page is currently visible (web TasksPageShownContext). */
+    private var visible = true
+    private var pendingInitialApply = false
+    private var pendingQueryApplyWhileHidden = false
+    private var pendingRefreshWhileHidden = false
+    private var pendingCountsRefreshWhileHidden = false
+    private var countsLiveRevision = 0L
+    private val lastCountsReadAtByKey = mutableMapOf<String, Long>()
     private var queryGeneration = 0L
     private var laneSequence = 0L
     private val laneJobs = mutableMapOf<String, Job>()
     private val laneTokens = mutableMapOf<String, Long>()
     private val countJobs = mutableMapOf<String, Job>()
+    private val countJobRevisions = mutableMapOf<String, Long>()
+    /** Count keys whose live re-read waits for the active counts read of that key to land. */
+    private val queuedCountsRereads = mutableSetOf<String>()
     private var searchJob: Job? = null
     private var liveRefreshJob: Job? = null
     private var countsRefreshJob: Job? = null
@@ -82,6 +93,61 @@ class SharedTasksQueryStore(
     /** Lanes whose live re-read waits for the read in flight to land (one queued after it, never cancelling it). */
     private val queuedLiveRereads = mutableSetOf<String>()
     private var lastProjection: Map<String, TaskSummary>? = null
+
+    /**
+     * Tells the store whether the Tasks page is currently visible (web `TasksPageShownContext`).
+     * While hidden, live projection updates still patch rows in memory, but network re-reads for
+     * counts and lanes are deferred until the page becomes visible again.
+     */
+    fun setVisible(visible: Boolean) {
+        if (this.visible == visible) return
+        this.visible = visible
+        if (!visible) {
+            if (countsRefreshJob?.isActive == true) {
+                countsRefreshJob?.cancel()
+                pendingCountsRefreshWhileHidden = true
+            }
+            countsRefreshJob = null
+            if (liveRefreshJob?.isActive == true) {
+                liveRefreshJob?.cancel()
+            }
+            liveRefreshJob = null
+            if (searchJob?.isActive == true) {
+                searchJob?.cancel()
+                val draftSearch = state.value.searchDraft.trim()
+                if (draftSearch != state.value.query.search) {
+                    mutableState.value = state.value.copy(query = state.value.query.copy(search = draftSearch))
+                    pendingQueryApplyWhileHidden = true
+                }
+            }
+            searchJob = null
+            return
+        }
+        if (!state.value.started || state.value.unsupported) return
+        if (pendingInitialApply || pendingQueryApplyWhileHidden) {
+            pendingInitialApply = false
+            pendingQueryApplyWhileHidden = false
+            pendingRefreshWhileHidden = false
+            pendingCountsRefreshWhileHidden = false
+            pendingLiveLanes.clear()
+            applyQuery(state.value.query, force = true)
+            return
+        }
+        if (pendingRefreshWhileHidden) {
+            pendingRefreshWhileHidden = false
+            pendingCountsRefreshWhileHidden = false
+            pendingLiveLanes.clear()
+            refresh()
+            return
+        }
+        if (pendingCountsRefreshWhileHidden) {
+            pendingCountsRefreshWhileHidden = false
+            scheduleCountsRefresh(immediateIfEligible = true)
+        }
+        if (pendingLiveLanes.isNotEmpty()) {
+            scheduleLiveReread(emptySet())
+        }
+    }
 
     /**
      * Reads the current query (no-op once asked). The server and the reader are resolved again
@@ -94,6 +160,10 @@ class SharedTasksQueryStore(
         scope.launch {
             val viewer = viewerId()
             mutableState.value = state.value.copy(started = true, viewerId = viewer, doneSince = doneSinceNow())
+            if (!visible) {
+                pendingInitialApply = true
+                return@launch
+            }
             applyQuery(state.value.query, force = true)
         }
     }
@@ -155,8 +225,14 @@ class SharedTasksQueryStore(
             mutableState.value = current.copy(query = next)
             return
         }
+        if (!visible) {
+            mutableState.value = current.copy(query = next)
+            pendingQueryApplyWhileHidden = true
+            return
+        }
         queryGeneration++
         queuedLiveRereads.clear()
+        queuedCountsRereads.clear()
         laneJobs.values.forEach { it.cancel() }
         laneJobs.clear()
         laneTokens.clear()
@@ -195,11 +271,19 @@ class SharedTasksQueryStore(
     private fun refresh() {
         val current = state.value
         if (!current.started) return
+        if (!visible) {
+            pendingRefreshWhileHidden = true
+            return
+        }
+        countsRefreshJob?.cancel()
+        countsRefreshJob = null
+        pendingCountsRefreshWhileHidden = false
         // Started by you's day of Done moves with the clock: a new bound is a new query.
         val doneSince = doneSinceNow()
         if (doneSince != current.doneSince) {
             mutableState.value = current.copy(doneSince = doneSince, error = null, countsError = null)
             applyQuery(current.query, force = true)
+            loadCounts(DataRequestPriority.Visible, force = true)
             return
         }
         // A pulled refresh re-reads every lane's loaded rows and the counts; the rows stay meanwhile.
@@ -314,24 +398,56 @@ class SharedTasksQueryStore(
     }
 
     /** Reads every filter set the counts need that is not read (or every one, [force]). */
-    private fun loadCounts(priority: DataRequestPriority, force: Boolean = false) {
+    private fun loadCounts(
+        priority: DataRequestPriority,
+        force: Boolean = false,
+        minIntervalMs: Long = 0L,
+    ) {
         // A server without the board query answers every counts read 404 again: stop asking.
         if (state.value.unsupported) return
+        if (force && minIntervalMs == 0L) {
+            countsRefreshJob?.cancel()
+            countsRefreshJob = null
+            pendingCountsRefreshWhileHidden = false
+        }
         val needed = tasksQueryCountFilters(state.value.query, state.value.doneSince)
+        val now = nowEpochMillis()
+        var anyStillThrottled = false
         needed.forEach { filters ->
             val key = tasksCountsKey(filters)
             if (!force && state.value.counts.containsKey(key)) return@forEach
+            if (minIntervalMs > 0L) {
+                if (countJobRevisions[key] == countsLiveRevision && state.value.counts.containsKey(key)) {
+                    return@forEach
+                }
+                val wait =
+                    lastCountsReadAtByKey[key]
+                        ?.let { (it + minIntervalMs - now).coerceIn(0L, minIntervalMs) }
+                        ?: 0L
+                if (wait > 0L) {
+                    anyStillThrottled = true
+                    return@forEach
+                }
+            }
             if (countJobs[key]?.isActive == true) {
                 if (!force) return@forEach
-                countJobs[key]?.cancel()
+                // Never cancel an active counts read for the same filter set: share the in-flight
+                // response and queue at most one follow-up only if a live change arrived after it began.
+                if (countJobRevisions[key] != countsLiveRevision) {
+                    queuedCountsRereads += key
+                }
+                return@forEach
             }
-            countJobs[key] =
+            val readRevision = countsLiveRevision
+            countJobRevisions[key] = readRevision
+            val job =
                 scope.launch {
                     val server = serverId()
                     val result =
                         if (server == null) {
                             ServerTaskCountsResult.Error(code = "selected_server_missing")
                         } else {
+                            lastCountsReadAtByKey[key] = nowEpochMillis()
                             repository.loadServerTaskCounts(server, filters, priority)
                         }
                     when (result) {
@@ -344,6 +460,9 @@ class SharedTasksQueryStore(
                             }
                         }
                         is ServerTaskCountsResult.Error -> {
+                            if (countJobRevisions[key] == readRevision) {
+                                countJobRevisions.remove(key)
+                            }
                             // A server from before the board query (slock v1.21.63) has no counts route:
                             // the page goes back to the list the app filters itself.
                             val unsupported = result.code in TasksQueryUnsupportedCodes
@@ -357,6 +476,23 @@ class SharedTasksQueryStore(
                         }
                     }
                 }
+            countJobs[key] = job
+            job.invokeOnCompletion { onCountsReadEnded(key) }
+        }
+        if (anyStillThrottled && visible && !state.value.unsupported) {
+            scheduleCountsRefresh(immediateIfEligible = true)
+        }
+    }
+
+    private fun onCountsReadEnded(key: String) {
+        scope.launch {
+            if (!queuedCountsRereads.remove(key)) return@launch
+            if (state.value.unsupported) return@launch
+            if (!visible) {
+                pendingCountsRefreshWhileHidden = true
+                return@launch
+            }
+            scheduleCountsRefresh(immediateIfEligible = true)
         }
     }
 
@@ -429,8 +565,13 @@ class SharedTasksQueryStore(
         }
         val next = current.copy(tasks = tasks, laneStates = laneStates)
         if (next != current) mutableState.value = next
-        if (changed.isNotEmpty() || left.isNotEmpty()) scheduleCountsRefresh()
-        if (reread.isNotEmpty()) scheduleLiveReread(reread)
+        if (changed.isNotEmpty() || left.isNotEmpty()) {
+            countsLiveRevision++
+            if (visible) scheduleCountsRefresh() else pendingCountsRefreshWhileHidden = true
+        }
+        if (reread.isNotEmpty()) {
+            if (visible) scheduleLiveReread(reread) else pendingLiveLanes += reread
+        }
     }
 
     /**
@@ -439,10 +580,11 @@ class SharedTasksQueryStore(
      */
     private fun scheduleLiveReread(keys: Set<String>) {
         pendingLiveLanes += keys
-        if (liveRefreshJob?.isActive == true) return
+        if (!visible || liveRefreshJob?.isActive == true) return
         liveRefreshJob =
             scope.launch {
                 delay(LiveRereadDelayMs)
+                if (!visible) return@launch
                 val pending = pendingLiveLanes.toSet()
                 pendingLiveLanes.clear()
                 state.value.lanes.filter { it.key in pending }.forEach { lane ->
@@ -469,17 +611,52 @@ class SharedTasksQueryStore(
         // Later, so a read that replaced this one (a pull, a query change) is the one waited for.
         scope.launch {
             if (!queuedLiveRereads.remove(key)) return@launch
+            if (!visible) {
+                pendingLiveLanes += key
+                return@launch
+            }
             state.value.lanes.firstOrNull { it.key == key }?.let(::requestLiveReread)
         }
     }
 
-    /** The counts after live changes, at most one read per [CountsRefreshDelayMs] (throttled). */
-    private fun scheduleCountsRefresh() {
+    /**
+     * The counts after live changes: only while visible, throttled to at least [CountsRefreshDelayMs]
+     * after the change and at least [CountsRefreshMinIntervalMs] since the last counts read began
+     * (matching web `COUNTS_REFRESH_MIN_INTERVAL_MS`).
+     */
+    private fun scheduleCountsRefresh(immediateIfEligible: Boolean = false) {
+        if (state.value.unsupported) return
+        if (!visible) {
+            pendingCountsRefreshWhileHidden = true
+            return
+        }
         if (countsRefreshJob?.isActive == true) return
+        val now = nowEpochMillis()
+        val dirtyKeys =
+            tasksQueryCountFilters(state.value.query, state.value.doneSince)
+                .map { tasksCountsKey(it) }
+                .filter { key -> countJobRevisions[key] != countsLiveRevision || !state.value.counts.containsKey(key) }
+        if (dirtyKeys.isEmpty()) return
+        val minIntervalWait =
+            dirtyKeys
+                .map { key ->
+                    lastCountsReadAtByKey[key]
+                        ?.let { (it + CountsRefreshMinIntervalMs - now).coerceIn(0L, CountsRefreshMinIntervalMs) }
+                        ?: 0L
+                }
+                .minOrNull()
+                ?: 0L
+        val delayMs = if (immediateIfEligible) minIntervalWait else maxOf(CountsRefreshDelayMs, minIntervalWait)
         countsRefreshJob =
             scope.launch {
-                delay(CountsRefreshDelayMs)
-                loadCounts(DataRequestPriority.Background, force = true)
+                if (delayMs > 0L) delay(delayMs)
+                countsRefreshJob = null
+                if (state.value.unsupported) return@launch
+                if (!visible) {
+                    pendingCountsRefreshWhileHidden = true
+                    return@launch
+                }
+                loadCounts(DataRequestPriority.Background, force = true, minIntervalMs = CountsRefreshMinIntervalMs)
             }
     }
 
@@ -493,6 +670,8 @@ class SharedTasksQueryStore(
         const val LiveRereadDelayMs: Long = 1_000L
         /** After a live change, how long before the counts are read again. */
         const val CountsRefreshDelayMs: Long = 2_000L
+        /** Minimum interval between background counts reads (web COUNTS_REFRESH_MIN_INTERVAL_MS). */
+        const val CountsRefreshMinIntervalMs: Long = 10_000L
         /** More changes than this at once is a list read landing, not a live change. */
         const val LiveBatchLimit: Int = 20
         /** Started by you keeps a task done this recently (web RECENT_DONE_MS). */
