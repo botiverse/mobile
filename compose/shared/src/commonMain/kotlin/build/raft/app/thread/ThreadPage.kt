@@ -44,7 +44,10 @@ import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.NetworkRaftTasksApi
 import build.raft.app.data.NetworkRaftThreadApi
+import build.raft.app.data.RaftQuotedPermalinkContextRead
+import build.raft.app.data.RaftQuotedPermalinkHistoryLimitedMemo
 import build.raft.app.data.RaftThreadApiClient
+import build.raft.app.data.quotedPermalinkViewer
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealSettingsRepository
@@ -818,19 +821,32 @@ private fun ThreadPageScreen(
             )
         }
     val quotedPermalinkLoader: ThreadQuotedPermalinkLoader? =
-        remember(networkClient) {
+        remember(networkClient, authStore) {
             val client = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
             val loader: ThreadQuotedPermalinkLoader = { target ->
-                when (val result = client.messageContext(target.messageId.value, target.channelId.value)) {
-                    is ThreadApiResult.Success -> {
-                        val payload = result.data
-                        val targetId = payload.targetMessageId?.value ?: target.messageId.value
+                val messageId = target.messageId.value
+                val channelId = target.channelId.value
+                // #proj-mobile:#274: a quote behind the Free plan's history window is answered from
+                // the memo, not asked again each time its row comes on screen.
+                val read =
+                    RaftQuotedPermalinkHistoryLimitedMemo.App.read(
+                        viewer = authStore.readSession()?.quotedPermalinkViewer(),
+                        channelId = channelId,
+                        messageId = messageId,
+                    ) { client.messageContext(messageId, channelId) }
+                when (read) {
+                    is RaftQuotedPermalinkContextRead.Page -> {
+                        val payload = read.payload
+                        val targetId = payload.targetMessageId?.value ?: messageId
                         payload.messages
                             .firstOrNull { it.id.value == targetId }
                             ?.toRaftThreadMessageItem(null)
                             ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
                     }
-                    is ThreadApiResult.Failure -> null
+                    // Behind the history window, as any other miss: no quote card, the link says
+                    // it is unavailable (the app has no older-quote card yet).
+                    is RaftQuotedPermalinkContextRead.HistoryLimited,
+                    RaftQuotedPermalinkContextRead.Unavailable -> null
                 }
             }
             loader
