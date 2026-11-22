@@ -121,12 +121,29 @@ private const val SVG_DATA_URI_MIME = "image/svg+xml"
  * avatar path, otherwise the fragment-less URL), without the owner domain — the adapter has no
  * owner context for a bare URL (accepted trade-off in the design, §5).
  */
+internal const val RaftAttachmentImageCacheKeyPrefix = "raft-img-v1:attachment:"
+
+/**
+ * #proj-mobile:#293: stable Coil memory/disk cache key for an original attachment image, keyed by
+ * attachment id rather than its 5-minute presigned R2 URL. An attachment's bytes are immutable once
+ * uploaded, so viewing it in the message list and later opening full-screen preview (even after
+ * re-signing) hits the exact same cache entry.
+ */
+internal fun raftAttachmentOriginalImageCacheKey(attachmentId: String?): String? {
+    val clean = attachmentId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return RaftAttachmentImageCacheKeyPrefix + clean
+}
+
+internal fun raftImageDiskKeyIsImmutable(diskKey: String): Boolean =
+    diskKey.startsWith(RaftAttachmentImageCacheKeyPrefix)
+
 internal fun raftNetworkImageCacheKey(url: String): String {
-    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(url) }.getOrNull()
+    val canonical = raftRewriteRetiredContentHost(url.trim())
+    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(canonical) }.getOrNull()
     return if (identity != null) {
         "raft-img-v1:url:${identity.kind.storageValue}:${identity.fingerprint}"
     } else {
-        "raft-img-v1:url-raw:${url.trim().substringBefore('#')}"
+        "raft-img-v1:url-raw:${canonical.substringBefore('#')}"
     }
 }
 

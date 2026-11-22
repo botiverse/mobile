@@ -3,6 +3,8 @@ package build.raft.app.image
 import build.raft.app.resources.Res
 import build.raft.app.resources.RaftComposeResourcesAssetPrefix
 import build.raft.app.data.RaftAvatarMountedRenderDescriptor
+import build.raft.app.network.SharedBinaryConditionalBytesResult
+import build.raft.app.network.SharedBinaryConditionalValidators
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.binaryDownloadUrlDiagnostics
@@ -113,7 +115,7 @@ private class RaftNetworkImageFetcher(
     override suspend fun fetch(): FetchResult {
         val diskKey = options.diskCacheKey ?: data.cacheKey
         val diskCache = imageLoader.diskCache
-        val expires = raftNetworkImageExpires(data.url)
+        val expires = !raftImageDiskKeyIsImmutable(diskKey) && raftNetworkImageExpires(data.url)
         var stale: Pair<DiskCache.Snapshot, RaftImageDiskMetadata>? = null
         if (diskCache != null && options.diskCachePolicy.readEnabled) {
             val snapshot = runCatching { diskCache.openSnapshot(diskKey) }.getOrNull()
@@ -129,16 +131,73 @@ private class RaftNetworkImageFetcher(
                         dataSource = DataSource.DISK,
                     )
                 }
-                // Expired external entry: fetch again, keep it only as the offline fallback.
+                // Expired or no-cache entry: revalidate (with ETag/Last-Modified when present)
+                // and keep the cached bytes as the 304 / offline fallback.
                 stale = snapshot to metadata
             }
         }
+        val validators =
+            stale?.second?.let { meta ->
+                if (meta.eTag != null || meta.lastModified != null) {
+                    SharedBinaryConditionalValidators(eTag = meta.eTag, lastModified = meta.lastModified)
+                } else {
+                    null
+                }
+            }
         val downloaded =
             try {
                 if (!options.networkCachePolicy.readEnabled) {
                     error("Network reads disabled for this request")
                 }
-                RaftImageByteFlights.fetch(data.cacheKey, data.url)
+                if (validators != null) {
+                    when (val conditional = SharedBinaryDownloader.fetchBytesConditional(data.url, validators)) {
+                        is SharedBinaryConditionalBytesResult.NotModified -> {
+                            val currentStale = stale
+                            if (currentStale != null && diskCache != null) {
+                                val cachedBytes =
+                                    runCatching {
+                                        diskCache.fileSystem.read(currentStale.first.data) { readByteArray() }
+                                    }.getOrNull()
+                                currentStale.first.close()
+                                stale = null
+                                if (cachedBytes != null) {
+                                    val refreshed =
+                                        currentStale.second.refreshedOnNotModified(
+                                            cacheControlHeader = conditional.cacheControl,
+                                            eTag = conditional.eTag,
+                                            lastModified = conditional.lastModified,
+                                            ageSeconds = conditional.ageSeconds,
+                                            nowEpochMillis = raftImageNowEpochMillis(),
+                                        )
+                                    val noStore = parseRaftHttpCacheControl(conditional.cacheControl).noStore
+                                    if (noStore) {
+                                        runCatching { diskCache.remove(diskKey) }
+                                    } else if (options.diskCachePolicy.writeEnabled) {
+                                        val editor = runCatching { diskCache.openEditor(diskKey) }.getOrNull()
+                                        if (editor != null) {
+                                            runCatching {
+                                                diskCache.fileSystem.write(editor.data) { write(cachedBytes) }
+                                                diskCache.fileSystem.write(editor.metadata) { writeUtf8(refreshed.encode()) }
+                                                editor.commit()
+                                            }.onFailure {
+                                                runCatching { editor.abort() }
+                                            }
+                                        }
+                                    }
+                                    return SourceFetchResult(
+                                        source = cachedBytes.toImageSource(options),
+                                        mimeType = refreshed.mimeType ?: raftSniffImageMimeType(cachedBytes),
+                                        dataSource = DataSource.DISK,
+                                    )
+                                }
+                            }
+                            RaftImageByteFlights.fetch(diskKey, data.url)
+                        }
+                        is SharedBinaryConditionalBytesResult.Modified -> conditional.downloaded
+                    }
+                } else {
+                    RaftImageByteFlights.fetch(diskKey, data.url)
+                }
             } catch (failure: Throwable) {
                 val fallback = stale
                 if (failure is CancellationException || fallback == null || diskCache == null) {
@@ -165,17 +224,28 @@ private class RaftNetworkImageFetcher(
                 "source=network status=non_image_body bytes=${downloaded.bytes.size} ${binaryDownloadUrlDiagnostics(data.url)}"
             )
         } else if (diskCache != null && options.diskCachePolicy.writeEnabled) {
-            val editor = runCatching { diskCache.openEditor(diskKey) }.getOrNull()
-            if (editor != null) {
-                runCatching {
-                    diskCache.fileSystem.write(editor.data) { write(downloaded.bytes) }
-                    diskCache.fileSystem.write(editor.metadata) {
-                        writeUtf8(RaftImageDiskMetadata(mimeType, raftImageNowEpochMillis()).encode())
+            val diskMetadata =
+                raftImageDiskMetadataFromHttpHeaders(
+                    mimeType = mimeType,
+                    cacheControlHeader = downloaded.cacheControl,
+                    eTag = downloaded.eTag,
+                    lastModified = downloaded.lastModified,
+                    ageSeconds = downloaded.ageSeconds,
+                    nowEpochMillis = raftImageNowEpochMillis(),
+                )
+            if (diskMetadata != null) {
+                val editor = runCatching { diskCache.openEditor(diskKey) }.getOrNull()
+                if (editor != null) {
+                    runCatching {
+                        diskCache.fileSystem.write(editor.data) { write(downloaded.bytes) }
+                        diskCache.fileSystem.write(editor.metadata) { writeUtf8(diskMetadata.encode()) }
+                        editor.commit()
+                    }.onFailure {
+                        runCatching { editor.abort() }
                     }
-                    editor.commit()
-                }.onFailure {
-                    runCatching { editor.abort() }
                 }
+            } else {
+                runCatching { diskCache.remove(diskKey) }
             }
         }
         return SourceFetchResult(
@@ -224,7 +294,13 @@ internal class RaftImageByteFlightCache(
                         synchronized(lock) {
                             if (flights[key] !== started) return@synchronized
                             val bytes = if (failure == null) started.deferred.getCompleted() else null
-                            if (bytes == null || bytes.bytes.size > maxRetainedBytes) {
+                            val cacheControl = bytes?.cacheControl?.let(::parseRaftHttpCacheControl)
+                            if (
+                                bytes == null ||
+                                bytes.bytes.size > maxRetainedBytes ||
+                                cacheControl?.noStore == true ||
+                                cacheControl?.noCache == true
+                            ) {
                                 flights.remove(key)
                             } else {
                                 started.completedAtMillis = nowMillis()

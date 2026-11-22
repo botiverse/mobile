@@ -309,7 +309,7 @@ private fun SettingsServerProfileAvatar(name: String, serverId: String?, avatarU
                         cacheServerId = cleanServerId,
                         serverDiagnosticsId = cleanServerId,
                         fallback = { SettingsServerProfileAvatarInitial(initial) },
-                        placeholder = { SettingsServerProfileAvatarInitial(initial) }
+                        placeholder = {}
                     )
                 }
             }

@@ -31,17 +31,34 @@ internal class RaftMemberAvatarResolver(
      * read [jointActor] for senders from the other server.
      */
     val jointSurface: Boolean = false,
+    private val currentAgentPending: (String?, Boolean) -> Boolean = { _, _ -> false },
+    private val agentPendingFlow: (String?, Boolean) -> Flow<Boolean> = { _, _ -> flowOf(false) },
 ) {
     fun current(memberId: String?): String? = currentAvatar(memberId)
 
     operator fun invoke(memberId: String?): Flow<String?> = avatarFlow(memberId)
+
+    /** True while [memberId]'s agent avatar is not yet known and not yet confirmed absent. */
+    fun isAgentAvatarPending(memberId: String?, joint: Boolean = jointSurface): Boolean =
+        currentAgentPending(memberId, joint)
+
+    fun agentAvatarPendingFlow(memberId: String?, joint: Boolean = jointSurface): Flow<Boolean> =
+        agentPendingFlow(memberId, joint)
 
     /** This resolver for rows whose surface is ([joint]) or is not a joint channel. */
     fun forJointSurface(joint: Boolean): RaftMemberAvatarResolver =
         if (joint == jointSurface) {
             this
         } else {
-            RaftMemberAvatarResolver(currentAvatar, avatarFlow, currentJointActorRead, jointActorRead, joint)
+            RaftMemberAvatarResolver(
+                currentAvatar = currentAvatar,
+                avatarFlow = avatarFlow,
+                currentJointActorRead = currentJointActorRead,
+                jointActorRead = jointActorRead,
+                jointSurface = joint,
+                currentAgentPending = currentAgentPending,
+                agentPendingFlow = agentPendingFlow,
+            )
         }
 
     /**
@@ -193,7 +210,56 @@ internal fun raftMemberAvatarResolver(
                     }
                     .distinctUntilChanged()
             }
-        }
+        },
+        currentAgentPending = { memberId, joint ->
+            val cleanId = memberId?.trim()?.takeIf { it.isNotEmpty() }
+            if (serverMembersStore == null || cleanId == null) {
+                false
+            } else {
+                val resolution = serverMembersStore.currentAvatarMemberProfileResolution(cleanServerId, cleanId)
+                val knownAvatar =
+                    resolution.authoritative ||
+                        resolution.resolvedAvatarWireValue() != null ||
+                        serverMembersStore.durableMemberAvatarWireValue(cleanServerId, cleanId) != null ||
+                        jointActors?.current(cleanServerId, cleanId, kind = null) != null
+                if (knownAvatar) {
+                    false
+                } else {
+                    val rosterSettled = serverMembersStore.isServerRosterSettled(cleanServerId)
+                    val jointSettled = !joint || (jointActors?.isSettled(cleanServerId, MemberKind.Agent, cleanId) ?: true)
+                    !(rosterSettled && jointSettled)
+                }
+            }
+        },
+        agentPendingFlow = { memberId, joint ->
+            val cleanId = memberId?.trim()?.takeIf { it.isNotEmpty() }
+            if (serverMembersStore == null || cleanId == null) {
+                flowOf(false)
+            } else {
+                val resolutionFlow = serverMembersStore.memberAvatarProfileResolutionFlow(cleanServerId, cleanId)
+                val rosterSettledFlow = serverMembersStore.serverRosterSettledFlow(cleanServerId)
+                val cachedJointFlow =
+                    jointActors?.cachedActorFlow(cleanServerId, cleanId, kind = null) ?: flowOf(null)
+                val jointSettledFlow =
+                    if (joint && jointActors != null) {
+                        jointActors.settledFlow(cleanServerId, MemberKind.Agent, cleanId)
+                    } else {
+                        flowOf(true)
+                    }
+                combine(resolutionFlow, rosterSettledFlow, cachedJointFlow, jointSettledFlow) {
+                    resolution,
+                    rosterSettled,
+                    cachedJoint,
+                    jointSettled ->
+                    val knownAvatar =
+                        resolution.authoritative ||
+                            resolution.resolvedAvatarWireValue() != null ||
+                            serverMembersStore.durableMemberAvatarWireValue(cleanServerId, cleanId) != null ||
+                            cachedJoint != null
+                    !knownAvatar && !(rosterSettled && jointSettled)
+                }.distinctUntilChanged()
+            }
+        },
     )
 }
 
@@ -249,5 +315,25 @@ internal fun rememberRaftMemberAvatarWireValue(
         val avatarFlow = remember { memberAvatarResolver(memberId) }
         val initialAvatarWireValue = remember { memberAvatarResolver.current(memberId) }
         avatarFlow.collectAsState(initialAvatarWireValue).value
+    }
+}
+
+/**
+ * #proj-mobile:#290: true while an agent's avatar is neither cached/resolved nor confirmed absent
+ * by the server roster / joint-actor directory. Always false for humans and empty resolvers.
+ */
+@Composable
+internal fun rememberRaftMemberAvatarPending(
+    memberAvatarResolver: RaftMemberAvatarResolver,
+    kind: MemberKind?,
+    memberId: String?,
+    jointSurface: Boolean = memberAvatarResolver.jointSurface,
+): Boolean {
+    if (kind != MemberKind.Agent) return false
+    val cleanId = memberId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return key(memberAvatarResolver, cleanId, jointSurface) {
+        val pendingFlow = remember { memberAvatarResolver.agentAvatarPendingFlow(cleanId, jointSurface) }
+        val initialPending = remember { memberAvatarResolver.isAgentAvatarPending(cleanId, jointSurface) }
+        pendingFlow.collectAsState(initialPending).value
     }
 }

@@ -167,6 +167,8 @@ internal fun RaftTopPageHeader(
     nativeOnTitleClick: (() -> Unit)? = null,
     // A tap on the bar's subtitle line (a reply thread's conversation name: View in Channel).
     nativeOnSubtitleClick: (() -> Unit)? = null,
+    // Keep prefilled bar actions while a temporary LoadingShell stands in ahead of FeatureSurfaces.
+    nativePreservePrefilledActions: Boolean = false,
     // PROTOTYPE: the head's Back when it draws it itself (in [titleLeadingContent]).
     nativeOnBack: (() -> Unit)? = null,
 ) {
@@ -195,6 +197,7 @@ internal fun RaftTopPageHeader(
             onTitleClick = onTitleClick ?: nativeOnTitleClick,
             onSubtitleClick = nativeOnSubtitleClick,
             titleImage = nativeTitleImage,
+            preservePrefilledActions = nativePreservePrefilledActions,
         )
     ) {
         RaftNativeNavBarHeadSpacer(

@@ -11,8 +11,6 @@ components.home.titlebar.states
 components.members.agent-detail.profile
 components.members.agent-lifecycle-actions
 components.members.avatar-management
-components.members.create-agent.claude-custom-provider-dialog
-components.members.create-agent.claude-dialog
 components.members.create-agent.dialog
 components.members.create-agent.dialog-empty
 components.members.create-agent.dialog-error
@@ -77,6 +75,9 @@ components.ui.slug-input.states
 components.ui.surface-list-item.states
 components.ui.textarea.states
 components.ui.typography.specimen
+screens.agent-migration-log.chart.agent.phone
+screens.agent-migration-log.chart.phone
+screens.agent-migration-log.table.phone
 screens.home.channel-list
 screens.home.channel-list.dark
 screens.home.loading

@@ -15,6 +15,7 @@ internal interface AgentMigrationDataSource {
     suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<AgentMigrationStartResult>
     suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun confirmHostedMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
+    suspend fun dismissMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun billingPlan(): DataResult<RaftBillingPlanSnapshot>
 }
 
@@ -40,6 +41,8 @@ internal data class AgentMigrationState(
     val cancelError: AgentMigrationActionError? = null,
     val confirming: Boolean = false,
     val confirmError: AgentMigrationActionError? = null,
+    val dismissing: Boolean = false,
+    val dismissError: AgentMigrationActionError? = null,
     val effect: AgentMigrationEffect? = null,
     /** Advisory plan for the Pro gate; null when unknown (not readable by this viewer). */
     val billingPlan: String? = null,
@@ -56,6 +59,8 @@ internal sealed interface AgentMigrationIntent {
     data class Start(val target: AgentMigrationTarget) : AgentMigrationIntent
     data object Cancel : AgentMigrationIntent
     data object ConfirmHosted : AgentMigrationIntent
+    /** Close the failed last move's card. */
+    data object Dismiss : AgentMigrationIntent
     data object ClearStartError : AgentMigrationIntent
     data object ClearCancelError : AgentMigrationIntent
     data object ConsumeEffect : AgentMigrationIntent
@@ -101,6 +106,7 @@ internal class AgentMigrationStore(
             is AgentMigrationIntent.Start -> start(intent.target)
             AgentMigrationIntent.Cancel -> cancel()
             AgentMigrationIntent.ConfirmHosted -> confirmHosted()
+            AgentMigrationIntent.Dismiss -> dismissFailed()
             AgentMigrationIntent.ClearStartError -> update { it.copy(startError = null) }
             AgentMigrationIntent.ClearCancelError -> update { it.copy(cancelError = null) }
             AgentMigrationIntent.ConsumeEffect -> update { it.copy(effect = null) }
@@ -292,6 +298,29 @@ internal class AgentMigrationStore(
                 it.copy(
                     confirming = false,
                     confirmError = if (result is DataResult.Content) null else result.toMigrationActionError()
+                )
+            }
+            refresh(DataRequestPriority.Foreground)
+        }
+    }
+
+    /**
+     * The ref and revision the card shows go with the request, so a stale tap cannot close a newer
+     * migration; whatever it answers, what is current is read again.
+     */
+    private fun dismissFailed() {
+        val current = mutableState.value
+        val agentId = current.agentId ?: return
+        val notice = current.notice ?: return
+        if (current.dismissing || notice.dismissedAt != null || notice.endedComputerMigration() != AgentMigrationEnding.Failed) return
+        update { it.copy(dismissing = true, dismissError = null) }
+        scope.launch {
+            val result = guarded { dataSource.dismissMigration(agentId, notice.migrationRef, notice.revision) }
+            if (mutableState.value.agentId != agentId) return@launch
+            update {
+                it.copy(
+                    dismissing = false,
+                    dismissError = if (result is DataResult.Content) null else result.toMigrationActionError()
                 )
             }
             refresh(DataRequestPriority.Foreground)

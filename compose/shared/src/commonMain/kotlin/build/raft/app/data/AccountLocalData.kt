@@ -40,6 +40,7 @@ internal class AccountLocalData(
     private val notificationPreferences: SettingsServerNotificationLastKnownStore,
     private val messageEngine: CanonicalMessageV2GenerationEngine,
     private val memberAvatarRefStore: RaftMemberAvatarRefStore,
+    private val jointActorRefStore: RaftJointActorRefStore? = null,
     private val jointConnectionsCache: () -> RaftJointConnectionsCache,
     private val agentDetailCache: RaftAgentDetailCache,
     private val replyWindowCache: RaftThreadReplyWindowCache?,
@@ -54,10 +55,12 @@ internal class AccountLocalData(
         homeSavedStateCache.clear()
         offlineResourceCache.fenceInFlightWrites()
         memberAvatarRefStore.clearAll()
+        jointActorRefStore?.clearAll()
         jointConnectionsCache().clearMemory()
         agentDetailCache.clearMemory()
         replyWindowCache?.clearMemory()
         threadPayloadStore.clearAll()
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
         clearViewerMemoryCaches()
         // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
         RaftAgentLounges.clear()
@@ -69,7 +72,9 @@ internal class AccountLocalData(
      * server's `sync-core.messages.v2` partition under the lost grant.
      */
     suspend fun onServerAccessLost(serverId: String, accountId: String?, messagePartition: DurablePartitionKey) {
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clearServer(serverId, accountId)
         offlineResourceCache.wipeServer(serverId, accountId)
+        jointActorRefStore?.forgetServer(serverId)
         RaftAgentLounges.forgetServer(serverId)
         homeRowHints.dropServer(serverId, accountId)
         activityFirstPages.dropServer(serverId, accountId)
