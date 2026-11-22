@@ -2752,6 +2752,20 @@ private fun SharedThreadRouteContentContent(
             }
         }
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
+        val loadingLounge =
+            mutePageLounge?.let { lounge ->
+                ThreadPageLounge(
+                    lounge = lounge,
+                    agentAvatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, lounge.agentId),
+                    cacheServerId = headerProjectionServerId?.value,
+                    canUnarchive = false,
+                    unarchiving = false,
+                    onUnarchive = {},
+                    onOpenAgentProfile = null,
+                    onOpenDmAgentLounge = null,
+                    dmLoungeOpening = false,
+                )
+            }
         ThreadDeferredLoadingRouteContent(
             scaffold = movableThreadRouteScaffold,
             payload = payload,
@@ -2759,6 +2773,7 @@ private fun SharedThreadRouteContentContent(
             memberAvatarResolver = memberAvatarResolver,
             onBack = onBack,
             showLoadingIndicator = timelineSlice.loadingIndicatorRevealed,
+            lounge = loadingLounge,
         )
         return
     }
