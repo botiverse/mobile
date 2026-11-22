@@ -33,6 +33,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.AgentMigrationLogEntry
 import build.raft.app.data.AgentMigrationLogFilters
 import build.raft.app.data.AgentMigrationLogLoad
@@ -41,6 +42,7 @@ import build.raft.app.data.AgentMigrationLogOutcome
 import build.raft.app.data.agentMigrationLogAgentMoves
 import build.raft.app.data.agentMigrationLogNodes
 import build.raft.app.data.agentMigrationLogStats
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.searchAgentMigrationLog
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
