@@ -271,27 +271,26 @@ class TaskPendingConversationRouteTest {
 
         // Once handing off, a concurrent task:updated arrival does not trigger a second replace.
         val arrived = pending.copy(conversationChannelId = ChannelId("conv-local"), conversationAnchored = true)
-        assertFalse(controller.claimConversationArrived(arrived, taskV2Enabled = true))
+        assertFalse(controller.claimConversationArrived(arrived))
 
         // On a fresh controller, task:updated claims arrival once and refuses duplicates; resetHandOff recovers.
         val arrivalController = TaskPendingPageController(TaskPendingDraftStore())
-        assertFalse(arrivalController.claimConversationArrived(pending, taskV2Enabled = true))
-        assertTrue(arrivalController.claimConversationArrived(arrived, taskV2Enabled = true))
-        assertFalse(arrivalController.claimConversationArrived(arrived, taskV2Enabled = true))
+        assertFalse(arrivalController.claimConversationArrived(pending))
+        assertTrue(arrivalController.claimConversationArrived(arrived))
+        assertFalse(arrivalController.claimConversationArrived(arrived))
         arrivalController.resetHandOff()
         assertFalse(arrivalController.handingOff)
-        assertTrue(arrivalController.claimConversationArrived(arrived, taskV2Enabled = true))
+        assertTrue(arrivalController.claimConversationArrived(arrived))
 
         // Pre-v2 task (conversationAnchored = false) receiving conversationChannelId resolves to Conversation,
-        // never falling back to HostThread when resolveTaskOpenConversationChannelId is called unconditionally.
+        // and resolveTaskOpenConversationChannelId names it, so the page opens that conversation.
         val preV2Arrived = pending.copy(conversationChannelId = ChannelId("conv-pre-v2"), conversationAnchored = false)
-        assertEquals(TaskOpenTarget.Conversation(ChannelId("conv-pre-v2")), preV2Arrived.taskOpenTarget(taskV2Enabled = true))
+        assertEquals(TaskOpenTarget.Conversation(ChannelId("conv-pre-v2")), preV2Arrived.taskOpenTarget())
         val resolvedPreV2Id =
             resolveTaskOpenConversationChannelId(
                 task = preV2Arrived,
                 serverId = "server-1",
                 tasksDataSource = dataSource,
-                taskV2Enabled = true,
                 log = {},
             )
         assertEquals(ChannelId("conv-pre-v2"), resolvedPreV2Id)

@@ -49,7 +49,6 @@ import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.canWriteTasksInChannel
@@ -309,9 +308,9 @@ internal class TaskPendingPageController(
      * and this page should replace itself with [THREAD_PAGE]. Marks [handingOff] to ensure a single
      * replacement.
      */
-    fun claimConversationArrived(task: TaskSummary, taskV2Enabled: Boolean): Boolean {
+    fun claimConversationArrived(task: TaskSummary): Boolean {
         if (sending || handingOff) return false
-        if (task.taskOpenSurface(taskV2Enabled) != null) return false
+        if (task.taskOpenSurface() != null) return false
         handingOff = true
         errorText = null
         errorTraceId = null
@@ -603,20 +602,6 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     val joinedChannelLabel = stringResource(Res.string.thread_feedback_joined_channel)
     val unableToJoinChannelLabel = stringResource(Res.string.thread_error_join_channel)
 
-    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val taskV2Enabled =
-        remember(featureFlagRevision, resolvedServerId) {
-            resolvedServerId?.takeIf { it.isNotBlank() }?.let { id ->
-                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
-            } == true
-        }
-    val taskV2DecisionPending =
-        remember(featureFlagRevision, resolvedServerId) {
-            resolvedServerId?.takeIf { it.isNotBlank() }?.let { id ->
-                sharedStores.serverFeatureFlags.isDecisionPending(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
-            } == true
-        }
-
     LaunchedEffect(channelTasks) {
         channelTasks?.uiEvents?.collect { event ->
             if (event is SharedTasksEvent.OperationFailed) {
@@ -694,21 +679,19 @@ private fun TaskPendingConversationRoute(pageVisible: Boolean) {
     // page in place with the real task conversation page. Launch inside page-owned coroutineScope
     // so subsequent `task:updated` emissions while resolving a joint-channel conversation cannot
     // cancel the hand-off and leave `controller.handingOff` stuck true.
-    LaunchedEffect(liveTask, taskV2Enabled, taskV2DecisionPending, resolvedServerId, pageVisible) {
+    LaunchedEffect(liveTask, resolvedServerId, pageVisible) {
         if (!pageVisible) return@LaunchedEffect
         val current = liveTask ?: return@LaunchedEffect
         val serverId = resolvedServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (taskV2DecisionPending && current.conversationChannelId == null) return@LaunchedEffect
-        if (!controller.claimConversationArrived(current, taskV2Enabled)) return@LaunchedEffect
+        if (!controller.claimConversationArrived(current)) return@LaunchedEffect
         coroutineScope.launch {
-            val requiresResolvedConversation = current.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation
+            val requiresResolvedConversation = current.taskOpenTarget() == TaskOpenTarget.ResolveConversation
             val conversationId =
                 try {
                     resolveTaskOpenConversationChannelId(
                         task = current,
                         serverId = serverId,
                         tasksDataSource = tasksDataSource,
-                        taskV2Enabled = taskV2Enabled,
                         log = bridge::log,
                     )
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {

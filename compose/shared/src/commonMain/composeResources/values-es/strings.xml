@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">No se pudo archivar el canal</string>
     <string name="thread_feedback_channel_deleted">Canal eliminado</string>
     <string name="thread_error_delete_channel">No se pudo eliminar el canal</string>
-    <string name="thread_error_convert_message">No se pudo convertir el mensaje</string>
-    <string name="thread_feedback_task_created">Tarea creada</string>
     <string name="thread_error_task_status_unsupported">Estado de tarea no compatible</string>
     <string name="thread_error_update_task">No se pudo actualizar la tarea</string>
     <string name="thread_error_update_assignee">No se pudo actualizar el responsable</string>

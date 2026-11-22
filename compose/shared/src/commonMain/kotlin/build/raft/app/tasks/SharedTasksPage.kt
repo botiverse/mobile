@@ -165,7 +165,6 @@ internal fun SharedTasksScreen(
     onListPositionSnapshot: (AppShellLazyListPosition) -> Unit = {},
     identityOptions: List<MemberProfile> = emptyList(),
     timeContext: RaftTimeContext? = null,
-    taskV2Enabled: Boolean = false,
     /** The Tasks page's server query (Mine / All, search, status, sort); null: the projection's list. */
     query: SharedTasksQueryBinding? = null,
     /** Where the page keeps its folds for its server ([TasksPageFolds]); null keeps them for the page only. */
@@ -194,7 +193,6 @@ internal fun SharedTasksScreen(
         onListPositionSnapshot = onListPositionSnapshot,
         identityOptions = identityOptions,
         timeContext = timeContext,
-        taskV2Enabled = taskV2Enabled,
         folds = folds
     )
     }
@@ -240,8 +238,6 @@ internal fun SharedTasksPanel(
     initialPresentationOverride: TasksPresentationState? = null,
     identityOptions: List<MemberProfile> = emptyList(),
     timeContext: RaftTimeContext? = null,
-    /** The server's `task_v2_conversations_v0`: In Review is retired for its v2 tasks (web slock #12884). */
-    taskV2Enabled: Boolean = false,
     query: SharedTasksQueryBinding? = null,
     /** The Tasks page's folds on its server; null (a channel's tasks, fixtures): for the page only. */
     folds: TasksPageFolds? = null
@@ -281,7 +277,6 @@ internal fun SharedTasksPanel(
                 initialPresentationOverride = initialPresentationOverride,
                 identityOptions = identityOptions,
                 timeContext = timeContext,
-                taskV2Enabled = taskV2Enabled,
                 query = query,
                 folds = folds
             )
@@ -313,7 +308,6 @@ internal fun SharedTasksPanel(
                     initialPresentationOverride = initialPresentationOverride,
                     identityOptions = identityOptions,
                     timeContext = timeContext,
-                    taskV2Enabled = taskV2Enabled,
                     folds = folds
                 )
             is ScreenLoadState.Empty -> {
@@ -340,7 +334,6 @@ internal fun SharedTasksPanel(
                                 ?: TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
                         identityOptions = identityOptions,
                         timeContext = timeContext,
-                        taskV2Enabled = taskV2Enabled,
                         folds = folds
                     )
                 } else {
@@ -479,7 +472,6 @@ private fun SharedTasksLoadedBody(
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
-    taskV2Enabled: Boolean,
     query: SharedTasksQueryBinding? = null,
     folds: TasksPageFolds? = null
 ) {
@@ -501,7 +493,6 @@ private fun SharedTasksLoadedBody(
             initialPresentationOverride = initialPresentationOverride,
             identityOptions = identityOptions,
             timeContext = timeContext,
-            taskV2Enabled = taskV2Enabled,
             query = query,
             folds = folds
         )
@@ -548,7 +539,6 @@ private fun SharedTasksLoadedBodyContent(
     initialPresentationOverride: TasksPresentationState?,
     identityOptions: List<MemberProfile>,
     timeContext: RaftTimeContext?,
-    taskV2Enabled: Boolean,
     query: SharedTasksQueryBinding?,
     folds: TasksPageFolds?
 ) {
@@ -615,11 +605,11 @@ private fun SharedTasksLoadedBodyContent(
     }
 
     // boardColumns covers every TaskStatus so the user can see empty columns
-    // (you can't drop a task into a column that doesn't exist), except In Review with
-    // task v2 on: only while a pre-v2 task is still in it. renderLimit = 0 means
+    // (you can't drop a task into a column that doesn't exist), except In Review
+    // (retired by task v2): only while a pre-v2 task is still in it. renderLimit = 0 means
     // "include all tasks per column" — pagination would be a separate feature.
-    val boardColumns = remember(visibleContent.filteredContent, taskV2Enabled) {
-        visibleContent.filteredContent.boardColumns(renderLimit = 0, taskV2Enabled = taskV2Enabled)
+    val boardColumns = remember(visibleContent.filteredContent) {
+        visibleContent.filteredContent.boardColumns(renderLimit = 0)
     }
     // For list mode we hide totally-empty status groups; otherwise the screen looks
     // like a wall of "No X tasks" headers.
@@ -1182,7 +1172,7 @@ private fun SharedTasksLoadedBodyContent(
             // menu interaction (Todo / In progress / …) — no modal.
             RaftTaskStatusMenuOverlay(
                 anchor = resolvedStatusAnchor,
-                items = task.statusMenuChoices(taskV2Enabled).map { status ->
+                items = task.statusMenuChoices().map { status ->
                     RaftBaseMenuItem(id = status.name, label = status.localizedLabel())
                 },
                 selectedId = task.status.name,
@@ -1271,8 +1261,6 @@ private fun SharedTasksLoadedBodyContent(
 
         if (createDialogOpen && createTasksChannelId != null && !state.standIn && canWriteTaskChannel(createTasksChannelId)) {
             TasksCreateDialog(
-                // Task v2: a task can start in Backlog, Todo or In Progress (web Create Task's Status field).
-                statusField = taskV2Enabled,
                 loading = createLoading,
                 errorCode = state.createErrorCode.takeIf { createFailureVisible && !createLoading },
                 onDismiss = {
@@ -2157,10 +2145,11 @@ internal fun TasksCreateDialog(
     loading: Boolean,
     errorCode: String?,
     onDismiss: () -> Unit,
-    /** The titles, and the Status field's value (null without the field: the server's default). */
+    /**
+     * The titles, and the Status field's value: task v2, a task can start in Backlog, Todo or In
+     * Progress (web Create Task's Status field; Todo by default).
+     */
     onSubmit: (List<String>, TaskStatus?) -> Unit,
-    /** Task v2: the Status field (Backlog, Todo or In Progress; Todo by default). Off, titles only. */
-    statusField: Boolean = false
 ) {
     var titles by remember { mutableStateOf(listOf("")) }
     var status by remember { mutableStateOf(DefaultTaskCreateStatus) }
@@ -2219,15 +2208,13 @@ internal fun TasksCreateDialog(
                     leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) }
                 )
             }
-            if (statusField) {
-                item {
-                    TaskCreateStatusField(
-                        value = status,
-                        onValueChange = { status = it },
-                        titleCount = titles.count { it.isNotBlank() },
-                        enabled = !loading
-                    )
-                }
+            item {
+                TaskCreateStatusField(
+                    value = status,
+                    onValueChange = { status = it },
+                    titleCount = titles.count { it.isNotBlank() },
+                    enabled = !loading
+                )
             }
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                 item {
@@ -2257,7 +2244,7 @@ internal fun TasksCreateDialog(
                     },
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
                 enabled = anyNonBlank && !loading,
-                onClick = { onSubmit(titles, status.takeIf { statusField }) },
+                onClick = { onSubmit(titles, status) },
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg
             )

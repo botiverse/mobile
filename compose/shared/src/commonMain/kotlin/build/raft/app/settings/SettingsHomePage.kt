@@ -7,7 +7,6 @@ import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.data.archivedNameCollisionOrNull
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.app.data.TaskConversationDetailsRepository
-import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.resources.*
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.focus.RaftFocusRegion
@@ -5791,10 +5790,6 @@ private fun RaftAppShellReadyContent(
                             }
                             pager.openStandaloneThreadLaunchPayload(taskLaunchPayload, navigationStoreScope, animated)
                         }
-                        val tasksOpenTaskV2Enabled =
-                            readyServerId?.takeIf { it.isNotBlank() }?.let { id ->
-                                sharedStores.serverFeatureFlags.isEnabled(ServerId(id), TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY)
-                            } == true
                         TaskOpenSurfaceHost(
                             flow = tasksOpenSurfaceFlow,
                             canWriteTaskChannel = tasksChannelWriteCheck,
@@ -5817,14 +5812,12 @@ private fun RaftAppShellReadyContent(
                                     log = { bridge.log(it) },
                                 ),
                             hostVisible = pageVisible,
-                            taskV2Enabled = tasksOpenTaskV2Enabled,
                             onConversationArrived = { arrived ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
                                 launchArrivedTaskConversationOpen(
                                     arrived = arrived,
                                     serverId = serverId,
-                                    taskV2Enabled = tasksOpenTaskV2Enabled,
                                     tasksDataSource = tasksDataSource,
                                     scope = appShellCoroutineScope,
                                     isStillActive = { latestTasksOpenServerId == serverId && latestTasksTabActive && latestTasksPageVisible },
@@ -5861,16 +5854,15 @@ private fun RaftAppShellReadyContent(
                         // The open pending page follows the board's copy of its task; when its conversation
                         // appears (someone wrote first) the conversation page opens instead.
                         val tasksOpenSurfaceTaskId = tasksOpenSurfaceFlow.surface?.task?.id
-                        LaunchedEffect(tasksOpenSurfaceTaskId, tasksState, tasksOpenTaskV2Enabled) {
+                        LaunchedEffect(tasksOpenSurfaceTaskId, tasksState) {
                             val taskId = tasksOpenSurfaceTaskId ?: return@LaunchedEffect
                             val fresh = (tasksState.loadState as? build.raft.app.data.ScreenLoadState.Content)?.data?.tasks.orEmpty().firstOrNull { it.id == taskId }
-                            tasksOpenSurfaceFlow.onTaskChanged(fresh, tasksOpenTaskV2Enabled)?.let { arrived ->
+                            tasksOpenSurfaceFlow.onTaskChanged(fresh)?.let { arrived ->
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 bridge.log("tasks_pending_conversation_arrived task=${arrived.id.value}")
                                 launchArrivedTaskConversationOpen(
                                     arrived = arrived,
                                     serverId = serverId,
-                                    taskV2Enabled = tasksOpenTaskV2Enabled,
                                     tasksDataSource = tasksDataSource,
                                     scope = appShellCoroutineScope,
                                     isStillActive = { latestTasksOpenServerId == serverId && latestTasksTabActive && latestTasksPageVisible },
@@ -5942,14 +5934,12 @@ private fun RaftAppShellReadyContent(
                             },
                             identityOptions = tasksServerMembersEntry.members,
                             timeContext = threadTimeContext,
-                            taskV2Enabled = tasksOpenTaskV2Enabled,
                             onOpenTask = { task ->
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
                                 val serverId = readyServerId?.takeIf { it.isNotBlank() }
                                 launchTasksTabTaskOpen(
                                     task = task,
                                     serverId = serverId,
-                                    taskV2Enabled = tasksOpenTaskV2Enabled,
                                     tasksDataStore = sharedStores.tasksDataStore,
                                     tasksDataSource = tasksDataSource,
                                     gate = tasksOpenGate,

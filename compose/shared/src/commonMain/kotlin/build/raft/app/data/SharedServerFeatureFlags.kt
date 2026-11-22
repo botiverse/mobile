@@ -68,6 +68,9 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
 // bottom-up and its Settings > Mobile switch is gone; the flag row can go once older app versions are.
 // external_channels_v1 is no longer read (retired on the server, botiverse/slock #15939): external
 // channels are always on, and every surface that read it takes its former "on" path.
+// task_v2_conversations_v0 is no longer read (stdrc, #raft-feature-flag): task v2 is always on in the
+// app and every surface that read it takes its former "on" path. Its flag row stays only because app
+// versions up to 1.28 still ask for it (the server answers it as always on, #wg-task-v2:#32).
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -98,15 +101,6 @@ const val ANTIPROTON_HOSTED_RUNTIME_FEATURE_FLAG_KEY: String = "antiproton_hoste
  * new is shown: no chips, no item cards, no Activity object rows.
  */
 const val WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY: String = "workspace_artifacts_v0"
-
-/**
- * Task v2 (slock `packages/web/src/store/serverFeatureFlags.ts` `TASK_V2_CONVERSATIONS_FLAG_KEY`, the
- * server's `TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY`): per server, default off. On, every task hangs
- * as a row in the list under its source message and the composer drops "As Task" (tasks are created
- * from a sent message). Off (or unresolved), a pre-v2 task keeps its single footer chip and the
- * composer keeps "As Task"; a task made the v2 way still lists under its message (per task).
- */
-const val TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY: String = "task_v2_conversations_v0"
 
 /**
  * Inbox refresh step 4 (#triage 6db2bd32): a live `message:new` / `thread:updated` for a row the
@@ -243,7 +237,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_INBOX_INPLACE_FEATURE_FLAG_KEY,
     INBOX_ROW_POSITION_FEATURE_FLAG_KEY,
     SYNC_INBOX_ROWS_FEATURE_FLAG_KEY,
-    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY,
     PERSONAL_ASSISTANT_FEATURE_FLAG_KEY,
     DRAFTS_SECTION_FEATURE_FLAG_KEY,
     MOBILE_NAV3_STACK_FEATURE_FLAG_KEY,

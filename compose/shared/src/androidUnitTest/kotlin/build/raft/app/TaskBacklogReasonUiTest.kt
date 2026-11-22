@@ -44,7 +44,7 @@ import org.robolectric.annotation.GraphicsMode
  * Backlog in the app as on the web (slock #12963): a task v2 task's status menu offers Backlog
  * first; picking it asks for an optional reason (web TaskBacklogReasonPopover) and only "Move to
  * Backlog" writes, with the reason; Cancel writes nothing. Create Task has a Status field on task v2
- * (Backlog, Todo, In Progress; Todo by default) and none with task v2 off.
+ * (Backlog, Todo, In Progress; Todo by default).
  */
 @OptIn(ExperimentalTestApi::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -155,7 +155,6 @@ class TaskBacklogReasonUiTest {
                         errorCode = null,
                         onDismiss = {},
                         onSubmit = { titles, status -> submitted += titles to status },
-                        statusField = true,
                     )
                 }
             }
@@ -174,28 +173,6 @@ class TaskBacklogReasonUiTest {
             // A create in Backlog asks nothing.
             onNodeWithTag(TaskBacklogReasonDialogTestTag).assertDoesNotExist()
             assertEquals(listOf<Pair<List<String>, TaskStatus?>>(listOf("Offline drafts") to TaskStatus.Backlog), submitted)
-        }
-
-    @Test
-    fun createTaskWithTaskV2OffHasNoStatusField() =
-        runRobolectricComposeUiTest {
-            val submitted = mutableListOf<Pair<List<String>, TaskStatus?>>()
-            setContent {
-                Host {
-                    TasksCreateDialog(
-                        loading = false,
-                        errorCode = null,
-                        onDismiss = {},
-                        onSubmit = { titles, status -> submitted += titles to status },
-                    )
-                }
-            }
-
-            onNodeWithTag(TaskCreateStatusTestTag, useUnmergedTree = true).assertDoesNotExist()
-            onNode(hasSetTextAction()).performTextInput("Offline drafts")
-            onNodeWithText("Create").performClick()
-            waitForIdle()
-            assertEquals(listOf<Pair<List<String>, TaskStatus?>>(listOf("Offline drafts") to null), submitted)
         }
 
     @Composable

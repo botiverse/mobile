@@ -103,7 +103,6 @@ private fun BacklogTasksPanel(tasks: List<TaskSummary>, mode: TasksViewMode, col
             state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
             onIntent = {},
             initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = mode, collapsedStatuses = collapsed),
-            taskV2Enabled = true,
         )
     }
 }

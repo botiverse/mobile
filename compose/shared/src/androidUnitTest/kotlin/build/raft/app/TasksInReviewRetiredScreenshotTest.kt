@@ -32,11 +32,11 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * In Review is retired for task v2 (raft-design decision 0043, web slock #12884 TasksPanel): with
- * `task_v2_conversations_v0` on the Tasks board has no empty In Review column, and a pre-v2 task
- * still in it keeps the column so it stays reachable.
- * - `tasks.in-review-retired.board`: task v2 on, nothing in In Review: five columns.
- * - `tasks.in-review-retired.board-legacy`: task v2 on, a legacy task still In Review: its column stays.
+ * In Review is retired for task v2 (raft-design decision 0043, web slock #12884 TasksPanel): the
+ * Tasks board has no empty In Review column, and a pre-v2 task still in it keeps the column so it
+ * stays reachable.
+ * - `tasks.in-review-retired.board`: nothing in In Review: five columns.
+ * - `tasks.in-review-retired.board-legacy`: a legacy task still In Review: its column stays.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -78,7 +78,6 @@ private fun TasksBoard(tasks: List<TaskSummary>) {
             state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = tasks.summaryCounts(), tasks = tasks))),
             onIntent = {},
             initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.Board),
-            taskV2Enabled = true,
         )
     }
 }

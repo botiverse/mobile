@@ -111,7 +111,6 @@ class TasksTaskColumnScreenshotTest {
                                 state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = columnTasks.summaryCounts(), tasks = columnTasks))),
                                 onIntent = {},
                                 initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
-                                taskV2Enabled = true,
                             )
                         }
                     }

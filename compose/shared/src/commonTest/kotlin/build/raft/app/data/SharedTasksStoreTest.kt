@@ -765,7 +765,7 @@ class SharedTasksStoreTest {
         )
         assertEquals(
             TaskOpenTarget.PendingConversation,
-            store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single().taskOpenTarget(true)
+            store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single().taskOpenTarget()
         )
 
         val conversation = ChannelId("task-conversation-158")
@@ -776,8 +776,8 @@ class SharedTasksStoreTest {
 
         val opened = store.channelProjectionFlow("server-1", "channel-1", null).first().tasks.single()
         assertEquals(conversation, opened.conversationChannelId)
-        assertEquals(TaskOpenTarget.Conversation(conversation), opened.taskOpenTarget(true))
-        assertEquals(null, opened.taskOpenSurface(true))
+        assertEquals(TaskOpenTarget.Conversation(conversation), opened.taskOpenTarget())
+        assertEquals(null, opened.taskOpenSurface())
 
         // A copy of the same revision read before the conversation existed does not take it away.
         assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask("server-1", pending))

@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">无法归档频道</string>
     <string name="thread_feedback_channel_deleted">频道已删除</string>
     <string name="thread_error_delete_channel">无法删除频道</string>
-    <string name="thread_error_convert_message">无法将消息转为任务</string>
-    <string name="thread_feedback_task_created">任务已创建</string>
     <string name="thread_error_task_status_unsupported">不支持此任务状态</string>
     <string name="thread_error_update_task">无法更新任务</string>
     <string name="thread_error_update_assignee">无法更新负责人</string>

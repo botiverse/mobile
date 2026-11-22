@@ -20,8 +20,8 @@ import build.raft.app.model.topLevelThreadId
  * `utils/taskConversation.ts`):
  * - a legacy orphan (server `isLegacy`: no host message, no conversation, not created to have one)
  *   opens the read-only legacy panel ([LegacyPanel], web `LegacyTaskPanel`);
- * - with `task_v2_conversations_v0` off, a pre-v2 task (not `conversationAnchored`) keeps its host
- *   message's thread; with the flag on every non-legacy task opens as its own conversation;
+ * - every other task opens as its own conversation, a pre-v2 task (not `conversationAnchored`) too
+ *   (web with `task_v2_conversations_v0` on);
  * - a task with no conversation yet opens it empty ([PendingConversation]): opening never creates
  *   it; the first send does (web `TaskConversationDialog`, `ensureTaskModalThreadChannel`);
  * - a task whose canonical conversation is known and is local (not a joint surface) opens it;
@@ -33,8 +33,6 @@ internal sealed interface TaskOpenTarget {
 
     data object ResolveConversation : TaskOpenTarget
 
-    data object HostThread : TaskOpenTarget
-
     /** No conversation yet: open it empty; the first send creates it ([TaskOpenSurface.Pending]). */
     data object PendingConversation : TaskOpenTarget
 
@@ -42,9 +40,8 @@ internal sealed interface TaskOpenTarget {
     data object LegacyPanel : TaskOpenTarget
 }
 
-internal fun TaskSummary.taskOpenTarget(taskV2Enabled: Boolean): TaskOpenTarget {
+internal fun TaskSummary.taskOpenTarget(): TaskOpenTarget {
     if (isLegacy) return TaskOpenTarget.LegacyPanel
-    if (!opensAsTaskConversation(taskV2Enabled)) return TaskOpenTarget.HostThread
     val conversation = conversationChannelId ?: return TaskOpenTarget.PendingConversation
     return if (parseConversationKindOrNull(channelType) == ConversationKind.Joint) {
         TaskOpenTarget.ResolveConversation
@@ -53,13 +50,12 @@ internal fun TaskSummary.taskOpenTarget(taskV2Enabled: Boolean): TaskOpenTarget 
     }
 }
 
-/** Web `opensAsTaskConversation(task, taskV2Enabled)`: never for a legacy orphan; else with the flag on, or per task. */
-internal fun TaskSummary.opensAsTaskConversation(taskV2Enabled: Boolean): Boolean =
-    !isLegacy && (taskV2Enabled || conversationAnchored)
+/** Web `opensAsTaskConversation(task, taskV2Enabled)` with the flag on: every task but a legacy orphan. */
+internal fun TaskSummary.opensAsTaskConversation(): Boolean = !isLegacy
 
 /** Web `getTaskStatusOptions(task, ..., taskV2)`: what this task's status menu offers (no In Review on a v2 task). */
-internal fun TaskSummary.statusMenuChoices(taskV2Enabled: Boolean): List<TaskStatus> =
-    taskStatusChoices(status, v2Task = opensAsTaskConversation(taskV2Enabled))
+internal fun TaskSummary.statusMenuChoices(): List<TaskStatus> =
+    taskStatusChoices(status, v2Task = opensAsTaskConversation())
 
 /** The launch identity of a task conversation: a flat, root-less stream keyed by its channel id. */
 internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): ThreadLaunchConversationIdentity =
@@ -72,20 +68,19 @@ internal fun taskConversationLaunchIdentity(conversationChannelId: ChannelId): T
 
 /**
  * The local conversation id a task opens on, resolving it through `POST /tasks/:id/conversation`
- * when the task DTO cannot name it ([TaskOpenTarget.ResolveConversation]). `null` = open the task
- * the pre-v2 way (host thread), or it could not be resolved (the caller reports it).
+ * when the task DTO cannot name it ([TaskOpenTarget.ResolveConversation]). `null` = nothing to open
+ * (no conversation yet, a legacy orphan), or it could not be resolved (the caller reports it).
  */
 internal suspend fun resolveTaskOpenConversationChannelId(
     task: TaskSummary,
     serverId: String,
     tasksDataSource: SharedTasksDataSource,
-    taskV2Enabled: Boolean,
     log: (String) -> Unit = {},
 ): ChannelId? =
-    when (val target = task.taskOpenTarget(taskV2Enabled)) {
+    when (val target = task.taskOpenTarget()) {
         is TaskOpenTarget.Conversation -> target.conversationChannelId
         // Never POSTed: that would create the conversation (web: opening does not create).
-        TaskOpenTarget.HostThread, TaskOpenTarget.PendingConversation, TaskOpenTarget.LegacyPanel -> null
+        TaskOpenTarget.PendingConversation, TaskOpenTarget.LegacyPanel -> null
         TaskOpenTarget.ResolveConversation -> {
             val resolvedServerId = serverId.trim().takeIf { it.isNotBlank() }?.let(::ServerId)
             val result = resolvedServerId?.let { tasksDataSource.openTaskConversation(it, task.id) }
@@ -111,9 +106,12 @@ internal fun buildTaskOpenLaunchPayload(
     compactConsecutiveMessages: Boolean,
     hostThreadPayload: () -> WireThreadLaunchPayload?,
 ): WireThreadLaunchPayload? {
+    // Unresolved, only a task made the v2 way (`conversationAnchored`) names its conversation itself.
     val conversationId =
         resolvedConversationChannelId
-            ?: (task.taskOpenTarget(taskV2Enabled = false) as? TaskOpenTarget.Conversation)?.conversationChannelId
+            ?: (task.taskOpenTarget() as? TaskOpenTarget.Conversation)
+                ?.conversationChannelId
+                ?.takeIf { task.conversationAnchored }
     if (conversationId != null) {
         return buildStandaloneConversationThreadLaunchPayload(
             conversation = taskConversationLaunchIdentity(conversationId),
@@ -125,7 +123,7 @@ internal fun buildTaskOpenLaunchPayload(
     // A task resolved to no conversation still opens its pre-v2 host thread when it has one.
     // A legacy orphan has no thread to open (its panel is [TaskOpenSurface.Legacy]).
     if (task.isLegacy) return null
-    return if (task.taskOpenTarget(taskV2Enabled = false) == TaskOpenTarget.HostThread || task.hostMessageId != null) {
+    return if (!task.conversationAnchored || task.hostMessageId != null) {
         hostThreadPayload()
     } else {
         null

@@ -62,7 +62,6 @@ import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
-import build.raft.app.data.TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
@@ -2856,8 +2855,6 @@ private fun SharedThreadRouteContentContent(
     val pendingReactionVisuals by pendingReactionVisualsState
     val pendingActionCardIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
     val pendingActionCardIds by pendingActionCardIdsState
-    val pendingTaskConvertMessageIdsState = remember(threadInstanceKey) { mutableStateOf<Set<String>>(emptySet()) }
-    val pendingTaskConvertMessageIds by pendingTaskConvertMessageIdsState
     // Task v2: "Create Task from Message" (the message it is open for, its create in flight, its failure).
     val createTaskFromMessage = remember(threadInstanceKey) { TaskCreateFromMessageFlow() }
     // Task v2: a task opened without a page of its own (its empty conversation, or a legacy panel).
@@ -3195,29 +3192,13 @@ private fun SharedThreadRouteContentContent(
     }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
-    val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
     // `feedback:submit` cards open the native feedback form on their draft once the viewing server is
     // known (every platform, 1.24; no server flag). A done card's "View in Settings" opens the native
     // ticket page.
     val feedbackCardEntryEnabled = raftFeedbackCardEntryEnabled(currentServerId)
-    // Task v2 (`task_v2_conversations_v0`, as web reads it per server): every task lists under its
-    // source message and the composer drops "As Task".
-    // The session is captured a few frames after the page composes; until then the shell's server
-    // decides, or the first frame laid out the old Chat / Tasks / Files tab row and the list jumped
-    // when it went away (Compose 版 open jitter).
-    val taskV2FlagServerId = threadPageServerId(currentServerId, storeScope.initialServerId)
-    val taskV2Enabled =
-        remember(featureFlagSnapshotRevision, taskV2FlagServerId) {
-            taskV2FlagServerId != null &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    ServerId(taskV2FlagServerId),
-                    TASK_V2_CONVERSATIONS_FEATURE_FLAG_KEY
-                )
-        }
     // Task v2: Tasks and Files are cards opened from the header, not tabs (ConversationSideCards.kt).
     val sideCardsEnabled =
         conversationSideCardsEnabled(
-            taskV2Enabled = taskV2Enabled,
             showModeTabs = payload.showModeTabs,
             assistantPanelEmbed = inAssistantPanelEmbed
         )
@@ -3616,7 +3597,6 @@ private fun SharedThreadRouteContentContent(
             taskProjectionSlice,
             serverTaskProjectionSlice,
             taskProjectionReferences,
-            taskV2Enabled,
             sourceTaskListsEnabled,
             currentSession?.user?.id
         ) {
@@ -3627,12 +3607,11 @@ private fun SharedThreadRouteContentContent(
             ).copy(
                 sourceTaskLists =
                     if (sourceTaskListsEnabled) {
-                        taskProjectionSlice.tasks.threadSourceTaskLists(taskV2Enabled)
+                        taskProjectionSlice.tasks.threadSourceTaskLists()
                     } else {
                         emptyMap()
                     },
-                viewerUserId = currentSession?.user?.id,
-                taskV2Enabled = taskV2Enabled
+                viewerUserId = currentSession?.user?.id
             )
         }
     val taskAssigneeOptions =
@@ -4175,7 +4154,6 @@ private fun SharedThreadRouteContentContent(
             headerDisplayModel.subtitle,
             renderedPayload.surfaceKind,
             renderedPayload.parentSurfaceKind,
-            taskV2Enabled,
             assistantPanelContext
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
@@ -4183,7 +4161,7 @@ private fun SharedThreadRouteContentContent(
                 parentChannelId = renderedPayload.parentChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
                 memberSuggestionHeadersVisible = renderedPayload.threadComposerMemberSuggestionHeadersVisible()
-            ).withTaskV2(taskV2Enabled).copy(assistantContext = assistantPanelContext)
+            ).withTaskV2().copy(assistantContext = assistantPanelContext)
         }
     fun currentComposerPayload(): RaftThreadComposerPayload =
         scopedBaseComposerState.withThreadComposerDraftState(
@@ -5665,7 +5643,7 @@ private fun SharedThreadRouteContentContent(
     val openCanonicalTask: (TaskSummary, String) -> Unit = open@{ task, source ->
         // Web useOpenTask: the legacy panel, or the empty conversation of a task without one
         // (opening never creates it — pushed as its own page when the host supports it), or a page.
-        task.taskOpenSurface(taskV2Enabled)?.let { surface ->
+        task.taskOpenSurface()?.let { surface ->
             val openPending = callbacks.onOpenPendingTask
             if (surface is TaskOpenSurface.Pending && openPending != null) {
                 bridge.log("thread_task_open result=pending_page source=$source taskId=${task.id.value}")
@@ -5687,7 +5665,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_task_open result=ignored reason=in_flight source=$source taskId=${task.id.value}")
             return@open
         }
-        if (task.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+        if (task.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
             // Task v2: a joint surface's local conversation id comes from the server first.
             coroutineScope.launch {
                 try {
@@ -5699,7 +5677,6 @@ private fun SharedThreadRouteContentContent(
                                 task = task,
                                 serverId = currentServerId.orEmpty(),
                                 tasksDataSource = tasksDataSource,
-                                taskV2Enabled = taskV2Enabled,
                                 log = bridge::log,
                             ),
                     )
@@ -5733,7 +5710,6 @@ private fun SharedThreadRouteContentContent(
                 log = { bridge.log(it) },
             ),
         hostVisible = active,
-        taskV2Enabled = taskV2Enabled,
         onConversationArrived = { arrived ->
             bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
             openCanonicalTask(arrived, "task_conversation_arrived")
@@ -5806,12 +5782,12 @@ private fun SharedThreadRouteContentContent(
     // web TaskConversationDialog binds to a conversation created elsewhere (`task:updated`): the open
     // sheet follows the store's copy of its task and gives way to the conversation page.
     val taskOpenSurfaceTaskId = taskOpenSurfaceFlow.surface?.task?.id
-    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice, taskV2Enabled) {
+    LaunchedEffect(taskOpenSurfaceTaskId, taskProjectionSlice, serverTaskProjectionSlice) {
         val taskId = taskOpenSurfaceTaskId ?: return@LaunchedEffect
         val fresh =
             taskProjectionSlice.tasks.firstOrNull { it.id == taskId }
                 ?: serverTaskProjectionSlice.tasks.firstOrNull { it.id == taskId }
-        taskOpenSurfaceFlow.onTaskChanged(fresh, taskV2Enabled)?.let { arrived ->
+        taskOpenSurfaceFlow.onTaskChanged(fresh)?.let { arrived ->
             bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
             openCanonicalTask(arrived, "task_conversation_arrived")
         }
@@ -5824,7 +5800,7 @@ private fun SharedThreadRouteContentContent(
             errorText = createTaskFromMessage.errorText,
             onDismiss = { createTaskFromMessage.dismiss() },
             // Task v2 Create Task's Status field (web: shown with the task v2 flag on).
-            statusField = taskV2Enabled,
+            statusField = true,
             onSubmit = { titles, status ->
                 val serverId = currentServerId?.takeIf { it.isNotBlank() }
                 if (serverId != null && !createTaskFromMessage.submitting) {
@@ -5923,7 +5899,6 @@ private fun SharedThreadRouteContentContent(
             pendingReactionKeysState = pendingReactionKeysState,
             pendingReactionVisualsState = pendingReactionVisualsState,
             pendingActionCardIdsState = pendingActionCardIdsState,
-            pendingTaskConvertMessageIdsState = pendingTaskConvertMessageIdsState,
             createTaskFromMessage = createTaskFromMessage,
             pendingThreadFollowMessageIdsState = pendingThreadFollowMessageIdsState,
             markdownRefOpenStore = markdownRefOpenStore,
@@ -5935,7 +5910,6 @@ private fun SharedThreadRouteContentContent(
             tasksViewModel = tasksViewModel,
             currentServerId = currentServerId,
             markdownTaskContextChannelId = markdownTaskContextChannelId,
-            taskV2Enabled = taskV2Enabled,
             threadMembersServerId = threadMembersServerId,
             threadMembersChannelId = threadMembersChannelId,
             linkedTasksProjection = linkedTasksProjection,
@@ -6806,7 +6780,6 @@ private fun SharedThreadRouteContentContent(
                 bridge.probeThreadViewportPixels(x, y, width, height, generation)
             },
             pendingActionCardIds = pendingActionCardIds,
-            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
             markdownReferencePendingActionId = markdownReferencePending.busyActionId,
             attachmentOpenStates = attachmentOpenStates,
             composerSendKeyEnabled = composerSendKeyEnabled,

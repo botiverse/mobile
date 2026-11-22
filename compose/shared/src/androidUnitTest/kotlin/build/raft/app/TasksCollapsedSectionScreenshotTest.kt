@@ -37,7 +37,7 @@ import org.robolectric.annotation.GraphicsMode
  * (turned right while collapsed, down while open) to say it expands — leading in the list,
  * trailing in a board column. Before it, "Done 1" read as a count over nothing to tap.
  * - `tasks.sections.collapsed-done.list`: phone list view, one task per open status + one done.
- * - `tasks.sections.collapsed-done.board`: the same tasks as board columns on a wide screen.
+ * The board's collapsed columns are in `tasks.backlog.board` and `tasks.in-review-retired.board`.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -49,10 +49,6 @@ class TasksCollapsedSectionScreenshotTest {
 
     @Test
     fun listDoneCollapsed() = capture("tasks.sections.collapsed-done.list", TasksViewMode.List)
-
-    @Test
-    @Config(qualifiers = "w1400dp-h420dp-mdpi")
-    fun boardDoneCollapsed() = capture("tasks.sections.collapsed-done.board", TasksViewMode.Board)
 
     // The panel reads its view-mode preference from the app-scope store; tests give it a blank one.
     @org.junit.Before

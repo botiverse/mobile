@@ -35,18 +35,16 @@ class TaskOpenSurfacesTest {
         val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val v2 = task("""{"messageId":"t-1","hostMessageId":null,"conversationChannelId":"conv-1","conversationAnchored":true,"isLegacy":false}""")
         val v2Lazy = task("""{"messageId":"t-1","hostMessageId":null,"conversationChannelId":null,"conversationAnchored":true,"isLegacy":false}""")
-        // (case, task, flag) -> (surface kind or null, page target)
-        data class Case(val name: String, val task: TaskSummary, val taskV2: Boolean, val surface: String?, val target: TaskOpenTarget)
+        // (case, task) -> (surface kind or null, page target)
+        data class Case(val name: String, val task: TaskSummary, val surface: String?, val target: TaskOpenTarget)
         listOf(
-            Case("legacy", legacy, true, "Legacy", TaskOpenTarget.LegacyPanel),
-            Case("legacy, flag off", legacy, false, "Legacy", TaskOpenTarget.LegacyPanel),
-            Case("pre-v2, flag off", preV2, false, null, TaskOpenTarget.HostThread),
-            Case("pre-v2, flag on", preV2, true, "Pending", TaskOpenTarget.PendingConversation),
-            Case("v2", v2, true, null, TaskOpenTarget.Conversation(ChannelId("conv-1"))),
-            Case("v2 without a conversation yet", v2Lazy, false, "Pending", TaskOpenTarget.PendingConversation),
+            Case("legacy", legacy, "Legacy", TaskOpenTarget.LegacyPanel),
+            Case("pre-v2", preV2, "Pending", TaskOpenTarget.PendingConversation),
+            Case("v2", v2, null, TaskOpenTarget.Conversation(ChannelId("conv-1"))),
+            Case("v2 without a conversation yet", v2Lazy, "Pending", TaskOpenTarget.PendingConversation),
         ).forEach { case ->
-            assertEquals(case.target, case.task.taskOpenTarget(case.taskV2), case.name)
-            assertEquals(case.surface, case.task.taskOpenSurface(case.taskV2)?.let { it::class.simpleName }, case.name)
+            assertEquals(case.target, case.task.taskOpenTarget(), case.name)
+            assertEquals(case.surface, case.task.taskOpenSurface()?.let { it::class.simpleName }, case.name)
         }
     }
 
@@ -139,7 +137,7 @@ class TaskOpenSurfacesTest {
         assertEquals(preV2, flow.surface?.task)
         // The conversation's own `task:updated` does not open it a second time.
         val anchored = preV2.copy(conversationChannelId = ChannelId("conv-local"), conversationAnchored = true)
-        assertEquals(null, flow.onTaskChanged(anchored, taskV2Enabled = true), "the page it opens is already on its way")
+        assertEquals(null, flow.onTaskChanged(anchored), "the page it opens is already on its way")
         flow.finishHandOff()
         assertEquals(null, flow.surface, "it gives way to the conversation page")
         assertFalse(flow.handingOff)
@@ -158,18 +156,18 @@ class TaskOpenSurfacesTest {
         flow.open(TaskOpenSurface.Pending(preV2))
         flow.onDraftChange("server-1", "t-1", "half a thought")
         // Another task's update, and the same copy: nothing changes.
-        assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2")), taskV2Enabled = true))
-        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(preV2.copy(id = TaskId("t-2"))))
+        assertEquals(null, flow.onTaskChanged(preV2))
         // `task:updated` with a new status, still no conversation: the page shows the new copy.
         val reviewed = preV2.copy(status = TaskStatus.InReview, revision = 2L)
-        assertEquals(null, flow.onTaskChanged(reviewed, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(reviewed))
         assertEquals(reviewed, flow.surface?.task)
         // A store still holding the older revision does not put the old status back.
-        assertEquals(null, flow.onTaskChanged(preV2, taskV2Enabled = true))
+        assertEquals(null, flow.onTaskChanged(preV2))
         assertEquals(reviewed, flow.surface?.task)
         // Someone else wrote first: the conversation exists; the caller opens it.
         val anchored = reviewed.copy(conversationChannelId = ChannelId("conv-1"), conversationAnchored = true)
-        assertEquals(anchored, flow.onTaskChanged(anchored, taskV2Enabled = true))
+        assertEquals(anchored, flow.onTaskChanged(anchored))
         assertEquals(null, flow.surface)
         assertEquals("half a thought", flow.draft("server-1", "t-1"), "the draft is kept while the page lives")
     }
@@ -190,7 +188,7 @@ class TaskOpenSurfacesTest {
                 conversationAnchored = true,
                 conversationDetailsLoaded = true,
             )
-        assertEquals(hydrated, flow.onTaskChanged(hydrated, taskV2Enabled = true))
+        assertEquals(hydrated, flow.onTaskChanged(hydrated))
         assertEquals(null, flow.surface)
     }
 
@@ -238,12 +236,12 @@ class TaskOpenSurfacesTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun tasksTabOpenHydratesSummaryRowEvenWhenFlagOffAndAlwaysReleasesGateOnMismatchOr404() = runTest {
+    fun tasksTabOpenHydratesSummaryRowAndAlwaysReleasesGateOnMismatchOr404() = runTest {
         val summaryOnly =
             task("""{"messageId":"t-1","hostMessageId":null,"conversationAnchored":false,"isLegacy":false,"hasDescription":true,"sourceSenderType":"user","sourceSenderId":"user-1"}""")
         assertFalse(summaryOnly.conversationDetailsLoaded)
 
-        // 1. Hydrates summary-only per-task v2 row even with taskV2Enabled = false -> opens Conversation page.
+        // 1. Hydrates a summary-only row -> opens its Conversation page.
         var nextTaskByNumberResponse =
             HomeNetworkResponse(
                 200,
@@ -276,7 +274,6 @@ class TaskOpenSurfacesTest {
         launchTasksTabTaskOpen(
             task = summaryOnly,
             serverId = "server-1",
-            taskV2Enabled = false,
             tasksDataStore = store,
             tasksDataSource = dataSource,
             gate = gate,
@@ -305,7 +302,6 @@ class TaskOpenSurfacesTest {
         launchTasksTabTaskOpen(
             task = summaryOnly,
             serverId = "server-1",
-            taskV2Enabled = true,
             tasksDataStore = freshStore,
             tasksDataSource = dataSource,
             gate = gate,
@@ -330,7 +326,6 @@ class TaskOpenSurfacesTest {
         launchTasksTabTaskOpen(
             task = summaryOnly,
             serverId = "server-1",
-            taskV2Enabled = true,
             tasksDataStore = freshStore,
             tasksDataSource = dataSource,
             gate = gate,

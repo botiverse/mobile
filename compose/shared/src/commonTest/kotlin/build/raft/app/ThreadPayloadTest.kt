@@ -7442,11 +7442,9 @@ class ThreadPayloadTest {
                 tasksDataStore = null
             )
 
-        val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
-        assertEquals("task-541", found.task.id.value)
-        assertEquals("parent-channel", found.payload.parentChannelId)
-        assertEquals("parent-message", found.payload.parentMessageId)
-        assertEquals("reply-stream", found.payload.streamChannelId)
+        // Task v2: a pre-v2 task without a conversation opens in place, as its empty conversation.
+        val opened = assertIs<MarkdownTaskNumberOpenResult.OpensInPlace>(result)
+        assertEquals("task-541", opened.task.id.value)
         assertEquals(listOf("taskByNumber:server-1:parent-channel:541"), api.calls)
     }
 
@@ -7478,7 +7476,6 @@ class ThreadPayloadTest {
             currentTaskChannelId = ChannelId("parent-channel"),
             tasksDataSource = SharedTasksDataSource(api),
             tasksDataStore = null,
-            taskV2Enabled = true,
             referenceResolver = resolver,
             actionId = "message-a:task"
         )
@@ -7506,7 +7503,9 @@ class ThreadPayloadTest {
                                 channelId = ChannelId("target-channel"),
                                 threadId = ThreadId("target-thread"),
                                 messageId = MessageId("target-message"),
-                                updatedAtLabel = ""
+                                updatedAtLabel = "",
+                                conversationChannelId = ChannelId("target-conversation"),
+                                conversationAnchored = true
                             )
                         ),
                     summaryCounts = emptyMap()
@@ -7565,8 +7564,7 @@ class ThreadPayloadTest {
         val found = assertIs<MarkdownTaskNumberOpenResult.Found>(result)
         assertEquals("task-340", found.task.id.value)
         assertEquals(SharedTaskReferenceResolutionSource.LoadedServer, found.source)
-        assertEquals("target-channel", found.payload.parentChannelId)
-        assertEquals("target-message", found.payload.parentMessageId)
+        assertEquals("target-conversation", found.payload.streamChannelId)
         assertEquals(emptyList(), api.calls)
     }
 
@@ -7630,7 +7628,9 @@ class ThreadPayloadTest {
                                 taskNumber = 541,
                                 channelId = ChannelId("parent-channel"),
                                 messageId = MessageId("parent-message"),
-                                updatedAtLabel = ""
+                                updatedAtLabel = "",
+                                conversationChannelId = ChannelId("conv-541"),
+                                conversationAnchored = true
                             )
                         ),
                     summaryCounts = emptyMap()
@@ -7810,7 +7810,7 @@ class ThreadPayloadTest {
         val api =
             FakeMarkdownTaskNumberApi(
                 channelTaskBody =
-                    """{"task":{"id":"task-541","channelId":"parent-channel","threadId":"reply-stream","messageId":"parent-message","taskNumber":541,"title":"Fallback task","status":"in_progress"}}""",
+                    """{"task":{"id":"task-541","channelId":"parent-channel","threadId":"reply-stream","messageId":"parent-message","conversationChannelId":"conv-541","conversationAnchored":true,"taskNumber":541,"title":"Fallback task","status":"in_progress"}}""",
                 serverTasksBody = """{"tasks":[]}"""
             )
 

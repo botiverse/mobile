@@ -156,7 +156,6 @@ private data class ThreadChatTabData(
     val highlightedMentions: Set<String>,
     val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val pendingActionCardIds: Set<String>,
-    val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
@@ -233,7 +232,6 @@ fun ThreadChatTab(
     memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
@@ -300,7 +298,6 @@ fun ThreadChatTab(
                 highlightedMentions = highlightedMentions,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
@@ -380,7 +377,6 @@ private fun ThreadChatTabContent(
     val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
@@ -558,7 +554,6 @@ private fun ThreadChatTabContent(
                     memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
@@ -656,7 +651,6 @@ private fun ThreadChatTabContent(
                     memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
@@ -764,7 +758,6 @@ private fun ThreadChatTabContent(
                 memberModelLabelResolver = memberModelLabelResolver,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
@@ -925,7 +918,6 @@ internal fun ThreadTasksTab(
     taskWritesEnabled: Boolean = true,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     timeContext: RaftTimeContext? = null,
-    taskV2Enabled: Boolean = false,
     onOpenTask: (TaskSummary) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
@@ -952,7 +944,6 @@ internal fun ThreadTasksTab(
         identityOptions = identityOptions,
         draftProjection = draftProjection,
         timeContext = timeContext,
-        taskV2Enabled = taskV2Enabled,
         onOpenTask = if (openTaskEnabled) {
             onOpenTask
         } else {
@@ -1011,7 +1002,6 @@ internal fun ThreadJoinFooter(
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 internal fun ThreadTaskDetailDialog(
     task: TaskSummary,
-    taskV2Enabled: Boolean,
     assigneeOptions: List<MemberProfile>,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onDismiss: () -> Unit,
@@ -1178,7 +1168,7 @@ internal fun ThreadTaskDetailDialog(
     statusMenuAnchor?.let { anchor ->
         RaftTaskStatusMenuOverlay(
             anchor = anchor,
-            items = threadTaskStatusMenuItems(task.statusMenuChoices(taskV2Enabled)),
+            items = threadTaskStatusMenuItems(task.statusMenuChoices()),
             selectedId = statusMeta.key,
             onDismiss = { statusMenuAnchor = null },
             onSelect = { selectedId ->

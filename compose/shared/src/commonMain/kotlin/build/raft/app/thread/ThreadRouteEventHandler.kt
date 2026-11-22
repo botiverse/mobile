@@ -82,7 +82,6 @@ internal class ThreadRouteEventHandler(
     val pendingReactionKeysState: MutableState<Set<ThreadReactionPendingKey>>,
     val pendingReactionVisualsState: MutableState<Map<ThreadReactionPendingKey, ThreadReactionPendingVisual>>,
     val pendingActionCardIdsState: MutableState<Set<String>>,
-    val pendingTaskConvertMessageIdsState: MutableState<Set<String>>,
     val createTaskFromMessage: TaskCreateFromMessageFlow,
     val pendingThreadFollowMessageIdsState: MutableState<Set<String>>,
     val markdownRefOpenStore: ThreadMarkdownRefOpenStore,
@@ -94,7 +93,6 @@ internal class ThreadRouteEventHandler(
     val tasksViewModel: SharedTasksViewModel?,
     val currentServerId: String?,
     val markdownTaskContextChannelId: ChannelId?,
-    val taskV2Enabled: Boolean,
     val threadMembersServerId: ServerId?,
     val threadMembersChannelId: ChannelId?,
     val linkedTasksProjection: ThreadLinkedTasksProjection,
@@ -120,7 +118,6 @@ internal class ThreadRouteEventHandler(
     var pendingReactionKeys by pendingReactionKeysState
     var pendingReactionVisuals by pendingReactionVisualsState
     var pendingActionCardIds by pendingActionCardIdsState
-    var pendingTaskConvertMessageIds by pendingTaskConvertMessageIdsState
     var pendingThreadFollowMessageIds by pendingThreadFollowMessageIdsState
     var textSelectionMessage by textSelectionMessageState
     var createAgentDialogState by createAgentDialogStateHolder
@@ -162,8 +159,6 @@ internal class ThreadRouteEventHandler(
     val unableToArchiveChannelLabel = labels.unableToArchiveChannelLabel
     val channelDeletedLabel = labels.channelDeletedLabel
     val unableToDeleteChannelLabel = labels.unableToDeleteChannelLabel
-    val unableToConvertMessageLabel = labels.unableToConvertMessageLabel
-    val taskCreatedLabel = labels.taskCreatedLabel
     val unableToCreateTaskLabel = labels.unableToCreateTaskLabel
     val unsupportedTaskStatusLabel = labels.unsupportedTaskStatusLabel
     val unableToUpdateTaskLabel = labels.unableToUpdateTaskLabel
@@ -439,11 +434,8 @@ internal class ThreadRouteEventHandler(
                 action == "settingsAction" && itemId == "delete" -> {
                     handleDeleteChannel()
                 }
-                action == "convertMessageToTask" && !itemId.isNullOrBlank() && taskV2Enabled -> {
-                    handleCreateTaskFromMessage(itemId)
-                }
                 action == "convertMessageToTask" && !itemId.isNullOrBlank() -> {
-                    handleConvertMessageToTask(itemId)
+                    handleCreateTaskFromMessage(itemId)
                 }
                 action == "setTaskStatus" && !itemId.isNullOrBlank() && !tab.isNullOrBlank() -> {
                     handleSetTaskStatus(itemId, tab)

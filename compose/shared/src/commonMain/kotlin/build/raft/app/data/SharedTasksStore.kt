@@ -2160,18 +2160,16 @@ internal fun tasksBoardSeedStatuses(availableFilters: List<TaskStatus>, backlogS
 
 /**
  * One column per status, in board order (raft-design tasks.md: Backlog, Todo, In Progress, Done,
- * Closed). [taskV2Enabled]: In Review is retired for task v2 (#wg-task-v2:f7043517,
- * raft-design decision 0043; web slock #12884 TasksPanel): no empty In Review column, while a
- * pre-v2 task still in it keeps the column so it stays reachable. Backlog is task v2 only: without
- * it, the column shows only while a task is in it. An [TaskStatus.Unknown] column (a status this
- * build does not know) shows last, only while it holds a task, so such a task never disappears.
+ * Closed). In Review is retired for task v2 (#wg-task-v2:f7043517, raft-design decision 0043; web
+ * slock #12884 TasksPanel): no empty In Review column, while a pre-v2 task still in it keeps the
+ * column so it stays reachable. An [TaskStatus.Unknown] column (a status this build does not know)
+ * shows last, only while it holds a task, so such a task never disappears.
  */
-fun TasksContent.boardColumns(renderLimit: Int, taskV2Enabled: Boolean = false): List<TasksBoardColumn> {
+fun TasksContent.boardColumns(renderLimit: Int): List<TasksBoardColumn> {
     val tasksByStatus = tasks.groupBy { it.status }
     return TaskStatus.entries.mapNotNull { status ->
         val statusTasks = tasksByStatus[status].orEmpty()
-        if (taskV2Enabled && status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
-        if (!taskV2Enabled && status == TaskStatus.Backlog && statusTasks.isEmpty()) return@mapNotNull null
+        if (status == TaskStatus.InReview && statusTasks.isEmpty()) return@mapNotNull null
         if (status == TaskStatus.Unknown && statusTasks.isEmpty()) return@mapNotNull null
         TasksBoardColumn(
             status = status,

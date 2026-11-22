@@ -783,8 +783,6 @@
     <string name="thread_error_archive_channel">無法封存頻道</string>
     <string name="thread_feedback_channel_deleted">已刪除頻道</string>
     <string name="thread_error_delete_channel">無法刪除頻道</string>
-    <string name="thread_error_convert_message">無法將訊息轉為任務</string>
-    <string name="thread_feedback_task_created">已建立任務</string>
     <string name="thread_error_task_status_unsupported">不支援此任務狀態</string>
     <string name="thread_error_update_task">無法更新任務</string>
     <string name="thread_error_update_assignee">無法更新負責人</string>
