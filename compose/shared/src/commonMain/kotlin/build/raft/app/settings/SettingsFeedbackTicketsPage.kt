@@ -83,7 +83,6 @@ import build.raft.app.model.MillisPerDay
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorDiv
-import build.raft.app.model.formatRaftLocalClock
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -1061,7 +1060,7 @@ private fun FeedbackDateDivider(epochMillis: Long, timeContext: RaftTimeContext?
 
 @Composable
 private fun feedbackClock(epochMillis: Long, timeContext: RaftTimeContext?): String =
-    timeContext?.formatClock(epochMillis) ?: formatRaftLocalClock(epochMillis, localOffsetMinutes = 0)
+    currentRaftEffectiveDateTimeContext(timeContext).formatClock(epochMillis)
 
 /** Web FeedbackConversationMessage: sender and time, the text, the ticket's attachments. */
 @Composable

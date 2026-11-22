@@ -827,7 +827,7 @@ DIRECT_PAGE_BASE_PROVIDER_READ_RE = re.compile(
 )
 RAW_ISO_DATE_SLICE_RE = re.compile(
     r"\.\s*(?:substringBefore\s*\(\s*(?:'T'|\"T\")\s*\)|"
-    r"take\s*\(\s*10\s*\)\s*\.\s*split\s*\(\s*(?:'-'|\"-\")\s*\))"
+    r"take\s*\(\s*10\s*\)\s*\??\.\s*split\s*\(\s*(?:'-'|\"-\")\s*\))"
 )
 STATIC_TIME_CONTEXT_CALL_RE = re.compile(r"\.\s*staticContext\s*\(")
 
@@ -915,14 +915,11 @@ def check_date_time_di_invariants(
     for name in sorted(sources):
         text = sources[name]
         code = _kotlin_code_only(text)
-        code_lines = code.split("\n")
         is_ui = _is_date_time_di_ui_file(name)
 
         if is_ui:
             for match in SYSTEM_ZONE_OR_LOCAL_DATETIME_RE.finditer(code):
                 line = code.count("\n", 0, match.start()) + 1
-                if code_lines[line - 1].lstrip().startswith("import "):
-                    continue
                 raise Violation(
                     f"date/time DI violation: {name}:{line} calls `{match.group(0).strip()}` in UI code; "
                     "format dates/times through RaftTimeContext (currentRaftDateTimeContext / "
@@ -1316,14 +1313,33 @@ com.apple.SignInWithApple = {
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val z = TimeZone.currentSystemDefault()\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = instant.toLocalDateTime(z)\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso.substringBefore('T')\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + 'val d = iso.substringBefore("T")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso?.substringBefore('T')\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso.take(10).split('-')\n"}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso.take(10).split("-")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso?.take(10)?.split('-')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso?.take(10)?.split("-")\n'}, dt_allow),
         ({**good_dt, dt_ui: good_dt[dt_ui] + "val extra = caps.staticContext()\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val c = caps.staticContext()\n"}, dt_allow),
         ({**good_dt, "compose/shared/src/commonMain/kotlin/build/raft/app/Other.kt": "val c = x.staticContext()\n"}, dt_allow),
+        ({**good_dt, DATE_TIME_DI_LIVE_CONTEXT_FILE: "val p = LocalRaftTimeContextProvider.current\n"}, dt_allow),
+        (
+            {
+                **good_dt,
+                DATE_TIME_DI_LIVE_CONTEXT_FILE: (
+                    good_dt[DATE_TIME_DI_LIVE_CONTEXT_FILE]
+                    + "val p2 = LocalRaftPageBaseTimeContextProvider.current\n"
+                ),
+            },
+            dt_allow,
+        ),
         ({**good_dt, dt_ui: "val ok = 1\n"}, dt_allow),
         (good_dt, ((dt_ui, 1, " "),)),
+        (good_dt, ((dt_ui, 0, "zero count"),)),
+        (good_dt, ((dt_ui, -1, "negative count"),)),
+        (good_dt, ((dt_ui, 1, "first"), (dt_ui, 1, "duplicate path"))),
     ):
         try:
             check_date_time_di_invariants(bad_sources, bad_allow)

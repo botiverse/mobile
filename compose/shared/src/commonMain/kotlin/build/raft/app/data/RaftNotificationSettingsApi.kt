@@ -961,18 +961,21 @@ fun raftMinuteOfDayLabel(minute: Int, timeFormat: String = RaftTimeFormat24Hour)
 
 fun raftNowEpochMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
-/** Local clock when [epochMillis] is today in [timeContext] (or device zone), else date + clock. */
+/** Local clock when [epochMillis] is today (at [nowEpochMillis], else in [timeContext] or device zone), else date + clock. */
 fun raftPausedUntilLabel(
     epochMillis: Long,
-    nowEpochMillis: Long = raftNowEpochMillis(),
+    nowEpochMillis: Long? = null,
     timeContext: RaftTimeContext? = null,
 ): String {
+    var cachedNow = nowEpochMillis
+    fun resolvedNow(): Long = cachedNow ?: raftNowEpochMillis().also { cachedNow = it }
     val offset =
         timeContext?.localOffsetMinutes
-            ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(nowEpochMillis, 0)
+            ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(resolvedNow(), 0)
     val today =
-        timeContext?.resolvedTodayEpochDay()
-            ?: floorDiv(nowEpochMillis + offset.toLong() * MillisPerMinute, MillisPerDay)
+        nowEpochMillis?.let { floorDiv(it + offset.toLong() * MillisPerMinute, MillisPerDay) }
+            ?: timeContext?.resolvedTodayEpochDay()
+            ?: floorDiv(resolvedNow() + offset.toLong() * MillisPerMinute, MillisPerDay)
     val timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour
     return formatRaftTimestampEpochMillis(epochMillis, offset, today, timeFormat)
 }

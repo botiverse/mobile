@@ -32,8 +32,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftAssistantWeChatConnectApi
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.formatRaftLocalClock
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.rememberRaftIsoClockFormatter
@@ -262,7 +262,7 @@ internal fun weChatExpiryClock(expiresAt: String, timeContext: RaftTimeContext? 
     if (timeContext != null) return timeContext.formatClock(expiresAt) ?: expiresAt
     val epochMillis = parseRaftTimestampEpochMillisOrNull(expiresAt, 0) ?: return expiresAt
     val offset = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(epochMillis, 0)
-    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormat24Hour)
+    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormatRuntime.current)
 }
 
 @Composable

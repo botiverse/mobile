@@ -121,13 +121,14 @@ internal fun raftRelativeTimestampLabel(
     clampFuture: Boolean = false,
 ): String {
     val effectiveContext = currentRaftTimeContext(timeContext)
-    val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext)
     return when (val label = if (clampFuture) resolved.clampedFutureToNow() else resolved) {
         RaftRelativeTimeLabel.Empty -> ""
-        RaftRelativeTimeLabel.Unknown ->
-            raftDeviceZoneAbsoluteLabel(value, timeFormat = effectiveContext?.timeFormat ?: fallbackTimeFormat)
+        RaftRelativeTimeLabel.Unknown -> {
+            val fmt = if (effectiveContext != null) effectiveContext.timeFormat else RaftTimeFormatRuntime.observe()
+            raftDeviceZoneAbsoluteLabel(value, timeFormat = fmt)
                 ?: stringResource(Res.string.relative_time_unknown)
+        }
         is RaftRelativeTimeLabel.Literal -> label.value
         is RaftRelativeTimeLabel.Relative -> label.localized()
     }
@@ -144,13 +145,14 @@ internal fun raftShortRelativeTimestampLabel(
     timeContext: RaftTimeContext? = null,
 ): String {
     val effectiveContext = currentRaftTimeContext(timeContext)
-    val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext).clampedFutureToNow()
     return when (resolved) {
         RaftRelativeTimeLabel.Empty -> ""
-        RaftRelativeTimeLabel.Unknown ->
-            raftDeviceZoneAbsoluteLabel(value, timeFormat = effectiveContext?.timeFormat ?: fallbackTimeFormat)
+        RaftRelativeTimeLabel.Unknown -> {
+            val fmt = if (effectiveContext != null) effectiveContext.timeFormat else RaftTimeFormatRuntime.observe()
+            raftDeviceZoneAbsoluteLabel(value, timeFormat = fmt)
                 ?: stringResource(Res.string.relative_time_unknown)
+        }
         is RaftRelativeTimeLabel.Literal -> resolved.value
         is RaftRelativeTimeLabel.Relative -> resolved.localizedShort()
     }
@@ -375,10 +377,9 @@ internal fun raftFallbackDateTimeContext(
 @Composable
 internal fun currentRaftEffectiveDateTimeContext(timeContext: RaftTimeContext? = null): RaftTimeContext {
     val resolved = currentRaftDateTimeContext(timeContext)
-    val runtimeFormat = RaftTimeFormatRuntime.observe(fallback = timeContext?.timeFormat ?: RaftTimeFormat24Hour)
     if (resolved != null) return resolved
-    val resolvedFormat = timeContext?.timeFormat ?: runtimeFormat
-    return remember(resolvedFormat) { raftFallbackDateTimeContext(timeFormat = resolvedFormat) }
+    val runtimeFormat = RaftTimeFormatRuntime.observe()
+    return remember(runtimeFormat) { raftFallbackDateTimeContext(timeFormat = runtimeFormat) }
 }
 
 /** Local clock formatter (`HH:mm` or `hh:mm AM/PM`) honoring the enclosing [RaftTimeContext]. */

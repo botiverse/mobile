@@ -114,6 +114,7 @@ import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -613,9 +614,18 @@ private fun ThreadPageScreen(
         )
     }
     val parsedPayload = payloadTrace.payload
+    val baseTimeCapabilities =
+        remember(parsedPayload.localOffsetMinutes, parsedPayload.timeFormat) {
+            parsedPayload.toRaftTimeCapabilities()
+        }
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities.timeFormat)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities.copy(timeFormat = runtimeTimeFormat)
+        }
     val liveTimeContextProvider =
         rememberLiveRaftTimeContext(
-            capabilities = parsedPayload.toRaftTimeCapabilities(),
+            capabilities = timeCapabilities,
             pageVisibleTick = pageVisibleTick,
             active = pageVisible
         )
@@ -1071,7 +1081,7 @@ private fun ThreadPageScreen(
                             serverId = resolvedServerId,
                             storeScope = targetStoreScope,
                             foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
-                            timeContext = liveTimeContextProvider.current ?: payload.toRaftTimeCapabilities().staticContext(),
+                            timeContext = liveTimeContextProvider.dateContext ?: timeCapabilities.staticContext(),
                             alignOwnMessagesRight = payload.alignOwnMessagesRight,
                             compactConsecutiveMessages = payload.compactConsecutiveMessages,
                             channelJoined = channelJoined,

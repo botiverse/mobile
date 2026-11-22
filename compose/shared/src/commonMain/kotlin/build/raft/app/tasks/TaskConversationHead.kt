@@ -110,7 +110,6 @@ import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerHour
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForRenderedAvatar
@@ -690,7 +689,8 @@ private fun TaskHeadFacts(
             }
         }
         // When it was created rides on Created by, not a row of its own (web slock #15639).
-        val createdAt = model.createdAt?.let { stringResource(Res.string.task_head_created_at_value, it.localized()) }
+        val timeFormat = currentRaftEffectiveDateTimeContext().timeFormat
+        val createdAt = model.createdAt?.let { stringResource(Res.string.task_head_created_at_value, it.localized(timeFormat)) }
         Item(stringResource(Res.string.task_head_created_by)) {
             TaskHeadFactValue { TaskHeadCreatedByValue(model.createdBy ?: unknown, model.creator, model.avatarServerId, createdAt, onOpenCreator) }
         }
@@ -1264,7 +1264,7 @@ private val TaskHeadMonthResources =
     )
 
 @Composable
-internal fun TaskHeadDateTime.localized(timeFormat: String = RaftTimeFormat24Hour): String {
+internal fun TaskHeadDateTime.localized(timeFormat: String): String {
     val time = formatRaftClock(hour, minute, null, timeFormat)
     return stringResource(Res.string.task_head_medium_date_time, stringResource(TaskHeadMonthResources[month - 1]), day, year, time)
 }

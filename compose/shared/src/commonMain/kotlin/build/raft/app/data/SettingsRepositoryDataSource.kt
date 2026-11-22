@@ -1544,7 +1544,9 @@ class RealSettingsRepository(
         val effectiveTimeFormat =
             snapshot.timeFormat.selectedKey.takeIf { it == "12h" || it == "24h" }
                 ?: return
+        var applied = false
         sessionStore.updateMetadata(expectedAccountId) { latest ->
+            applied = true
             latest.copy(
                 user =
                     latest.user.copy(
@@ -1554,7 +1556,9 @@ class RealSettingsRepository(
                     )
             )
         }
-        onTimeFormatUpdated(effectiveTimeFormat)
+        if (applied) {
+            onTimeFormatUpdated(effectiveTimeFormat)
+        }
     }
 
     override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {

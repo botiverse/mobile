@@ -55,8 +55,8 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.text.buildAnnotatedString
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.formatRaftLocalClock
 
 internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dialog"
@@ -667,5 +667,5 @@ internal fun SettingsSecondFactorStepUpHost(
 internal fun secondFactorStepUpLocalClock(epochMillis: Long, timeContext: RaftTimeContext? = null): String {
     if (timeContext != null) return timeContext.formatClock(epochMillis)
     val offset = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(epochMillis, 0)
-    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormat24Hour)
+    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormatRuntime.current)
 }

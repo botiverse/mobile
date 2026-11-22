@@ -16,6 +16,7 @@ import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for Phase 2A of Date/Time Formatting & DI cleanup (dm:@artin:#2):
@@ -159,15 +160,48 @@ class DateTimeDiPhase2ATest {
         assertEquals("10:30 PM", weChatExpiryClock("2026-11-18T14:30:00Z", utcPlus8DateContext12h))
         assertEquals("not-a-time", weChatExpiryClock("not-a-time", utcPlus8DateContext12h))
 
+        RaftTimeFormatRuntime.resetForTest()
+        try {
+            RaftTimeFormatRuntime.update(RaftTimeFormat12Hour)
+            val stepUp12h = secondFactorStepUpLocalClock(instant)
+            val weChat12h = weChatExpiryClock("2026-11-18T14:30:00Z")
+            assertTrue(stepUp12h.endsWith(" AM") || stepUp12h.endsWith(" PM"))
+            assertTrue(weChat12h.endsWith(" AM") || weChat12h.endsWith(" PM"))
+
+            RaftTimeFormatRuntime.update(RaftTimeFormat24Hour)
+            val clock24h = Regex("""^\d{2}:\d{2}$""")
+            assertTrue(clock24h.matches(secondFactorStepUpLocalClock(instant)))
+            assertTrue(clock24h.matches(weChatExpiryClock("2026-11-18T14:30:00Z")))
+        } finally {
+            RaftTimeFormatRuntime.resetForTest()
+        }
+
         assertEquals("22:30", raftMinuteOfDayLabel(1350, RaftTimeFormat24Hour))
         assertEquals("10:30 PM", raftMinuteOfDayLabel(1350, RaftTimeFormat12Hour))
+        assertEquals("00:00", raftMinuteOfDayLabel(0, RaftTimeFormat24Hour))
         assertEquals("12:00 AM", raftMinuteOfDayLabel(0, RaftTimeFormat12Hour))
+        assertEquals("12:00", raftMinuteOfDayLabel(720, RaftTimeFormat24Hour))
+        assertEquals("12:00 PM", raftMinuteOfDayLabel(720, RaftTimeFormat12Hour))
 
         val now = epochMillis("2026-11-18T02:00:00Z") // 10:00 at UTC+8.
         assertEquals("22:30", raftPausedUntilLabel(instant, now, utcPlus8DateContext24h))
         assertEquals("10:30 PM", raftPausedUntilLabel(instant, now, utcPlus8DateContext12h))
         val tomorrow = epochMillis("2026-11-19T01:00:00Z") // 09:00 on Nov 19 at UTC+8.
         assertEquals("11-19 09:00 AM", raftPausedUntilLabel(tomorrow, now, utcPlus8DateContext12h))
+
+        // Explicit nowEpochMillis must take precedence over timeContext.todayEpochDay when they differ.
+        val nov3Now = epochMillis("2026-11-03T08:00:00Z")
+        val nov3Pause = epochMillis("2026-11-03T10:30:00Z")
+        val oct30UtcContext =
+            RaftTimeContext(
+                localOffsetMinutes = 0,
+                todayEpochDay = raftEpochDayForDate(2026, 10, 30),
+                nowEpochMillis = null,
+                timeFormat = RaftTimeFormat24Hour,
+            )
+        assertEquals("10:30", raftPausedUntilLabel(nov3Pause, nov3Now, oct30UtcContext))
+        assertEquals("18:30", raftPausedUntilLabel(nov3Pause, nov3Now, utcPlus8DateContext24h))
+        assertEquals("11-03 18:30", raftPausedUntilLabel(nov3Pause, null, utcPlus8DateContext24h))
     }
 
     @Test

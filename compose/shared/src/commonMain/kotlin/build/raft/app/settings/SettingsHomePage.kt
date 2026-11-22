@@ -1312,11 +1312,17 @@ private fun RaftAppShellReadyContent(
     val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat) {
         baseHostThreadTimeCapabilities?.copy(timeFormat = hostTimeFormat)
     }
-    val hostThreadTimeContextProvider =
+    val fallbackHostTimeContextProvider = currentRaftTimeContextProvider
+    val ownHostThreadTimeContextProvider =
         rememberLiveRaftTimeContext(
             capabilities = hostThreadTimeCapabilities,
-            pageVisibleTick = pageVisibleTick
+            pageVisibleTick = pageVisibleTick,
+            active = hostThreadTimeCapabilities != null,
         )
+    val hostThreadTimeContextProvider =
+        ownHostThreadTimeContextProvider.takeIf { hostThreadTimeCapabilities != null }
+            ?: fallbackHostTimeContextProvider
+            ?: ownHostThreadTimeContextProvider
     val currentHostThreadTimeContextProvider = rememberUpdatedState(hostThreadTimeContextProvider)
     val notificationWindowNavigationIntent =
         remember(pager.pageData.params.toString()) {
@@ -2238,11 +2244,12 @@ private fun RaftAppShellReadyContent(
         homeSurfaceVisible = homeSurfaceVisible,
     )
     val sessionTimeFormat = (readySession ?: homePreviewSession).appShellThreadTimeFormat()
-    LaunchedEffect(sessionTimeFormat, authGateState) {
-        if (sessionTimeFormat != null) {
+    val effectiveSessionTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = sessionTimeFormat ?: RaftTimeFormat24Hour)
+    val authRequired = authGateState is SharedAuthGateState.AuthRequired
+    LaunchedEffect(readySession?.user?.id, sessionTimeFormat, authRequired) {
+        if (readySession != null || authRequired) {
             RaftTimeFormatRuntime.update(sessionTimeFormat)
-        } else if (authGateState is SharedAuthGateState.AuthRequired) {
-            RaftTimeFormatRuntime.update(null)
         }
     }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or
@@ -2250,9 +2257,9 @@ private fun RaftAppShellReadyContent(
     // dates/clocks consistently instead of leaking raw ISO strings.
     val threadTimeContext =
         hostThreadTimeContextProvider.dateContext
-            ?.withTimeFormat(sessionTimeFormat)
-            ?: remember(hostThreadTimeCapabilities, sessionTimeFormat) {
-                hostThreadTimeCapabilities?.staticContext().withTimeFormat(sessionTimeFormat)
+            ?.withTimeFormat(effectiveSessionTimeFormat)
+            ?: remember(hostThreadTimeCapabilities, effectiveSessionTimeFormat) {
+                hostThreadTimeCapabilities?.staticContext().withTimeFormat(effectiveSessionTimeFormat)
             }
     fun selectAppShellTab(
         nextTab: String,

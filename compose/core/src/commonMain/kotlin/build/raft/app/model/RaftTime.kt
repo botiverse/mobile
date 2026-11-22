@@ -35,6 +35,13 @@ sealed interface RaftRelativeTimeLabel {
 const val RaftTimeFormat12Hour = "12h"
 const val RaftTimeFormat24Hour = "24h"
 
+/**
+ * Viewer local time formatting context carried through DI (`LocalRaftTimeContextProvider`).
+ *
+ * Note on DST: [localOffsetMinutes] represents the viewer's current local UTC offset (accurate for
+ * live/today displays). IANA timezone / offset-at-instant resolution for cross-DST historical and
+ * future timestamps is tracked for Phase 2B/2C (dm:@artin:#2).
+ */
 data class RaftTimeContext(
     val localOffsetMinutes: Int,
     val todayEpochDay: Long? = null,

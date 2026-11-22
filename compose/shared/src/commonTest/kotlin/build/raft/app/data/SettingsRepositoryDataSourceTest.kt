@@ -425,6 +425,55 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun staleInFlightTimeFormatWriteAfterAccountSwitchDoesNotUpdateRuntime() = runBlocking {
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+        val initialSession =
+            sampleSession().copy(
+                user =
+                    sampleSession().user.copy(
+                        id = "user-1",
+                        preferredTimeFormat = "24h",
+                        timeFormat = "24h",
+                    )
+            )
+        store.replaceAuthenticatedSession(initialSession)
+        val switchedSession =
+            sampleSession().copy(
+                user =
+                    sampleSession().user.copy(
+                        id = "user-2",
+                        preferredTimeFormat = "24h",
+                        timeFormat = "24h",
+                    )
+            )
+        val observedTimeFormats = mutableListOf<String>()
+        val repository =
+            RealSettingsRepository(
+                store,
+                FakeSettingsNetworkClient(
+                    accountJson =
+                        """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimeFormat":"12h"}""",
+                    onAccountPatch = {
+                        store.replaceAuthenticatedSession(switchedSession)
+                    },
+                ),
+                onTimeFormatUpdated = observedTimeFormats::add,
+            )
+
+        val result =
+            repository.updateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = "12h")
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(emptyList(), observedTimeFormats)
+        val persisted = store.readSession()
+        assertEquals("user-2", persisted?.user?.id)
+        assertEquals("24h", persisted?.user?.preferredTimeFormat)
+        assertEquals("24h", persisted?.user?.timeFormat)
+    }
+
+    @Test
     fun unrelatedLanguageRegionWriteCannotRollbackCanonicalTimeFormat() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(
@@ -1498,7 +1547,8 @@ class SettingsRepositoryDataSourceTest {
         private val workspacesResponseCode: Int? = null,
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200,
-        private val errorJson: String? = """{"error":"failed"}"""
+        private val errorJson: String? = """{"error":"failed"}""",
+        private val onAccountPatch: (suspend () -> Unit)? = null,
     ) : RaftNetworkClient {
         private var currentConnectedAppClientsJson = connectedAppClientsJson
         private var currentServerPushMode =
@@ -1585,6 +1635,7 @@ class SettingsRepositoryDataSourceTest {
                     response(accountJson)
                 normalized == "auth/me" && method == "PATCH" -> {
                     accountUpdateBodies += bodyText.orEmpty()
+                    onAccountPatch?.invoke()
                     response(accountJson)
                 }
                 normalized == "auth/providers" && method == "GET" ->

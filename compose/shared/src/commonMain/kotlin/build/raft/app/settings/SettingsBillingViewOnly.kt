@@ -426,9 +426,13 @@ internal fun SettingsBillingViewOnlyContent(
     modifier: Modifier = Modifier,
     nowEpochMillis: Long? = null,
 ) {
-    val liveNow = currentRaftTimeContext(null)?.nowEpochMillis
-    val fallbackNow = remember { defaultNowMillis() }
-    val resolvedNowEpochMillis = nowEpochMillis ?: liveNow ?: fallbackNow
+    val resolvedNowEpochMillis =
+        if (nowEpochMillis != null) {
+            nowEpochMillis
+        } else {
+            val liveNow = currentRaftTimeContext(null)?.nowEpochMillis
+            if (liveNow != null) liveNow else remember { defaultNowMillis() }
+        }
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),

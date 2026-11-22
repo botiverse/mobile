@@ -310,11 +310,14 @@ private fun AddComputerCodeRequestDetails(request: DeviceLoginRequest, target: D
 @Composable
 private fun addComputerCodeStartedLabel(requestedAt: String): String? {
     val context = currentRaftTimeContext(null)
-    val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
     val time =
-        raftAbsoluteTimestampLabel(requestedAt, context)
-            ?: raftDeviceZoneAbsoluteLabel(requestedAt, timeFormat = context?.timeFormat ?: fallbackTimeFormat)
-            ?: return null
+        if (context != null) {
+            raftAbsoluteTimestampLabel(requestedAt, context)
+                ?: raftDeviceZoneAbsoluteLabel(requestedAt, timeFormat = context.timeFormat)
+        } else {
+            val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
+            raftDeviceZoneAbsoluteLabel(requestedAt, timeFormat = fallbackTimeFormat)
+        } ?: return null
     if (context == null) return time
     val ago = raftRelativeTimestampLabel(requestedAt, context, clampFuture = true)
     return stringResource(Res.string.settings_computers_code_started_value, time, ago)
