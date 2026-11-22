@@ -645,7 +645,9 @@ private fun rememberMembersVisualFixtureRemoteControls(): MembersAgentRemoteCont
                     hostedAvailable = false,
                     computers = emptyList(),
                     onOpenBilling = {},
-                    onAgentPlacementChanged = {}
+                    onAgentPlacementChanged = {},
+                    // The viewer is the server's owner, as on the web.
+                    onOpenLog = {}
                 )
         )
     }

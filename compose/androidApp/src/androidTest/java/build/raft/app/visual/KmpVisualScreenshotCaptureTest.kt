@@ -2570,6 +2570,15 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
     }
 
+    @Test
+    fun captureAgentMigrationLogTable() {
+        captureKmpComponentCase(
+            caseId = "screens.agent-migration-log.table.phone",
+            pageName = "compose_agent_migration_log_visual",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
     // Settings > Computers is native again (RaftSettingsComputersPage). These
     // cases render its production content from seeded store snapshots through
     // the compose_settings_computers_visual fixture (no network, pinned clock).
