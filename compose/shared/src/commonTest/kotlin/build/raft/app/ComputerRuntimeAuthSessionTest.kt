@@ -286,6 +286,7 @@ class ComputerRuntimeAuthSessionTest {
         controller.openSignIn()
         assertTrue("cancel antigravity $LOGIN" in ops.calls)
     }
+
     private fun TestScope.signIn(runtime: RuntimeAuthRuntime, ops: FakeAuthOps) =
         ComputerRuntimeSignInSession("s1", "m1", runtime, provider = null, ops = ops, scope = this)
 

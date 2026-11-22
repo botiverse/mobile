@@ -210,7 +210,7 @@ class ComputerRuntimeSignInBrowserReturnUiTest {
             // Sign-out (Cleared) keeps access fail-closed.
             currentOwner = null
             currentServerId = null
-            assertTrue(authEvents.tryEmit(AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.UserLogout)))
+            assertTrue(authEvents.tryEmit(AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.Logout)))
             waitForIdle()
             onAllNodesWithTag(COMPUTER_RUNTIME_SIGN_IN_DIALOG_TAG, useUnmergedTree = true).assertCountEquals(0)
         }
