@@ -653,7 +653,7 @@ class ThreadComposerFocusNonceUiTest {
             var composerState by mutableStateOf(ThreadComposerUiState(instanceId = "conv-mention"))
             var insertRequest by mutableStateOf<ThreadComposerInsertMentionRequest?>(null)
             var dialogOpen by mutableStateOf(false)
-            val consumedNonces = mutableListOf<Long>()
+            val consumedNonces = mutableListOf<Int>()
             val changeTexts = mutableListOf<String>()
             var coordinator: RaftFocusCoordinator? = null
             setContent {
@@ -708,10 +708,10 @@ class ThreadComposerFocusNonceUiTest {
             assertTrue(activeCoordinator.modalOpen)
 
             runOnIdle {
-                insertRequest = ThreadComposerInsertMentionRequest(nonce = 1L, handle = "alice")
+                insertRequest = ThreadComposerInsertMentionRequest(nonce = 1, handle = "alice")
             }
             waitForIdle()
-            assertEquals(listOf(1L), consumedNonces)
+            assertEquals(listOf(1), consumedNonces)
             assertTrue(changeTexts.any { it.contains("@alice") }, "mention text should still be inserted")
             assertFalse(activeCoordinator.anyComposerFocused, "insertMentionRequest must yield focus while modal is open")
             assertEquals(0, keyboard.shown)
@@ -720,10 +720,10 @@ class ThreadComposerFocusNonceUiTest {
             runOnIdle { dialogOpen = false }
             waitForIdle()
             runOnIdle {
-                insertRequest = ThreadComposerInsertMentionRequest(nonce = 2L, handle = "bob")
+                insertRequest = ThreadComposerInsertMentionRequest(nonce = 2, handle = "bob")
             }
             waitForIdle()
-            assertEquals(listOf(1L, 2L), consumedNonces)
+            assertEquals(listOf(1, 2), consumedNonces)
             assertTrue(activeCoordinator.anyComposerFocused, "insertMentionRequest should focus composer once modal closes")
             assertEquals(1, keyboard.shown)
             assertEquals(0, activeCoordinator.pendingTicketCount)
