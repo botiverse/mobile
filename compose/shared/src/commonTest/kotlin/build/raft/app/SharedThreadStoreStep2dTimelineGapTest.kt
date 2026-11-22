@@ -435,7 +435,7 @@ class SharedThreadStoreStep2dTimelineGapTest {
         val offlineError = DataResult.Error(ScreenError(code = "offline", retryable = true))
         val extender = RecordingPageExtender()
         val repo =
-            SharedThreadStoreTest.FakeConversationRepository(
+            SharedThreadStoreTestFakes.FakeConversationRepository(
                 threadResult = offlineError,
                 olderResult = DataResult.Content(repoSnapshot((61L..90L).toList())),
             )
@@ -774,7 +774,7 @@ class SharedThreadStoreStep2dTimelineGapTest {
                 body = "Original root",
             )
         val replyRepo =
-            SharedThreadStoreTest.FakeConversationRepository(
+            SharedThreadStoreTestFakes.FakeConversationRepository(
                 threadResult =
                     DataResult.Content(
                         SharedThreadStoreTest.threadSnapshot(
@@ -842,7 +842,7 @@ class SharedThreadStoreStep2dTimelineGapTest {
         val contextStarted = CompletableDeferred<Unit>()
         val releaseContext = CompletableDeferred<Unit>()
         val onlineRepo =
-            SharedThreadStoreTest.FakeConversationRepository(
+            SharedThreadStoreTestFakes.FakeConversationRepository(
                 threadResult = DataResult.Content(repoSnapshot((91L..120L).toList())),
                 messageContextResult = DataResult.Content(repoSnapshot((15L..25L).toList())),
             ).apply {
