@@ -738,7 +738,9 @@ internal fun RaftWorkspaceDetailGrid(
             if (role == RaftPaneRole.Artifact) openArtifact(pageName, pageData) else change(currentPanes().open(pageName, pageData))
         },
     ) {
-        CompositionLocalProvider(LocalRaftProfileColumn provides state) {
+        // Where [wide], an Artifact opened anywhere in this row (the conversation, its thread, the columns) opens in its
+        // Artifact column: a prewarm or a reuse there is for the viewer the column draws (`hostHead`).
+        CompositionLocalProvider(LocalRaftProfileColumn provides state, LocalRaftArtifactOpenInColumn provides wide) {
             RaftPaneGrid(
                 // The Artifact's column before the profile's: both trail, in this order (web DEFAULT_CHANNEL_SIDE_LAYOUT).
                 columns = listOfNotNull(sideThreadColumn, artifactColumn, profileColumn),
