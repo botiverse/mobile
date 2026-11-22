@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.ActorResolveOutcome
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.MemberSnapshot
 import build.raft.app.data.PresenceNoopMemberRepository
@@ -12,6 +13,14 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -75,6 +84,82 @@ class RaftMemberAvatarTest {
             "pixel:antenna",
             raftMemberAvatarWireValue(RaftMemberAvatarIdentity(MemberKind.Agent, "kirby", ServerKey), resolver.current("kirby"), jointActorAvatarWireValue = jointAvatar),
         )
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun messageAuthorSeedForJointChannelAgentDoesNotBlockRemoteAvatarResolution() = runTest {
+        // #proj-mobile:#276: opening or prewarming a joint channel seeds avatar-less message author
+        // candidates; that seed must not synthesize pixel:robot over inbox senderAvatarUrl or block
+        // POST /api/actors/resolve for other-server agents.
+        val remoteAgentId = "0b6f7d1e-0000-4e4e-9b9b-000000000276"
+        val localBareAgentId = "0b6f7d1e-0000-4e4e-9b9b-000000000277"
+        val remoteAvatar = "https://cdn.raft.build/avatars/agents/0123456789abcdef0123456789abcdef.webp"
+        val resolveScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val requestedIds = mutableListOf<String>()
+        val store =
+            SharedServerMembersStore(
+                memberRepository = PresenceNoopMemberRepository,
+                actorResolve = { _, refs ->
+                    requestedIds += refs.map { it.id }
+                    ActorResolveOutcome.Resolved(
+                        refs.map { ref ->
+                            ResolvedActor(
+                                kind = ref.kind,
+                                id = ref.id,
+                                homeServerId = "server-2",
+                                name = "imprint",
+                                displayName = "Imprint",
+                                avatarUrl = remoteAvatar,
+                                gravatarHash = null,
+                            )
+                        }
+                    )
+                },
+                actorResolveScope = resolveScope,
+            )
+        store.seed(MemberSnapshot(server(), listOf(agent(localBareAgentId, avatar = null))))
+        store.seedProfileCandidates(
+            ServerId(ServerKey),
+            listOf(agent(remoteAgentId, avatar = null).copy(serverId = ServerId(ServerKey))),
+        )
+        val resolver = raftMemberAvatarResolver(store, ServerKey).forJointSurface(true)
+
+        // Avatar-less message seed stays null so row-carried senderAvatarUrl renders directly.
+        assertNull(resolver.current(remoteAgentId))
+        assertNull(resolver(remoteAgentId).first())
+        val activityRowWithAvatar =
+            ActivitySenderAvatarIdentity(
+                senderKind = MemberKind.Agent,
+                avatarWireValue = remoteAvatar,
+                label = "Imprint",
+                senderId = remoteAgentId,
+                jointSurface = true,
+            )
+        assertEquals(remoteAvatar, activityFaceAvatarWireValue(resolver.current(remoteAgentId), activityRowWithAvatar))
+
+        // Rows without senderAvatarUrl (e.g., joint task rows or thread messages) still resolve via actors/resolve.
+        var resolvedRemote: ResolvedActor? = null
+        val remoteCollector = launch { resolver.jointActor(MemberKind.Agent, remoteAgentId).collect { resolvedRemote = it } }
+        var resolvedLocal: ResolvedActor? = null
+        val localCollector = launch { resolver.jointActor(MemberKind.Agent, localBareAgentId).collect { resolvedLocal = it } }
+        advanceUntilIdle()
+
+        assertEquals(listOf(remoteAgentId), requestedIds)
+        assertEquals(remoteAvatar, resolvedRemote?.explicitAvatarWireValue())
+        assertEquals(
+            remoteAvatar,
+            activityFaceAvatarWireValue(
+                memberAvatarWireValue = resolver.current(remoteAgentId),
+                identity = activityRowWithAvatar.copy(avatarWireValue = null),
+                jointActorAvatarWireValue = resolvedRemote?.explicitAvatarWireValue(),
+            ),
+        )
+        // Confirmed local agent with no custom avatar still wears pixel:robot and skips actors/resolve.
+        assertEquals("pixel:robot", resolver.current(localBareAgentId))
+        assertNull(resolvedLocal)
+        remoteCollector.cancel()
+        localCollector.cancel()
     }
 
     private fun resolve(kind: MemberKind, id: String, resolver: RaftMemberAvatarResolver, carried: String? = null): String? =

@@ -95,4 +95,22 @@ class AvatarPriorityTest {
             AvatarReference.fromWireValue("pixel:tree")
         )
     }
+
+    @Test
+    fun relativeAppAvatarPathsResolveAgainstApiBaseUrl() {
+        assertEquals(
+            "https://api.raft.build/api/avatars/agents/0123456789abcdef.webp",
+            "/api/avatars/agents/0123456789abcdef.webp".appAvatarRelativeApiUrl("https://api.raft.build/api/"),
+        )
+        assertEquals(
+            "https://api.raft.build/api/avatars/users/0123456789abcdef.webp",
+            "/avatars/users/0123456789abcdef.webp".appAvatarRelativeApiUrl("https://api.raft.build/api/"),
+        )
+        assertEquals(
+            "https://selfhosted.example/api/avatars/agents/0123456789abcdef.webp",
+            "/api/avatars/agents/0123456789abcdef.webp".appAvatarRelativeApiUrl("https://selfhosted.example"),
+        )
+        assertNull("//evil.example/avatars/agents/0123456789abcdef.webp".appAvatarRelativeApiUrl("https://api.raft.build/api/"))
+        assertNull("/api/avatars/agents/0123456789abcdef.webp".appAvatarRelativeApiUrl(null))
+    }
 }

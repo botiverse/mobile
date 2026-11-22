@@ -356,6 +356,27 @@ private fun explicitAvatarWireValue(
             ?: avatarUrl?.appAvatarWireValueOrNull()
     }
 
+fun String.isRelativeAppAvatarPath(): Boolean {
+    val normalized = trim()
+    return normalized.startsWith("/avatars/") || normalized.startsWith("/api/avatars/")
+}
+
+fun String.appAvatarRelativeApiUrl(apiBaseUrl: String?): String? {
+    val normalized = trim()
+    if (!normalized.isRelativeAppAvatarPath()) return null
+    val base = apiBaseUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.trimEnd('/') ?: return null
+    return when {
+        normalized.startsWith("/api/avatars/") ->
+            if (base.endsWith("/api")) {
+                "${base.removeSuffix("/api")}$normalized"
+            } else {
+                "$base$normalized"
+            }
+        normalized.startsWith("/avatars/") -> "$base$normalized"
+        else -> null
+    }
+}
+
 fun String.appAvatarApiFallbackUrl(apiBaseUrl: String?): String? {
     val normalizedSource = trim()
     if (!normalizedSource.startsWith("http://") && !normalizedSource.startsWith("https://")) return null
