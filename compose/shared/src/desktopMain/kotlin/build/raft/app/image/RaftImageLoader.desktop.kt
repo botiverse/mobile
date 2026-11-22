@@ -31,6 +31,8 @@ internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path?
 internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder =
     maxBitmapSize(Size(RAFT_DESKTOP_MAX_BITMAP_EDGE_PX, RAFT_DESKTOP_MAX_BITMAP_EDGE_PX))
 
+internal actual val raftPlatformMaxDisplayBitmapEdgePx: Int? = RAFT_DESKTOP_MAX_BITMAP_EDGE_PX
+
 internal const val RAFT_DESKTOP_MAX_BITMAP_EDGE_PX = 2048
 
 // TODO(desktop): animated GIF / WebP play as their first frame (iOS has a Skia codec player).

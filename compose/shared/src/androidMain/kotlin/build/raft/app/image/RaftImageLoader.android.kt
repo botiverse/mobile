@@ -28,3 +28,5 @@ internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path?
  */
 internal actual fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder =
     allowHardware(false).serviceLoaderEnabled(false)
+
+internal actual val raftPlatformMaxDisplayBitmapEdgePx: Int? = null

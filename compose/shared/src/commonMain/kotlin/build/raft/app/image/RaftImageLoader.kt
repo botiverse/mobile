@@ -3,6 +3,7 @@ package build.raft.app.image
 import androidx.compose.ui.graphics.ImageBitmap
 import build.raft.app.compat.ui.toRaftImageBitmap
 import build.raft.app.raftLogWarn
+import coil3.Extras
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -14,6 +15,7 @@ import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
+import coil3.request.maxBitmapSize
 import coil3.size.Precision
 import coil3.size.Scale
 import coil3.size.Size
@@ -239,6 +241,9 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
         }
         .raftPlatformImageLoaderDefaults()
         .components {
+            raftPlatformMaxDisplayBitmapEdgePx
+                ?.takeIf { it > 0 }
+                ?.let { edge -> add(RaftDefaultMaxBitmapSizeInterceptor(Size(edge, edge))) }
             add(RaftManagedImageCommitInterceptor(memoryCache))
             add(RaftImageSourceMapper)
             add(RaftImageSourceKeyer)
@@ -262,6 +267,32 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
  * (`readPixels`), which raw-ImageBitmap callers may do.
  */
 internal expect fun ImageLoader.Builder.raftPlatformImageLoaderDefaults(): ImageLoader.Builder
+
+/**
+ * Platform default upper bound (in px) applied by [raftPlatformImageLoaderDefaults] to display
+ * bitmaps (`null` when the platform loader leaves Coil's default untouched). Shared with display
+ * decode sizing ([build.raft.app.compat.ui.raftDisplayImageDecodeEdgePx]) so preview painters and
+ * editor bitmap loads request the same capped dimensions and hit Coil's memory cache instead of
+ * re-decoding when the window long edge exceeds the loader's bitmap cap (#wg-mobile-feedback:#269).
+ */
+internal expect val raftPlatformMaxDisplayBitmapEdgePx: Int?
+
+/**
+ * Propagates the platform display `maxBitmapSize` into `request.extras` whenever a request did
+ * not supply its own `maxBitmapSize` override. Coil 3.6's `NonAndroidRequestService` (shared by
+ * iOS and Desktop) constructs decoder `Options` from `request.extras` without merging
+ * `request.defaults.extras`, so loader-level `.maxBitmapSize(...)` alone would otherwise fall back
+ * to 4096 px inside `SkiaImageDecoder` for unbounded painters (#wg-mobile-feedback:#269).
+ */
+internal class RaftDefaultMaxBitmapSizeInterceptor(
+    private val defaultMaxBitmapSize: Size,
+) : Interceptor {
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+        val request = chain.request
+        if (request.extras[Extras.Key.maxBitmapSize] != null) return chain.proceed()
+        return chain.withRequest(request.newBuilder().maxBitmapSize(defaultMaxBitmapSize).build()).proceed()
+    }
+}
 
 /**
  * Managed avatar bookkeeping around a load:
