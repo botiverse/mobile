@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
   - desktop
-pull_request: PRNUM
+pull_request: 5389
 rollout: full
 ---
 
@@ -19,4 +19,4 @@ Creating an agent no longer shows "Runtime configuration is unavailable" or a lo
 
 ## ja
 
-エージェントの作成で、ランタイムを選ぶ前に「ランタイム設定は利用できません」や終わらない読み込み表示が出なくなりました。名前の例はウェブ版と同じです。
+エージェントの作成で、ランタイムを選ぶ前に「ランタイム設定を利用できません」や終わらない読み込み表示が出なくなりました。名前の例はウェブ版と同じです。
