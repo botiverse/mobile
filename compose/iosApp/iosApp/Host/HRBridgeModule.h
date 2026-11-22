@@ -102,5 +102,18 @@ FOUNDATION_EXTERN NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString 
 FOUNDATION_EXTERN NSString * _Nullable RaftAttachmentReusableExportFileName(
     NSArray<NSString *> * _Nullable storedFileNames,
     NSString * _Nullable requestedFileName);
+typedef void (^RaftPickerPhaseDone)(void);
+
+/**
+ * Coordinates dismissing a presented attachment picker in parallel with asynchronous export/cache
+ * work (#wg-mobile-feedback:#268): runs `completion` on `completionQueue` (defaults to main) once
+ * both `dismiss` and `exportWork` have finished so opening the editor does not race the picker
+ * dismissal transition into `RaftIosPageOpenGate` `open_queued`. Pure coordination helper for tests.
+ */
+FOUNDATION_EXTERN void RaftRunAfterPickerDismissAndWork(
+    void (^ _Nullable dismiss)(RaftPickerPhaseDone _Nonnull dismissCompleted),
+    void (^ _Nullable exportWork)(RaftPickerPhaseDone _Nonnull workCompleted),
+    dispatch_queue_t _Nullable completionQueue,
+    void (^ _Nonnull completion)(void));
 
 NS_ASSUME_NONNULL_END
