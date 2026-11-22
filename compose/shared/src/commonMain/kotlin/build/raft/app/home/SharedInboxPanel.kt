@@ -654,6 +654,7 @@ internal fun SharedHomeActivityScreen(
         stableOrderDecisionRevision = diagnosticOverrideRevision,
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
+        active = active,
         prewarmActive = active,
         externalSelectedThreadId = externalSelectedThreadId,
         externalSelectionOwned = externalSelectionOwned,
@@ -1007,7 +1008,8 @@ private fun SharedActivityPanelContent(
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
     conversationListPending: Boolean = false,
     scrollToTopRequest: Int = 0,
-    prewarmActive: Boolean = true,
+    active: Boolean = true,
+    prewarmActive: Boolean = active,
 ) {
     val refreshPresentation = activityRefreshPresentation(state.headerRefreshing, state.pullRefreshing)
     // Delayed and held so a quick reload never flashes; a pull hides it at once.
@@ -1031,11 +1033,25 @@ private fun SharedActivityPanelContent(
         rememberLazyListState(),
         rememberLazyListState(),
     )
+    // Hoisted to the panel so outside-tap dismissal covers the Header and FilterBar above the list,
+    // and switching tabs (`active = false`) or filters closes any open swipe row immediately.
+    val swipeHostState = remember { ActivitySwipeListHostState() }
+    var filterMenuExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(active) {
+        if (!active) {
+            swipeHostState.close()
+            filterMenuExpanded = false
+        }
+    }
+    LaunchedEffect(state.selectedFilter) {
+        swipeHostState.close()
+    }
     val scrollToTopScope = rememberCoroutineScope()
     // Head tap and bottom-tab re-tap both scroll the selected filter's page back to the top, like the
     // other tabs (the unread walk was removed, artin 2026-10-23).
     // Once it lands, the list is parked at the top and keepTopIfParked holds it there across changes.
     suspend fun scrollSelectedPageToTop() {
+        swipeHostState.close()
         activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
     }
     // Bottom-tab double tap targets the same list the title tap does (the selected filter's page).
@@ -1047,7 +1063,14 @@ private fun SharedActivityPanelContent(
     }
     val (headerTotalCount, headerTotalUnreadCount) = state.activityHeaderCounts()
     Column(
-        modifier = modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
+        modifier =
+            swipeHostState.geometry
+                .trackPanel(modifier.fillMaxSize().background(RaftColor.SurfaceWhite))
+                .activitySwipeCloseOnOutsideDown(
+                    geometry = swipeHostState.geometry,
+                    openRow = { swipeHostState.openRow },
+                    onChange = { swipeHostState.openRow = it },
+                )
     ) {
         SharedActivityHeader(
             // Object rows (workspace Artifacts) count apart from the conversations' (web ThreadsInbox),
@@ -1074,7 +1097,6 @@ private fun SharedActivityPanelContent(
         // rows' own (Done / Read), and one filter's list is composed at a time. Each filter
         // keeps its own scroll state, keyed below so a switch starts that filter's list afresh
         // as its pager page did.
-        var filterMenuExpanded by remember { mutableStateOf(false) }
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
             totalUnreadCount = state.activityConversationUnreadCount(),
@@ -1084,13 +1106,16 @@ private fun SharedActivityPanelContent(
                 onIntent(SharedActivityIntent.MarkAllRead)
             },
             menuExpanded = filterMenuExpanded,
-            onMenuExpandedChange = { filterMenuExpanded = it },
+            onMenuExpandedChange = { expanded ->
+                if (expanded) swipeHostState.close()
+                filterMenuExpanded = expanded
+            },
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             key(state.selectedFilter) {
                 if (state.snapshot != null && !conversationListPending) {
                     SharedActivityBodyContent(
-                        active = true,
+                        active = active,
                         prewarmActive = prewarmActive,
                         state = state,
                         onOpenItem = onOpenItem,
@@ -1108,6 +1133,7 @@ private fun SharedActivityPanelContent(
                         externalSelectionOwned = externalSelectionOwned,
                         conversationList = conversationList,
                         channelMute = channelMute,
+                        swipeHostState = swipeHostState,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -1161,7 +1187,8 @@ private fun SharedActivityBodyContent(
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
-    prewarmActive: Boolean = true,
+    swipeHostState: ActivitySwipeListHostState? = null,
+    prewarmActive: Boolean = active,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -1249,7 +1276,8 @@ private fun SharedActivityBodyContent(
                     externalSelectedThreadId = externalSelectedThreadId,
                     externalSelectionOwned = externalSelectionOwned,
                     conversationList = conversationList,
-                    channelMute = channelMute
+                    channelMute = channelMute,
+                    swipeHostState = swipeHostState
                 )
         }
     }
@@ -1494,7 +1522,8 @@ internal fun SharedActivityList(
     externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
-    prewarmActive: Boolean = true,
+    swipeHostState: ActivitySwipeListHostState? = null,
+    prewarmActive: Boolean = active,
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1913,10 +1942,13 @@ internal fun SharedActivityList(
         conversationId = null,
     )
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
-    // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
-    // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
-    var swipeOpenRow by remember { mutableStateOf(ActivitySwipeOpenRow()) }
-    val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
+    // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere (including the
+    // panel Header / FilterBar when hoisted), a scroll, Back, tab switch, the long-press menu or
+    // opening another row closes it (ActivityConversationSwipe.kt).
+    val ownedSwipeHostState = remember { ActivitySwipeListHostState() }
+    val effectiveSwipeHost = swipeHostState ?: ownedSwipeHostState
+    val ownsOutsideDismiss = swipeHostState == null
+    var pendingRowExits by remember(presentationOwnerIdentity) { mutableStateOf(ActivityRowExitState()) }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     // Day headings (web slock #13030) by the live clock: they turn at the person's midnight.
     val listTimeContext = currentRaftTimeContext(timeContext)
@@ -2004,7 +2036,7 @@ internal fun SharedActivityList(
     }
     fun openRowMenu(renderedItemKey: String, anchor: RaftPopoverAnchor) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
-        swipeOpenRow = swipeOpenRow.close()
+        effectiveSwipeHost.close()
         activeMenuItem = currentItem
         menuAnchor = anchor
     }
@@ -2115,7 +2147,7 @@ internal fun SharedActivityList(
     // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
     // with the menu's analytics. Done and Unfollow take the row out of the list, so on every route they
     // wait out the swipe's Undo toast (web #12107, Raft DS › Feedback, "Confirming").
-    fun runRowAction(item: InboxItem, actionId: String) {
+    fun commitRowAction(item: InboxItem, actionId: String) {
         if (item.kind == InboxItemKind.Object && actionId == "done") return objectRowDone(item)
         if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
         if (actionId == "unfollow-thread") return deferThreadUnfollow(item)
@@ -2129,12 +2161,19 @@ internal fun SharedActivityList(
         write.markAction?.let(RaftProductEvents::activityMark)
         runSwipeEndCommand(write.command)
     }
+    fun runRowAction(item: InboxItem, actionId: String) {
+        if (activityRowActionRemovesRow(actionId) && item.key in lazyItemKeys) {
+            pendingRowExits = pendingRowExits.start(item, actionId)
+            return
+        }
+        commitRowAction(item, actionId)
+    }
     // A screen-reader action on a rendered row: resolved against the live row like a tap, and only while
     // the row still offers it (its menu would list it).
     fun accessibilityRowAction(renderedItemKey: String, actionId: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
         if (actionId !in activityContextMenuActionIds(currentItem, channelMute?.mutedByChannelId.orEmpty())) return
-        swipeOpenRow = swipeOpenRow.close()
+        effectiveSwipeHost.close()
         runRowAction(currentItem, actionId)
     }
     // The row's Done button (web InboxRowDone: on hover with a mouse or trackpad, at rest in the wide layout by touch):
@@ -2167,44 +2206,61 @@ internal fun SharedActivityList(
     }
     DisposableEffect(presentationOwnerIdentity) {
         onDispose {
+            // Commit any row mid-height-collapse before flushing Undo queues so leaving Activity
+            // or switching filters never drops an in-flight Done or Unfollow.
+            val (clearedExits, flushedExits) = pendingRowExits.flushAll()
+            pendingRowExits = clearedExits
+            flushedExits.forEach { pending -> commitRowAction(pending.item, pending.actionId) }
             // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
             objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
             applySwipeDone(swipeDoneUndo.flush())
             swipeEndUndo = swipeEndUndo.dismiss()
-            swipeOpenRow = swipeOpenRow.close()
+            effectiveSwipeHost.close()
+        }
+    }
+    // Switching away from the Activity tab (keep-alive inactive) closes any open swipe row or menu.
+    LaunchedEffect(active) {
+        if (!active) {
+            effectiveSwipeHost.close()
+            if (activeMenuItem != null) activeMenuItem = null
         }
     }
     // The open row left the list (Done, a filter, a refresh): nothing stays open, nor holds Back.
     LaunchedEffect(lazyItemKeys) {
-        val retained = swipeOpenRow.retain(lazyItemKeys)
-        if (retained != swipeOpenRow) swipeOpenRow = retained
+        val retained = effectiveSwipeHost.openRow.retain(lazyItemKeys)
+        if (retained != effectiveSwipeHost.openRow) effectiveSwipeHost.openRow = retained
+        val retainedExits = pendingRowExits.retain(lazyItemKeys)
+        if (retainedExits != pendingRowExits) pendingRowExits = retainedExits
     }
     // Scrolling the list closes the open row.
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { scrolling ->
-                if (scrolling && swipeOpenRow.key != null) swipeOpenRow = swipeOpenRow.close()
+                if (scrolling && effectiveSwipeHost.openRow.key != null) effectiveSwipeHost.close()
             }
     }
     // System Back closes an open row first (AGENTS.md Kuikly Back Handling Rule); the row menu, composed
     // later, still wins while it is up.
-    RaftBackHandler(enabled = swipeOpenRow.key != null, label = "activity-swipe-row-open") {
-        swipeOpenRow = swipeOpenRow.close()
+    RaftBackHandler(enabled = active && effectiveSwipeHost.openRow.key != null, label = "activity-swipe-row-open") {
+        effectiveSwipeHost.close()
     }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
-    Box(
-        modifier =
-            swipeOpenRowGeometry
+    val listContainerModifier =
+        if (ownsOutsideDismiss) {
+            effectiveSwipeHost.geometry
                 .trackPanel(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite))
                 .activitySwipeCloseOnOutsideDown(
-                    geometry = swipeOpenRowGeometry,
-                    openRow = { swipeOpenRow },
-                    onChange = { swipeOpenRow = it },
+                    geometry = effectiveSwipeHost.geometry,
+                    openRow = { effectiveSwipeHost.openRow },
+                    onChange = { effectiveSwipeHost.openRow = it },
                 )
-    ) {
+        } else {
+            Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)
+        }
+    Box(modifier = listContainerModifier) {
         RaftPullToRefreshBox(
             isRefreshing = pullRefreshing,
             onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
@@ -2273,9 +2329,23 @@ internal fun SharedActivityList(
                                     onSwipeToggleRead = { swipeRowToggleRead(item.key) },
                                     accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
                                     onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },
-                                    swipeOpenSide = swipeOpenRow.openSide(item.key),
-                                    onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
-                                    onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
+                                    swipeOpenSide = effectiveSwipeHost.openRow.openSide(item.key),
+                                    onSwipeOpenChange = { side ->
+                                        effectiveSwipeHost.openRow =
+                                            if (active || side == null) {
+                                                effectiveSwipeHost.openRow.change(item.key, side)
+                                            } else {
+                                                effectiveSwipeHost.openRow.close()
+                                            }
+                                    },
+                                    onSwipeOpenRowPlaced = { coords -> effectiveSwipeHost.geometry.onOpenRowPlaced(item.key, coords) },
+                                    swipeStateKey = "$renderedPresentationOwnerIdentity|${item.key}",
+                                    exiting = pendingRowExits.isExiting(item.key),
+                                    onExitCollapsed = {
+                                        val (nextExits, pending) = pendingRowExits.complete(item.key)
+                                        pendingRowExits = nextExits
+                                        pending?.let { commitRowAction(it.item, it.actionId) }
+                                    },
                                     layout = rowLayout,
                                 )
                             }

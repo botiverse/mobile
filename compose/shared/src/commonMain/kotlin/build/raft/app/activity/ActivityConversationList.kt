@@ -1001,6 +1001,16 @@ internal fun ActivityConversationListRow(
     onSwipeOpenChange: (ActivitySwipeSide?) -> Unit = {},
     /** Where the open row is, so a tap outside it closes it ([ActivitySwipeOpenRowGeometry]). */
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
+    /**
+     * Stable owner+row key for the swipe reveal / exit controller so unrelated list reorders
+     * (which bump [openGestureKey]'s presentation generation) do not abort an in-progress Done
+     * exit animation or snap an open row closed. Defaults to [openGestureKey].
+     */
+    swipeStateKey: String = openGestureKey,
+    /** True while a non-swipe Done / Unfollow (row button, menu, a11y) collapses this row out. */
+    exiting: Boolean = false,
+    /** Called once [exiting]'s height collapse finishes at zero px. */
+    onExitCollapsed: () -> Unit = {},
     /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
     /** Screenshots only: draw the row as a mouse hovers it (the trailing Done button shown under a fine pointer). */
@@ -1082,6 +1092,7 @@ internal fun ActivityConversationListRow(
         )
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
+        stateKey = swipeStateKey,
         buttons = swipeButtons,
         openSide = swipeOpenSide,
         onOpenChange = onSwipeOpenChange,
@@ -1091,6 +1102,8 @@ internal fun ActivityConversationListRow(
         onToggleRead = { onSwipeToggleRead?.invoke() },
         modifier = modifier.fillMaxWidth(),
         onOpenRowPlaced = onSwipeOpenRowPlaced,
+        exiting = exiting,
+        onExitCollapsed = onExitCollapsed,
         previewRevealFraction = swipePreviewRevealFraction,
     ) {
         Box(
