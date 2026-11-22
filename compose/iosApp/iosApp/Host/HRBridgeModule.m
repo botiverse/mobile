@@ -11,6 +11,7 @@
 #import "iosApp-Swift.h"
 #import <MMKV/MMKV.h>
 #import <mach/mach_time.h>
+#import <math.h>
 #import <os/lock.h>
 #import <pthread.h>
 #import <Photos/Photos.h>
@@ -3586,6 +3587,8 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 - (void)raft_presentCamera;
 - (void)raft_presentDocumentPicker;
 - (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results;
+- (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results
+                       didFinishUptime:(NSTimeInterval)didFinishUptime;
 - (void)raft_processDocumentPickerURLs:(NSArray<NSURL *> *)urls;
 - (void)raft_finishAttachmentPickerFiles:(NSArray<NSDictionary *> *)files
                                     errors:(NSArray<NSDictionary *> *)errors;
@@ -6110,20 +6113,36 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)picker:(PHPickerViewController *)picker didFinishPicking:(NSArray<PHPickerResult *> *)results {
+    NSTimeInterval didFinishUptime = NSProcessInfo.processInfo.systemUptime;
+    RaftDiagnosticsRecord(
+        @"info",
+        @"SlockKuiklyAttachment",
+        [NSString stringWithFormat:@"picker_did_finish count=%lu compress=%@",
+                                   (unsigned long)results.count,
+                                   self.raft_attachmentPickerCompressImages ? @"true" : @"false"]
+    );
     [picker dismissViewControllerAnimated:YES completion:nil];
     if (results.count == 0) {
         [self raft_finishAttachmentPicker:@{ @"code" : @204, @"bodyText" : @"" }];
         return;
     }
-    [self raft_processPhotoPickerResults:results];
+    [self raft_processPhotoPickerResults:results didFinishUptime:didFinishUptime];
 }
 
 - (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results {
+    [self raft_processPhotoPickerResults:results didFinishUptime:NSProcessInfo.processInfo.systemUptime];
+}
+
+- (void)raft_processPhotoPickerResults:(NSArray<PHPickerResult *> *)results
+                       didFinishUptime:(NSTimeInterval)didFinishUptime {
     BOOL compressImages = self.raft_attachmentPickerCompressImages;
     dispatch_queue_t worker = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
     dispatch_group_t group = dispatch_group_create();
     NSMutableArray *orderedFiles = [NSMutableArray arrayWithCapacity:results.count];
     NSMutableArray<NSDictionary *> *errors = [NSMutableArray array];
+    NSObject *timingLock = [NSObject new];
+    __block long long maxExportMs = 0;
+    __block long long maxCacheMs = 0;
     for (NSUInteger index = 0; index < results.count; index++) {
         [orderedFiles addObject:NSNull.null];
     }
@@ -6135,24 +6154,52 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
             @synchronized (errors) {
                 [errors addObject:@{ @"index" : @(index), @"errorCode" : @"attachment_read_failed" }];
             }
+            RaftDiagnosticsRecord(
+                @"info",
+                @"SlockKuiklyAttachment",
+                [NSString stringWithFormat:@"picker_item_ready index=%lu exportMs=0 cacheMs=0 sizeBytes=0 compressed=false ok=false",
+                                           (unsigned long)index]
+            );
             return;
         }
+        BOOL willCompress = compressImages && [mediaType conformsToType:UTTypeImage];
+        NSTimeInterval loadStart = NSProcessInfo.processInfo.systemUptime;
         dispatch_group_enter(group);
         [provider loadFileRepresentationForTypeIdentifier:typeIdentifier completionHandler:^(NSURL *url, NSError *loadError) {
+            NSTimeInterval loadEnd = NSProcessInfo.processInfo.systemUptime;
+            long long exportMs = (long long)llround(fmax(0.0, (loadEnd - loadStart) * 1000.0));
             // PHPicker's file-representation URL is temporary and is only valid
             // for the lifetime of this completion handler. Cache it before the
             // handler returns; dispatching the copy to another queue leaves that
             // queue racing the provider's cleanup and produces ENOENT.
             NSError *cacheError = loadError;
             NSDictionary *file = nil;
+            long long cacheMs = 0;
             if (url && !cacheError) {
+                NSTimeInterval cacheStart = NSProcessInfo.processInfo.systemUptime;
                 file = [self raft_cachePickedAttachmentURL:url
                                              suggestedName:provider.suggestedName
                                                   mimeType:mediaType.preferredMIMEType
-                                             compressImages:compressImages &&
-                                                 [mediaType conformsToType:UTTypeImage]
+                                             compressImages:willCompress
                                                      error:&cacheError];
+                cacheMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - cacheStart) * 1000.0));
             }
+            @synchronized (timingLock) {
+                if (exportMs > maxExportMs) maxExportMs = exportMs;
+                if (cacheMs > maxCacheMs) maxCacheMs = cacheMs;
+            }
+            BOOL attemptedCompression = (url != nil && loadError == nil && willCompress);
+            RaftDiagnosticsRecord(
+                @"info",
+                @"SlockKuiklyAttachment",
+                [NSString stringWithFormat:@"picker_item_ready index=%lu exportMs=%lld cacheMs=%lld sizeBytes=%@ compressed=%@ ok=%@",
+                                           (unsigned long)index,
+                                           exportMs,
+                                           cacheMs,
+                                           file[@"sizeBytes"] ?: @0,
+                                           attemptedCompression ? @"true" : @"false",
+                                           file != nil ? @"true" : @"false"]
+            );
             if (file) {
                 @synchronized (orderedFiles) {
                     orderedFiles[index] = file;
@@ -6182,6 +6229,24 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 }
             }
         }
+        long long totalMs = (long long)llround(fmax(0.0, (NSProcessInfo.processInfo.systemUptime - didFinishUptime) * 1000.0));
+        long long summaryMaxExportMs = 0;
+        long long summaryMaxCacheMs = 0;
+        @synchronized (timingLock) {
+            summaryMaxExportMs = maxExportMs;
+            summaryMaxCacheMs = maxCacheMs;
+        }
+        RaftDiagnosticsRecord(
+            @"info",
+            @"SlockKuiklyAttachment",
+            [NSString stringWithFormat:@"picker_export_summary count=%lu files=%lu errors=%lu totalMs=%lld maxExportMs=%lld maxCacheMs=%lld",
+                                       (unsigned long)results.count,
+                                       (unsigned long)files.count,
+                                       (unsigned long)errors.count,
+                                       totalMs,
+                                       summaryMaxExportMs,
+                                       summaryMaxCacheMs]
+        );
         [self raft_finishAttachmentPickerFiles:files errors:errors];
     });
 }

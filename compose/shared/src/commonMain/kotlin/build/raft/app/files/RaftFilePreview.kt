@@ -2568,6 +2568,10 @@ private fun RaftFilePreviewStandalonePageContent() {
             openAttachmentComments()
         }
     }
+    val previewImageDecodeTracker =
+        remember(payload.attachmentId, payload.imageUrl) {
+            RaftFilePreviewImageDecodeTracker()
+        }
     LaunchedEffect(payload.kind, payload.requestedKind, payload.attachmentId, payload.imageUrl) {
         if (payload.shouldRenderImagePreview()) {
             bridge.log(
@@ -4461,6 +4465,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 saving = composerImageEditSaving,
                 onCaptureRef = onComposerImageEditCaptureRef,
                 onDone = ::requestComposerImageEditSave,
+                onEditorTimingLog = { line -> bridge.log(line) },
                 modifier = Modifier.weight(1f).fillMaxWidth()
             )
         } else {
@@ -4537,6 +4542,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onPdfRetry = ::retryPdf,
                     onImageRetry = ::retryFullImage,
                     onImageLoadError = ::onFullImageLoadError,
+                    onImageDecoded = { attachmentId, imageUrl ->
+                        previewImageDecodeTracker.onImageDecoded(attachmentId, imageUrl)?.let(bridge::log)
+                    },
                     onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onRetryLoad =
                         if (payload.canRetryPreviewLoad()) {
@@ -5041,6 +5049,62 @@ internal data class RaftComposerImageEditCaptureSlot(
         if (owner == this.owner) copy(ref = ref) else this
 }
 
+/**
+ * Per-editor-session monotonic timing tracker (#wg-mobile-feedback:#267): records once when the
+ * working bitmap finishes decoding, when the gesture-bearing canvas box is laid out and ready to
+ * accept input, and when the user's first edit gesture hits the canvas.
+ */
+internal class RaftComposerImageEditorTimingTracker(
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    private val enteredAt = timeSource.markNow()
+    private var decodedElapsedMs: Long? = null
+    private var canvasReadyElapsedMs: Long? = null
+    private var firstGestureLogged = false
+
+    fun onImageDecoded(imageWidth: Int, imageHeight: Int): String? {
+        if (imageWidth <= 0 || imageHeight <= 0 || decodedElapsedMs != null) return null
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        decodedElapsedMs = elapsed
+        return "composer_image_editor_image_decoded elapsedMs=$elapsed imageWidth=$imageWidth imageHeight=$imageHeight"
+    }
+
+    fun onCanvasReady(canvasWidthPx: Int, canvasHeightPx: Int): String? {
+        val decodeMs = decodedElapsedMs ?: return null
+        if (canvasWidthPx <= 0 || canvasHeightPx <= 0 || canvasReadyElapsedMs != null) return null
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        canvasReadyElapsedMs = elapsed
+        val layoutAfterDecodeMs = (elapsed - decodeMs).coerceAtLeast(0L)
+        return "composer_image_editor_canvas_ready elapsedMs=$elapsed decodeMs=$decodeMs " +
+            "layoutAfterDecodeMs=$layoutAfterDecodeMs canvasWidthPx=$canvasWidthPx canvasHeightPx=$canvasHeightPx"
+    }
+
+    fun onFirstGesture(tool: RaftComposerImageEditorTool, gesture: String): String? {
+        if (firstGestureLogged) return null
+        firstGestureLogged = true
+        val elapsed = enteredAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        val sinceCanvasReadyMs = canvasReadyElapsedMs?.let { (elapsed - it).coerceAtLeast(0L) } ?: -1L
+        return "composer_image_editor_first_gesture elapsedMs=$elapsed sinceCanvasReadyMs=$sinceCanvasReadyMs " +
+            "tool=${tool.name.lowercase()} gesture=$gesture"
+    }
+}
+
+/** Per-preview-image monotonic decode tracker (#wg-mobile-feedback:#267). */
+internal class RaftFilePreviewImageDecodeTracker(
+    private val timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    private val startedAt = timeSource.markNow()
+    private var logged = false
+
+    fun onImageDecoded(attachmentId: String, imageUrl: String): String? {
+        if (logged || imageUrl.isBlank()) return null
+        logged = true
+        val elapsed = startedAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+        return "file_preview_image_decoded attachment=${attachmentId.take(8).ifBlank { "none" }} elapsedMs=$elapsed " +
+            "source=${binaryDownloadUrlDiagnostics(imageUrl)}"
+    }
+}
+
 @Composable
 internal fun RaftFilePreviewComposerImageEditor(
     payload: RaftFilePreviewPayload,
@@ -5058,6 +5122,8 @@ internal fun RaftFilePreviewComposerImageEditor(
      * instead of the bottom bar, plus wheel zoom, Space-pan, Esc and Return. Null: the phone bar.
      */
     desktopChrome: RaftComposerImageEditorDesktopChrome? = null,
+    /** Diagnostic timing sink for editor decode/canvas-ready/first-gesture milestones (#wg-mobile-feedback:#267). */
+    onEditorTimingLog: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val activeStrokePoints = remember(payload.imageUrl) { mutableListOf<Offset>() }
@@ -5097,6 +5163,24 @@ internal fun RaftFilePreviewComposerImageEditor(
     // The working picture: decoded no larger than the window (the export decodes the original once).
     val loadedImage = rememberAsyncImageBitmap(if (previewImage != null) null else payload.imageUrl)
     val mosaicImage = previewImage ?: loadedImage
+    val timingTracker =
+        remember(payload.composerImageActionId, payload.imageUrl) {
+            RaftComposerImageEditorTimingTracker()
+        }
+    val latestTimingTracker by rememberUpdatedState(timingTracker)
+    val latestTimingLog by rememberUpdatedState(onEditorTimingLog)
+    LaunchedEffect(timingTracker) {
+        latestTimingLog?.invoke(
+            "composer_image_editor_enter opensInEditor=${payload.composerImageOpensInEditor} " +
+                "gallery=${payload.imageGallery.size} " +
+                "source=${payload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+        )
+    }
+    LaunchedEffect(timingTracker, mosaicImage) {
+        mosaicImage?.let { image ->
+            timingTracker.onImageDecoded(image.width, image.height)?.let { latestTimingLog?.invoke(it) }
+        }
+    }
     val platformContext = LocalPlatformContext.current
     val textMeasurer = rememberTextMeasurer()
     val annotationTextStyle =
@@ -5579,6 +5663,13 @@ internal fun RaftFilePreviewComposerImageEditor(
                         turns = quarterTurns,
                     )
                 }
+            LaunchedEffect(timingTracker, mosaicImage, captureSize, editorCanvasSize) {
+                val image = mosaicImage ?: return@LaunchedEffect
+                if (captureSize != null && editorCanvasSize.width > 0 && editorCanvasSize.height > 0) {
+                    timingTracker.onImageDecoded(image.width, image.height)?.let { latestTimingLog?.invoke(it) }
+                    timingTracker.onCanvasReady(editorCanvasSize.width, editorCanvasSize.height)?.let { latestTimingLog?.invoke(it) }
+                }
+            }
             if (captureSize != null) {
                 Box(
                     modifier =
@@ -5600,6 +5691,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         if (tool == RaftComposerImageEditorTool.Crop || spaceHeld) return@pointerInput
                         detectTapGestures { position ->
                             if (saving || editorFinishing) return@detectTapGestures
+                            latestTimingTracker.onFirstGesture(tool, "tap")?.let { latestTimingLog?.invoke(it) }
                             when (tool) {
                                 RaftComposerImageEditorTool.Pencil ->
                                     if (pencilMode == RaftComposerImagePencilMode.Eraser) {
@@ -5637,6 +5729,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         detectDragGestures(
                             onDragStart = { start ->
                                 if (saving || editorFinishing) return@detectDragGestures
+                                latestTimingTracker.onFirstGesture(tool, "drag")?.let { latestTimingLog?.invoke(it) }
                                 when (tool) {
                                     RaftComposerImageEditorTool.Pencil ->
                                         if (pencilMode == RaftComposerImagePencilMode.Ink) {
@@ -9187,6 +9280,8 @@ internal fun RaftFilePreviewPayloadContent(
     onImageRetry: (() -> Unit)? = null,
     /** Primary full-res image URL failed in Coil (e.g. expired signed URL): evict cached URL and show Retry. */
     onImageLoadError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
+    /** Primary image URL finished decoding in Coil (#wg-mobile-feedback:#267). */
+    onImageDecoded: ((attachmentId: String, imageUrl: String) -> Unit)? = null,
     /**
      * Hand the file to another app (the Open with action): the PDF failure fallback, and the
      * download card of a video this platform cannot play.
@@ -9244,6 +9339,12 @@ internal fun RaftFilePreviewPayloadContent(
                                     null
                                 }
                             val primaryUrl = pagePayload.imageUrl?.trim()?.takeIf { it.isNotBlank() }
+                            var decodedPrimaryUrl by remember(primaryUrl) { mutableStateOf<String?>(null) }
+                            LaunchedEffect(selected, decodedPrimaryUrl, pagePayload.attachmentId, primaryUrl) {
+                                if (selected && primaryUrl != null && decodedPrimaryUrl == primaryUrl) {
+                                    onImageDecoded?.invoke(pagePayload.attachmentId, primaryUrl)
+                                }
+                            }
                             val fallbackUrl = pagePayload.currentImageThumbnailUrl()
                             val explicitThumbnail = pagePayload.currentExplicitImageThumbnailUrl()
                             val inlinePlaceholder = pagePayload.currentInlinePlaceholderUrl()
@@ -9272,6 +9373,15 @@ internal fun RaftFilePreviewPayloadContent(
                                 sourceCacheKey = originalCacheKey.takeIf { canKeyPrimaryAsOriginal },
                                 fallbackCacheKey = originalCacheKey.takeIf { fallbackIsInlineOriginal },
                                 onImageStateChange = { state ->
+                                    if (
+                                        state is coil3.compose.AsyncImagePainter.State.Success &&
+                                        primaryUrl != null
+                                    ) {
+                                        val loadedData = state.result.request.data.toString().trim()
+                                        if (loadedData == primaryUrl) {
+                                            decodedPrimaryUrl = primaryUrl
+                                        }
+                                    }
                                     if (
                                         state is coil3.compose.AsyncImagePainter.State.Error &&
                                         pagePayload.source == RaftFilePreviewSourceThreadAttachment &&
