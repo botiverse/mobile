@@ -97,7 +97,7 @@ Without this, the next person to sync "fixes" it back.
 - Re-record goldens through CI (no local Gradle on agent machines):
   `gh workflow run test.yml --ref <branch> -f record_screenshots=true` records
   both suites. Download `designsystem-screenshots-recorded` into
-  `compose/designsystem/screenshots/` and `shared-screenshots-recorded` into
+  `compose/designsystem/screenshots/vcase/` (images in `desktop-skiko/`) and `shared-screenshots-recorded` into
   `compose/shared/src/androidUnitTest/screenshots/` (each holds only the new or
   changed goldens), then commit. `shared-home-screenshots` holds the
   `<name>_compare.png` images of what changed.
