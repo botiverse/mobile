@@ -167,4 +167,344 @@ class RaftNativeNavBarBridgeTest {
         RaftLucideIconName.entries.forEach { assertEquals(it, raftLucideIconNameForWire(it.wireName)) }
         assertEquals(null, raftLucideIconNameForWire("not-a-glyph"))
     }
+
+    @Test
+    fun prefillShowsBeforeFirstComposeHandsOffLiveHandlersAndNeverResurrectsAfterDeactivate() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+
+        val prefillAction = RaftNativeNavBarAction("thread-search", "Search", "magnifyingglass", {}, icon = RaftLucideIconName.Search)
+        val prefillExtras = RaftNativeNavBarTitleExtras(leading = RaftNativeNavBarTitleLeading.Channel(RaftChannelKindGlyph.Hash))
+        bridge.prefill(RaftNativeNavBarHead("proj-mobile", null, listOf(prefillAction), prefillExtras))
+        assertEquals(listOf("proj-mobile"), recorder.titles)
+        assertEquals(1, recorder.actions.size)
+
+        // Temporary LoadingShell (empty actions, preservePrefilledActions = true) keeps prefilled
+        // buttons on the bar instead of flashing them away before FeatureSurfaces mounts.
+        val liveEntry = RaftNativeNavBarBridge.Entry()
+        bridge.activate(liveEntry)
+        bridge.publish(
+            liveEntry,
+            RaftNativeNavBarHead(
+                "proj-mobile",
+                null,
+                emptyList(),
+                prefillExtras,
+                preservePrefilledActions = true,
+            ),
+        )
+        assertEquals(listOf("proj-mobile"), recorder.titles)
+        assertEquals(1, recorder.actions.size)
+
+        // FeatureSurfaces publishes the exact same head with a live handler: no duplicate UIKit
+        // wire update, and taps now reach the live handler.
+        var searches = 0
+        bridge.publish(
+            liveEntry,
+            RaftNativeNavBarHead(
+                "proj-mobile",
+                null,
+                listOf(prefillAction.copy(onClick = { searches += 1 })),
+                prefillExtras,
+            ),
+        )
+        assertEquals(listOf("proj-mobile"), recorder.titles)
+        assertTrue(bridge.actionTapped("thread-search"))
+        assertEquals(1, searches)
+
+        // Once the live head leaves, prefill stays retired and does not reappear.
+        bridge.deactivate(liveEntry)
+        assertEquals(1, recorder.cleared)
+        assertEquals(listOf("proj-mobile"), recorder.titles)
+
+        // Late prefill after a live head was already seen is ignored.
+        bridge.prefill(head("stale"))
+        assertEquals(listOf("proj-mobile"), recorder.titles)
+    }
+
+    @Test
+    fun stalledLoadingShellDropsPreservedPrefilledButtonsWhenItGivesUpAndCannotResurrectThem() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+
+        val prefillAction = RaftNativeNavBarAction("thread-search", "Search", "magnifyingglass", {}, icon = RaftLucideIconName.Search)
+        val extras = RaftNativeNavBarTitleExtras(leading = RaftNativeNavBarTitleLeading.Channel(RaftChannelKindGlyph.Hash))
+        bridge.prefill(RaftNativeNavBarHead("proj-mobile", null, listOf(prefillAction), extras))
+        assertEquals(1, Json.parseToJsonElement(recorder.actions.last()).jsonArray.size)
+
+        val liveEntry = RaftNativeNavBarBridge.Entry()
+        bridge.activate(liveEntry)
+        bridge.publish(
+            liveEntry,
+            RaftNativeNavBarHead("proj-mobile", null, emptyList(), extras, preservePrefilledActions = true),
+        )
+        assertEquals(1, Json.parseToJsonElement(recorder.actions.last()).jsonArray.size)
+
+        // Loading stalls or transitions to error/retry: LoadingShell drops preservePrefilledActions,
+        // clearing the non-interactive prefilled buttons from the bar.
+        bridge.publish(
+            liveEntry,
+            RaftNativeNavBarHead("proj-mobile", null, emptyList(), extras, preservePrefilledActions = false),
+        )
+        assertEquals(0, Json.parseToJsonElement(recorder.actions.last()).jsonArray.size)
+        assertEquals(false, bridge.actionTapped("thread-search"))
+
+        // Even if preservePrefilledActions flips back true later, dropped prefill buttons stay gone.
+        bridge.publish(
+            liveEntry,
+            RaftNativeNavBarHead("proj-mobile", null, emptyList(), extras, preservePrefilledActions = true),
+        )
+        assertEquals(0, Json.parseToJsonElement(recorder.actions.last()).jsonArray.size)
+        assertEquals(false, bridge.actionTapped("thread-search"))
+    }
+
+    @Test
+    fun conversationPrefillMatchesLiveHeadActionsAndCoversMembersAndDetails() {
+        val strings =
+            RaftNativeNavBarPrefillStrings(
+                replyThreadTitle = "Thread",
+                channelTitle = "Channel",
+                directMessageTitle = "Direct Message",
+                searchLabel = "Search",
+                searchInThreadLabel = "Search in thread",
+                searchInTaskLabel = "Search in task",
+                viewInChannelLabel = "View in Channel",
+                settingsLabel = "Settings",
+                openTasksLabel = "Open Tasks",
+                openFilesLabel = "Open Files",
+                loungeLabel = "Lounge",
+                loungeTitleForAgent = { "$it's Lounge" },
+                channelDetailsTitle = "Details",
+                membersTitle = "Members",
+            )
+        val liveLabels =
+            ThreadHeaderSideColumnLabels(
+                searchLabel = strings.searchLabel,
+                searchInThreadLabel = strings.searchInThreadLabel,
+                searchInTaskLabel = strings.searchInTaskLabel,
+                settingsLabel = strings.settingsLabel,
+                viewInChannelLabel = strings.viewInChannelLabel,
+                loungeLabel = strings.loungeLabel,
+            )
+
+        fun liveIdsFor(
+            payload: RaftThreadScreenPayload,
+            surfaceKind: String,
+            dmLoungeVisible: Boolean = false,
+            taskHasViewInChannel: Boolean = false,
+        ): List<String> {
+            val taskConversation = payload.isTaskConversationSurface()
+            val sideCardActions =
+                if (conversationSideCardsEnabled(payload.showModeTabs, assistantPanelEmbed = false)) {
+                    threadHeaderSideCardOwnActions(
+                        tasksAvailable = payload.supportsChannelTasks(),
+                        labelForCard = { card, _ ->
+                            if (card == ConversationSideCard.Tasks) strings.openTasksLabel else strings.openFilesLabel
+                        },
+                    )
+                } else {
+                    emptyList()
+                }
+            return threadHeaderSideColumnActionsForPayload(
+                payload = payload,
+                surfaceKind = surfaceKind,
+                taskConversation = taskConversation,
+                labels = liveLabels,
+                onViewTaskInChannel = ({}).takeIf { taskConversation && taskHasViewInChannel },
+                sideCardActions = sideCardActions,
+                dmLoungeToggle = ({}).takeIf { dmLoungeVisible && surfaceKind == RaftThreadSurfaceKind.DirectMessage },
+            ).toRaftNativeNavBarActions().map { it.id }
+        }
+
+        // 1. Private channel
+        val channelPayload =
+            RaftThreadScreenPayload(
+                instanceId = "channel-1",
+                title = "",
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "private",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                showModeTabs = true,
+                showSettingsAction = true,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+            )
+        val channelProjection =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = build.raft.app.model.ConversationKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "private",
+                title = "proj-mobile",
+            )
+        val channelHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = channelPayload,
+                directoryProjection = channelProjection,
+                strings = strings,
+            )
+        assertEquals("proj-mobile", channelHead.title)
+        assertEquals(RaftNativeNavBarTitleLeading.Channel(RaftChannelKindGlyph.Lock), channelHead.extras.leading)
+        assertEquals(liveIdsFor(channelPayload, RaftThreadSurfaceKind.Channel), channelHead.actions.map { it.id })
+
+        // 2. Agent DM with Lounge ON and OFF
+        val dmPeer =
+            MemberDetailIdentity(
+                memberId = build.raft.app.model.MemberId("agent-1"),
+                kind = build.raft.app.model.MemberKind.Agent,
+            )
+        val dmPayload =
+            RaftThreadScreenPayload(
+                instanceId = "dm-1",
+                title = "",
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                dmPeerIdentity = dmPeer,
+                showModeTabs = true,
+                showSettingsAction = false,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+            )
+        val dmProjection =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "dm-1",
+                aliases = setOf("dm-1"),
+                conversationKind = build.raft.app.model.ConversationKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                title = "Lagoon",
+                peerIdentity = dmPeer,
+            )
+        val dmLoungeOnHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = dmPayload,
+                directoryProjection = dmProjection,
+                dmLoungeToggleVisible = true,
+                resolvedDmPeerAvatarWireValue = "https://cdn.example/lagoon.png",
+                strings = strings,
+            )
+        assertEquals("Lagoon", dmLoungeOnHead.title)
+        assertEquals(
+            RaftNativeNavBarTitleLeading.Avatar("Lagoon", "https://cdn.example/lagoon.png", RaftAvatarKind.Agent),
+            dmLoungeOnHead.extras.leading,
+        )
+        assertEquals(
+            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage, dmLoungeVisible = true),
+            dmLoungeOnHead.actions.map { it.id },
+        )
+        assertTrue("lounge" in dmLoungeOnHead.actions.map { it.id })
+
+        val dmLoungeOffHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = dmPayload,
+                directoryProjection = dmProjection,
+                dmLoungeToggleVisible = false,
+                resolvedDmPeerAvatarWireValue = "https://cdn.example/lagoon.png",
+                strings = strings,
+            )
+        assertEquals(
+            liveIdsFor(dmPayload, RaftThreadSurfaceKind.DirectMessage, dmLoungeVisible = false),
+            dmLoungeOffHead.actions.map { it.id },
+        )
+        assertTrue("lounge" !in dmLoungeOffHead.actions.map { it.id })
+
+        // 3. Reply thread
+        val replyPayload =
+            RaftThreadScreenPayload(
+                instanceId = "reply-1",
+                title = "",
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "msg-1",
+                parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                showModeTabs = false,
+                showOpenInChannelAction = true,
+            )
+        val parentProjection =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                conversationKind = build.raft.app.model.ConversationKind.Channel,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = "channel",
+                title = "proj-mobile",
+            )
+        val replyHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = replyPayload,
+                directoryProjection = parentProjection,
+                strings = strings,
+            )
+        assertEquals("Thread", replyHead.title)
+        assertEquals("#proj-mobile", replyHead.subtitle)
+        assertTrue(replyHead.onSubtitleClick != null)
+        assertEquals(liveIdsFor(replyPayload, RaftThreadSurfaceKind.ReplyThread), replyHead.actions.map { it.id })
+
+        // 4. Task conversation
+        val taskPayload =
+            RaftThreadScreenPayload(
+                instanceId = "task-1",
+                title = "",
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                sourceThreadId = "task-1",
+                streamChannelId = "task-1",
+                parentChannelId = "channel-1",
+                showModeTabs = false,
+                showSettingsAction = false,
+            )
+        val taskProjection =
+            build.raft.app.data.SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "task-1",
+                aliases = setOf("task-1"),
+                conversationKind = build.raft.app.model.ConversationKind.Task,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                title = "Task #282",
+            )
+        val taskHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = taskPayload,
+                directoryProjection = taskProjection,
+                strings = strings,
+            )
+        assertEquals("Task #282", taskHead.title)
+        assertEquals(
+            liveIdsFor(taskPayload, RaftThreadSurfaceKind.Channel, taskHasViewInChannel = true),
+            taskHead.actions.map { it.id },
+        )
+        // Without a directory projection while still loading, prefill matches the live header's generic fallback.
+        val taskLoadingFallbackHead =
+            buildThreadNativeNavBarPrefillHead(
+                payload = taskPayload,
+                strings = strings,
+            )
+        assertEquals("Channel", taskLoadingFallbackHead.title)
+        assertEquals(
+            liveIdsFor(taskPayload, RaftThreadSurfaceKind.Channel, taskHasViewInChannel = true),
+            taskLoadingFallbackHead.actions.map { it.id },
+        )
+
+        // 5. Pushed Members and Channel Details pages
+        val membersHead = buildNativeNavBarPrefillHead(THREAD_MEMBERS_PAGE, "{}", strings = strings)
+        assertEquals("Members", membersHead?.title)
+        assertEquals(emptyList(), membersHead?.actions)
+        val detailsHead = buildNativeNavBarPrefillHead(CHANNEL_SETTINGS_PAGE, "{}", strings = strings)
+        assertEquals("Details", detailsHead?.title)
+        assertEquals(emptyList(), detailsHead?.actions)
+    }
 }

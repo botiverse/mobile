@@ -404,6 +404,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private var lastTitleImageSource: RaftNativeTabBarAvatar?
     private var lastTitleImage: UIImage?
     private var lastBarWidth: CGFloat = 0
+    private var lastSideInsets: CGFloat = 0
+    private var lastIsStackRoot = false
+    private var lastCompact = false
+    private var hasLeadingTitleView = false
     private var lastHasBack = false
     private var lastNested = false
     private var clearGeneration = 0
@@ -524,11 +528,25 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
 
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
+        let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
+        let measuredBarWidth = owner.navigationController?.navigationBar.bounds.width ?? 0
+        let loadedViewWidth = owner.isViewLoaded ? owner.view.bounds.width : 0
+        let fallbackSceneWidth: CGFloat = Self.preferredSceneWidth()
+        let barWidth = measuredBarWidth > 0 ? measuredBarWidth : (loadedViewWidth > 0 ? loadedViewWidth : fallbackSceneWidth)
+        let sideInsets: CGFloat =
+            owner.isViewLoaded
+                ? (owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right)
+                : 0
+        lastIsStackRoot = isStackRoot
+        lastCompact = compact
+        lastBarWidth = barWidth
+        lastSideInsets = sideInsets
+        hasLeadingTitleView = leadingTitleView != nil
         if let leadingTitleView {
             // Room left for it: the bar minus Back, the trailing buttons and the margins; it
             // truncates its title inside that (recomputed when the bar's width changes).
-            let barWidth = owner.navigationController?.navigationBar.bounds.width ?? owner.view.bounds.width
-            lastBarWidth = barWidth
+            // Guard owner.isViewLoaded so prefill before pushViewController does not trigger a
+            // premature loadView() or collapse maxWidth to 80pt.
             let trailingCount = actions.filter { $0.placement == "trailing" }.count
                 + (actions.contains { $0.placement == "overflow" } ? 1 : 0)
             // iOS 26 glass: each button is ~52pt in its group, a group adds ~16pt of padding, and
@@ -536,7 +554,6 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             var room = barWidth - 40 - CGFloat(trailingCount) * 52 - (trailingCount > 0 ? 16 : 0)
             if !isStackRoot { room -= 64 }
             // Landscape: the bar's content stays inside the side safe areas (the sensor housing).
-            let sideInsets = owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right
             room -= sideInsets
             if ownBackButton { room -= 60 }
             leadingTitleView.maxWidth = max(80, room)
@@ -774,12 +791,38 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
     }
 
+    private static func preferredSceneWidth() -> CGFloat {
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let preferred =
+            windowScenes.first(where: { $0.activationState == .foregroundActive })
+            ?? windowScenes.first(where: { $0.activationState == .foregroundInactive })
+            ?? windowScenes.first
+        let keyWindowWidth =
+            preferred?.windows.first(where: { $0.isKeyWindow })?.bounds.width
+            ?? preferred?.windows.first?.bounds.width
+            ?? 0
+        let width = keyWindowWidth > 0 ? keyWindowWidth : (preferred?.coordinateSpace.bounds.width ?? 0)
+        return width > 0 ? width : 390
+    }
+
     /// RaftPageViewController laid out / appeared.
     private func pageDidLayout(reason: String) {
-        // Rotation / a new bar width: re-measure the leading title's room.
-        if let bar = owner?.navigationController?.navigationBar, !lastTitle.isEmpty,
-           abs(bar.bounds.width - lastBarWidth) > 1 {
-            applyHead()
+        // Rotation / a new bar width / mounted into UINavigationController after prefill:
+        // style the bar and re-measure the leading title's room if geometry or stack root changed.
+        if let owner, let bar = owner.navigationController?.navigationBar, !lastTitle.isEmpty {
+            RaftNativeNavBarType.style(bar)
+            let sideInsets = owner.isViewLoaded ? (owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right) : 0
+            let isStackRoot = owner.navigationController?.viewControllers.first === owner
+            let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
+            let leadingGeometryChanged =
+                hasLeadingTitleView && (
+                    abs(bar.bounds.width - lastBarWidth) > 1
+                        || abs(sideInsets - lastSideInsets) > 1
+                        || compact != lastCompact
+                )
+            if leadingGeometryChanged || isStackRoot != lastIsStackRoot {
+                applyHead()
+            }
         }
         guard largeTitle, let controller else { return }
         ensureMirror()
