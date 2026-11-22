@@ -159,6 +159,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import build.raft.app.compat.ui.raftLoadImageBitmap
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.compat.ui.rememberRaftDisplayImageDecodeEdgePx
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -4556,7 +4557,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                     entries =
                         payload.imageGalleryKeepAliveEntries(
                             imageGalleryResolutionState.resolvedPayloadByAttachmentId
-                        )
+                        ),
+                    maxDecodeEdgePx = rememberRaftDisplayImageDecodeEdgePx(),
                 )
             }
             RaftFilePreviewComposerImageActionBar(
@@ -9271,6 +9273,7 @@ internal fun RaftFilePreviewPayloadContent(
                                 animationActive = selected,
                                 sourceCacheKey = originalCacheKey.takeIf { canKeyPrimaryAsOriginal },
                                 fallbackCacheKey = originalCacheKey.takeIf { fallbackIsInlineOriginal },
+                                maxDecodeEdgePx = rememberRaftDisplayImageDecodeEdgePx(),
                                 onImageStateChange = { state ->
                                     if (
                                         state is coil3.compose.AsyncImagePainter.State.Error &&
@@ -9786,13 +9789,15 @@ private fun RaftFilePreviewImageGalleryPage(
 }
 
 /**
- * Kuikly's image cache is reference-counted: when the last painter for a source is forgotten,
- * the native memory-cache entry is cleared. The gallery renders one visible item at a time, so
- * keep tiny invisible painters for only the current item and its immediate neighbors.
+ * Keeps tiny invisible painters for immediate gallery neighbours (`currentIndex - 1` /
+ * `currentIndex + 1`) bounded to [maxDecodeEdgePx] so swiping to an adjacent photo hits Coil's
+ * memory cache. The visible page (`currentIndex`) is excluded because [RaftFilePreviewImagePanel]
+ * already renders and decodes it (#wg-mobile-feedback:#269).
  */
 @Composable
 private fun RaftFilePreviewImageGalleryCacheKeepAlive(
     entries: List<Pair<String, String?>>,
+    maxDecodeEdgePx: Int? = null,
     modifier: Modifier = Modifier
 ) {
     if (entries.isEmpty()) return
@@ -9809,6 +9814,7 @@ private fun RaftFilePreviewImageGalleryCacheKeepAlive(
                     source = source,
                     contentDescription = null,
                     cacheKey = cacheKey,
+                    maxDecodeEdgePx = maxDecodeEdgePx,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -10810,11 +10816,13 @@ private fun RaftFilePreviewPayload.imageGalleryResolutionFailurePayload(): RaftF
 internal fun RaftFilePreviewPayload.imageGalleryKeepAliveEntries(
     resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
 ): List<Pair<String, String?>> {
-    if (imageGallery.isEmpty()) return emptyList()
+    if (imageGallery.size <= 1) return emptyList()
     val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    // Skip currentIndex: RaftFilePreviewImagePanel already decodes and renders the visible page,
+    // so keeping a hidden 1dp painter for it fires a duplicate concurrent decode (#269).
     val retainedIndices =
         (currentIndex - 1..currentIndex + 1)
-            .filter(imageGallery.indices::contains)
+            .filter { it in imageGallery.indices && it != currentIndex }
     val seen = LinkedHashSet<Pair<String, String?>>()
     retainedIndices.forEach { index ->
         val galleryImage = imageGallery[index]
@@ -10831,57 +10839,8 @@ internal fun RaftFilePreviewPayload.imageGalleryKeepAliveEntries(
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != thumb }
             ?.let { seen += it to originalCacheKey }
-        if (index == currentIndex) {
-            val primary = imageUrl?.trim()?.takeIf { it.isNotBlank() }
-            val explicitThumb = currentExplicitImageThumbnailUrl()
-            val inlinePlaceholder = currentInlinePlaceholderUrl()
-            if (primary != null) {
-                val canKeyOriginal =
-                    source == RaftFilePreviewSourceThreadAttachment &&
-                        !imageFullLoadFailed &&
-                        error.isNullOrBlank() &&
-                        primary != explicitThumb &&
-                        (kind == "image" || (kind == "loading" && inlinePlaceholder != null && primary == inlinePlaceholder))
-                val primaryKey = if (canKeyOriginal) originalCacheKey else null
-                seen += primary to primaryKey
-            }
-        }
     }
     return seen.sortedWith(compareBy<Pair<String, String?>>({ it.first }, { it.second.orEmpty() }))
-}
-
-internal fun RaftFilePreviewPayload.imageGalleryKeepAliveSources(
-    resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap()
-): Set<String> {
-    if (imageGallery.isEmpty()) return emptySet()
-    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
-    val retainedIndices =
-        (currentIndex - 1..currentIndex + 1)
-            .filter(imageGallery.indices::contains)
-    return buildSet {
-        retainedIndices.forEach { index ->
-            val galleryImage = imageGallery[index]
-            galleryImage.thumbnailUrl
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::add)
-            resolvedPayloadByAttachmentId[galleryImage.attachmentId]
-                ?.imageUrl
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::add)
-            if (index == currentIndex) {
-                imageUrl
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::add)
-                currentImageThumbnailUrl()
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(::add)
-            }
-        }
-    }
 }
 
 internal fun RaftFilePreviewPayload.withImageGalleryIndex(
@@ -12191,6 +12150,7 @@ internal fun RaftFilePreviewImagePanel(
     animationActive: Boolean = true,
     sourceCacheKey: String? = null,
     fallbackCacheKey: String? = null,
+    maxDecodeEdgePx: Int? = null,
     onImageStateChange: ((coil3.compose.AsyncImagePainter.State) -> Unit)? = null,
 ) {
     RaftAspectFitImagePreviewSurface(
@@ -12208,6 +12168,7 @@ internal fun RaftFilePreviewImagePanel(
         animationActive = animationActive,
         sourceCacheKey = sourceCacheKey,
         fallbackCacheKey = fallbackCacheKey,
+        maxDecodeEdgePx = maxDecodeEdgePx,
         onImageStateChange = onImageStateChange,
     )
 }

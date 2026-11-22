@@ -36,14 +36,18 @@ import coil3.PlatformContext
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.maxBitmapSize
 import coil3.size.Precision
 import coil3.size.Scale
 import coil3.size.Size
 import build.raft.app.image.raftInstallImageLoader
+import build.raft.app.image.raftPlatformMaxDisplayBitmapEdgePx
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 /**
  * Collects [this] only while the enclosing [LocalLifecycleOwner] is at least [Lifecycle.State.STARTED],
@@ -250,7 +254,41 @@ fun Modifier.setProp(key: String, value: Any): Modifier = this
  */
 @Composable
 fun rememberAsyncImageBitmap(model: String?): ImageBitmap? =
-    rememberAsyncImageBitmap(model, maxDecodeEdgePx = rememberRaftWindowLongEdgePx())
+    rememberAsyncImageBitmap(model, maxDecodeEdgePx = rememberRaftDisplayImageDecodeEdgePx())
+
+/**
+ * Builds a screen- or export-bounded Coil [ImageRequest] shared by preview painters
+ * (`RaftCachedImage`) and bitmap loaders ([rememberAsyncImageBitmap], [raftLoadImageBitmap]) so
+ * preview -> editor transitions hit Coil's memory cache instead of re-decoding the same photo from
+ * disk (#wg-mobile-feedback:#269). When [overrideMaxBitmapSize] is true (high-res exports or
+ * bundled pixel-coordinate atlases), also overrides per-request `maxBitmapSize` past the platform
+ * loader's display cap.
+ */
+internal fun raftBoundedImageRequest(
+    context: PlatformContext,
+    source: String,
+    maxDecodeEdgePx: Int,
+    memoryCacheKey: String? = null,
+    diskCacheKey: String? = null,
+    disableMemoryCache: Boolean = false,
+    overrideMaxBitmapSize: Boolean = false,
+    configure: (ImageRequest.Builder.() -> Unit)? = null,
+): ImageRequest {
+    val decodeSize = raftImageDecodeSize(maxDecodeEdgePx)
+    return ImageRequest.Builder(context)
+        .data(source)
+        .size(decodeSize)
+        .scale(Scale.FIT)
+        .precision(Precision.INEXACT)
+        .apply {
+            if (overrideMaxBitmapSize) maxBitmapSize(decodeSize)
+            if (disableMemoryCache) memoryCachePolicy(CachePolicy.DISABLED)
+            memoryCacheKey?.trim()?.takeIf { it.isNotEmpty() }?.let { memoryCacheKey(it) }
+            diskCacheKey?.trim()?.takeIf { it.isNotEmpty() }?.let { diskCacheKey(it) }
+            configure?.invoke(this)
+        }
+        .build()
+}
 
 /**
  * [rememberAsyncImageBitmap] with the decoded longer edge bounded by [maxDecodeEdgePx]
@@ -270,17 +308,25 @@ fun rememberAsyncImageBitmap(
     LaunchedEffect(source, decodeSize, diskCacheKey) {
         raftInstallImageLoader()
         val request =
-            ImageRequest.Builder(context)
-                .data(source)
-                .size(decodeSize)
-                .scale(Scale.FIT)
-                .precision(Precision.INEXACT)
-                .apply {
-                    diskCacheKey?.trim()?.takeIf { it.isNotEmpty() }?.let { diskCacheKey(it) }
-                }
-                .build()
+            raftBoundedImageRequest(
+                context = context,
+                source = source,
+                maxDecodeEdgePx = maxDecodeEdgePx,
+                diskCacheKey = diskCacheKey,
+                // Bundled atlases (RAFT_IMAGE_DECODE_ORIGINAL) rely on source pixel coordinates and
+                // must bypass the platform display bitmap cap.
+                overrideMaxBitmapSize = maxDecodeEdgePx == RAFT_IMAGE_DECODE_ORIGINAL,
+            )
         val result = SingletonImageLoader.get(context).execute(request)
-        bitmap = (result as? SuccessResult)?.image?.toRaftImageBitmap()
+        val decodedImage = (result as? SuccessResult)?.image
+        // Copy/convert the decoded Coil image into a Compose ImageBitmap off the main thread so
+        // Skia's toBitmap() allocation does not stall UIKit/Compose transitions or first gestures.
+        bitmap =
+            if (decodedImage != null) {
+                withContext(Dispatchers.Default) { decodedImage.toRaftImageBitmap() }
+            } else {
+                null
+            }
     }
     return bitmap
 }
@@ -298,15 +344,16 @@ internal suspend fun raftLoadImageBitmap(
     val source = model.trim().takeIf { it.isNotEmpty() } ?: return null
     raftInstallImageLoader()
     val request =
-        ImageRequest.Builder(context)
-            .data(source)
-            .size(raftImageDecodeSize(maxDecodeEdgePx))
-            .scale(Scale.FIT)
-            .precision(Precision.INEXACT)
-            .memoryCachePolicy(CachePolicy.DISABLED)
-            .build()
+        raftBoundedImageRequest(
+            context = context,
+            source = source,
+            maxDecodeEdgePx = maxDecodeEdgePx,
+            disableMemoryCache = true,
+            overrideMaxBitmapSize = true,
+        )
     val result = SingletonImageLoader.get(context).execute(request)
-    return (result as? SuccessResult)?.image?.toRaftImageBitmap()
+    val decodedImage = (result as? SuccessResult)?.image ?: return null
+    return withContext(Dispatchers.Default) { decodedImage.toRaftImageBitmap() }
 }
 
 /** Pass as `maxDecodeEdgePx` to decode at the original size (bundled atlases only). */
@@ -323,13 +370,36 @@ internal fun raftImageDecodeSize(maxDecodeEdgePx: Int): Size =
         else -> Size(maxDecodeEdgePx, maxDecodeEdgePx)
     }
 
-/** The window's longer edge in px (the default decode bound), or a phone-sized fallback. */
+/**
+ * Display decode bound (longer edge in px) clamped to [platformMaxEdgePx] when the platform loader
+ * enforces a smaller `maxBitmapSize` (e.g. 2048 px on iOS/Desktop). Keeping the requested size at
+ * or below the loader cap prevents Coil's memory-cache size check from rejecting a sampled cached
+ * bitmap on preview -> editor handoff.
+ */
+internal fun raftDisplayImageDecodeEdgePx(
+    windowLongEdgePx: Int,
+    platformMaxEdgePx: Int? = raftPlatformMaxDisplayBitmapEdgePx,
+): Int {
+    val windowBound = if (windowLongEdgePx > 0) windowLongEdgePx else RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX
+    return if (platformMaxEdgePx != null && platformMaxEdgePx > 0) {
+        minOf(windowBound, platformMaxEdgePx)
+    } else {
+        windowBound
+    }
+}
+
+/** The window's longer edge in px, or a phone-sized fallback. */
 @Composable
 fun rememberRaftWindowLongEdgePx(): Int {
     val container = LocalWindowInfo.current.containerSize
     val longEdge = maxOf(container.width, container.height)
     return if (longEdge > 0) longEdge else RAFT_IMAGE_DECODE_FALLBACK_EDGE_PX
 }
+
+/** Display decode bound in px shared by full-screen image previews and the image editor. */
+@Composable
+internal fun rememberRaftDisplayImageDecodeEdgePx(): Int =
+    raftDisplayImageDecodeEdgePx(rememberRaftWindowLongEdgePx())
 
 internal expect fun coil3.Image.toRaftImageBitmap(): ImageBitmap
 
