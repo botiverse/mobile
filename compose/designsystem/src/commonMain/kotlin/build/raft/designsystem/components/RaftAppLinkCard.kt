@@ -36,14 +36,12 @@ import build.raft.designsystem.theme.RaftTheme
 // `card` with `placement: "block"` (protocol version 3, RFC 076 section 14). Raft's header names
 // the App, the body is the hover card's, and the buttons work by touch. The card never replaces the
 // link. On the web it is 400px wide and never wider than the message, and the whole message width
-// on a phone (below 768px); here the caller passes the cap it wants ([RaftAppLinkCardDefaults]).
+// on a phone (below its `md` breakpoint); here the caller passes the cap it wants
+// ([RaftAppLinkCardDefaults.MaxWidth] or none), by the app's own phone-or-wide rule.
 
 object RaftAppLinkCardDefaults {
     /** The width on a wide layout: an item card's ([RaftMessageEmbedDefaults.ItemMaxWidth], `MessageEmbed size="item"`). */
     val MaxWidth: Dp = RaftMessageEmbedDefaults.ItemMaxWidth
-
-    /** The window width below which the web's card takes the message's full width (`max-md`). */
-    val PhoneBelow: Dp = 768.dp
 
     /** The app icon in the header: 16px. */
     val IconSize: Dp = 16.dp

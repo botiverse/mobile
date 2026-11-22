@@ -67,7 +67,6 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -1177,7 +1176,8 @@ private fun ThreadDmAgentActivity(
 ) {
     // Web ChatPanel AgentDMStatus (#10446): stuck on one tool call reads as that, in the
     // warning colour, not as a plain "busy". Otherwise, a failed start waiting for runtime sign-in
-    // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" below 768dp) on the
+    // (slock #15282) reads "Sign-in needed for <runtime>" ("Sign-in needed" in a phone window: under
+    // the app's wide breakpoint, [raftWindowWide], as the web's is under its `md`) on the
     // error light with Sign in beside it for viewers who can act on the Computer.
     val toolStuck = state.visibleToolStuck()
     val readinessCopy = if (toolStuck == null) rememberAgentReadinessDisplayCopy(state) else null
@@ -1211,7 +1211,7 @@ private fun ThreadDmAgentActivity(
     }
     val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state, fallbackName = agentName) else null
     if (signIn != null) {
-        val wide = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= 768.dp
+        val wide = raftWindowWide()
         val signInLabel = if (wide) signIn.fullText else signIn.shortText
         Row(
             modifier = modifier,

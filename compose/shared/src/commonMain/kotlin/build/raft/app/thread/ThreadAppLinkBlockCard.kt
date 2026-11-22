@@ -15,8 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -53,7 +51,8 @@ import coil3.compose.AsyncImagePainter
  * with Raft's confirmation or an Undo window, or Refresh: [ThreadAppLinkCardPress]) and the rest
  * in the More menu, where a link to the item and Raft's Open Link always go (the title opens the
  * item; web `linkCardRowLayout`). On a phone
- * it takes the message's width; a wide window caps it at 400dp, as the web does.
+ * it takes the message's width; a wide window caps it at 400dp, as the web does
+ * ([threadAppLinkBlockCardMaxWidth]).
  */
 @Composable
 internal fun ThreadAppLinkBlockCard(
@@ -63,8 +62,7 @@ internal fun ThreadAppLinkBlockCard(
     actions: ThreadAppLinkCardActionHost? = null,
 ) {
     val block = card.block ?: return
-    val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val maxWidth: Dp = if (windowWidth >= RaftAppLinkCardDefaults.PhoneBelow) RaftAppLinkCardDefaults.MaxWidth else Dp.Unspecified
+    val maxWidth = threadAppLinkBlockCardMaxWidth(raftWindowWidth())
     val host = remember(card.url) { appLinkDomain(card.url)?.let(::raftAppLinkAsciiHost).orEmpty() }
     val openLink = raftAppLinkOpenLinkButton { openUri(card.url) }
     val press = rememberThreadAppLinkCardPress(card, actions)
@@ -95,6 +93,15 @@ internal fun ThreadAppLinkBlockCard(
         }
     }
 }
+
+/**
+ * The block card's widest in a [windowWidth]-wide window: an item card's 400dp
+ * ([RaftAppLinkCardDefaults.MaxWidth]) on a wide window ([raftWindowWide], from the app's wide
+ * breakpoint; the web's cap starts at its `md`), and no cap on a phone, where the card is as wide
+ * as the message.
+ */
+internal fun threadAppLinkBlockCardMaxWidth(windowWidth: Dp): Dp =
+    if (raftWindowWide(windowWidth)) RaftAppLinkCardDefaults.MaxWidth else Dp.Unspecified
 
 /** The App's registered icon at 16dp with 2dp corners, or the generic App mark when it has none or fails. */
 @Composable

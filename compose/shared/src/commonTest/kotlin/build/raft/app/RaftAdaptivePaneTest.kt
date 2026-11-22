@@ -1,8 +1,14 @@
 package build.raft.app
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.isUnspecified
+import build.raft.app.assistant.threadAssistantPanelWide
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RaftAdaptivePaneTest {
     @Test
@@ -58,6 +64,23 @@ class RaftAdaptivePaneTest {
         listOf(402, 700, 743).forEach { width ->
             assertEquals(RaftAdaptivePaneLayout.Compact, layoutAt(width), "width $width")
         }
+    }
+
+    @Test
+    fun anIpadMiniUprightGetsTheWideAssistantPanelAndCards() {
+        // #307: the assistant panel (and so Connect WeChat), App link cards, artifact card
+        // screenshots and the DM head's sign-in label were copied from the web's `md` breakpoint,
+        // so a 744-767 window (an iPad mini upright) had the rail and two panes but their phone
+        // variants. They follow the rail's rule ([raftWindowWide]) now.
+        val ipadMini = 750.dp
+        assertTrue(threadAssistantPanelWide(ipadMini), "the assistant panel is a popover")
+        assertTrue(threadAppLinkBlockCardMaxWidth(ipadMini).isSpecified, "a link card keeps its wide cap")
+        assertFalse(artifactScreenshotPhoneLayout(ipadMini), "an artifact card shows its desktop screenshot")
+        // A large phone keeps the phone variants.
+        val phone = 430.dp
+        assertFalse(threadAssistantPanelWide(phone))
+        assertTrue(threadAppLinkBlockCardMaxWidth(phone).isUnspecified)
+        assertTrue(artifactScreenshotPhoneLayout(phone))
     }
 
     @Test

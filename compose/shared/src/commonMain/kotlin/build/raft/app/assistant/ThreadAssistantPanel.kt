@@ -52,6 +52,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftThreadMessageItem
+import build.raft.app.raftWindowWide
+import build.raft.app.raftWindowWidth
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.resources.*
 import build.raft.app.threadActionCard
@@ -260,7 +262,8 @@ internal fun ColumnScope.ThreadAssistantPanelConversationMissing(name: String) {
 /**
  * The otter's panel over the page while it is open, as web AssistantOtter shows it:
  *
- * - A phone window (narrower than [ThreadAssistantPanelWideMinWidth], web `PHONE_MEDIA_QUERY`):
+ * - A phone window (not [threadAssistantPanelWide]: under the app's wide breakpoint, where web's
+ *   `PHONE_MEDIA_QUERY` is under its `md`):
  *   the `Drawer`, `--drawer-content-height: 82vh`, a [RaftDrawer] holding [ThreadAssistantPanel]
  *   with [conversation] as its body, on the canvas from its grab handle down (one opaque layer,
  *   #proj-mobile:#134). It has snap points: it opens at 82% ([initialSnapPoint]), the grab handle
@@ -357,16 +360,17 @@ internal fun ThreadAssistantPanelSheet(
     }
 }
 
-/** Web `PHONE_MEDIA_QUERY` `(max-width: 767px)`: from 768dp the panel is a popover. */
-internal val ThreadAssistantPanelWideMinWidth = 768.dp
+/**
+ * Whether a window [windowWidth] wide shows the panel as a popover (web `!phone`): a wide window
+ * ([raftWindowWide]), from the app's wide breakpoint (744, with the rail) and not web's
+ * `PHONE_MEDIA_QUERY` `(max-width: 767px)`, so an iPad mini upright gets the popover too. A phone
+ * or a split-screen half gets the drawer. Connecting WeChat is offered by the same rule.
+ */
+internal fun threadAssistantPanelWide(windowWidth: Dp): Boolean = raftWindowWide(windowWidth)
 
-/** Whether this window shows the panel as a popover (wider than a phone, web `!phone`). */
+/** [threadAssistantPanelWide] for this window. */
 @Composable
-internal fun threadAssistantPanelWide(): Boolean {
-    val size = LocalWindowInfo.current.containerSize
-    val width = with(LocalDensity.current) { size.width.toDp() }
-    return width >= ThreadAssistantPanelWideMinWidth
-}
+internal fun threadAssistantPanelWide(): Boolean = threadAssistantPanelWide(raftWindowWidth())
 
 /** Web AssistantOtter `PopoverContent`: `w-[380px] h-[540px]`, `sideOffset={8}`, `collisionPadding={8}`. */
 internal object ThreadAssistantPanelPopoverDefaults {
