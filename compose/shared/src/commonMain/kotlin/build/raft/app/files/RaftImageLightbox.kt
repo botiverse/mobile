@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +17,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,12 +28,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -60,6 +62,7 @@ import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftWindowTitleBar
 import build.raft.designsystem.components.raftTopBarRowTopInset
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import coil3.compose.AsyncImagePainter
 import kotlinx.coroutines.launch
@@ -80,6 +83,9 @@ import net.engawapg.lib.zoomable.zoomable
  *   anywhere outside the image.
  * - The top bar shows who sent it and when (as the message header shows the time), "3 of 12",
  *   and the actions the conversation already has for an attachment: Download and Open with.
+ * - By touch (a tablet's wide window opens images here too, #305) it also has what the phone's
+ *   full-page viewer has: swipe down to close (RaftImageViewerSwipeDismiss.kt) and Save to Photos.
+ *   A mouse or trackpad ([RaftPointerInput.Fine], the input in use) keeps it as described above.
  * - The lightbox covers the whole window, so its top bar is the window's top bar while it is open
  *   (the web's overlay title bar): under a window title bar laid over the app
  *   ([LocalRaftWindowTitleBar], the macOS window) it covers the title bar's band as `RaftTopBar`
@@ -215,6 +221,8 @@ internal fun RaftImageLightbox(
     onShare: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
+    /** Save the image to the device's photo library, offered by touch; null where there is none. */
+    onSaveToPhotos: ((RaftThreadAttachmentItem) -> Unit)? = null,
 ) {
     // The window's top safe area, read in the page (the lightbox covers the whole window).
     val topSafeArea = raftWindowTopSafeAreaPadding()
@@ -229,6 +237,7 @@ internal fun RaftImageLightbox(
             topSafeArea = topSafeArea,
             onEdit = onEdit,
             onFullUrlError = onFullUrlError,
+            onSaveToPhotos = onSaveToPhotos,
         )
     }
 }
@@ -250,6 +259,11 @@ internal fun RaftImageLightboxContent(
     /** Edit this image; the result goes to the composer as a new image (RaftViewerImageEdit.kt). */
     onEdit: ((RaftThreadAttachmentItem) -> Unit)? = null,
     onFullUrlError: ((attachmentId: String, failedUrl: String) -> Unit)? = null,
+    /**
+     * The phone viewer's Save to Photos, on the bar by touch only (a mouse or trackpad keeps the
+     * desktop bar); null where the device has no photo library.
+     */
+    onSaveToPhotos: ((RaftThreadAttachmentItem) -> Unit)? = null,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit =
         { item, fullUrl, onContentSize ->
             RaftImageLightboxRemoteImage(
@@ -290,13 +304,25 @@ internal fun RaftImageLightboxContent(
     val titleBar = LocalRaftWindowTitleBar.current
     val barPadding = raftImageLightboxBarPadding(topSafeArea, LocalRaftFrameInsets.current, titleBar)
     val barTop = barPadding.calculateTopPadding()
+    // The swipe down to close (by touch): the drag's offset, shared by the image and the backdrop.
+    val dismissState = remember { RaftImageSwipeDismissState() }
+    // The shown page's zoom: no swipe down starts on a zoomed-in image (the drag pans it then).
+    val shownZoom = remember { mutableStateOf<ZoomState?>(null) }
     RaftDesignSystemTheme(forceDark = true) {
+        // A finger drives it (a tablet; the input in use, as for the app's other touch or mouse
+        // choices): the phone viewer's swipe down to close and Save to Photos. A mouse or trackpad
+        // keeps the desktop lightbox as it was.
+        val byTouch = RaftTheme.pointerInput == RaftPointerInput.Touch
+        // By touch, the bar and the arrows fade with the backdrop while the image is dragged down.
+        val chromeFade = if (byTouch) Modifier.graphicsLayer { alpha = dismissState.backgroundAlpha } else Modifier
         Box(
             modifier =
                 modifier
                     .testTag(RaftImageLightboxTag)
                     .fillMaxSize()
-                    .background(RaftImageLightboxBackdrop)
+                    .onSizeChanged { dismissState.viewportHeight = it.height.toFloat() }
+                    // Fully drawn at rest; fades as the image is dragged down to close.
+                    .drawBehind { drawRect(RaftImageLightboxBackdrop, alpha = dismissState.backgroundAlpha) }
                     .focusRequester(focusRequester)
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -317,6 +343,24 @@ internal fun RaftImageLightboxContent(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .then(
+                            if (byTouch) {
+                                // Swipe down to close, the phone viewer's gesture: on the whole pager
+                                // rather than on the page, so the image it moves is never cut at the
+                                // pager's edges (the pager clips its pages); sideways drags still page.
+                                Modifier
+                                    .raftImageSwipeDismiss(
+                                        state = dismissState,
+                                        zoomKey = shownZoom,
+                                        zoomedIn = { (shownZoom.value?.scale ?: 1f) > 1f },
+                                        scope = scope,
+                                        onDismiss = { currentOnDismiss() }
+                                    )
+                                    .raftImageSwipeDismissLayer(dismissState)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .padding(
                             top = barTop + RaftImageLightboxBarHeight,
                             bottom = RaftImageLightboxBarHeight,
@@ -331,6 +375,7 @@ internal fun RaftImageLightboxContent(
                     fullUrl = fullUrls[items[page].attachment.id],
                     selected = pagerState.settledPage == page,
                     onTapOutsideImage = { currentOnDismiss() },
+                    onShownZoom = { zoom -> shownZoom.value = zoom },
                     pageImage = pageImage
                 )
             }
@@ -342,10 +387,11 @@ internal fun RaftImageLightboxContent(
                 onShare = onShare?.let { share -> { share(current.attachment) } },
                 onOpenWith = onOpenWith?.let { open -> { open(current.attachment) } },
                 onEdit = onEdit?.let { edit -> { edit(current.attachment) } },
+                onSaveToPhotos = onSaveToPhotos?.takeIf { byTouch }?.let { save -> { save(current.attachment) } },
                 onClose = { currentOnDismiss() },
                 padding = barPadding,
                 // The window title bar's hit test sees the bar's events after its buttons.
-                modifier = Modifier.align(Alignment.TopCenter).then(titleBar.modifier)
+                modifier = Modifier.align(Alignment.TopCenter).then(chromeFade).then(titleBar.modifier)
             )
             if (pagerState.currentPage > 0) {
                 RaftIconButton(
@@ -353,7 +399,7 @@ internal fun RaftImageLightboxContent(
                     tooltip = stringResource(Res.string.image_lightbox_previous),
                     variant = RaftButtonVariant.Ghost,
                     size = RaftIconButtonSize.Lg,
-                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp)
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp).then(chromeFade)
                 ) { RaftSlotIcon(RaftLucideIconName.ChevronLeft) }
             }
             if (pagerState.currentPage < items.lastIndex) {
@@ -362,7 +408,7 @@ internal fun RaftImageLightboxContent(
                     tooltip = stringResource(Res.string.image_lightbox_next),
                     variant = RaftButtonVariant.Ghost,
                     size = RaftIconButtonSize.Lg,
-                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 10.dp)
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 10.dp).then(chromeFade)
                 ) { RaftSlotIcon(RaftLucideIconName.ChevronRight) }
             }
         }
@@ -375,9 +421,12 @@ private fun RaftImageLightboxPage(
     fullUrl: String?,
     selected: Boolean,
     onTapOutsideImage: () -> Unit,
+    /** Hands the shown page's zoom to the swipe down to close, which never starts zoomed in. */
+    onShownZoom: (ZoomState) -> Unit,
     pageImage: @Composable (item: RaftImageLightboxItem, fullUrl: String?, onContentSize: (Size) -> Unit) -> Unit
 ) {
     val zoomState = remember(item.attachment.id) { ZoomState(maxScale = RaftImageLightboxMaxScale) }
+    if (selected) SideEffect { onShownZoom(zoomState) }
     var layoutSize by remember { mutableStateOf(Size.Zero) }
     var contentSize by remember(item.attachment.id) {
         mutableStateOf(
@@ -500,6 +549,8 @@ private fun RaftImageLightboxTopBar(
     onClose: () -> Unit,
     padding: PaddingValues,
     onEdit: (() -> Unit)? = null,
+    /** By touch: Save to Photos, with the phone viewer's icon and words. */
+    onSaveToPhotos: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -557,6 +608,14 @@ private fun RaftImageLightboxTopBar(
                     variant = RaftButtonVariant.Ghost,
                     size = RaftIconButtonSize.Lg
                 ) { RaftSlotIcon(RaftLucideIconName.Pencil) }
+            }
+            if (onSaveToPhotos != null) {
+                RaftIconButton(
+                    onClick = onSaveToPhotos,
+                    tooltip = stringResource(Res.string.thread_image_preview_save_to_photos),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Lg
+                ) { RaftSlotIcon(RaftLucideIconName.Save) }
             }
             RaftIconButton(
                 onClick = onDownload,

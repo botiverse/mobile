@@ -153,12 +153,33 @@ internal fun Modifier.raftImageSwipeDismiss(
     scope: CoroutineScope,
     onDismiss: () -> Unit,
 ): Modifier =
-    pointerInput(state, zoomState) {
+    raftImageSwipeDismiss(
+        state = state,
+        zoomKey = zoomState,
+        zoomedIn = { zoomState.transform.scale > 1f },
+        scope = scope,
+        onDismiss = onDismiss,
+    )
+
+/**
+ * [raftImageSwipeDismiss] for an image whose zoom is not a [RaftZoomableImageState]: the wide
+ * lightbox's pages (`net.engawapg.lib.zoomable`, RaftImageLightbox.kt). [zoomedIn] tells, as a drag
+ * starts, whether the image is zoomed in (the drag pans it then, so no dismiss starts); [zoomKey]
+ * is the zoom it reads, and a new one restarts the gesture.
+ */
+internal fun Modifier.raftImageSwipeDismiss(
+    state: RaftImageSwipeDismissState,
+    zoomKey: Any,
+    zoomedIn: () -> Boolean,
+    scope: CoroutineScope,
+    onDismiss: () -> Unit,
+): Modifier =
+    pointerInput(state, zoomKey) {
         val distanceThresholdPx = 120.dp.toPx()
         val velocityThresholdPx = 1000.dp.toPx()
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            if (state.dismissed || zoomState.transform.scale > 1f) return@awaitEachGesture
+            if (state.dismissed || zoomedIn()) return@awaitEachGesture
             val slop = viewConfiguration.touchSlop
             val tracker = VelocityTracker()
             tracker.addPointerInputChange(down)

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -26,10 +28,15 @@ import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.RaftFrameInsets
 import build.raft.designsystem.components.RaftWindowTitleBar
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.swipeDown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -43,7 +50,9 @@ import org.robolectric.annotation.Config
 /**
  * The desktop / wide image lightbox on a real composition: Left / Right step through the
  * conversation's images and stop at its ends, Escape closes, a click on the backdrop or on the
- * page outside the image closes, a click on the image does not. Window: a 1280x800dp desktop.
+ * page outside the image closes, a click on the image does not. By touch (a tablet, #305) it has
+ * the phone viewer's swipe down to close and Save to Photos; with a mouse or trackpad neither.
+ * Window: a 1280x800dp desktop.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -55,6 +64,7 @@ class RaftImageLightboxUiTest {
     private class Calls {
         var dismissed = 0
         val downloads = mutableListOf<String>()
+        val photoSaves = mutableListOf<String>()
     }
 
     private fun ComposeUiTest.showLightbox(
@@ -64,25 +74,35 @@ class RaftImageLightboxUiTest {
         frameInsets: RaftFrameInsets = RaftFrameInsets.Zero,
         topSafeArea: Dp = 0.dp,
         timeContext: RaftTimeContext? = null,
-        titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None
+        titleBar: RaftWindowTitleBar = RaftWindowTitleBar.None,
+        // The input in use, pinned for the lightbox (as the app's theme provides it); null: unpinned.
+        pointerInput: State<RaftPointerInput>? = null
     ) {
         // Compose string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
         setContent {
-            CompositionLocalProvider(
-                LocalRaftFrameInsets provides frameInsets,
-                LocalRaftWindowTitleBar provides titleBar,
-                LocalRaftTimeContextProvider provides timeContext?.let { RaftTimeContextProvider(it) }
-            ) {
-                RaftImageLightboxContent(
-                    request = RaftImageLightboxRequest(items, index),
-                    resolveFullUrl = { null },
-                    onDismiss = { calls.dismissed++ },
-                    onDownload = { calls.downloads += it.id },
-                    onOpenWith = {},
-                    topSafeArea = topSafeArea,
-                    pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
-                )
+            val content: @Composable () -> Unit = {
+                CompositionLocalProvider(
+                    LocalRaftFrameInsets provides frameInsets,
+                    LocalRaftWindowTitleBar provides titleBar,
+                    LocalRaftTimeContextProvider provides timeContext?.let { RaftTimeContextProvider(it) }
+                ) {
+                    RaftImageLightboxContent(
+                        request = RaftImageLightboxRequest(items, index),
+                        resolveFullUrl = { null },
+                        onDismiss = { calls.dismissed++ },
+                        onDownload = { calls.downloads += it.id },
+                        onOpenWith = {},
+                        topSafeArea = topSafeArea,
+                        onSaveToPhotos = { calls.photoSaves += it.id },
+                        pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
+                    )
+                }
+            }
+            if (pointerInput != null) {
+                RaftTheme(appearance = RaftAppearance.Light, pointerInput = pointerInput.value, content = content)
+            } else {
+                content()
             }
         }
         mainClock.advanceTimeBy(500)
@@ -113,10 +133,52 @@ class RaftImageLightboxUiTest {
             val calls = Calls()
             showLightbox(calls)
             press(Key.DirectionRight)
-            // The Download button is the first icon button of the bar.
+            // The bar's Download button (by touch, Save to Photos sits before it).
             onNodeWithTagContentDescription("Download").performMouseInput { click(center) }
             mainClock.advanceTimeBy(500)
             assertEquals(listOf("img-2"), calls.downloads)
+            assertEquals(0, calls.dismissed)
+        }
+
+    /** #305: a tablet opens images here, not in the phone's viewer; by touch it closes as that one does. */
+    @Test
+    fun aSwipeDownClosesByTouchButADragWithAMouseDoesNot() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            val input = mutableStateOf(RaftPointerInput.Fine)
+            showLightbox(calls, pointerInput = input)
+            val page = onNodeWithTag(raftImageLightboxPageTag("img-1"))
+            page.performMouseInput {
+                moveTo(center)
+                press()
+                repeat(6) { moveBy(Offset(0f, 50f)) }
+                release()
+            }
+            mainClock.advanceTimeBy(1_000)
+            assertEquals(0, calls.dismissed, "a mouse or trackpad keeps the desktop lightbox: no swipe down")
+
+            input.value = RaftPointerInput.Touch
+            mainClock.advanceTimeBy(500)
+            page.performTouchInput { swipeDown(startY = centerY - 100f, endY = centerY + 200f) }
+            mainClock.advanceTimeBy(1_000)
+            assertEquals(1, calls.dismissed, "by touch a swipe down on the image closes, as on a phone")
+        }
+
+    /** #305: by touch the bar has the phone viewer's Save to Photos, for the image shown. */
+    @Test
+    fun saveToPhotosIsOnTheBarByTouchForTheShownImage() =
+        runRobolectricComposeUiTest {
+            val calls = Calls()
+            val input = mutableStateOf(RaftPointerInput.Fine)
+            showLightbox(calls, pointerInput = input)
+            onNodeWithTagContentDescription("Save to Photos").assertDoesNotExist()
+
+            input.value = RaftPointerInput.Touch
+            mainClock.advanceTimeBy(500)
+            press(Key.DirectionRight)
+            onNodeWithTagContentDescription("Save to Photos").performTouchInput { click() }
+            mainClock.advanceTimeBy(500)
+            assertEquals(listOf("img-2"), calls.photoSaves)
             assertEquals(0, calls.dismissed)
         }
 
