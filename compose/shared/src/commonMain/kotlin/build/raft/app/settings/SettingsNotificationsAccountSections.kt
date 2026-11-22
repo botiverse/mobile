@@ -177,10 +177,11 @@ internal fun SettingsNotificationPauseSection(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
+                                val dateContext = currentRaftEffectiveDateTimeContext()
                                 SettingsNotificationsNote(
                                     stringResource(
                                         Res.string.settings_notifications_paused_until,
-                                        raftPausedUntilLabel(pausedUntil, nowEpochMillis)
+                                        raftPausedUntilLabel(pausedUntil, nowEpochMillis, dateContext)
                                     )
                                 )
                             }
@@ -282,13 +283,14 @@ private fun raftNowEpochMillisForSettings(): Long = build.raft.app.data.raftNowE
 
 @Composable
 private fun SettingsNotificationQuietTime(label: String, minute: Int, modifier: Modifier, onPick: (Int) -> Unit) {
+    val timeFormat = currentRaftEffectiveDateTimeContext().timeFormat
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         SettingsNotificationsNote(label)
         RaftSelect(
             value = minute,
             options = raftQuietHoursTimeOptions(minute),
             onValueChange = { if (it != minute) onPick(it) },
-            optionLabel = ::raftMinuteOfDayLabel,
+            optionLabel = { raftMinuteOfDayLabel(it, timeFormat) },
             modifier = Modifier.fillMaxWidth(),
             // Stays enabled while a save is in flight (web QuietTimeInput): a pick never waits.
             enabled = true,
@@ -308,6 +310,7 @@ private fun SettingsNotificationCustomPause(
     onApply: () -> Unit
 ) {
     val label = stringResource(Res.string.settings_notifications_pause_custom_label)
+    val timeFormat = currentRaftEffectiveDateTimeContext().timeFormat
     val days = remember(nowEpochMillis, timeZoneId) { RaftNotificationCustomPause.days(nowEpochMillis, timeZoneId) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsNotificationsNote(label)
@@ -328,7 +331,7 @@ private fun SettingsNotificationCustomPause(
                 value = value.minuteOfDay,
                 options = raftQuietHoursTimeOptions(value.minuteOfDay),
                 onValueChange = { onValueChange(value.copy(minuteOfDay = it)) },
-                optionLabel = ::raftMinuteOfDayLabel,
+                optionLabel = { raftMinuteOfDayLabel(it, timeFormat) },
                 modifier = Modifier.weight(1f),
                 enabled = enabled,
                 label = label

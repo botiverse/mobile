@@ -1011,6 +1011,7 @@ private fun ThreadPageContentContent(
     val isMarkdownTagValid = markdownTagResolution.isMarkdownTagValid
     val markdownTagContextSignature = markdownTagResolution.markdownTagContextSignature
     val resolveMarkdownTagLabel = markdownTagResolution.resolveMarkdownTagLabel
+    val effectiveTimeFormat = currentRaftDateTimeContext(null)?.timeFormat ?: payload.timeFormat
     val timelineRenderConfig =
         remember(
             payload.backgroundRefreshing,
@@ -1022,10 +1023,15 @@ private fun ThreadPageContentContent(
             payload.localOffsetMinutes,
             payload.todayEpochDay,
             payload.nowEpochMillis,
-            payload.timeFormat,
+            effectiveTimeFormat,
             payload.members
         ) {
-            payload.toThreadTimelineRenderConfig()
+            val config = payload.toThreadTimelineRenderConfig()
+            if (config.timeContext.timeFormat == effectiveTimeFormat) {
+                config
+            } else {
+                config.copy(timeContext = config.timeContext.withTimeFormat(effectiveTimeFormat))
+            }
         }
     val selectThreadTab: (RaftThreadTab) -> Unit = { tab ->
         onSelectedTabChanged(tab)
@@ -1306,7 +1312,8 @@ private fun ThreadPageContentContent(
                 },
             body = {
             if (externalFreezeState != ExternalFreezeState.Active && jointBillingNotice != JointBillingNotice.None) {
-                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val rawDeadline = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val deadlineLabel = if (rawDeadline != null) raftLocalizedMediumDateTime(rawDeadline) else null
                 RaftUiBanner(
                     status =
                         if (jointBillingNotice == JointBillingNotice.Locked) RaftUiBannerStatus.Destructive

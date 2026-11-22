@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsServerJoinLinkSnapshot
 import build.raft.app.data.SharedMembersDataSource
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerSummary
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -856,11 +857,19 @@ private fun inviteHumanLinkChoiceLabels(): InviteHumanLinkChoiceLabels =
             },
     )
 
+/** Local calendar date (`YYYY-MM-DD`) of a join link's `expiresAt` in [timeContext]; raw value if unreadable. */
+internal fun inviteHumanExpiresDateLabel(expiresAt: String, timeContext: RaftTimeContext): String =
+    timeContext.formatIsoDate(expiresAt) ?: expiresAt.trim()
+
 /** "Used 2/5 · Expires 2026-11-01" for a limited link, else null (web `invite-link-status`). */
 @Composable
 private fun inviteHumanLinkStatus(link: SettingsServerJoinLinkSnapshot): String? {
+    val dateContext = currentRaftEffectiveDateTimeContext()
     val used = link.maxUses?.let { max -> stringResource(Res.string.invite_human_used_of, link.useCount ?: 0, max) }
-    val expires = link.expiresAt?.let { stringResource(Res.string.invite_human_expires_on, it.substringBefore('T')) }
+    val expires =
+        link.expiresAt?.takeIf { it.isNotBlank() }?.let {
+            stringResource(Res.string.invite_human_expires_on, inviteHumanExpiresDateLabel(it, dateContext))
+        }
     return listOfNotNull(used, expires).takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 

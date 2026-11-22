@@ -115,6 +115,7 @@ import build.raft.app.data.SharedTasksScope
 import build.raft.app.data.SharedTasksViewModel
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedAdaptiveScrollAnchor
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -625,9 +626,18 @@ private fun ThreadPageScreen(
         )
     }
     val parsedPayload = payloadTrace.payload
+    val baseTimeCapabilities =
+        remember(parsedPayload.localOffsetMinutes, parsedPayload.timeFormat) {
+            parsedPayload.toRaftTimeCapabilities()
+        }
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseTimeCapabilities.timeFormat)
+    val timeCapabilities =
+        remember(baseTimeCapabilities, runtimeTimeFormat) {
+            baseTimeCapabilities.copy(timeFormat = runtimeTimeFormat)
+        }
     val liveTimeContextProvider =
         rememberLiveRaftTimeContext(
-            capabilities = parsedPayload.toRaftTimeCapabilities(),
+            capabilities = timeCapabilities,
             pageVisibleTick = pageVisibleTick,
             active = pageVisible
         )
@@ -1083,7 +1093,7 @@ private fun ThreadPageScreen(
                             serverId = resolvedServerId,
                             storeScope = targetStoreScope,
                             foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
-                            timeContext = liveTimeContextProvider.current ?: payload.toRaftTimeCapabilities().staticContext(),
+                            timeContext = liveTimeContextProvider.dateContext ?: timeCapabilities.staticContext(),
                             alignOwnMessagesRight = payload.alignOwnMessagesRight,
                             compactConsecutiveMessages = payload.compactConsecutiveMessages,
                             channelJoined = channelJoined,
@@ -5714,7 +5724,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
             openCanonicalTask(arrived, "task_conversation_arrived")
         },
-        timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
+        timeContext = timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext(),
         // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
         // another channel is not known here and stays writable.
         canWriteTaskChannel = { channelId ->
@@ -6345,7 +6355,7 @@ private fun SharedThreadRouteContentContent(
         // The page's live clock supplies "today": the static context has none, and without it the
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
-            timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
+            timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext()
         // The head as the conversation's first row at every width, and pulled down from the bar
         // ([TaskHeadPlacement]); the page's placement holds its effects.
         val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =

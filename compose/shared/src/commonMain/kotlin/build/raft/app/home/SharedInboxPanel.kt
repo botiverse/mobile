@@ -1598,7 +1598,7 @@ internal fun SharedActivityList(
     // "At the top" is the web's (ThreadsInbox `scrollTop < 50`): within [ActivityNearTopThreshold].
     val nearTopPx = with(LocalDensity.current) { ActivityNearTopThreshold.roundToPx() }
     // The day headings' clock, read when a change lands (settleTopEdge's head signature).
-    val headTimeContext by rememberUpdatedState(currentRaftTimeContext(timeContext))
+    val headTimeContext by rememberUpdatedState(currentRaftDateTimeContext(timeContext))
     // The reader reached the top themselves: nothing new is hidden above any more.
     LaunchedEffect(listState, active, nearTopPx) {
         if (!active) return@LaunchedEffect
@@ -1919,7 +1919,7 @@ internal fun SharedActivityList(
     val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     // Day headings (web slock #13030) by the live clock: they turn at the person's midnight.
-    val listTimeContext = currentRaftTimeContext(timeContext)
+    val listTimeContext = currentRaftDateTimeContext(timeContext)
     val listToday = listTimeContext?.activityTodayEpochDay()
     val listOffsetMinutes = listTimeContext?.localOffsetMinutes
     val conversationListEntries =

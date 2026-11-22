@@ -32,6 +32,7 @@ import build.raft.app.data.AddComputerCodeSubmitting
 import build.raft.app.data.DeviceLoginGrantKind
 import build.raft.app.data.DeviceLoginRequest
 import build.raft.app.data.DeviceLoginServer
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
@@ -309,7 +310,14 @@ private fun AddComputerCodeRequestDetails(request: DeviceLoginRequest, target: D
 @Composable
 private fun addComputerCodeStartedLabel(requestedAt: String): String? {
     val context = currentRaftTimeContext(null)
-    val time = raftAbsoluteTimestampLabel(requestedAt, context) ?: raftDeviceZoneAbsoluteLabel(requestedAt) ?: return null
+    val time =
+        if (context != null) {
+            raftAbsoluteTimestampLabel(requestedAt, context)
+                ?: raftDeviceZoneAbsoluteLabel(requestedAt, timeFormat = context.timeFormat)
+        } else {
+            val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
+            raftDeviceZoneAbsoluteLabel(requestedAt, timeFormat = fallbackTimeFormat)
+        } ?: return null
     if (context == null) return time
     val ago = raftRelativeTimestampLabel(requestedAt, context, clampFuture = true)
     return stringResource(Res.string.settings_computers_code_started_value, time, ago)

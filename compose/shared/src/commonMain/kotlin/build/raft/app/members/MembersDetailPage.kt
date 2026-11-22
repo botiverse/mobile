@@ -43,6 +43,7 @@ import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.SharedAgentIssueReportRequest
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
@@ -479,7 +480,12 @@ internal fun MemberDetailPageContent(
         } else {
             MembersAgentDetailLoadState.Loading
         }
-    val timeContext = payload.toRaftTimeContext()
+    val baseTimeContext = payload.toRaftTimeContext()
+    val runtimeTimeFormat = RaftTimeFormatRuntime.observe(fallback = baseTimeContext.timeFormat)
+    val timeContext =
+        remember(baseTimeContext, runtimeTimeFormat) {
+            baseTimeContext.withTimeFormat(runtimeTimeFormat)
+        }
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val expectedKind = memberIdentity?.kind
     val statusLookupServerId =

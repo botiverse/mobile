@@ -5,7 +5,7 @@ Per the test-discipline announcement (#all 2026-07-25, artin-directed): static
 constraints live here as an explicit gate with a self-test, instead of being
 dressed up as source-grep "contract tests" inside test directories.
 
-Six constraints remain: check_no_conditional_interaction_state, born from the
+Seven constraints remain: check_no_conditional_interaction_state, born from the
 1.15.0 release crash on launch, check_native_apple_authentication_services
 (task #82: Swift-side Sign in with Apple, which no Android or JVM test covers),
 check_no_production_run_blocking (#3823: a main-thread runBlocking on the
@@ -14,9 +14,12 @@ check_native_safe_test_names (#3845: a comma in a backtick test name broke
 the iOS test compile on main, which PR CI does not build),
 check_no_strong_invocation_object_return (1.17.1: an NSInvocation object return
 read into a strong variable crashed iOS 27.2 at launch; simulators don't crash),
-and check_no_top_level_or_object_snapshot_state (Hands 25b91174 / #264: a
+check_no_top_level_or_object_snapshot_state (Hands 25b91174 / #264: a
 Compose snapshot state initialized in `<clinit>` off the main thread crashed
-Android cold start with `SnapshotKt.readError`).
+Android cold start with `SnapshotKt.readError`), and check_date_time_di_invariants
+(dm:@artin:#2 Phase 2A: prevents UI files from bypassing RaftTimeContext DI via
+TimeZone.currentSystemDefault/toLocalDateTime, reading LocalRaftPageBaseTimeContextProvider
+directly, slicing raw UTC ISO dates, or introducing new `.staticContext()` call sites).
 The other "forbid a future pattern" guards were deleted as redundant; behavior
 is proven by behavior tests.
 
@@ -808,6 +811,187 @@ def _top_level_snapshot_state_sources(root: Path) -> dict[str, str]:
     return sources
 
 
+DATE_TIME_DI_SCAN_ROOT = "compose/shared/src/commonMain/kotlin"
+DATE_TIME_DI_UI_PREFIX = "compose/shared/src/commonMain/kotlin/build/raft/app/"
+DATE_TIME_DI_NON_UI_PREFIXES = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/data/",
+)
+DATE_TIME_DI_LIVE_CONTEXT_FILE = (
+    "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLiveTimeContext.kt"
+)
+SYSTEM_ZONE_OR_LOCAL_DATETIME_RE = re.compile(
+    r"\bTimeZone\.currentSystemDefault\s*\(|\.\s*toLocalDateTime\s*\("
+)
+DIRECT_PAGE_BASE_PROVIDER_READ_RE = re.compile(
+    r"\bLocalRaftPageBaseTimeContextProvider\s*\.\s*current\b"
+)
+RAW_ISO_DATE_SLICE_RE = re.compile(
+    r"\.\s*(?:substringBefore\s*\(\s*(?:'T'|\"T\")\s*\)|"
+    r"take\s*\(\s*10\s*\)\s*\??\.\s*split\s*\(\s*(?:'-'|\"-\")\s*\))"
+)
+STATIC_TIME_CONTEXT_CALL_RE = re.compile(r"\.\s*staticContext\s*\(")
+
+# Exact remaining `.staticContext()` call counts pending Phase 2C retirement (dm:@artin:#2).
+# Adding a new caller fails CI; removing callers in Phase 2C must shrink/remove entries here.
+ALLOWED_STATIC_TIME_CONTEXT_SITES: tuple[tuple[str, int, str], ...] = (
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/assistant/AssistantPage.kt",
+        1,
+        "Phase 2C: AssistantPage fallback timeContext pending live provider migration",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
+        1,
+        "Phase 2C: SettingsHomePage threadTimeContext fallback pending staticContext retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPage.kt",
+        9,
+        "Phase 2C: ThreadPage staticContext fallbacks pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteBannerSubtrees.kt",
+        1,
+        "Phase 2C: ThreadRouteBannerSubtrees staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteDialogs.kt",
+        1,
+        "Phase 2C: ThreadRouteDialogs staticContext fallback pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteEventHandler.kt",
+        1,
+        "Phase 2C: ThreadRouteEventHandler staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadRouteEventHandlerActions.kt",
+        1,
+        "Phase 2C: ThreadRouteEventHandlerActions staticContext pending Phase 2C retirement",
+    ),
+    (
+        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadTabContent.kt",
+        1,
+        "Phase 2C: ThreadTabContent staticContext pending Phase 2C retirement",
+    ),
+)
+
+
+def _is_date_time_di_ui_file(rel: str) -> bool:
+    return rel.startswith(DATE_TIME_DI_UI_PREFIX) and not any(
+        rel.startswith(prefix) for prefix in DATE_TIME_DI_NON_UI_PREFIXES
+    )
+
+
+def check_date_time_di_invariants(
+    sources: dict[str, str],
+    static_context_allowlist: tuple[tuple[str, int, str], ...] = ALLOWED_STATIC_TIME_CONTEXT_SITES,
+) -> None:
+    """Incident: dm:@artin:#2 Date/Time DI & formatting regressions (raw ISO leaks, UTC date
+    slicing, ignored 12h/24h preference, and bypassed RaftTimeContext DI).
+
+    Enforces four invariants across `compose/shared/src/commonMain`:
+    1. UI files must not call `TimeZone.currentSystemDefault()` or `.toLocalDateTime(` directly
+       (format through `RaftTimeContext` / `currentRaftEffectiveDateTimeContext()` instead).
+    2. Only `RaftLiveTimeContext.kt` (`currentRaftTimeContextProvider`) may read
+       `LocalRaftPageBaseTimeContextProvider.current`.
+    3. UI files must not slice raw UTC ISO dates via `.substringBefore('T')` or `.take(10).split('-')`.
+    4. `.staticContext()` calls are pinned to the exact remaining Phase 2C allowlist so no new
+       dayless contexts can be introduced.
+    """
+    expected_static_counts: dict[str, int] = {}
+    for path, count, reason in static_context_allowlist:
+        if count <= 0:
+            raise Violation(f"date/time DI staticContext allowlist entry for {path} must have count > 0")
+        if not reason.strip():
+            raise Violation(f"date/time DI staticContext allowlist entry for {path} is missing a reason")
+        if path in expected_static_counts:
+            raise Violation(f"duplicate date/time DI staticContext allowlist entry for {path}")
+        expected_static_counts[path] = count
+
+    observed_static_counts: dict[str, int] = {}
+    live_base_reads_in_owner = 0
+
+    for name in sorted(sources):
+        text = sources[name]
+        code = _kotlin_code_only(text)
+        is_ui = _is_date_time_di_ui_file(name)
+
+        if is_ui:
+            for match in SYSTEM_ZONE_OR_LOCAL_DATETIME_RE.finditer(code):
+                line = code.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} calls `{match.group(0).strip()}` in UI code; "
+                    "format dates/times through RaftTimeContext (currentRaftDateTimeContext / "
+                    "currentRaftEffectiveDateTimeContext) so local timezone and 12h/24h preferences apply."
+                )
+
+            for match in RAW_ISO_DATE_SLICE_RE.finditer(text):
+                # _kotlin_code_only preserves 1:1 indices and blanks comments and string/char interiors.
+                # Require the leading '.' and method name to remain live code (not inside a comment/string).
+                if code[match.start()] != ".":
+                    continue
+                line = text.count("\n", 0, match.start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} slices raw UTC ISO date with "
+                    f"`{match.group(0).strip()}`; format local dates through RaftTimeContext instead."
+                )
+
+        for match in DIRECT_PAGE_BASE_PROVIDER_READ_RE.finditer(code):
+            line = code.count("\n", 0, match.start()) + 1
+            if name == DATE_TIME_DI_LIVE_CONTEXT_FILE:
+                live_base_reads_in_owner += 1
+            else:
+                raise Violation(
+                    f"date/time DI violation: {name}:{line} reads LocalRaftPageBaseTimeContextProvider.current "
+                    "directly; use currentRaftTimeContextProvider / currentRaftDateTimeContext / "
+                    "currentRaftTimeContext instead."
+                )
+
+        static_matches = list(STATIC_TIME_CONTEXT_CALL_RE.finditer(code))
+        if static_matches:
+            observed_static_counts[name] = len(static_matches)
+            if name not in expected_static_counts:
+                first_line = code.count("\n", 0, static_matches[0].start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{first_line} introduces a new `.staticContext()` call; "
+                    "use `timeContextProvider.dateContext` or `currentRaftDateTimeContext` instead."
+                )
+            if len(static_matches) > expected_static_counts[name]:
+                last_line = code.count("\n", 0, static_matches[-1].start()) + 1
+                raise Violation(
+                    f"date/time DI violation: {name}:{last_line} has {len(static_matches)} `.staticContext()` "
+                    f"calls (allowlist pins {expected_static_counts[name]} pending Phase 2C)."
+                )
+
+    if DATE_TIME_DI_LIVE_CONTEXT_FILE in sources and live_base_reads_in_owner != 1:
+        raise Violation(
+            f"date/time DI violation: expected exactly 1 LocalRaftPageBaseTimeContextProvider.current "
+            f"read in {DATE_TIME_DI_LIVE_CONTEXT_FILE}, found {live_base_reads_in_owner}"
+        )
+
+    for path, expected in expected_static_counts.items():
+        actual = observed_static_counts.get(path, 0)
+        if actual != expected:
+            raise Violation(
+                f"stale date/time DI staticContext allowlist entry: {path} expected {expected} "
+                f"call site(s), found {actual}; update ALLOWED_STATIC_TIME_CONTEXT_SITES"
+            )
+
+
+def _date_time_di_sources(root: Path) -> dict[str, str]:
+    base = root / DATE_TIME_DI_SCAN_ROOT
+    if not base.is_dir():
+        raise Violation(f"date/time DI scan: missing source root {DATE_TIME_DI_SCAN_ROOT}")
+    sources = {
+        str(path.relative_to(root)): path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        for path in sorted(base.rglob("*.kt"))
+    }
+    if DATE_TIME_DI_LIVE_CONTEXT_FILE not in sources:
+        raise Violation(f"date/time DI scan never reached {DATE_TIME_DI_LIVE_CONTEXT_FILE}")
+    return sources
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -827,6 +1011,7 @@ def run(root: Path) -> None:
     check_no_production_run_blocking(_production_kotlin_sources(root))
     check_native_safe_test_names(_native_test_sources(root))
     check_no_top_level_or_object_snapshot_state(_top_level_snapshot_state_sources(root))
+    check_date_time_di_invariants(_date_time_di_sources(root))
 
 
 def self_test() -> None:
@@ -1106,6 +1291,63 @@ com.apple.SignInWithApple = {
         else:
             raise SystemExit(f"self-test: top-level snapshot-state checker accepted {bad_sources!r}")
 
+    dt_ui = "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SamplePage.kt"
+    dt_data = "compose/shared/src/commonMain/kotlin/build/raft/app/data/SampleProtocol.kt"
+    dt_allow = ((dt_ui, 1, "Phase 2C: test allowlist"),)
+    good_dt = {
+        DATE_TIME_DI_LIVE_CONTEXT_FILE: (
+            "val p = LocalRaftTimeContextProvider.current ?: LocalRaftPageBaseTimeContextProvider.current\n"
+        ),
+        dt_ui: (
+            "// TimeZone.currentSystemDefault() and x.toLocalDateTime(z) in comments are fine\n"
+            'val note = "iso.substringBefore(\'T\') and iso.take(10).split(\'-\')"\n'
+            "val ctx = caps.staticContext()\n"
+        ),
+        dt_data: (
+            "val z = TimeZone.currentSystemDefault()\n"
+            "val local = instant.toLocalDateTime(z)\n"
+        ),
+    }
+    check_date_time_di_invariants(good_dt, dt_allow)
+    for bad_sources, bad_allow in (
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val z = TimeZone.currentSystemDefault()\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = instant.toLocalDateTime(z)\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val p = LocalRaftPageBaseTimeContextProvider.current\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso.substringBefore('T')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val d = iso.substringBefore("T")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val d = iso?.substringBefore('T')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso.take(10).split('-')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso.take(10).split("-")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val p = iso?.take(10)?.split('-')\n"}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + 'val p = iso?.take(10)?.split("-")\n'}, dt_allow),
+        ({**good_dt, dt_ui: good_dt[dt_ui] + "val extra = caps.staticContext()\n"}, dt_allow),
+        ({**good_dt, dt_data: good_dt[dt_data] + "val c = caps.staticContext()\n"}, dt_allow),
+        ({**good_dt, "compose/shared/src/commonMain/kotlin/build/raft/app/Other.kt": "val c = x.staticContext()\n"}, dt_allow),
+        ({**good_dt, DATE_TIME_DI_LIVE_CONTEXT_FILE: "val p = LocalRaftTimeContextProvider.current\n"}, dt_allow),
+        (
+            {
+                **good_dt,
+                DATE_TIME_DI_LIVE_CONTEXT_FILE: (
+                    good_dt[DATE_TIME_DI_LIVE_CONTEXT_FILE]
+                    + "val p2 = LocalRaftPageBaseTimeContextProvider.current\n"
+                ),
+            },
+            dt_allow,
+        ),
+        ({**good_dt, dt_ui: "val ok = 1\n"}, dt_allow),
+        (good_dt, ((dt_ui, 1, " "),)),
+        (good_dt, ((dt_ui, 0, "zero count"),)),
+        (good_dt, ((dt_ui, -1, "negative count"),)),
+        (good_dt, ((dt_ui, 1, "first"), (dt_ui, 1, "duplicate path"))),
+    ):
+        try:
+            check_date_time_di_invariants(bad_sources, bad_allow)
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: date/time DI checker accepted {bad_sources!r}")
+
     print("check_source_constraints self-test passed")
 
 
@@ -1124,7 +1366,8 @@ def main(argv: list[str]) -> int:
     print(
         "source constraints hold (1.15.0 conditional interaction state, task #82 native Apple, "
         "#3823 no production runBlocking, #3845 Native-safe test names, "
-        "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state)"
+        "1.17.1 NSInvocation object return, #264 no top-level/object snapshot state, "
+        "dm:@artin:#2 date/time DI invariants)"
     )
     return 0
 

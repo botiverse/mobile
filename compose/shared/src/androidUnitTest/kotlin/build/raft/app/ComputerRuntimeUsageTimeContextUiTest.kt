@@ -158,9 +158,9 @@ class ComputerRuntimeUsageTimeContextUiTest {
                             rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
                         CompositionLocalProvider(LocalRaftPageBaseTimeContextProvider provides base, content = sheet)
                     } else {
-                        ProvideStandaloneRaftTimeContext(clock = { NOW_MILLIS }, foundationOwner = fixedZone, capabilities = capabilities) {
-                            sheet()
-                        }
+                        val own =
+                            rememberLiveRaftTimeContext(capabilities = capabilities, clock = { NOW_MILLIS }, foundationOwner = fixedZone)
+                        CompositionLocalProvider(LocalRaftTimeContextProvider provides own, content = sheet)
                     }
                 }
             }

@@ -165,7 +165,7 @@ internal fun Pager.openSettingsArchivedAgent(
 /** The archive's date in the reader's zone, web `formatMediumDateTime`; the raw value if unreadable. */
 @Composable
 private fun settingsArchiveDate(iso: String, timeContext: RaftTimeContext?): String =
-    taskHeadDateTime(iso, currentRaftTimeContext(timeContext))?.localized() ?: iso
+    raftLocalizedMediumDateTime(iso, timeContext)
 
 internal val SettingsServerArchiveUi.channelsVisible: Boolean
     get() = canArchiveChannels && state.channels.isNotEmpty()
