@@ -467,10 +467,12 @@ internal fun raftArtifactViewerKeptPageDrewBar(keptUrl: String?): Boolean =
  * The top of the App's splash cover, from the viewer body's top (#301, one bar): while the App's bar is
  * up it covers the whole body, the page's own loading toolbar row too (so no second bar shows under the
  * App's); once the page draws the only bar (`hostToolbar=1`) the App's bar is gone and the body starts
- * under the status bar, so the cover leaves the page's bar uncovered, [barHeight] (the App's head, which
- * the page's matches: raft-ui `header-height`, 56 on a touch screen, 44 with a mouse): the splash stays
- * where it was and the page's bar takes the App's place. In Desktop Mode the page's bar is fitted as
- * its splash is ([scale]).
+ * under the status bar, so the cover leaves the page's bar uncovered, [barHeight] (the App's head height,
+ * `RaftTheme.controls.headHeight`: 56 by touch, 44 with a mouse). In the Artifact column the page's bar
+ * is exactly that tall, as the App tells it that height (`hostHead`, [raftArtifactViewerHostHead]): the
+ * splash stays where it was and the page's bar takes the App's place. A page of its own (a phone) is
+ * told none and keeps its own toolbar, whose height is the page's. In Desktop Mode the page's bar is
+ * fitted as its splash is ([scale]).
  */
 internal fun raftArtifactViewerSplashCoverTop(pageDrawsBar: Boolean, barHeight: Dp, scale: Float = 1f): Dp =
     if (pageDrawsBar) barHeight * scale else 0.dp
