@@ -2251,7 +2251,7 @@
     <string name="agent_create_label_key">キー</string>
     <string name="agent_create_label_value">値</string>
     <string name="agent_create_label_environment_variables">環境変数</string>
-    <string name="agent_create_placeholder_name">例: Noel</string>
+    <string name="agent_create_placeholder_name">例: Alice</string>
     <string name="agent_create_placeholder_select_computer">コンピューターを選択</string>
     <string name="agent_create_placeholder_select_runtime">ランタイムを選択</string>
     <string name="agent_create_title">エージェントを作成</string>

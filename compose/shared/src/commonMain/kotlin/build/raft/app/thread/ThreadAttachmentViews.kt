@@ -266,6 +266,14 @@ internal fun ThreadImageAttachmentContent(
         } else {
             Modifier
         }
+    val originalCacheKey =
+        remember(attachment.id) { build.raft.app.image.raftAttachmentOriginalImageCacheKey(attachment.id) }
+    val fallbackCacheKey =
+        if (sourcePlan.fallbackSource != null && sourcePlan.fallbackSource == fallbackUrl) {
+            originalCacheKey
+        } else {
+            null
+        }
     // The frame (fill, border, radius, press) is RaftMessageImageFrame's; the surface only
     // draws the image, so it brings no fill or border of its own.
     RaftAspectFitImagePreviewSurface(
@@ -280,10 +288,18 @@ internal fun ThreadImageAttachmentContent(
         contentScale = if (fit == RaftMessageImageFit.Cover) RaftImageThumbnailContentScale else ContentScale.Fit,
         animateSource = animates,
         animationActive = onScreen && pageActive && !shareCaptureActive,
+        fallbackCacheKey = fallbackCacheKey,
         onImageStateChange = { state ->
             if (state is AsyncImagePainter.State.Error) {
                 failedSources += 1
-                if (fallbackUrl == null) fallbackHost?.requestFallback?.invoke(attachment.id)
+                if (fallbackUrl == null) {
+                    fallbackHost?.requestFallback?.invoke(attachment.id)
+                } else {
+                    val failedData = state.result.request.data.toString().trim()
+                    if (failedData == fallbackUrl.trim() || sourcePlan.source == null) {
+                        fallbackHost?.onFallbackError?.invoke(attachment.id, fallbackUrl)
+                    }
+                }
             }
         }
     )

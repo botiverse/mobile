@@ -2248,7 +2248,7 @@
     <string name="agent_create_label_key">Clave</string>
     <string name="agent_create_label_value">Valor</string>
     <string name="agent_create_label_environment_variables">Variables de entorno</string>
-    <string name="agent_create_placeholder_name">p. ej., Noel</string>
+    <string name="agent_create_placeholder_name">p. ej., Alice</string>
     <string name="agent_create_placeholder_select_computer">Seleccionar computadora</string>
     <string name="agent_create_placeholder_select_runtime">Seleccionar runtime</string>
     <string name="agent_create_title">Crear agente</string>

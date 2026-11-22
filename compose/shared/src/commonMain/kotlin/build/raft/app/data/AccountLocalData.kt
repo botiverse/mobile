@@ -58,6 +58,7 @@ internal class AccountLocalData(
         agentDetailCache.clearMemory()
         replyWindowCache?.clearMemory()
         threadPayloadStore.clearAll()
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
         clearViewerMemoryCaches()
         // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
         RaftAgentLounges.clear()
@@ -69,6 +70,7 @@ internal class AccountLocalData(
      * server's `sync-core.messages.v2` partition under the lost grant.
      */
     suspend fun onServerAccessLost(serverId: String, accountId: String?, messagePartition: DurablePartitionKey) {
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clearServer(serverId, accountId)
         offlineResourceCache.wipeServer(serverId, accountId)
         RaftAgentLounges.forgetServer(serverId)
         homeRowHints.dropServer(serverId, accountId)
