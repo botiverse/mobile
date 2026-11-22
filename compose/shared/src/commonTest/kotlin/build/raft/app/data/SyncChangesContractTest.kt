@@ -124,15 +124,42 @@ class SyncChangesContractTest {
 
     @Test
     fun `an unknown entity is skipped and counted`() {
+        val logs = mutableListOf<String>()
         val page =
             parseSyncChangesPage(
                 syncChangesBody(
                     cursor = "c1.2.1",
                     changes = listOf(syncUpsert(1, "reaction", "r-1", "{}"), syncDelete(2, "machine", "m-1")),
-                )
+                ),
+                diagnostics = logs::add,
             )!!
         assertEquals(listOf<RaftSyncChange>(RaftSyncChange.Delete(2, RaftSyncRowEntity.Machine, "m-1")), page.changes)
         assertEquals(1, page.skippedUnknownEntities)
+        assertEquals(listOf("projection_value_unknown source=sync_changes field=entity value=reaction action=dropped"), logs)
+    }
+
+    @Test
+    fun `task changes are ignored and counted without a projection_value_unknown line`() {
+        val logs = mutableListOf<String>()
+        val page =
+            parseSyncChangesPage(
+                syncChangesBody(
+                    cursor = "c1.6.1",
+                    changes =
+                        listOf(
+                            syncTaskUpsert(1, "t-1", channelId = "ch-1"),
+                            syncTaskDelete(2, "t-2", channelId = "ch-1"),
+                            syncTaskResnapshot(3, channelId = "ch-1"),
+                            syncDelete(4, "agent", "a-1"),
+                        ),
+                ),
+                diagnostics = logs::add,
+            )!!
+        // Task lists follow the realtime task pushes and their catch-up re-reads, not the change log.
+        assertEquals(listOf<RaftSyncChange>(RaftSyncChange.Delete(4, RaftSyncRowEntity.Agent, "a-1")), page.changes)
+        assertEquals(mapOf("task" to 3), page.ignoredEntities)
+        assertEquals(0, page.skippedUnknownEntities)
+        assertEquals(emptyList<String>(), logs)
     }
 
     @Test

@@ -159,6 +159,11 @@ last 3–5 minutes. From 1.25:
   Up to 2 sample ids per key (was 3).
 - `network_request_unfinished`: the 8 newest open requests per export, plus one
   `network_request_unfinished_more count=… listed=8 total=…` line for the rest.
+  `overdue=true`: past its timeout, by at most 30 s. A request still open later
+  than that ended and its finish line was lost (the log queue drops a line now
+  and then): it is reported once, as an info line
+  `network_request_finish_unobserved count=… oldestAgeMs=… paths=…` (at most 8
+  distinct paths, then `+<n>`), and no longer listed.
 - `recent-memory.jsonl` (Android) is the in-memory ring of the last 3 minutes at
   **full detail**: every line, including the ones summarized out of the shards
   (not the Verbose-diagnostics categories), newest kept first up to ~190 KB, whole
