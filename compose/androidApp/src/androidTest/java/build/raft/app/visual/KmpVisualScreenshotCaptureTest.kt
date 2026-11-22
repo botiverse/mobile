@@ -2595,7 +2595,9 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.agent-migration-log.chart.agent.phone",
             pageName = "compose_agent_migration_log_visual",
             pageData = JSONObject().put("agent", "visual-mig-kirby"),
-            crop = FULL_VIEWPORT_CROP
+            crop = FULL_VIEWPORT_CROP,
+            // The haze is blurred, which a software draw leaves out.
+            captureAppWindowSurface = true
         )
     }
 

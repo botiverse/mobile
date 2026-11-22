@@ -832,7 +832,7 @@ internal fun AgentMigrationLogLegend() {
 @Composable
 private fun AgentMigrationLegendItem(text: String, mark: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { mark() }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) { mark() }
         RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
     }
 }

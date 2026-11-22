@@ -54,6 +54,7 @@ import build.raft.app.data.AgentMigrationRouteCell
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
 import kotlin.math.PI
@@ -125,6 +126,7 @@ internal fun AgentMigrationChord(
     val currentPress by rememberUpdatedState(onPress)
     val currentHold by rememberUpdatedState(onHold)
     val density = LocalDensity.current.density
+    val haptics = rememberRaftHaptics()
 
     fun targetAt(position: Offset): AgentMigrationChordTarget? {
         val point = (position / density - pan) / zoom
@@ -212,7 +214,10 @@ internal fun AgentMigrationChord(
                                     if (waits) withTimeout((holdAt - last).coerceAtLeast(1)) { awaitPointerEvent() } else awaitPointerEvent()
                                 } catch (_: PointerEventTimeoutCancellationException) {
                                     held = true
-                                    if (target != null) currentHold(target, start / density)
+                                    if (target != null) {
+                                        haptics.longPress()
+                                        currentHold(target, start / density)
+                                    }
                                     continue
                                 }
                             last = event.changes.firstOrNull()?.uptimeMillis ?: last
