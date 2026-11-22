@@ -31,6 +31,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test bootstrap main-ref boundary
+        run: python3 scripts/ci/test_ios_bootstrap_workflow.py
+
+      - name: Test interactive visual Testbox workflow boundary
+        run: python3 scripts/qa/test_visual_testbox_contract.py
+
       # After #4806 (Argus): a credential in $GITHUB_ENV reaches every later step and process
       # of the job. Credentials go only to the step that needs them, via its env: from secrets.*.
       - name: No credentials in $GITHUB_ENV / $GITHUB_OUTPUT
