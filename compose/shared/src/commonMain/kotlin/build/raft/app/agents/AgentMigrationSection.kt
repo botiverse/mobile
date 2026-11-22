@@ -90,6 +90,7 @@ import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStep
@@ -156,6 +157,8 @@ internal class AgentMigrationSectionInputs(
     val nowMillis: () -> Long = ::defaultNowMillis,
     /** The agents on each target, for its details' Agents section; null shows only how many. */
     val computerAgents: AgentMigrationComputerAgents? = null,
+    /** The server's migration log, opened on this agent (owners and admins); null shows no link. */
+    val onOpenMigrationLog: (() -> Unit)? = null,
 ) {
     /** Web `hostedAvailable && !placesWithoutSource`: a move to the cloud uploads from a source. */
     val offersHosted: Boolean
@@ -165,6 +168,9 @@ internal class AgentMigrationSectionInputs(
 internal object AgentMigrationSectionTestTags {
     /** Web `agent-migration-place-note`. */
     const val PlaceNote = "agent-migration-place-note"
+
+    /** Web `agent-migration-log-link`. */
+    const val LogLink = "agent-migration-log-link"
 
     /** Web `agent-last-migration-dismiss`. */
     const val Dismiss = "agent-last-migration-dismiss"
@@ -290,8 +296,20 @@ internal fun AgentMigrationSection(
                 FlowRow(
                     modifier = Modifier.fillMaxWidth().padding(top = AgentMigrationBlockGap),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Web `mr-auto`: at the start of the line, the buttons at its end.
+                    inputs.onOpenMigrationLog?.let { openLog ->
+                        Box(Modifier.weight(1f)) {
+                            RaftTextLink(
+                                text = stringResource(Res.string.agent_migration_log_view_log),
+                                onClick = openLog,
+                                modifier = Modifier.testTag(AgentMigrationSectionTestTags.LogLink),
+                                style = typography.caption
+                            )
+                        }
+                    }
                     if (retryOnTarget) {
                         RaftButton(
                             text = stringResource(Res.string.agent_migration_detail_try_migration_again),

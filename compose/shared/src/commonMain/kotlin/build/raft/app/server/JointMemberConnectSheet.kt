@@ -288,7 +288,7 @@ internal fun RaftServerListRowAvatar(serverId: String, name: String, avatarUrl: 
                         cacheServerId = serverId,
                         serverDiagnosticsId = serverId,
                         fallback = { RaftAvatar(type = RaftAvatarType.Server, size = RaftAvatarSize.Md, initials = initial) },
-                        placeholder = { RaftAvatar(type = RaftAvatarType.Server, size = RaftAvatarSize.Md, initials = initial) },
+                        placeholder = {},
                     )
                 }
             },

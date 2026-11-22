@@ -71,6 +71,7 @@ internal fun ThreadMessageAvatarSlot(
     avatarLabel: String,
     avatarKind: RaftAvatarKind,
     avatarWireValue: String?,
+    avatarPending: Boolean = false,
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     status: RaftAgentStatusIndicatorState?,
@@ -137,6 +138,7 @@ internal fun ThreadMessageAvatarSlot(
                             avatarLabel = avatarLabel,
                             avatarKind = avatarKind,
                             avatarWireValue = avatarWireValue,
+                            avatarPending = avatarPending,
                             avatarDiagnostics = avatarDiagnostics,
                             cacheSubject = cacheSubject,
                             status = status,
@@ -198,6 +200,7 @@ internal fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarKind: RaftAvatarKind,
     avatarWireValue: String?,
+    avatarPending: Boolean = false,
     avatarDiagnostics: RaftAvatarRowDiagnostics? = null,
     cacheSubject: build.raft.app.data.RaftAvatarCacheSubject? = null,
     status: RaftAgentStatusIndicatorState?,
@@ -294,6 +297,7 @@ internal fun ThreadMessageAvatar(
                             modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
                             avatarSize = RaftAvatarSize.Md.edge,
                             cacheSubject = cacheSubject,
+                            avatarPending = avatarPending,
                         )
                     }
                     if (muted) {
