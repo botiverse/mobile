@@ -422,7 +422,8 @@ internal fun MemberDetailPageContent(
                 identity = memberIdentity,
                 activeServerId = provider.selectedServerStore.currentServerId.value,
                 agentDetailState = provider.agentDetailStore.state.value,
-                serverMembersState = provider.serverMembersStore.state.value
+                serverMembersState = provider.serverMembersStore.state.value,
+                currentUserId = provider.accountBinding()?.second
             ) ?: provider.seedCachedAgentDetailRoute(memberIdentity, provider.selectedServerStore.currentServerId.value)
                 ?: MemberDetailRouteState.Loading
         )
@@ -713,9 +714,18 @@ internal fun MemberDetailPageContent(
         }, hasCachedAgentDetail = hasCachedAgentDetail, remoteAgentSeed = remoteAgentSeed,
             sourceServerName = payload.sourceServerName,
             profileChannelId = payload.profileChannelId?.let(::ChannelId))
-        if (requestFence != null &&
-            !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
+        if (
+            !memberDetailAppliesLoadedRoute(
+                identity = memberIdentity,
+                shown = routeState,
+                loaded = loaded,
+                agentRequestCurrent =
+                    requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) != false
+            )
         ) {
+            if (loaded is MemberDetailRouteState.Error && memberIdentity.kind != MemberKind.Agent) {
+                bridge.log("member_detail_human_refresh_kept_roster code=${loaded.error.code}")
+            }
             return@LaunchedEffect
         }
         val reconciled =
