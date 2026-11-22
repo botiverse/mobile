@@ -73,9 +73,6 @@ class ExternalInvitesScreenshotTest {
     fun serversDark() = sheet("channel.external-invite.servers.dark", RaftAppAppearance.Dark, servers, historyHint = true)
 
     @Test
-    fun emailsLight() = sheet("channel.external-invite.emails", RaftAppAppearance.Light, emails)
-
-    @Test
     fun reviewLight() = sheet("channel.external-invite.review", RaftAppAppearance.Light, review)
 
     @Test

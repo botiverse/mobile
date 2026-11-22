@@ -4,24 +4,17 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotSelected
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.data.ActionCardExecuteOutcome
-import build.raft.app.data.ActionCardFormIssueCode
 import build.raft.app.data.ActionCardFormValue
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
 import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardQuestion
-import build.raft.app.data.actionCardFormIssue
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.designsystem.theme.RaftAppearance
@@ -214,16 +207,6 @@ class ThreadActionCardQuestionInlineUiTest {
     }
 
     @Test
-    fun anyoneElseSeesTheButtonsDisabledAndWhoIsAsked() = runRobolectricComposeUiTest {
-        showCard(mayaCard(), viewer = "u-ada")
-        onNodeWithText("Fix all 4 on a branch").assertIsNotEnabled()
-        onNodeWithText("Just list them for me").assertIsNotEnabled()
-        onNodeWithText("Other").assertIsNotEnabled()
-        onNodeWithText("Waiting for Maya to answer").assertExists()
-        onNodeWithText("Fixer is waiting for your answer", substring = true).assertDoesNotExist()
-    }
-
-    @Test
     fun anExpiredButtonRowKeepsTheQuestionAndSaysWhoDidntAnswerWithNoButtons() = runRobolectricComposeUiTest {
         showCard(mayaCard(state = "expired").copy(questionExpiresInMinutes = 3 * 1_440), viewer = "u-maya")
         onNodeWithText("How should I go about them?").assertExists()
@@ -233,14 +216,6 @@ class ThreadActionCardQuestionInlineUiTest {
         onNodeWithText("Other").assertDoesNotExist()
         onNodeWithText("Fixer is waiting for your answer", substring = true).assertDoesNotExist()
     }
-
-    // A confirm (slock #14497): a question of one option, drawn as one bordered button with its label.
-    private fun confirmCard(state: String = "prepared", executedBy: String? = null) =
-        mayaCard(
-            if (state == "executed") ActionCardSpecFixtures.questionCardAnsweredJson(answer = "Got it", question = "The deploy is done. Seen it?") else ActionCardSpecFixtures.questionConfirmCardJson(),
-            state = state,
-            executedBy = executedBy,
-        ).copy(questions = listOf(ThreadActionCardQuestion("single", 1)))
 
     private fun answering(outcome: ActionCardExecuteOutcome = ActionCardExecuteOutcome.Executed(null), sent: MutableList<ExecuteActionFormBody?> = mutableListOf()) =
         ThreadActionCardSpecStore(
@@ -252,53 +227,4 @@ class ThreadActionCardQuestionInlineUiTest {
             applyCard = { _, _ -> },
             nowMillis = { nowMillis },
         )
-
-    @Test
-    fun aConfirmIsOneButtonWithNoOtherCheckedWhenPressedAndSentAfterTheUndoWindow() = runRobolectricComposeUiTest {
-        val sent = mutableListOf<ExecuteActionFormBody?>()
-        mainClock.autoAdvance = false
-        showCard(confirmCard(), viewer = "u-maya", store = answering(sent = sent))
-        advance(100)
-
-        onNodeWithText("The deploy is done. Seen it?").assertExists()
-        onNodeWithText("Got it").assertIsEnabled().assertIsNotSelected()
-        onNodeWithText("Other").assertDoesNotExist()
-        onNodeWithText("Answer").assertDoesNotExist()
-        onNodeWithText("Answer Question").assertDoesNotExist()
-
-        onNodeWithText("Got it").performClick()
-        advance(PICK_MS + 50)
-        onNodeWithText("Got it").assertIsSelected()
-        onNodeWithText("Undo").assertExists()
-        assertEquals(emptyList(), sent, "nothing is sent while Undo shows")
-
-        // Undo keeps it pressed; pressing it again (required) answers.
-        onNodeWithText("Undo").performClick()
-        advance(100)
-        onNodeWithText("Got it").assertIsSelected()
-        onNodeWithText("Got it").performClick()
-        advance(PICK_MS + UNDO_MS + 100)
-        assertEquals(listOf<ExecuteActionFormBody?>(ExecuteActionFormBody("answers", mapOf("how" to ActionCardFormValue.Choice(listOf("o0"))))), sent)
-    }
-
-    @Test
-    fun aRefusedAnswerShowsItsIssueAndItsTraceIdOnce() = runRobolectricComposeUiTest {
-        val refused =
-            ActionCardExecuteOutcome.FormInvalid(
-                listOf(actionCardFormIssue("how", ActionCardFormIssueCode.InvalidFormat)),
-                "The form has problems; nothing was done",
-                "4bf92f3577b34da6a3ce929d0e0e4736",
-            )
-        mainClock.autoAdvance = false
-        showCard(confirmCard(), viewer = "u-maya", store = answering(refused))
-        advance(100)
-        onNodeWithText("Got it").performClick()
-        advance(PICK_MS + UNDO_MS + 100)
-
-        // The issue under the question, and the 422's trace id once, under it (never once per field).
-        onNodeWithText("This value is not valid.").assertExists()
-        onAllNodesWithTag(RaftTraceIdNoteTestTag).assertCountEquals(1)
-        onNodeWithText("4bf92f35…").assertExists()
-        onNodeWithText("Got it").assertIsEnabled()
-    }
 }

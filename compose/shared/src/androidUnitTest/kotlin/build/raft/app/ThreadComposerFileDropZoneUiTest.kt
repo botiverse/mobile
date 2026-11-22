@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -12,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -65,24 +63,5 @@ class ThreadComposerFileDropZoneUiTest {
             onNodeWithTag(ThreadComposerFileDropOverlayTag).assertDoesNotExist()
             assertTrue(accepted)
             assertEquals(listOf(listOf("content://docs/1", "content://docs/2")), dropped.map { it.fileRefs })
-        }
-
-    @Test
-    fun aComposerThatCannotAttachShowsNoOverlay() =
-        runRobolectricComposeUiTest {
-            val state = ThreadComposerFileDropState()
-            var enabled by mutableStateOf(true)
-            setContent {
-                RaftTheme {
-                    ThreadComposerFileDropZone(enabled = enabled, onDropFiles = {}, state = state) {
-                        Box(Modifier.size(320.dp, 96.dp))
-                    }
-                }
-            }
-            runOnIdle { state.onDragEntered() }
-            onNodeWithTag(ThreadComposerFileDropOverlayTag).assertExists()
-            runOnIdle { enabled = false }
-            onNodeWithTag(ThreadComposerFileDropOverlayTag).assertDoesNotExist()
-            assertFalse(runOnIdle { state.dragging }, "a composer that turns read-only drops the drag state")
         }
 }

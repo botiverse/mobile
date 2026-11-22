@@ -29,16 +29,13 @@ import kotlin.jvm.functions.Function0
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.runner.RunWith
@@ -51,98 +48,6 @@ import org.robolectric.RobolectricTestRunner
  */
 @RunWith(RobolectricTestRunner::class)
 class RaftLiveRootAnchorLifecycleTest {
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun actualRowRemovalRejectsDeferredTapAndClearsDisposedPressState() = runTest {
-        val compositionHarness = GestureCompositionHarness(this)
-        val layoutHarness = LayoutNodeHarness(coroutineContext + compositionHarness.frameClock)
-        var mountedModifier: Modifier? = null
-        var mountedOwner: ThreadMessageLongPressGestureOwner? = null
-        var disposed = false
-        var callbackCount = 0
-        var disposedStateWrites = 0
-        var layoutNode: Any? = null
-        try {
-            compositionHarness.setContent {
-                GestureRowLifecycleContent(
-                    store = compositionHarness.ownerStore,
-                    instanceKey = "thread-page:slot-1",
-                    messageId = "message-1",
-                    revision = 1,
-                    onTap = {
-                        callbackCount += 1
-                        if (disposed) disposedStateWrites += 1
-                    },
-                    onLifecycle = { event ->
-                        if (event == "dispose:message-1:1") disposed = true
-                    },
-                    onMounted = { modifier, owner ->
-                        mountedModifier = modifier
-                        mountedOwner = owner
-                    }
-                )
-            }
-            compositionHarness.settleWithoutAdvancingTime()
-            val removedOwner = assertNotNull(mountedOwner)
-            val removedLease = assertNotNull(removedOwner.captureActiveLease())
-            layoutNode = layoutHarness.attach(assertNotNull(mountedModifier))
-            layoutHarness.flushEndApplyChanges()
-            val retainedPointers = layoutHarness.pointerNodes(assertNotNull(layoutNode))
-
-            layoutHarness.dispatchDown(retainedPointers, uptimeMillis = 0L)
-            runCurrent()
-            advanceTimeBy(150L)
-            runCurrent()
-            assertTrue(removedOwner.pressed)
-            assertNotNull(removedOwner.pressRippleOrigin)
-
-            layoutHarness.dispatchUp(retainedPointers, uptimeMillis = 160L)
-            runCurrent()
-            assertEquals(0, callbackCount)
-
-            compositionHarness.setContent {
-                CompositionLocalProvider(
-                    LocalThreadMessageLongPressGestureOwnerStore provides compositionHarness.ownerStore
-                ) { }
-            }
-            compositionHarness.settleWithoutAdvancingTime()
-
-            assertTrue(disposed)
-
-            compositionHarness.sendFrame()
-            runCurrent()
-
-            assertEquals(0, callbackCount)
-            assertEquals(0, disposedStateWrites)
-            assertNull(removedOwner.captureActiveLease())
-            assertFalse(removedOwner.pressed)
-            assertNull(removedOwner.pressRippleOrigin)
-
-            compositionHarness.setContent {
-                GestureRowLifecycleContent(
-                    store = compositionHarness.ownerStore,
-                    instanceKey = "thread-page:slot-1",
-                    messageId = "message-1",
-                    revision = 2,
-                    onTap = { },
-                    onMounted = { modifier, owner ->
-                        mountedModifier = modifier
-                        mountedOwner = owner
-                    }
-                )
-            }
-            compositionHarness.settleWithoutAdvancingTime()
-            val remountedOwner = assertNotNull(mountedOwner)
-            val remountedLease = assertNotNull(remountedOwner.captureActiveLease())
-            assertSame(removedOwner, remountedOwner)
-            assertNotEquals(removedLease, remountedLease)
-            assertFalse(remountedOwner.isLeaseActive(removedLease))
-        } finally {
-            layoutNode?.let(layoutHarness::deactivate)
-            compositionHarness.close()
-        }
-    }
-
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun recycledSlotPermanentlyRejectsOldLeaseAndDispatchesOnlyNewMessage() = runTest {

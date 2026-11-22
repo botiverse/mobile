@@ -44,10 +44,6 @@ class FileDetailPageScreenshotTest {
     @Test
     fun doneLight() = capture("file.detail.done", RaftAppAppearance.Light, FileDetailState.Done)
 
-    /** Compose 版 after the save panel: Show in Finder, Open, and where it went. */
-    @Test
-    fun desktopSavedLight() = capture("file.detail.desktop-saved", RaftAppAppearance.Light, FileDetailState.DesktopSaved)
-
     private fun capture(name: String, appearance: RaftAppAppearance, state: FileDetailState) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =

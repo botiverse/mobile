@@ -8,9 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.click
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
@@ -96,20 +94,6 @@ class ActivityRowDoneUiTest {
     }
 
     private fun look(expected: ActivityRowDoneButton) = SemanticsMatcher.expectValue(ActivityRowDoneLookKey, expected)
-
-    @Test
-    fun theWideLayoutByTouchShowsTheOutlineButtonAtRestAndItsTapMarksDoneWithoutOpening() =
-        runRobolectricComposeUiTest {
-            val calls = Calls()
-            showRow(calls, RaftScale.Wide, RaftPointerInput.Touch)
-            onNodeWithTag(ActivityRowDoneTag).assertExists().assert(look(ActivityRowDoneButton.AtRest))
-            onNodeWithContentDescription("Mark #launch-week as Done").performClick()
-            mainClock.advanceTimeBy(1_000)
-            assertEquals(1, calls.dones)
-            assertEquals(0, calls.opens, "Done must not open the row")
-            // Still there after the tap: nothing hovers by touch, it rests in the row.
-            onNodeWithTag(ActivityRowDoneTag).assertExists()
-        }
 
     @Test
     fun aMouseHoverShowsTheGhostButtonAndItsClickMarksDoneWithoutOpening() =

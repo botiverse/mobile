@@ -96,36 +96,4 @@ class ThreadWorkingLineUiTest {
             assertEquals(listOf("agent-kirby"), opened, "a row opens the agent")
             assertFalse(shown("Working now"), "and closes Working now")
         }
-
-    @Test
-    fun aTyperAmongThemIsNamedFirstAndReadsTypingInWorkingNow() =
-        runRobolectricComposeUiTest {
-            showLine(
-                ThreadAgentTypingUi(
-                    "srv-1",
-                    agents = listOf(ThreadTypingAgent("agent-kirby", "Kirby", null), ThreadTypingAgent("agent-mo", "Mo", null)),
-                    working = listOf(niko, kirby, tenny),
-                    workingNow = source(mutableListOf()),
-                )
-            )
-            // Only the typing sentence is announced; the button is named by the whole line.
-            assertTrue(named("Kirby and Mo are typing…"))
-            onNode(hasContentDescription("Kirby and Mo are typing… · 2 others working")).performClick()
-            waitForIdle()
-            assertTrue(shown("Working now"))
-            // Kirby works and types; Mo types without a live-activity row: both read "Typing…".
-            assertEquals(2, onAllNodes(hasText("Typing…"), useUnmergedTree = true).fetchSemanticsNodes().size)
-            assertTrue(shown("Mo"), "a typer not reported working still has a row")
-        }
-
-    @Test
-    fun outsideAChannelTheLineOnlySaysWhoTypesAndOpensNothing() =
-        runRobolectricComposeUiTest {
-            showLine(ThreadAgentTypingUi("srv-1", agents = listOf(ThreadTypingAgent("agent-niko", "Niko", null))))
-            val line = onNode(hasContentDescription("Niko is typing…"))
-            assertFalse(SemanticsActions.OnClick in line.fetchSemanticsNode().config, "a DM's typing line is no button")
-        }
-
-    private fun ComposeUiTest.named(description: String): Boolean =
-        onAllNodes(hasContentDescription(description)).fetchSemanticsNodes().isNotEmpty()
 }

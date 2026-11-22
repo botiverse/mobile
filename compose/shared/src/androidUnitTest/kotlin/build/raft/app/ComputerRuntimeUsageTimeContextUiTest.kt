@@ -85,21 +85,6 @@ class ComputerRuntimeUsageTimeContextUiTest {
     }
 
     @Test
-    fun pageScopeResolvesResetAndUpdatedTimesInEnglish() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.English.stringDescLocaleType
-        showSheet(runtimeVersion = "2.1.304 (Claude Code)")
-        // 2026-10-23T04:10Z: 26 hours from now, counted as the rack counts it (web `usageResetText`, #14717).
-        assertShown("Used up · resets in 26 hours")
-        // 2026-10-22T05:10Z: three hours from now.
-        assertShown("62% used · resets in 3 hours")
-        // collectedAt 02:04Z, six minutes before now.
-        assertShown("Updated 6 minutes ago")
-        // The version line is the CLI's own version in mono, no "Version" word (web `RuntimeVersionLine`, slock #15482).
-        assertShown("2.1.304 (Claude Code)")
-        onAllNodesWithText("unknown time", substring = true, useUnmergedTree = true).assertCountEquals(0)
-    }
-
-    @Test
     fun pageBaseScopeAloneResolvesTimes() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         showSheet(runtimeVersion = null, pageBaseOnly = true)

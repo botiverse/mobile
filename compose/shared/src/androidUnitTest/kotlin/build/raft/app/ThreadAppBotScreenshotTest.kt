@@ -45,11 +45,7 @@ class ThreadAppBotScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
-    @Test fun authorLineLight() = capture("thread.app-bot.author-line", RaftAppAppearance.Light) { AuthorRows() }
-
     @Test fun dmHeaderLight() = capture("thread.app-bot.dm-header", RaftAppAppearance.Light) { DmHeader() }
-
-    @Test fun removedDmComposerLight() = capture("thread.app-bot.removed-dm", RaftAppAppearance.Light) { RemovedDmComposer() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {

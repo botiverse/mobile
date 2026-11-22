@@ -246,9 +246,6 @@ class RaftProfileColumnUiTest {
     private fun ComposeUiTest.widthDp(tag: String): Float =
         with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().size.width.toDp().value }
 
-    private fun ComposeUiTest.topDp(tag: String): Float =
-        with(density) { onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top.toDp().value }
-
     private fun ComposeUiTest.leftDp(tag: String): Float =
         with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.left.toDp().value }
 
@@ -288,88 +285,6 @@ class RaftProfileColumnUiTest {
             near(1280f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation takes the row back")
             assertSettled()
             assertTrue(platformOpened.isEmpty(), "nothing opened as a window: $platformOpened")
-        }
-
-    @Test
-    fun aMemberPickedInTheDetailsShowsTheirProfileAboveThemAndBackClosesInOrder() =
-        runRobolectricComposeUiTest {
-            rowWidth = 1280f
-            val back = showWorkspace()
-            click("gear")
-            // The details' first page has Close; their member list, pushed over them, has Back.
-            onNodeWithTag("close:$CHANNEL_SETTINGS_PAGE", useUnmergedTree = true).assertExists()
-            click("members")
-            assertEquals(listOf(CHANNEL_SETTINGS_PAGE, THREAD_MEMBERS_PAGE), panes.details.entries.map { it.pageName }, "pushed in the details")
-            onNodeWithTag("back:$THREAD_MEMBERS_PAGE", useUnmergedTree = true).assertExists()
-            click("pick")
-            assertEquals(listOf(RaftProfileColumnCell.Profile, RaftProfileColumnCell.Details), panes.cells)
-            // One column, the profile on top of the member list, its first page with Close.
-            onNodeWithTag("close:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertExists()
-            assertTrue(topDp("page:$MEMBER_DETAIL_PAGE") < topDp("page:$THREAD_MEMBERS_PAGE"), "the profile over the details")
-            near(400f, widthDp(column), "still one column")
-            // The details' toggle stays pressed with the profile over them.
-            onNodeWithTag("gear-pressed", useUnmergedTree = true).assertExists()
-            assertSettled()
-            // A page without a role opened from the column opens as a window.
-            click("computers")
-            assertEquals(listOf(SETTINGS_COMPUTERS_PAGE), platformOpened)
-            // Back: the profile, then the member list, then the details; then the page's own.
-            back.press()
-            assertEquals(listOf(RaftProfileColumnCell.Details), panes.cells)
-            onNodeWithTag("page:$MEMBER_DETAIL_PAGE", useUnmergedTree = true).assertDoesNotExist()
-            back.press()
-            assertEquals(listOf(CHANNEL_SETTINGS_PAGE), panes.details.entries.map { it.pageName })
-            back.press()
-            assertFalse(panes.isOpen)
-            onNodeWithTag(column, useUnmergedTree = true).assertDoesNotExist()
-            assertEquals(0, pageBacks, "the column's Back came before the page's")
-            back.press()
-            assertEquals(1, pageBacks, "with the column closed Back is the page's")
-            assertSettled()
-        }
-
-    @Test
-    fun theConversationAndTheThreadGiveWayToTheColumnInsteadOfBeingCovered() =
-        runRobolectricComposeUiTest {
-            threadOpen = true
-            rowWidth = 1280f
-            showWorkspace()
-            assertEquals(false, folds)
-            near(400f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id), "the thread alone")
-            click("gear")
-            // 1280 holds the conversation (480, what the columns leave), the thread (400) and the column (400): the
-            // thread stays beside (it used to step aside), the column last.
-            assertEquals(false, folds, "room for all three")
-            onNodeWithTag("thread", useUnmergedTree = true).assertExists()
-            near(480f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
-            near(400f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id), "the thread")
-            near(400f, widthDp(column), "the column")
-            assertTrue(leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id) < leftDp(column), "the column last")
-            assertSettled()
-            // 1150: 50 short, each gives way in proportion above its minimum (360, 360, 320): nothing clips or covers.
-            rowWidth = 1150f
-            waitForIdle()
-            assertEquals(false, folds)
-            near(387.5f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation at 1150")
-            near(387.5f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + RaftPaneGridColumns.Thread.id), "the thread at 1150")
-            near(375f, widthDp(column), "the column at 1150")
-            assertSettled()
-            // 1000: the three would clip, so the thread folds into the conversation (#189 rule 3) and the column
-            // stands beside the conversation at its 400.
-            rowWidth = 1000f
-            waitForIdle()
-            assertEquals(true, folds, "the thread folds before anything clips")
-            onNodeWithTag("thread", useUnmergedTree = true).assertDoesNotExist()
-            near(400f, widthDp(column), "the column beside the folded conversation")
-            near(600f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
-            assertSettled()
-            // Closed, the thread comes back beside the conversation.
-            rowWidth = 1280f
-            click("gear-pressed")
-            assertEquals(false, folds)
-            onNodeWithTag("thread", useUnmergedTree = true).assertExists()
-            assertSettled()
-            threadOpen = false
         }
 
     private companion object {

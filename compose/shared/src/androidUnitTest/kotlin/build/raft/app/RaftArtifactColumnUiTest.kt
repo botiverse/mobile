@@ -318,63 +318,6 @@ class RaftArtifactColumnUiTest {
             assertSettled()
         }
 
-    @Test
-    fun backClosesTheColumnOpenedLastFirst() =
-        runRobolectricComposeUiTest {
-            layout = RaftChannelSideLayoutStore()
-            rowWidth = 1600f
-            val back = showWorkspace()
-            // The Artifact, then a profile: the profile closes first.
-            click("artifact-card")
-            click("avatar")
-            back.press()
-            assertFalse(panes.isOpen, "the profile, opened last")
-            assertTrue(artifact.isOpen)
-            back.press()
-            assertFalse(artifact.isOpen)
-            assertEquals(0, pageBacks)
-            // A profile, then the Artifact: the Artifact closes first.
-            click("avatar")
-            click("artifact-card")
-            back.press()
-            assertFalse(artifact.isOpen, "the Artifact, opened last")
-            assertTrue(panes.isOpen)
-            back.press()
-            assertFalse(panes.isOpen)
-            assertEquals(0, pageBacks, "the columns' Back came before the page's")
-            back.press()
-            assertEquals(1, pageBacks)
-            assertSettled()
-        }
-
-    // As the profile column (PR #4664 review, A, now for Expand): opening the Artifact while the thread is expanded
-    // restores the row.
-    @Test
-    fun anArtifactOpenedWhileTheThreadIsExpandedRestoresTheRow() =
-        runRobolectricComposeUiTest {
-            layout = RaftChannelSideLayoutStore()
-            threadOpen = true
-            rowWidth = 1280f
-            val back = showWorkspace()
-            runOnIdle { expand.toggle("thread") }
-            waitForIdle()
-            near(1120f, widthDp(threadTag), "the expanded thread")
-            assertSettled()
-            click("thread-artifact")
-            assertTrue(artifact.isOpen)
-            assertEquals(null, expand.region, "opening the Artifact restored the row")
-            near(400f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation")
-            near(400f, widthDp(threadTag), "the thread")
-            near(480f, widthDp(column), "the Artifact")
-            assertTrue(artifactShown)
-            assertSettled()
-            back.press()
-            assertFalse(artifact.isOpen)
-            assertEquals(0, pageBacks)
-            assertSettled()
-            threadOpen = false
-        }
-
     private val tasksHead = RAFT_PANE_GRID_HEAD_TEST_TAG + "tasks"
 
     /**

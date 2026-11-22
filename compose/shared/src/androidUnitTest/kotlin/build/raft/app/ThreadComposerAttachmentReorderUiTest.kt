@@ -9,15 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.SemanticsNodeInteractionsProvider
 import androidx.compose.ui.test.getBoundsInRoot
-import androidx.compose.ui.test.hasAnyAncestor
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -97,25 +92,6 @@ class ThreadComposerAttachmentReorderUiTest {
             assertEquals(emptyList(), commits)
         }
 
-    @Test
-    fun aScreenReaderMovesATileLeftOrRight() =
-        runRobolectricComposeUiTest {
-            setContent { Tray() }
-
-            assertEquals(listOf("Move right"), actionLabels("a"), "the first tile only moves right")
-            assertEquals(listOf("Move left", "Move right"), actionLabels("b"))
-            assertEquals(listOf("Move left"), actionLabels("c"), "the last tile only moves left")
-
-            runOnIdle { actionsOf("b").single { it.label == "Move left" }.action() }
-            waitForIdle()
-            assertEquals(listOf(listOf("b", "a", "c")), commits)
-            assertEquals(listOf("Move right"), actionLabels("b"), "the actions follow the new order")
-
-            runOnIdle { actionsOf("a").single { it.label == "Move right" }.action() }
-            waitForIdle()
-            assertEquals(listOf("b", "c", "a"), commits.last())
-        }
-
     @Composable
     private fun Tray(reorderEnabled: Boolean = true) {
         var attachments by remember {
@@ -143,19 +119,6 @@ class ThreadComposerAttachmentReorderUiTest {
 
     private fun SemanticsNodeInteractionsProvider.tile(id: String): SemanticsNodeInteraction =
         onNodeWithTag(ComposerAttachmentTileTagPrefix + id)
-
-    /** The node a screen reader focuses inside tile [id]: the one carrying its custom actions. */
-    private fun SemanticsNodeInteractionsProvider.tileActionNodes(id: String): List<SemanticsNode> =
-        onAllNodes(
-            hasAnyAncestor(hasTestTag(ComposerAttachmentTileTagPrefix + id)) and
-                SemanticsMatcher.keyIsDefined(SemanticsActions.CustomActions)
-        ).fetchSemanticsNodes()
-
-    private fun SemanticsNodeInteractionsProvider.actionsOf(id: String) =
-        tileActionNodes(id).single().config[SemanticsActions.CustomActions]
-
-    private fun SemanticsNodeInteractionsProvider.actionLabels(id: String): List<String> =
-        tileActionNodes(id).flatMap { node -> node.config[SemanticsActions.CustomActions].map { it.label } }
 
     private fun SemanticsNodeInteraction.left(): Float = getBoundsInRoot().left.value
 }

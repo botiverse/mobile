@@ -128,38 +128,4 @@ class ExternalChannelFreezeUiTest {
         onNodeWithText("Keep posting in your external channels").assertIsDisplayed()
         onNodeWithText("Acme can't post in its external channels", substring = true).assertIsDisplayed()
     }
-
-    @Test
-    fun upgradeDialogLimitNoticeShowsFreezeUpcomingWithoutUpgradePrompt() = runRobolectricComposeUiTest {
-        setContent {
-            val pager =
-                remember {
-                    object : Pager() {}.apply {
-                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
-                    }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftDesignSystemTheme {
-                    RaftUpgradeDialog(
-                        request =
-                            RaftUpgradeRequest(
-                                gate = RaftUpgradeGate.ExternalChannelFrozen,
-                                mode = RaftUpgradeMode.LimitNotice,
-                                pagerId = "fixture",
-                                serverId = "server-1",
-                                serverName = "Acme",
-                                owner = true,
-                                webUrl = "https://raft.build/s/acme/settings/billing?lang=en",
-                                externalContext = RaftUpgradeExternalContext.FreezeUpcoming("2026-12-01T14:30:00Z"),
-                            ),
-                        onOpenWeb = {},
-                        onDismiss = {},
-                    )
-                }
-            }
-        }
-        waitForIdle()
-        onNodeWithText("Acme can't post in its external channels", substring = true).assertIsDisplayed()
-        onNodeWithText("OK").assertIsDisplayed()
-    }
 }

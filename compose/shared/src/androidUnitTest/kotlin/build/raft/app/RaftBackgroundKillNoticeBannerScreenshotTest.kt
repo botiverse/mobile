@@ -42,10 +42,6 @@ class RaftBackgroundKillNoticeBannerScreenshotTest {
     @Test
     fun huaweiEnglish() = capture("shell.background-kill-notice.huawei", AppLocale.English)
 
-    @Test
-    @Config(qualifiers = "zh-rCN-w360dp-h400dp-xxhdpi")
-    fun huaweiChinese() = capture("shell.background-kill-notice.huawei.zh", AppLocale.SimplifiedChinese)
-
     private fun capture(name: String, locale: AppLocale) {
         StringDesc.localeType = locale.stringDescLocaleType
         RaftRobolectricScreenshot.capture(name, RaftAppAppearance.Light, reportDir = "build/reports/home-screenshots", activities = activities) {

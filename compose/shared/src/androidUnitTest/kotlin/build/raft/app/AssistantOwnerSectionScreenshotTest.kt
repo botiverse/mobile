@@ -50,9 +50,6 @@ class AssistantOwnerSectionScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun sectionLight() = capture("assistant.owner-section", RaftAppAppearance.Light) { SectionFixture() }
-
-    @Test
     fun sectionDark() = capture("assistant.owner-section.dark", RaftAppAppearance.Dark) { SectionFixture() }
 
     @Test

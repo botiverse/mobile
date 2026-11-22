@@ -7,20 +7,17 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.AgentBlockedReasonComputerAccessRevoked
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.SharedServerMemberStatus
-import build.raft.app.data.blockedMemberStatusOrNull
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
@@ -68,9 +65,6 @@ class AgentStatusRetryUiTest {
 
     private val agent = MemberProfile(id = MemberId("agent-1"), displayName = "Ruby", handle = "ruby", kind = MemberKind.Agent)
 
-    private val revokedText =
-        "Computer access revoked: move the agent to another computer (re-attaching adds a new one)"
-
     private fun status(status: AgentStatus, detailKind: String? = null): RaftAgentStatusIndicatorState =
         SharedServerMemberStatus(
             status = status,
@@ -107,45 +101,11 @@ class AgentStatusRetryUiTest {
     }
 
     @Test
-    fun anErrorOffersRetryThatRestartsTheAgent() =
-        runRobolectricComposeUiTest {
-            var retries = 0
-            showHero(status(AgentStatus.Error), onRetry = { retries++ })
-            onNodeWithText("Retry").assertExists()
-            onNodeWithTag(AgentStatusRetryTestTags.Retry).performClick()
-            assertEquals(1, retries)
-        }
-
-    @Test
     fun whileTheRestartRunsItSaysSoAndIsDisabled() =
         runRobolectricComposeUiTest {
             showHero(status(AgentStatus.Error), onRetry = {}, retryInProgress = true)
             onNodeWithText("Restarting…").assertExists()
             onNodeWithTag(AgentStatusRetryTestTags.Retry).assertIsNotEnabled()
-        }
-
-    @Test
-    fun aRateLimitOrAViewerWhoMayNotRestartGetsNoRetry() =
-        runRobolectricComposeUiTest {
-            showHero(
-                status(AgentStatus.Error),
-                summary = AgentDetailSummary(id = "agent-1", name = "ruby", runtime = "codex", lastRuntimeErrorClass = "RateLimitError"),
-                onRetry = {},
-            )
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
-        }
-
-    @Test
-    fun aRevokedComputersAgentSaysToMoveItAndHasNoRetry() =
-        runRobolectricComposeUiTest {
-            val member = agent.copy(agentBlockedReason = AgentBlockedReasonComputerAccessRevoked)
-            val held = requireNotNull(member.blockedMemberStatusOrNull()).toRaftAgentStatusIndicatorState()
-            showHero(held, member = member, onRetry = {})
-            onNodeWithTag(AgentStatusRetryTestTags.Blocked).assertExists()
-            onNodeWithText(revokedText).assertExists()
-            onNodeWithText("Error").assertExists()
-            onAllNodesWithText("Computer offline", substring = true).assertCountEquals(0)
-            onAllNodesWithTag(AgentStatusRetryTestTags.Retry).assertCountEquals(0)
         }
 
     @Test

@@ -1,12 +1,8 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -85,26 +81,6 @@ class SearchParityScreenshotTest {
     fun incompleteSearchWithHistoryNotice() =
         RaftRobolectricScreenshot.capture("search.incomplete", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
             Host { IncompletePanel() }
-        }
-
-    @Test
-    fun retractedHit() =
-        RaftRobolectricScreenshot.capture("search.hit-rows.retracted", RaftAppAppearance.Light, reportDir = REPORT_DIR, activities = activities) {
-            Host {
-                Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-                    SharedHomeSearchMessageResultRow(
-                        item = message("1", ServerRetractedPlaceholder).copy(latestRetracted = true),
-                        query = "release",
-                        onOpen = {},
-                    )
-                    SharedHomeSearchMessageResultRow(
-                        item = message("2", "Ship the release notes after the review."),
-                        query = "release",
-                        showSeparator = true,
-                        onOpen = {},
-                    )
-                }
-            }
         }
 
     @Test

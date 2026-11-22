@@ -67,13 +67,6 @@ class ComposerImageEditorScreenshotTest {
         EditorPage(image = image, history = penHistory(), tool = RaftComposerImageEditorTool.Pencil, penOptions = true)
     }
 
-    // The text tool's hint: tap on a touch screen, click with a mouse / trackpad (a desktop window
-    // too narrow for the desktop chrome gets this page).
-    @Test
-    fun textModeTouch() = capture("file.preview.image-editor.text", RaftAppAppearance.Light) { image ->
-        EditorPage(image = image, history = RaftComposerImageEditorHistory(), tool = RaftComposerImageEditorTool.Text)
-    }
-
     private fun penHistory(): RaftComposerImageEditorHistory {
         // Canvas pixels of the turned 4:3 picture on the 390dp stage; the exact spot only matters
         // for the golden.

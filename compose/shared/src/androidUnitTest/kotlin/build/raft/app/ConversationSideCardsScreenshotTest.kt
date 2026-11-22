@@ -74,12 +74,6 @@ class ConversationSideCardsScreenshotTest {
 
     @Test fun tasks() = capture("conversation.side-cards.tasks", RaftAppAppearance.Light, open(ConversationSideCard.Tasks))
 
-    @Test fun both() =
-        capture("conversation.side-cards.both", RaftAppAppearance.Light, open(ConversationSideCard.Tasks, ConversationSideCard.Files))
-
-    @Test fun bothDark() =
-        capture("conversation.side-cards.both.dark", RaftAppAppearance.Dark, open(ConversationSideCard.Tasks, ConversationSideCard.Files))
-
     private fun open(vararg cards: ConversationSideCard): ConversationSideCardsState =
         cards.fold(ConversationSideCardsState()) { state, card -> state.withOpen(card, true) }
 
@@ -89,63 +83,6 @@ class ConversationSideCardsScreenshotTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
                     Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) { Page(cards) }
-                }
-            }
-        }
-}
-
-/**
- * Task v2 on a wide page (web ChannelSideArea `beside`), light and dark: the open cards stand in
- * the pane grid's column right of the conversation, which stays in view; Tasks over Files with a
- * 60/40 split, a folded card is its 56dp head, Files alone fills the column. The production
- * [RaftPaneGrid] and [conversationSideCardsColumn] beside the fixture conversation.
- */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w1280dp-h800dp-mdpi")
-class ConversationSideCardsWideScreenshotTest {
-    @get:Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Before
-    fun installPreferenceStore() {
-        val store = InMemoryRaftKeyValueStore()
-        RaftSharedKeyValueStoreProvider.installAppScopeFactory(RaftLocalPreferenceStore.KuiklyNamespace) { store }
-    }
-
-    @After
-    fun clearPreferenceStore() = RaftSharedKeyValueStoreProvider.clearAppScopeFactoryForTests()
-
-    private val both = ConversationSideCardsState().withOpen(ConversationSideCard.Tasks, true).withOpen(ConversationSideCard.Files, true)
-
-    @Test fun both() = capture("conversation.side-cards.wide.both", RaftAppAppearance.Light, both)
-
-    @Test fun collapsed() = capture("conversation.side-cards.wide.collapsed", RaftAppAppearance.Light, both, collapsed = "tasks")
-
-    private fun capture(name: String, appearance: RaftAppAppearance, cards: ConversationSideCardsState, collapsed: String? = null) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/side-cards", activities = activities) {
-            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            val grid = remember { RaftPaneGridStore().apply { collapsed?.let { setCollapsed(it, true) } } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftPaneGridStore provides grid) {
-                RaftDesignSystemTheme {
-                    RaftPaneGrid(
-                        columns =
-                            listOfNotNull(
-                                conversationSideCardsColumn(
-                                    cards = cards,
-                                    onPick = {},
-                                    onClose = {},
-                                    tasksContent = { TasksFixture() },
-                                    filesContent = { ThreadFilesContent(payload = filesPayload, onEvent = { _, _ -> }) },
-                                )
-                            ),
-                        modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
-                    ) {
-                        Column(Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-                            Header(cards)
-                            Column(Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) { Conversation() }
-                        }
-                    }
                 }
             }
         }

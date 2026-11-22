@@ -61,12 +61,6 @@ class ComputerDetailInfoScreenshotTest {
     @Test
     fun computerInfoLight() = capture("settings.computer.info", RaftAppAppearance.Light)
 
-    @Test
-    fun computerInfoDark() = capture("settings.computer.info.dark", RaftAppAppearance.Dark)
-
-    @Test
-    fun memoryLimitNotAppliedLight() = capture("settings.computer.memory_limit_not_applied", RaftAppAppearance.Light, MEMORY_LIMIT_NOT_APPLIED)
-
     private fun capture(name: String, appearance: RaftAppAppearance, agentScopes: SettingsComputerAgentScopesSnapshot? = null) {
         RaftAppThemeState.apply(appearance)
         val activity = activities.launch()

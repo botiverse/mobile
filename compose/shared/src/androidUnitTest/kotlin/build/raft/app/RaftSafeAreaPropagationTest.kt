@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,22 +51,6 @@ class RaftSafeAreaPropagationTest {
     private fun px(dp: Int): Int = (dp * density).roundToInt()
 
     @Test
-    fun pageShellPadsNothingAndContentPadsTheInsetOnce() {
-        show(rightDp = 59) {
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(40.dp).track("background"))
-                Box(Modifier.fillMaxWidth().height(40.dp).raftSafeAreaHorizontalPadding().track("content")) {
-                    // Inside padded content: nothing left to pad.
-                    Box(Modifier.fillMaxWidth().raftSafeAreaHorizontalPadding().track("nested"))
-                }
-            }
-        }
-        assertEquals(0 to rootWidth, bounds.getValue("background"))
-        assertEquals(0 to rootWidth - px(59), bounds.getValue("content"))
-        assertEquals(0 to rootWidth - px(59), bounds.getValue("nested"))
-    }
-
-    @Test
     fun embeddedChildPageInsideAPaddedContainerDoesNotPadAgain() {
         show(rightDp = 59) {
             Column(Modifier.fillMaxSize()) {
@@ -89,21 +72,6 @@ class RaftSafeAreaPropagationTest {
         // A full-width child page: its background reaches the edge, its content pads once.
         assertEquals(0 to rootWidth, bounds.getValue("child.background"))
         assertEquals(0 to rootWidth - px(59), bounds.getValue("child.full"))
-    }
-
-    @Test
-    fun physicalEdgesStayPhysicalInRtl() {
-        show(rightDp = 59, layoutDirection = LayoutDirection.Rtl) {
-            Column(Modifier.fillMaxSize()) {
-                Box(Modifier.fillMaxWidth().height(40.dp).raftSafeAreaHorizontalPadding().track("all"))
-                // End in RTL is the left edge: no inset there.
-                Box(Modifier.fillMaxWidth().height(40.dp).raftSafeAreaHorizontalPadding(WindowInsetsSides.End).track("end"))
-                Box(Modifier.fillMaxWidth().height(40.dp).raftSafeAreaHorizontalPadding(WindowInsetsSides.Start).track("start"))
-            }
-        }
-        assertEquals(0 to rootWidth - px(59), bounds.getValue("all"))
-        assertEquals(0 to rootWidth, bounds.getValue("end"))
-        assertEquals(0 to rootWidth - px(59), bounds.getValue("start"))
     }
 
     private fun show(

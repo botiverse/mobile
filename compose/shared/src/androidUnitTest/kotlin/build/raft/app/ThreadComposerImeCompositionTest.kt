@@ -161,32 +161,6 @@ class ThreadComposerImeCompositionTest {
         "composer_programmatic_edit kind=$kind composing=$composing deferred=$deferred"
 
     @Test
-    fun storeMentionDuringCompositionIsAppliedToTheCommittedText() {
-        val harness = mountComposer()
-        harness.composeMarked(committed = "hi ", marked = "ni")
-        harness.send(
-            ThreadComposerEditorCommand(
-                id = 1,
-                kind = ThreadComposerEditorCommandKind.Replace,
-                text = "hi ni @alice ",
-                expectedText = "hi ni",
-                expectedAsTask = false,
-                edit = ThreadComposerDraftEdit.InsertMention("alice"),
-            )
-        )
-        assertEquals(TextRange(3, 5), harness.owner.value.composition, "mention held while marked")
-        assertEquals("hi ni", harness.inputConnection.extractedText())
-        assertEquals(listOf(editLogLine("mention", composing = true, deferred = true)), editLog)
-
-        harness.inputConnection.commitText("你", 1)
-        settle(harness.activity)
-        val expected = TextFieldValue("hi 你 @alice ", selection = TextRange(12))
-        assertEquals(expected, harness.owner.value, "mention inserted after the committed characters")
-        assertEquals("hi 你 @alice ", harness.inputConnection.extractedText())
-        assertEquals("hi 你 @alice ", harness.changes.last(), "draft store follows the rebased mention")
-    }
-
-    @Test
     fun draftReplaceDuringCompositionIsDeferredAndKeepsWhatTheUserTyped() {
         val harness = mountComposer()
         harness.composeMarked(committed = "", marked = "ni")

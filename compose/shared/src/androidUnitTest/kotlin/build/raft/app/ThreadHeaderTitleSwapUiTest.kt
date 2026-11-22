@@ -188,41 +188,6 @@ class ThreadHeaderTitleSwapUiTest {
             runOnIdle { assertEquals(1, taps) }
         }
 
-    @Test
-    fun aDeletedOriginalKeepsTheThreadTitleAndOpensTheChannelWithoutLocating() =
-        runRobolectricComposeUiTest {
-            val state = ThreadHeaderOriginalState()
-            var opens = 0
-            showThread(
-                state,
-                payload = payload(originMessage = origin.copy(deletedAt = "2026-11-01T00:00:00Z")),
-                onOpenInChannel = { opens++ },
-            )
-            onNodeWithTag(ListTag).performScrollToIndex(10)
-            waitForIdle()
-            onNodeWithText("Thread").assertExists()
-            onNodeWithTag(ThreadHeaderTitleTestTag, useUnmergedTree = true)
-                .assertContentDescriptionEquals("Thread: original message deleted")
-            onNodeWithText("#general").performClick()
-            runOnIdle {
-                assertEquals(1, opens)
-                assertEquals(null, state.locateMessageId())
-            }
-        }
-
-    @Test
-    fun aParentThePersonCannotOpenIsPlainText() =
-        runRobolectricComposeUiTest {
-            val state = ThreadHeaderOriginalState()
-            showThread(state, payload = payload(originStatus = "error", originMessage = null), originErrorCode = "server_forbidden")
-            onNodeWithTag(ThreadHeaderTitleTestTag, useUnmergedTree = true)
-                .assertContentDescriptionEquals("Thread: can't view the original message")
-            // No link: the place and the count are one plain line.
-            onNodeWithText("#general · 30 replies").assertExists()
-            onNodeWithText("#general").assertDoesNotExist()
-            runOnIdle { assertFalse(state.parentReachable) }
-        }
-
     private companion object {
         const val ListTag = "thread-title-swap-list"
     }

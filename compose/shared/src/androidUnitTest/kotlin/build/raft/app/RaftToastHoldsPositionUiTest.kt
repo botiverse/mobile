@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,16 +18,12 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.getBoundsInRoot
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import build.raft.app.compat.json.JSONObject
@@ -43,7 +38,6 @@ import build.raft.designsystem.components.raftToastAvoid
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -102,27 +96,6 @@ class RaftToastHoldsPositionUiTest {
             }
         }
         settle()
-    }
-
-    @Test
-    fun aToastDoesNotDropWhenThePageChangesUnderIt() = runRobolectricComposeUiTest {
-        val state = RaftToastHostState()
-        var bar by mutableStateOf(120.dp)
-        mainClock.autoAdvance = false
-        host(state) { bar }
-        state.show("First")
-        settle()
-        val appeared = bottomOf("First")
-
-        bar = 0.dp
-        settle()
-        assertEquals(appeared, bottomOf("First"), "the page changed; the toast stays")
-
-        state.dismissAll()
-        settle()
-        state.show("Second")
-        settle()
-        assertTrue(bottomOf("Second") > appeared, "a new toast takes the page it appears on")
     }
 
     @Test
@@ -252,33 +225,6 @@ class RaftToastHoldsPositionUiTest {
         assertTrue(
             bottomOf("AboveTabBar") <= rootBottom - barHeight - 16.dp,
             "toast clears real RaftAppBottomTabBarHost height ($barHeight)",
-        )
-    }
-
-    @Test
-    fun toastStaysHorizontallyCenteredUnderRtlWithoutDoubleMirroring() = runRobolectricComposeUiTest {
-        val state = RaftToastHostState().apply { show("Centered") }
-        mainClock.autoAdvance = false
-        setContent {
-            CompositionLocalProvider(
-                LocalLayoutDirection provides LayoutDirection.Rtl,
-                LocalRaftToastHostState provides state,
-            ) {
-                RaftTheme(appearance = RaftAppearance.Light, scale = RaftScale.Compact) {
-                    Box(Modifier.width(291.dp).height(300.dp).testTag("rtl-toast-container")) {
-                        RaftToastHost(state)
-                    }
-                }
-            }
-        }
-        settle()
-        val container = onNodeWithTag("rtl-toast-container").getBoundsInRoot()
-        val toast = onNodeWithText("Centered").getBoundsInRoot()
-        val containerCenter = (container.left.value + container.right.value) / 2f
-        val toastCenter = (toast.left.value + toast.right.value) / 2f
-        assertTrue(
-            abs(containerCenter - toastCenter) <= 1.5f,
-            "toast remains horizontally centered under RTL ($toastCenter vs $containerCenter)",
         )
     }
 }

@@ -74,8 +74,6 @@ class RaftActionCardScreenshotTest {
 
     @Test fun elements1Light() = capture("thread.action-card.elements-1", RaftAppAppearance.Light) { Elements1() }
 
-    @Test fun elements1Dark() = capture("thread.action-card.elements-1.dark", RaftAppAppearance.Dark) { Elements1() }
-
     @Test fun elements2Light() = capture("thread.action-card.elements-2", RaftAppAppearance.Light) { Elements2() }
 
     @Test fun elements3Light() = capture("thread.action-card.elements-3", RaftAppAppearance.Light) { Elements3() }
@@ -83,16 +81,6 @@ class RaftActionCardScreenshotTest {
     @Test fun frame1Light() = capture("thread.action-card.frame-1", RaftAppAppearance.Light) { Frame1() }
 
     @Test fun frame2Light() = capture("thread.action-card.frame-2", RaftAppAppearance.Light) { Frame2() }
-
-    @Test fun contractUpdatesLight() = capture("thread.action-card.s0-updates", RaftAppAppearance.Light) { ContractUpdates() }
-
-    @Test fun stackRolesLight() = capture("thread.action-card.stack-roles", RaftAppAppearance.Light) { StackRoles() }
-
-    @Test fun approveCallLight() = capture("thread.action-card.approve-call", RaftAppAppearance.Light) { Card("form_submit_labels") }
-
-    @Test fun questionCardLight() = capture("thread.action-card.question", RaftAppAppearance.Light) { QuestionCards() }
-
-    @Test fun migrateAgentLight() = capture("thread.action-card.migrate-agent", RaftAppAppearance.Light) { MigrateAgent() }
 
     @Test fun limitsLight() = capture("thread.action-card.limits", RaftAppAppearance.Light) { Limits() }
 

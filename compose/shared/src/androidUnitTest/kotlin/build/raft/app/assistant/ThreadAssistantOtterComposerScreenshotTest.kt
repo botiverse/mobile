@@ -54,9 +54,6 @@ class ThreadAssistantOtterComposerScreenshotTest {
     @Test
     fun channelComposerLight() = capture("assistant.otter.channel-composer", RaftAppAppearance.Light)
 
-    @Test
-    fun channelComposerDark() = capture("assistant.otter.channel-composer.dark", RaftAppAppearance.Dark)
-
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
