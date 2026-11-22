@@ -98,10 +98,10 @@ data class RaftMembersPayload(
     val labels: RaftMembersLabels = RaftMembersLabels(),
     val members: List<MemberProfile> = emptyList(),
     val initialAgentTab: String? = null,
-    val localOffsetMinutes: Int = 0,
+    val localOffsetMinutes: Int? = null,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = RaftTimeFormat24Hour,
+    val timeFormat: String? = null,
     val agentPanelTabOrder: List<String> = emptyList(),
     /**
      * Whether the active session can create agents. Driven by the host from
@@ -130,10 +130,10 @@ internal data class RaftMemberDetailPayload(
     val identity: MemberDetailIdentity? = null,
     val initialAgentTab: String? = null,
     val visualMode: String? = null,
-    val localOffsetMinutes: Int = 0,
+    val localOffsetMinutes: Int? = null,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = RaftTimeFormat24Hour,
+    val timeFormat: String? = null,
     val agentPanelTabOrder: List<String> = emptyList(),
     /** A remote member's server label from the opener's joint roster (never authority). */
     val sourceServerName: String? = null,
@@ -664,13 +664,14 @@ internal fun MembersPageContent(
         }
     }
 
+    val effectiveTimeContext = currentRaftEffectiveDateTimeContext(payload.toRaftTimeContextOrNull())
     val createdAgentReceipt =
         rememberRaftCreatedAgentReceipt(
             pager = pager,
             bridge = bridge,
             storeScope = storeScope,
             openSetupGuide = { openMemberDetail(it) },
-            timeContext = payload.toRaftTimeContext(),
+            timeContext = effectiveTimeContext,
         )
     // Lands a just-created agent once the dialog has closed (no toast with an action over a modal,
     // Raft DS › Toast). Runs after localMembers merged the optimistic row, so an external agent's
@@ -701,7 +702,7 @@ internal fun MembersPageContent(
             currentUserId = membersCurrentUserId,
             currentServerId = serverId,
             onEditAgent = { openMemberDetail(it, openRuntimeEditor = true) },
-            timeContext = payload.toRaftTimeContext(),
+            timeContext = effectiveTimeContext,
         ),
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
@@ -739,10 +740,15 @@ internal fun MembersPageContent(
     // MEMBERS_COMPUTERS_ERROR_RETRY_WIRING_END
 }
 
-private fun RaftMembersPayload.toRaftTimeContext(): RaftTimeContext =
-    RaftTimeContext(
-        localOffsetMinutes = localOffsetMinutes,
+private fun RaftMembersPayload.toRaftTimeContextOrNull(): RaftTimeContext? {
+    // Only pin a static payload context when the caller explicitly pinned a clock (visual fixtures / tests);
+    // live routes that merely pass todayEpochDay follow the enclosing live DI time provider.
+    if (nowEpochMillis == null) return null
+    val offset = localOffsetMinutes ?: 0
+    return RaftTimeContext(
+        localOffsetMinutes = offset,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
-        timeFormat = timeFormat
+        timeFormat = timeFormat ?: RaftTimeFormat24Hour,
     )
+}

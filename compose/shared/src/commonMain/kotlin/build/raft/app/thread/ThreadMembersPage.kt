@@ -39,7 +39,6 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ChannelId
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import androidx.compose.runtime.Composable
@@ -102,10 +101,10 @@ internal data class ThreadMembersPageRoute(
     val instanceId: String,
     val serverId: ServerId,
     val channelId: ChannelId,
-    val localOffsetMinutes: Int,
-    val todayEpochDay: Long?,
-    val nowEpochMillis: Long?,
-    val timeFormat: String,
+    val localOffsetMinutes: Int? = null,
+    val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String? = null,
     /**
      * Open straight into Add Member (web ChannelOverflowMenu `membersInitialView = "add"`, the
      * members strip's dashed add tile); applied once, when the viewer may add members.
@@ -269,10 +268,10 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
         instanceId = optString("instanceId"),
         serverId = serverId,
         channelId = channelId,
-        localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull(),
         todayEpochDay = optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour,
+        timeFormat = optString("timeFormat").trim().takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
         openAddMember = optString(THREAD_MEMBERS_INITIAL_VIEW_KEY).trim() == "add",
     )
 }
@@ -291,10 +290,10 @@ private fun ThreadMembersPageRoute.toMemberDetailPageData(
         sourceServerName?.takeIf { it.isNotBlank() }?.let { put("sourceServerName", it) }
         // web ChannelMembers: a person opened from the channel's members names their servers in it.
         if (identity.kind == MemberKind.Human) channelId.value.takeIf { it.isNotBlank() }?.let { put(MemberDetailProfileChannelIdKey, it) }
-        put("localOffsetMinutes", localOffsetMinutes)
+        localOffsetMinutes?.let { put("localOffsetMinutes", it) }
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
-        put("timeFormat", timeFormat)
+        timeFormat?.takeIf { it.isNotBlank() }?.let { put("timeFormat", it) }
     }
 }
 

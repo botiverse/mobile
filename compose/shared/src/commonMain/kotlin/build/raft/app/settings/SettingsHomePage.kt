@@ -7183,10 +7183,10 @@ private fun Pager.openHomeSecondaryPage(
             if (retainedDestination == HomeDestinationSearch) {
                 put(HOME_SEARCH_FOCUS_INPUT, true)
             }
-            put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
+            timeContext?.localOffsetMinutes?.let { put("localOffsetMinutes", it) }
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
-            put("timeFormat", timeContext?.timeFormat ?: RaftTimeFormat24Hour)
+            timeContext?.timeFormat?.takeIf { it.isNotBlank() }?.let { put("timeFormat", it) }
         }
     openRaftPage(
         pageName = pageName,

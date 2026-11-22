@@ -327,6 +327,7 @@
     <string name="settings_app_logins_revoked">%1$s의 권한을 해제했어요</string>
     <string name="settings_app_logins_revoke_failed">%1$s의 권한을 해제하지 못했어요. 다시 시도해 주세요.</string>
     <string name="settings_compact_month_day">%1$s %2$d일</string>
+    <string name="raft_short_date_time">%1$s %2$s</string>
     <string name="settings_archived_channels_title">보관된 채널</string>
     <string name="settings_archived_channels_public">공개 채널</string>
     <string name="settings_archived_channels_private">비공개 채널</string>
