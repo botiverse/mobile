@@ -398,13 +398,15 @@ class SettingsRepositoryDataSourceTest {
                     store.authSessionEvents.first { it is AuthSessionEvent.BindingMetadataChanged }
                 }
             }
+        val observedTimeFormats = mutableListOf<String>()
         val repository =
             RealSettingsRepository(
                 store,
                 FakeSettingsNetworkClient(
                     accountJson =
                         """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredTimeFormat":"12h"}"""
-                )
+                ),
+                onTimeFormatUpdated = observedTimeFormats::add,
             )
 
         val result =
@@ -414,6 +416,7 @@ class SettingsRepositoryDataSourceTest {
 
         assertTrue(result is DataResult.Content)
         assertIs<AuthSessionEvent.BindingMetadataChanged>(metadataEvent.await())
+        assertEquals(listOf("12h"), observedTimeFormats)
         val persisted = store.readSession()
         assertEquals("12h", persisted?.user?.preferredTimeFormat)
         assertEquals("12h", persisted?.user?.timeFormat)

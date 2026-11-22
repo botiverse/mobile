@@ -1,7 +1,9 @@
 package build.raft.app
 
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -28,8 +30,29 @@ class SettingsCompactDateTest {
     }
 
     @Test
-    fun nothingWithoutANowOrATimestamp() {
-        assertNull(settingsCompactDate("2026-11-18T00:05:00.000Z", context.copy(nowEpochMillis = null)))
+    fun worksWithLowFrequencyDateContextAnd12HourPreference() {
+        val dateContext =
+            RaftTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = raftEpochDayForDate(2026, 11, 18),
+                nowEpochMillis = null,
+                timeFormat = RaftTimeFormat24Hour,
+            )
+        assertEquals(SettingsCompactDate.Clock("15:05"), settingsCompactDate("2026-11-18T07:05:00.000Z", dateContext))
+        assertEquals(
+            SettingsCompactDate.Clock("03:05 PM"),
+            settingsCompactDate("2026-11-18T07:05:00.000Z", dateContext.copy(timeFormat = RaftTimeFormat12Hour)),
+        )
+        assertEquals(SettingsCompactDate.MonthDay(month = 11, day = 17), settingsCompactDate("2026-11-17T15:00:00.000Z", dateContext))
+        assertEquals(SettingsCompactDate.IsoDate("2025-12-31"), settingsCompactDate("2025-12-31T08:00:00.000Z", dateContext))
+    }
+
+    @Test
+    fun fallsBackToLocalIsoDateWithoutTodayAndNullForInvalidOrMissingContext() {
+        assertEquals(
+            SettingsCompactDate.IsoDate("2026-11-18"),
+            settingsCompactDate("2026-11-18T00:05:00.000Z", context.copy(todayEpochDay = null, nowEpochMillis = null)),
+        )
         assertNull(settingsCompactDate("yesterday", context))
         assertNull(settingsCompactDate("2026-11-18T00:05:00.000Z", null))
     }

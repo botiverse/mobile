@@ -1310,7 +1310,8 @@ private fun ThreadPageContentContent(
                 },
             body = {
             if (externalFreezeState != ExternalFreezeState.Active && jointBillingNotice != JointBillingNotice.None) {
-                val deadlineLabel = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val rawDeadline = jointGraceDeadlineLabel?.takeIf { it.isNotBlank() }
+                val deadlineLabel = if (rawDeadline != null) raftLocalizedMediumDateTime(rawDeadline) else null
                 RaftUiBanner(
                     status =
                         if (jointBillingNotice == JointBillingNotice.Locked) RaftUiBannerStatus.Destructive

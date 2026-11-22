@@ -27,7 +27,10 @@ import build.raft.app.data.SettingsBillingSubscriptionSnapshot
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -53,7 +56,6 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
-import kotlin.time.Clock
 
 /*
  * iOS Plan & Billing, view-only (artin 11-02, App Store guideline 3.1.1), laid out like the web
@@ -349,18 +351,19 @@ private fun settingsBillingFormatBytes(bytes: Long): String {
     }
 }
 
-/** The calendar day of an ISO timestamp ("Dec 1, 2026"; 2026年12月1日). */
+/** Local calendar day of an ISO billing timestamp in [timeContext], or null if unreadable. */
+internal fun settingsBillingLocalDate(iso: String, timeContext: RaftTimeContext): MembersJoinedDate? {
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(iso, timeContext.localOffsetMinutes) ?: return null
+    val date = civilDateFromEpochDay(timeContext.localEpochDay(epochMillis))
+    return MembersJoinedDate(date.year, date.month, date.day)
+}
+
+/** The local calendar day of an ISO timestamp ("Dec 1, 2026"; 2026年12月1日). */
 @Composable
 private fun settingsBillingDate(iso: String): String {
-    val day = iso.take(10).split('-')
-    val year = day.getOrNull(0)?.toIntOrNull()
-    val month = day.getOrNull(1)?.toIntOrNull()
-    val dayOfMonth = day.getOrNull(2)?.toIntOrNull()
-    return if (year != null && month != null && dayOfMonth != null) {
-        membersLocalizedDate(MembersJoinedDate(year, month, dayOfMonth))
-    } else {
-        iso
-    }
+    val context = currentRaftEffectiveDateTimeContext()
+    val localDate = settingsBillingLocalDate(iso, context)
+    return if (localDate != null) membersLocalizedDate(localDate) else iso
 }
 
 /** When a `YYYY-MM` upload month starts over: the first of the next month ("Dec 1"). */
@@ -421,8 +424,11 @@ internal fun SettingsBillingViewOnlyContent(
     sessionPlan: String?,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
-    nowEpochMillis: Long = remember { Clock.System.now().toEpochMilliseconds() },
+    nowEpochMillis: Long? = null,
 ) {
+    val liveNow = currentRaftTimeContext(null)?.nowEpochMillis
+    val fallbackNow = remember { defaultNowMillis() }
+    val resolvedNowEpochMillis = nowEpochMillis ?: liveNow ?: fallbackNow
     Column(
         modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -441,10 +447,10 @@ internal fun SettingsBillingViewOnlyContent(
                 }
             }
             is ScreenLoadState.Content ->
-                SettingsBillingViewOnlyOverview(settingsBillingViewOnlyModel(billing.data, sessionPlan, nowEpochMillis), onRetry)
+                SettingsBillingViewOnlyOverview(settingsBillingViewOnlyModel(billing.data, sessionPlan, resolvedNowEpochMillis), onRetry)
             is ScreenLoadState.Empty,
             is ScreenLoadState.Error ->
-                SettingsBillingViewOnlyOverview(settingsBillingViewOnlyModel(null, sessionPlan, nowEpochMillis), onRetry)
+                SettingsBillingViewOnlyOverview(settingsBillingViewOnlyModel(null, sessionPlan, resolvedNowEpochMillis), onRetry)
         }
     }
 }

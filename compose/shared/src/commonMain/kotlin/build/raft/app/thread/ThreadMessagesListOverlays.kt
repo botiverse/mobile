@@ -102,7 +102,8 @@ internal fun BoxWithConstraintsScope.ThreadMessagesListOverlays(
             }
         val outlineOriginId = renderPayload.originMessage?.id
         val outlineTimeContext =
-            currentRaftTimeContextProvider?.current?.copy(timeFormat = renderConfig.timeContext.timeFormat)
+            currentRaftDateTimeContext(renderConfig.timeContext)
+                ?.takeIf { it.resolvedTodayEpochDay() != null }
                 ?: renderConfig.timeContext.refreshedAt(defaultNowMillis())
         ThreadOutlineHost(
             state = LocalThreadOutlineState.current,

@@ -56,6 +56,7 @@ import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.AppLocale
 import build.raft.app.data.MyMessageAlignmentPreference
@@ -1266,6 +1267,7 @@ private fun RaftAppShellReadyContent(
                     }
                 },
                 serverNotificationLastKnownStore = sharedStores.settingsServerNotificationLastKnownStore,
+                onTimeFormatUpdated = RaftTimeFormatRuntime::update,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -1302,8 +1304,13 @@ private fun RaftAppShellReadyContent(
     var createChannelCollision by remember { mutableStateOf<ArchivedNameCollision?>(null) }
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
-    val hostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
+    val baseHostThreadTimeCapabilities = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeCapabilities()
+    }
+    val hostTimeFormat =
+        RaftTimeFormatRuntime.observe(fallback = baseHostThreadTimeCapabilities?.timeFormat ?: RaftTimeFormat24Hour)
+    val hostThreadTimeCapabilities = remember(baseHostThreadTimeCapabilities, hostTimeFormat) {
+        baseHostThreadTimeCapabilities?.copy(timeFormat = hostTimeFormat)
     }
     val hostThreadTimeContextProvider =
         rememberLiveRaftTimeContext(
@@ -2230,7 +2237,14 @@ private fun RaftAppShellReadyContent(
         latestAuthoritativeHomeStartAllowedState = latestAuthoritativeHomeStartAllowedState,
         homeSurfaceVisible = homeSurfaceVisible,
     )
-    val sessionTimeFormat = readySession.appShellThreadTimeFormat()
+    val sessionTimeFormat = (readySession ?: homePreviewSession).appShellThreadTimeFormat()
+    LaunchedEffect(sessionTimeFormat, authGateState) {
+        if (sessionTimeFormat != null) {
+            RaftTimeFormatRuntime.update(sessionTimeFormat)
+        } else if (authGateState is SharedAuthGateState.AuthRequired) {
+            RaftTimeFormatRuntime.update(null)
+        }
+    }
     // Subscribe only to low-frequency dateContext (updates on midnight, timezone/DST shift, or
     // 12h/24h format change — never on 1-minute ticks) so child tabs and task heads always format
     // dates/clocks consistently instead of leaking raw ISO strings.

@@ -44,10 +44,29 @@ data class RaftTimeContext(
     fun withTimeFormat(value: String?): RaftTimeContext =
         copy(timeFormat = normalizeRaftTimeFormatPreference(value ?: timeFormat))
 
+    fun resolvedTodayEpochDay(): Long? =
+        todayEpochDay ?: nowEpochMillis?.toLocalEpochDay(localOffsetMinutes)
+
+    fun localEpochDay(epochMillis: Long): Long =
+        epochMillis.toLocalEpochDay(localOffsetMinutes)
+
+    fun formatClock(epochMillis: Long): String =
+        formatRaftLocalClock(epochMillis, localOffsetMinutes, timeFormat)
+
+    fun formatClock(value: String?): String? {
+        val epochMillis = parseRaftTimestampEpochMillisOrNull(value, localOffsetMinutes) ?: return null
+        return formatRaftLocalClock(epochMillis, localOffsetMinutes, timeFormat)
+    }
+
+    fun formatIsoDate(value: String?): String? {
+        val epochMillis = parseRaftTimestampEpochMillisOrNull(value, localOffsetMinutes) ?: return null
+        return formatRaftLocalIsoDate(epochMillis, localOffsetMinutes)
+    }
+
     fun formatTimestampLabel(value: String?): String {
         val trimmed = value?.trim().orEmpty()
         if (trimmed.isEmpty()) return ""
-        val today = todayEpochDay ?: nowEpochMillis?.toLocalEpochDay(localOffsetMinutes)
+        val today = resolvedTodayEpochDay()
         if (today != null) return formatRaftTimestampLabel(trimmed, localOffsetMinutes, today, timeFormat)
         // Last-resort guard: if a caller constructed a RaftTimeContext without todayEpochDay or
         // nowEpochMillis, still render a localized date+clock rather than leaking raw UTC ISO text.
@@ -234,6 +253,26 @@ fun formatRaftTimestampClockWithSeconds(
     val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
     val second = ((millisOfDay % MillisPerMinute) / MillisPerSecond).toInt()
     return formatRaftClock(hour, minute, second, timeFormat)
+}
+
+fun formatRaftLocalClock(
+    epochMillis: Long,
+    localOffsetMinutes: Int,
+    timeFormat: String = RaftTimeFormat24Hour
+): String {
+    val localMillis = epochMillis + localOffsetMinutes.toLong() * MillisPerMinute
+    val millisOfDay = floorMod(localMillis, MillisPerDay)
+    val hour = (millisOfDay / MillisPerHour).toInt()
+    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
+    return formatRaftClock(hour, minute, null, timeFormat)
+}
+
+fun formatRaftLocalIsoDate(
+    epochMillis: Long,
+    localOffsetMinutes: Int
+): String {
+    val date = civilDateFromEpochDay(epochMillis.toLocalEpochDay(localOffsetMinutes))
+    return "${date.year}-${date.month.twoDigits()}-${date.day.twoDigits()}"
 }
 
 fun raftEpochDayForDate(year: Int, month: Int, day: Int): Long =

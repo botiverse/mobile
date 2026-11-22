@@ -46,13 +46,12 @@ import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import build.raft.app.data.defaultNowMillis
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
-import kotlin.time.Clock
 
 /**
  * The preview message's time. Null: the current time, like the Web's preview (`new Date()`); the
@@ -456,7 +455,13 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
     val bodyStyle = raftMessageBodyTextStyle(fontSizeKey)
     val body = stringResource(Res.string.settings_appearance_preview_message)
     val pinnedTime = LocalSettingsAppearancePreviewTimeLabel.current
-    val timeLabel = pinnedTime ?: remember { settingsAppearancePreviewClock() }
+    val previewDateContext = currentRaftEffectiveDateTimeContext()
+    val timeProvider = currentRaftTimeContextProvider
+    val previewNowMillis =
+        remember(timeProvider) {
+            Snapshot.withoutReadObservation { timeProvider?.current?.nowEpochMillis } ?: defaultNowMillis()
+        }
+    val timeLabel = pinnedTime ?: previewDateContext.formatClock(previewNowMillis)
     val message =
         remember(body, timeLabel) {
             RaftThreadMessageItem(
@@ -498,12 +503,6 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
             outerPadding = 0.dp
         )
     }
-}
-
-/** `HH:mm` now, in this device's time zone. */
-private fun settingsAppearancePreviewClock(): String {
-    val local = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-    return "${local.hour.toString().padStart(2, '0')}:${local.minute.toString().padStart(2, '0')}"
 }
 
 /**

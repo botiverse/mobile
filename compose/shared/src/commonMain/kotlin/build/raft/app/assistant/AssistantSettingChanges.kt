@@ -15,26 +15,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import build.raft.app.currentRaftTimeContext
 import build.raft.app.data.AppLocale
 import build.raft.app.data.AssistantChangedSetting
 import build.raft.app.data.AssistantSettingChange
 import build.raft.app.data.AssistantSettingValue
 import build.raft.app.data.RaftAssistantSettingChangesApi
 import build.raft.app.data.ofSettings
-import build.raft.app.localized
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
+import build.raft.app.raftLocalizedMediumDateTime
 import build.raft.app.resources.*
 import build.raft.app.settingsDisplayName
-import build.raft.app.taskHeadDateTime
-import build.raft.app.TaskHeadDateTime
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftThemeId
-import kotlin.time.Instant
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 
 // "Changed by your assistant" (web components/settings/AssistantSettingChanges.tsx): what the
 // owner's personal assistant changed of a page's settings, newest first, one muted footnote line
@@ -265,15 +259,5 @@ private fun assistantSettingChangeValue(setting: AssistantChangedSetting, value:
  * the recorded value when it is not a timestamp.
  */
 @Composable
-private fun assistantSettingChangeTime(createdAt: String, timeContext: RaftTimeContext?): String {
-    val context = currentRaftTimeContext(timeContext)
-    val local =
-        if (context != null) {
-            taskHeadDateTime(createdAt, context)
-        } else {
-            runCatching { Instant.parse(createdAt).toLocalDateTime(TimeZone.currentSystemDefault()) }
-                .getOrNull()
-                ?.let { TaskHeadDateTime(it.year, it.month.ordinal + 1, it.day, it.hour, it.minute) }
-        }
-    return local?.localized() ?: createdAt
-}
+private fun assistantSettingChangeTime(createdAt: String, timeContext: RaftTimeContext?): String =
+    raftLocalizedMediumDateTime(createdAt, timeContext)

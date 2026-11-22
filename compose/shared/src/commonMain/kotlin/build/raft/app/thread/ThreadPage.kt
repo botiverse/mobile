@@ -5729,7 +5729,7 @@ private fun SharedThreadRouteContentContent(
             bridge.log("thread_task_pending_conversation_arrived taskId=${arrived.id.value}")
             openCanonicalTask(arrived, "task_conversation_arrived")
         },
-        timeContext = timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext(),
+        timeContext = timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext(),
         // Web canWriteTasksInChannel: known for the channel this page shows (its task actions' gate);
         // another channel is not known here and stays writable.
         canWriteTaskChannel = { channelId ->
@@ -6362,7 +6362,7 @@ private fun SharedThreadRouteContentContent(
         // The page's live clock supplies "today": the static context has none, and without it the
         // head's Source and History times fell back to the raw wire timestamp (1.17.0 build 3 smoke).
         val taskConversationTimeContext =
-            timeContextProvider.current ?: renderedThread.toRaftTimeCapabilities().staticContext()
+            timeContextProvider.dateContext ?: renderedThread.toRaftTimeCapabilities().staticContext()
         // The head as the conversation's first row at every width, and pulled down from the bar
         // ([TaskHeadPlacement]); the page's placement holds its effects.
         val taskConversationHeadRoute: (@Composable (placement: TaskHeadPlacement) -> Unit)? =

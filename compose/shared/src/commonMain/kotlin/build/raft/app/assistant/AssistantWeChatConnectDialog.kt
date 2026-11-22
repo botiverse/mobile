@@ -30,9 +30,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftTraceIdNote
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftAssistantWeChatConnectApi
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.formatRaftLocalClock
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.rememberRaftIsoClockFormatter
 import build.raft.app.resources.*
-import build.raft.app.secondFactorStepUpLocalClock
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -45,7 +50,6 @@ import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import kotlin.time.Instant
 import org.jetbrains.compose.resources.StringResource
 
 // Assistant Settings › Connect WeChat at a non-phone width (web WeChatConnectDialog.tsx, botiverse/
@@ -224,7 +228,7 @@ internal fun WeChatConnectStepBody(
     code: String,
     onCodeChange: (String) -> Unit,
     onSubmitCode: () -> Unit,
-    clockOf: (String) -> String = ::weChatExpiryClock,
+    clockOf: (String) -> String = rememberRaftIsoClockFormatter(),
     /** Web `autoFocus` on the code field; off for still captures (no caret). */
     autoFocus: Boolean = true,
 ) {
@@ -253,9 +257,13 @@ internal fun WeChatConnectStepBody(
     }
 }
 
-/** Web `formatClock(expiresAt)`: `HH:mm` in this device's zone; the raw value if unreadable. */
-internal fun weChatExpiryClock(expiresAt: String): String =
-    runCatching { secondFactorStepUpLocalClock(Instant.parse(expiresAt).toEpochMilliseconds()) }.getOrDefault(expiresAt)
+/** Web `formatClock(expiresAt)`: local clock in [timeContext] (or device zone); the raw value if unreadable. */
+internal fun weChatExpiryClock(expiresAt: String, timeContext: RaftTimeContext? = null): String {
+    if (timeContext != null) return timeContext.formatClock(expiresAt) ?: expiresAt
+    val epochMillis = parseRaftTimestampEpochMillisOrNull(expiresAt, 0) ?: return expiresAt
+    val offset = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(epochMillis, 0)
+    return formatRaftLocalClock(epochMillis, offset, RaftTimeFormat24Hour)
+}
 
 @Composable
 private fun WeChatDisclosure(name: String) {

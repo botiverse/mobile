@@ -118,7 +118,7 @@ internal fun ThreadRouteDialogs(
         val quoteTarget = selectionQuoteTarget
         // Same time source as the message list: the live provider when there is one, else the payload's.
         val timeContext =
-            currentRaftTimeContextProvider?.current ?: payload.toRaftTimeCapabilities().staticContext()
+            currentRaftDateTimeContext(null) ?: payload.toRaftTimeCapabilities().staticContext()
         key(message.id, message.body) {
             ThreadMessageSelectTextSheet(
                 markdown = message.body,

@@ -305,6 +305,7 @@ class RealSettingsRepository(
      * that never serve the notification settings screen (sidebar order, members, thread pages).
      */
     private val serverNotificationLastKnownStore: SettingsServerNotificationLastKnownStore? = null,
+    private val onTimeFormatUpdated: (String) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
@@ -1553,6 +1554,7 @@ class RealSettingsRepository(
                     )
             )
         }
+        onTimeFormatUpdated(effectiveTimeFormat)
     }
 
     override suspend fun setServerNotificationMode(mode: ServerPushMode): DataResult<SettingsMobileSnapshot> {

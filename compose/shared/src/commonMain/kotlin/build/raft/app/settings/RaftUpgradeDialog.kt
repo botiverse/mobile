@@ -30,6 +30,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
@@ -41,13 +42,10 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
 
 /*
@@ -261,16 +259,12 @@ internal fun externalContextForGate(
 }
 
 /**
- * The external channel freeze's start in the viewer's local time zone (web `formatFreezeDeadline`,
+ * The external channel freeze's start in the viewer's [RaftTimeContext] (web `formatFreezeDeadline`,
  * medium date + short time); falls back to the raw ISO string when unparseable.
  */
 @Composable
-internal fun raftFormatFreezeDeadline(iso: String): String {
-    val local =
-        runCatching { Instant.parse(iso).toLocalDateTime(TimeZone.currentSystemDefault()) }.getOrNull()
-            ?: return iso
-    return TaskHeadDateTime(local.year, local.month.ordinal + 1, local.day, local.hour, local.minute).localized()
-}
+internal fun raftFormatFreezeDeadline(iso: String, timeContext: RaftTimeContext? = null): String =
+    raftLocalizedMediumDateTime(iso, timeContext)
 
 /**
  * The web page the dialog opens. [RaftUpgradeMode.Upgrade]: Plan & Billing with the web upgrade

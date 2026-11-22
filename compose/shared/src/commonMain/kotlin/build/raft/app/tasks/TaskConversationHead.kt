@@ -106,10 +106,18 @@ import build.raft.app.data.valueOrNull
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerHour
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForRenderedAvatar
+import build.raft.app.model.civilDateFromEpochDay
+import build.raft.app.model.floorDiv
+import build.raft.app.model.floorMod
+import build.raft.app.model.formatRaftClock
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
@@ -1234,34 +1242,31 @@ internal data class TaskHeadDateTime(val year: Int, val month: Int, val day: Int
 internal fun taskHeadDateTime(iso: String?, timeContext: RaftTimeContext?): TaskHeadDateTime? {
     val offsetMinutes = timeContext?.localOffsetMinutes ?: 0
     val epochMillis = parseRaftTimestampEpochMillisOrNull(iso, offsetMinutes) ?: return null
-    val local = epochMillis + offsetMinutes * 60_000L
-    val dayMillis = 86_400_000L
-    val days = local.floorDiv(dayMillis)
-    val millisOfDay = local.mod(dayMillis)
-    // Days since 1970-01-01 to a civil date (H. Hinnant, `civil_from_days`).
-    val z = days + 719_468
-    val era = z.floorDiv(146_097L)
-    val doe = z - era * 146_097
-    val yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365
-    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
-    val mp = (5 * doy + 2) / 153
-    val day = (doy - (153 * mp + 2) / 5 + 1).toInt()
-    val month = (if (mp < 10) mp + 3 else mp - 9).toInt()
-    val year = (yoe + era * 400 + if (month <= 2) 1 else 0).toInt()
-    return TaskHeadDateTime(year, month, day, (millisOfDay / 3_600_000L).toInt(), ((millisOfDay / 60_000L) % 60).toInt())
+    val local = epochMillis + offsetMinutes.toLong() * MillisPerMinute
+    val days = floorDiv(local, MillisPerDay)
+    val millisOfDay = floorMod(local, MillisPerDay)
+    val date = civilDateFromEpochDay(days)
+    return TaskHeadDateTime(
+        year = date.year,
+        month = date.month,
+        day = date.day,
+        hour = (millisOfDay / MillisPerHour).toInt(),
+        minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt(),
+    )
 }
 
+private val TaskHeadMonthResources =
+    listOf(
+        Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
+        Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
+        Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
+        Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
+    )
+
 @Composable
-internal fun TaskHeadDateTime.localized(): String {
-    val months =
-        listOf(
-            Res.string.task_head_month_1, Res.string.task_head_month_2, Res.string.task_head_month_3,
-            Res.string.task_head_month_4, Res.string.task_head_month_5, Res.string.task_head_month_6,
-            Res.string.task_head_month_7, Res.string.task_head_month_8, Res.string.task_head_month_9,
-            Res.string.task_head_month_10, Res.string.task_head_month_11, Res.string.task_head_month_12,
-        )
-    val time = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-    return stringResource(Res.string.task_head_medium_date_time, stringResource(months[month - 1]), day, year, time)
+internal fun TaskHeadDateTime.localized(timeFormat: String = RaftTimeFormat24Hour): String {
+    val time = formatRaftClock(hour, minute, null, timeFormat)
+    return stringResource(Res.string.task_head_medium_date_time, stringResource(TaskHeadMonthResources[month - 1]), day, year, time)
 }
 
 /**

@@ -8,14 +8,19 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.model.floorDiv
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.model.normalizeRaftTimeFormatPreference
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftDatetimeFoundationOwner
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
@@ -116,11 +121,13 @@ internal fun raftRelativeTimestampLabel(
     clampFuture: Boolean = false,
 ): String {
     val effectiveContext = currentRaftTimeContext(timeContext)
+    val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext)
     return when (val label = if (clampFuture) resolved.clampedFutureToNow() else resolved) {
         RaftRelativeTimeLabel.Empty -> ""
         RaftRelativeTimeLabel.Unknown ->
-            raftDeviceZoneAbsoluteLabel(value) ?: stringResource(Res.string.relative_time_unknown)
+            raftDeviceZoneAbsoluteLabel(value, timeFormat = effectiveContext?.timeFormat ?: fallbackTimeFormat)
+                ?: stringResource(Res.string.relative_time_unknown)
         is RaftRelativeTimeLabel.Literal -> label.value
         is RaftRelativeTimeLabel.Relative -> label.localized()
     }
@@ -137,11 +144,13 @@ internal fun raftShortRelativeTimestampLabel(
     timeContext: RaftTimeContext? = null,
 ): String {
     val effectiveContext = currentRaftTimeContext(timeContext)
+    val fallbackTimeFormat = RaftTimeFormatRuntime.observe()
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext).clampedFutureToNow()
     return when (resolved) {
         RaftRelativeTimeLabel.Empty -> ""
         RaftRelativeTimeLabel.Unknown ->
-            raftDeviceZoneAbsoluteLabel(value) ?: stringResource(Res.string.relative_time_unknown)
+            raftDeviceZoneAbsoluteLabel(value, timeFormat = effectiveContext?.timeFormat ?: fallbackTimeFormat)
+                ?: stringResource(Res.string.relative_time_unknown)
         is RaftRelativeTimeLabel.Literal -> resolved.value
         is RaftRelativeTimeLabel.Relative -> resolved.localizedShort()
     }
@@ -170,12 +179,26 @@ internal fun raftDeviceZoneAbsoluteLabel(
     value: String?,
     nowEpochMillis: Long = defaultNowMillis(),
     foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+    timeFormat: String = RaftTimeFormat24Hour,
 ): String? {
     val offset = foundationOwner.localOffsetMinutesAt(nowEpochMillis, 0)
     val epochMillis = parseRaftTimestampEpochMillisOrNull(value, offset) ?: return null
-    val todayEpochDay = (nowEpochMillis + offset * 60_000L).floorDiv(86_400_000L)
-    return formatRaftTimestampEpochMillis(epochMillis, offset, todayEpochDay, RaftTimeFormat24Hour)
+    val todayEpochDay = floorDiv(nowEpochMillis + offset.toLong() * MillisPerMinute, MillisPerDay)
+    return formatRaftTimestampEpochMillis(epochMillis, offset, todayEpochDay, timeFormat)
 }
+
+internal fun raftDeviceZoneAbsoluteLabel(
+    value: String?,
+    timeContext: RaftTimeContext?,
+    nowEpochMillis: Long = timeContext?.nowEpochMillis ?: defaultNowMillis(),
+    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+): String? =
+    raftDeviceZoneAbsoluteLabel(
+        value = value,
+        nowEpochMillis = nowEpochMillis,
+        foundationOwner = foundationOwner,
+        timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour,
+    )
 
 /**
  * Shared interactive timestamp used by product surfaces that lead with relative time.
@@ -323,6 +346,63 @@ internal fun currentRaftDateTimeContext(timeContext: RaftTimeContext?): RaftTime
     } else {
         liveDate.copy(timeFormat = timeContext.timeFormat)
     }
+}
+
+/**
+ * Fallback date/clock [RaftTimeContext] in the current device zone when no CompositionLocal time
+ * provider is mounted (e.g., isolated Compose UI tests outside `BasePager`).
+ */
+internal fun raftFallbackDateTimeContext(
+    timeFormat: String = RaftTimeFormat24Hour,
+    nowEpochMillis: Long = defaultNowMillis(),
+    foundationOwner: RaftDatetimeFoundationOwner = ProcessRaftDatetimeFoundationOwner,
+): RaftTimeContext {
+    val offset = foundationOwner.localOffsetMinutesAt(nowEpochMillis, 0)
+    val todayEpochDay = floorDiv(nowEpochMillis + offset.toLong() * MillisPerMinute, MillisPerDay)
+    return RaftTimeContext(
+        localOffsetMinutes = offset,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = null,
+        timeFormat = normalizeRaftTimeFormatPreference(timeFormat),
+    )
+}
+
+/**
+ * Non-null low-frequency date/clock [RaftTimeContext]: prefers the enclosing DI provider's
+ * `dateContext` (never recomposing on 1-minute ticks), falling back to the device zone with the
+ * reactive 12h/24h preference when composed outside `BasePager`.
+ */
+@Composable
+internal fun currentRaftEffectiveDateTimeContext(timeContext: RaftTimeContext? = null): RaftTimeContext {
+    val resolved = currentRaftDateTimeContext(timeContext)
+    val runtimeFormat = RaftTimeFormatRuntime.observe(fallback = timeContext?.timeFormat ?: RaftTimeFormat24Hour)
+    if (resolved != null) return resolved
+    val resolvedFormat = timeContext?.timeFormat ?: runtimeFormat
+    return remember(resolvedFormat) { raftFallbackDateTimeContext(timeFormat = resolvedFormat) }
+}
+
+/** Local clock formatter (`HH:mm` or `hh:mm AM/PM`) honoring the enclosing [RaftTimeContext]. */
+@Composable
+internal fun rememberRaftLocalClockFormatter(timeContext: RaftTimeContext? = null): (Long) -> String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    return remember(context) { { epochMillis -> context.formatClock(epochMillis) } }
+}
+
+/** ISO timestamp -> local clock formatter (`HH:mm` or `hh:mm AM/PM`), falling back to raw text if unreadable. */
+@Composable
+internal fun rememberRaftIsoClockFormatter(timeContext: RaftTimeContext? = null): (String) -> String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    return remember(context) { { iso -> context.formatClock(iso) ?: iso } }
+}
+
+/**
+ * Localized medium date + short clock (e.g., `"Nov 17, 2026, 09:14"` or `"Nov 17, 2026, 09:14 AM"`)
+ * in the viewer's [RaftTimeContext]; falls back to the raw string when unparseable.
+ */
+@Composable
+internal fun raftLocalizedMediumDateTime(iso: String, timeContext: RaftTimeContext? = null): String {
+    val context = currentRaftEffectiveDateTimeContext(timeContext)
+    return taskHeadDateTime(iso, context)?.localized(context.timeFormat) ?: iso
 }
 
 /**

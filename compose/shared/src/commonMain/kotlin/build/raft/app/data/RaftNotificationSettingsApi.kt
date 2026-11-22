@@ -1,7 +1,14 @@
 package build.raft.app.data
 
+import build.raft.app.model.MillisPerDay
+import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
+import build.raft.app.model.floorDiv
+import build.raft.app.model.formatRaftClock
+import build.raft.app.model.formatRaftTimestampEpochMillis
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -944,25 +951,30 @@ fun raftPausedUntilAccepted(pausedUntil: String, nowEpochMillis: Long): Boolean 
     return until > nowEpochMillis && until - nowEpochMillis <= RAFT_NOTIFICATION_PAUSE_MAX_MILLIS
 }
 
-/** `HH:mm` of a minute of the day, for the quiet hours rows. */
-fun raftMinuteOfDayLabel(minute: Int): String {
+/** Formatted clock (`HH:mm` or `hh:mm AM/PM`) of a minute of the day, for the quiet hours rows. */
+fun raftMinuteOfDayLabel(minute: Int, timeFormat: String = RaftTimeFormat24Hour): String {
     val clean = ((minute % 1440) + 1440) % 1440
     val hours = clean / 60
     val minutes = clean % 60
-    return "${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}"
+    return formatRaftClock(hours, minutes, null, timeFormat)
 }
 
 fun raftNowEpochMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
-/** "HH:mm" when [epochMillis] is today in the device zone, else "MM-dd HH:mm". */
-fun raftPausedUntilLabel(epochMillis: Long, nowEpochMillis: Long = raftNowEpochMillis()): String {
-    val zone = runCatching { TimeZone.currentSystemDefault() }.getOrDefault(TimeZone.UTC)
-    val until = Instant.fromEpochMilliseconds(epochMillis).toLocalDateTime(zone)
-    val today = Instant.fromEpochMilliseconds(nowEpochMillis).toLocalDateTime(zone).date
-    val time = raftMinuteOfDayLabel(until.hour * 60 + until.minute)
-    if (until.date == today) return time
-    // LocalDate.toString() is ISO yyyy-MM-dd.
-    return "${until.date.toString().drop(5)} $time"
+/** Local clock when [epochMillis] is today in [timeContext] (or device zone), else date + clock. */
+fun raftPausedUntilLabel(
+    epochMillis: Long,
+    nowEpochMillis: Long = raftNowEpochMillis(),
+    timeContext: RaftTimeContext? = null,
+): String {
+    val offset =
+        timeContext?.localOffsetMinutes
+            ?: ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(nowEpochMillis, 0)
+    val today =
+        timeContext?.resolvedTodayEpochDay()
+            ?: floorDiv(nowEpochMillis + offset.toLong() * MillisPerMinute, MillisPerDay)
+    val timeFormat = timeContext?.timeFormat ?: RaftTimeFormat24Hour
+    return formatRaftTimestampEpochMillis(epochMillis, offset, today, timeFormat)
 }
 
 
