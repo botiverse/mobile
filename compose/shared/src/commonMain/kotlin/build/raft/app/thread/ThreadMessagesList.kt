@@ -113,7 +113,6 @@ private data class ThreadMessagesListData(
     val highlightedMentions: Set<String>,
     val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
     val pendingActionCardIds: Set<String>,
-    val pendingTaskConvertMessageIds: Set<String>,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
@@ -193,7 +192,6 @@ internal fun ThreadMessagesList(
     memberModelLabelResolver: RaftMemberModelLabelResolver = EmptyRaftMemberModelLabelResolver,
     inlineReplyParticipantsById: Map<String, RaftThreadMemberItem> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     writeActionsEnabled: Boolean = true,
     currentServerSlug: String? = null,
@@ -261,7 +259,6 @@ internal fun ThreadMessagesList(
                 highlightedMentions = highlightedMentions,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 attachmentOpenStates = attachmentOpenStates,
                 writeActionsEnabled = writeActionsEnabled,
                 currentServerSlug = currentServerSlug,
@@ -355,7 +352,6 @@ private fun ThreadMessagesListContent(
     val memberModelLabelResolver = callbacks.memberModelLabelResolver
     val inlineReplyParticipantsById = data.inlineReplyParticipantsById
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
     val writeActionsEnabled = data.writeActionsEnabled
     val currentServerSlug = data.currentServerSlug
@@ -4995,8 +4991,6 @@ private fun ThreadMessagesListContent(
                         translationState = translationState,
                         translationAvailable = translationStore != null
                     ),
-                taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                 originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
             ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
         // New Message Menu toggle: a text selection shows this same Compact menu in place
@@ -5053,8 +5047,6 @@ private fun ThreadMessagesListContent(
                                 translationState = translationState,
                                 translationAvailable = translationStore != null
                             ),
-                        taskConvertPending = message.id in pendingTaskConvertMessageIds,
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
                     )
                 val closeActionMenu: () -> Unit = {
@@ -5347,13 +5339,13 @@ private fun ThreadMessagesListContent(
                 if (linkedTask == null || threadTaskDetailPanelUseLegacy(linkedTask)) {
                     RaftTaskStatusMenuOverlay(
                         anchor = resolvedTaskStatusAnchor,
-                        // A task on a message is never a legacy orphan: with task v2 on it opens as
-                        // its own conversation, so In Review is retired (web `opensAsTaskConversation`).
+                        // A task on a message is never a legacy orphan: it opens as its own
+                        // conversation, so In Review is retired (web `opensAsTaskConversation`).
                         items =
                             threadTaskStatusMenuItems(
                                 taskStatusChoices(
                                     selectedStatus.status,
-                                    v2Task = linkedTasksProjection.taskV2Enabled
+                                    v2Task = true
                                 )
                             ),
                         selectedId = selectedStatus.key,
@@ -5374,7 +5366,6 @@ private fun ThreadMessagesListContent(
                 } else {
                     ThreadTaskDetailDialog(
                         task = linkedTask,
-                        taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                         assigneeOptions = taskAssigneeOptions,
                         agentStatusResolver = agentStatusResolver,
                         onDismiss = { menuState.taskStatusMenuMessageId = null },

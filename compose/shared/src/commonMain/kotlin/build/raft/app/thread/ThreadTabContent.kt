@@ -92,7 +92,6 @@ internal fun ThreadTabContent(
     val contentExtrasVisible = data.contentExtrasVisible
     val highlightedMentions = data.highlightedMentions
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val attachmentOpenStates = data.attachmentOpenStates
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val jumpInputs = data.jumpInputs
@@ -205,7 +204,6 @@ internal fun ThreadTabContent(
                     memberModelLabelResolver = memberModelLabelResolver,
                     inlineReplyParticipantsById = inlineReplyParticipantsById,
                     pendingActionCardIds = pendingActionCardIds,
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                     attachmentOpenStates = attachmentOpenStates,
                     writeActionsEnabled = writeActionsEnabled,
                     currentServerSlug = currentServerSlug,
@@ -341,7 +339,6 @@ internal fun ThreadTabContent(
                     taskWritesEnabled = payload.channelTaskWritesShown(),
                     draftProjection = draftProjection,
                     timeContext = payload.toRaftTimeCapabilities().staticContext(),
-                    taskV2Enabled = linkedTasksProjection.taskV2Enabled,
                     onOpenTask = { task -> onOpenTaskSummary(task, "tasks_panel") },
                     onIntent = onTasksIntent
                 )

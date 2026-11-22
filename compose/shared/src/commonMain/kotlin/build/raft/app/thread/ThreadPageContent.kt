@@ -149,7 +149,6 @@ internal data class ThreadPageContentData(
     val contentExtrasVisible: Boolean,
     val highlightedMentions: Set<String>,
     val pendingActionCardIds: Set<String>,
-    val pendingTaskConvertMessageIds: Set<String>,
     val markdownReferencePendingActionId: String?,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val composerSendKeyEnabled: Boolean,
@@ -291,7 +290,6 @@ fun ThreadPageContent(
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
     pendingActionCardIds: Set<String> = emptySet(),
-    pendingTaskConvertMessageIds: Set<String> = emptySet(),
     markdownReferencePendingActionId: String? = null,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     composerSendKeyEnabled: Boolean = false,
@@ -391,7 +389,6 @@ fun ThreadPageContent(
                 contentExtrasVisible = contentExtrasVisible,
                 highlightedMentions = highlightedMentions,
                 pendingActionCardIds = pendingActionCardIds,
-                pendingTaskConvertMessageIds = pendingTaskConvertMessageIds,
                 markdownReferencePendingActionId = markdownReferencePendingActionId,
                 attachmentOpenStates = attachmentOpenStates,
                 composerSendKeyEnabled = composerSendKeyEnabled,
@@ -566,7 +563,6 @@ private fun ThreadPageContentContent(
     val onComposerLayoutProbe = callbacks.onComposerLayoutProbe
     val onComposerPixelProbe = callbacks.onComposerPixelProbe
     val pendingActionCardIds = data.pendingActionCardIds
-    val pendingTaskConvertMessageIds = data.pendingTaskConvertMessageIds
     val markdownReferencePendingActionId = data.markdownReferencePendingActionId
     val attachmentOpenStates = data.attachmentOpenStates
     val composerSendKeyEnabled = data.composerSendKeyEnabled

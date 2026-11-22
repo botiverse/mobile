@@ -13,7 +13,6 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isActionCardExpiredRefusal
 import build.raft.app.data.markedExpired
 import build.raft.app.data.PermissionBlocker
-import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
@@ -355,7 +354,6 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownTaskNumber(itemId: String
                                     currentTaskChannelId = resolveChannelId,
                                     tasksDataSource = tasksDataSource,
                                     tasksDataStore = tasksDataStore,
-                                    taskV2Enabled = taskV2Enabled,
                                     conversationIdentityProvider = conversationIdentityProvider,
                                     referenceResolver = dataSource.referenceResolver,
                                     actionId = markdownActionId
@@ -818,46 +816,6 @@ internal fun ThreadRouteEventHandler.handleCreateTaskFromMessage(itemId: String)
                             text = message.body,
                         )
                     )
-}
-
-internal fun ThreadRouteEventHandler.handleConvertMessageToTask(itemId: String): Unit = run ThreadPageContent@{
-                    if (itemId in pendingTaskConvertMessageIds) {
-                        return@ThreadPageContent
-                    }
-                    val message = renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)
-                    if (message == null || !renderedTimelineSlice.canConvertMessagesToTasks || !message.canConvertToTask()) {
-                        bridge.toast(unableToConvertMessageLabel)
-                        return@ThreadPageContent
-                    }
-                    pendingTaskConvertMessageIds = pendingTaskConvertMessageIds + itemId
-                    coroutineScope.launch {
-                        try {
-                            when (
-                                val result =
-                                    convertMessageToCanonicalTask(
-                                        serverId = currentServerId?.let(::ServerId),
-                                        messageId = MessageId(itemId),
-                                        tasksDataSource = tasksDataSource,
-                                        tasksDataStore = tasksDataStore,
-                                        diagnosticsLogger = { bridge.log(it) }
-                                    )
-                            ) {
-                                is DataResult.Content -> {
-                                    bridge.toast(taskCreatedLabel)
-                                }
-                                is DataResult.Empty,
-                                is DataResult.Error -> {
-                                    bridge.errorToast(unableToConvertMessageLabel, result)
-                                }
-                                is DataResult.NoPermission -> {
-                                    if (routeAuthRequired(result)) return@launch
-                                    bridge.errorToast(unableToConvertMessageLabel, result.blocker)
-                                }
-                            }
-                        } finally {
-                            pendingTaskConvertMessageIds = pendingTaskConvertMessageIds - itemId
-                        }
-                    }
 }
 
 internal fun ThreadRouteEventHandler.handleSetTaskStatus(itemId: String, tab: String): Unit = run ThreadPageContent@{

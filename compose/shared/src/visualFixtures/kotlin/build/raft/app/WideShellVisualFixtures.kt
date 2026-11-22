@@ -469,7 +469,6 @@ private fun WideTasksTask() {
                 state = TasksUiState(loadState = ScreenLoadState.Content(TasksContent(summaryCounts = wideTasks.summaryCounts(), tasks = wideTasks))),
                 onIntent = {},
                 initialPresentationOverride = TasksPresentationState.Default.copy(selectedMode = TasksViewMode.List),
-                taskV2Enabled = true,
             )
         }
     }

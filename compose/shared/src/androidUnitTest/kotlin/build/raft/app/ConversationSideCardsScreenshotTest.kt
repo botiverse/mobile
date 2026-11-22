@@ -48,7 +48,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Task v2 (`task_v2_conversations_v0`) conversation page on a phone, light and dark: no tab row;
+ * Task v2 conversation page on a phone, light and dark: no tab row;
  * the header's Search · Tasks · Files · Settings; an open card covers the conversation under the
  * header (web ChannelSideCard `overlay`), both open show one under a Tasks / Files switch.
  * The production [ThreadPageHeader] and [ConversationSideCardsCover] over a fixture

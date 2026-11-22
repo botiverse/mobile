@@ -81,16 +81,13 @@ class TaskBacklogStatusTest {
     @Test
     fun theBoardAndListShowBacklogFirstAndCollapsed() {
         val content = content(task("b", TaskStatus.Backlog), task("t", TaskStatus.Todo))
-        val v2 = content.boardColumns(renderLimit = 0, taskV2Enabled = true)
+        val v2 = content.boardColumns(renderLimit = 0)
         assertEquals(
             listOf(TaskStatus.Backlog, TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Done, TaskStatus.Closed),
             v2.map { it.status },
         )
         assertEquals(listOf("b"), v2.first().tasks.map { it.id.value })
         assertTrue(TaskStatus.Backlog in TasksPresentationState.Default.collapsedStatuses)
-        // Without task v2 there is no empty Backlog column, but a task in it still shows.
-        assertTrue(content(task("t", TaskStatus.Todo)).boardColumns(0, taskV2Enabled = false).none { it.status == TaskStatus.Backlog })
-        assertEquals(listOf("b"), content.boardColumns(0, taskV2Enabled = false).single { it.status == TaskStatus.Backlog }.tasks.map { it.id.value })
     }
 
     @Test
@@ -105,8 +102,8 @@ class TaskBacklogStatusTest {
 
     @Test
     fun anUnknownStatusTaskGetsItsOwnLastColumnOnlyWhileItHasOne() {
-        assertTrue(content(task("t", TaskStatus.Todo)).boardColumns(0, taskV2Enabled = true).none { it.status == TaskStatus.Unknown })
-        val columns = content(task("u", TaskStatus.Unknown), task("t", TaskStatus.Todo)).boardColumns(0, taskV2Enabled = true)
+        assertTrue(content(task("t", TaskStatus.Todo)).boardColumns(0).none { it.status == TaskStatus.Unknown })
+        val columns = content(task("u", TaskStatus.Unknown), task("t", TaskStatus.Todo)).boardColumns(0)
         assertEquals(TaskStatus.Unknown, columns.last().status)
         assertEquals(listOf("u"), columns.last().tasks.map { it.id.value })
     }
@@ -119,7 +116,7 @@ class TaskBacklogStatusTest {
                 task("t", TaskStatus.Todo),
                 task("p", TaskStatus.InProgress),
                 task("d", TaskStatus.Done),
-            ).boardColumns(0, taskV2Enabled = true).filter { it.totalCount > 0 }
+            ).boardColumns(0).filter { it.totalCount > 0 }
         assertEquals(
             listOf(TaskStatus.Todo, TaskStatus.InProgress, TaskStatus.Backlog, TaskStatus.Done),
             columns.inConversationSectionOrder().map { it.status },

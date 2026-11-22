@@ -578,12 +578,10 @@ internal data class ThreadComposerSurface(
  * Task v2 (web ChatPanel `showTaskButton={supportsChannelTasks && allowTasks}` since slock #13996,
  * 2026-11-11): a channel's or a DM's composer keeps "As task"; the message stays an ordinary
  * message and the server creates the task from it ("created from this message"). Every other
- * surface (a reply thread, a task's conversation) has no "As task" under task v2. Off (or
- * unresolved), every surface keeps its toggle as before.
+ * surface (a reply thread, a task's conversation) has no "As task" under task v2.
  */
-internal fun ThreadComposerSurface.withTaskV2(taskV2Enabled: Boolean): ThreadComposerSurface =
+internal fun ThreadComposerSurface.withTaskV2(): ThreadComposerSurface =
     when {
-        !taskV2Enabled -> this
         kind == RaftThreadSurfaceKind.Channel || kind == RaftThreadSurfaceKind.DirectMessage -> this
         else -> copy(showTaskButton = false, sendsAsTask = false)
     }

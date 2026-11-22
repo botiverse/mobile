@@ -137,7 +137,6 @@ class ThreadMarkThreadUnreadMenuTest {
                 replyMetadata = metadata,
                 slice = slice,
                 writeActionsEnabled = true,
-                taskV2Enabled = true,
             ).markThreadUnreadChannelId
         assertEquals("thread-ch-1", markedThread(channel, followed))
         assertEquals("thread-ch-1", markedThread(slice(RaftThreadSurfaceKind.DirectMessage), followed))
@@ -178,7 +177,6 @@ class ThreadMarkThreadUnreadMenuTest {
                 replyMetadata = metadata,
                 slice = slice(RaftThreadSurfaceKind.Channel),
                 writeActionsEnabled = true,
-                taskV2Enabled = true,
             ).toThreadNewMessageMenuActionAvailability(message("parent-1"), metadata)
         val tools = availability.secondaryTools()
         assertTrue(ThreadNewMessageMenuTool.MarkThreadUnread in tools)
@@ -208,7 +206,6 @@ class ThreadMarkThreadUnreadMenuTest {
             replyMetadata = message.toThreadReplyMetadata(),
             slice = slice,
             writeActionsEnabled = true,
-            taskV2Enabled = true,
             originReplyMetadata = origin
         )
 

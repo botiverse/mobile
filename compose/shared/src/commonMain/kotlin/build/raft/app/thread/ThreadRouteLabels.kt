@@ -67,8 +67,6 @@ internal data class ThreadRouteLabels(
     val unableToArchiveChannelLabel: String,
     val channelDeletedLabel: String,
     val unableToDeleteChannelLabel: String,
-    val unableToConvertMessageLabel: String,
-    val taskCreatedLabel: String,
     val unableToCreateTaskLabel: String,
     val unableToSendTaskMessageLabel: String,
     val unsupportedTaskStatusLabel: String,
@@ -228,8 +226,6 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
     val unableToArchiveChannelLabel = stringResource(Res.string.thread_error_archive_channel)
     val channelDeletedLabel = stringResource(Res.string.thread_feedback_channel_deleted)
     val unableToDeleteChannelLabel = stringResource(Res.string.thread_error_delete_channel)
-    val unableToConvertMessageLabel = stringResource(Res.string.thread_error_convert_message)
-    val taskCreatedLabel = stringResource(Res.string.thread_feedback_task_created)
     val unableToCreateTaskLabel = stringResource(Res.string.tasks_create_failed)
     val unableToSendTaskMessageLabel = stringResource(Res.string.task_conversation_send_failed)
     val unsupportedTaskStatusLabel = stringResource(Res.string.thread_error_task_status_unsupported)
@@ -308,8 +304,6 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         unableToArchiveChannelLabel = unableToArchiveChannelLabel,
         channelDeletedLabel = channelDeletedLabel,
         unableToDeleteChannelLabel = unableToDeleteChannelLabel,
-        unableToConvertMessageLabel = unableToConvertMessageLabel,
-        taskCreatedLabel = taskCreatedLabel,
         unableToCreateTaskLabel = unableToCreateTaskLabel,
         unableToSendTaskMessageLabel = unableToSendTaskMessageLabel,
         unsupportedTaskStatusLabel = unsupportedTaskStatusLabel,

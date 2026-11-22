@@ -22,38 +22,34 @@ internal data class ThreadLinkedTasksProjection(
     val sourceTaskLists: Map<String, List<TaskSummary>> = emptyMap(),
     /** The reader's user id: an assignee who is the reader reads "You" in those lists. */
     val viewerUserId: String? = null,
-    /** `task_v2_conversations_v0` for the thread's server (the message menu reads it). */
-    val taskV2Enabled: Boolean = false,
 )
 
 /**
  * Task v2 (slock web ChatPanel `tasksByMessageId` / `taskListsByMessageId`, ThreadPanel
  * `parentSourceTasks`): the tasks that hang under each message. A task hangs under its source
- * message (`sourceMessageId`) when task v2 is on for the server or the task was made the v2 way,
- * else under its pre-v2 host message; a channel-only task hangs under none. With the flag off only
- * a message with a v2 task under it keeps its list, so a pre-v2 task keeps its single chip.
+ * message (`sourceMessageId`), or under its pre-v2 host message when the DTO reports no source; a
+ * channel-only task hangs under none.
  */
-internal fun List<TaskSummary>.threadSourceTaskLists(taskV2Enabled: Boolean): Map<String, List<TaskSummary>> {
+internal fun List<TaskSummary>.threadSourceTaskLists(): Map<String, List<TaskSummary>> {
     val byMessage = LinkedHashMap<String, MutableList<TaskSummary>>()
     forEach { task ->
         // Every task, a legacy one included, as web: a message with a legacy and a v2 task under it
         // lists both (its single chip gives way to the list, so the legacy one must be in it).
-        val anchor = task.threadSourceTaskAnchor(taskV2Enabled) ?: return@forEach
+        val anchor = task.threadSourceTaskAnchor() ?: return@forEach
         byMessage.getOrPut(anchor) { mutableListOf() }.add(task)
     }
     return byMessage
-        .filterValues { list -> taskV2Enabled || list.any { it.conversationAnchored } }
         .mapValues { (_, list) -> list.distinctBy { it.id }.sortedBy { it.taskNumber ?: Int.MAX_VALUE } }
 }
 
 /**
- * Web `(taskV2 || isTaskV2Task(t)) && t.sourceMessageId !== undefined ? t.sourceMessageId : t.messageId`:
- * the source message when the DTO reports one (an explicit null = no message), else the pre-v2 host.
- * A pre-v2 task's `messageId` falls back to its own id on the wire, which names no message.
+ * Web `(taskV2 || isTaskV2Task(t)) && t.sourceMessageId !== undefined ? t.sourceMessageId : t.messageId`
+ * with the flag on: the source message when the DTO reports one (an explicit null = no message), else
+ * the pre-v2 host. A pre-v2 task's `messageId` falls back to its own id on the wire, which names no message.
  */
-private fun TaskSummary.threadSourceTaskAnchor(taskV2Enabled: Boolean): String? {
+private fun TaskSummary.threadSourceTaskAnchor(): String? {
     val anchor =
-        if ((taskV2Enabled || conversationAnchored) && sourceMessageReported) {
+        if (sourceMessageReported) {
             sourceMessageId?.value
         } else {
             messageId?.value

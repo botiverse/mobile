@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
  */
 class ThreadMessageSourceTasksTest {
     @Test
-    fun tasksHangUnderTheirSourceMessageAsWebDoesWithTheFlagOnAndOff() {
+    fun tasksHangUnderTheirSourceMessageAsWebDoes() {
         val tasks =
             listOf(
                 // Two v2 tasks from one message, out of number order.
@@ -46,22 +46,16 @@ class ThreadMessageSourceTasksTest {
                 parsed(taskJson(id = "t-3", number = 3, source = "msg-a", host = "msg-a", anchored = false, conversation = null)),
                 // A legacy task (no host, no conversation) the server still names a source for.
                 parsed(taskJson(id = "t-2", number = 2, source = "msg-c", anchored = false, conversation = null, legacy = true)),
-                // An older DTO without the field: falls back to its host message even with the flag on.
+                // An older DTO without the field: falls back to its host message.
                 parsed(taskJson(id = "t-7", number = 7, source = null, host = "msg-d", anchored = false, conversation = null, reportSource = false)),
             )
-        // (flag, expected lists)
-        listOf(
-            true to mapOf("msg-a" to listOf(3, 11, 12), "msg-b" to listOf(5), "msg-c" to listOf(2), "msg-d" to listOf(7)),
-            // Flag off: only a message with a v2 task under it keeps its list (the pre-v2 task beside
-            // them included); a message with only a pre-v2 task keeps its chip.
-            false to mapOf("msg-a" to listOf(3, 11, 12)),
-        ).forEach { (flag, expected) ->
-            val lists = tasks.threadSourceTaskLists(taskV2Enabled = flag)
-            assertEquals(expected, lists.mapValues { (_, list) -> list.map { it.taskNumber } }, "taskV2=$flag")
-        }
+        assertEquals(
+            mapOf("msg-a" to listOf(3, 11, 12), "msg-b" to listOf(5), "msg-c" to listOf(2), "msg-d" to listOf(7)),
+            tasks.threadSourceTaskLists().mapValues { (_, list) -> list.map { it.taskNumber } },
+        )
 
         // The row lookup finds a listed task by id, and a message lists what the map holds.
-        val projection = emptyThreadLinkedTasksProjection().copy(sourceTaskLists = tasks.threadSourceTaskLists(true))
+        val projection = emptyThreadLinkedTasksProjection().copy(sourceTaskLists = tasks.threadSourceTaskLists())
         assertEquals("t-5", projection.sourceTaskById("t-5")?.id?.value)
         assertNull(projection.sourceTaskById("t-9"))
         assertEquals(listOf("t-3", "t-11", "t-12"), projection.sourceTasksFor(message("msg-a")).map { it.taskId })
@@ -106,7 +100,7 @@ class ThreadMessageSourceTasksTest {
             DataResult.Content(TaskSnapshot(tasks = listOf(parsed(taskJson(id = "t-11", number = 11, source = "msg-a"))), summaryCounts = emptyMap()))
         }
         fun row() =
-            store.projection("server-1", scope).tasks.threadSourceTaskLists(taskV2Enabled = true)["msg-a"]
+            store.projection("server-1", scope).tasks.threadSourceTaskLists()["msg-a"]
                 ?.single()?.toThreadMessageSourceTaskItem(viewerUserId = "user-1")
         assertEquals(TaskStatus.InProgress to null, row()?.let { it.status to it.assigneeName })
 

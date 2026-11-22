@@ -10,12 +10,11 @@ import kotlin.test.assertTrue
 /** Task v2's Tasks / Files cards (ConversationSideCards.kt; web ChatPanel / channelSideCardStore). */
 class ConversationSideCardsTest {
     @Test
-    fun flagOffKeepsTheTabs() {
-        assertFalse(conversationSideCardsEnabled(taskV2Enabled = false, showModeTabs = true, assistantPanelEmbed = false))
-        assertTrue(conversationSideCardsEnabled(taskV2Enabled = true, showModeTabs = true, assistantPanelEmbed = false))
+    fun cardsReplaceTheTabRowWhereThePageHasOne() {
+        assertTrue(conversationSideCardsEnabled(showModeTabs = true, assistantPanelEmbed = false))
         // No tab row today (a reply thread, a task conversation, the assistant's panel): no cards either.
-        assertFalse(conversationSideCardsEnabled(taskV2Enabled = true, showModeTabs = false, assistantPanelEmbed = false))
-        assertFalse(conversationSideCardsEnabled(taskV2Enabled = true, showModeTabs = true, assistantPanelEmbed = true))
+        assertFalse(conversationSideCardsEnabled(showModeTabs = false, assistantPanelEmbed = false))
+        assertFalse(conversationSideCardsEnabled(showModeTabs = true, assistantPanelEmbed = true))
     }
 
     @Test

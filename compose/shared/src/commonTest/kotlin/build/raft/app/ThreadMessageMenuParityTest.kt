@@ -44,16 +44,14 @@ class ThreadMessageMenuParityTest {
     fun taskV2OffersCreateTaskFromMessageInsteadOfConvertAndTheTaskStatusItems() {
         // Web MessageItem menu (slock staging 3e8ad99e): with task v2 a message's tasks are its list
         // (no single linked task), so no Mark as Done / Reopen, and "Create Task from Message" is
-        // offered even on a message that already has a task; flag off keeps Convert to Task.
-        // (message, task v2) -> (task item shown, it is "Create from Message", task status shown)
+        // offered even on a message that already has a task.
+        // (message) -> (task item shown)
         val withTask = message(taskId = "task-1", taskNumber = 11, taskStatus = "in_review")
-        data class Case(val name: String, val message: RaftThreadMessageItem, val taskV2: Boolean, val item: Boolean, val create: Boolean, val status: Boolean)
+        data class Case(val name: String, val message: RaftThreadMessageItem, val item: Boolean)
         listOf(
-            Case("plain, off", message(), false, item = true, create = false, status = false),
-            Case("plain, on", message(), true, item = true, create = true, status = false),
-            Case("has a task, off", withTask, false, item = false, create = false, status = true),
-            Case("has a task, on", withTask, true, item = true, create = true, status = false),
-            Case("system, on", message(messageType = "System"), true, item = false, create = true, status = false),
+            Case("plain", message(), item = true),
+            Case("has a task", withTask, item = true),
+            Case("system", message(messageType = "System"), item = false),
         ).forEach { case ->
             val capabilities =
                 threadMessageMenuCapabilities(
@@ -61,14 +59,13 @@ class ThreadMessageMenuParityTest {
                     replyMetadata = case.message.toThreadReplyMetadata(),
                     slice = slice(),
                     writeActionsEnabled = true,
-                    taskV2Enabled = case.taskV2,
                 )
             assertEquals(case.item, capabilities.convertToTask, case.name)
-            assertEquals(case.create, capabilities.createTaskFromMessage, case.name)
-            assertEquals(case.status, capabilities.taskStatus, case.name)
+            assertTrue(capabilities.createTaskFromMessage, case.name)
+            assertFalse(capabilities.taskStatus, case.name)
             val availability = capabilities.toThreadNewMessageMenuActionAvailability(case.message, case.message.toThreadReplyMetadata())
             assertEquals(
-                if (case.create) Res.string.thread_action_create_task_from_message else Res.string.thread_action_convert_to_task,
+                Res.string.thread_action_create_task_from_message,
                 ThreadNewMessageMenuTool.ConvertToTask.compactLabelResource(availability),
                 case.name,
             )
@@ -206,13 +203,9 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun externalSendersCannotBeConvertedOrHaveTheirTaskToggled() {
+    fun externalSendersCannotBeConverted() {
         val external = ExternalMessageAuthor(displayName = "Slack user", provider = "slack", actorKind = "user")
         assertFalse(capabilities(message(externalAuthor = external)).convertToTask)
-        assertFalse(
-            capabilities(message(externalAuthor = external, taskId = "task-1", taskNumber = 1, taskStatus = "todo")).taskStatus
-        )
-        assertTrue(capabilities(message(taskId = "task-1", taskNumber = 1, taskStatus = "todo")).taskStatus)
     }
 
     @Test
@@ -387,8 +380,9 @@ class ThreadMessageMenuParityTest {
 
         val task = message(taskId = "task-1", taskNumber = 1, taskStatus = "done", isSaved = true)
         val taskAvailability = capabilities(task).toThreadNewMessageMenuActionAvailability(task, task.toThreadReplyMetadata())
-        assertTrue(ThreadNewMessageMenuTool.TaskStatus in taskAvailability.secondaryTools())
-        assertFalse(ThreadNewMessageMenuTool.ConvertToTask in taskAvailability.secondaryTools())
+        // Task v2: a message with a task still offers Create Task from Message, and no Mark as Done / Reopen.
+        assertFalse(ThreadNewMessageMenuTool.TaskStatus in taskAvailability.secondaryTools())
+        assertTrue(ThreadNewMessageMenuTool.ConvertToTask in taskAvailability.secondaryTools())
         assertTrue(taskAvailability.taskDone)
         assertTrue(taskAvailability.saved)
         assertEquals(RaftLucideIconName.BookmarkMinus, ThreadNewMessageMenuTool.Save.compactIcon(taskAvailability))

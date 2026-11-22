@@ -499,13 +499,6 @@ internal fun threadMessageMenuCapabilities(
     slice: ThreadTimelineSlice,
     writeActionsEnabled: Boolean,
     translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
-    taskConvertPending: Boolean = false,
-    /**
-     * `task_v2_conversations_v0` (web MessageItem menu): a message's tasks are its list, never a
-     * single linked task, so there is no Mark as Done / Reopen here, and "Create Task from Message"
-     * replaces "Convert to Task" — offered on a message that already has tasks too.
-     */
-    taskV2Enabled: Boolean = false,
     /** The open reply thread's origin reply facts (its thread channel, followed), for Mark Thread as Unread. */
     originReplyMetadata: ThreadReplyMetadata? = null
 ): ThreadMessageMenuCapabilities {
@@ -544,21 +537,18 @@ internal fun threadMessageMenuCapabilities(
                 !localSend &&
                 threadFollowSurface &&
                 shouldShowThreadFollowAction(message, replyMetadata),
-        taskStatus =
-            !taskV2Enabled &&
-                slice.showTaskStatusActions &&
-                !localSend &&
-                !external &&
-                !message.taskId.isNullOrBlank(),
+        // Task v2 (web MessageItem menu): a message's tasks are its list, never a single linked task,
+        // so there is no Mark as Done / Reopen here, and "Create Task from Message" replaces "Convert
+        // to Task" — offered on a message that already has tasks too.
+        taskStatus = false,
         convertToTask =
             slice.canConvertMessagesToTasks &&
-                !taskConvertPending &&
                 !external &&
                 !cutBody &&
-                if (taskV2Enabled) message.canCreateTaskFromMessage() else message.canConvertToTask(),
+                message.canCreateTaskFromMessage(),
         cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
         deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend(),
-        createTaskFromMessage = taskV2Enabled,
+        createTaskFromMessage = true,
         markThreadUnreadChannelId =
             if (localSend) null else threadMessageMarkThreadUnreadChannelId(slice, replyMetadata, originReplyMetadata),
         markConversationUnread = if (localSend) null else threadListMarkConversationUnreadKind(slice),

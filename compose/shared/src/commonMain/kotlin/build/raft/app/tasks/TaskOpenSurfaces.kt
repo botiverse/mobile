@@ -86,8 +86,8 @@ import build.raft.designsystem.theme.RaftTheme
 
 /**
  * Where opening a task lands when it is not a page of its own yet (slock web `useOpenTask`):
- * - [Pending]: a task that opens as its conversation but has none yet (a pre-v2 task with the
- *   flag on, or a v2 task created to have one). Web opens the task dialog empty — "opening does
+ * - [Pending]: a task that opens as its conversation but has none yet (a pre-v2 task, or a v2
+ *   task created to have one). Web opens the task dialog empty — "opening does
  *   not create" (`TaskConversationDialog`) — and the first send creates the conversation
  *   (`threadStore.ensureTaskModalThreadChannel`: POST /tasks/:id/conversation, then the message).
  * - [Legacy]: a legacy orphan (`isLegacy`), shown read-only (web `LegacyTaskPanel`).
@@ -100,9 +100,9 @@ internal sealed interface TaskOpenSurface {
     data class Legacy(override val task: TaskSummary) : TaskOpenSurface
 }
 
-/** The surface [task] opens on, or null when it opens a page ([TaskOpenTarget] Conversation / ResolveConversation / HostThread). */
-internal fun TaskSummary.taskOpenSurface(taskV2Enabled: Boolean): TaskOpenSurface? =
-    when (taskOpenTarget(taskV2Enabled)) {
+/** The surface [task] opens on, or null when it opens a page ([TaskOpenTarget] Conversation / ResolveConversation). */
+internal fun TaskSummary.taskOpenSurface(): TaskOpenSurface? =
+    when (taskOpenTarget()) {
         TaskOpenTarget.PendingConversation -> TaskOpenSurface.Pending(this)
         TaskOpenTarget.LegacyPanel -> TaskOpenSurface.Legacy(this)
         else -> null
@@ -357,12 +357,12 @@ internal class TaskOpenSurfaceFlow(
      * older revision than the one shown is ignored (several stores feed it); while the first send
      * hands off, the page it opens is already on its way.
      */
-    fun onTaskChanged(fresh: TaskSummary?, taskV2Enabled: Boolean): TaskSummary? {
+    fun onTaskChanged(fresh: TaskSummary?): TaskSummary? {
         val current = surface ?: return null
         if (fresh == null || fresh.id != current.task.id || fresh == current.task || handingOff) return null
         val shownRevision = current.task.revision
         if (fresh.revision != null && shownRevision != null && fresh.revision < shownRevision) return null
-        return when (val next = fresh.taskOpenSurface(taskV2Enabled)) {
+        return when (val next = fresh.taskOpenSurface()) {
             null -> {
                 if (sending) return null
                 surface = null
@@ -476,7 +476,6 @@ internal fun TaskOpenSurfaceHost(
     hostVisible: Boolean = true,
     /** The task's conversation appeared (someone wrote first, `task:updated`): the caller opens it. */
     onConversationArrived: (TaskSummary) -> Unit = {},
-    taskV2Enabled: Boolean = true,
     /** Whether the reader may write the task's channel (web canWriteTasksInChannel); unknown: yes. */
     canWriteTaskChannel: (ChannelId?) -> Boolean = { true },
 ) {
@@ -489,7 +488,7 @@ internal fun TaskOpenSurfaceHost(
             // The page follows the task channel's copy (an edit's optimistic value, its rollback, a
             // `task:updated`), and gives way to the conversation once it exists.
             LaunchedEffect(listed) {
-                flow.onTaskChanged(listed, taskV2Enabled)?.let(onConversationArrived)
+                flow.onTaskChanged(listed)?.let(onConversationArrived)
             }
             val onFailed by rememberUpdatedState(editing?.onFailed)
             val onFailedWithTrace by rememberUpdatedState(editing?.onFailedWithTrace)
@@ -513,7 +512,6 @@ internal fun TaskOpenSurfaceHost(
             val taskNumber = task.taskNumber
             val hydrationDataSource = editing?.tasksDataSource
             val currentEditing by rememberUpdatedState(editing)
-            val currentTaskV2Enabled by rememberUpdatedState(taskV2Enabled)
             val currentOnConversationArrived by rememberUpdatedState(onConversationArrived)
             var summaryDetailHydrationSettled by remember(task.id, resolvedServer, taskChannelId, taskNumber) {
                 mutableStateOf(false)
@@ -555,7 +553,7 @@ internal fun TaskOpenSurfaceHost(
                 if (detail is DataResult.Content && detail.data.task.id == task.id) {
                     val fullTask = detail.data.task
                     currentEditing?.tasksDataStore?.upsertTaskForCurrentOwner(activeServer, fullTask)
-                    flow.onTaskChanged(fullTask, currentTaskV2Enabled)?.let(currentOnConversationArrived)
+                    flow.onTaskChanged(fullTask)?.let(currentOnConversationArrived)
                 }
                 summaryDetailHydrationSettled = true
             }
@@ -1064,14 +1062,13 @@ internal fun TaskOpenSurfaceIncomingNavigationEffect(flow: TaskOpenSurfaceFlow, 
  * 1. Picks the freshest copy from [tasksDataStore] (channel scope, server scope, tapped row).
  * 2. If the row came from `GET /tasks/server?detail=summary` (`!conversationDetailsLoaded &&
  *    conversationChannelId == null`), hydrates the full row via `GET /tasks/channel/:channelId/number/:n`
- *    regardless of `taskV2Enabled` (per-task v2 tasks open as task conversations even when the flag is off).
+ *    (task v2 is always on: every non-legacy task opens as its task conversation).
  * 3. Acquires [gate] once and always releases it in a single `try / finally`, verifies `full.id == stored.id`,
  *    checks [isStillActive], resolves joint conversation IDs inline, and opens the resulting surface or page.
  */
 internal fun launchTasksTabTaskOpen(
     task: TaskSummary,
     serverId: String?,
-    taskV2Enabled: Boolean,
     tasksDataStore: SharedTasksDataStore,
     tasksDataSource: SharedTasksDataSource,
     gate: TaskOpenGate,
@@ -1112,7 +1109,7 @@ internal fun launchTasksTabTaskOpen(
             taskNumber != null
 
     if (!needsHydration) {
-        when (val surface = storedTask.taskOpenSurface(taskV2Enabled)) {
+        when (val surface = storedTask.taskOpenSurface()) {
             is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
                 openSurface(surface)
                 return
@@ -1127,7 +1124,7 @@ internal fun launchTasksTabTaskOpen(
         return
     }
 
-    if (!needsHydration && storedTask.taskOpenTarget(taskV2Enabled) != TaskOpenTarget.ResolveConversation) {
+    if (!needsHydration && storedTask.taskOpenTarget() != TaskOpenTarget.ResolveConversation) {
         try {
             openPage(storedTask, null)
         } finally {
@@ -1185,7 +1182,7 @@ internal fun launchTasksTabTaskOpen(
                 }
 
             if (!isStillActive()) return@launch
-            when (val surface = resolvedTask.taskOpenSurface(taskV2Enabled)) {
+            when (val surface = resolvedTask.taskOpenSurface()) {
                 is TaskOpenSurface.Pending, is TaskOpenSurface.Legacy -> {
                     openSurface(surface)
                     return@launch
@@ -1193,12 +1190,11 @@ internal fun launchTasksTabTaskOpen(
                 null -> Unit
             }
             val conversationId =
-                if (resolvedTask.taskOpenTarget(taskV2Enabled) == TaskOpenTarget.ResolveConversation) {
+                if (resolvedTask.taskOpenTarget() == TaskOpenTarget.ResolveConversation) {
                     resolveTaskOpenConversationChannelId(
                         task = resolvedTask,
                         serverId = activeServerId.orEmpty(),
                         tasksDataSource = tasksDataSource,
-                        taskV2Enabled = taskV2Enabled,
                         log = log,
                     )
                 } else {
@@ -1216,14 +1212,13 @@ internal fun launchTasksTabTaskOpen(
 internal fun launchArrivedTaskConversationOpen(
     arrived: TaskSummary,
     serverId: String?,
-    taskV2Enabled: Boolean,
     tasksDataSource: SharedTasksDataSource,
     scope: CoroutineScope,
     isStillActive: () -> Boolean,
     openPage: (task: TaskSummary, resolvedConversationChannelId: ChannelId?) -> Unit,
     log: (String) -> Unit,
 ) {
-    if (arrived.taskOpenTarget(taskV2Enabled) != TaskOpenTarget.ResolveConversation) {
+    if (arrived.taskOpenTarget() != TaskOpenTarget.ResolveConversation) {
         openPage(arrived, null)
         return
     }
@@ -1234,7 +1229,6 @@ internal fun launchArrivedTaskConversationOpen(
                 task = arrived,
                 serverId = activeServerId,
                 tasksDataSource = tasksDataSource,
-                taskV2Enabled = taskV2Enabled,
                 log = log,
             )
         if (isStillActive() && conversationId != null) {
