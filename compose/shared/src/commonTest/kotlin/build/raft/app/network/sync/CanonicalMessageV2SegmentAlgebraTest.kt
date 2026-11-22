@@ -1,8 +1,13 @@
 package build.raft.app.network.sync
 
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.deriveGaps
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.head
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.isNormalized
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.memberOf
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentAfter
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.provenSegmentBefore
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.reachesHeadAt
+import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.reachesOldestAt
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.trimBelow
 import build.raft.app.network.sync.CanonicalMessageV2SegmentAlgebra.union
 import kotlin.test.Test
@@ -209,5 +214,97 @@ class CanonicalMessageV2SegmentAlgebraTest {
         // The edges are stored-fact seqs, never a claim bound: the same head over facts 7..18 mirrors 7..18.
         assertEquals(window.copy(oldestLoadedSeq = 7, newestLoadedSeq = 18), window.mirroring(segment, 7L to 18L))
         assertEquals(window.copy(oldestLoadedSeq = null, newestLoadedSeq = null), window.mirroring(segment, null))
+    }
+
+    @Test
+    fun deriveGapsSkipsSameSegmentAndConsecutiveSeqsAndEmitsGapsAcrossIslandsOrLooseFacts() {
+        val segments = listOf(
+            seg(1, 10, oldest = true, source = CanonicalMessageV2SegmentSource.Context),
+            seg(20, 30, head = true, source = CanonicalMessageV2SegmentSource.Latest),
+        )
+        // Inside one segment (even sparse seqs 2, 5, 9): no gaps.
+        assertEquals(emptyList(), deriveGaps(listOf(2L, 5L, 9L), segments))
+        // Across two disjoint segments: gap between the boundary facts (9, 21).
+        assertEquals(
+            listOf(CanonicalMessageV2TimelineGap(afterSeq = 9L, beforeSeq = 21L)),
+            deriveGaps(listOf(2L, 9L, 21L, 29L), segments),
+        )
+        // Loose fact between islands (seq 15): gaps on both sides.
+        assertEquals(
+            listOf(
+                CanonicalMessageV2TimelineGap(afterSeq = 9L, beforeSeq = 15L),
+                CanonicalMessageV2TimelineGap(afterSeq = 15L, beforeSeq = 21L),
+            ),
+            deriveGaps(listOf(9L, 15L, 21L), segments),
+        )
+        // Loose fact strictly above head: gap when non-consecutive (30 -> 35), NO gap when consecutive (30 -> 31).
+        assertEquals(
+            listOf(CanonicalMessageV2TimelineGap(afterSeq = 30L, beforeSeq = 35L)),
+            deriveGaps(listOf(25L, 30L, 35L), segments),
+        )
+        assertEquals(emptyList(), deriveGaps(listOf(25L, 30L, 31L), segments))
+        // Two loose facts with a gap between them vs consecutive loose facts.
+        assertEquals(
+            listOf(CanonicalMessageV2TimelineGap(afterSeq = 40L, beforeSeq = 42L)),
+            deriveGaps(listOf(40L, 42L), emptyList()),
+        )
+        assertEquals(emptyList(), deriveGaps(listOf(40L, 41L), emptyList()))
+        // Empty and single-element lists never emit gaps.
+        assertEquals(emptyList(), deriveGaps(emptyList(), segments))
+        assertEquals(emptyList(), deriveGaps(listOf(21L), segments))
+        // Overflow-safe at Long.MAX_VALUE and strict validation on unsorted / unnormalized / zero-width gaps.
+        assertEquals(emptyList(), deriveGaps(listOf(Long.MAX_VALUE - 1L, Long.MAX_VALUE), emptyList()))
+        assertEquals(emptyList(), deriveGaps(listOf(Long.MAX_VALUE, Long.MAX_VALUE), emptyList()))
+        assertFailsWith<IllegalArgumentException> { CanonicalMessageV2TimelineGap(afterSeq = 10L, beforeSeq = 11L) }
+        assertFailsWith<IllegalArgumentException> { deriveGaps(listOf(20L, 10L), segments) }
+        assertFailsWith<IllegalArgumentException> { deriveGaps(listOf(10L, 20L), listOf(seg(10, 20), seg(15, 25))) }
+    }
+
+    @Test
+    fun provenSegmentBeforeAndAfterDistinguishSegmentInteriorFromEdges() {
+        val lower = seg(1, 10, oldest = true, source = CanonicalMessageV2SegmentSource.Context)
+        val unclosedLower = seg(1, 10, oldest = false, source = CanonicalMessageV2SegmentSource.Context)
+        val upper = seg(20, 30, head = true, source = CanonicalMessageV2SegmentSource.Latest)
+        val segments = listOf(lower, upper)
+
+        // Strictly inside upper: beforeSeq = 21 -> predecessor 20 is in upper.
+        assertEquals(upper, provenSegmentBefore(segments, beforeSeq = 21L))
+        // At lower edge of upper: beforeSeq = 20 -> predecessor 19 is in the unproven gap.
+        assertNull(provenSegmentBefore(segments, beforeSeq = 20L))
+        // At lower edge of a reachesOldest segment: beforeSeq = 5 -> 4, and beforeSeq = 1 -> 0 is covered by effectiveLowSeq = 0.
+        assertEquals(lower, provenSegmentBefore(segments, beforeSeq = 5L))
+        assertEquals(lower, provenSegmentBefore(segments, beforeSeq = 1L))
+        assertNull(provenSegmentBefore(listOf(unclosedLower), beforeSeq = 1L))
+        assertNull(provenSegmentBefore(segments, beforeSeq = 0L))
+        assertNull(provenSegmentBefore(segments, beforeSeq = Long.MIN_VALUE))
+
+        // Strictly inside lower: afterSeq = 9 -> successor 10 is in lower.
+        assertEquals(lower, provenSegmentAfter(segments, afterSeq = 9L))
+        // At upper edge of lower: afterSeq = 10 -> successor 11 is unproven.
+        assertNull(provenSegmentAfter(segments, afterSeq = 10L))
+        // At upper edge of head: afterSeq = 30 -> successor 31 is outside segment.
+        assertNull(provenSegmentAfter(segments, afterSeq = 30L))
+        assertNull(provenSegmentAfter(segments, afterSeq = Long.MAX_VALUE))
+    }
+
+    @Test
+    fun reachesOldestAndReachesHeadRequireBothSegmentProofAndNoMoreStoredRows() {
+        val reached = listOf(seg(5, 20, oldest = true, head = true))
+        val unreached = listOf(seg(5, 20, oldest = false, head = false))
+        val emptyBaseline = listOf(seg(0, 0, oldest = true, head = true))
+
+        assertTrue(reachesOldestAt(oldestSeq = 5L, segments = reached, hasOlderStored = false))
+        assertFalse(reachesOldestAt(oldestSeq = 5L, segments = reached, hasOlderStored = true))
+        assertFalse(reachesOldestAt(oldestSeq = 5L, segments = unreached, hasOlderStored = false))
+        assertFalse(reachesOldestAt(oldestSeq = 25L, segments = reached, hasOlderStored = false))
+        assertTrue(reachesOldestAt(oldestSeq = null, segments = emptyBaseline, hasOlderStored = false))
+        assertFalse(reachesOldestAt(oldestSeq = null, segments = unreached, hasOlderStored = false))
+
+        assertTrue(reachesHeadAt(newestSeq = 20L, segments = reached, hasNewerStored = false))
+        assertFalse(reachesHeadAt(newestSeq = 20L, segments = reached, hasNewerStored = true))
+        assertFalse(reachesHeadAt(newestSeq = 20L, segments = unreached, hasNewerStored = false))
+        assertFalse(reachesHeadAt(newestSeq = 25L, segments = reached, hasNewerStored = false))
+        assertTrue(reachesHeadAt(newestSeq = null, segments = emptyBaseline, hasNewerStored = false))
+        assertFalse(reachesHeadAt(newestSeq = null, segments = unreached, hasNewerStored = false))
     }
 }

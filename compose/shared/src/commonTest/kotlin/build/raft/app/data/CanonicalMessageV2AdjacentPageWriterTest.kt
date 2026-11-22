@@ -947,6 +947,16 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
     override suspend fun readSegments(scope: SyncScopeKey) = segments[scope].orEmpty()
 
     override suspend fun maxLocalRev(partition: DurablePartitionKey): Long = localRev
+
+    override suspend fun locateFact(
+        partition: DurablePartitionKey,
+        factId: String,
+    ): List<CanonicalMessageV2FactLocation> =
+        facts.entries
+            .filter { it.key.partition == partition }
+            .mapNotNull { (scope, map) ->
+                map[factId]?.let { CanonicalMessageV2FactLocation(scope.scopeKind, scope.scopeId, it.fact.seq) }
+            }
 }
 
 /** The header a coverage write commits: [stored] (or a new one) with its window mirroring the head segment. */

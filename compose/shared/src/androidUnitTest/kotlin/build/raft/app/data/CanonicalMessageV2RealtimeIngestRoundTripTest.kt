@@ -817,6 +817,17 @@ class CanonicalMessageV2RealtimeIngestRoundTripTest {
         override suspend fun containsFact(scope: SyncScopeKey, factId: String) = guarded { delegate.containsFact(scope, factId) }
         override suspend fun readSegments(scope: SyncScopeKey) = guarded { delegate.readSegments(scope) }
         override suspend fun maxLocalRev(partition: DurablePartitionKey) = guarded { delegate.maxLocalRev(partition) }
+        override suspend fun readFactsBefore(scope: SyncScopeKey, beforeSeq: Long, limit: Int) =
+            guarded { delegate.readFactsBefore(scope, beforeSeq, limit) }
+        override suspend fun readFactsAfter(scope: SyncScopeKey, afterSeq: Long, limit: Int) =
+            guarded { delegate.readFactsAfter(scope, afterSeq, limit) }
+        override suspend fun hasFactBefore(scope: SyncScopeKey, beforeSeq: Long) =
+            guarded { delegate.hasFactBefore(scope, beforeSeq) }
+        override suspend fun hasFactAfter(scope: SyncScopeKey, afterSeq: Long) =
+            guarded { delegate.hasFactAfter(scope, afterSeq) }
+        override suspend fun locateFact(partition: DurablePartitionKey, factId: String) =
+            guarded { delegate.locateFact(partition, factId) }
+        override suspend fun touchUserAccess(scope: SyncScopeKey) = guarded { delegate.touchUserAccess(scope) }
         override suspend fun applyCoverage(
             scope: SyncScopeKey,
             envelopes: List<CanonicalMessageEnvelopeV2>,
