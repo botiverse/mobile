@@ -5,7 +5,7 @@ platforms:
   - android
   - ios
   - desktop
-pull_request: PRNUM
+pull_request: 5396
 rollout: full
 ---
 
