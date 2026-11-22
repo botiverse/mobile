@@ -55,16 +55,20 @@ class SharedJointActorDirectory internal constructor(
     private val knownLocally: (ServerId, ActorResolveRef) -> Boolean,
     private val resolve: suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome,
     private val debounceMillis: Long = ACTOR_RESOLVE_DEBOUNCE_MILLIS,
+    private val refStore: RaftJointActorRefStore? = null,
     private val logger: (String) -> Unit = {},
 ) {
     private data class Scope(
         val environmentId: String,
         val accountId: String,
         val serverId: String,
-    )
+    ) {
+        val ownerKey: String get() = "$environmentId|$accountId"
+    }
 
     private class ScopeRequests {
         val asked = mutableSetOf<String>()
+        val completed = mutableSetOf<String>()
         val pending = LinkedHashMap<String, ActorResolveRef>()
         var flight: Job? = null
         var disabled = false
@@ -72,7 +76,11 @@ class SharedJointActorDirectory internal constructor(
 
     private val lock = SynchronizedObject()
     private val requests = mutableMapOf<Scope, ScopeRequests>()
+    private val hydratedScopes = mutableSetOf<Scope>()
+    /** Actor ids hydrated from disk in each scope: painted on frame 1, still revalidated once in the background. */
+    private val seededFromDurableByScope = mutableMapOf<Scope, MutableSet<String>>()
     private val _rows = MutableStateFlow<Map<Scope, Map<String, ResolvedActor>>>(emptyMap())
+    private val _settledTick = MutableStateFlow(0L)
 
     /** Rows per scope, keyed by actor id. Exposed for tests and diagnostics. */
     internal val rows: StateFlow<Map<*, Map<String, ResolvedActor>>> get() = _rows.asStateFlow()
@@ -88,14 +96,39 @@ class SharedJointActorDirectory internal constructor(
         return Scope(current.environmentId.trim(), current.accountId.trim(), cleanServerId)
     }
 
+    private fun ensureHydrated(scope: Scope?) {
+        val store = refStore ?: return
+        if (scope == null) return
+        synchronized(lock) {
+            if (!hydratedScopes.add(scope)) return
+            val persisted = store.readServer(scope.serverId, scope.ownerKey)
+            if (persisted.isEmpty()) return
+            val current = _rows.value
+            val existing = current[scope].orEmpty()
+            // Live memory entries always outrank persisted rows; persisted-only ids stay eligible
+            // for one background revalidation so avatars/names updated while offline refresh cleanly.
+            val seededIds = persisted.keys - existing.keys
+            if (seededIds.isNotEmpty()) {
+                seededFromDurableByScope.getOrPut(scope) { mutableSetOf() }.addAll(seededIds)
+            }
+            val merged = persisted + existing
+            if (merged != existing) {
+                _rows.value = current + (scope to merged)
+            }
+        }
+    }
+
     private fun Map<Scope, Map<String, ResolvedActor>>.rowFor(scope: Scope?, id: String, kind: MemberKind?): ResolvedActor? {
         val row = scope?.let { this[it] }?.get(id) ?: return null
         return row.takeIf { kind == null || it.kind == kind }
     }
 
     /** The resolved row for [id] on [serverId] for the current owner, if any. */
-    fun current(serverId: ServerId, id: String, kind: MemberKind? = null): ResolvedActor? =
-        _rows.value.rowFor(scopeOf(serverId), id.trim(), kind)
+    fun current(serverId: ServerId, id: String, kind: MemberKind? = null): ResolvedActor? {
+        val scope = scopeOf(serverId)
+        ensureHydrated(scope)
+        return _rows.value.rowFor(scope, id.trim(), kind)
+    }
 
     /** Observes the cached resolved row for [id] without issuing a resolve request. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -107,7 +140,12 @@ class SharedJointActorDirectory internal constructor(
             .map { it.toScope(cleanServerId) }
             .distinctUntilChanged()
             .flatMapLatest { scope ->
-                if (scope == null) flowOf(null) else _rows.map { rows -> rows.rowFor(scope, cleanId, kind) }
+                if (scope == null) {
+                    flowOf(null)
+                } else {
+                    ensureHydrated(scope)
+                    _rows.map { rows -> rows.rowFor(scope, cleanId, kind) }
+                }
             }
             .distinctUntilChanged()
     }
@@ -128,6 +166,7 @@ class SharedJointActorDirectory internal constructor(
                 if (scope == null) {
                     flowOf(null)
                 } else {
+                    ensureHydrated(scope)
                     _rows
                         .map { rows -> rows.rowFor(scope, id, ref.kind) }
                         .onStart { requestIn(scope, listOf(ref)) }
@@ -139,6 +178,7 @@ class SharedJointActorDirectory internal constructor(
     /** Asks for the refs this scope has no row for and has not asked yet. Cheap to call repeatedly. */
     fun request(serverId: ServerId, refs: List<ActorResolveRef>) {
         val scope = scopeOf(serverId) ?: return
+        ensureHydrated(scope)
         requestIn(scope, refs)
     }
 
@@ -147,12 +187,14 @@ class SharedJointActorDirectory internal constructor(
             val state = requests.getOrPut(scope) { ScopeRequests() }
             if (state.disabled) return
             val stored = _rows.value[scope].orEmpty()
+            val seeded = seededFromDurableByScope[scope].orEmpty()
             refs.forEach { raw ->
                 if (raw.kind != MemberKind.Human && raw.kind != MemberKind.Agent) return@forEach
                 val ref = raw.copy(id = raw.id.trim())
                 if (!isActorResolveId(ref.id)) return@forEach
                 val key = ref.key
-                if (key in state.asked || key in state.pending || stored[ref.id]?.kind == ref.kind) return@forEach
+                val hasFreshRow = stored[ref.id]?.kind == ref.kind && ref.id !in seeded
+                if (key in state.asked || key in state.pending || hasFreshRow) return@forEach
                 if (knownLocally(ServerId(scope.serverId), ref)) return@forEach
                 state.pending[key] = ref
             }
@@ -174,11 +216,13 @@ class SharedJointActorDirectory internal constructor(
                     synchronized(lock) {
                         if (!isLive(scope, state)) return finishLocked(state, self)
                         val stored = _rows.value[scope].orEmpty()
+                        val seeded = seededFromDurableByScope[scope].orEmpty()
                         val refs =
                             state.pending.values.filter { ref ->
                                 // A roster may have learned it while the batch waited: not asked, so
                                 // it stays askable if that roster later drops it.
-                                stored[ref.id]?.kind != ref.kind && !knownLocally(serverId, ref)
+                                val hasFreshRow = stored[ref.id]?.kind == ref.kind && ref.id !in seeded
+                                !hasFreshRow && !knownLocally(serverId, ref)
                             }
                         state.pending.clear()
                         refs.forEach { state.asked += it.key }
@@ -200,6 +244,7 @@ class SharedJointActorDirectory internal constructor(
                         // A sign-out, account switch or clear since the request: the answer is for
                         // a scope nobody reads now.
                         if (!isLive(scope, state)) return finishLocked(state, self)
+                        chunk.forEach { state.completed += it.key }
                         when (outcome) {
                             is ActorResolveOutcome.Resolved -> upsert(scope, outcome.actors)
                             ActorResolveOutcome.Unavailable -> {
@@ -209,6 +254,7 @@ class SharedJointActorDirectory internal constructor(
                             }
                             is ActorResolveOutcome.Failed -> Unit
                         }
+                        bumpSettledLocked()
                     }
                     when (outcome) {
                         ActorResolveOutcome.Unavailable -> {
@@ -227,28 +273,82 @@ class SharedJointActorDirectory internal constructor(
             }
         } finally {
             synchronized(lock) {
-                if (state.flight === self) state.flight = null
+                if (state.flight === self) {
+                    state.flight = null
+                    bumpSettledLocked()
+                }
             }
         }
     }
 
     /** Under [lock]: this flight is over; the next request() starts a new one. */
     private fun finishLocked(state: ScopeRequests, self: Job?) {
-        if (state.flight === self) state.flight = null
+        if (state.flight === self) {
+            state.flight = null
+            bumpSettledLocked()
+        }
     }
 
     private fun isLive(scope: Scope, state: ScopeRequests): Boolean =
         requests[scope] === state && scopeOf(ServerId(scope.serverId)) == scope
 
+    /** True once [ref] in [serverId]'s current scope has a stored row, is known locally, finished its resolve attempt, or no resolve can run. */
+    internal fun isSettled(serverId: ServerId, kind: MemberKind, id: String): Boolean {
+        val scope = scopeOf(serverId) ?: return true
+        val cleanId = id.trim().takeIf { it.isNotEmpty() } ?: return true
+        if (!isActorResolveId(cleanId)) return true
+        ensureHydrated(scope)
+        return isSettledLockedCheck(scope, ActorResolveRef(kind, cleanId))
+    }
+
+    /** Reactive counterpart to [isSettled]: flips to true once a row arrives, a resolve chunk finishes, or the scope disables. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    internal fun settledFlow(serverId: ServerId, kind: MemberKind, id: String): Flow<Boolean> {
+        val cleanServerId = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return flowOf(true)
+        val cleanId = id.trim().takeIf { it.isNotEmpty() } ?: return flowOf(true)
+        if (!isActorResolveId(cleanId)) return flowOf(true)
+        val ref = ActorResolveRef(kind, cleanId)
+        return ownerFlow(ServerId(cleanServerId))
+            .map { it.toScope(cleanServerId) }
+            .distinctUntilChanged()
+            .flatMapLatest { scope ->
+                if (scope == null) {
+                    flowOf(true)
+                } else {
+                    ensureHydrated(scope)
+                    _settledTick.map { isSettledLockedCheck(scope, ref) }
+                }
+            }
+            .distinctUntilChanged()
+    }
+
+    private fun isSettledLockedCheck(scope: Scope, ref: ActorResolveRef): Boolean =
+        synchronized(lock) {
+            if (_rows.value.rowFor(scope, ref.id, ref.kind) != null) return@synchronized true
+            if (knownLocally(ServerId(scope.serverId), ref)) return@synchronized true
+            val state = requests[scope] ?: return@synchronized false
+            state.disabled || ref.key in state.completed
+        }
+
+    private fun bumpSettledLocked() {
+        _settledTick.value += 1L
+    }
+
     /** Under [lock]. No row changed: no emission. */
     private fun upsert(scope: Scope, actors: List<ResolvedActor>) {
         if (actors.isEmpty()) return
+        seededFromDurableByScope[scope]?.let { seeded ->
+            actors.forEach { seeded.remove(it.id) }
+            if (seeded.isEmpty()) seededFromDurableByScope.remove(scope)
+        }
         val current = _rows.value
         val existing = current[scope].orEmpty()
         val next = existing.toMutableMap()
         actors.forEach { actor -> next[actor.id] = actor }
         if (next == existing) return
         _rows.value = current + (scope to next)
+        refStore?.record(scope.serverId, scope.ownerKey, actors)
+        bumpSettledLocked()
     }
 
     /**
@@ -270,7 +370,10 @@ class SharedJointActorDirectory internal constructor(
         synchronized(lock) {
             requests.values.forEach { it.flight?.cancel() }
             requests.clear()
+            hydratedScopes.clear()
+            seededFromDurableByScope.clear()
             _rows.value = emptyMap()
+            bumpSettledLocked()
         }
     }
 
@@ -280,7 +383,11 @@ class SharedJointActorDirectory internal constructor(
         synchronized(lock) {
             val scopes = requests.keys.filter { it.serverId == key }
             scopes.forEach { requests.remove(it)?.flight?.cancel() }
+            hydratedScopes.removeAll { it.serverId == key }
+            seededFromDurableByScope.keys.filter { it.serverId == key }.forEach(seededFromDurableByScope::remove)
             _rows.value = _rows.value.filterKeys { it.serverId != key }
+            refStore?.forgetServer(key)
+            bumpSettledLocked()
         }
     }
 

@@ -404,6 +404,10 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     private var lastTitleImageSource: RaftNativeTabBarAvatar?
     private var lastTitleImage: UIImage?
     private var lastBarWidth: CGFloat = 0
+    private var lastSideInsets: CGFloat = 0
+    private var lastIsStackRoot = false
+    private var lastCompact = false
+    private var hasLeadingTitleView = false
     private var lastHasBack = false
     private var lastNested = false
     private var clearGeneration = 0
@@ -524,11 +528,25 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
 
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
+        let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
+        let measuredBarWidth = owner.navigationController?.navigationBar.bounds.width ?? 0
+        let loadedViewWidth = owner.isViewLoaded ? owner.view.bounds.width : 0
+        let fallbackSceneWidth: CGFloat = Self.preferredSceneWidth()
+        let barWidth = measuredBarWidth > 0 ? measuredBarWidth : (loadedViewWidth > 0 ? loadedViewWidth : fallbackSceneWidth)
+        let sideInsets: CGFloat =
+            owner.isViewLoaded
+                ? (owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right)
+                : 0
+        lastIsStackRoot = isStackRoot
+        lastCompact = compact
+        lastBarWidth = barWidth
+        lastSideInsets = sideInsets
+        hasLeadingTitleView = leadingTitleView != nil
         if let leadingTitleView {
             // Room left for it: the bar minus Back, the trailing buttons and the margins; it
             // truncates its title inside that (recomputed when the bar's width changes).
-            let barWidth = owner.navigationController?.navigationBar.bounds.width ?? owner.view.bounds.width
-            lastBarWidth = barWidth
+            // Guard owner.isViewLoaded so prefill before pushViewController does not trigger a
+            // premature loadView() or collapse maxWidth to 80pt.
             let trailingCount = actions.filter { $0.placement == "trailing" }.count
                 + (actions.contains { $0.placement == "overflow" } ? 1 : 0)
             // iOS 26 glass: each button is ~52pt in its group, a group adds ~16pt of padding, and
@@ -536,7 +554,6 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             var room = barWidth - 40 - CGFloat(trailingCount) * 52 - (trailingCount > 0 ? 16 : 0)
             if !isStackRoot { room -= 64 }
             // Landscape: the bar's content stays inside the side safe areas (the sensor housing).
-            let sideInsets = owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right
             room -= sideInsets
             if ownBackButton { room -= 60 }
             leadingTitleView.maxWidth = max(80, room)
@@ -774,12 +791,38 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         }
     }
 
+    private static func preferredSceneWidth() -> CGFloat {
+        let windowScenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let preferred =
+            windowScenes.first(where: { $0.activationState == .foregroundActive })
+            ?? windowScenes.first(where: { $0.activationState == .foregroundInactive })
+            ?? windowScenes.first
+        let keyWindowWidth =
+            preferred?.windows.first(where: { $0.isKeyWindow })?.bounds.width
+            ?? preferred?.windows.first?.bounds.width
+            ?? 0
+        let width = keyWindowWidth > 0 ? keyWindowWidth : (preferred?.coordinateSpace.bounds.width ?? 0)
+        return width > 0 ? width : 390
+    }
+
     /// RaftPageViewController laid out / appeared.
     private func pageDidLayout(reason: String) {
-        // Rotation / a new bar width: re-measure the leading title's room.
-        if let bar = owner?.navigationController?.navigationBar, !lastTitle.isEmpty,
-           abs(bar.bounds.width - lastBarWidth) > 1 {
-            applyHead()
+        // Rotation / a new bar width / mounted into UINavigationController after prefill:
+        // style the bar and re-measure the leading title's room if geometry or stack root changed.
+        if let owner, let bar = owner.navigationController?.navigationBar, !lastTitle.isEmpty {
+            RaftNativeNavBarType.style(bar)
+            let sideInsets = owner.isViewLoaded ? (owner.view.safeAreaInsets.left + owner.view.safeAreaInsets.right) : 0
+            let isStackRoot = owner.navigationController?.viewControllers.first === owner
+            let compact = (owner.navigationController ?? owner).traitCollection.verticalSizeClass == .compact
+            let leadingGeometryChanged =
+                hasLeadingTitleView && (
+                    abs(bar.bounds.width - lastBarWidth) > 1
+                        || abs(sideInsets - lastSideInsets) > 1
+                        || compact != lastCompact
+                )
+            if leadingGeometryChanged || isStackRoot != lastIsStackRoot {
+                applyHead()
+            }
         }
         guard largeTitle, let controller else { return }
         ensureMirror()
@@ -1137,9 +1180,7 @@ final class RaftNativeNavTitleView: UIStackView {
     /// for an agent or a person, whose fallback face is the app's to draw: robot / placeholder).
     private static func leadingView(_ leading: [String: Any], image: UIImage?, size: CGFloat) -> UIView? {
         let kind = leading["kind"] as? String
-        // The native Home title's server tile (#4464): drawn here from its own image / initial.
-        if kind == "server" { return serverTile(leading, size: size) }
-        guard kind == "channel" || kind == "avatar" else { return nil }
+        guard kind == "channel" || kind == "avatar" || kind == "server" else { return nil }
         if let image {
             let view = UIImageView(image: image)
             view.contentMode = .scaleAspectFit
@@ -1150,6 +1191,10 @@ final class RaftNativeNavTitleView: UIStackView {
             ])
             return view
         }
+        // Pre-capture stand-in for the native Home title's server tile until Compose's Coil-backed
+        // capture arrives (never downloads through URLSession.shared and never flashes the initial
+        // letter when a server image URL is configured).
+        if kind == "server" { return serverTile(leading, size: size) }
         let ink = color(leading["inkArgb"], fallback: .label)
         let tile = UIView()
         tile.layer.cornerRadius = 4
@@ -1191,8 +1236,9 @@ final class RaftNativeNavTitleView: UIStackView {
     }
 
     private static func serverTile(_ leading: [String: Any], size: CGFloat) -> UIView {
-        // raft-ui server avatar (the web switcher's trigger): the ink tile with the server's
-        // initial in brand yellow, under the server's image when it has one.
+        // raft-ui server avatar stand-in before the Coil-backed RaftNativeNavBarTitleImageCapture
+        // bitmap arrives: shows the server initial only when no server image URL is configured,
+        // otherwise keeps a neutral ink tile until the cached image lands.
         let tile = UIView()
         tile.backgroundColor = color(leading["fillArgb"], fallback: .black)
         tile.layer.cornerRadius = 4
@@ -1200,37 +1246,24 @@ final class RaftNativeNavTitleView: UIStackView {
         tile.layer.borderColor = color(leading["fillArgb"], fallback: .black).cgColor
         tile.clipsToBounds = true
         tile.translatesAutoresizingMaskIntoConstraints = false
-        let label = UILabel()
-        label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
-        label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
-        label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        tile.addSubview(label)
-        let image = UIImageView()
-        image.contentMode = .scaleAspectFill
-        image.translatesAutoresizingMaskIntoConstraints = false
-        tile.addSubview(image)
-        NSLayoutConstraint.activate([
+        var constraints: [NSLayoutConstraint] = [
             tile.widthAnchor.constraint(equalToConstant: size),
             tile.heightAnchor.constraint(equalToConstant: size),
-            label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            image.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
-            image.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
-            image.topAnchor.constraint(equalTo: tile.topAnchor),
-            image.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
-        ])
-        if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                guard let data, let loaded = UIImage(data: data) else { return }
-                DispatchQueue.main.async {
-                    image.image = loaded
-                    // An uploaded image brings its own ground (a transparent one shows the bar).
-                    tile.backgroundColor = .clear
-                    label.isHidden = true
-                }
-            }.resume()
+        ]
+        let hasImageUrl = ((leading["imageUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        if !hasImageUrl {
+            let label = UILabel()
+            label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+            label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
+            label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            tile.addSubview(label)
+            constraints += [
+                label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            ]
         }
+        NSLayoutConstraint.activate(constraints)
         return tile
     }
 }

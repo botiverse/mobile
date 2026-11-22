@@ -104,6 +104,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
@@ -853,16 +854,34 @@ internal fun ActivityMemberFace(
             memberId = identity.senderId,
             enabled = identity.jointSurface,
         )
+    val explicitAvatar =
+        memberAvatar?.appAvatarWireValueOrNull()
+            ?: identity.avatarWireValue?.appAvatarWireValueOrNull()
+            ?: jointActor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
+    val avatarPending =
+        explicitAvatar == null &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = source.memberAvatarResolver,
+                kind = identity.senderKind,
+                memberId = identity.senderId,
+                jointSurface = identity.jointSurface,
+            )
     RaftAppAvatar(
         // web Activity rows: an agent's face that does not load is the robot, a person's the
         // placeholder person; a sender of unknown kind has no label to take letters from either.
         kind = raftAvatarKind(identity.senderKind),
-        avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue()),
+        avatarWireValue =
+            if (avatarPending) {
+                null
+            } else {
+                activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue())
+            },
         label = "",
         modifier = modifier,
         avatarSize = avatarSize,
         cacheSubject = raftMemberAvatarCacheSubject(identity.senderKind, identity.senderId),
         cacheServerId = source.cacheServerId,
+        avatarPending = avatarPending,
     )
 }
 
