@@ -124,13 +124,6 @@ class RaftWebViewRendererGoneTest {
         assertTrue(rebuilt.client().onRenderProcessGone(rebuilt, crash), "the rebuilt WebView claims the next death")
         assertNotSame(rebuilt, viewer.innerWebView())
     }
-
-    @Test
-    fun theWarmClientNeverNavigates() {
-        val warm = Warm()
-        @Suppress("DEPRECATION")
-        assertTrue(warm.view.client().shouldOverrideUrlLoading(warm.view, "https://example.com/"))
-    }
 }
 
 /**

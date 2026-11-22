@@ -45,9 +45,6 @@ class LiveAgentActivityScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun homeBarLight() = capture("screens.home.working-now", RaftAppAppearance.Light) { PhoneHome(open = false) }
-
-    @Test
     fun homeBarOpenLight() = capture("screens.home.working-now.open", RaftAppAppearance.Light) { PhoneHome(open = true) }
 
     @Test

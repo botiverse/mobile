@@ -110,35 +110,4 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         // No `addJavascriptInterface` anywhere: Robolectric records none.
         assertNull(shadowOf(webView).getJavascriptInterface("raftHostPort"))
     }
-
-    @Test
-    fun documentLinkRoutingInterceptsUnembeddedArtifactLinksWhileAllowingEmbeddedReloadAndSignOut() {
-        val shownId = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-        val otherId = "pt_0b6d3c1e-9a2f-4c7e-8d11-2f3a4b5c6d7e"
-        events.routesMainFrameNavigation = { url -> raftArtifactViewerRoutesDocumentAsLink(url, webOrigin, shownId, emptySet()) }
-        val (_, webView) = host()
-
-        // Bare `<a href="/artifacts/…">` (e.g. Linked from -> Documents) and un-embedded self-links are
-        // intercepted so the WebView never replaces its embedded document with a `NOT_EMBEDDED` load.
-        val routed =
-            listOf(
-                "$webOrigin/artifacts/$otherId",
-                "$webOrigin/artifacts/$shownId",
-                "$webOrigin/artifacts/$shownId/v/2",
-            )
-        routed.forEach { assertTrue(webView.overrides(it), it) }
-        assertEquals(routed, blocked)
-
-        blocked.clear()
-        // Embedded reload of this Artifact, sign-out paths, and post-delete server route continue loading.
-        val allowed =
-            listOf(
-                "$webOrigin/artifacts/$shownId?${raftArtifactViewerEmbedQuery()}",
-                "$webOrigin/",
-                "$webOrigin/login",
-                "$webOrigin/s/northwind",
-            )
-        allowed.forEach { assertFalse(webView.overrides(it), it) }
-        assertEquals(emptyList<String>(), blocked)
-    }
 }

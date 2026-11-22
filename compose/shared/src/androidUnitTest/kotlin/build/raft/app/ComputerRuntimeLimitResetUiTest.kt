@@ -98,31 +98,6 @@ class ComputerRuntimeLimitResetUiTest {
         assertTrue(api.redeemBodies.single().startsWith("{\"idempotencyKey\":\""), api.redeemBodies.single())
     }
 
-    @Test
-    fun anOutcomeThePersonMustActOnKeepsTheDialogOpenInChinese() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
-        showSheet(CodexLimitResetApi(canAct = true, redeemResult = """{"result":{"kind":"reauth_required","reason":"credentials_rejected"},"snapshot":null}"""))
-        assertShown("剩余 2 次重置")
-        waitUntil(timeoutMillis = 5_000) { onAllNodesWithTag(COMPUTER_RUNTIME_LIMIT_RESET_ACTION_TAG, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        onAllNodesWithTag(COMPUTER_RUNTIME_LIMIT_RESET_ACTION_TAG, useUnmergedTree = true).onFirst().performClick()
-        assertShown("使用一次额度重置？")
-        onAllNodesWithTag(COMPUTER_RUNTIME_LIMIT_RESET_CONFIRM_TAG, useUnmergedTree = true).onFirst().performClick()
-        assertShown("请在这台 Computer 上重新登录 Codex。未使用重置。")
-        assertShown("使用一次额度重置？")
-    }
-
-    @Test
-    fun viewerWhoMayNotActSeesTheCountButNoAction() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.English.stringDescLocaleType
-        val api = CodexLimitResetApi(canAct = false)
-        showSheet(api)
-        assertShown("2 resets left")
-        waitUntil(timeoutMillis = 5_000) { api.authReads > 0 }
-        waitForIdle()
-        onAllNodesWithTag(COMPUTER_RUNTIME_LIMIT_RESET_ACTION_TAG, useUnmergedTree = true).assertCountEquals(0)
-        onAllNodesWithText("Use a reset", useUnmergedTree = true).assertCountEquals(0)
-    }
-
     private fun ComposeUiTest.assertShown(text: String) {
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
     }

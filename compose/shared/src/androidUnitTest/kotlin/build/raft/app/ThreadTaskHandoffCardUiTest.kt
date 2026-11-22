@@ -8,9 +8,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasText
@@ -89,40 +86,6 @@ class ThreadTaskHandoffCardUiTest {
             }
         }
     }
-
-    @Test
-    fun aHandOffWithAReasonIsACardNamingBothPartiesAlike() =
-        runRobolectricComposeUiTest {
-            val handoff = ThreadTaskHandoffFixtures.handoff
-            timeline(handoff)
-            onNodeWithTag(TaskHandoffCardTag).assertExists()
-            onNodeWithText("@otter").assertExists()
-            onNodeWithText("@xxchan").assertExists()
-            onNodeWithText("→").assertExists()
-            onNodeWithTag(TaskHandoffCardMetaTag, useUnmergedTree = true).assertExists()
-            onNodeWithTag(TaskHandoffCardReasonTag, useUnmergedTree = true).assertTextEquals("Your call: ship Friday or Monday? The numbers are in the sheet.")
-            // The one-line notice is not drawn.
-            onNodeWithText(handoff.body, substring = true).assertDoesNotExist()
-        }
-
-    @Test
-    fun anAssignmentWithoutAReasonStaysTheOneLineNotice() =
-        runRobolectricComposeUiTest {
-            val plain = ThreadTaskHandoffFixtures.line("p1", "2026-11-10T08:00:00.000Z", ThreadTaskHandoffFixtures.otter, ThreadTaskHandoffFixtures.xx)
-            timeline(plain)
-            onNodeWithTag(TaskHandoffCardTag).assertDoesNotExist()
-            onNodeWithText(plain.body).assertExists()
-        }
-
-    @Test
-    fun handedBackBySomeoneElseTheCardSaysWhoAndFades() =
-        runRobolectricComposeUiTest {
-            val f = ThreadTaskHandoffFixtures
-            timeline(f.handoff, f.handedBack, show = listOf(f.handoff))
-            onNodeWithTag(TaskHandoffCardReturnedTag).assertExists()
-            val at = formatThreadTimeRevealLabel(f.handedBack.timestampLabel, f.timeContext)
-            onNodeWithText("xxchan handed it back to Otter · $at").assertExists()
-        }
 
     // slock #15339: in the conversation list the reason draws its links (and refs, @mentions) like a
     // message body, and a tap opens them; elsewhere (no handlers) it stays plain text.

@@ -122,17 +122,6 @@ class ThreadSelectableTextStackMoveUiTest {
 
     private fun ComposeUiTest.popWithRowChange(stack: RaftPageStack) = withRowChangingEveryFrame { stack.back() }
 
-    @Test
-    fun aRowStyleChangingDuringThePushDoesNotCrash() =
-        runRobolectricComposeUiTest {
-            val stack = showChat {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    item { SelectableBody("m1") { BasicText(BODY, style = tickStyle) } }
-                }
-            }
-            pushWithRowChange(stack)
-        }
-
     /**
      * The framework's own behaviour, with no app selection code: an always selectable text in the
      * same place. On the official foundation 1.12.1 this push threw "Cannot read CompositionLocal

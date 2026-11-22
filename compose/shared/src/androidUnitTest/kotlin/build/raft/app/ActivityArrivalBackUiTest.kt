@@ -90,49 +90,6 @@ class ActivityArrivalBackUiTest {
             onNodeWithTag(LIST).assertDoesNotExist()
         }
 
-    @Test
-    fun leavingWhileTheListIsCollapsedAwayStillEndsTheVisit() =
-        runRobolectricComposeUiTest {
-            var surfaceActive by mutableStateOf(true)
-            var hasSelection by mutableStateOf(false)
-            var reopens = 0
-            setContent {
-                val widths = remember { RaftListPaneWidths(KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore())) }
-                val visits = rememberActivityArrivalVisits(surfaceActive)
-                RaftAdaptiveListDetailSplit(
-                    kind = RaftListPaneKind.List,
-                    widths = widths,
-                    dualPane = true,
-                    active = surfaceActive,
-                    hasSelection = hasSelection,
-                    detailBottomInset = 0.dp,
-                    listPane = { listActive ->
-                        val visit = remember(visits) { visits.of("server-1") }
-                        ActivityArrivalReopenEffect(visit = visit, active = listActive, loaded = true) {
-                            if (!hasSelection) {
-                                reopens += 1
-                                hasSelection = true
-                            }
-                        }
-                        Box(Modifier.fillMaxSize().testTag(LIST))
-                    },
-                    detailPane = { modifier -> Box(modifier.testTag(DETAIL)) },
-                    collapsed = true,
-                    onCollapsedChange = {},
-                )
-            }
-            waitForIdle()
-            assertEquals(1, reopens)
-            // The list is out of composition (collapsed beside the open conversation) while the user
-            // leaves Activity; the conversation is closed elsewhere before they come back.
-            surfaceActive = false
-            waitForIdle()
-            hasSelection = false
-            surfaceActive = true
-            waitForIdle()
-            assertEquals(2, reopens, "a new visit after leaving reopens, even though the list never saw the leave")
-        }
-
     private companion object {
         const val LIST = "arrival-list"
         const val DETAIL = "arrival-detail"

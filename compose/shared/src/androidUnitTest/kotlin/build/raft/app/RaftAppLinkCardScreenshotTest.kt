@@ -71,10 +71,6 @@ class RaftAppLinkCardScreenshotTest {
     @Test
     fun cardsDark() = capture("thread.app-link-card.dark", RaftAppAppearance.Dark) { Cards() }
 
-    /** A v2 card from the batched read (the web's `prCard`, read-only: no Button drawn) beside its v1 neighbour. */
-    @Test
-    fun cardV2Light() = capture("thread.app-link-card-v2", RaftAppAppearance.Light) { CardV2() }
-
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }

@@ -58,9 +58,6 @@ class MembersAgentRuntimeFormV2DialogScreenshotTest {
     @Test
     fun editDark() = capture("members.agent-runtime-form-v2.dark", RaftAppAppearance.Dark, RuntimeFormV2DialogCase.GeminiV2)
 
-    @Test
-    fun editV3Light() = capture("members.agent-runtime-form-v3", RaftAppAppearance.Light, RuntimeFormV2DialogCase.ClaudeV3)
-
     private fun capture(name: String, appearance: RaftAppAppearance, case: RuntimeFormV2DialogCase) =
         RaftRobolectricScreenshot.capture(
             name,

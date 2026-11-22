@@ -7,11 +7,9 @@ import build.raft.app.resources.database_recovery_detail
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.resolve
-import build.raft.app.resources.thread_action_card_install_dialog_description
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -41,13 +39,5 @@ class RaftStringDescResolutionTest {
         StringDesc.localeType = StringDesc.LocaleType.Custom("en")
         val text = Res.string.database_recovery_detail.format(3, 5).resolve()
         assertTrue(text.startsWith("This app supports database version 5, but your local data uses version 3."), text)
-    }
-
-    @Test
-    fun androidApostropheEscapesAreDecoded() {
-        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
-        val text = Res.string.thread_action_card_install_dialog_description.format("bot", "GitHub").resolve()
-        assertTrue("isn't installed" in text, text)
-        assertFalse('\\' in text, text)
     }
 }

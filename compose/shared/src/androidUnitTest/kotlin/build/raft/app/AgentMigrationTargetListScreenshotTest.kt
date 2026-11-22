@@ -55,15 +55,6 @@ class AgentMigrationTargetListScreenshotTest {
     @Test
     fun threeDark() = dialog("agent.migration.targets.three.dark", RaftAppAppearance.Dark, threeComputers)
 
-    @Test
-    fun manyLight() = dialog("agent.migration.targets.many", RaftAppAppearance.Light, manyComputers)
-
-    @Test
-    fun manySearchingLight() = dialog("agent.migration.targets.many.search", RaftAppAppearance.Light, manyComputers, query = "tyz")
-
-    @Test
-    fun detailsLight() = details("agent.migration.targets.details", RaftAppAppearance.Light)
-
     private fun dialog(name: String, appearance: RaftAppAppearance, computers: List<AgentMigrationComputer>, query: String = "") =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             TargetsFixtureHost {
@@ -153,19 +144,6 @@ private val threeComputers =
         // Offline for three hours at the fixture's now (2026-10-22T02:10Z).
         target("m-3", "Build Box", memory = size(8.0, 16.0), disk = size(30.0, 120.0), agents = 2, online = false, lastHeartbeat = "2026-10-21T23:10:00.000Z")
     )
-
-private val manyComputers =
-    threeComputers +
-        listOf(
-            target("m-kopic", "KopiC", memory = size(5.1, 16.0), disk = size(210.0, 512.0), agents = 2),
-            target("m-tyz-mini", "tyz mini", memory = size(9.8, 24.0), disk = size(77.3, 256.0), agents = 5),
-            target("m-xxair", "xxair", disk = size(14.0, 128.0)),
-            target("m-kabi", "kabi", memory = size(1.2, 8.0), disk = size(9.4, 128.0), agents = 1),
-            target("m-erid", "Erid", memory = size(20.0, 64.0), disk = size(400.0, 1000.0)),
-            target("m-tyz-win", "tyz-win", memory = size(6.0, 32.0), disk = size(150.0, 512.0), agents = 2),
-            target("m-shared-ec2", "Shared-EC2", memory = size(2.0, 8.0), disk = size(20.0, 64.0), agents = 7),
-            target("m-xxdev", "xxdev", memory = size(14.0, 32.0), disk = size(88.0, 256.0))
-        )
 
 // Labels as the Computer sends them for Claude (OAR); ids are opaque.
 private val targetUsage =

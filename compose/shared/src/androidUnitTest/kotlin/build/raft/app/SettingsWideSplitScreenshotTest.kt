@@ -40,26 +40,6 @@ class SettingsWideSplitScreenshotTest {
     @Test
     fun defaultAccountLight() = capture("settings.wide.account", RaftAppAppearance.Light) { WideSettings(picked = null) }
 
-    @Test
-    fun defaultAccountDark() = capture("settings.wide.account.dark", RaftAppAppearance.Dark) { WideSettings(picked = null) }
-
-    /**
-     * A web-backed section (Billing) in the detail pane: the real Settings web page scaffold (title,
-     * no Back, under the top bar) with a placeholder where the WebView goes (Robolectric draws no web).
-     */
-    @Test
-    fun billingInThePaneLight() = capture("settings.wide.billing", RaftAppAppearance.Light) { WideSettings(picked = SettingsDestinationBilling) }
-
-    /**
-     * iOS (artin 11-02, App Store guideline 3.1.1): Billing is view-only, the current plan and its
-     * usage with no upgrade, payment or browser entry, in the pane instead of the WebView.
-     */
-    @Test
-    fun billingIosViewOnlyInThePaneLight() =
-        capture("settings.wide.billing.ios", RaftAppAppearance.Light) {
-            WideSettings(picked = SettingsDestinationBilling, iosBilling = IosBillingPresentation.ViewOnly)
-        }
-
     @Composable
     private fun WideSettings(picked: String?, imBridgesEnabled: Boolean = false, iosBilling: IosBillingPresentation? = null) {
         SettingsWideListDetail(

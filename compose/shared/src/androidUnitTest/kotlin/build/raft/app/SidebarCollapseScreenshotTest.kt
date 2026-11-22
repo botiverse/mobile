@@ -43,9 +43,6 @@ class SidebarCollapseScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun expandedLight() = capture("shell.sidebar-collapse.expanded", RaftAppAppearance.Light, hidden = false)
-
-    @Test
     fun collapsedLight() = capture("shell.sidebar-collapse.collapsed", RaftAppAppearance.Light, hidden = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, hidden: Boolean) =

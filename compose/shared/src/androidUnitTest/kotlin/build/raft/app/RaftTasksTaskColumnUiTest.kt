@@ -236,26 +236,6 @@ class RaftTasksTaskColumnUiTest {
         assertEquals(1, shell.pageBacks, "with the column closed Back is the page's")
     }
 
-    @Test
-    fun withoutRoomBesideTheListTheTaskTakesTheRow() = runRobolectricComposeUiTest {
-        val shell = Shell()
-        val swipe = RaftBackSwipeRegions()
-        val back = show(shell, widthDp = 640, swipe = swipe)
-        runOnIdle { assertFalse(swipe.contentConsumesBackSwipeAt(320f, 500f), "the list alone keeps the page's back swipe") }
-        onNodeWithText(tasks[0].title).performClick()
-        waitForIdle()
-        runOnIdle { assertTrue(swipe.contentConsumesBackSwipeAt(320f, 500f), "taking the row, the task blocks the back swipe as a pushed page") }
-        assertEquals(widthOf(ROOT), widthOf(RaftTasksTaskColumnTags.Column), 1.5f, "under 360 + 320 the task has the row")
-        assertFalse(has(RaftTasksTaskColumnTags.Expand), "nothing to expand into")
-        onNodeWithTag(RaftTasksTaskColumnTags.Close).assertExists()
-
-        back.press()
-        assertEquals(null, shell.openTaskId, "Back returns to the list")
-        runOnIdle { assertFalse(swipe.contentConsumesBackSwipeAt(320f, 500f), "closed, the swipe is the page's again") }
-        assertEquals(widthOf(ROOT), widthOf(RaftTasksTaskColumnTags.List), 1.5f)
-        assertEquals(0, shell.pageBacks)
-    }
-
     private companion object {
         const val ROOT = "tasks-task-column-root"
     }

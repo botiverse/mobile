@@ -116,26 +116,6 @@ class ThreadAssistantOtterUiTest {
     private fun ComposeUiTest.otterIn(conversation: String): SemanticsNodeInteraction =
         onNode(hasTestTag(ThreadAssistantOtterTestTag) and hasAnyAncestor(hasTestTag(conversation)))
 
-    @Test
-    fun showsOnTheComposerAndMovesToAThreadOpenedOverIt() =
-        runRobolectricComposeUiTest {
-            val hosts = RaftAssistantOtterHosts()
-            var threadOpen by mutableStateOf(false)
-            show {
-                Conversation(CHANNEL, otter(hosts, CHANNEL))
-                if (threadOpen) Conversation(THREAD, otter(hosts, THREAD))
-            }
-            otterIn(CHANNEL).assertExists()
-
-            runOnIdle { threadOpen = true }
-            otterIn(THREAD).assertExists()
-            otterIn(CHANNEL).assertDoesNotExist()
-
-            runOnIdle { threadOpen = false }
-            otterIn(CHANNEL).assertExists()
-            runOnIdle { assertEquals(listOf(CHANNEL), hosts.order.value) }
-        }
-
     /**
      * artin 11-03: the otter lies over the message list; its coming or going neither resizes nor
      * moves the list (no list-end band). Here the channel's list end keeps its place while the

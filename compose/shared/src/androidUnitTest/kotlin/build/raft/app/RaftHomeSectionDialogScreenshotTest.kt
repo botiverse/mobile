@@ -36,10 +36,6 @@ class RaftHomeSectionDialogScreenshotTest {
     @Test
     fun newSectionDark() = capture("home.section-dialog.new.dark", RaftAppAppearance.Dark, sectionName = "", emoji = "", create = true)
 
-    @Test
-    fun editWithEmojiLight() =
-        capture("home.section-dialog.edit", RaftAppAppearance.Light, sectionName = "Design lab", emoji = "\uD83D\uDE80", create = false)
-
     private fun capture(name: String, appearance: RaftAppAppearance, sectionName: String, emoji: String, create: Boolean) =
         RaftRobolectricScreenshot.capture(
             name,

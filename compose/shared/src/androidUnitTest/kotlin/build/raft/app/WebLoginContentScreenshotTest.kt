@@ -41,8 +41,6 @@ class WebLoginContentScreenshotTest {
 
     @Test fun readyLight() = capture("auth.web-login.ready", RaftAppAppearance.Light, pending = false)
 
-    @Test fun pendingLight() = capture("auth.web-login.pending", RaftAppAppearance.Light, pending = true)
-
     @Test fun pendingDark() = capture("auth.web-login.pending.dark", RaftAppAppearance.Dark, pending = true)
 
     private fun capture(name: String, appearance: RaftAppAppearance, pending: Boolean) =

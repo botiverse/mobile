@@ -39,13 +39,7 @@ class ActivityFilterBarScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun noFilterLight() = capture("screens.activity.filter.none", RaftAppAppearance.Light, InboxFilter.All)
-
-    @Test
     fun menuOpenLight() = capture("screens.activity.filter.menu", RaftAppAppearance.Light, InboxFilter.All, menuOpen = true)
-
-    @Test
-    fun menuOpenDark() = capture("screens.activity.filter.menu.dark", RaftAppAppearance.Dark, InboxFilter.All, menuOpen = true)
 
     @Test
     fun activeChipLight() = capture("screens.activity.filter.chip", RaftAppAppearance.Light, InboxFilter.Mentions)

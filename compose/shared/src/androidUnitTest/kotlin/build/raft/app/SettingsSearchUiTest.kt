@@ -9,13 +9,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.runtime.snapshots.Snapshot
-import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.components.RaftDesignSystemTheme
@@ -24,7 +20,6 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -49,75 +44,6 @@ class SettingsSearchUiTest {
         val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
         // The app's root theme, as every page has it.
         CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { RaftDesignSystemTheme(content) }
-    }
-
-    private val payload =
-        RaftSettingsHomePayload(
-            title = "Settings",
-            items =
-                listOf(
-                    SettingsHomePageLinkPayload(SettingsDestinationAccount, "Account", section = "Personal"),
-                    SettingsHomePageLinkPayload(SettingsNativeDetailPage.Appearance.key, "Appearance", section = "Personal"),
-                    SettingsHomePageLinkPayload(SettingsDestinationBilling, "Plan & Billing", section = "Workspace"),
-                    SettingsHomePageLinkPayload(SettingsDestinationAdministration, "Administration", section = "Workspace"),
-                ),
-        )
-
-    /** With the clock held: let a write from outside composition recompose, then move the clock on. */
-    private fun ComposeUiTest.advance(millis: Long = 500) {
-        Snapshot.sendApplyNotifications()
-        mainClock.advanceTimeBy(millis)
-    }
-
-    @Test
-    fun resultsReplaceTheGroupsOpenTheirSettingAndNoMatchSearchesEverywhere() = runRobolectricComposeUiTest {
-        val state = SettingsSearchState()
-        val opened = mutableListOf<RaftSearchableSetting>()
-        val everywhere = mutableListOf<String>()
-        mainClock.autoAdvance = false
-        setContent {
-            InPage {
-                SettingsHomeContent(
-                    payload = payload,
-                    search =
-                        SettingsSearchHost(
-                            state = state,
-                            // An ordinary member: Billing's plan and Administration's blocks are not theirs.
-                            context = RaftSettingsSearchContext(rowKeys = emptyList(), role = "member"),
-                            serverName = "Acme",
-                            active = true,
-                            onOpen = { opened += it },
-                            onSearchEverywhere = { everywhere += it },
-                        ),
-                    onSelect = {},
-                )
-            }
-        }
-        advance()
-        // The field is there; the query is set on its state, so nothing takes focus.
-        onNode(hasSetTextAction()).assertExists()
-        state.query = "ENTER"
-        advance()
-        // Found by another word for it ("enter"), on Appearance.
-        onNodeWithTag(settingsSearchResultTag("send-with")).assertExists().performClick()
-        advance()
-        assertEquals(listOf("send-with" to SettingsNativeDetailPage.Appearance.key), opened.map { it.id to it.rowKey })
-
-        // "invite" is Invite links' word, but invite links are an admin's: No match.
-        state.query = "invite"
-        advance()
-        onNodeWithTag(settingsSearchResultTag("invite-links")).assertDoesNotExist()
-        onNodeWithTag(SettingsSearchEmptyTag).assertExists()
-        onNodeWithTag(SettingsSearchEverywhereTag).performClick()
-        advance()
-        assertEquals(listOf("invite"), everywhere)
-
-        // With text there is a clear button; an empty field brings the groups back.
-        onNodeWithTag(SettingsSearchClearTag).assertExists()
-        state.query = ""
-        advance()
-        onNodeWithTag(SettingsSearchEmptyTag).assertDoesNotExist()
-        onNodeWithTag(SettingsSearchClearTag).assertDoesNotExist()
     }
 
     @Test

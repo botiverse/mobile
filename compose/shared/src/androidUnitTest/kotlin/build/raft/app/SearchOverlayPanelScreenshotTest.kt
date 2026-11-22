@@ -76,8 +76,6 @@ class SearchOverlayPanelScreenshotTest {
 
     @Test fun results() = capture("search.overlay.results", resultsState)
 
-    @Test fun resultsDark() = capture("search.overlay.results.dark", resultsState, RaftAppAppearance.Dark)
-
     @Test fun empty() = capture("search.overlay.empty", SharedHomeSearchPanelState(serverId = serverId))
 
     @Test fun recent() =

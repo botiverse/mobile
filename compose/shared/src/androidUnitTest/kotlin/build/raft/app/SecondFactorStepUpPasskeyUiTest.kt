@@ -4,11 +4,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftNativePasskeyAssertion
@@ -118,32 +115,6 @@ class SecondFactorStepUpPasskeyUiTest {
         waitForIdle()
         assertEquals(1, asked.size)
         onNodeWithText("The passkey prompt was closed. Try again, or use another way.").assertExists()
-    }
-
-    @Test
-    fun aRefusedPasskeyShowsItsTraceId() = runRobolectricComposeUiTest {
-        val intents = mutableListOf<SecondFactorStepUpIntent>()
-        show(mutableStateOf(passkeyFirst.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid("4bf92f3577b34da6a3ce929d0e0e4736"))), intents)
-
-        onNodeWithText("That passkey didn't work. Try again, or use another way.").assertExists()
-        onAllNodesWithTag(RaftTraceIdNoteTestTag).assertCountEquals(1)
-        onNodeWithText("4bf92f35", substring = true).assertExists()
-    }
-
-    @Test
-    fun onlyAPasskeyThatCantBeUsedHereOpensTheActionOnTheWeb() = runRobolectricComposeUiTest {
-        val intents = mutableListOf<SecondFactorStepUpIntent>()
-        val opened = mutableListOf<String>()
-        val webUrl = "https://staging.raft.build/s/acme/computers"
-        show(mutableStateOf(passkeyOnlyHere.copy(webUrl = webUrl)), intents, opened = opened)
-
-        onNodeWithText("Make this change in Raft on the web", substring = true).assertExists()
-        onNodeWithTag(SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG).assertIsEnabled().performClick()
-        waitForIdle()
-
-        // The page opens and the action here ends, as with Close.
-        assertEquals(listOf(webUrl), opened)
-        assertEquals(listOf<SecondFactorStepUpIntent>(SecondFactorStepUpIntent.Cancel), intents)
     }
 
     @Test

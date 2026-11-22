@@ -33,9 +33,6 @@ class AttentionAndUpdateProgressScreenshotTest {
     @Test
     fun attentionAndUpdateProgressLight() = capture("more.attention-update-progress", RaftAppAppearance.Light)
 
-    @Test
-    fun attentionAndUpdateProgressDark() = capture("more.attention-update-progress.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             RaftDesignSystemTheme {

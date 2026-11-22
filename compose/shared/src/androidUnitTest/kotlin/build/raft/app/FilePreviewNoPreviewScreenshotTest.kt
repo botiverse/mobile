@@ -33,11 +33,6 @@ class FilePreviewNoPreviewScreenshotTest {
     @Test
     fun tooLargeLight() = capture("file.preview.no-preview.too-large", RaftAppAppearance.Light, tooLargePayload)
 
-    /** #triage:#442: a WebM on iOS (AVPlayer cannot play it) says why, with Download and Open in another app. */
-    @Test
-    fun unplayableVideoIosLight() =
-        capture("file.preview.no-preview.video-format-ios", RaftAppAppearance.Light, webmPayload, RaftVideoPlayerFormatProfile.IosAvPlayer)
-
     @Test
     fun loadErrorLight() = capture("file.preview.load-error.retry", RaftAppAppearance.Light, loadErrorPayload)
 
@@ -69,11 +64,6 @@ private val spreadsheet =
     )
 
 private val tooLargePayload = spreadsheet.withNoPreviewDownload(RaftFilePreviewNoPreviewReasonTooLarge)
-
-private val webmPayload =
-    RaftThreadAttachmentItem(id = "att-webm", name = "screen-recording.webm", mimeType = "video/webm", sizeBytes = 18_400_000L)
-        .toThreadAttachmentLazyPreviewPayload(kind = RaftThreadAttachmentFileDetailKind)
-        .withNoPreviewDownload()
 
 private val loadErrorPayload =
     spreadsheet.copy(

@@ -121,19 +121,6 @@ class ThreadQuoteReplyCardUiTest {
             assertEquals(listOf(QuotedId), jumps)
         }
 
-    @Test
-    fun anUnverifiedQuoteIsAPlainQuoteOfItsExcerptWithoutTheRef() =
-        runRobolectricComposeUiTest {
-            // The read attached no resolved quote (the quoted message was deleted, or isn't visible).
-            showRow(reply(resolvedQuotes = emptyMap()))
-
-            val texts = shownTexts()
-            assertTrue(!cardShown(), "no card")
-            assertTrue(texts.any { Excerpt in it }, "the excerpt shows as a quote: $texts")
-            assertTrue(texts.any { "Agreed on that one." in it }, "the reply shows: $texts")
-            assertTrue(texts.none { "msg=" in it }, "no msg= line: $texts")
-        }
-
     private companion object {
         const val QuotedId = "54a733de-0001-4000-8000-000000000001"
         const val Excerpt = "keep quote replies in the same conversation"

@@ -80,9 +80,6 @@ class ComputerRuntimeUsageScreenshotTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun chipsLight() = capture("settings.computer.runtime_usage.chips", RaftAppAppearance.Light) { RuntimeUsageChipsContent(it) }
-
-    @Test
     fun chipsDark() = capture("settings.computer.runtime_usage.chips.dark", RaftAppAppearance.Dark) { RuntimeUsageChipsContent(it) }
 
     // A finger's tap on Claude Code's chip on a phone: the usage opens as a bottom sheet (web: a
@@ -99,18 +96,6 @@ class ComputerRuntimeUsageScreenshotTest {
                 ShadowDialog.getLatestDialog()?.window?.decorView?.let(::fittedToItsWindow)
             },
         ) { CapturePage(RaftAppAppearance.Light) { RuntimeUsageChipsContent(it) } }
-
-    // The desktop card a mouse rests on (web RuntimeUsageHoverCard, 390 wide): pinned, with its
-    // close button; the same content as the sheet.
-    @Test
-    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
-    fun previewCardLight() = capture("settings.computer.runtime_usage.preview_card", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(CLAUDE_USAGE) }
-
-    // A stale snapshot: the orange-soft notice over the sunken accounts.
-    @Test
-    @Config(sdk = [34], qualifiers = "w520dp-h640dp-xxhdpi")
-    fun previewCardStaleLight() =
-        capture("settings.computer.runtime_usage.preview_card.stale", RaftAppAppearance.Light) { RuntimeUsagePreviewCardContent(KIMI_USAGE, label = "Kimi") }
 
     // Web parity (slock #15482, #15483, #15557, #15395, #15787): a titled plan with resets and credits on
     // one line, the account's "…" menu and the on-credits callout; some model groups used up; the

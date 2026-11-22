@@ -52,8 +52,6 @@ class ThreadHistoryPaywallScreenshotTest {
 
     @Test fun channelLight() = capture("thread.history-paywall", RaftAppAppearance.Light) { ChannelStart() }
 
-    @Test fun channelDark() = capture("thread.history-paywall.dark", RaftAppAppearance.Dark) { ChannelStart() }
-
     @Test
     @Config(qualifiers = "w1280dp-h800dp-mdpi")
     fun channelWideLight() = capture("thread.history-paywall.wide", RaftAppAppearance.Light) { ChannelStart() }

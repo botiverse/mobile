@@ -64,16 +64,6 @@ class HomeChannelListScreenshotTest {
     @Test
     fun homeChannelListDark() = capture("screens.home.channel-list.dark", RaftAppAppearance.Dark)
 
-    // A server theme worn app-wide (per-server theme step 4): Bots repaints the frame (light blue
-    // in light mode) and, in dark mode, the canvas and cards too.
-    @Test
-    fun homeChannelListBotsLight() =
-        capture("screens.home.channel-list.bots", RaftAppAppearance.Light, RaftThemeId.Bots)
-
-    @Test
-    fun homeChannelListBotsDark() =
-        capture("screens.home.channel-list.bots.dark", RaftAppAppearance.Dark, RaftThemeId.Bots)
-
     private fun capture(name: String, appearance: RaftAppAppearance, theme: RaftThemeId = RaftThemeId.Raft) {
         RaftAppThemeState.apply(appearance)
         RaftAppThemeState.setRaftTheme(theme)

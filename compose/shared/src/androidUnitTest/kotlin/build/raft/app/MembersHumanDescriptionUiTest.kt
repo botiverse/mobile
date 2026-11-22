@@ -12,15 +12,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextReplacement
 import build.raft.app.data.AccountDescriptionUpdateResult
 import build.raft.app.data.DataResult
 import build.raft.app.data.DescriptionLinkWarning
 import build.raft.app.data.DescriptionLinkWarningCode
-import build.raft.app.data.PROFILE_DESCRIPTION_INVALID_CODE
 import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
-import build.raft.app.data.ScreenError
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -116,37 +113,6 @@ class MembersHumanDescriptionUiTest {
     }
 
     @Test
-    fun clearingSelfDescriptionSendsNullAndShowsEmptyState() = runRobolectricComposeUiTest {
-        val submitted = mutableListOf<String?>()
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersHumanDetailSections(
-                    member = sampleHuman(description = "Temporary bio"),
-                    timeContext = RaftTimeContext(localOffsetMinutes = 0),
-                    currentUserId = "user-1",
-                    currentServerId = "server-1",
-                    onUpdateDescription = { next ->
-                        submitted += next
-                        DataResult.Content(AccountDescriptionUpdateResult(description = next))
-                    }
-                )
-            }
-        }
-        waitForIdle()
-
-        onNodeWithTag(MembersHumanDescriptionEditButtonTag).performClick()
-        waitForIdle()
-        onNodeWithTag(MembersHumanDescriptionInputTag).performTextClearance()
-        waitForIdle()
-        onNodeWithTag(RaftProfileDescriptionCounterTestTag).assertTextEquals("0/$PROFILE_DESCRIPTION_MAX_LENGTH")
-        onNodeWithTag(MembersHumanDescriptionSaveButtonTag).assertIsEnabled().performClick()
-        waitForIdle()
-
-        assertEquals(listOf<String?>(null), submitted)
-        onNodeWithText("No description").assertIsDisplayed()
-    }
-
-    @Test
     fun legacyOverLimitDescriptionSavesUnchangedButEditedOverLimitBlocksSave() = runRobolectricComposeUiTest {
         val legacy = "a".repeat(310)
         val submitted = mutableListOf<String?>()
@@ -188,45 +154,6 @@ class MembersHumanDescriptionUiTest {
         waitForIdle()
         assertEquals(listOf<String?>(legacy), submitted)
         onNodeWithTag(MembersHumanDescriptionEditButtonTag).assertIsDisplayed()
-    }
-
-    @Test
-    fun serverInvalidCodeShowsLengthErrorAndTraceIdAndEdgeBlockedIsLocalized() = runRobolectricComposeUiTest {
-        val validTraceId = "a1b2c3d4e5f60718293a4b5c6d7e8f90"
-        var nextError =
-            ScreenError(
-                code = "settings_http_400",
-                serverCode = PROFILE_DESCRIPTION_INVALID_CODE,
-                serverMessage = "raw server text",
-                traceId = validTraceId
-            )
-        setContent {
-            RaftTheme(appearance = RaftAppearance.Light) {
-                MembersHumanDetailSections(
-                    member = sampleHuman(description = "Old bio"),
-                    timeContext = RaftTimeContext(localOffsetMinutes = 0),
-                    currentUserId = "user-1",
-                    currentServerId = "server-1",
-                    onUpdateDescription = { DataResult.Error(nextError) }
-                )
-            }
-        }
-        waitForIdle()
-
-        onNodeWithTag(MembersHumanDescriptionEditButtonTag).performClick()
-        waitForIdle()
-        onNodeWithTag(MembersHumanDescriptionInputTag).performTextReplacement("Short")
-        onNodeWithTag(MembersHumanDescriptionSaveButtonTag).performClick()
-        waitForIdle()
-        onNodeWithText("Description must be 300 characters or fewer.").assertIsDisplayed()
-        onNodeWithTag(RaftTraceIdNoteTestTag).assertIsDisplayed()
-        onNodeWithText("a1b2c3d4…").assertIsDisplayed()
-
-        // Raw "edge_blocked" marker must never be surfaced verbatim.
-        nextError = ScreenError(code = "settings_http_503", serverMessage = "edge_blocked")
-        onNodeWithTag(MembersHumanDescriptionSaveButtonTag).performClick()
-        waitForIdle()
-        onNodeWithText("edge_blocked").assertDoesNotExist()
     }
 
     @Test

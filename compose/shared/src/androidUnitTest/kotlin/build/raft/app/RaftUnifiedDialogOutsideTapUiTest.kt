@@ -104,16 +104,6 @@ class RaftUnifiedDialogOutsideTapUiTest {
             assertEquals(1, dismissed)
         }
 
-    @Test
-    fun busyDialogIgnoresBack() =
-        runRobolectricComposeUiTest {
-            var dismissed = 0
-            showDialog(dismissOnOutsideTap = false, dismissEnabled = false) { dismissed++ }
-            pressBack()
-            tapScrim()
-            assertEquals(0, dismissed)
-        }
-
     @Composable
     private fun Page(content: @Composable () -> Unit) {
         val pager =

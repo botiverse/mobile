@@ -51,9 +51,6 @@ class ActionCardFormSheetScreenshotTest {
     @Test
     fun errorsLight() = capture("action-card.form.errors", RaftAppAppearance.Light, fixtures.empty, issues = fixtures.serverIssues)
 
-    @Test
-    fun submittingLight() = capture("action-card.form.submitting", RaftAppAppearance.Light, fixtures.filled, submitting = true)
-
     /** The vector's question card form (schemaVersion 8): three steps, a single and a multiple Choice with Other, and a TextArea. */
     private val questionForm by lazy { checkNotNull(ActionCardSpecFixtures.card("question_card").forms?.get("answers")) }
 

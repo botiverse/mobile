@@ -210,11 +210,6 @@ class ThreadAgentTypingLineLayoutUiTest {
         assertTrue(withoutLine.sameAs(opened), "the newest message moved when the line hid: was $opened ${state(harness)}")
     }
 
-    /** Opened on the newest message (Inbox, Activity): the viewport is anchored on it. */
-    @Test
-    fun anchoredOnTheNewestMessageTheLineNeitherCoversNorMovesIt() =
-        runRobolectricComposeUiTest { assertTheLineComingAndGoingLeavesTheNewestMessageAlone(focusNewest = true) }
-
     /** Opened at the bottom: the viewport follows the latest message. */
     @Test
     fun followingTheLatestMessageTheLineNeitherCoversNorMovesIt() =

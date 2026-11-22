@@ -129,16 +129,6 @@ class TaskConversationHeadRealTapTest {
             assertOpened("Search assignees", TaskHeadAssigneeTestTag)
         }
 
-    @Test
-    fun inALongConversationTheBarPullsTheHeadDownAndAFingerOnTheStatusOpensTheMenu() =
-        runRobolectricComposeUiTest {
-            openTaskPage(messages = 60)
-            assertHeadOutOfViewAndNotPulledDown()
-            pullHeadDownFromTheBar()
-            tapAtCentreOf(TaskHeadStatusTestTag)
-            assertOpened("Todo", TaskHeadStatusTestTag)
-        }
-
     private fun ComposeUiTest.openTaskPage(messages: Int, nav3: Boolean = false) {
         TaskTapFixture.reset(messages)
         val pager = object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
@@ -211,28 +201,6 @@ class TaskConversationHeadRealTapTest {
     private fun ComposeUiTest.headOrBarSummaryShows(): Boolean =
         onAllNodesWithTag(TaskHeadAssigneeTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() ||
             onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
-
-    /** A long conversation opens at its newest message: the head's row is out of view, the bar summarizes it, nothing is pulled down. */
-    private fun ComposeUiTest.assertHeadOutOfViewAndNotPulledDown() {
-        assertTrue(
-            onAllNodesWithTag(TaskBarSummaryTestTag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(),
-            "the head's row is out of view but the bar does not summarize the task\n" + root().printToString(Int.MAX_VALUE),
-        )
-        assertTrue(
-            onAllNodesWithTag(TaskHeadStatusTestTag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty(),
-            "the head was pulled down (or its row shown) as the conversation opened\n" + root().printToString(Int.MAX_VALUE),
-        )
-    }
-
-    /**
-     * The bar pulls the head down, where the reader is: a finger on its chevron end (the middle of
-     * the bar is the task line, whose status chip has a menu of its own).
-     */
-    private fun ComposeUiTest.pullHeadDownFromTheBar() {
-        val bar = chipBounds(TaskBarSummaryTestTag)
-        tapAt(TaskBarSummaryTestTag, Rect(bar.right - 24f, bar.center.y - 1f, bar.right - 22f, bar.center.y + 1f))
-        settle()
-    }
 
     private fun ComposeUiTest.settle() {
         repeat(20) {

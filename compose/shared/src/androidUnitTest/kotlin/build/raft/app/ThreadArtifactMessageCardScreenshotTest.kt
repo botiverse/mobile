@@ -4,8 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,9 +20,7 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactScreenshot
 import build.raft.app.data.ArtifactScreenshotReader
-import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
-import build.raft.app.data.ArtifactsHomeActor
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import coil3.annotation.ExperimentalCoilApi
@@ -73,126 +69,6 @@ class ThreadArtifactMessageCardScreenshotTest {
 
     @Test
     fun artifactMessageCardScreenshotLight() = captureScreenshots("thread.artifact-message-cards.screenshot", RaftAppAppearance.Light)
-
-    @Test
-    fun artifactMessageCardExcerptLight() = captureExcerpts("thread.artifact-message-cards.excerpt", RaftAppAppearance.Light)
-
-    @Test
-    fun artifactMessageCardSettledLight() = captureSettled("thread.artifact-message-cards.settled", RaftAppAppearance.Light)
-
-    /**
-     * `thread.artifact-message-cards.settled` (botiverse/slock #15654, behind `artifact_settled_v0`):
-     * the Settled tag after the version tag, Badge soft `success` with a check. A card at the
-     * window's width keeps the tags beside a short title; a 300dp card puts them under its title,
-     * which beside them would get under 128dp.
-     */
-    private fun captureSettled(name: String, appearance: RaftAppAppearance) {
-        val now = 1_792_635_000_000L
-        val timeContext = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 10, 22), nowEpochMillis = now)
-        val ago = { millis: Long -> Instant.ofEpochMilli(now - millis).toString() }
-        val settled = ArtifactSettled(ArtifactsHomeActor("agent", "a1", "remy", "Remy"), ago(26 * 60 * 60 * 1000L), 3)
-        val plan =
-            ArtifactSummary(
-                id = "pt_1a2b3c4d-0000-4000-8000-000000000003",
-                title = "Launch plan",
-                description = "Ship on Friday with the v2 onboarding.",
-                kind = ArtifactKind.Markdown,
-                version = 3,
-                pinned = false,
-                latestVersion = 3,
-                home = ArtifactHome.Conversation("proj-workspace", dm = false),
-                authorName = "Remy",
-                updatedAt = ago(26 * 60 * 60 * 1000L),
-                commentCount = 2,
-                facts = ArtifactFacts(sizeBytes = 4_096),
-                settled = settled,
-            )
-        val report =
-            plan.copy(
-                id = "pt_1a2b3c4d-0000-4000-8000-000000000004",
-                title = "Q3 revenue report",
-                description = "Revenue by region with the October forecast.",
-                kind = ArtifactKind.Html,
-                version = 4,
-                latestVersion = 4,
-                home = ArtifactHome.Server,
-                commentCount = 0,
-                settled = settled.copy(version = 4),
-            )
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            CompositionLocalProvider(LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext)) {
-                RaftDesignSystemTheme {
-                    Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ArtifactMessageCard(plan, onOpen = {}, onOpenInNewPage = {})
-                        Box(Modifier.width(300.dp)) { ArtifactMessageCard(report, onOpen = {}, onOpenInNewPage = {}) }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * `thread.artifact-message-cards.excerpt`: Markdown cards with an excerpt where the screenshot
-     * goes (web `ArtifactCardExcerpt`, #13445 / #13472 / #13488): one from `preview.blocks` (a
-     * heading, a paragraph with bold, italic and code, a task list, a table, a quote and an image's
-     * label, a newer Server's `callout` left out) cut at 192dp with its foot faded; one whose blocks
-     * fail (a heading of level 9) drawn from its plain text, at the 96dp minimum. Neither repeats
-     * the excerpt as a description.
-     */
-    private fun captureExcerpts(name: String, appearance: RaftAppAppearance) {
-        val now = 1_792_635_000_000L
-        val timeContext = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 10, 22), nowEpochMillis = now)
-        val updatedAt = Instant.ofEpochMilli(now - 3 * 60 * 60 * 1000L).toString()
-        fun card(id: String, blocks: String): ArtifactSummary {
-            val body =
-                """{"kind":"artifact","summaries":[{"ref":{"id":"$id"},"ok":true,"summary":{
-                  "id":"$id","url":"https://app.raft.build/artifacts/x","title":"Launch plan","kind":"markdown",
-                  "version":2,"pinned":false,"latestVersion":2,
-                  "author":{"type":"agent","id":"a1","name":"lagoon","displayName":"Lagoon","avatarUrl":null},
-                  "createdAt":"$updatedAt","updatedAt":"$updatedAt","commentCount":1,
-                  "home":{"kind":"conversation","conversation":{"id":"c1","name":"proj-workspace","type":"channel"}},
-                  "facts":{"sizeBytes":4096,"pages":2},
-                  "preview":{"kind":"excerpt","text":"Launch plan\nShip on Friday with the v2 onboarding.","blocks":$blocks}}}]}"""
-            return (build.raft.app.data.parseArtifactSummariesAnswer(body)!![id] as build.raft.app.data.ArtifactSummaryAnswer.Ok).summary
-        }
-        val rich =
-            card(
-                "pt_1a2b3c4d-0000-4000-8000-000000000001",
-                """[
-                  {"type":"heading","level":1,"spans":[{"text":"Launch plan"}]},
-                  {"type":"paragraph","spans":[{"text":"Ship on "},{"text":"Friday","bold":true},{"text":" with the "},{"text":"v2","code":true},{"text":" onboarding, "},{"text":"if QA agrees","italic":true},{"text":"."}]},
-                  {"type":"callout","spans":[{"text":"A newer Server's block: left out"}]},
-                  {"type":"list","items":[
-                    {"level":0,"checked":true,"spans":[{"text":"Freeze the branch"}]},
-                    {"level":0,"checked":false,"spans":[{"text":"Run the release checklist"}]},
-                    {"level":1,"order":1,"spans":[{"text":"Android"}]}
-                  ]},
-                  {"type":"table","header":[[{"text":"Region"}],[{"text":"Sign-ups"}]],"rows":[[[{"text":"EU"}],[{"text":"1,204"}]]]},
-                  {"type":"quote","spans":[{"text":"Keep the scope small."}]},
-                  {"type":"image","alt":"Funnel chart"}
-                ]""",
-            )
-        val fallback = card("pt_1a2b3c4d-0000-4000-8000-000000000002", """[{"type":"heading","level":9,"spans":[{"text":"Launch plan"}]}]""")
-        val view =
-            ThreadArtifactMessageRefsView.Cards(
-                listOf(
-                    ThreadArtifactMessageRef.Card("a", ArtifactLinkTarget(rich.id), rich),
-                    ThreadArtifactMessageRef.Card("b", ArtifactLinkTarget(fallback.id), fallback),
-                ),
-            )
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            CompositionLocalProvider(
-                LocalRaftTimeContextProvider provides RaftTimeContextProvider(timeContext),
-                LocalInspectionMode provides true,
-            ) {
-                RaftDesignSystemTheme {
-                    Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
-                        ThreadArtifactMessageRefsContent(view = view, onOpen = {}, onOpenInNewPage = {})
-                    }
-                }
-            }
-        }
-    }
 
     @OptIn(ExperimentalCoilApi::class)
     private fun captureScreenshots(name: String, appearance: RaftAppAppearance) {

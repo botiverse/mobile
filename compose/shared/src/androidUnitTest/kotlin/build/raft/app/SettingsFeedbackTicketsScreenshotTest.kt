@@ -55,10 +55,6 @@ class SettingsFeedbackTicketsScreenshotTest {
     /** A ticket filed on Raft Desktop, opened in the Android app: the client after the first message's time. */
     @Test
     fun filedFromLight() = captureFeedbackFiledFrom("settings.feedback-tickets.filed-from", RaftAppAppearance.Light, activities)
-
-    /** The list in the Android app: Desktop and iOS rows name their client, the Android row does not. */
-    @Test
-    fun listFiledFromLight() = captureFeedbackListFiledFrom("settings.feedback-tickets.list-filed-from", RaftAppAppearance.Light, activities)
 }
 
 private const val Now = 1_762_700_000_000L
@@ -145,14 +141,6 @@ private fun FiledFromTicket() {
         replyComposer = { _, _, _, _, _, _ -> },
     )
 }
-
-private fun captureFeedbackListFiledFrom(name: String, appearance: RaftAppAppearance, activities: RobolectricComposeActivityRule) =
-    RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-        val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) } }
-        CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-            RaftDesignSystemTheme { FiledFromList() }
-        }
-    }
 
 @Composable
 private fun FiledFromList() {

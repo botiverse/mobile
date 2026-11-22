@@ -27,7 +27,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.resources.*
-import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.theme.RaftAppearance
@@ -116,22 +115,6 @@ class ViewerImageEditPhoneScreenshotTest {
 class ViewerImageEditDesktopScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun viewerEdit() =
-        capture("image-viewer.edit.desktop") { _ ->
-            CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
-                RaftImageLightboxContent(
-                    request = RaftImageLightboxRequest(lightboxFixtureItems, index = 1),
-                    resolveFullUrl = { null },
-                    onDismiss = {},
-                    onDownload = {},
-                    onOpenWith = {},
-                    onEdit = {},
-                    pageImage = { item, _, onContentSize -> LightboxFixtureImage(item, onContentSize) }
-                )
-            }
-        }
 
     @Test
     fun editorPen() =

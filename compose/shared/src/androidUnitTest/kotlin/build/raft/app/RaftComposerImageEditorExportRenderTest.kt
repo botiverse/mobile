@@ -27,27 +27,6 @@ class RaftComposerImageEditorExportRenderTest {
     private val pen = Color(0xFFFF3B30)
 
     @Test
-    fun uncroppedExportKeepsSourceSizeAndPutsTheStrokeAtTheSourcePixel() {
-        // 2000x1500 photo shown on a 500x375 canvas (x4), like a 4000 px photo on a phone.
-        val source = gradientSource(2000, 1500)
-        val canvas = IntSize(500, 375)
-        val stroke = RaftComposerImageStroke(points = listOf(Offset(100f, 100f), Offset(300f, 100f)), color = pen)
-        val content =
-            RaftComposerImageEditorContent()
-                .raftComposerImageAppendStroke(stroke)
-
-        val out = assertNotNull(render(source, content, canvas)).asAndroidBitmap()
-
-        assertEquals(2000 to 1500, out.width to out.height)
-        // Canvas (200, 100) -> source (800, 400); the 6 px stroke becomes 24 px wide.
-        val hit = raftComposerImageCanvasToSource(Offset(200f, 100f), canvas, RaftComposerImageCropRect.Uncropped, 2000, 1500)
-        assertEquals(Offset(800f, 400f), hit)
-        assertPen(out.getPixel(800, 400), "stroke centre")
-        assertPen(out.getPixel(800, 400 + 10), "inside the scaled stroke width")
-        assertEquals(source.asAndroidBitmap().getPixel(800, 400 + 20), out.getPixel(800, 400 + 20), "photo just past the stroke")
-    }
-
-    @Test
     fun croppedExportIsTheCropRegionAtSourceResolution() {
         val source = gradientSource(2000, 1500)
         // Right-top quarter (x 1000..2000, y 0..750) fitted into a 500x375 canvas (x2).

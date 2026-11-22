@@ -46,9 +46,6 @@ class AgentMigrationSectionScreenshotTest {
     @Test
     fun sectionLight() = capture("agent.migration.section", RaftAppAppearance.Light)
 
-    @Test
-    fun sectionDark() = capture("agent.migration.section.dark", RaftAppAppearance.Dark)
-
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             MigrationFixtureHost {

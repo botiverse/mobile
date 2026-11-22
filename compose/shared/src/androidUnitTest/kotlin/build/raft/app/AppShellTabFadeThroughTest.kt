@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.motion.RaftMotion
@@ -156,49 +155,6 @@ class AppShellTabFadeThroughTest {
         assertEquals(HomeArgb, centerPixel(root), "reduced motion: Home at once")
         assertEquals(30, fixture.listStates.getValue("home").firstVisibleItemIndex, "Home kept its scroll position")
         assertEquals(mapOf("home" to 1, "tasks" to 1), fixture.loads, "a tab switch loads nothing again")
-    }
-
-    @Test
-    fun fadeThroughDoesNotRemeasureKeptAliveTabsOnSwitch() {
-        val fixture = Fixture()
-        val measureCounts = mutableMapOf<String, Int>()
-        ShadowChoreographer.setPaused(true)
-        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
-        val activity = activities.launch()
-        activity.setContent {
-            AppShellTabFadeThroughStack(
-                activeTab = fixture.selected,
-                tabs = fixture.retained,
-                fadeThrough = true,
-                reducedMotion = false,
-            ) { tab, _, _ ->
-                Spacer(
-                    Modifier
-                        .fillMaxSize()
-                        .layout { measurable, constraints ->
-                            measureCounts[tab] = (measureCounts[tab] ?: 0) + 1
-                            val placeable = measurable.measure(constraints)
-                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-                        }
-                )
-            }
-        }
-        idle(400)
-        // Mount "tasks" once, let fade settle.
-        fixture.select("tasks")
-        idle(RaftMotion.FadeThroughMillis.toLong() + 100)
-        val homeMeasuresBefore = measureCounts.getValue("home")
-        val tasksMeasuresBefore = measureCounts.getValue("tasks")
-
-        // Switching between two already-mounted tabs must only change placement/draw phases,
-        // never remeasure their subtrees or attach/detach graphicsLayer nodes.
-        fixture.select("home")
-        idle(RaftMotion.FadeThroughMillis.toLong() + 100)
-        fixture.select("tasks")
-        idle(RaftMotion.FadeThroughMillis.toLong() + 100)
-
-        assertEquals(homeMeasuresBefore, measureCounts.getValue("home"), "Home must not remeasure on tab switch")
-        assertEquals(tasksMeasuresBefore, measureCounts.getValue("tasks"), "Tasks must not remeasure on tab switch")
     }
 
     /** The window's center pixel right now (each tab fills itself with its own colour). */

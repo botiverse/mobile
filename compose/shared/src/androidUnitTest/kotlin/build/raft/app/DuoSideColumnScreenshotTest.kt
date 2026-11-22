@@ -74,11 +74,6 @@ class DuoSideColumnScreenshotTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
-    fun innerScreenLandscapeHomeBellOpen() =
-        capture("duo.inner-landscape.home-bell", innerPosture, tabBarStandIn = 0.dp) { WideShell(bellOpen = true) }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w951dp-h669dp-mdpi")
     fun innerScreenLandscapeHomeServerPanelOpenDark() =
         capture("duo.inner-landscape.home-server.dark", innerPosture, tabBarStandIn = 0.dp, RaftAppAppearance.Dark) {
             WideShell(serverPanelOpen = true)

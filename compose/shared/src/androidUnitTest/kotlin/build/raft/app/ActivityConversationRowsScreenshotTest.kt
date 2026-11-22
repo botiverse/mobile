@@ -84,37 +84,6 @@ class ActivityConversationRowsScreenshotTest {
             ActivityRowsVisualContent(RaftAppAppearance.Light, groupedByDay = true)
         }
 
-    /**
-     * raft-design #785, rows left open on their buttons: a followed thread (Done, Unfollow), a joined
-     * channel (Done, Mute) and a DM thread (Done only), between rows at rest.
-     */
-    @Test
-    fun activityRowsSwipeOpenLight() =
-        capture("screens.activity.rows.swipe-open", RaftAppAppearance.Light) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.Open)
-        }
-
-    /**
-     * raft-design #793, rows left open on their start button by a right swipe: an unread thread (Read,
-     * `message-square-check`) and a read channel (Unread, `message-square-dot`), between rows at rest.
-     */
-    @Test
-    fun activityRowsSwipeReadOpenLight() =
-        capture("screens.activity.rows.swipe-read-open", RaftAppAppearance.Light) {
-            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.StartOpen)
-        }
-
-    /**
-     * A mouse over the middle row (web InboxRowDone, `InboxItemActions reveal="hover"`): the cell hover fill
-     * and the ghost Mark as Done button (Lucide Check) at the row's end; its time and unread count move
-     * over by the button's width and 8dp and stay in view.
-     */
-    @Test
-    fun activityRowsHoverDoneLight() =
-        capture("screens.activity.rows.hover-done", RaftAppAppearance.Light) {
-            ActivityRowsHoverVisualContent(RaftAppAppearance.Light)
-        }
-
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,

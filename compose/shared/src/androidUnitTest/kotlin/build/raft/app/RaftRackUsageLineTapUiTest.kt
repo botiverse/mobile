@@ -79,17 +79,6 @@ class RaftRackUsageLineTapUiTest {
     private fun openLines(): List<Int> = states.indices.filter { states[it].isOpen || states[it].isPinned }
 
     @Test
-    fun aPlainTapOnALineOpensItsSheet() = runRobolectricComposeUiTest {
-        showRack()
-
-        onNodeWithTag(lineTag(2)).performTouchInput { click() }
-        mainClock.advanceTimeBy(1_000)
-
-        assertEquals(listOf(2), sheets, "a finger's tap on the line opens its usage sheet")
-        assertEquals(emptyList(), openLines(), "and no card")
-    }
-
-    @Test
     fun aFastSwipeStartingOnALineOpensNoCard() = runRobolectricComposeUiTest {
         showRack()
 

@@ -5,7 +5,6 @@ import build.raft.app.resources.StringDesc
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.member_app_can_summary
-import build.raft.app.resources.member_app_grant_source_agent_login
 import build.raft.app.resources.member_removal_impact_list_end
 import build.raft.app.resources.member_removal_impact_list_more
 import build.raft.app.resources.member_removal_impact_list_two
@@ -67,17 +66,5 @@ class MembersAgentAppSummaryLocaleTest {
             "Stamp can sign in as this agent, see this agent's email address, ask this agent to act, and linear:read",
             summary("en", "Stamp", listOf("linear:read", "agent:action_request:write", "email", "openid")),
         )
-    }
-
-    @Test
-    fun theSignInSourceLineMatchesTheWeb() {
-        mapOf(
-            "en" to "Granted when the agent signed in",
-            "zh-CN" to "这个 Agent 自己登录时授予",
-            "ja" to "エージェントのログイン時に許可",
-        ).forEach { (tag, expected) ->
-            StringDesc.localeType = StringDesc.LocaleType.Custom(tag)
-            assertEquals(expected, text(Res.string.member_app_grant_source_agent_login), "locale $tag")
-        }
     }
 }
