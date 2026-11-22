@@ -171,6 +171,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.collectAsState
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.getValue
@@ -180,6 +181,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -910,10 +912,8 @@ private fun RaftAppShellReadyContent(
         cachedRestoreSessionState = cachedRestoreSessionState,
     )
     val authGateMessageState = remember { mutableStateOf<AuthGateMessage?>(null) }
-    var authGateMessage by authGateMessageState
     val authSessionResetGenerationState = remember { mutableStateOf(0) }
-    var authSessionResetGeneration by authSessionResetGenerationState
-    var appliedAuthSessionResetGeneration by remember { mutableStateOf(0) }
+    val appliedAuthSessionResetGenerationState = remember { mutableStateOf(0) }
     AppShellAuthSessionEffects(
         sharedStores = sharedStores,
         pager = pager,
@@ -2062,20 +2062,7 @@ private fun RaftAppShellReadyContent(
             closeSubscription.close()
         }
     }
-    val tasksServerMembersEntry by remember(appShellServerMembersStore, readyServerId) {
-        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
-        if (serverId == null) {
-            MutableStateFlow(SharedServerMembersEntry(serverId = ""))
-        } else {
-            appShellServerMembersStore.serverMembersEntryFlow(serverId)
-        }
-    }.collectAsState(
-        remember(appShellServerMembersStore, readyServerId) {
-            readyServerId?.takeIf { it.isNotBlank() }
-                ?.let { appShellServerMembersStore.currentServerMembersEntry(ServerId(it)) }
-                ?: SharedServerMembersEntry(serverId = readyServerId.orEmpty())
-        }
-    )
+    val tasksServerMembersEntry by rememberAppShellTasksServerMembersEntry(appShellServerMembersStore, readyServerId)
     // QA bootstrap READY + waiting diagnostics + bounded Home retry (no-op unless session.qaBootstrap is set).
     AppShellSignInEffects(
         pageVisible = pageVisible,
@@ -2503,47 +2490,19 @@ private fun RaftAppShellReadyContent(
         homeStore.reset()
         homeShellStore.reset()
     }
-    LaunchedEffect(authSessionResetGeneration) {
-        if (authSessionResetGeneration > appliedAuthSessionResetGeneration) {
-            appliedAuthSessionResetGeneration = authSessionResetGeneration
-            resetAppShellSessionState()
-        }
-    }
-
-    LaunchedEffect(homeState.content, authGateState) {
-        val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
-        if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
-        val cachedSession = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
-        if (!shouldApplyHomeAuthErrorGate(error, authGateState, cachedSession)) {
-            bridge.logWarn(
-                "app_shell_home_auth_error_gate_skip code=$error " +
-                    "gate=${authGateState.authGateDiagnosticsName()} hasCachedSession=${cachedSession != null}"
-            )
-            if (authGateState == SharedAuthGateState.AuthRequired && cachedSession != null) {
-                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-            }
-            return@LaunchedEffect
-        }
-        bridge.logWarn("app_shell_home_auth_error_gate code=$error")
-        authGateMessage = AuthGateMessage.Static(Res.string.auth_error_sign_in_continue.desc())
-        authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-        resetAppShellSessionState()
-    }
-
-    // An organization requires single sign-on and this session isn't one (a 403 `SSO_REQUIRED` on any
-    // request): sign out and ask the person to sign in again, which goes through the web sign-in page
-    // and its "Continue with SSO". Once per session; the signal hands each request to one shell only.
-    LaunchedEffect(bridge, storeScope) {
-        build.raft.app.data.RaftSsoRequiredSignal.Process.signInRequests.collect { request ->
-            bridge.logWarn("sso_required_sign_in shell=${storeScope.shellInstanceId}")
-            authDataSource.logout()
-            bridge.realtimeDisconnect("sso_required")
-            authGateMessage =
-                AuthGateMessage.Static(Res.string.auth_error_sso_required.desc(), traceId = request.traceId)
-            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-            resetAppShellSessionState()
-        }
-    }
+    AppShellSessionResetEffects(
+        authSessionResetGenerationState = authSessionResetGenerationState,
+        appliedAuthSessionResetGenerationState = appliedAuthSessionResetGenerationState,
+        homeState = homeState,
+        authGateStateState = authGateStateState,
+        shellAuthStore = shellAuthStore,
+        bridge = bridge,
+        authGateViewModel = authGateViewModel,
+        authGateMessageState = authGateMessageState,
+        storeScope = storeScope,
+        authDataSource = authDataSource,
+        resetAppShellSessionState = ::resetAppShellSessionState,
+    )
 
     AppShellRuntimeAuthorityEffects(
         desktopModeOnLargeScreenState = desktopModeOnLargeScreenState,
@@ -2584,96 +2543,23 @@ private fun RaftAppShellReadyContent(
         homeState = homeState,
         cachedHomePreview = cachedHomePreview,
     )
-    when (val gate = authGateState) {
-        SharedAuthGateState.Restoring -> {
-            if (cachedHomePreview) {
-                AppShellCachedHomePreviewContent(
-                    bridge = bridge,
-                    shellScope = shellScope,
-                    state = homeState
-                )
-            } else {
-                if (suppressRestoreLanding) {
-                    AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
-                } else {
-                    AppShellRestoreSplashContent()
-                }
-                return
-            }
-            return
-        }
-        SharedAuthGateState.AuthRequired -> {
-            val localizedAuthGateMessage = authGateMessage.localizedMessage()
-            val authGateTraceId = authGateMessage?.traceId
-            LaunchedEffect(localizedAuthGateMessage) {
-                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage, authGateTraceId)
-            }
-            AppShellRestoreSplashContent()
-            return
-        }
-        is SharedAuthGateState.BootstrapRecoveryRequired -> {
-            QaBootstrapRecoveryEffect(
-                session = gate.session,
-                authDataSource = authDataSource,
-                dispatch = authGateViewModel::dispatch,
-            )
-            AppShellSilentRestoreContent()
-            return
-        }
-        is SharedAuthGateState.ServerRequired -> {
-            AppShellServerGateContent(
-                session = gate.session,
-                authDataSource = authDataSource,
-                onReady = { session ->
-                    authGateMessage = null
-                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
-                    resetAppShellSessionState()
-                },
-                onSignOut = {
-                    authGateMessage = null
-                    bridge.realtimeDisconnect("logout")
-                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                    resetAppShellSessionState()
-                }
-            )
-            return
-        }
-        is SharedAuthGateState.EmailVerificationRequired -> {
-            AppShellEmailVerificationGateContent(
-                session = gate.session,
-                authDataSource = authDataSource,
-                onRefresh = {
-                    authGateMessage = null
-                    authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
-                },
-                onSignOut = {
-                    authGateMessage = null
-                    bridge.realtimeDisconnect("logout")
-                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                    resetAppShellSessionState()
-                }
-            )
-            return
-        }
-        is SharedAuthGateState.ProfileSetupRequired -> {
-            LaunchedEffect(gate.session.user.id) {
-                pager.openAuthProfileSetupReplacingCurrentPage()
-            }
-            AppShellRestoreSplashContent()
-            return
-        }
-        is SharedAuthGateState.Error -> {
-            AppShellAuthErrorContent(
-                message = gate.message.localized(),
-                onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
-                onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
-                onOpenDiagnostics = { pager.openAppShellDeveloper() },
-                topBanner = { SignedOutAppUpdateBanner(pager, bridge) }
-            )
-            return
-        }
-        is SharedAuthGateState.Ready -> Unit
-    }
+    AppShellAuthGateContent(
+        authGateStateState = authGateStateState,
+        cachedHomePreview = cachedHomePreview,
+        bridge = bridge,
+        shellScope = shellScope,
+        homeState = homeState,
+        suppressRestoreLanding = suppressRestoreLanding,
+        adaptivePane = adaptivePane,
+        selectedTabState = selectedTabState,
+        authGateMessageState = authGateMessageState,
+        pager = pager,
+        authDataSource = authDataSource,
+        authGateViewModel = authGateViewModel,
+        resetAppShellSessionState = ::resetAppShellSessionState,
+    )
+    // Its branches for every gate but Ready end in the `return` that used to end this function.
+    if (authGateState !is SharedAuthGateState.Ready) return
 
     if (setupAdmissionHost != null && !setupAdmissionHost.allowsHome && !cachedRestoreUsable) {
         setupAdmissionHost.content()
@@ -4342,30 +4228,12 @@ private fun RaftAppShellReadyContent(
     // D1a: the current-server tab and its menu, from the Home switcher's own items.
     val serverMenuContent = homeState.content as? SharedHomeContentState.Content
     val serverMenuModel =
-        serverMenuContent?.let { content ->
-            remember(
-                content.session,
-                content.snapshot.server,
-                homeState.serverUnreadCounts,
-                serverActivityExpectedOwner,
-                homeState.serverActivityUnread,
-                moreAttention,
-            ) {
-                raftServerMenuModel(
-                    servers =
-                        sharedHomeSwitcherItems(
-                            session = content.session,
-                            selectedServer = content.snapshot.server,
-                            serverUnreadCounts = homeState.serverUnreadCounts,
-                            activityExpectedOwner = serverActivityExpectedOwner,
-                            activityProjection = homeState.serverActivityUnread,
-                        ),
-                    currentServerId = content.snapshot.server.id.value,
-                    currentServerName = content.snapshot.server.name,
-                    moreAttention = moreAttention,
-                )
-            }
-        }
+        rememberAppShellServerMenuModel(
+            serverMenuContent = serverMenuContent,
+            homeState = homeState,
+            serverActivityExpectedOwner = serverActivityExpectedOwner,
+            moreAttention = moreAttention,
+        )
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
     AppShellServerMenuDismissEffect(
@@ -7116,6 +6984,297 @@ private fun RaftAppShellReadyContent(
             mainRouteSurface()
         }
     }
+
+    AppShellBannerAndExternalShareHosts(
+        foregroundMessageBanner = foregroundMessageBanner,
+        shellScope = shellScope,
+        appShellServerMembersStore = appShellServerMembersStore,
+        sharedStores = sharedStores,
+        readySession = readySession,
+        foregroundBannerStore = foregroundBannerStore,
+        navigationIntake = navigationIntake,
+        bridge = bridge,
+        openHomeMessageRequestFn = ::openHomeMessageRequest,
+        mainRouteContent = mainRouteContent,
+        pager = pager,
+        shellAuthStore = shellAuthStore,
+        appShellNetworkClient = appShellNetworkClient,
+        openExternalShareComposerFn = ::openExternalShareComposer,
+    )
+}
+
+/**
+ * The ready server's members entry (the Tasks tab's identity options). Kept out of
+ * RaftAppShellReadyContent (JVM method size); the expression is moved verbatim.
+ */
+@Composable
+private fun rememberAppShellTasksServerMembersEntry(
+    appShellServerMembersStore: build.raft.app.data.SharedServerMembersStore,
+    readyServerId: String?,
+): State<SharedServerMembersEntry> =
+    remember(appShellServerMembersStore, readyServerId) {
+        val serverId = readyServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        if (serverId == null) {
+            MutableStateFlow(SharedServerMembersEntry(serverId = ""))
+        } else {
+            appShellServerMembersStore.serverMembersEntryFlow(serverId)
+        }
+    }.collectAsState(
+        remember(appShellServerMembersStore, readyServerId) {
+            readyServerId?.takeIf { it.isNotBlank() }
+                ?.let { appShellServerMembersStore.currentServerMembersEntry(ServerId(it)) }
+                ?: SharedServerMembersEntry(serverId = readyServerId.orEmpty())
+        }
+    )
+
+/**
+ * The shell's session resets: a raised auth-session reset generation, an auth error on Home and
+ * the SSO-required sign-out. Moved verbatim out of RaftAppShellReadyContent (JVM method size).
+ */
+@Composable
+@NonRestartableComposable
+private fun AppShellSessionResetEffects(
+    authSessionResetGenerationState: MutableState<Int>,
+    appliedAuthSessionResetGenerationState: MutableState<Int>,
+    homeState: SharedHomeState,
+    authGateStateState: MutableState<SharedAuthGateState>,
+    shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
+    bridge: build.raft.app.base.BridgeModule,
+    authGateViewModel: SharedAuthGateViewModel,
+    authGateMessageState: MutableState<AuthGateMessage?>,
+    storeScope: RaftShellStoreScope,
+    authDataSource: SharedAuthDataSource,
+    resetAppShellSessionState: () -> Unit,
+) {
+    val authSessionResetGeneration by authSessionResetGenerationState
+    var appliedAuthSessionResetGeneration by appliedAuthSessionResetGenerationState
+    val authGateState by authGateStateState
+    var authGateMessage by authGateMessageState
+    LaunchedEffect(authSessionResetGeneration) {
+        if (authSessionResetGeneration > appliedAuthSessionResetGeneration) {
+            appliedAuthSessionResetGeneration = authSessionResetGeneration
+            resetAppShellSessionState()
+        }
+    }
+
+    LaunchedEffect(homeState.content, authGateState) {
+        val error = (homeState.content as? SharedHomeContentState.Error)?.code ?: return@LaunchedEffect
+        if (!ScreenError(error, retryable = false).isAuthSessionError()) return@LaunchedEffect
+        val cachedSession = runCatchingPreservingCancellation { shellAuthStore.readSession() }.getOrNull()
+        if (!shouldApplyHomeAuthErrorGate(error, authGateState, cachedSession)) {
+            bridge.logWarn(
+                "app_shell_home_auth_error_gate_skip code=$error " +
+                    "gate=${authGateState.authGateDiagnosticsName()} hasCachedSession=${cachedSession != null}"
+            )
+            if (authGateState == SharedAuthGateState.AuthRequired && cachedSession != null) {
+                authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+            }
+            return@LaunchedEffect
+        }
+        bridge.logWarn("app_shell_home_auth_error_gate code=$error")
+        authGateMessage = AuthGateMessage.Static(Res.string.auth_error_sign_in_continue.desc())
+        authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+        resetAppShellSessionState()
+    }
+
+    // An organization requires single sign-on and this session isn't one (a 403 `SSO_REQUIRED` on any
+    // request): sign out and ask the person to sign in again, which goes through the web sign-in page
+    // and its "Continue with SSO". Once per session; the signal hands each request to one shell only.
+    LaunchedEffect(bridge, storeScope) {
+        build.raft.app.data.RaftSsoRequiredSignal.Process.signInRequests.collect { request ->
+            bridge.logWarn("sso_required_sign_in shell=${storeScope.shellInstanceId}")
+            authDataSource.logout()
+            bridge.realtimeDisconnect("sso_required")
+            authGateMessage =
+                AuthGateMessage.Static(Res.string.auth_error_sso_required.desc(), traceId = request.traceId)
+            authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+            resetAppShellSessionState()
+        }
+    }
+}
+
+/**
+ * What the shell shows for every auth gate but Ready, with that gate's effects. Moved verbatim
+ * out of RaftAppShellReadyContent (JVM method size): each of those branches still ends in
+ * `return`, which now ends this function, so RaftAppShellReadyContent returns right after the
+ * call for every gate but Ready.
+ */
+@Composable
+@NonRestartableComposable
+private fun AppShellAuthGateContent(
+    authGateStateState: MutableState<SharedAuthGateState>,
+    cachedHomePreview: Boolean,
+    bridge: build.raft.app.base.BridgeModule,
+    shellScope: RaftAppShellScope,
+    homeState: SharedHomeState,
+    suppressRestoreLanding: Boolean,
+    adaptivePane: RaftAdaptivePaneState,
+    selectedTabState: MutableState<String>,
+    authGateMessageState: MutableState<AuthGateMessage?>,
+    pager: Pager,
+    authDataSource: SharedAuthDataSource,
+    authGateViewModel: SharedAuthGateViewModel,
+    resetAppShellSessionState: () -> Unit,
+) {
+    val authGateState by authGateStateState
+    val selectedTab by selectedTabState
+    var authGateMessage by authGateMessageState
+    when (val gate = authGateState) {
+        SharedAuthGateState.Restoring -> {
+            if (cachedHomePreview) {
+                AppShellCachedHomePreviewContent(
+                    bridge = bridge,
+                    shellScope = shellScope,
+                    state = homeState
+                )
+            } else {
+                if (suppressRestoreLanding) {
+                    AppShellNewWindowRestoreFrame(adaptivePane = adaptivePane, selectedTab = selectedTab)
+                } else {
+                    AppShellRestoreSplashContent()
+                }
+                return
+            }
+            return
+        }
+        SharedAuthGateState.AuthRequired -> {
+            val localizedAuthGateMessage = authGateMessage.localizedMessage()
+            val authGateTraceId = authGateMessage?.traceId
+            LaunchedEffect(localizedAuthGateMessage) {
+                pager.openLoginReplacingCurrentPage(localizedAuthGateMessage, authGateTraceId)
+            }
+            AppShellRestoreSplashContent()
+            return
+        }
+        is SharedAuthGateState.BootstrapRecoveryRequired -> {
+            QaBootstrapRecoveryEffect(
+                session = gate.session,
+                authDataSource = authDataSource,
+                dispatch = authGateViewModel::dispatch,
+            )
+            AppShellSilentRestoreContent()
+            return
+        }
+        is SharedAuthGateState.ServerRequired -> {
+            AppShellServerGateContent(
+                session = gate.session,
+                authDataSource = authDataSource,
+                onReady = { session ->
+                    authGateMessage = null
+                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session))
+                    resetAppShellSessionState()
+                },
+                onSignOut = {
+                    authGateMessage = null
+                    bridge.realtimeDisconnect("logout")
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                    resetAppShellSessionState()
+                }
+            )
+            return
+        }
+        is SharedAuthGateState.EmailVerificationRequired -> {
+            AppShellEmailVerificationGateContent(
+                session = gate.session,
+                authDataSource = authDataSource,
+                onRefresh = {
+                    authGateMessage = null
+                    authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                },
+                onSignOut = {
+                    authGateMessage = null
+                    bridge.realtimeDisconnect("logout")
+                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                    resetAppShellSessionState()
+                }
+            )
+            return
+        }
+        is SharedAuthGateState.ProfileSetupRequired -> {
+            LaunchedEffect(gate.session.user.id) {
+                pager.openAuthProfileSetupReplacingCurrentPage()
+            }
+            AppShellRestoreSplashContent()
+            return
+        }
+        is SharedAuthGateState.Error -> {
+            AppShellAuthErrorContent(
+                message = gate.message.localized(),
+                onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
+                onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
+                onOpenDiagnostics = { pager.openAppShellDeveloper() },
+                topBanner = { SignedOutAppUpdateBanner(pager, bridge) }
+            )
+            return
+        }
+        is SharedAuthGateState.Ready -> Unit
+    }
+}
+
+/**
+ * The current-server tab's menu model, from the Home switcher's own items. Kept out of
+ * RaftAppShellReadyContent (JVM method size); the expression is moved verbatim.
+ */
+@Composable
+private fun rememberAppShellServerMenuModel(
+    serverMenuContent: SharedHomeContentState.Content?,
+    homeState: SharedHomeState,
+    serverActivityExpectedOwner: build.raft.app.data.ReadReceiptOwner?,
+    moreAttention: Set<RaftMoreAttention>,
+): RaftServerMenuModel? =
+        serverMenuContent?.let { content ->
+            remember(
+                content.session,
+                content.snapshot.server,
+                homeState.serverUnreadCounts,
+                serverActivityExpectedOwner,
+                homeState.serverActivityUnread,
+                moreAttention,
+            ) {
+                raftServerMenuModel(
+                    servers =
+                        sharedHomeSwitcherItems(
+                            session = content.session,
+                            selectedServer = content.snapshot.server,
+                            serverUnreadCounts = homeState.serverUnreadCounts,
+                            activityExpectedOwner = serverActivityExpectedOwner,
+                            activityProjection = homeState.serverActivityUnread,
+                        ),
+                    currentServerId = content.snapshot.server.id.value,
+                    currentServerName = content.snapshot.server.name,
+                    moreAttention = moreAttention,
+                )
+            }
+        }
+
+/**
+ * The shell's foreground banner host around the main route, and the external share launch host.
+ * Moved verbatim out of RaftAppShellReadyContent (JVM method size). The local functions below
+ * keep the moved code's calls as they were: they call the shell's own functions, passed in.
+ */
+@Composable
+@NonRestartableComposable
+private fun AppShellBannerAndExternalShareHosts(
+    foregroundMessageBanner: RaftForegroundMessageBanner?,
+    shellScope: RaftAppShellScope,
+    appShellServerMembersStore: build.raft.app.data.SharedServerMembersStore,
+    sharedStores: RaftSharedStoreProvider,
+    readySession: StoredAuthSession?,
+    foregroundBannerStore: SharedForegroundBannerStore,
+    navigationIntake: RaftShellNavigationIntake,
+    bridge: build.raft.app.base.BridgeModule,
+    openHomeMessageRequestFn: (HomeMessageOpenRequest, String, String?) -> Unit,
+    mainRouteContent: @Composable () -> Unit,
+    pager: Pager,
+    shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
+    appShellNetworkClient: build.raft.app.data.RaftNetworkClient,
+    openExternalShareComposerFn: suspend (build.raft.app.data.ExternalShareComposerHandoff) -> Boolean,
+) {
+    fun openHomeMessageRequest(request: HomeMessageOpenRequest, source: String, fallbackAnchorMessageId: String? = null) =
+        openHomeMessageRequestFn(request, source, fallbackAnchorMessageId)
+
+    suspend fun openExternalShareComposer(handoff: build.raft.app.data.ExternalShareComposerHandoff): Boolean =
+        openExternalShareComposerFn(handoff)
 
     Box(modifier = Modifier.fillMaxSize()) {
         RaftForegroundBannerHost(
