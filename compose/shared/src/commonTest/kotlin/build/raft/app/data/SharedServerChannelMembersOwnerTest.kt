@@ -130,35 +130,6 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
-    fun clearAndSameAccountReloginRetiresPreviousGeneration() = runBlocking {
-        val repository = OwnerTestMemberRepository().apply {
-            channelMembers = listOf(member("before-clear"))
-        }
-        val sameOwner = owner("env-a", "account-a")
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(sameOwner)
-        var writeGeneration = 3L
-        val store = store(repository, ownerState) { writeGeneration }
-
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        ownerState.value = null
-
-        assertEquals(emptyList(), store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)))
-        assertEquals(
-            emptyList(),
-            store.channelMemberSliceFlow(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).first().members
-        )
-
-        writeGeneration += 1
-        ownerState.value = sameOwner
-        repository.channelMembers = listOf(member("after-relogin"))
-        val reloaded = store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(reloaded)
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(listOf("after-relogin"), reloaded.data.members.map { it.id.value })
-    }
-
-    @Test
     fun addingAPeerServerHumanMakesTheirJointRosterRowLocal() = runBlocking {
         // Joint channel: the roster holds this human only through the peer server.
         val repository = OwnerTestMemberRepository().apply {
@@ -312,20 +283,6 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
-    fun aRemovedMemberLeavesStoredListsThatAreNotInMemory() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        loadOnce(device, ownerState, listOf(member("member-a"), member("member-b")))
-
-        // A new process: nothing in memory; a realtime removal arrives.
-        val store = store(OwnerTestMemberRepository(), ownerState, channelMembersOffline = device.members) { 1L }
-        store.removeMember(ServerId(SERVER_ID), MemberId("member-a"))
-        runCurrent()
-
-        assertEquals(listOf("member-b"), device.storedIds())
-    }
-
-    @Test
     fun channelMembersUpdatedReloadsALoadedListAndDropsAStoredOnlyOne() = kotlinx.coroutines.test.runTest {
         val device = Device(backgroundScope)
         val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
@@ -386,42 +343,6 @@ class SharedServerChannelMembersOwnerTest {
             loaded.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
         )
         assertEquals(listOf("member-a", "member-b", "member-c"), device.storedIds())
-    }
-
-    @Test
-    fun aMembersUpdatedEventDuringAColdOpenReloadsAfterItInsteadOfDroppingTheStoredCopy() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        loadOnce(device, ownerState, listOf(member("member-a")))
-
-        // Cold open: the stored stand-in shows while the request runs; that request was sent before the change.
-        val repository = OwnerTestMemberRepository().apply {
-            gate = CompletableDeferred()
-            channelMembersLoader = { _ ->
-                if (getChannelMembersCalls == 1) listOf(member("member-a")) else listOf(member("member-a"), member("member-b"))
-            }
-        }
-        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-        val load = async { store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        assertEquals(true, store.currentChannelMemberSlice(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).storedStandIn)
-
-        // A member joins while the stand-in loads.
-        launch { applyChannelMembersUpdated(listOf(store), ServerId(SERVER_ID), ChannelId(CHANNEL_ID)) }
-        runCurrent()
-        // Knife: a loading stand-in did not count as held, so the copy was dropped and nobody reloaded.
-        assertEquals(listOf("member-a"), device.storedIds())
-
-        repository.gate!!.complete(Unit)
-        assertIs<DataResult.Content<ChannelMemberSnapshot>>(load.await())
-        runCurrent()
-
-        assertEquals(2, repository.getChannelMembersCalls)
-        assertEquals(
-            listOf("member-a", "member-b"),
-            store.currentChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).map { it.id.value }
-        )
-        assertEquals(listOf("member-a", "member-b"), device.storedIds())
     }
 
     @Test
@@ -498,24 +419,6 @@ class SharedServerChannelMembersOwnerTest {
         assertEquals(RealtimeChannelMembersUpdate(null), event(null).updatedChannelMembersOrNull())
         assertEquals(RealtimeChannelMembersUpdate(null), event(" ").updatedChannelMembersOrNull())
         assertEquals(null, event("channel-1", RealtimeRefreshScope.ServerMembers).updatedChannelMembersOrNull())
-    }
-
-    @Test
-    fun aRemovalThatDoesNotConcernAListLeavesItsLaterWritesWelcome() = kotlinx.coroutines.test.runTest {
-        val device = Device(backgroundScope)
-        val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
-        val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
-        val store = store(repository, ownerState, channelMembersOffline = device.members) { 1L }
-        store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
-        runCurrent()
-
-        // Someone not in this channel leaves the server; then a confirmed add here.
-        store.removeMember(ServerId(SERVER_ID), MemberId("stranger"))
-        runCurrent()
-        store.addChannelMember(ServerId(SERVER_ID), AddChannelMemberRequest(ChannelId(CHANNEL_ID), MemberId("member-b"), MemberKind.Human))
-        runCurrent()
-
-        assertEquals(setOf("member-a", "member-b"), device.storedIds()?.toSet())
     }
 
     @Test

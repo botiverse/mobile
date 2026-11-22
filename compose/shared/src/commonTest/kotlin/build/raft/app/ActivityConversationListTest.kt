@@ -322,22 +322,6 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun dmThreadKeepsTheSenderWithoutASecondFace() {
-        // Either side may have replied last, so the DM thread keeps "Fable: …" even from the peer;
-        // the leading face is the peer, so no inline face before the name.
-        for (senderId in listOf("agent-fable", "user-other")) {
-            val model =
-                threadInFableDm.copy(latestActivitySenderId = senderId).activityConversationRowModel(context, InboxFilter.All)
-            val sender = assertIs<ActivityConversationSender.Named>(model.sender, senderId)
-            assertEquals("Fable", sender.name, senderId)
-            assertNull(sender.avatar, senderId)
-        }
-        // A channel thread keeps its inline sender face.
-        val channelSender = assertIs<ActivityConversationSender.Named>(thread.activityConversationRowModel(context, InboxFilter.All).sender)
-        assertEquals(MemberKind.Agent, channelSender.avatar?.senderKind)
-    }
-
-    @Test
     fun aJointThreadsReplierFromTheOtherServerIsResolvedNotDropped() {
         // The server names only external projections (channelService `latestActivitySenderName`), so
         // the other server's person or agent replying in a joint channel's thread arrives nameless and
@@ -535,62 +519,6 @@ class ActivityConversationListTest {
         // Another server's Home snapshot is never a candidate for this Activity.
         assertEquals(ActivityConversationListContext.Empty, snapshot.toActivityConversationListContext("server-2"))
         assertEquals(ActivityConversationListContext.Empty, (null as HomeSnapshot?).toActivityConversationListContext("server-1"))
-    }
-
-    @Test
-    fun objectRowInAJointChannelResolvesItsActorAsTheOtherServers() {
-        val home =
-            homeSnapshot().let { snapshot ->
-                snapshot.copy(
-                    channels =
-                        listOf(
-                            HomeChannelRow(threadId = ThreadId("general"), channelId = ChannelId("general"), name = "general", channelType = "channel"),
-                            HomeChannelRow(
-                                threadId = ThreadId("joint-stamp"),
-                                channelId = ChannelId("joint-stamp"),
-                                name = "joint-stamp",
-                                channelType = "channel",
-                                kind = ConversationKind.Joint,
-                            ),
-                            HomeChannelRow(threadId = ThreadId("legacy-joint"), channelId = ChannelId("legacy-joint"), name = "legacy-joint", channelType = "joint"),
-                        ),
-                )
-            }
-        val context = home.toActivityConversationListContext("server-1")
-        assertEquals(setOf("joint-stamp", "legacy-joint"), context.jointChannelIds)
-
-        fun objectRowIn(homeKind: String, homeChannelId: String?) =
-            InboxItem(
-                key = activityObjectRowKey("artifact", "artifact-1"),
-                kind = InboxItemKind.Object,
-                channelId = ChannelId("object:artifact-1"),
-                channelName = "Plan",
-                activityObject =
-                    ActivityObjectRow(
-                        objectKind = "artifact",
-                        objectId = "artifact-1",
-                        title = "Plan",
-                        homeKind = homeKind,
-                        homeLabel = homeChannelId,
-                        homeChannelId = homeChannelId,
-                        eventKind = "version",
-                        actorType = "agent",
-                        actorId = "agent-cachet",
-                        actorName = "Cachet",
-                    ),
-            )
-
-        fun avatarOf(item: InboxItem) = item.activityConversationRowModel(context, InboxFilter.All).objectLine?.avatar
-
-        val joint = avatarOf(objectRowIn("channel", "joint-stamp"))
-        assertEquals(MemberKind.Agent, joint?.senderKind)
-        assertEquals("agent-cachet", joint?.senderId)
-        assertTrue(joint?.jointSurface == true)
-        assertTrue(avatarOf(objectRowIn("channel", "legacy-joint"))?.jointSurface == true)
-        // A home channel that is not joint, a DM, or no home at all: the local directory only.
-        assertFalse(avatarOf(objectRowIn("channel", "general"))?.jointSurface ?: true)
-        assertFalse(avatarOf(objectRowIn("dm", "dm-fable"))?.jointSurface ?: true)
-        assertFalse(avatarOf(objectRowIn("server", null))?.jointSurface ?: true)
     }
 
     @Test

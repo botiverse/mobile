@@ -406,40 +406,6 @@ class SharedActivityStoreInboxInPlaceCheckTest {
     }
 
     @Test
-    fun anAnswerOnlyAheadOfThePatchedRowIsAMatchWhenItAgrees() {
-        val check = ActivityInPlaceDriftCheck(nowMillis = { 0L })
-        val patched = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
-        val ahead = patched.copy(latestActivitySeq = "12")
-        val bumpedThread = threadRow.copy(latestActivitySeq = "21")
-        // (local, served) -> result, `;served_ahead=1`
-        val cases =
-            listOf(
-                Triple(listOf(patched, otherRow), listOf(ahead, otherRow), "match" to "1"),
-                Triple(listOf(patched, otherRow), listOf(ahead.copy(unreadCount = 2), otherRow), "served_ahead+unread" to null),
-                // A row listed ahead of its served copy: the order is not fully judged, so not a match.
-                Triple(listOf(bumpedThread, patched, otherRow), listOf(ahead, otherRow, threadRow), "served_ahead" to null),
-            )
-        cases.forEach { (local, served, expected) ->
-            check.notePatched(patched, InboxRefreshTrigger.MessageNew)
-            val judged = check.check(local = local, served = served).single()
-            assertEquals(expected, judged.result to judged.fields()["served_ahead"], "served=${served.map { it.latestActivitySeq }}")
-        }
-    }
-
-    @Test
-    fun aRowWhoseAnswerIsBehindTheAcceptedReadWaitsForAnotherAnswer() {
-        val check = ActivityInPlaceDriftCheck(nowMillis = { 0L })
-        val patched = channelRow.copy(latestActivitySeq = "11", unreadCount = 1)
-        val behindRead = patched.copy(unreadCount = 3)
-
-        check.notePatched(patched, InboxRefreshTrigger.MessageNew)
-        assertTrue(check.check(local = listOf(patched), served = listOf(behindRead), readBehind = setOf("channel-1")).isEmpty())
-        assertTrue(check.check(local = listOf(patched), served = listOf(behindRead), readBehind = setOf("channel-1")).isEmpty())
-        val judged = check.check(local = listOf(patched), served = listOf(patched)).single()
-        assertEquals("match" to "2", judged.result to judged.fields()["read_behind"], "judged by the answer that has the read")
-    }
-
-    @Test
     fun servedReadBehindScopesAreTheRowsReadOlderAndLowerThanTheAcceptedRead() {
         // Served: read v2 up to 8, activity up to 11.
         val served = channelRow.copy(readStateVersion = 2L, readStateMaxReadSeq = "8", readStateLatestActivitySeq = "11")

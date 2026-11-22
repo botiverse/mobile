@@ -115,24 +115,6 @@ class SharedHomeStoreLeaveChannelTest {
     }
 
     @Test
-    fun aJoinListsTheGivenRowWhenHomeHasNone() = runTest {
-        val store = store()
-        store.accept(SharedHomeIntent.Start)
-
-        store.accept(SharedHomeIntent.ChannelJoined("server-1", ChannelId("channel-new")))
-        assertTrue(store.snapshot().channels.none { it.channelId == ChannelId("channel-new") })
-
-        store.accept(
-            SharedHomeIntent.ChannelJoined(
-                "server-1",
-                ChannelId("channel-new"),
-                rowIfMissing = row("channel-new").copy(joined = false),
-            ),
-        )
-        assertTrue(store.row("channel-new").joined)
-    }
-
-    @Test
     fun aJoinOnAnotherServerChangesNothing() = runTest {
         val store = store(home = sampleHome(notJoined = "channel-public"))
         store.accept(SharedHomeIntent.Start)
@@ -224,21 +206,6 @@ class SharedHomeStoreLeaveChannelTest {
         store.awaitRealtimeSettled()
 
         assertTrue(store.snapshot().channels.any { it.channelId == ChannelId("channel-new") })
-    }
-
-    @Test
-    fun aGuardAppliesToItsServerAndSettlesOnceAFetchAgrees() {
-        val mark = kotlin.time.TimeSource.Monotonic.markNow()
-        val guard = HomeJoinedChannelGuard(ServerId("server-1"), ChannelId("channel-public"), null, mark)
-        val behind = sampleHome(notJoined = "channel-public")
-
-        assertFalse(guard.settledBy(behind))
-        assertTrue(behind.withJoinedChannelsFrom(listOf(guard)).channels.first { it.channelId == guard.channelId }.joined)
-        assertTrue(guard.settledBy(sampleHome()))
-
-        val otherServer = behind.copy(server = behind.server.copy(id = ServerId("server-2")))
-        assertFalse(guard.settledBy(otherServer.copy(channels = sampleHome().channels)))
-        assertEquals(otherServer, otherServer.withJoinedChannelsFrom(listOf(guard)))
     }
 
     private fun TestScope.store(

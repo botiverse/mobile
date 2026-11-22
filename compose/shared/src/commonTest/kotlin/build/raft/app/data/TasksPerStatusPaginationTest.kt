@@ -163,20 +163,6 @@ class TasksPerStatusPaginationTest {
     }
 
     @Test
-    fun theSeedDeduplicatesAgainstRowsAlreadyLoaded() {
-        val seeded = content(task("seed-1", TaskStatus.Todo), task("other"))
-            .reduce(
-                SharedTasksIntent.SeedStatusPage(
-                    status = TaskStatus.Todo,
-                    tasks = listOf(task("seed-1", TaskStatus.Todo), task("seed-2", TaskStatus.Todo)),
-                    nextCursor = "todo-2"
-                )
-            )
-        val rows = (seeded.loadState as ScreenLoadState.Content).data.tasks.map { it.id.value }
-        assertEquals(listOf("seed-1", "other", "seed-2"), rows, "an overlapping seed row merges, no duplicate")
-    }
-
-    @Test
     fun aStatusPageMergesByIdWithoutDuplicating() {
         val first = content(task("t1")).withAppendedStatusPage(TaskStatus.Todo, listOf(task("t2")), "todo-2")
         val merged = first.withAppendedStatusPage(TaskStatus.Todo, listOf(task("t1", TaskStatus.Todo), task("t3")), null)

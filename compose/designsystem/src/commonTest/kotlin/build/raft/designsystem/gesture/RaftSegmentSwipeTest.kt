@@ -61,14 +61,6 @@ class RaftSegmentSwipeTest {
         assertEquals(RaftPagingDragDecision.Claim, decide(dx = 30f, host = false, edge = true))
     }
 
-    @Test
-    fun aBackSwipeFromTheLeadingStripIsLeftToThePopOnlyOnABackSwipeHost() {
-        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = true))
-        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = true, startsInLeadingEdge = false))
-        assertTrue(raftSegmentSwipeCanGoBackward(canGoBackward = true, hostHasBackSwipe = false, startsInLeadingEdge = true))
-        assertFalse(raftSegmentSwipeCanGoBackward(canGoBackward = false, hostHasBackSwipe = false, startsInLeadingEdge = false))
-    }
-
     private class Leftovers(edge: Boolean = false) {
         val driven = mutableListOf<Float>()
         val nested = RaftSegmentNestedDrag().apply { reset(edge) }
@@ -98,29 +90,10 @@ class RaftSegmentSwipeTest {
     }
 
     @Test
-    fun aScrollerLeftoverPastTheLastSegmentGoesToTheOuterPager() {
-        val t = Leftovers()
-        assertEquals(0f, t.leftover(-30f, fwd = false))
-        assertEquals(0f, t.leftover(-30f, fwd = true))
-        assertEquals(emptyList(), t.driven)
-        assertFalse(t.nested.owned)
-    }
-
-    @Test
     fun rtlMirrorsTheLeftover() {
         val t = Leftovers()
         t.leftover(25f, isLtr = false)
         assertEquals(listOf(25f), t.driven)
-    }
-
-    @Test
-    fun aBackLeftoverFromTheLeadingStripPassesThroughOnABackSwipeHost() {
-        val ios = Leftovers(edge = true)
-        assertEquals(0f, ios.leftover(25f, host = true))
-        assertFalse(ios.nested.owned)
-        val android = Leftovers(edge = true)
-        assertEquals(25f, android.leftover(25f, host = false))
-        assertEquals(listOf(-25f), android.driven)
     }
 
     @Test

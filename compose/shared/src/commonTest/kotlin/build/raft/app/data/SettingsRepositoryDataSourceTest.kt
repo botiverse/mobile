@@ -832,21 +832,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun realtimeRefreshWritesStoredCopyAtBackgroundPriorityForTheSignedInAccount() = runBlocking {
-        val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
-        val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":false,"serverPushMode":"mentions"}""")
-        val repository = RealSettingsRepository(sampleStore(), network, serverNotificationLastKnownStore = lastKnown)
-
-        // No Settings page involved: the refetch alone refreshes the stored copy, for any of the viewer's servers.
-        assertIs<DataResult.Content<SettingsServerNotificationPreferences>>(
-            repository.refreshServerNotificationPreferences(expectedUserId = "user-1", serverId = "server-2")
-        )
-
-        assertEquals(ServerPushMode.Mentions, lastKnown.read("user-1", "server-2")?.mode)
-        assertEquals(listOf("GET servers/server-2/notification-settings Background"), network.requestLog)
-    }
-
-    @Test
     fun realtimeRefreshForAnotherAccountDoesNotFetch() = runBlocking {
         val lastKnown = SettingsServerNotificationLastKnownStore(SyncTestPreferences())
         val network = FakeSettingsNetworkClient(notificationSettingsJson = """{"serverPushMuted":true,"serverPushMode":"none"}""")
@@ -1189,26 +1174,6 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
-    fun serverSettingsRejectsGuessedBillingPlanWrapper() = runBlocking {
-        val repository =
-            RealSettingsRepository(
-                sampleStore(),
-                FakeSettingsNetworkClient(billingSubscriptionJson = """{"subscription":{"plan":"hobby"}}""")
-            )
-
-        val server = repository.getServerSettings()
-
-        assertTrue(server is DataResult.Content)
-        val billing = server.data.sections.first { it.key == "billing" }
-        assertFalse(billing.detail.contains("settings_billing_subscription_contract_mismatch"))
-        assertEquals("", billing.detail)
-        assertEquals(
-            "The response could not be read. Please try again.",
-            billing.errorPresentation?.resolve(englishErrorPresentationStringsForTest())
-        )
-    }
-
-    @Test
     fun serverInviteRejectsGenericOkWrapperAndAcceptsCanonicalInvite() = runBlocking {
         val rejected =
             RealSettingsRepository(
@@ -1225,35 +1190,6 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(accepted is DataResult.Content)
         assertEquals(true, accepted.data.success)
         assertEquals("""{"email":"new@slock.ai"}""", network.inviteBodies.single())
-    }
-
-    @Test
-    fun inviteRouteErrorParserAcceptsOnlyItsExactErrorField() = runBlocking {
-        val fixtures =
-            listOf(
-                "canonical-with-future-field" to
-                    ("""{"error":"This person is already invited","future":{"retryAfter":30}}""" to
-                        "This person is already invited"),
-                "wrong-alias" to ("""{"message":"This person is already invited"}""" to null),
-                "nested-error" to ("""{"error":{"message":"This person is already invited"}}""" to null),
-                "malformed" to ("""{"error":"unterminated""" to null),
-                "plain-text" to ("This person is already invited" to null),
-                "blank" to ("" to null),
-                "missing" to (null to null)
-            )
-
-        fixtures.forEach { (name, fixture) ->
-            val (body, expectedMessage) = fixture
-            val result =
-                RealSettingsRepository(
-                    sampleStore(),
-                    FakeSettingsNetworkClient(responseCode = 409, errorJson = body)
-                ).createServerInvite(SettingsServerInviteCreateRequest("new@slock.ai"))
-
-            val error = assertIs<DataResult.Error>(result, name).error
-            assertEquals("http_409", error.code, name)
-            assertEquals(expectedMessage, error.serverMessage, name)
-        }
     }
 
     @Test

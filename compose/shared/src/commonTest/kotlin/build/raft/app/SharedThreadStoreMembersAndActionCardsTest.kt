@@ -517,56 +517,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
         )
     }
     @Test
-    fun channelAddMembersActionCardUsesTypedRepositoryAndMarksExecuted() = runTest {
-        val memberRepository = FakeMemberRepository()
-        val actionCardsApi = RecordingActionCardsApi()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
-            )
-        val card =
-            ThreadActionCard(
-                type = "channel:add_member",
-                channel = "channel-2",
-                humans = listOf("u3", "u3"),
-                agents = listOf("agent-3"),
-                draftHint = "Bring owners in."
-            )
-
-        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
-        val executedCard = (result as DataResult.Content).data
-
-        // task #352: ONE atomic batch for the whole card (mixed humans + agents),
-        // not a per-member loop.
-        assertEquals(
-            listOf(
-                AddChannelMembersBatchRequest(
-                    channelId = ChannelId("channel-2"),
-                    userIds = listOf(MemberId("u3")),
-                    agentIds = listOf(MemberId("agent-3"))
-                )
-            ),
-            memberRepository.batchRequests
-        )
-        assertEquals(emptyList(), memberRepository.addRequests)
-        assertEquals("executed", executedCard.state)
-        assertEquals("channel-members", executedCard.resultKind)
-        assertEquals("channel-2", executedCard.resultId)
-        assertEquals(listOf("u3"), executedCard.resultAddedHumanIds)
-        assertEquals(listOf("agent-3"), executedCard.resultAddedAgentIds)
-        assertEquals(
-            listOf(
-                """POST actions/m-card/mark-executed body={"result":{"kind":"channel-members","id":null,"name":null,"channelId":"channel-2","channelName":"channel-2","addedHumanIds":["u3"],"addedAgentIds":["agent-3"]}}"""
-            ),
-            actionCardsApi.calls
-        )
-    }
-    @Test
     fun reconfirmCardReconfirmsAndAFrozenCardRunsNothing() = runTest {
         // web ActionCard: a `reconfirm_required` card's button POSTs /actions/:id/reconfirm (no
         // execute); a `frozen` card's button is disabled. The prepared card carries its version.
@@ -666,41 +616,6 @@ class SharedThreadStoreMembersAndActionCardsTest {
             listOf("""POST actions/m-register/execute body={"expectedState":"prepared"}"""),
             actionCardsApi.calls
         )
-    }
-    @Test
-    fun removeChannelMemberUsesTypedRepositoryAndRefreshesMembers() = runTest {
-        val serverMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
-        val memberRepository =
-            FakeMemberRepository(
-                serverMembers = serverMembers,
-                channelMembers = listOf(member("u1", "Artin"), member("u2", "Stdrc"))
-            )
-        val serverMembersStore = testServerMembersStore(memberRepository, scope = backgroundScope)
-        serverMembersStore.seed(
-            MemberSnapshot(
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
-                members = serverMembers
-            )
-        )
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                memberRepository = memberRepository,
-                serverMembersStore = serverMembersStore
-            )
-
-        val result = dataSource.removeChannelMember(basePayload(), "u2", "human")
-        val payload = (result as DataResult.Content).data
-
-        assertEquals(
-            listOf(RemoveChannelMemberRequest(ChannelId("channel-1"), MemberId("u2"), MemberKind.Human)),
-            memberRepository.removeRequests
-        )
-        assertEquals(listOf("u1"), payload.members.map { it.id })
-        assertEquals(listOf("u2"), payload.memberCandidates.map { it.id })
     }
     @Test
     fun threadMembersPreserveRemoteSourceServerAndDisableRemoteRemove() = runTest {

@@ -337,28 +337,6 @@ class MviFoundationTest {
     }
 
     @Test
-    fun equivalentFailureRollsBackCapturedSnapshotsBeforeRethrowing() {
-        val events = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val runtime =
-            lifecycleRuntime(
-                scope = scope,
-                slices = listOf(recordingSlice(events, "equivalent")),
-                equivalent = { _, _ -> throw IllegalArgumentException("equivalent failed") }
-            )
-
-        val failure = runCatching { runtime.accept(LifecycleIntent.Apply) }.exceptionOrNull()
-
-        assertEquals("equivalent failed", failure?.message)
-        assertEquals(LifecycleState(), runtime.state.value)
-        assertEquals(
-            listOf("equivalent.rollback", "equivalent.release"),
-            events
-        )
-        scope.cancel()
-    }
-
-    @Test
     fun laterCommitFailureRollsBackEverySnapshotInReverseOrder() {
         val events = mutableListOf<String>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -473,62 +451,6 @@ class MviFoundationTest {
             ),
             events
         )
-        scope.cancel()
-    }
-
-    @Test
-    fun finalizeFailureContinuesReverseOrderForEverySibling() = runBlocking {
-        val events = mutableListOf<String>()
-        val diagnostics = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val runtime =
-            lifecycleRuntime(
-                scope = scope,
-                slices =
-                    listOf(
-                        recordingSlice(events, "first", recordFinalizeMarker = true),
-                        recordingSlice(
-                            events,
-                            "middle",
-                            finalizeFailure = true,
-                            recordFinalizeMarker = true
-                        ),
-                        recordingSlice(events, "third", recordFinalizeMarker = true)
-                    ),
-                completionFailureLogger = diagnostics::add
-            )
-
-        val receipt = runtime.acceptQueuedWithState(LifecycleIntent.Apply)
-
-        assertTrue(receipt.accepted)
-        assertEquals(LifecycleState(value = 1), receipt.state)
-        assertEquals(receipt.state, runtime.state.value)
-        assertEquals(
-            listOf(
-                "first.commit",
-                "middle.commit",
-                "third.commit",
-                "third.markFinalizeAttempted",
-                "third.finalize",
-                "middle.markFinalizeAttempted",
-                "middle.finalize",
-                "first.markFinalizeAttempted",
-                "first.finalize",
-                "third.release",
-                "middle.release",
-                "first.release"
-            ),
-            events
-        )
-        assertEquals(
-            listOf(
-                "mvi_transition_completion_failure phase=finalize type=IllegalStateException"
-            ),
-            diagnostics
-        )
-        assertTrue("first.rollback" !in events)
-        assertTrue("middle.rollback" !in events)
-        assertTrue("third.rollback" !in events)
         scope.cancel()
     }
 

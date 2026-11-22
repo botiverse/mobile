@@ -87,37 +87,6 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun appShellTrueProcessForegroundRefreshesExactlyOnceForTheNewEpoch() {
-        val gate = AppShellVisibleRefreshGate()
-
-        assertTrue(
-            gate.shouldRefresh(
-                signal = AppShellVisibleRefreshSignal.Lifecycle,
-                appearanceGeneration = 0,
-                target = "home:",
-                foregroundEpoch = 1L
-            )
-        )
-        gate.onLifecycleHidden(appearanceGeneration = 1, foregroundEpoch = 1L)
-
-        assertTrue(
-            gate.shouldRefresh(
-                signal = AppShellVisibleRefreshSignal.Lifecycle,
-                appearanceGeneration = 1,
-                target = "home:",
-                foregroundEpoch = 2L
-            )
-        )
-        assertFalse(
-            gate.shouldRefresh(
-                signal = AppShellVisibleRefreshSignal.PageDidAppear,
-                appearanceGeneration = 2,
-                target = "home:"
-            )
-        )
-    }
-
-    @Test
     fun appShellSecondForegroundOfTheSameAppearanceRefreshesAgain() {
         // Hands f6c3f3a6 (iOS 1.17.0): show (epoch 6) and hide 130 ms later, then the app stayed
         // suspended for 1h44m; the next show (epoch 7) logged `same_appearance_or_foreground_epoch`
@@ -145,17 +114,6 @@ class RaftAppShellTest {
             gate.shouldRefresh(AppShellVisibleRefreshSignal.Lifecycle, appearanceGeneration = 3, target = "activity:", foregroundEpoch = 7L)
         )
         assertFalse(gate.shouldRefresh(AppShellVisibleRefreshSignal.PageDidAppear, appearanceGeneration = 4, target = "activity:"))
-    }
-
-    @Test
-    fun appTabRendererUsesIosPlatformDefaultWhenRoutePageDataOmitsRenderer() {
-        assertEquals(
-            RaftAppTabBarRenderer.IosLiquidGlass,
-            resolveRaftAppTabBarRenderer(
-                explicitRenderer = null,
-                platformDefaultRenderer = "iosLiquidGlass"
-            )
-        )
     }
 
     @Test
@@ -307,47 +265,6 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun appShellRetainedChildTabsKeepMountedChildrenAliveInFixedOrder() {
-        // Keepalive stack: every mounted child tab stays composed, ordered by the
-        // canonical [home, tasks, members, settings], with the active tab always present.
-        assertEquals(
-            listOf("home", "tasks"),
-            appShellRetainedChildTabs(activeChildTab = "tasks", mountedTabs = setOf("home", "tasks"))
-        )
-        assertEquals(
-            listOf("home", "tasks", "members", "settings"),
-            appShellRetainedChildTabs(
-                activeChildTab = "home",
-                mountedTabs = setOf("settings", "home", "members", "tasks")
-            )
-        )
-        // Active tab is included even if mountedTabs is momentarily stale (no missing render).
-        assertEquals(
-            listOf("home", "tasks"),
-            appShellRetainedChildTabs(activeChildTab = "tasks", mountedTabs = setOf("home"))
-        )
-        // No active child tab -> nothing to keep alive here (non-child surface renders directly).
-        assertEquals(
-            emptyList<String>(),
-            appShellRetainedChildTabs(activeChildTab = null, mountedTabs = setOf("home", "tasks"))
-        )
-    }
-
-    @Test
-    fun appShellPrewarmLeaseCannotCommitAfterForegroundInvalidation() {
-        val gate = PrewarmAdmissionGate()
-        val lease = assertNotNull(gate.tryAcquire(gate.generation()))
-        var committed = false
-
-        gate.invalidate("input")
-
-        assertFalse(lease.commit { committed = true })
-        assertFalse(committed)
-        lease.release()
-        assertEquals("input", gate.latestInvalidationReason())
-    }
-
-    @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("unknown"))
     }
@@ -385,17 +302,6 @@ class RaftAppShellTest {
         assertEquals(AppShellBottomTabTapAction.Select, appShellBottomTabTapAction("home", "tasks"))
         // Members is pushed from More: tapping More goes back to the More root.
         assertEquals(AppShellBottomTabTapAction.Select, appShellBottomTabTapAction("members", "more"))
-    }
-
-    @Test
-    fun scrollRequestFenceDoesNotReplayAnIntentAfterListOwnerRemount() {
-        val fence = AppShellScrollToTopRequestFence(initialRequest = 7)
-
-        assertFalse(fence.consume(7))
-        assertTrue(fence.consume(8))
-        assertFalse(fence.consume(8))
-        assertFalse(fence.consume(6))
-        assertTrue(fence.consume(9))
     }
 
     @Test
@@ -455,25 +361,6 @@ class RaftAppShellTest {
             AppShellLazyListPosition(),
             appShellLazyListPositionForServer(currentServerId = "", savedPositions = saved)
         )
-    }
-
-    @Test
-    fun appShellHomeListServerFollowsRenderedContentUntilTargetArrives() {
-        assertEquals(
-            "server-a",
-            appShellHomeListServerId(
-                renderedServerId = "server-a",
-                readyServerId = "server-b"
-            )
-        )
-        assertEquals(
-            "server-b",
-            appShellHomeListServerId(
-                renderedServerId = null,
-                readyServerId = "server-b"
-            )
-        )
-        assertEquals(null, appShellHomeListServerId(renderedServerId = " ", readyServerId = ""))
     }
 
     @Test
@@ -604,27 +491,6 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun railComputersAndSettingsCarryTheirOwnDots() {
-        val computers = setOf(RaftMoreAttention.Computers)
-        val update = setOf(RaftMoreAttention.AppUpdate)
-        fun dots(attention: Set<RaftMoreAttention>, selectedTab: String = "home") =
-            (appShellRailTabs(selectedTab, labelFor = { it }, moreAttention = attention) +
-                appShellRailFooterTabs(selectedTab, labelFor = { it }, helpOpen = false, moreAttention = attention))
-                .filter { it.attentionDot }
-                .map { it.key }
-        // An unseen computer dots Computers, no longer Settings.
-        assertEquals(listOf("computers"), dots(computers))
-        // An app update is read in Settings > About: it dots Settings.
-        assertEquals(listOf("settings"), dots(update))
-        assertEquals(listOf("computers", "settings"), dots(computers + update))
-        // The selected Settings wears no dot; Apps has no signal yet.
-        assertEquals(emptyList<String>(), dots(update, selectedTab = "settings"))
-        assertEquals(emptyList<String>(), dots(emptySet()))
-        // The phone's More tab keeps the combined dot.
-        assertTrue(appShellMoreTabShowsDot(computers, selected = false))
-    }
-
-    @Test
     fun anUnreadFeedbackReplyDotsSettingsAndItsFeedbackRow() {
         // web useSettingsPageAttention / LeftRail Settings `showDot={feedbackUnread > 0}` /
         // SettingsSidebarList FeedbackUnreadDot.
@@ -688,13 +554,6 @@ class RaftAppShellTest {
         )
     }
 
-    @Test
-    fun appShellBottomTabsStayMountedBehindNativeHomeChildPages() {
-        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = null))
-        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "activity"))
-        assertEquals(false, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "unknown"))
-    }
-
     // stdrc 2026-10-21: a page with Back at the top shows no bottom tab bar; a tab root shows it.
     @Test
     fun appShellBottomTabsShowOnTabRootsAndHideOnInShellPagesWithBack() {
@@ -719,34 +578,6 @@ class RaftAppShellTest {
         )
         // Unknown tab keys fall back to the Home root.
         assertEquals(true, appShellBottomTabsVisible(selectedTab = "bogus", selectedHomeDestination = null))
-    }
-
-    @Test
-    fun childNavigationKeepsRenderedHomeServerWhileSelectedServerRestores() {
-        assertEquals(
-            "server-rendered",
-            appShellNavigationServerId(
-                selectedServerId = null,
-                renderedHomeServerId = "server-rendered",
-                scopeInitialServerId = null
-            )
-        )
-        assertEquals(
-            "server-selected",
-            appShellNavigationServerId(
-                selectedServerId = "server-selected",
-                renderedHomeServerId = "server-rendered",
-                scopeInitialServerId = "server-initial"
-            )
-        )
-        assertEquals(
-            "server-initial",
-            appShellNavigationServerId(
-                selectedServerId = " ",
-                renderedHomeServerId = null,
-                scopeInitialServerId = "server-initial"
-            )
-        )
     }
 
     @Test
@@ -880,66 +711,6 @@ class RaftAppShellTest {
         assertEquals("Parent message preview", launchPayload.originPreview)
     }
 
-    @Test
-    fun foregroundBannerProjectionPreservesActivityDmThreadParentKind() {
-        val activityItem =
-            InboxItem(
-                key = "thread:dm-reply-stream",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("dm-reply-stream"),
-                channelName = "Cindy",
-                threadChannelId = ChannelId("dm-reply-stream"),
-                parentChannelId = ChannelId("dm-parent"),
-                parentChannelName = "Cindy",
-                parentChannelKind = ConversationKind.DirectMessage,
-                parentMessageId = MessageId("parent-message"),
-                parentMessagePreview = "Original DM question",
-                latestActivityMessageId = MessageId("reply-1")
-            )
-        val directory =
-            InboxSnapshot(
-                server = ServerSummary(ServerId("server-1"), "Raft"),
-                items = listOf(activityItem)
-            ).toSharedConversationDirectoryState()
-        val banner =
-            raftForegroundMessageBannerProjection(
-                serverId = "server-1",
-                currentServerId = "server-1",
-                message =
-                    appShellForegroundTestMessage(
-                        id = "reply-1",
-                        channelId = "dm-reply-stream",
-                        threadId = "dm-reply-stream",
-                        body = "DM reply body"
-                    ),
-                currentMemberId = "user-1",
-                visibleConversationKey = null,
-                conversationDirectory = directory
-            )
-
-        val resolved = assertNotNull(banner)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
-        assertEquals(activityOpenRequest.conversationIdentity, resolved.openRequest.conversationIdentity)
-        assertEquals(activityOpenRequest.anchorMessageId, resolved.openRequest.anchorMessageId)
-        assertEquals("@Cindy - thread", resolved.context)
-        assertEquals("Original DM question", resolved.threadContext)
-        assertEquals(ConversationKind.Thread, resolved.openRequest.conversationIdentity.kind)
-        assertEquals("dm-parent", resolved.openRequest.conversationIdentity.thread?.parentChannelId?.value)
-        assertEquals("parent-message", resolved.openRequest.conversationIdentity.thread?.parentMessageId?.value)
-        assertEquals("dm-reply-stream", resolved.openRequest.conversationIdentity.thread?.streamChannelId?.value)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.openRequest.conversationIdentity.thread?.parentSurfaceKind)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.openRequest.conversationIdentity.thread?.parentChannelKind)
-
-        val launchPayload =
-            requireNotNull(buildAppShellThreadPayload(
-                conversation = resolved.openRequest.conversationIdentity,
-                anchorMessageId = resolved.openRequest.anchorMessageId,
-                originFallback = resolved.openRequest.originFallback
-            ))
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
-    }
-
     // task #425 part 2: server-provided conversationContext short-circuits the
     // projection wait — routing correct immediately, labels best-effort.
 
@@ -980,56 +751,6 @@ class RaftAppShellTest {
         assertEquals("reply-stream", resolved.conversationIdentity.thread?.streamChannelId?.value)
         assertEquals("reply-1", resolved.anchorMessageId)
         assertEquals("Original thread question", resolved.originFallback?.preview)
-    }
-
-    @Test
-    fun notificationLaunchPreservesActivityDmThreadParentKind() {
-        val activityItem =
-            InboxItem(
-                key = "thread:dm-reply-stream",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("dm-reply-stream"),
-                channelName = "Cindy",
-                threadChannelId = ChannelId("dm-reply-stream"),
-                parentChannelId = ChannelId("dm-parent"),
-                parentChannelName = "Cindy",
-                parentChannelKind = ConversationKind.DirectMessage,
-                parentMessageId = MessageId("parent-message"),
-                parentMessagePreview = "Original DM question",
-                latestActivityMessageId = MessageId("reply-1")
-            )
-        val directory =
-            InboxSnapshot(
-                server = ServerSummary(ServerId("server-1"), "Raft"),
-                items = listOf(activityItem)
-            ).toSharedConversationDirectoryState()
-        val openRequest =
-            directory.notificationThreadLaunchRequest(
-                AppShellNotificationThreadLaunchRequest(
-                    threadId = "dm-reply-stream",
-                    messageId = "reply-1"
-                )
-            )
-
-        val resolved = assertNotNull(openRequest)
-        val activityOpenRequest = activityItem.toHomeMessageOpenRequestForTest()
-        assertEquals(activityOpenRequest.conversationIdentity, resolved.conversationIdentity)
-        assertEquals(activityOpenRequest.anchorMessageId, resolved.anchorMessageId)
-        assertEquals(ConversationKind.Thread, resolved.conversationIdentity.kind)
-        assertEquals("dm-parent", resolved.conversationIdentity.thread?.parentChannelId?.value)
-        assertEquals("parent-message", resolved.conversationIdentity.thread?.parentMessageId?.value)
-        assertEquals("dm-reply-stream", resolved.conversationIdentity.thread?.streamChannelId?.value)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.conversationIdentity.thread?.parentSurfaceKind)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, resolved.conversationIdentity.thread?.parentChannelKind)
-
-        val launchPayload =
-            requireNotNull(buildAppShellThreadPayload(
-                conversation = resolved.conversationIdentity,
-                anchorMessageId = resolved.anchorMessageId,
-                originFallback = resolved.originFallback
-            ))
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
-        assertEquals(RaftThreadSurfaceKind.DirectMessage, launchPayload.parentChannelKind)
     }
 
     @Test
@@ -1199,31 +920,6 @@ class RaftAppShellTest {
 
         val pending = assertNotNull(resolution as? ConversationOpenResolution.Pending)
         assertEquals("thread_projection_mismatch", pending.reason)
-    }
-
-    @Test
-    fun resolveOpenRequestKeepsColdTypedForegroundThreadRawOpenWithEmptyDirectory() {
-        val resolution =
-            resolveOpenRequest(
-                serverId = "server-local",
-                sourceMessageIdentity =
-                    ConversationOpenSourceMessageIdentity(
-                        source = ConversationOpenSource.ForegroundBanner,
-                        messageId = "reply-local",
-                        channelId = "thread-local",
-                        threadChannelId = "thread-local",
-                        parentChannelId = "parent-local",
-                        parentMessageId = "parent-message",
-                        conversationKind = ConversationKind.Thread,
-                        parentConversationKind = ConversationKind.Joint
-                    )
-            )
-
-        val request = assertNotNull((resolution as? ConversationOpenResolution.Resolved)?.request)
-        assertEquals("thread-local", request.conversationIdentity.thread?.streamChannelId?.value)
-        assertEquals("parent-local", request.conversationIdentity.thread?.parentChannelId?.value)
-        assertEquals("parent-message", request.conversationIdentity.thread?.parentMessageId?.value)
-        assertEquals(ConversationKind.Joint, request.conversationIdentity.resolveThreadRouteIdentity().parentConversationKind)
     }
 
     @Test

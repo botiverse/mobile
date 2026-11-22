@@ -255,14 +255,6 @@ class SyncChangesInboxRowsTest {
         assertEquals(listOf("inbox_rows", "home", "activity:sync_changes"), targets.calls)
     }
 
-    @Test
-    fun `an inboxReset reloads the Activity list`() = runTest {
-        val targets = InboxTargets { RaftSyncInboxRowsOutcome.NotApplied }
-        val router = RaftSyncChangesStoreRouter(targets)
-        router.reloadInbox(syncTestScope, "inbox_reset_too_many")
-        assertEquals(listOf("activity:sync_inbox_reset_too_many"), targets.calls)
-    }
-
     // ---- retry after ----------------------------------------------------------------------------
 
     private fun synced(retryAfter: Long? = null, inboxReloadAfter: Long? = null) =

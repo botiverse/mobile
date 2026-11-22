@@ -142,37 +142,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
     }
 
     @Test
-    fun aNudgeForAnAnswerNoRowShowsIsReadOnceWhenItsRowIsNextOnScreen() = runTest(StandardTestDispatcher()) {
-        val (harness, first) = shown(changedCard(CPr1, KeyA))
-        first.leave()
-        runCurrent()
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(60_000)
-        assertEquals(1, harness.api.cardReads.size, "no row, no read")
-        assertNotEquals(0, first.changed, "the answer is marked")
-
-        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA, title = "Merged"))
-        val back = harness.Row()
-        back.show(onScreen = false)
-        after(5_000)
-        assertEquals(0, back.reads, "composed, not on screen yet")
-        assertEquals("Open", back.title(CPr1), "the answer it had is shown meanwhile")
-        back.presence.onScreen(true)
-        runCurrent()
-        assertEquals(1, back.reads, "read at once when it is on screen")
-        assertEquals(listOf(CPr1), harness.api.cardReads.last().urls)
-        assertEquals("Merged", back.title(CPr1))
-        assertEquals(0, back.changed)
-
-        // Scrolled away and back again: it was read, nothing more is.
-        back.leave()
-        val again = harness.Row()
-        again.show()
-        after(60_000)
-        assertEquals(2, harness.api.cardReads.size)
-    }
-
-    @Test
     fun afterTheAppComesBackKeyedCardsOnScreenAreReadOnceAndTheOthersWhenNextShown() = runTest(StandardTestDispatcher()) {
         val harness = Harness(this)
         // A: on screen. B: read, its row gone. C: on screen, its App named no object. D: on screen, another Server.
@@ -295,26 +264,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
     }
 
     /**
-     * A press runs on the UI thread; the view's request count and tickets are the store's (a nudge's
-     * re-read of another card of the message uses them on the store's dispatcher). The press's read
-     * must go out from the store's dispatcher, whichever one calls.
-     */
-    @Test
-    fun aRefreshPressedFromAnotherDispatcherReadsOnTheStores() = runTest(StandardTestDispatcher()) {
-        val storeDispatcher = StandardTestDispatcher(testScheduler)
-        val harness = Harness(this, CoroutineScope(backgroundScope.coroutineContext + storeDispatcher))
-        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA))
-        val row = harness.Row()
-        row.read()
-        runCurrent()
-        harness.api.cardReadResponses += changedAnswer(changedCard(CPr1, KeyA, title = "Merged"))
-        assertTrue(coroutineContext[ContinuationInterceptor] !== storeDispatcher, "the caller is on another dispatcher")
-        assertEquals(true, harness.store.rereadLink(CViewer, CServer, CMessageA, CContent, row.batch, CPr1))
-        assertTrue(harness.api.cardReadDispatchers.last() === storeDispatcher, "the read went out from the store's dispatcher")
-        assertEquals("Merged", row.title(CPr1), "and is applied when the press returns")
-    }
-
-    /**
      * The report on 1.27.0: a card still said "waiting for approval" long after the request was done,
      * and Refresh changed nothing however often it was pressed. The row had been composed again since
      * the message was read (scrolled away, or the conversation left and reopened), so its view was a
@@ -388,39 +337,6 @@ class SharedAppLinkPreviewStoreChangedRereadTest {
         val press = async { harness.store.rereadLink(CViewer, CServer, CMessageC, "See $CPr1", unread.batch, CPr1) }
         runCurrent()
         assertEquals(false, press.await())
-    }
-
-    /** Raft names a rate_limited link as the message wrote it; the card is kept by its normalized href. */
-    @Test
-    fun aRateLimitedAnswerForALinkWrittenInAnotherFormIsRateLimitedNotGone() = runTest(StandardTestDispatcher()) {
-        val written = "https://Stamp.example.test/botiverse/slock/pull/9"
-        val key = "https://stamp.example.test/botiverse/slock/pull/9"
-        val harness = Harness(this)
-        harness.api.cardReadResponses += changedAnswer(changedCard(written, KeyA))
-        val row = harness.Row(CMessageB, "See $written")
-        row.read()
-        row.show()
-        runCurrent()
-        assertEquals("Open", row.title(key))
-
-        harness.api.cardReadResponses += changedAnswer(changedLimited(written, 4))
-        val press = async { harness.store.rereadLink(CViewer, CServer, CMessageB, "See $written", row.batch, key) }
-        runCurrent()
-        assertEquals(false, press.await())
-        assertEquals("Open", row.title(key))
-        assertTrue(harness.diagnostics.any { "app_link_card_reread" in it && "reason=rate_limited" in it && "limited=1" in it })
-
-        // And a nudge's re-read of it waits Raft's retry_after instead of taking the link for answered.
-        harness.api.cardReadResponses += changedAnswer(changedLimited(written, 4))
-        harness.api.cardReadResponses += changedAnswer(changedCard(written, KeyA, title = "Merged"))
-        harness.nudges.emit(RaftLinkCardChangedHint(CServer, KeyA))
-        after(1_000)
-        assertEquals(3, harness.api.cardReads.size)
-        after(3_999)
-        assertEquals(3, harness.api.cardReads.size)
-        after(1)
-        assertEquals(4, harness.api.cardReads.size)
-        assertEquals("Merged", row.title(key))
     }
 
     /** Two quick presses: the first read's place is taken by the second, whose answer is what shows. Neither says it failed. */

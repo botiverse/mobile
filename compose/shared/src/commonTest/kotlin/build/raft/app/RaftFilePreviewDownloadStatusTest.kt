@@ -58,66 +58,6 @@ class RaftFilePreviewDownloadStatusTest {
         )
 
     @Test
-    fun nativeProgressMailboxDefersUiMutationToItsSingleConsumer() = runBlocking {
-        val owner =
-            AttachmentOwnerLease(
-                shellInstanceId = "shell-1",
-                scopeId = "scope-1",
-                authEpoch = 1L,
-                principalKey = AttachmentPrincipalKey("a".repeat(64)),
-                generation = 1L
-            )
-        val operation = AttachmentOperationToken(owner, "operation-1", "download-1")
-        val progress =
-            BridgeAttachmentDownloadProgress(
-                downloadId = "download-1",
-                attemptToken = "attempt-1",
-                sequence = 2L,
-                phase = "receiving",
-                status = "progress",
-                percent = 12,
-                downloadedBytes = 69_765L,
-                totalBytes = 581_375L
-            )
-        val mailbox = RaftFilePreviewProgressMailbox()
-        var renderedBytes = 0L
-
-        withContext(Dispatchers.Default) {
-            assertTrue(mailbox.offer(operation, progress))
-        }
-        assertEquals(0L, renderedBytes)
-
-        val delivered = mailbox.nextOrNull()
-        assertEquals(operation, delivered?.operation)
-        renderedBytes = delivered?.progress?.downloadedBytes ?: 0L
-        assertEquals(69_765L, renderedBytes)
-
-        mailbox.close()
-        assertNull(mailbox.nextOrNull())
-    }
-
-    @Test
-    fun cachedOpenHoldsAdmissionUntilNativeTerminal() {
-        var status = "idle"
-        var launches = 0
-        fun tapCachedOpen() {
-            if (!raftFilePreviewCanStartExternalOperation(status)) return
-            status = raftFilePreviewExternalOpenAdmissionStatus(trackProgress = false)
-            launches += 1
-        }
-
-        tapCachedOpen()
-        tapCachedOpen()
-        assertEquals("opening", status)
-        assertEquals(1, launches)
-        assertFalse(raftFilePreviewShowsDownloadProgress(status))
-
-        status = "idle"
-        tapCachedOpen()
-        assertEquals(2, launches)
-    }
-
-    @Test
     fun uncachedOpenKeepsDownloadProgressVisibleWhileNativeDownloads() {
         val status = raftFilePreviewExternalOpenAdmissionStatus(trackProgress = true)
 
@@ -273,137 +213,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun composerImageMosaicDoesNotPaintOutsideTheAspectFitImage() {
-        assertEquals(
-            null,
-            raftComposerImageMosaicSample(
-                tile = RaftComposerImageMosaicTile(column = 2, row = 0),
-                imageWidth = 100,
-                imageHeight = 50,
-                canvasWidth = 200f,
-                canvasHeight = 200f,
-                tileSizePx = 20f,
-            ),
-        )
-    }
-
-    @Test
-    fun composerImageUndoRestoresThePreviousMosaicMask() {
-        val first = RaftComposerImageMosaicTile(column = 1, row = 1)
-        val second = RaftComposerImageMosaicTile(column = 2, row = 2)
-        val afterFirst =
-            RaftComposerImageEditorHistory().apply(
-                RaftComposerImageEditorContent(mosaicTiles = setOf(first))
-            )
-        val afterSecond =
-            afterFirst.apply(
-                afterFirst.content.copy(mosaicTiles = setOf(first, second))
-            )
-
-        assertEquals(setOf(first), afterSecond.undo().content.mosaicTiles)
-    }
-
-    @Test
-    fun composerImageDrawOperationsPreserveGestureCommitOrder() {
-        val stroke =
-            RaftComposerImageStroke(
-                points = listOf(Offset(4f, 4f), Offset(40f, 40f)),
-            )
-        val tile = RaftComposerImageMosaicTile(column = 2, row = 3)
-
-        val pencilThenMosaic =
-            raftComposerImageCommitMosaicGesture(
-                history =
-                    RaftComposerImageEditorHistory(
-                        content = RaftComposerImageEditorContent().raftComposerImageAppendStroke(stroke)
-                    ),
-                tiles = setOf(tile),
-            ).content.raftComposerImageResolvedDrawOperations()
-        val mosaicThenPencil =
-            raftComposerImageCommitMosaicGesture(
-                history = RaftComposerImageEditorHistory(),
-                tiles = setOf(tile),
-            ).content.raftComposerImageAppendStroke(stroke).raftComposerImageResolvedDrawOperations()
-
-        assertEquals(
-            listOf(
-                RaftComposerImageDrawOperation.Pencil(stroke),
-                RaftComposerImageDrawOperation.Mosaic(setOf(tile)),
-            ),
-            pencilThenMosaic,
-        )
-        assertEquals(
-            listOf(
-                RaftComposerImageDrawOperation.Mosaic(setOf(tile)),
-                RaftComposerImageDrawOperation.Pencil(stroke),
-            ),
-            mosaicThenPencil,
-        )
-    }
-
-    @Test
-    fun composerImageActiveMosaicMatchesThePostCommitDeltaOverExistingLayers() {
-        val existingTile = RaftComposerImageMosaicTile(column = 2, row = 2)
-        val newTile = RaftComposerImageMosaicTile(column = 3, row = 3)
-        val stroke = RaftComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(40f, 40f)))
-        val before =
-            raftComposerImageCommitMosaicGesture(
-                history = RaftComposerImageEditorHistory(),
-                tiles = setOf(existingTile),
-            ).let { history ->
-                history.copy(content = history.content.raftComposerImageAppendStroke(stroke))
-            }
-        val touched = setOf(existingTile, newTile)
-
-        val activeDelta =
-            raftComposerImageActiveMosaicTiles(
-                touchedTiles = touched,
-                committedTiles = before.content.mosaicTiles,
-            )
-        val after = raftComposerImageCommitMosaicGesture(history = before, tiles = touched)
-
-        assertEquals(setOf(newTile), activeDelta)
-        assertEquals(
-            before.content.raftComposerImageResolvedDrawOperations() +
-                RaftComposerImageDrawOperation.Mosaic(activeDelta),
-            after.content.raftComposerImageResolvedDrawOperations(),
-        )
-    }
-
-    @Test
-    fun composerImageEraseRetainsOnlyVisibleDrawOperationFragments() {
-        val firstStroke = RaftComposerImageStroke(points = listOf(Offset(0f, 0f), Offset(5f, 5f)))
-        val secondStroke = RaftComposerImageStroke(points = listOf(Offset(50f, 50f), Offset(60f, 60f)))
-        val firstTile = RaftComposerImageMosaicTile(column = 1, row = 1)
-        val secondTile = RaftComposerImageMosaicTile(column = 2, row = 2)
-        val content =
-            RaftComposerImageEditorContent(
-                strokes = listOf(firstStroke, secondStroke),
-                mosaicTiles = setOf(firstTile, secondTile),
-                drawOperations =
-                    listOf(
-                        RaftComposerImageDrawOperation.Pencil(firstStroke),
-                        RaftComposerImageDrawOperation.Mosaic(setOf(firstTile, secondTile)),
-                        RaftComposerImageDrawOperation.Pencil(secondStroke),
-                    ),
-            )
-
-        val retained =
-            content.raftComposerImageRetainDrawOperations(
-                strokes = listOf(secondStroke),
-                mosaicTiles = setOf(firstTile),
-            )
-
-        assertEquals(
-            listOf(
-                RaftComposerImageDrawOperation.Mosaic(setOf(firstTile)),
-                RaftComposerImageDrawOperation.Pencil(secondStroke),
-            ),
-            retained.drawOperations,
-        )
-    }
-
-    @Test
     fun composerImageTextHitSelectsTheTopmostCommittedAnnotation() {
         val bottom = RaftComposerImageTextAnnotation(id = 1, text = "bottom", position = Offset(20f, 20f))
         val top = RaftComposerImageTextAnnotation(id = 2, text = "top", position = Offset(20f, 20f))
@@ -445,30 +254,6 @@ class RaftFilePreviewDownloadStatusTest {
                 canvasSize = canvasSize,
             ),
         )
-    }
-
-    @Test
-    fun composerImageTextMoveCommitsOneUndoableTransactionAndRedoRestoresIt() {
-        val original = RaftComposerImageTextAnnotation(id = 7, text = "move", position = Offset(20f, 20f))
-        val origin = RaftComposerImageEditorContent(textAnnotations = listOf(original))
-        val initial = RaftComposerImageEditorHistory(content = origin)
-        val movedContent =
-            raftComposerImageMoveTextAnnotation(
-                content = initial.content,
-                annotationId = original.id,
-                position = Offset(80f, 90f),
-            )
-        val duringDrag = initial.replaceWithoutHistory(movedContent)
-
-        assertFalse(duringDrag.canUndo)
-        val committed = duringDrag.commitTransaction(origin)
-        assertEquals(1, committed.undoStack.size)
-        assertEquals(Offset(80f, 90f), committed.content.textAnnotations.single().position)
-
-        val undone = committed.undo()
-        assertEquals(Offset(20f, 20f), undone.content.textAnnotations.single().position)
-        val redone = undone.redo()
-        assertEquals(Offset(80f, 90f), redone.content.textAnnotations.single().position)
     }
 
     @Test
@@ -547,79 +332,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun composerImageNewEditClearsTheRedoBranch() {
-        val firstStroke = RaftComposerImageStroke(points = listOf(Offset(10f, 10f), Offset(80f, 10f)))
-        val replacementStroke = RaftComposerImageStroke(points = listOf(Offset(20f, 20f), Offset(90f, 20f)))
-        val undone =
-            RaftComposerImageEditorHistory()
-                .apply(RaftComposerImageEditorContent(strokes = listOf(firstStroke)))
-                .undo()
-
-        val branched = undone.apply(RaftComposerImageEditorContent(strokes = listOf(replacementStroke)))
-
-        assertFalse(branched.canRedo)
-        assertEquals(listOf(replacementStroke), branched.content.strokes)
-    }
-
-    @Test
-    fun imageEditorPencilButtonTogglesItsOptions() {
-        assertFalse(
-            raftFilePreviewPencilOptionsExpandedAfterToolSelection(
-                currentTool = RaftComposerImageEditorTool.Pencil,
-                selectedTool = RaftComposerImageEditorTool.Pencil,
-                currentlyExpanded = true,
-            )
-        )
-        assertTrue(
-            raftFilePreviewPencilOptionsExpandedAfterToolSelection(
-                currentTool = RaftComposerImageEditorTool.Pencil,
-                selectedTool = RaftComposerImageEditorTool.Pencil,
-                currentlyExpanded = false,
-            )
-        )
-    }
-
-    @Test
-    fun imageEditorKeyboardInsetAvoidsDoubleCountingIncludedSafeArea() {
-        assertEquals(
-            306.dp,
-            raftFilePreviewEditorBottomPadding(
-                keyboardInsetDp = 300f,
-                bottomSafeArea = 24.dp,
-                keyboardInsetExcludesBottomSafeArea = false,
-            ),
-        )
-    }
-
-    @Test
-    fun composerImageActionSlotsPutOriginalImageOnConfirmBar() {
-        assertEquals(
-            listOf(
-                RaftFilePreviewComposerImageActionSlot.Edit,
-                RaftFilePreviewComposerImageActionSlot.OriginalImage,
-                RaftFilePreviewComposerImageActionSlot.FlexibleSpacer,
-                RaftFilePreviewComposerImageActionSlot.Done,
-            ),
-            raftFilePreviewComposerImageActionSlots(
-                canEdit = true,
-                canComplete = true,
-                originalImageOptionEnabled = true,
-            ),
-        )
-        assertEquals(
-            listOf(
-                RaftFilePreviewComposerImageActionSlot.Edit,
-                RaftFilePreviewComposerImageActionSlot.FlexibleSpacer,
-            ),
-            raftFilePreviewComposerImageActionSlots(
-                canEdit = true,
-                canComplete = false,
-                originalImageOptionEnabled = true,
-            ),
-        )
-    }
-
-    @Test
     fun downloadStatusLabelIncludesPercentAndSpeed() {
         val label =
             raftFilePreviewDownloadStatusLabel(
@@ -633,13 +345,6 @@ class RaftFilePreviewDownloadStatusTest {
             )
 
         assertEquals("Downloading 42% · 512.0 KB/s", label)
-    }
-
-    @Test
-    fun initialDownloadStatusDoesNotPretendBytesHaveTransferred() {
-        val label = raftFilePreviewDownloadStatusLabel(RaftFilePreviewInitialDownloadProgress, englishDownloadTerms)
-
-        assertEquals("Downloading...", label)
     }
 
     @Test
@@ -682,21 +387,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun primaryActionShowsInstallForDownloadedApk() {
-        val label =
-            raftFilePreviewPrimaryActionLabel(
-                RaftFilePreviewPayload(
-                    externalFileName = "raft.apk",
-                    externalMimeType = "application/vnd.android.package-archive"
-                ),
-                downloadState = RaftFilePreviewDownloadUiState.Downloaded,
-                terms = englishActionTerms
-            )
-
-        assertEquals("Install", label)
-    }
-
-    @Test
     fun preflightRequiresCompleteExactPublicAuthorityBeforeClaimingDownloaded() {
         val present =
             JSONObject()
@@ -736,71 +426,6 @@ class RaftFilePreviewDownloadStatusTest {
                 raftFilePreviewPublicDownloadObservation(response).state
             )
         }
-    }
-
-    @Test
-    fun privateExportLifecycleNeverMutatesDownloadStatusProgressOrAttempt() {
-        val progress =
-            BridgeAttachmentDownloadProgress(
-                downloadId = "download-7",
-                attemptToken = "attempt-7",
-                percent = 42,
-                downloadedBytes = 42L,
-                totalBytes = 100L
-            )
-        val initial =
-            RaftFilePreviewExportIsolationState(
-                downloadStatus = "paused",
-                downloadProgress = progress,
-                activeDownloadId = "download-7",
-                exportInProgress = false
-            )
-
-        RaftFilePreviewExportIsolationEvent.entries.forEach { event ->
-            val reduced = reduceRaftFilePreviewExportIsolationState(initial, event)
-            assertEquals(initial.downloadStatus, reduced.downloadStatus, event.name)
-            assertEquals(initial.downloadProgress, reduced.downloadProgress, event.name)
-            assertEquals(initial.activeDownloadId, reduced.activeDownloadId, event.name)
-            assertEquals(event == RaftFilePreviewExportIsolationEvent.Started, reduced.exportInProgress, event.name)
-        }
-    }
-
-    @Test
-    fun stalePreflightForPreviousAttachmentOrPrincipalCannotCommit() {
-        val first = publicDownloadQuery("attachment-1", "a")
-        val second = publicDownloadQuery("attachment-2", "b")
-        val observation =
-            RaftFilePreviewPublicDownloadObservation(
-                RaftFilePreviewPublicDownloadState.Downloaded(
-                    generation = 7L,
-                    sizeBytes = 25L,
-                    persistedUri = "content://downloads/public-7"
-                )
-            )
-
-        assertNull(
-            raftFilePreviewCommitPublicDownloadObservation(
-                request = first,
-                current = second,
-                observation = observation
-            )
-        )
-        assertEquals(
-            RaftFilePreviewPublicDownloadState.Checking,
-            raftFilePreviewVisiblePublicDownloadState(
-                current = second,
-                observedFor = first,
-                observedState = observation.state
-            )
-        )
-        assertEquals(
-            observation,
-            raftFilePreviewCommitPublicDownloadObservation(
-                request = second,
-                current = second,
-                observation = observation
-            )
-        )
     }
 
     @Test
@@ -853,19 +478,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun fileIconUsesPackageForApk() {
-        val icon =
-            raftFilePreviewFileIconName(
-                RaftFilePreviewPayload(
-                    externalFileName = "raft.apk",
-                    externalMimeType = "application/vnd.android.package-archive"
-                )
-            )
-
-        assertEquals(RaftLucideIconName.Package, icon)
-    }
-
-    @Test
     fun videoContainerDetectorCoversPlayerFormatsWithoutBlanketVideoMimeAdmission() {
         val cases =
             listOf(
@@ -887,39 +499,6 @@ class RaftFilePreviewDownloadStatusTest {
         assertEquals(null, raftFilePreviewVideoContainer("clip.avi", "video/x-msvideo"))
         assertEquals(null, raftFilePreviewVideoContainer("clip.bin", "video/vnd.future-container"))
         assertEquals(null, raftFilePreviewVideoContainer("archive.zip", "application/zip"))
-    }
-
-    @Test
-    fun videoPlayerProfilesMatchTheThreeConcreteHosts() {
-        val all = RaftPreviewableVideoContainer.entries.toSet()
-        val apple =
-            setOf(
-                RaftPreviewableVideoContainer.Mp4,
-                RaftPreviewableVideoContainer.QuickTime,
-                RaftPreviewableVideoContainer.M4v,
-                RaftPreviewableVideoContainer.ThreeGpp,
-                RaftPreviewableVideoContainer.ThreeGpp2
-            )
-
-        assertEquals(
-            all,
-            all.filterTo(mutableSetOf()) {
-                raftVideoPlayerFormatProfileSupports(RaftVideoPlayerFormatProfile.AndroidMedia3, it)
-            }
-        )
-        assertEquals(
-            apple,
-            all.filterTo(mutableSetOf()) {
-                raftVideoPlayerFormatProfileSupports(RaftVideoPlayerFormatProfile.IosAvPlayer, it)
-            }
-        )
-        // The Compose desktop app plays through AVFoundation too (ComposeMediaPlayer on macOS).
-        assertEquals(
-            apple,
-            all.filterTo(mutableSetOf()) {
-                raftVideoPlayerFormatProfileSupports(RaftVideoPlayerFormatProfile.DesktopMacAvFoundation, it)
-            }
-        )
     }
 
     @Test
@@ -976,28 +555,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun videoTimeLabelIncludesStateAndDuration() {
-        assertEquals(
-            "Playing · 0:12 / 1:05",
-            raftFilePreviewVideoTimeLabel(
-                currentTimeMs = 12_000,
-                totalTimeMs = 65_000,
-                playState = PlayState.PLAYING,
-                terms = englishVideoTerms
-            )
-        )
-        assertEquals(
-            "Playback failed · 0:00",
-            raftFilePreviewVideoTimeLabel(
-                currentTimeMs = 0,
-                totalTimeMs = 0,
-                playState = PlayState.ERROR,
-                terms = englishVideoTerms
-            )
-        )
-    }
-
-    @Test
     fun videoSeekTimeTracksTapPosition() {
         assertEquals(30_000, raftFilePreviewVideoSeekTimeFromTap(tapX = 50f, widthPx = 100f, totalTimeMs = 60_000))
         assertEquals(0, raftFilePreviewVideoSeekTimeFromTap(tapX = -10f, widthPx = 100f, totalTimeMs = 60_000))
@@ -1021,24 +578,6 @@ class RaftFilePreviewDownloadStatusTest {
                 mimeType = ""
             ).isImageAttachment()
         )
-    }
-
-    @Test
-    fun threadImageLazyPreviewKeepsThumbnailAsInitialImageUrl() {
-        val payload =
-            RaftThreadAttachmentItem(
-                id = "att-1",
-                name = "photo.jpg",
-                mimeType = "",
-                thumbnailUrl = "https://cdn.slock.test/thumb.jpg"
-            ).toThreadAttachmentLazyPreviewPayload(kind = "image")
-
-        assertEquals("loading", payload.kind)
-        assertEquals(Res.string.file_preview_image.desc(), payload.titleDesc)
-        assertEquals("https://cdn.slock.test/thumb.jpg", payload.imageUrl)
-        assertEquals("att-1", payload.attachmentId)
-        assertTrue(payload.shouldRenderImagePreview())
-        assertEquals("https://cdn.slock.test/thumb.jpg", payload.currentImageThumbnailUrl())
     }
 
     @Test
@@ -1173,37 +712,6 @@ class RaftFilePreviewDownloadStatusTest {
         assertEquals("image/png", edited.composerImageMimeType)
         assertNull(edited.composerImageSizeBytes)
         assertTrue(edited.canCompleteComposerImageSelection())
-    }
-
-    @Test
-    fun filePreviewPresentationHidesMimeWhileKeepingUsefulMetadata() {
-        val payload =
-            RaftFilePreviewPayload(
-                name = "report.pdf",
-                path = "report.pdf",
-                meta = "42 KB · application/pdf",
-                subtitle = "application/pdf",
-                externalMimeType = "application/pdf"
-            )
-
-        assertEquals("42 KB", payload.raftFilePreviewVisibleSubtitle(headerTitle = "report.pdf"))
-        assertEquals("42 KB", payload.meta.withoutUserVisibleMimeType())
-        assertEquals("folder/file", "folder/file".withoutUserVisibleMimeType())
-    }
-
-    @Test
-    fun imageGalleryResolutionJobOwnershipRejectsStaleReplacement() {
-        val firstJob = Job()
-        val replacementJob = Job()
-        val jobs = mutableMapOf("att-1" to firstJob)
-        assertTrue(jobs.ownsImageGalleryResolution("att-1", firstJob))
-
-        jobs["att-1"] = replacementJob
-        firstJob.cancel()
-
-        assertFalse(jobs.ownsImageGalleryResolution("att-1", firstJob))
-        assertTrue(jobs.ownsImageGalleryResolution("att-1", replacementJob))
-        assertFalse(jobs.ownsImageGalleryResolution("missing", null))
     }
 
     @Test

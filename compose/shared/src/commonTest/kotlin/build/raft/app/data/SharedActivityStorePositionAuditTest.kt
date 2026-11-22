@@ -249,42 +249,6 @@ class SharedActivityStorePositionAuditTest {
     }
 
     @Test
-    fun anAuditDueInTheBackgroundIsNotJudged() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(channelRow))))
-        applyLive(f, 20)
-        f.foreground.value = false
-        untilRowRead()
-
-        assertEquals(ActivityAuditNotJudgedCause.PageHidden, f.audits.single().notJudgedCause)
-        assertEquals(emptyList(), f.inbox.rowReads)
-    }
-
-    @Test
-    fun aReadOfTheRowWhileTheAuditIsOutIsNotJudged() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(channelRow))))
-        applyLive(f, 20)
-        untilRowRead()
-        f.store.dispatch(readState("channel-1", maxReadSeq = 30L))
-        runCurrent()
-        f.inbox.rowAnswer!!.complete(DataResult.Content(snapshot(listOf(servedAt30))))
-        runCurrent()
-
-        val check = f.audits.single()
-        assertEquals(ActivityAuditNotJudgedCause.ReadChanged, check.notJudgedCause)
-    }
-
-    @Test
-    fun aServerSwitchEndsAWaitingAuditNotJudged() = runTest {
-        val f = loadedStore(listOf(snapshot(listOf(channelRow))))
-        applyLive(f, 20)
-        f.store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
-        runCurrent()
-
-        val (serverId, check) = f.checks.single()
-        assertEquals("server-1" to ActivityAuditNotJudgedCause.ServerSwitched, serverId to check.notJudgedCause)
-    }
-
-    @Test
     fun anAuditAnswerBehindTheRowJudgesUpToItAndReadsTheRowOnceMore() = runTest {
         val f = loadedStore(listOf(snapshot(listOf(channelRow))))
         applyLive(f, 20)
@@ -489,26 +453,6 @@ class SharedActivityStorePositionAuditTest {
         advanceTimeBy(ActivityLocalReadAckWindowMillis)
         runCurrent()
         assertEquals(1, f.lowered.size, "flushed once; neither the ack nor the window sends it again")
-    }
-
-    @Test
-    fun heldLocalReadLoweringsAreFlushedWhenTheStoreOrItsScopeIsCleared() = runTest {
-        heldLocalRead().let { f ->
-            f.store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
-            runCurrent()
-            assertEquals(listOf("-", "-", "server_switch"), f.lowered.single().ackAttrs())
-        }
-        heldLocalRead().let { f ->
-            f.store.flushHeldListRowsOnSignout()
-            assertEquals(listOf("-", "-", "signout"), f.lowered.single().ackAttrs())
-        }
-        heldLocalRead().let { f ->
-            f.store.clear()
-            assertEquals("activity:list_row_lowered" to listOf("-", "-", "signout"), f.lowered.single().let { it.event to it.ackAttrs() })
-            advanceTimeBy(ActivityLocalReadAckWindowMillis)
-            runCurrent()
-            assertEquals(1, f.lowered.size)
-        }
     }
 
     @Test

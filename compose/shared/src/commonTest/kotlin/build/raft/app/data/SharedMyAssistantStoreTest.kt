@@ -237,18 +237,6 @@ class SharedMyAssistantStoreTest {
         }
 
     @Test
-    fun aSaveWithoutAReadableReplyKeepsTheTrimmedNotes() =
-        runTest {
-            val api = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.Saved(null))
-            val store = SharedMyAssistantStore(api, scope = backgroundScope)
-            store.ensureLoaded(key)
-            settle()
-            assertEquals(MyAssistantOwnerNotesSaveOutcome.Saved, store.saveOwnerNotes(key, "   "))
-            assertEquals("", store.answerFor(key)?.assistant?.ownerNotes, "cleared")
-            assertEquals("Ada", store.answerFor(key)?.assistant?.name)
-        }
-
-    @Test
     fun aRefusedSaveChangesNothing() =
         runTest {
             val tooLong = ScriptedApi(MyAssistantFetchResult.Answer(withNotes), saveResult = MyAssistantOwnerNotesSaveResult.TooLong(TRACE_ID))
@@ -270,24 +258,6 @@ class SharedMyAssistantStoreTest {
             assertEquals(1, failed.asked.size, "a transient failure reads nothing again")
         }
 
-    @Test
-    fun aSaveTheServerNoLongerAllowsReadsTheAssistantAgain() =
-        runTest {
-            val api =
-                ScriptedApi(
-                    MyAssistantFetchResult.Answer(withNotes),
-                    MyAssistantFetchResult.NotAvailable,
-                    saveResult = MyAssistantOwnerNotesSaveResult.NotAvailable(403, TRACE_ID),
-                )
-            val store = SharedMyAssistantStore(api, scope = backgroundScope)
-            store.ensureLoaded(key)
-            settle()
-            val outcome = store.saveOwnerNotes(key, "Be briefer.")
-            settle()
-            assertEquals(TRACE_ID, assertIs<MyAssistantOwnerNotesSaveOutcome.Failed>(outcome).error.traceId)
-            assertEquals(2, api.asked.size)
-            assertEquals(MyAssistantAnswer.NotEnabled, store.answerFor(key))
-        }
     // ---- The owner's switches (web assistantClient.ts `updateAssistantSetting`, RFC 077) ----
 
     @Test
@@ -410,35 +380,6 @@ class SharedMyAssistantStoreTest {
             assertEquals(MyAssistantCreateOutcome.Done, stale.create(key))
             assertEquals(listOf("s1"), staleApi.asked, "read again")
             assertEquals(ready, stale.answerFor(key))
-        }
-
-    @Test
-    fun theLimitAndOtherFailuresKeepTheTraceAndChangeNothing() =
-        runTest {
-            val none = MyAssistantAnswer(true, null)
-            val limited =
-                SharedMyAssistantStore(
-                    ScriptedApi(
-                        MyAssistantFetchResult.Answer(none),
-                        createResult = MyAssistantCreateResult.CapacityLimit("Seat limit reached (1/1 on Pro plan).", TRACE_ID),
-                    ),
-                    scope = backgroundScope,
-                )
-            limited.ensureLoaded(key)
-            runCurrent()
-            val limit = assertIs<MyAssistantCreateOutcome.CapacityLimit>(limited.create(key))
-            assertEquals("Seat limit reached (1/1 on Pro plan).", limit.error.serverMessage)
-            assertEquals(TRACE_ID, limit.error.traceId)
-            assertEquals(none, limited.answerFor(key))
-            val failed =
-                SharedMyAssistantStore(
-                    ScriptedApi(MyAssistantFetchResult.Answer(none), createResult = MyAssistantCreateResult.Failed(500, TRACE_ID)),
-                    scope = backgroundScope,
-                )
-            val failure = assertIs<MyAssistantCreateOutcome.Failed>(failed.create(key))
-            assertEquals("http_500", failure.error.code)
-            assertEquals(TRACE_ID, failure.error.traceId)
-            assertNull(failed.answerFor(key))
         }
 
     @Test

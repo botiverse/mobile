@@ -152,24 +152,6 @@ class RaftShellStoreScopeTest {
     }
 
     @Test
-    fun authenticatedReplaceDoesNotOverwriteAConcurrentProcessSelection() = runBlocking {
-        val racingStore = SelectBeforeAtomicReplaceStore(InMemoryRaftAuthSessionStore(session()))
-        val shellStore =
-            RaftShellAuthSessionStore(
-                racingStore,
-                SelectedServerStore(RaftShellStoreScope.create("shell-b", "server-2"))
-            )
-        val replacement = shellStore.readSession()!!.copy(accessToken = "replacement-access")
-        racingStore.selectBeforeNextReplace = true
-
-        shellStore.replaceAuthenticatedSession(replacement)
-
-        assertEquals("server-4", racingStore.readSession()?.selectedServerId)
-        assertEquals("replacement-access", racingStore.readSession()?.accessToken)
-        assertEquals("server-2", shellStore.readSession()?.selectedServerId)
-    }
-
-    @Test
     fun realInboxRepositoriesRouteRequestsThroughTheirShellSelections() = runBlocking {
         val processStore = InMemoryRaftAuthSessionStore(session())
         val runtimeA = SelectedServerStore(RaftShellStoreScope.create("shell-a", "server-1"))

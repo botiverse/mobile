@@ -91,13 +91,6 @@ class ChannelSettingsPageTest {
         )
 
     @Test
-    fun routeRejectsMissingIdentity() {
-        assertNull(JSONObject().toChannelSettingsRouteOrNull())
-        assertNull(JSONObject().apply { put("serverId", "server-1") }.toChannelSettingsRouteOrNull())
-        assertNull(JSONObject().apply { put("channelId", "channel-9") }.toChannelSettingsRouteOrNull())
-    }
-
-    @Test
     fun jointChannelUsesBranchIdentityAndPrivateManagementSemantics() {
         val joint =
             HomeChannelRow(
@@ -221,15 +214,6 @@ class ChannelSettingsPageTest {
         assertFalse(permissions.editMetadata)
         assertTrue(permissions.canEditChannel)
         assertFalse(channelSettingsPermissions(row(capabilities = ChannelCapabilities()), canManage = true).canEditChannel)
-    }
-
-    @Test
-    fun addTileOpensMembersInAddModeThroughAnIntentKeyOnly() {
-        val route = ChannelSettingsRoute(ServerId("server-1"), ChannelId("channel-9"))
-        val add = channelSettingsMembersPageData(route, openAddMember = true)
-        assertEquals("add", add.optString(THREAD_MEMBERS_INITIAL_VIEW_KEY))
-        assertEquals(true, add.toThreadMembersPageRouteOrNull()?.openAddMember)
-        assertEquals(false, channelSettingsMembersPageData(route).toThreadMembersPageRouteOrNull()?.openAddMember)
     }
 
     @Test

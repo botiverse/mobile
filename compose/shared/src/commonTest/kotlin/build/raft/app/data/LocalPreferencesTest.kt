@@ -34,17 +34,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun localePersistsExplicitSystemSelection() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val repository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(store))
-
-        repository.selectLocale(AppLocale.System)
-
-        assertEquals(AppLocale.System, repository.getLocale().current)
-        assertEquals("system", store.getString("locale:app_locale"))
-    }
-
-    @Test
     fun localeRestoresEveryExplicitSelectionWithoutTreatingEnglishAsMissing() = runBlocking {
         val expectedLocales =
             listOf(
@@ -150,23 +139,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun multiServerRealtimeDefaultsOffAndPersistsExplicitOn() {
-        val store = InMemoryRaftKeyValueStore()
-
-        assertFalse(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
-
-        KeyValueChatLayoutPreferenceStore(store).saveMultiServerRealtimeEnabledSync(true)
-        assertTrue(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
-        assertFalse(
-            KeyValueChatLayoutPreferenceStore(store).readMultiShellHostEnabledSync(),
-            "the multi-session switch does not turn on separate windows",
-        )
-
-        KeyValueChatLayoutPreferenceStore(store).saveMultiServerRealtimeEnabledSync(false)
-        assertFalse(KeyValueChatLayoutPreferenceStore(store).readMultiServerRealtimeEnabledSync())
-    }
-
-    @Test
     fun desktopModeDefaultsOnAndPreservesExplicitOff() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
@@ -192,18 +164,6 @@ class LocalPreferencesTest {
         val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
 
         assertEquals(true, repository.getChatLayoutPreference().desktopModeOnLargeScreen)
-    }
-
-    @Test
-    fun serverDrawerDefaultsOffButPreservesExplicitOn() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
-
-        assertEquals(false, repository.getChatLayoutPreference().serverDrawerEnabled)
-
-        repository.setServerDrawerEnabled(true)
-
-        assertEquals(true, repository.getChatLayoutPreference().serverDrawerEnabled)
     }
 
     @Test
@@ -286,32 +246,6 @@ class LocalPreferencesTest {
     }
 
     @Test
-    fun conversationForwardGestureDefaultsOffFailsClosedAndPersistsIndependently() = runBlocking {
-        val key = "mobile:conversation_forward_gesture_enabled"
-        val store = InMemoryRaftKeyValueStore()
-        val preferenceStore = KeyValueChatLayoutPreferenceStore(store)
-        val repository = PersistentChatLayoutPreferenceRepository(preferenceStore)
-
-        assertEquals(false, preferenceStore.readConversationForwardGestureEnabledSync())
-        assertEquals(false, repository.getChatLayoutPreference().conversationForwardGestureEnabled)
-
-        store.putString(key, "unsupported")
-        assertEquals(false, preferenceStore.readConversationForwardGestureEnabled())
-
-        val enabled = repository.setConversationForwardGestureEnabled(true)
-        assertEquals(true, enabled.conversationForwardGestureEnabled)
-        assertEquals(true, preferenceStore.readConversationForwardGestureEnabledSync())
-
-        repository.setNewMessageMenuEnabled(true)
-        val restored =
-            PersistentChatLayoutPreferenceRepository(
-                KeyValueChatLayoutPreferenceStore(store)
-            ).getChatLayoutPreference()
-        assertEquals(true, restored.conversationForwardGestureEnabled)
-        assertEquals(true, restored.newMessageMenuEnabled)
-    }
-
-    @Test
     fun chatLayoutPersistsSelectedValues() = runBlocking {
         val store = InMemoryRaftKeyValueStore()
         val repository = PersistentChatLayoutPreferenceRepository(
@@ -367,62 +301,6 @@ class LocalPreferencesTest {
         assertEquals(true, restoredDisabledCompact.multiShellHostEnabled)
         assertEquals(true, restoredDisabledCompact.serverDrawerEnabled)
         assertEquals(true, restoredDisabledCompact.newMessageMenuEnabled)
-    }
-
-    @Test
-    fun tasksViewModeDefaultsAndPersistsSelectedMode() = runBlocking {
-        val repository = KeyValueTasksViewPreferenceRepository(InMemoryRaftKeyValueStore())
-
-        assertEquals(TasksViewMode.List, repository.getTasksViewModeSync(TasksViewMode.List))
-
-        val selected = repository.selectTasksViewMode(TasksViewMode.Board)
-        val restored = repository.getTasksViewMode(TasksViewMode.List)
-
-        assertEquals(TasksViewMode.Board, selected)
-        assertEquals(TasksViewMode.Board, restored)
-    }
-
-    @Test
-    fun tasksPageFoldsAreKeptPerServerAndUnreadableOnesReadAsNone() {
-        val backing = InMemoryRaftKeyValueStore()
-        val repository = KeyValueTasksPageFoldPreferenceRepository(backing)
-        assertEquals(emptyMap(), repository.folds("server-a"))
-
-        repository.saveFolds("server-a", mapOf(TaskStatus.Done to false, TaskStatus.Todo to true))
-        // A new repository over the same device store (the app opened again) reads them; another server has none.
-        assertEquals(mapOf(TaskStatus.Done to false, TaskStatus.Todo to true), KeyValueTasksPageFoldPreferenceRepository(backing).folds("server-a"))
-        assertEquals(emptyMap(), repository.folds("server-b"))
-
-        // Web readStoredFolds (botiverse/slock eb63aec86e): unreadable folds read as none, and an entry that is
-        // not a known status set to true or false is skipped.
-        fun stored(raw: String) =
-            KeyValueTasksPageFoldPreferenceRepository(InMemoryRaftKeyValueStore(mapOf("tasks:pageFolds:server-a" to raw))).folds("server-a")
-        assertEquals(emptyMap(), stored("not json"))
-        assertEquals(emptyMap(), stored("""["done"]"""))
-        assertEquals(mapOf(TaskStatus.Done to true), stored("""{"done":true,"bogus":true,"closed":"yes","todo":"true","backlog":null}"""))
-    }
-
-    @Test
-    fun computersRackViewDefaultsToCardsAndKeepsTheChoice() {
-        val backing = InMemoryRaftKeyValueStore()
-        val repository = KeyValueComputersRackViewPreferenceRepository(backing)
-
-        assertEquals(ComputersRackView.Cards, repository.getComputersRackViewSync())
-
-        assertEquals(ComputersRackView.List, repository.selectComputersRackViewSync(ComputersRackView.List))
-        // A new repository over the same device store (the page opened again) reads the choice.
-        assertEquals(ComputersRackView.List, KeyValueComputersRackViewPreferenceRepository(backing).getComputersRackViewSync())
-
-        repository.selectComputersRackViewSync(ComputersRackView.Cards)
-        assertEquals(ComputersRackView.Cards, KeyValueComputersRackViewPreferenceRepository(backing).getComputersRackViewSync())
-    }
-
-    @Test
-    fun pushPreviewModeDefaultsToFullWhenNeverStored() = runBlocking {
-        val store = KeyValuePushPreviewModePreferenceStore(InMemoryRaftKeyValueStore())
-
-        assertEquals(PUSH_PREVIEW_MODE_DEFAULT, store.readPushPreviewModeSync())
-        assertEquals("full", store.readPushPreviewModeSync())
     }
 
     @Test

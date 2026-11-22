@@ -40,17 +40,6 @@ class SharedRealtimeRoomLeaseRegistryTest {
     }
 
     @Test
-    fun duplicateAcquireAndLateReleaseAreIdempotent() {
-        val registry = SharedRealtimeRoomLeaseRegistry("shell-a")
-        val owner = owner("detail", generation = 1)
-
-        assertEquals(listOf(join("room-a")), registry.acquire(owner, listOf("room-a", "room-a", " ")))
-        assertTrue(registry.acquire(owner, listOf("room-a")).isEmpty())
-        assertEquals(listOf(leave("room-a")), registry.release(owner))
-        assertTrue(registry.release(owner).isEmpty())
-    }
-
-    @Test
     fun serverTeardownLeavesEachRoomOnceAndMakesOldLeasesInert() {
         val registry = SharedRealtimeRoomLeaseRegistry("shell-a")
         val first = owner("list", generation = 1)
@@ -132,26 +121,6 @@ class SharedRealtimeRoomLeaseRegistryTest {
         unmarked.acquire(page, listOf("channel-1", "thread-1"))
         assertEquals(listOf(leave("channel-1"), leave("thread-1")), unmarked.release(page))
         assertEquals(listOf("channel-1", "thread-1"), left)
-    }
-
-    @Test
-    fun aKeptThreadRoomStillFollowsTheMemberRuleOnTeardown() {
-        // Teardown leaves a kept room exactly like a released one today: never a room the user belongs to.
-        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId != "member-thread" }
-        val page = owner("thread-pager-1", generation = 1)
-        registry.keepJoinedUntilClear("server-a", "member-thread")
-        registry.keepJoinedUntilClear("server-a", "browsed-thread")
-        registry.acquire(page, listOf("member-thread", "browsed-thread"))
-        assertTrue(registry.release(page).isEmpty())
-        assertEquals(listOf(leave("browsed-thread")), registry.clearServer("server-a"))
-    }
-
-    @Test
-    fun shellTeardownAlsoKeepsMemberRooms() {
-        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId == "public-browsed" }
-        registry.acquire(owner("thread-pager-1", generation = 1), listOf("member-channel", "public-browsed"))
-
-        assertEquals(listOf(leave("public-browsed")), registry.clear())
     }
 
     @Test

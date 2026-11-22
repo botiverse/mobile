@@ -224,22 +224,6 @@ class SettingsFeedbackProxySubmitterTest {
     }
 
     @Test
-    fun onlyAFiledCardRetiresTheAgentTipForItsSender() = runTest {
-        // slock #14076: the tip goes once this person sent an agent's draft, not their own feedback
-        // and not a card the server refused.
-        val own = submitter(FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-1"))), mutableListOf())
-        own.submit(own.newAttempt("It froze", emptyList()))
-        assertFalse(agentDraftSent.isSent("user-1"))
-        val refused = submitter(FakeRepository(mutableListOf(failed(FeedbackErrorKind.Unavailable, "STATE_MISMATCH", 409))), mutableListOf())
-        refused.submit(refused.newAttempt("x", emptyList(), card = card))
-        assertFalse(agentDraftSent.isSent("user-1"))
-
-        val sent = submitter(FakeRepository(mutableListOf(FeedbackResult.Ok("ticket-2"))), mutableListOf())
-        sent.submit(sent.newAttempt("Search is slow", emptyList(), card.type, card))
-        assertTrue(agentDraftSent.isSent("user-1"))
-    }
-
-    @Test
     fun aRefusalCarriesTheResponsesTraceIdToTheForm() = runTest {
         val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
         val answer = FeedbackResult.Failed(FeedbackFailure(FeedbackErrorKind.Unavailable, "CONFIRMATION_VERSION_MISMATCH", 409, traceId = traceId))

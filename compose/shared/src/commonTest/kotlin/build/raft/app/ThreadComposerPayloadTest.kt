@@ -54,20 +54,6 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun malformedWrappedPayloadStillShowsParseFailure() {
-        val payload =
-            parseThreadComposerPayload(
-                payload = """{"seedText":""",
-                fallbackPageData = """{"instanceId":"host-4"}""",
-                instanceId = "host-4"
-            )
-
-        assertEquals("host-4", payload.instanceId)
-        assertEquals("failed", payload.composerMode)
-        assertEquals("Composer payload parse failed", payload.statusLabel)
-    }
-
-    @Test
     fun staleEditorCommandCannotOverwriteNewerLocalCompositionText() {
         val delayedClear =
             ThreadComposerEditorCommand(

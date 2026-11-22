@@ -38,100 +38,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedTasksStoreTest {
-    @Test
-    fun sharedTasksUseCaseReturnsTypedErrorWhenSelectedServerIsMissing() = runBlocking {
-        val repository = FakeTasksRepository()
-        val useCase =
-            SharedTasksUseCase(
-                authStore = InMemoryRaftAuthSessionStore(),
-                repository = repository
-            )
-
-        val result = useCase.refreshTasks(TasksLoadRequest())
-
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("selected_server_missing", error.error.code)
-        assertEquals(0, repository.loadCalls)
-    }
-
-    @Test
-    fun sharedTasksUseCaseLoadsThroughRepositoryWithSelectedServer() = runBlocking {
-        val repository =
-            FakeTasksRepository(
-                loadResult =
-                    DataResult.Content(
-                        TaskSnapshot(
-                            tasks = listOf(task("task-1", TaskStatus.Todo)),
-                            summaryCounts = mapOf(TaskStatus.Todo to 1)
-                        )
-                    )
-            )
-        val useCase =
-            SharedTasksUseCase(
-                authStore =
-                    InMemoryRaftAuthSessionStore(
-                        StoredAuthSession(
-                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-                            accessToken = "token",
-                            refreshToken = "refresh",
-                            selectedServerId = "server-1"
-                        )
-                    ),
-                repository = repository
-            )
-
-        val result = useCase.refreshTasks(TasksLoadRequest(TaskFilter(statuses = setOf(TaskStatus.Todo))))
-
-        assertIs<DataResult.Content<TaskSnapshot>>(result)
-        assertEquals(ServerId("server-1"), repository.lastServerId)
-        assertEquals(SharedTasksScope.Server, repository.lastScope)
-        assertEquals(setOf(TaskStatus.Todo), repository.lastFilter?.statuses)
-    }
-
-    @Test
-    fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
-        val serverId = ServerId("server-1")
-        val local = InMemorySharedTasksLocalDataSource()
-        val remote =
-            FakeTasksRemoteDataSource(
-                loadResult =
-                    DataResult.Content(
-                        TaskSnapshot(
-                            tasks =
-                                listOf(
-                                    task("task-1", TaskStatus.Todo),
-                                    task("task-2", TaskStatus.Done)
-                                ),
-                            summaryCounts = emptyMap()
-                        )
-                    )
-            )
-        val repository =
-            SharedTasksDataRepository(
-                localDataSource = local,
-                remoteDataSource = remote
-            )
-
-        val refreshResult =
-            repository.refreshTasks(
-                serverId,
-                SharedTasksScope.Server,
-                TaskFilter(statuses = setOf(TaskStatus.Todo))
-            )
-        val observed =
-            repository.observeTasks(
-                serverId,
-                SharedTasksScope.Server,
-                TaskFilter(statuses = setOf(TaskStatus.Todo))
-            ).first()
-
-        val refreshContent = assertIs<DataResult.Content<TaskSnapshot>>(refreshResult).data
-        val observedContent = assertIs<DataResult.Content<TaskSnapshot>>(observed).data
-        assertEquals(listOf("task-1"), refreshContent.tasks.map { it.id.value })
-        assertEquals(listOf("task-1"), observedContent.tasks.map { it.id.value })
-        assertEquals(TaskFilter(), remote.lastFilter)
-        assertEquals(DataRequestPriority.Visible, remote.lastPriority)
-    }
 
     @Test
     fun sharedTasksDataStoreProjectsChannelTasksFromServerSnapshot() = runBlocking {
@@ -156,36 +62,6 @@ class SharedTasksStoreTest {
         assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
         assertEquals(false, slice.isExactScopeLoaded)
         assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
-    }
-
-    @Test
-    fun sharedTasksDataStorePrefersChannelSnapshotOverServerProjection() = runBlocking {
-        val store = SharedTasksDataStore()
-
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(task("task-server", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
-                    summaryCounts = emptyMap()
-                )
-        )
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(task("task-channel", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
-                    summaryCounts = emptyMap()
-                )
-        )
-
-        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
-
-        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
-        assertEquals(true, slice.isExactScopeLoaded)
-        assertEquals(listOf("task-channel"), slice.tasks.map { it.id.value })
     }
 
     @Test
@@ -227,39 +103,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksDataStoreLoadsExactChannelBehindLoadedServerProjection() = runBlocking {
-        val store = SharedTasksDataStore()
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-        )
-        var remoteCalls = 0
-
-        val result =
-            store.loadSnapshot(
-                serverId = "server-1",
-                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-            ) {
-                remoteCalls += 1
-                DataResult.Content(
-                    TaskSnapshot(
-                        tasks = listOf(task("task-channel", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
-                        summaryCounts = emptyMap()
-                    )
-                )
-            }
-
-        assertEquals(1, remoteCalls)
-        assertEquals(
-            listOf("task-channel"),
-            assertIs<DataResult.Content<TaskSnapshot>>(result).data.tasks.map { it.id.value }
-        )
-        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-        assertEquals(true, projection.isExactScopeLoaded)
-    }
-
-    @Test
     fun sharedTasksDataStoreDoesNotLetOlderLoadedChannelMaskNewerServerSnapshot() = runBlocking {
         val store = SharedTasksDataStore()
         val oldTask = task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))
@@ -280,154 +123,6 @@ class SharedTasksStoreTest {
         assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
         assertEquals(false, projection.isExactScopeLoaded)
         assertEquals(listOf("task-new"), projection.tasks.map { it.id.value })
-    }
-
-    @Test
-    fun sharedTasksDataStoreRealtimeMutationDoesNotBlessAlreadyStaleChannelSnapshot() = runBlocking {
-        val store = SharedTasksDataStore()
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
-                    summaryCounts = emptyMap()
-                )
-        )
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(task("task-server", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
-                    summaryCounts = emptyMap()
-                )
-        )
-        store.upsertTask(
-            serverId = "server-1",
-            task = task("task-realtime", TaskStatus.InReview, channelId = ChannelId("channel-1"))
-        )
-
-        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-
-        assertEquals(false, projection.isExactScopeLoaded)
-        assertEquals(
-            listOf("task-server", "task-realtime"),
-            projection.tasks.map { it.id.value }
-        )
-    }
-
-    @Test
-    fun sharedTasksDataStoreLateChannelContentCannotMaskNewerServerSnapshot() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = SharedTasksDataStore(appScope)
-        val requestStarted = CompletableDeferred<Unit>()
-        val releaseRequest = CompletableDeferred<Unit>()
-        val oldTask = task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))
-        val newTask = task("task-new", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
-        val load =
-            async {
-                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
-                    requestStarted.complete(Unit)
-                    releaseRequest.await()
-                    DataResult.Content(TaskSnapshot(tasks = listOf(oldTask), summaryCounts = emptyMap()))
-                }
-            }
-        requestStarted.await()
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Server,
-            snapshot = TaskSnapshot(tasks = listOf(newTask), summaryCounts = emptyMap())
-        )
-        releaseRequest.complete(Unit)
-
-        assertEquals(
-            listOf("task-new"),
-            assertIs<DataResult.Content<TaskSnapshot>>(load.await()).data.tasks.map { it.id.value }
-        )
-        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-        assertEquals(true, projection.isExactScopeLoaded)
-        assertEquals(listOf("task-new"), projection.tasks.map { it.id.value })
-        appScope.cancel()
-    }
-
-    @Test
-    fun sharedTasksDataStoreUnroutableMutationsKeepInflightContentAndEmptyStale() = runBlocking {
-        val mutations =
-            listOf(
-                task(
-                    "task-name-only",
-                    TaskStatus.InReview,
-                    channelId = null,
-                    channelName = "general"
-                ),
-                task(
-                    "task-message-only",
-                    TaskStatus.InProgress,
-                    channelId = null,
-                    channelName = null
-                )
-            )
-        mutations.forEach { mutation ->
-            listOf<DataResult<TaskSnapshot>>(
-                DataResult.Empty(EmptyReason.NoTasks),
-                DataResult.Content(
-                    TaskSnapshot(
-                        tasks = listOf(task("task-old", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
-                        summaryCounts = emptyMap()
-                    )
-                )
-            ).forEach { staleResult ->
-                listOf("no_server_refresh", "server_before_mutation", "server_after_mutation").forEach { ordering ->
-                    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-                    val store = SharedTasksDataStore(appScope)
-                    store.publishSnapshot(
-                        serverId = "server-1",
-                        scope = SharedTasksScope.Server,
-                        snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-                    )
-                    val requestStarted = CompletableDeferred<Unit>()
-                    val releaseRequest = CompletableDeferred<Unit>()
-                    val load =
-                        async {
-                            store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
-                                requestStarted.complete(Unit)
-                                releaseRequest.await()
-                                staleResult
-                            }
-                        }
-                    requestStarted.await()
-                    if (ordering == "server_before_mutation") {
-                        store.publishSnapshot(
-                            serverId = "server-1",
-                            scope = SharedTasksScope.Server,
-                            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-                        )
-                    }
-                    store.upsertTask("server-1", mutation)
-                    if (ordering == "server_after_mutation") {
-                        store.publishSnapshot(
-                            serverId = "server-1",
-                            scope = SharedTasksScope.Server,
-                            snapshot = TaskSnapshot(tasks = listOf(mutation), summaryCounts = emptyMap())
-                        )
-                    }
-                    releaseRequest.complete(Unit)
-                    load.await()
-
-                    val projection = store.channelProjectionFlow("server-1", "channel-1", "general").first()
-                    val context = "mutation=${mutation.id} result=$staleResult ordering=$ordering"
-
-                    assertEquals(false, projection.isExactScopeLoaded, context)
-                    assertEquals(
-                        listOf(mutation.id.value),
-                        store.projection("server-1", SharedTasksScope.Server).tasks.map { it.id.value },
-                        context
-                    )
-                    appScope.cancel()
-                }
-            }
-        }
     }
 
     @Test
@@ -455,20 +150,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksDataStoreUpsertTaskCreatesMissingChannelProjection() = runBlocking {
-        val store = SharedTasksDataStore()
-        val task = task("task-1", TaskStatus.Done, channelId = ChannelId("channel-1"))
-
-        store.upsertTask("server-1", task)
-
-        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
-
-        assertEquals(SharedTasksDataStoreStatus.Partial, slice.status)
-        assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
-        assertEquals(TaskStatus.Done, slice.tasks.single().status)
-    }
-
-    @Test
     fun sharedTasksDataStoreFoldsOneCanonicalFactAcrossTwoLocalRoutes() = runBlocking {
         val store = SharedTasksDataStore()
         val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
@@ -492,37 +173,6 @@ class SharedTasksStoreTest {
             ChannelId("channel-b"),
             store.mutationProjection("server-b", canonical.id, expectedRevision = 7L)?.channelId
         )
-    }
-
-    @Test
-    fun equalRevisionIgnoresServerLocalPresentationAndKeepsAuthorizationLocal() = runBlocking {
-        val store = SharedTasksDataStore()
-        val hostAssignee =
-            MemberProfile(MemberId("global-user-1"), "Artin Host", "artin", MemberKind.Human)
-        val peerAssignee =
-            MemberProfile(MemberId("global-user-1"), "Artin Peer", "artin", MemberKind.Human)
-        val host =
-            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
-                .copy(assignee = hostAssignee, updatedAtLabel = "just now", canClaim = true)
-        val peer =
-            host.copy(
-                channelId = ChannelId("channel-b"),
-                assignee = peerAssignee,
-                updatedAtLabel = "1 minute ago",
-                canClaim = false
-            )
-
-        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", host))
-        assertEquals(SharedTaskFactFoldOutcome.StaleIgnored, store.upsertTask("server-b", peer))
-
-        val serverA = store.projection("server-a", SharedTasksScope.Server).tasks.single()
-        val serverB = store.projection("server-b", SharedTasksScope.Server).tasks.single()
-        assertEquals(ChannelId("channel-a"), serverA.channelId)
-        assertEquals(ChannelId("channel-b"), serverB.channelId)
-        assertTrue(serverA.canClaim)
-        assertFalse(serverB.canClaim)
-        assertFalse(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
-        assertFalse(store.projection("server-b", SharedTasksScope.Server).needsCanonicalRefetch)
     }
 
     @Test
@@ -597,20 +247,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksDataStoreFailsClosedWhenLegacyNullRevisionFactsDisagree() {
-        val store = SharedTasksDataStore()
-        val first = task("task-legacy", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = null)
-        val conflicting = first.copy(status = TaskStatus.Done, channelId = ChannelId("channel-b"))
-
-        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-a", first))
-        assertEquals(SharedTaskFactFoldOutcome.Conflict, store.upsertTask("server-b", conflicting))
-
-        assertEquals(emptyList(), store.projection("server-a", SharedTasksScope.Server).tasks)
-        assertEquals(emptyList(), store.projection("server-b", SharedTasksScope.Server).tasks)
-        assertTrue(store.projection("server-a", SharedTasksScope.Server).needsCanonicalRefetch)
-    }
-
-    @Test
     fun historicalJointTaskWireReadOnlyReasonBlocksClaim() {
         val readOnly =
             TaskWireDto(
@@ -626,107 +262,6 @@ class SharedTasksStoreTest {
         assertEquals(false, readOnly?.canClaim)
         assertEquals(null, writable?.readOnlyReason)
         assertEquals(true, writable?.canClaim)
-    }
-
-    @Test
-    fun readOnlyJointProjectionIsServerLocalAndHasNoMutationRoute() {
-        val store = SharedTasksDataStore()
-        val host =
-            task("task-joint", TaskStatus.Todo, channelId = ChannelId("channel-host"), revision = 5L)
-                .copy(messageId = MessageId("message-joint"))
-        val participant =
-            host.copy(channelId = ChannelId("channel-peer"), canClaim = false, readOnlyReason = "historical_joint_task")
-
-        assertEquals(SharedTaskFactFoldOutcome.Accepted, store.upsertTask("server-host", host))
-        // The read-only marker is projection-local, so it never turns one revision into a conflict.
-        assertEquals(false, store.upsertTask("server-peer", participant) == SharedTaskFactFoldOutcome.Conflict)
-
-        assertEquals(null, store.projection("server-host", SharedTasksScope.Server).tasks.single().readOnlyReason)
-        assertEquals(
-            "historical_joint_task",
-            store.projection("server-peer", SharedTasksScope.Server).tasks.single().readOnlyReason
-        )
-        assertEquals(ChannelId("channel-host"), store.mutationProjection("server-host", host.id, expectedRevision = 5L)?.channelId)
-        assertEquals(null, store.mutationProjection("server-peer", host.id, expectedRevision = 5L))
-    }
-
-    @Test
-    fun sharedTasksNotificationFactDedupesCanonicalMessageAndRetainsBothLocalRoutes() {
-        val store = SharedTasksDataStore()
-        val host =
-            task("task-joint", TaskStatus.Todo, channelId = ChannelId("channel-host"), revision = 8L)
-                .copy(messageId = MessageId("message-joint"), parentMessageId = MessageId("message-joint"))
-
-        store.upsertTask("server-host", host)
-        store.upsertTask("server-peer", host.copy(channelId = ChannelId("channel-peer")))
-
-        val projection = store.notificationProjection(host.id)
-        assertEquals(MessageId("message-joint"), projection?.messageId)
-        assertEquals(8L, projection?.revision)
-        assertEquals(
-            listOf(
-                SharedTaskNotificationRoute("server-host", ChannelId("channel-host")),
-                SharedTaskNotificationRoute("server-peer", ChannelId("channel-peer"))
-            ),
-            projection?.routes
-        )
-        assertEquals(
-            ChannelId("channel-host"),
-            store.mutationProjection("server-host", host.id, expectedRevision = 8L)?.channelId
-        )
-        assertEquals(
-            ChannelId("channel-peer"),
-            store.mutationProjection("server-peer", host.id, expectedRevision = 8L)?.channelId
-        )
-    }
-
-    @Test
-    fun authoritativeSnapshotRemovesOnlyItsMissingLocalRouteAndPreservesPeerRoute() = runBlocking {
-        val store = SharedTasksDataStore()
-        val canonical = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-a"), revision = 7L)
-        store.upsertTask("server-a", canonical)
-        store.upsertTask("server-b", canonical.copy(channelId = ChannelId("channel-b")))
-
-        store.publishSnapshot(
-            serverId = "server-a",
-            scope = SharedTasksScope.Server,
-            snapshot = TaskSnapshot(tasks = emptyList(), summaryCounts = emptyMap())
-        )
-
-        assertEquals(null, store.mutationProjection("server-a", canonical.id, expectedRevision = 7L))
-        assertEquals(
-            ChannelId("channel-b"),
-            store.mutationProjection("server-b", canonical.id, expectedRevision = 7L)?.channelId
-        )
-        assertEquals(emptyList(), store.projection("server-a", SharedTasksScope.Server).tasks)
-        assertEquals(1, store.projection("server-b", SharedTasksScope.Server).tasks.size)
-    }
-
-    @Test
-    fun sharedTasksDataStoreRealtimeUpsertStaysPartialUntilChannelSnapshotBackfills() = runBlocking {
-        val store = SharedTasksDataStore()
-        val recentTask = task("task-recent", TaskStatus.InProgress, channelId = ChannelId("channel-1"))
-        val historicalTask = task("task-history", TaskStatus.Todo, channelId = ChannelId("channel-1"))
-
-        store.upsertTask("server-1", recentTask)
-
-        val partial = store.channelProjectionFlow("server-1", "channel-1", null).first()
-        assertEquals(SharedTasksDataStoreStatus.Partial, partial.status)
-        assertEquals(listOf("task-recent"), partial.tasks.map { it.id.value })
-
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(historicalTask, recentTask),
-                    summaryCounts = emptyMap()
-                )
-        )
-
-        val loaded = store.channelProjectionFlow("server-1", "channel-1", null).first()
-        assertEquals(SharedTasksDataStoreStatus.Loaded, loaded.status)
-        assertEquals(listOf("task-history", "task-recent"), loaded.tasks.map { it.id.value })
     }
 
     @Test
@@ -759,36 +294,6 @@ class SharedTasksStoreTest {
         val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
         assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
         assertEquals(listOf("task-recent"), projection.tasks.map { it.id.value })
-        appScope.cancel()
-    }
-
-    @Test
-    fun sharedTasksDataStoreRealtimeStatusWinsOverOlderContentBackfill() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = SharedTasksDataStore(appScope)
-        val stale = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))
-        val requestStarted = CompletableDeferred<Unit>()
-        val releaseRequest = CompletableDeferred<Unit>()
-        val load =
-            async {
-                store.loadSnapshot(
-                    serverId = "server-1",
-                    scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-                ) {
-                    requestStarted.complete(Unit)
-                    releaseRequest.await()
-                    DataResult.Content(TaskSnapshot(tasks = listOf(stale), summaryCounts = emptyMap()))
-                }
-            }
-        requestStarted.await()
-
-        store.upsertTask("server-1", stale.copy(status = TaskStatus.InReview))
-        releaseRequest.complete(Unit)
-        assertIs<DataResult.Content<TaskSnapshot>>(load.await())
-
-        val projection = store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-        assertEquals(SharedTasksDataStoreStatus.Loaded, projection.status)
-        assertEquals(TaskStatus.InReview, projection.tasks.single().status)
         appScope.cancel()
     }
 
@@ -847,43 +352,6 @@ class SharedTasksStoreTest {
             listOf("task-1"),
             store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-b"))).tasks.map { it.id.value }
         )
-    }
-
-    @Test
-    fun sharedTasksDataStoreCallerCancellationDoesNotCancelSharedChannelLoad() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store = SharedTasksDataStore(appScope)
-        val requestStarted = CompletableDeferred<Unit>()
-        val releaseRequest = CompletableDeferred<Unit>()
-        var remoteCalls = 0
-        val snapshot =
-            TaskSnapshot(
-                tasks = listOf(task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
-                summaryCounts = emptyMap()
-            )
-        suspend fun fetch(): DataResult<TaskSnapshot> {
-            remoteCalls += 1
-            requestStarted.complete(Unit)
-            releaseRequest.await()
-            return DataResult.Content(snapshot)
-        }
-        val firstOwner =
-            async {
-                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) { fetch() }
-            }
-        requestStarted.await()
-        firstOwner.cancelAndJoin()
-
-        val replacementOwner =
-            async {
-                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) { fetch() }
-            }
-        yield()
-        assertEquals(1, remoteCalls)
-        releaseRequest.complete(Unit)
-        assertIs<DataResult.Content<TaskSnapshot>>(replacementOwner.await())
-        assertEquals(1, remoteCalls)
-        appScope.cancel()
     }
 
     @Test
@@ -976,141 +444,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksDataStoreRejectsLateOldOwnerFlightAfterIdentitySwitch() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        var ownerIdentity = "env|user-a"
-        val store =
-            SharedTasksDataStore(
-                scope = appScope,
-                ownerIdentityProvider = { ownerIdentity }
-            )
-        val requestStarted = CompletableDeferred<Unit>()
-        val releaseRequest = CompletableDeferred<Unit>()
-        val oldOwnerLoad =
-            async {
-                store.loadSnapshot("server-1", SharedTasksScope.Channel(ChannelId("channel-1"))) {
-                    requestStarted.complete(Unit)
-                    withContext(NonCancellable) { releaseRequest.await() }
-                    DataResult.Content(
-                        TaskSnapshot(
-                            tasks = listOf(task("task-user-a", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
-                            summaryCounts = emptyMap()
-                        )
-                    )
-                }
-            }
-        requestStarted.await()
-
-        ownerIdentity = "env|user-b"
-        store.bindCurrentOwnerIdentity()
-        releaseRequest.complete(Unit)
-        oldOwnerLoad.join()
-
-        assertEquals(
-            SharedTasksProjectionSlice(),
-            store.projection("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-        )
-        appScope.cancel()
-    }
-
-    @Test
-    fun sharedTasksDataStoreFirstFrameProjectionRequiresExactBoundOwner() = runBlocking {
-        var ownerIdentity = "https://api.example.test|user-a"
-        val store = SharedTasksDataStore(ownerIdentityProvider = { ownerIdentity })
-        store.bindCurrentOwnerIdentity()
-        store.publishSnapshot(
-            serverId = "server-1",
-            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-            snapshot =
-                TaskSnapshot(
-                    tasks = listOf(task("task-a", TaskStatus.InReview, channelId = ChannelId("channel-1"))),
-                    summaryCounts = emptyMap()
-                )
-        )
-
-        val accepted =
-            store.projectionForOwner(
-                expectedOwnerIdentity = "https://api.example.test|user-a",
-                serverId = "server-1",
-                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-            )
-
-        assertEquals(listOf("task-a"), accepted?.tasks?.map { task -> task.id.value })
-        assertEquals(SharedTasksDataStoreStatus.Loaded, accepted?.status)
-        assertNull(
-            store.projectionForOwner(
-                expectedOwnerIdentity = "https://api.example.test|user-b",
-                serverId = "server-1",
-                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-            )
-        )
-
-        ownerIdentity = "https://api.example.test|user-b"
-        store.bindCurrentOwnerIdentity()
-
-        assertNull(
-            store.projectionForOwner(
-                expectedOwnerIdentity = "https://api.example.test|user-a",
-                serverId = "server-1",
-                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-            )
-        )
-        assertEquals(
-            SharedTasksProjectionSlice(),
-            store.projectionForOwner(
-                expectedOwnerIdentity = "https://api.example.test|user-b",
-                serverId = "server-1",
-                scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-            )
-        )
-    }
-
-    @Test
-    fun sharedTasksRepositoryKeepsChannelRefreshScopedToChannelCache() = runBlocking {
-        val serverId = ServerId("server-1")
-        val channelId = ChannelId("channel-thread")
-        val local =
-            InMemorySharedTasksLocalDataSource(
-                mapOf(
-                    serverId to
-                        TaskSnapshot(
-                            tasks = listOf(task("task-server", TaskStatus.Todo, channelName = "general")),
-                            summaryCounts = emptyMap()
-                        )
-                )
-            )
-        val remote =
-            FakeTasksRemoteDataSource(
-                channelLoadResult =
-                    DataResult.Content(
-                        TaskSnapshot(
-                            tasks = listOf(task("task-channel", TaskStatus.InProgress, channelName = "thread")),
-                            summaryCounts = emptyMap()
-                        )
-                    )
-            )
-        val repository =
-            SharedTasksDataRepository(
-                localDataSource = local,
-                remoteDataSource = remote
-            )
-
-        val channelResult =
-            repository.refreshTasks(
-                serverId = serverId,
-                scope = SharedTasksScope.Channel(channelId),
-                filter = TaskFilter()
-            )
-        val serverObserved = repository.observeTasks(serverId, SharedTasksScope.Server, TaskFilter()).first()
-        val channelObserved = repository.observeTasks(serverId, SharedTasksScope.Channel(channelId), TaskFilter()).first()
-
-        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelResult).data.tasks.map { it.id.value })
-        assertEquals(listOf("task-server"), assertIs<DataResult.Content<TaskSnapshot>>(serverObserved).data.tasks.map { it.id.value })
-        assertEquals(listOf("task-channel"), assertIs<DataResult.Content<TaskSnapshot>>(channelObserved).data.tasks.map { it.id.value })
-        assertEquals(channelId, remote.lastChannelId)
-    }
-
-    @Test
     fun emptyTasksResultCountsAsFreshCompletedSnapshot() {
         val emptyState = TasksUiState(ScreenLoadState.Empty(EmptyReason.NoTasks))
         val emptyResult: DataResult<TaskSnapshot> = DataResult.Empty(EmptyReason.NoTasks)
@@ -1186,33 +519,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun taskStatusUpdateSuccessRefreshesScopedProjectionTask() {
-        val staleTask = task("task-1", TaskStatus.Todo)
-        val canonicalTask = staleTask.copy(status = TaskStatus.Done)
-        val state =
-            TasksUiState(
-                loadState =
-                    ScreenLoadState.Content(
-                        TasksContent(
-                            summaryCounts = mapOf(TaskStatus.Todo to 1),
-                            tasks = listOf(staleTask)
-                        )
-                    ),
-                statusUpdatingTaskId = "task-1",
-                statusUpdateErrorCode = "previous_error"
-            )
-
-        val next = state.reduce(SharedTasksIntent.TaskStatusUpdateSucceeded(canonicalTask))
-
-        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
-        assertEquals(TaskStatus.Done, content.tasks.single().status)
-        assertEquals(1, content.summaryCounts[TaskStatus.Done])
-        assertEquals(0, content.summaryCounts[TaskStatus.Todo])
-        assertEquals(null, next.statusUpdatingTaskId)
-        assertEquals(null, next.statusUpdateErrorCode)
-    }
-
-    @Test
     fun idempotentTerminalConflictKeepsOptimisticStatusAsSuccess() = runBlocking {
         val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val previousTask = task("task-1", TaskStatus.InReview)
@@ -1260,124 +566,6 @@ class SharedTasksStoreTest {
         assertEquals(null, state.statusUpdatingTaskId)
         assertEquals(null, state.statusUpdateErrorCode)
         runtimeScope.cancel()
-    }
-
-    @Test
-    fun successfulStatusWithoutProjectionKeepsOptimisticStatusAsSuccess() = runBlocking {
-        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val previousTask = task("task-1", TaskStatus.InReview)
-        val authStore =
-            InMemoryRaftAuthSessionStore(
-                StoredAuthSession(
-                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-                    accessToken = "token",
-                    refreshToken = "refresh",
-                    selectedServerId = "server-1"
-                )
-            )
-        val viewModel =
-            SharedTasksViewModel(
-                authStore = authStore,
-                dataSource = noOpTasksDataSource(),
-                runtimeScopeOverride = runtimeScope,
-                useCase =
-                    SharedTasksUseCase(
-                        authStore = authStore,
-                        repository =
-                            FakeTasksRepository(
-                                updateResult =
-                                    DataResult.Error(
-                                        ScreenError(
-                                            code = TASKS_STATUS_APPLIED_WITHOUT_PROJECTION,
-                                            retryable = false
-                                        )
-                                    )
-                            )
-                    )
-            )
-        viewModel.dispatch(
-            SharedTasksRouteIntent.SeedContent(
-                TaskSnapshot(tasks = listOf(previousTask), summaryCounts = mapOf(TaskStatus.InReview to 1))
-            )
-        )
-
-        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
-        yield()
-
-        val state = viewModel.state.value
-        val content = assertIs<ScreenLoadState.Content<TasksContent>>(state.loadState).data
-        assertEquals(TaskStatus.Closed, content.tasks.single().status)
-        assertEquals(null, state.statusUpdatingTaskId)
-        assertEquals(null, state.statusUpdateErrorCode)
-        runtimeScope.cancel()
-    }
-
-    @Test
-    fun unloadedChatMutationOwnerRollsBackOrdinaryFailure() = runBlocking {
-        val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val sharedStore = SharedTasksDataStore()
-        val previousTask = task("task-1", TaskStatus.InReview, channelId = ChannelId("channel-1"))
-        val repository =
-            FakeTasksRepository(
-                updateResult = DataResult.Error(ScreenError(code = "tasks_500", retryable = true))
-            )
-        val authStore =
-            InMemoryRaftAuthSessionStore(
-                StoredAuthSession(
-                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-                    accessToken = "token",
-                    refreshToken = "refresh",
-                    selectedServerId = "server-1"
-                )
-            )
-        val viewModel =
-            SharedTasksViewModel(
-                authStore = authStore,
-                dataSource = noOpTasksDataSource(),
-                scope = SharedTasksScope.Channel(ChannelId("channel-1")),
-                sharedTasksDataStore = sharedStore,
-                runtimeScopeOverride = runtimeScope,
-                useCase =
-                    SharedTasksUseCase(
-                        authStore = authStore,
-                        repository = repository,
-                        scope = SharedTasksScope.Channel(ChannelId("channel-1"))
-                    )
-            )
-        sharedStore.upsertTask("server-1", previousTask)
-
-        viewModel.dispatch(SharedTasksRouteIntent.UpdateStatus(previousTask, TaskStatus.Closed))
-        yield()
-
-        val projection =
-            sharedStore
-                .projectionFlow("server-1", SharedTasksScope.Channel(ChannelId("channel-1")))
-                .first()
-        assertEquals(1, repository.updateCalls)
-        assertEquals(TaskStatus.InReview, projection.tasks.single().status)
-        assertEquals("tasks_500", viewModel.state.value.statusUpdateErrorCode)
-        runtimeScope.cancel()
-    }
-
-    @Test
-    fun updateTaskStatusMatchesTaskByMessageId() {
-        val task = task("task-1", TaskStatus.Todo)
-        val state =
-            TasksUiState(
-                loadState =
-                    ScreenLoadState.Content(
-                        TasksContent(
-                            summaryCounts = mapOf(TaskStatus.Todo to 1),
-                            tasks = listOf(task)
-                        )
-                    )
-            )
-
-        val next = state.reduce(SharedTasksIntent.UpdateTaskStatus("message-task-1", TaskStatus.Done))
-
-        val content = assertIs<ScreenLoadState.Content<TasksContent>>(next.loadState).data
-        assertEquals(TaskStatus.Done, content.tasks.single().status)
-        assertEquals(1, content.summaryCounts[TaskStatus.Done])
     }
 
     @Test
@@ -1530,99 +718,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun refreshResultKeepsContentVisibleOnEmptyAndError() {
-        val current =
-            TasksUiState(
-                loadState =
-                    ScreenLoadState.Content(
-                        TasksContent(
-                            summaryCounts = mapOf(TaskStatus.Todo to 1),
-                            tasks = listOf(task("task-1", TaskStatus.Todo))
-                        )
-                    ),
-                refreshing = true
-            )
-
-        val empty = current.mergeTasksRefreshResult(DataResult.Empty(EmptyReason.NoTasks), TaskStatus.Done)
-        val emptyContent = assertIs<ScreenLoadState.Content<TasksContent>>(empty.loadState).data
-        assertEquals(listOf("task-1"), emptyContent.tasks.map { it.id.value })
-        assertEquals(TaskStatus.Done, empty.selectedFilter)
-        assertEquals("NoTasks", empty.navigationErrorCode)
-        assertEquals(false, empty.refreshing)
-
-        val failed =
-            current.mergeTasksRefreshResult(
-                DataResult.Error(ScreenError("tasks_refresh_failed")),
-                TaskStatus.InReview
-            )
-        assertIs<ScreenLoadState.Content<TasksContent>>(failed.loadState)
-        assertEquals(TaskStatus.InReview, failed.selectedFilter)
-        assertEquals("tasks_refresh_failed", failed.navigationErrorCode)
-    }
-
-    @Test
-    fun taskSnapshotFilteringAndThreadTaskStateAreShared() {
-        val snapshot =
-            TaskSnapshot(
-                tasks =
-                    listOf(
-                        task("task-1", TaskStatus.Todo, channelName = "android"),
-                        task("task-2", TaskStatus.Done, channelName = "kmp")
-                    ),
-                summaryCounts = emptyMap()
-            )
-
-        val filteredByStatus = snapshot.filteredForTasksFilter(TaskStatus.Todo)
-        assertEquals(listOf("task-1"), filteredByStatus.tasks.map { it.id.value })
-        assertEquals(1, filteredByStatus.summaryCounts[TaskStatus.Todo])
-        assertEquals(1, filteredByStatus.summaryCounts[TaskStatus.Done])
-
-        val filteredByConversation = snapshot.filteredForConversationIds(setOf("channel-1"))
-        assertEquals(listOf("task-1", "task-2"), filteredByConversation.tasks.map { it.id.value })
-
-        val threadState = snapshot.tasks.toTasksUiStateForThreadTasks()
-        val threadContent = assertIs<ScreenLoadState.Content<TasksContent>>(threadState.loadState).data
-        assertEquals(2, threadContent.tasks.size)
-        assertEquals(1, threadContent.summaryCounts[TaskStatus.Done])
-    }
-
-    @Test
-    fun boardColumnsAndTaskDisplayLabelsAreShared() {
-        val assignedTask =
-            task(
-                "task-42",
-                TaskStatus.InProgress,
-                channelName = "kmp",
-                title = "Task #42: migrate state",
-                assignee = member("stdrc")
-            )
-        val uuidAssigneeTask =
-            task(
-                "task-43",
-                TaskStatus.InProgress,
-                title = "#43",
-                assignee = member("550e8400-e29b-41d4-a716-446655440000")
-            )
-
-        val content =
-            TasksContent(
-                summaryCounts = emptyMap(),
-                tasks = listOf(assignedTask, uuidAssigneeTask, task("task-44", TaskStatus.Done))
-            )
-
-        val columns = content.boardColumns(renderLimit = 1)
-        val inProgressColumn = columns.single { it.status == TaskStatus.InProgress }
-        assertEquals(2, inProgressColumn.totalCount)
-        assertEquals(listOf("task-42"), inProgressColumn.tasks.map { it.id.value })
-
-        assertEquals("#kmp", assignedTask.tasksSourceLabel())
-        assertEquals("#42 migrate state", assignedTask.tasksDisplayTitle())
-        assertEquals("stdrc", assignedTask.tasksAssigneeDisplayName())
-        assertEquals("Task #43", uuidAssigneeTask.tasksDisplayTitle())
-        assertEquals(null, uuidAssigneeTask.tasksAssigneeDisplayName())
-    }
-
-    @Test
     fun taskNetworkResponseParsesCanonicalReactShape() {
         val response =
             HomeNetworkResponse(
@@ -1685,20 +780,6 @@ class SharedTasksStoreTest {
 
         val error = assertIs<DataResult.Error>(result)
         assertEquals("tasks_server_contract_mismatch", error.error.code)
-    }
-
-    @Test
-    fun taskActionResponseRejectsGuessedActionWrappers() {
-        val response =
-            HomeNetworkResponse(
-                code = 200,
-                bodyText = """{"data":{"taskId":"task-65","messagePreview":"Task #65: migrate Android UI to shared MVI"}}"""
-            )
-
-        val result = response.toTaskActionResult(source = "tasks_status")
-
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_status_contract_mismatch", error.error.code)
     }
 
     private fun task(

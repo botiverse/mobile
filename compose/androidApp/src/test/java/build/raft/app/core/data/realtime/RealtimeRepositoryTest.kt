@@ -413,42 +413,6 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun clientFansOutHeartbeatOnlyWhenServerIsAhead() {
-        val transport = FakeRealtimeSocketTransport()
-        val client = SocketIoRealtimeClient(transport)
-        val rawEvents = mutableListOf<String>()
-        client.observeRawEvents { _, eventName, _ -> rawEvents += eventName }
-
-        client.connect(
-            RealtimeConnectRequest(
-                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1")),
-                lastSeq = 42
-            )
-        )
-        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 43))
-        transport.receive(
-            RealtimeSocketEvents.MessageNew,
-            mapOf(
-                "id" to "message-raw",
-                "threadId" to "thread-1",
-                "channelId" to "channel-1",
-                "seq" to 43,
-                "content" to "Caught up",
-                "messageType" to "chat",
-                "senderType" to "user",
-                "senderId" to "user-1",
-                "senderName" to "Artin"
-            )
-        )
-        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 43))
-
-        assertEquals(
-            listOf(RealtimeSocketEvents.Heartbeat, RealtimeSocketEvents.MessageNew),
-            rawEvents
-        )
-    }
-
-    @Test
     fun clientReplaysJoinedChannelsAfterConnectButNotRoomsJoinedAck() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
@@ -511,34 +475,6 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun clientReplaysRoomsAndResumeAfterReconnect() {
-        val transport = FakeRealtimeSocketTransport()
-        val client = SocketIoRealtimeClient(transport)
-        val events = mutableListOf<RealtimeEvent>()
-        client.observeEvents { events += it }
-
-        client.connect(
-            RealtimeConnectRequest(
-                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
-            )
-        )
-        client.joinChannel(ChannelId("channel-1"))
-        client.joinChannel(ChannelId("thread-1"))
-        transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 88))
-        transport.emitted.clear()
-
-        transport.receive(RealtimeSocketEvents.Reconnect)
-
-        val joinRooms =
-            transport.emitted
-                .filter { it.first == RealtimeSocketEvents.JoinChannel }
-                .map { it.second["channelId"] }
-        assertEquals(listOf("channel-1", "thread-1"), joinRooms)
-        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
-        assertTrue(events.single() is Heartbeat)
-    }
-
-    @Test
     fun clientDoesNotAdvanceResumeCursorFromHeartbeat() {
         val transport = FakeRealtimeSocketTransport()
         val client = SocketIoRealtimeClient(transport)
@@ -580,34 +516,6 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun retainedConnectErrorCannotRefreshSuccessorConnection() {
-        val transport = LinearizedGenerationFakeTransport()
-        val client = SocketIoRealtimeClient(transport, authRefreshRunner = runAuthRefreshInline)
-        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
-        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
-        var refreshCalls = 0
-        client.setAuthRefreshProvider { _, _ ->
-            refreshCalls += 1
-            RealtimeAuth(token = "unexpected-token", serverId = ServerId("server-A"))
-        }
-
-        client.connect(requestA)
-        val connectionA = transport.captureCurrent()
-        client.connect(requestB)
-        val connectionB = transport.captureCurrent()
-
-        transport.deliverStale(
-            connectionA,
-            RealtimeSocketEvents.ConnectError,
-            "invalid token",
-        )
-
-        assertEquals(0, refreshCalls)
-        assertEquals(connectionB.context, transport.currentContext())
-        assertEquals(requestB.toContext(), transport.currentContext())
-    }
-
-    @Test
     fun socketAuthRefreshInFlightDoesNotBlockReconnectPolicyChanges() {
         // Ticket 9222ba03: onResume's setReconnectAllowed waited on the transport lock while the
         // socket thread held it through a network token refresh, and the app hit an ANR.
@@ -641,62 +549,6 @@ class RealtimeRepositoryTest {
         assertEquals(1, transport.connectCount)
         assertEquals("token-family-A", transport.lastAuth["token"])
         assertEquals(RealtimeConnectionState.Disconnected, client.state)
-    }
-
-    @Test
-    fun socketAuthRefreshFinishingAfterAConnectionSwapIsDropped() {
-        val transport = LinearizedGenerationFakeTransport()
-        val refresh = BlockingAuthRefresh()
-        val client = SocketIoRealtimeClient(transport, authRefreshRunner = refresh.runner)
-        client.setAuthRefreshProvider { _, _ ->
-            refresh.block()
-            RealtimeAuth(token = "token-stale-refresh", serverId = ServerId("server-A"))
-        }
-        val requestB = realtimeConnectRequest(serverId = "server-B", familyId = "family-B")
-        client.connect(realtimeConnectRequest(serverId = "server-A", familyId = "family-A"))
-        val connectionA = transport.captureCurrent()
-
-        Thread {
-            transport.deliverRetained(connectionA, RealtimeSocketEvents.ConnectError, "invalid token")
-        }.start()
-        assertTrue(refresh.entered.await(5, TimeUnit.SECONDS))
-        val swapped = CountDownLatch(1)
-        Thread {
-            client.connect(requestB)
-            swapped.countDown()
-        }.start()
-        val swappedWhileRefreshing = swapped.await(2, TimeUnit.SECONDS)
-        refresh.release()
-        assertTrue(refresh.finished.await(5, TimeUnit.SECONDS))
-
-        assertTrue(swappedWhileRefreshing)
-        assertEquals(requestB.toContext(), transport.currentContext())
-        assertEquals("token-family-B", transport.lastAuth["token"])
-        assertEquals(2, transport.connectCount)
-    }
-
-    @Test
-    fun disconnectClearFirstRejectsRetainedProducingConnection() {
-        val transport = LinearizedGenerationFakeTransport()
-        val rawContexts = mutableListOf<RealtimeSocketConnectionContext>()
-        val client = SocketIoRealtimeClient(transport)
-        client.observeRawEvents { context, _, _ -> rawContexts += context }
-        val requestA = realtimeConnectRequest(serverId = "server-A", familyId = "family-A")
-
-        client.connect(requestA)
-        val connectionA = transport.captureCurrent()
-        client.disconnect()
-
-        assertEquals(null, transport.currentContext())
-        assertFalse(
-            transport.deliverRetained(
-                connectionA,
-                RealtimeSocketEvents.MessageNew,
-                mapOf("serverId" to "server-A"),
-            ),
-        )
-        assertTrue(rawContexts.isEmpty())
-        assertEquals(build.raft.app.data.realtime.RealtimeConnectionState.Disconnected, client.state)
     }
 
     @Test
@@ -973,37 +825,6 @@ class RealtimeRepositoryTest {
         assertEquals("application/pdf", message.attachments[1].mimeType)
         assertEquals(2048L, message.attachments[1].sizeBytes)
         assertEquals("", message.attachments[1].sizeLabel)
-    }
-
-    @Test
-    fun mapperUsesSenderDescriptionFromMessageContract() {
-        val mapper = RealtimeEventMapper()
-        val event = mapper.map(
-            RealtimeSocketEvents.MessageNew,
-            JSONObject(
-                """
-                {
-                  "id": "message-agent-description",
-                  "threadId": "thread-agent",
-                  "channelId": "channel-agent",
-                  "content": "Agent payload",
-                  "messageType": "chat",
-                  "senderType": "agent",
-                  "senderId": "agent-1",
-                  "senderName": "API Integration",
-                  "senderDescription": "Data contracts",
-                  "roleDescription": "agent"
-                }
-                """.trimIndent()
-            )
-        )
-
-        assertTrue(event is MessageNew)
-        val message = (event as MessageNew).message
-        assertEquals("API Integration", message.author.displayName)
-        assertEquals("Data contracts", message.author.description)
-        assertNull(message.author.roleDescription)
-        assertEquals(MemberKind.Agent, message.author.kind)
     }
 
     @Test

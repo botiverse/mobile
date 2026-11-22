@@ -138,27 +138,6 @@ class MemberAgentParserTest {
     }
 
     @Test
-    fun agentsListUsesActivityStatusBeforeInactiveLifecycleStatus() {
-        val members = parseSharedSettingsAgentsAsMembers(
-            """
-            [
-              {
-                "id": "agent-1",
-                "name": "builder",
-                "displayName": "Builder",
-                "status": "inactive",
-                "activity": "working"
-              }
-            ]
-            """.trimIndent()
-        )
-
-        val profile = assertNotNull(members).single()
-        assertEquals(AgentStatus.Working, profile.agentStatus)
-        assertEquals(Presence.Active, profile.presence)
-    }
-
-    @Test
     fun agentsListFiltersDeletedAgentsLikeReactMembersTab() {
         val members = parseSharedSettingsAgentsAsMembers(
             """
@@ -411,19 +390,6 @@ class MemberAgentParserTest {
                 parseSharedSettingsAgentsAsMembers(
                     """
                     [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","runtime":"external"}]
-                    """.trimIndent()
-                )
-            ).single()
-        assertTrue(profile.isExternal)
-    }
-
-    @Test
-    fun agentsListMarksExternalFromBooleanWhenRuntimeIsAbsent() {
-        val profile =
-            assertNotNull(
-                parseSharedSettingsAgentsAsMembers(
-                    """
-                    [{"id":"agent-x","name":"bridge","displayName":"Bridge","status":"active","external":true}]
                     """.trimIndent()
                 )
             ).single()

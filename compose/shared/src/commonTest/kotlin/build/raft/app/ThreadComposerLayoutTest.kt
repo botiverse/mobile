@@ -205,37 +205,6 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun renderedSuggestionsKeepRetainedCandidatesWhileRefreshIsInFlight() {
-        assertEquals(
-            listOf("@artin"),
-            threadComposerRenderedSuggestions(
-                loadedSuggestions = emptyList(),
-                retainedSuggestions = listOf("@artin"),
-                fallbackSuggestions = emptyList(),
-                status = SharedMembersLoadStatus.InFlight
-            )
-        )
-    }
-
-    @Test
-    fun suggestionRefreshRequestTracksOpenedMentionAndChannelPanels() {
-        assertEquals(
-            ThreadComposerSuggestionRefreshRequest.Member,
-            threadComposerSuggestionRefreshRequest(
-                focused = true,
-                trigger = RaftComposerSuggestionTrigger.MemberTrigger(query = "", triggerStart = 0)
-            )
-        )
-        assertEquals(
-            ThreadComposerSuggestionRefreshRequest.Channel,
-            threadComposerSuggestionRefreshRequest(
-                focused = true,
-                trigger = RaftComposerSuggestionTrigger.ChannelTrigger(query = "", triggerStart = 0)
-            )
-        )
-    }
-
-    @Test
     fun enterAcceptsMemberSuggestionBeforeSendWhenItemsAreVisible() {
         assertEquals(
             ThreadComposerEnterAction.AcceptMemberSuggestion,

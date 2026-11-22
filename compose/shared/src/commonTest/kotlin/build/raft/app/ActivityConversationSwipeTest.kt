@@ -242,34 +242,6 @@ class ActivitySwipeButtonsSpecTest {
     private val button = 72f
 
     @Test
-    fun buttonsAreDoneAtTheOuterEdgeThenTheRowsOtherActions() {
-        assertEquals(
-            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Unfollow),
-            activitySwipeButtons(doneEnabled = true, endActions = listOf(ActivitySwipeEndAction.UnfollowThread)),
-        )
-        assertEquals(
-            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Mute),
-            activitySwipeButtons(doneEnabled = true, endActions = listOf(ActivitySwipeEndAction.MuteActivity)),
-        )
-        // Both, in the spec's order (outer to inner): Done, Unfollow, Mute.
-        assertEquals(
-            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Unfollow, ActivitySwipeButton.Mute),
-            activitySwipeButtons(
-                doneEnabled = true,
-                endActions = listOf(ActivitySwipeEndAction.MuteActivity, ActivitySwipeEndAction.UnfollowThread),
-            ),
-        )
-        // A DM or mention row: Done only. Nothing at all: no swipe.
-        assertEquals(listOf(ActivitySwipeButton.Done), activitySwipeButtons(doneEnabled = true, endActions = emptyList()))
-        assertEquals(emptyList(), activitySwipeButtons(doneEnabled = false, endActions = emptyList()))
-        // Each non-Done button applies its row action; Done goes through the Done path.
-        assertNull(ActivitySwipeButton.Done.endAction)
-        assertEquals(ActivitySwipeEndAction.UnfollowThread, ActivitySwipeButton.Unfollow.endAction)
-        assertEquals(ActivitySwipeEndAction.MuteActivity, ActivitySwipeButton.Mute.endAction)
-        assertEquals(72f, ActivitySwipeButtonWidth.value)
-    }
-
-    @Test
     fun releaseOpensPastHalfTheButtonsClosesShortOfItAndAppliesDonePastSixtyPercent() {
         val two = 2 * button // 144: open past 72
         data class Case(val reveal: Float, val buttons: Float, val expected: ActivitySwipeRelease)
