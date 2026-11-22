@@ -2678,6 +2678,7 @@ private fun RaftAppShellReadyContent(
         setupAdmissionHost.content()
         return
     }
+    SideEffect { setupAdmissionHost?.noteHomeShown?.invoke() }
 
     AppShellReadyServerEffect(
         sharedStores = sharedStores,
