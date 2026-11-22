@@ -848,7 +848,9 @@ internal fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConf
                     is RuntimeModelConfig.Custom -> "custom"
                 },
             reasoning = config.reasoningEffort,
-            executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
+            // The saved mode. `executionMode` (where the agent runs: byoc / cloud) is not part of the
+            // config and stays as read.
+            runtimeMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
             envVars = config.envVars.orEmpty(),
             envVarNames = config.envVars.orEmpty().keys.sorted()
         )

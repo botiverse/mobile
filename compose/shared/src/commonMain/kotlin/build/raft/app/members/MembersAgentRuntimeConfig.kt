@@ -15,6 +15,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.ExistingAgentRuntimeOptions
+import build.raft.app.data.raftRuntimeModelSupportsFastMode
 import build.raft.app.data.runtimeDeprecatedForAgent
 import build.raft.app.components.RaftUiBanner
 import build.raft.app.components.RaftUiBannerSize
@@ -702,7 +703,7 @@ internal fun MembersAgentRuntimeConfigRows(
         if (supportsRuntimeFastMode(runtimeId)) {
             MembersAgentInfoField(stringResource(Res.string.member_label_mode)) {
                 RaftText(
-                    text = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
+                    text = if (membersRuntimeConfigFastMode(runtimeConfig)) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
                     style = membersInfoValueStyle(),
                     color = RaftTheme.colors.foreground
                 )
@@ -1135,15 +1136,23 @@ internal fun AgentDetailSummary?.toMembersRuntimeConfigResolution(): MembersAgen
         runtime = runtime,
         provider = summary.runtimeProvider,
         model = membersRuntimeModelConfig(runtime, model, summary.runtimeModelKind),
-        mode = if (summary.executionMode?.trim()?.lowercase() == "fast") {
-            RuntimeModeConfig.Fast
-        } else {
-            RuntimeModeConfig.Default
-        },
+        // The saved `runtimeConfig.mode` (web `hydrateRuntimeConfigForm`), the value the edit form's
+        // Fast mode / Speed start from (server `valuesFromRuntimeConfig`); none saved is Default. Never
+        // `executionMode`: that is where the agent runs (byoc / cloud), not a mode.
+        mode = if (summary.runtimeMode == "fast") RuntimeModeConfig.Fast else RuntimeModeConfig.Default,
         reasoningEffort = summary.reasoning?.takeIf { it.isNotBlank() },
         envVars = summary.envVars.takeIf { it.isNotEmpty() }
     ))
 }
+
+/**
+ * The profile's Mode row, web `runtimeConfigFastMode`: fast mode as it launches. A saved fast mode on a
+ * model that does not run fast (shared `runtimeModelSupportsFastMode`: Claude Opus 4.8) launches at the
+ * standard speed, so it reads Default, as the edit form's Fast mode starts unchecked for it.
+ */
+internal fun membersRuntimeConfigFastMode(config: RuntimeConfig): Boolean =
+    config.mode is RuntimeModeConfig.Fast &&
+        raftRuntimeModelSupportsFastMode(config.runtime, config.toMembersRuntimeModelValue())
 
 internal fun membersRuntimeModelConfig(
     runtime: String,

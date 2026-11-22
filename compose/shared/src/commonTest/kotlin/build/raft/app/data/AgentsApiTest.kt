@@ -1009,4 +1009,39 @@ class AgentsApiTest {
         assertEquals(false, assertIs<DataResult.Content<AgentSummary>>(managed.agent(MemberId("agent-1"))).data.isExternal)
         assertEquals(true, assertIs<DataResult.Content<AgentSummary>>(byRuntime.agent(MemberId("agent-1"))).data.toAgentDetailSummary().isExternal)
     }
+
+    /**
+     * The profile's Mode row reads the saved `runtimeConfig.mode` (web `hydrateRuntimeConfigForm`), the
+     * value the edit form's Fast mode starts from. `executionMode` says where the agent runs (byoc /
+     * cloud) and is never the mode. No saved config, no mode in it, or another version: none (Default).
+     * Bodies as `withAgentProjection` sends them: the hydrated config of a Codex agent.
+     */
+    @Test
+    fun agentSummaryReadsTheSavedRuntimeModeNotTheExecutionMode() = runPortableCoroutineTest {
+        suspend fun read(runtimeConfig: String?, executionMode: String = "byoc"): AgentSummary {
+            val config = runtimeConfig?.let { ""","runtimeConfig":$it""" }.orEmpty()
+            val body =
+                """{"id":"agent-1","name":"codex-agent","status":"active","runtime":"codex","model":"gpt-6.2-astra","reasoningEffort":"max","executionMode":"$executionMode"$config}"""
+            return assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1"))).data
+        }
+        fun saved(mode: String?, version: Int = 1): String {
+            val modeField = mode?.let { ""","mode":$it""" }.orEmpty()
+            return """{"version":$version,"runtime":"codex","model":{"kind":"preset","id":"gpt-6.2-astra"},"reasoningEffort":"max","envVars":null$modeField}"""
+        }
+        val cases =
+            listOf(
+                Triple("fast", read(saved("""{"kind":"fast"}""")), "fast"),
+                Triple("fast on a named Codex tier", read(saved("""{"kind":"fast","serviceTier":"ultrafast"}""")), "fast"),
+                Triple("default on a cloud agent", read(saved("""{"kind":"default"}"""), executionMode = "cloud"), "default"),
+                Triple("a kind this client does not know", read(saved("""{"kind":"turbo"}""")), "default"),
+                Triple("no mode in the saved config", read(saved(null)), null),
+                Triple("a saved config of another version", read(saved("""{"kind":"fast"}""", version = 2)), null),
+                Triple("no runtime config (a viewer who may not edit the agent)", read(null), null),
+            )
+        for ((name, summary, expected) in cases) {
+            assertEquals(expected, summary.runtimeMode, name)
+            assertEquals(expected, summary.toAgentDetailSummary().runtimeMode, name)
+            assertTrue(summary.executionMode == "byoc" || summary.executionMode == "cloud", "$name: executionMode is where it runs")
+        }
+    }
 }
