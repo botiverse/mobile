@@ -69,10 +69,11 @@ and `release-*` never reuse.
 - Do not push `stamp-mq/*` yourself (Stamp refuses it, `REF_RESERVED_FOR_STAMP`).
 - `Test` must keep running on draft PRs: a workflow that skips drafts leaves
   the batch waiting until its timeout.
-- The Xcode 27.1 lane cannot fall back to Blacksmith: on
-  `blacksmith-*-macos-27` `Xcode_27.1.app/Contents/Developer` is a symlink and
-  `scripts/ci/select_ios_xcode.sh` refuses it; `blacksmith-*-macos-latest` has
-  no 27.1. `ios_runner` (dispatch only) moves the 27.0 lane, not the queue.
+- Both iOS compile lanes run on GitHub's free `xcode-27` image only. There is
+  no billed Blacksmith fallback: the `ios_runner` dispatch input was removed
+  on 2026-11-22 (and Blacksmith macOS could not run the Xcode 27.1 lane: on
+  `blacksmith-*-macos-27` `Xcode_27.1.app/Contents/Developer` is a symlink
+  that `scripts/ci/select_ios_xcode.sh` refuses).
 - Until the queue is enabled on `main` (`stamp queue status botiverse/mobile`)
   nothing compiles iOS before merge; the main push readback and the nightly
   catch it. The merge hold on `main` is off (owner decision, 2026-11-21): a
@@ -85,8 +86,9 @@ The default iOS compile lane (`iOS compile`) runs on GitHub's standard
 `xcode-27` image with Xcode 27.0 (free on this public repo since 2026-11-18;
 was Blacksmith macOS): full-ci PRs, main pushes, `scope=ios` / `scope=full`,
 nightly and `release-*`. GitHub allows 5 concurrent macOS jobs org-wide; if
-that queue is backed up, a `scope=ios` dispatch can take
-`-f ios_runner=blacksmith-6vcpu-macos-latest` (billed). The Xcode 27.1 lane,
+that queue is backed up, a `scope=ios` dispatch waits for a free Mac (there is
+no billed fallback). Dispatch `scope=ios` once, on the head you are about to
+merge, not on every push. The Xcode 27.1 lane,
 `iOS compile (Xcode 27.1)` on the same `xcode-27` image (~33 min compile-only,
 ~48 min with the iOS tests on its 3-core Mac), runs on the merge-queue batch
 (alone) and beside the 27.0 lane on the nightly schedule and `release-*` pushes

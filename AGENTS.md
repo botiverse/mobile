@@ -643,11 +643,11 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    (`reason=workflow_dispatch-premerge:no-ios`; an unreadable diff reruns
    Android). With `base_ref` `release/*` (not queued), premerge still runs the
    `scope=full` tier. `scope=ios` is still there for a deliberate one-off
-   check; run it at most once, on the head you are about to merge. If GitHub's
-   macOS queue is backed up, add `-f ios_runner=blacksmith-6vcpu-macos-latest`
-   (billed, Xcode 27.0 only; the 27.1 lane cannot run on Blacksmith macOS 27,
-   whose `Xcode_27.1.app/Contents/Developer` is a symlink that
-   `select_ios_xcode.sh` refuses). `scope=full` is only for release candidates
+   check; run it at most once, on the head you are about to merge, never again
+   on every push. It runs on GitHub's free `xcode-27` image only: if the macOS
+   queue is backed up, the run waits for a free Mac. There is no billed
+   fallback (the `ios_runner` input with `blacksmith-6vcpu-macos-latest` was
+   removed on 2026-11-22). `scope=full` is only for release candidates
    or a deliberate full readback (it adds the Android emulator/device suite
    and canonical-final). The nightly (Xcode 27.0 and 27.1 lanes) and
    `release-*` pushes are unchanged. While the queue is not enabled on `main`
