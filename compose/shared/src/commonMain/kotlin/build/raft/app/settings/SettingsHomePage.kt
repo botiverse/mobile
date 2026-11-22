@@ -6782,7 +6782,7 @@ private fun RaftAppShellReadyContent(
                     val shellLifecycleOwner = LocalLifecycleOwner.current
                     SideEffect {
                         val parentStarted =
-                            shellLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                            pageVisible || shellLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                         childTabEntry.updateSelection(
                             selectedTab = currentChildTab,
                             parentVisible = pageVisible,

@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
@@ -804,10 +805,11 @@ internal fun AppShellTaskDraftsAndBannerEffects(
     val latestAppShellConversationDirectory by latestAppShellConversationDirectoryState
     val latestSelectedHomeConversationId by latestSelectedHomeConversationIdState
     // Keep a plain non-snapshot directory reference synced even while the shell is covered so
-    // notification suppression never sees stale channel/DM names without recomposing the shell.
-    val liveHomeDirectoryRef = remember { arrayOf(SharedConversationDirectoryState()) }
+    // notification suppression (including FCM background threads) never sees stale channel/DM names
+    // without recomposing the shell.
+    val liveHomeDirectoryRef = remember { atomic(SharedConversationDirectoryState()) }
     LaunchedEffect(homeConversationDirectoryFlow) {
-        homeConversationDirectoryFlow.collect { liveHomeDirectoryRef[0] = it }
+        homeConversationDirectoryFlow.collect { liveHomeDirectoryRef.value = it }
     }
     TaskPendingDraftsFollowSessionEffect(foregroundBannerStore.taskPendingDrafts, authGateState, readySession)
     // System notifications stay silent for the conversation on screen, same rule as the in-app banner.
@@ -820,7 +822,7 @@ internal fun AppShellTaskDraftsAndBannerEffects(
                 liveActivity.snapshot?.toSharedConversationDirectoryState(dmPeerNames = liveActivity.dmPeerNames)
                     ?: SharedConversationDirectoryState()
             val liveDirectory =
-                listOf(liveHomeDirectoryRef[0], activityDirectory)
+                listOf(liveHomeDirectoryRef.value, activityDirectory)
                     .mergedSharedConversationDirectoryState()
                     .takeIf { it.byId.isNotEmpty() }
                     ?: latestAppShellConversationDirectory
