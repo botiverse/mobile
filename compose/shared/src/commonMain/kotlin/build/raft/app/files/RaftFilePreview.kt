@@ -3097,10 +3097,9 @@ private fun RaftFilePreviewStandalonePageContent() {
         if (!traceRaftFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
         val admittedPolicy = policy ?: return
-        // Share hands over the file already on the device; it never starts a download. A shown
-        // PDF is on the device already: its cached copy is shared.
-        val sharesPdfPreviewCopy = payload.kind == RaftFilePreviewPdfKind && pdfState is RaftFilePreviewPdfState.Ready
-        if (share && !admittedPolicy.requirePublicDownload && !sharesPdfPreviewCopy) return
+        // Share reuses the public download or private cached copy when already on the device,
+        // and otherwise fetches into the private cache (with progress) before launching the
+        // system share sheet (Android ACTION_SEND / iOS UIActivityViewController).
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -4108,7 +4107,14 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewPdfShowsShareAction(canOpenWith, downloadUiState, pdfState)) {
+                if (
+                    raftFilePreviewOverflowShowsShare(
+                        canOpenWith = canOpenWith,
+                        downloadState = downloadUiState,
+                        supportsAttachmentShare = supportsPublicDownloadReadback,
+                        previewPreparing = payload.kind == RaftFilePreviewPdfKind && pdfState is RaftFilePreviewPdfState.Downloading
+                    )
+                ) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewShareActionId,
                         label = stringResource(Res.string.common_share),
@@ -11119,6 +11125,24 @@ internal fun raftFilePreviewOverflowShowsDownload(
     canOpenWith &&
         downloadState == RaftFilePreviewDownloadUiState.NotDownloaded &&
         (kind == RaftFilePreviewPdfKind || kind == "video")
+
+/**
+ * Share in the top-right overflow menu across all previewable and downloadable attachment kinds
+ * on mobile hosts (Android ACTION_SEND / iOS UIActivityViewController). Hidden on desktop hosts
+ * that do not implement `openAttachment`, while a download is running, or while an un-downloaded
+ * PDF is still preparing its initial preview copy.
+ */
+internal fun raftFilePreviewOverflowShowsShare(
+    canOpenWith: Boolean,
+    downloadState: RaftFilePreviewDownloadUiState?,
+    supportsAttachmentShare: Boolean = true,
+    previewPreparing: Boolean = false
+): Boolean =
+    supportsAttachmentShare &&
+        canOpenWith &&
+        downloadState != null &&
+        downloadState != RaftFilePreviewDownloadUiState.Downloading &&
+        (downloadState == RaftFilePreviewDownloadUiState.Downloaded || !previewPreparing)
 
 internal fun raftFilePreviewOverflowActionLabel(
     payload: RaftFilePreviewPayload,

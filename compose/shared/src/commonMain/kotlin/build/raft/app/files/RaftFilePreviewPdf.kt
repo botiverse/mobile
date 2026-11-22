@@ -144,17 +144,21 @@ internal val RaftFilePreviewPdfState.canRetry: Boolean
     get() = this is RaftFilePreviewPdfState.Failed && reason == RaftFilePreviewPdfFailure.Download
 
 /**
- * Share in the PDF preview menu: once the file is on the device, either saved to Downloads or
- * as the cached copy the viewer shows.
+ * Share in the PDF preview menu: delegates to [raftFilePreviewOverflowShowsShare] so PDFs follow
+ * the same all-type overflow share rule while waiting for an active preview preparation unless the
+ * file is already saved to Downloads.
  */
 internal fun raftFilePreviewPdfShowsShareAction(
     canOpenWith: Boolean,
     downloadState: RaftFilePreviewDownloadUiState?,
     pdfState: RaftFilePreviewPdfState
 ): Boolean =
-    canOpenWith &&
-        downloadState != RaftFilePreviewDownloadUiState.Downloading &&
-        (downloadState == RaftFilePreviewDownloadUiState.Downloaded || pdfState is RaftFilePreviewPdfState.Ready)
+    raftFilePreviewOverflowShowsShare(
+        canOpenWith = canOpenWith,
+        downloadState = downloadState,
+        supportsAttachmentShare = true,
+        previewPreparing = pdfState is RaftFilePreviewPdfState.Downloading
+    )
 
 /** "3 / 12" for a zero-based [currentPage], or null before the page count is known. */
 internal fun raftFilePreviewPdfPageIndicatorArgs(currentPage: Int, pageCount: Int): Pair<String, String>? =

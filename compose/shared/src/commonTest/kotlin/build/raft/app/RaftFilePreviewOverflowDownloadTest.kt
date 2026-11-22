@@ -30,4 +30,48 @@ class RaftFilePreviewOverflowDownloadTest {
             raftFilePreviewOverflowShowsDownload("video", canOpenWith = false, downloadState = RaftFilePreviewDownloadUiState.NotDownloaded)
         )
     }
+
+    @Test
+    fun shareIsOfferedInOverflowAcrossAllFileTypesOnMobile() {
+        val cases =
+            listOf(
+                // Video, image, markdown, generic, PDF: shown before and after download on mobile.
+                Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, true) to true,
+                Triple(true, RaftFilePreviewDownloadUiState.Downloaded, true) to true,
+                // Hidden while downloading or still probing local download state.
+                Triple(true, RaftFilePreviewDownloadUiState.Downloading, true) to false,
+                Triple(true, null, true) to false,
+                // Hidden when attachment cannot be fetched (e.g. local composer preview) or on desktop.
+                Triple(false, RaftFilePreviewDownloadUiState.NotDownloaded, true) to false,
+                Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, false) to false,
+                Triple(true, RaftFilePreviewDownloadUiState.Downloaded, false) to false,
+            )
+        cases.forEach { (input, expected) ->
+            val (canOpenWith, state, supportsShare) = input
+            assertEquals(
+                expected,
+                raftFilePreviewOverflowShowsShare(canOpenWith, state, supportsAttachmentShare = supportsShare),
+                "canOpenWith=$canOpenWith state=$state supportsShare=$supportsShare"
+            )
+        }
+        // Un-downloaded PDF still preparing its initial copy waits; an already-downloaded PDF shares immediately.
+        assertEquals(
+            false,
+            raftFilePreviewOverflowShowsShare(
+                canOpenWith = true,
+                downloadState = RaftFilePreviewDownloadUiState.NotDownloaded,
+                supportsAttachmentShare = true,
+                previewPreparing = true
+            )
+        )
+        assertEquals(
+            true,
+            raftFilePreviewOverflowShowsShare(
+                canOpenWith = true,
+                downloadState = RaftFilePreviewDownloadUiState.Downloaded,
+                supportsAttachmentShare = true,
+                previewPreparing = true
+            )
+        )
+    }
 }
