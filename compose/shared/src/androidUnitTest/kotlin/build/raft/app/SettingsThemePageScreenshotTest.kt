@@ -25,8 +25,9 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Settings › Theme (web ServerThemeSection after botiverse/slock#11355), light and dark: the
  * description, "Light and dark" first, then a Free server wearing Space, so the swatch grid shows
- * the selected card, Raft Yellow's "Default" and the Pro tag on Boring Gray. A phone (this 390dp
- * window) has no decorations switch: the pixel art shows on wide screens only (1.27.0). And light with "Light and dark" located, as a Settings search result opens it, held at
+ * the selected card, Raft Yellow's "Default" and the Pro tag on Boring Gray. A phone held upright
+ * (this 390dp window) has no decorations switch: the pixel art goes on the rail, which comes with
+ * a wide window (1.27.0, #307). And light with "Light and dark" located, as a Settings search result opens it, held at
  * full `info-soft`: the highlight reaches [SettingsSearchSectionOutset] around the section, so its
  * header's icon and title have room (artin, Hands raft-android eaeefff5). Reports land in `build/reports/home-screenshots/`; verify / record as
  * [RaftRobolectricScreenshot].
