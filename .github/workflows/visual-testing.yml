@@ -924,6 +924,15 @@ jobs:
           SLOCK_SOURCE_REPO: ${{ github.workspace }}/slock-source
         run: node scripts/slock-visual-testing.mjs generate-fixture-data --check
 
+      # The list of compared cases check_visual_pairs.py holds pull requests to. A warning only: a
+      # case new on the web must not stop the round that shows it.
+      - name: Check compared cases list
+        working-directory: mobile
+        run: |
+          python3 scripts/ci/check_visual_pairs.py \
+            --manifest ../slock-source/packages/visual-testing/shared/sharedCases.json ||
+            echo "::warning::Compared cases and slock's manifest differ (scripts/ci/visual_paired_cases.txt)."
+
       # Pixel avatar drift gate (task #352): mobile's generated
       # RaftPixelAvatarData.kt must match slock's canonical pixelAvatars.json.
       - name: Check pixel avatar drift
