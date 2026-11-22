@@ -21,6 +21,11 @@ import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftSheet
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
+import build.raft.designsystem.focus.LocalRaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRequestSource
+import build.raft.designsystem.focus.RaftFocusTicket
+import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.isSpecified
@@ -498,7 +503,8 @@ internal data class RaftThreadComposerPayload(
     val syncNonce: Int = 0,
     @kotlinx.serialization.Transient val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
-    @kotlinx.serialization.Transient val focusRequestShowsKeyboard: Boolean = true,
+    @kotlinx.serialization.Transient
+    val focusRequestMeta: ThreadComposerFocusRequestMeta = ThreadComposerFocusRequestMeta(),
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -617,7 +623,7 @@ internal data class ThreadComposerUiState(
     val syncNonce: Int = 0,
     val editorCommand: ThreadComposerEditorCommand? = null,
     val focusRequestNonce: Int = 0,
-    val focusRequestShowsKeyboard: Boolean = true,
+    val focusRequestMeta: ThreadComposerFocusRequestMeta = ThreadComposerFocusRequestMeta(),
     val placeholder: String = "Message",
     val enabled: Boolean = true,
     val attachmentActionsEnabled: Boolean = true,
@@ -750,6 +756,32 @@ internal fun acceptThreadComposerEditorSessionUiEvent(
     return true
 }
 
+internal enum class ThreadComposerFocusRequestKeyboardMode {
+    /** Explicitly focus the composer and raise the soft keyboard (Mention, Quote, keyboard handoff return). */
+    RaiseKeyboard,
+
+    /** Keep an already-open keyboard across a clear without raising a dismissed keyboard (Send). */
+    KeepOpenKeyboardOnly,
+
+    /** Move keyboard focus only without calling `softwareKeyboardController.show()` (deferred system requests). */
+    FocusOnly,
+}
+
+internal const val ThreadComposerCardTestTag = "thread_composer_card"
+
+internal data class ThreadComposerFocusTargetKey(
+    val instanceId: String,
+)
+
+internal data class ThreadComposerFocusRequestMeta(
+    val source: RaftFocusRequestSource = RaftFocusRequestSource.User("composer_request"),
+    val keyboardMode: ThreadComposerFocusRequestKeyboardMode = ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard,
+    val deferredTicket: RaftFocusTicket? = null,
+) {
+    val showsKeyboard: Boolean
+        get() = keyboardMode == ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard
+}
+
 internal data class ThreadComposerSessionFocusRestorePlan(
     val requestFocus: Boolean,
     val showKeyboard: Boolean,
@@ -761,15 +793,28 @@ internal fun threadComposerSessionFocusRestorePlan(
     editorFocused: Boolean,
     keyboardInsetDp: Float,
     explicitRequestShowsKeyboard: Boolean = true,
+    explicitKeyboardMode: ThreadComposerFocusRequestKeyboardMode =
+        if (explicitRequestShowsKeyboard) {
+            ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard
+        } else {
+            ThreadComposerFocusRequestKeyboardMode.KeepOpenKeyboardOnly
+        },
 ): ThreadComposerSessionFocusRestorePlan {
     val keyboardVisible = keyboardInsetDp > 0f
     val transferVisibleEditor = editorSessionReplaced && editorFocused && keyboardVisible
     // A keep-only request (Send) holds an open keyboard across the clear but never raises a
-    // keyboard the user has put away.
-    val explicitRaises = explicitFocusRequest && explicitRequestShowsKeyboard
-    val explicitKeeps = explicitFocusRequest && !explicitRequestShowsKeyboard && keyboardVisible
+    // keyboard the user has put away. A FocusOnly request (e.g. deferred post-image-edit focus)
+    // moves keyboard focus without raising the IME.
+    val explicitRaises =
+        explicitFocusRequest && explicitKeyboardMode == ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard
+    val explicitKeeps =
+        explicitFocusRequest &&
+            explicitKeyboardMode == ThreadComposerFocusRequestKeyboardMode.KeepOpenKeyboardOnly &&
+            keyboardVisible
+    val explicitFocusOnly =
+        explicitFocusRequest && explicitKeyboardMode == ThreadComposerFocusRequestKeyboardMode.FocusOnly
     return ThreadComposerSessionFocusRestorePlan(
-        requestFocus = explicitRaises || explicitKeeps || transferVisibleEditor,
+        requestFocus = explicitRaises || explicitKeeps || explicitFocusOnly || transferVisibleEditor,
         showKeyboard = explicitRaises || explicitKeeps || transferVisibleEditor,
     )
 }
@@ -2120,7 +2165,7 @@ internal fun RaftThreadComposerPayload.toThreadComposerUiState(): ThreadComposer
         syncNonce = syncNonce,
         editorCommand = editorCommand,
         focusRequestNonce = focusRequestNonce,
-        focusRequestShowsKeyboard = focusRequestShowsKeyboard,
+        focusRequestMeta = focusRequestMeta,
         placeholder = placeholder,
         enabled = enabled,
         attachmentActionsEnabled = attachmentActionsEnabled,
@@ -2491,36 +2536,129 @@ internal fun ThreadComposerContentLeaf(
     // How high what sits above the composer frame stands, in px (see the measured column below).
     var contentAboveFrameHeight by remember(state.instanceId) { mutableStateOf(0) }
     val contentAboveFrame = contentAboveFrameHeight > 0
-    val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
+    val focusCoordinator = currentRaftFocusCoordinator()
+    val focusRegion = LocalRaftFocusRegion.current
+    val focusModalToken = LocalRaftFocusModalToken.current
+    val composerFocusTargetKey = remember(state.instanceId) { ThreadComposerFocusTargetKey(state.instanceId) }
+    val latestPlatformTouchPrimary by rememberUpdatedState(
+        if (autofocusOnOpen == null) !rememberComposerAutofocusOnOpen() else false
+    )
+    val latestAutofocusOnOpen by rememberUpdatedState(autofocusOnOpen)
+    DisposableEffect(focusCoordinator, composerFocusTargetKey) {
+        onDispose { focusCoordinator.cancelPending(composerFocusTargetKey) }
+    }
     LaunchedEffect(state.instanceId, editorSessionId, state.focusRequestNonce) {
         val explicitFocusRequest = state.focusRequestNonce > handledFocusRequestNonce
         val editorSessionReplaced = editorSessionId != handledEditorSessionId
-        val focusRestorePlan =
-            threadComposerSessionFocusRestorePlan(
-                explicitFocusRequest = explicitFocusRequest,
-                editorSessionReplaced = editorSessionReplaced,
-                editorFocused = focused,
-                keyboardInsetDp = keyboardInsetDp,
-                explicitRequestShowsKeyboard = state.focusRequestShowsKeyboard,
-            )
+        val focusRequestMeta = state.focusRequestMeta
+        val explicitPlan =
+            if (explicitFocusRequest) {
+                threadComposerSessionFocusRestorePlan(
+                    explicitFocusRequest = true,
+                    editorSessionReplaced = false,
+                    editorFocused = focused,
+                    keyboardInsetDp = keyboardInsetDp,
+                    explicitKeyboardMode = focusRequestMeta.keyboardMode,
+                )
+            } else {
+                ThreadComposerSessionFocusRestorePlan(requestFocus = false, showKeyboard = false)
+            }
+        val transferPlan =
+            if (editorSessionReplaced) {
+                threadComposerSessionFocusRestorePlan(
+                    explicitFocusRequest = false,
+                    editorSessionReplaced = true,
+                    editorFocused = focused,
+                    keyboardInsetDp = keyboardInsetDp,
+                )
+            } else {
+                ThreadComposerSessionFocusRestorePlan(requestFocus = false, showKeyboard = false)
+            }
         handledEditorSessionId = editorSessionId
         if (explicitFocusRequest) {
             handledFocusRequestNonce = state.focusRequestNonce
         }
-        if (focusRestorePlan.requestFocus) {
-            suggestionPortalGeneration =
-                resumeThreadComposerSuggestionsForEditing(
-                    portalState = suggestionPortal,
-                    owner = suggestionPortalOwner,
-                    generation = suggestionPortalGeneration,
-                    onFocusedChanged = { focused = it }
+        val deferredTouchPrimary = latestAutofocusOnOpen?.let { !it.policy } ?: latestPlatformTouchPrimary
+        var focusedByExplicit = false
+        if (explicitPlan.requestFocus) {
+            val explicitDecision =
+                if (focusRequestMeta.deferredTicket != null) {
+                    focusCoordinator.evaluate(
+                        ticket = focusRequestMeta.deferredTicket,
+                        touchPrimary = deferredTouchPrimary,
+                        checkEpochs = true,
+                        consume = true,
+                    )
+                } else {
+                    val ticket =
+                        focusCoordinator.request(
+                            targetKey = composerFocusTargetKey,
+                            region = focusRegion,
+                            source = focusRequestMeta.source,
+                            isText = true,
+                            modalToken = focusModalToken,
+                        )
+                    focusCoordinator.evaluate(
+                        ticket = ticket,
+                        touchPrimary = deferredTouchPrimary,
+                        checkEpochs = false,
+                        consume = true,
+                    )
+                }
+            if (explicitDecision.isAllowed) {
+                focusedByExplicit = true
+                suggestionPortalGeneration =
+                    resumeThreadComposerSuggestionsForEditing(
+                        portalState = suggestionPortal,
+                        owner = suggestionPortalOwner,
+                        generation = suggestionPortalGeneration,
+                        onFocusedChanged = { focused = it }
+                    )
+                runCatching { composerFocusRequester.requestFocus() }
+                // FocusOnly system requests never raise the IME.
+                if (explicitPlan.showKeyboard) {
+                    softwareKeyboardController?.show()
+                }
+            }
+        } else if (explicitFocusRequest) {
+            val unusedTicket = focusRequestMeta.deferredTicket
+            if (unusedTicket != null && focusCoordinator.isLatest(unusedTicket)) {
+                focusCoordinator.cancelPending(unusedTicket.targetKey)
+            }
+        }
+        // Handle editor-session transfer independently from explicit requests so a FocusOnly
+        // request cannot accidentally raise a dismissed IME and a dropped deferred ticket cannot
+        // suppress an unrelated active-editor handoff.
+        if (transferPlan.requestFocus && (!focusedByExplicit || (!explicitPlan.showKeyboard && transferPlan.showKeyboard))) {
+            val transferTicket =
+                focusCoordinator.request(
+                    targetKey = composerFocusTargetKey,
+                    region = focusRegion,
+                    source = RaftFocusRequestSource.System("editor_session_transfer"),
+                    isText = true,
+                    modalToken = focusModalToken,
                 )
-            composerFocusRequester.requestFocus()
-            // Session retirement transfers the focused editor without overriding a newer user
-            // decision to hide the IME. Only preserve a keyboard that is still visibly open at
-            // handoff; an explicit focus request continues to restore both focus and IME.
-            if (focusRestorePlan.showKeyboard) {
-                softwareKeyboardController?.show()
+            val transferDecision =
+                focusCoordinator.evaluate(
+                    ticket = transferTicket,
+                    touchPrimary = false,
+                    checkEpochs = false,
+                    consume = true,
+                )
+            if (transferDecision.isAllowed) {
+                if (!focusedByExplicit) {
+                    suggestionPortalGeneration =
+                        resumeThreadComposerSuggestionsForEditing(
+                            portalState = suggestionPortal,
+                            owner = suggestionPortalOwner,
+                            generation = suggestionPortalGeneration,
+                            onFocusedChanged = { focused = it }
+                        )
+                    runCatching { composerFocusRequester.requestFocus() }
+                }
+                if (transferPlan.showKeyboard) {
+                    softwareKeyboardController?.show()
+                }
             }
         }
     }
@@ -2765,13 +2903,6 @@ internal fun ThreadComposerContentLeaf(
             selectionStart = nextFieldValue.selection.start,
             selectionEnd = nextFieldValue.selection.end
         )
-        suggestionPortalGeneration =
-            resumeThreadComposerSuggestionsForEditing(
-                portalState = suggestionPortal,
-                owner = suggestionPortalOwner,
-                generation = suggestionPortalGeneration,
-                onFocusedChanged = { focused = it }
-            )
         emitChange(nextText = edit.text)
         return true
     }
@@ -2780,39 +2911,82 @@ internal fun ThreadComposerContentLeaf(
     // an insert that works on it.
     val latestFieldValue by rememberUpdatedState(fieldValue)
     val latestInsertMentionAtCursor by rememberUpdatedState<(String) -> Boolean> { handle -> insertMentionAtCursor(handle) }
-    LaunchedEffect(insertMentionRequest?.nonce) {
+    val currentOnInsertMentionConsumed by rememberUpdatedState(onInsertMentionConsumed)
+    LaunchedEffect(state.instanceId, insertMentionRequest?.nonce) {
         val request = insertMentionRequest ?: return@LaunchedEffect
-        // An avatar mention mid-composition would end it and commit the raw marked text; insert
-        // at the caret of the text the composition commits instead.
-        val composing = latestFieldValue.composition != null
-        ThreadComposerProgrammaticEditLog.record(
-            ThreadComposerProgrammaticEditKind.Mention,
-            composing = composing,
-            deferred = composing,
-        )
-        if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
-        if (latestInsertMentionAtCursor(request.handle)) {
-            // After the text, as a picked suggestion: the draft keeps it while `@handle` is there.
-            request.mention?.let { mention ->
-                onEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), null, null)
-            }
-            // The avatar long-press starts outside the composer, so the shared root may already
-            // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
-            // is a newer explicit editing intent; invalidate that old token before refocusing so
-            // pointer-up cannot clear the focus and IME that this action just restored.
-            restoreComposerInputAfterExternalMention(
-                focusOwnerRegistry = focusOwnerRegistry,
-                requestFocus = composerFocusRequester::requestFocus,
-                showKeyboard = {
-                    // Android Back can dismiss the IME while the editor remains focused. A
-                    // repeated avatar mention is an explicit input intent, so reassert both
-                    // logical focus and the software keyboard instead of relying on a focus
-                    // transition that may be a no-op.
-                    softwareKeyboardController?.show()
-                }
+        val mentionTicket =
+            focusCoordinator.request(
+                targetKey = composerFocusTargetKey,
+                region = focusRegion,
+                source = RaftFocusRequestSource.User("insert_mention"),
+                isText = true,
+                modalToken = focusModalToken,
             )
+        val capturedFocusEpoch = mentionTicket.capturedFocusEpoch
+        try {
+            // An avatar mention mid-composition would end it and commit the raw marked text; insert
+            // at the caret of the text the composition commits instead.
+            val composing = latestFieldValue.composition != null
+            ThreadComposerProgrammaticEditLog.record(
+                ThreadComposerProgrammaticEditKind.Mention,
+                composing = composing,
+                deferred = composing,
+            )
+            if (composing) snapshotFlow { latestFieldValue.composition }.first { it == null }
+            if (latestInsertMentionAtCursor(request.handle)) {
+                // After the text, as a picked suggestion: the draft keeps it while `@handle` is there.
+                request.mention?.let { mention ->
+                    currentOnEvent(ThreadComposerSelectMentionEvent, encodeThreadComposerMentionEvent(mention), null, null)
+                }
+                // The avatar long-press starts outside the composer, so the shared root may already
+                // have armed an outside-focus dismissal for this pointer sequence. Mention insertion
+                // is a newer explicit editing intent; invalidate that old token before refocusing so
+                // pointer-up cannot clear the focus and IME that this action just restored.
+                // When deferred across an IME composition, committing marked text via Space/Enter
+                // advances interactionEpoch, so guard on focusEpoch and otherTextFieldFocused
+                // (modal stack is already enforced by mentionDecision).
+                val mentionDecision =
+                    focusCoordinator.evaluate(
+                        ticket = mentionTicket,
+                        checkEpochs = false,
+                        consume = true,
+                    )
+                val allowFocus =
+                    mentionDecision.isAllowed &&
+                        (
+                            !composing ||
+                                (
+                                    focusCoordinator.focusEpoch == capturedFocusEpoch &&
+                                        !focusCoordinator.otherTextFieldFocused
+                                )
+                        )
+                if (allowFocus) {
+                    suggestionPortalGeneration =
+                        resumeThreadComposerSuggestionsForEditing(
+                            portalState = suggestionPortal,
+                            owner = suggestionPortalOwner,
+                            generation = suggestionPortalGeneration,
+                            onFocusedChanged = { focused = it }
+                        )
+                    restoreComposerInputAfterExternalMention(
+                        focusOwnerRegistry = focusOwnerRegistry,
+                        requestFocus = { runCatching { composerFocusRequester.requestFocus() } },
+                        showKeyboard = {
+                            // Android Back can dismiss the IME while the editor remains focused. A
+                            // repeated avatar mention is an explicit input intent, so reassert both
+                            // logical focus and the software keyboard instead of relying on a focus
+                            // transition that may be a no-op.
+                            softwareKeyboardController?.show()
+                        }
+                    )
+                }
+            }
+            currentOnInsertMentionConsumed(request)
+        } finally {
+            if (focusCoordinator.isLatest(mentionTicket)) {
+                focusCoordinator.cancelPending(mentionTicket.targetKey)
+            }
         }
-        onInsertMentionConsumed(request)
     }
 
     fun applyMemberSuggestion(member: RaftComposerMemberItem) {
@@ -3192,6 +3366,7 @@ internal fun ThreadComposerContentLeaf(
                             border = RaftColor.BorderBlack,
                             radius = RaftAppRadius.Container
                         )
+                        .testTag(ThreadComposerCardTestTag)
                         // Blank-area tap only forwards focus to the editor. No indication: the
                         // default one paints the whole card gray (pressed/focused overlay); raft-ui
                         // shows composer focus through the editor caret, not a fill.
@@ -3199,7 +3374,19 @@ internal fun ThreadComposerContentLeaf(
                             enabled = composerEnabled,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { composerFocusRequester.requestFocus() }
+                        ) {
+                            val tapTicket =
+                                focusCoordinator.request(
+                                    targetKey = composerFocusTargetKey,
+                                    region = focusRegion,
+                                    source = RaftFocusRequestSource.User("composer_tap"),
+                                    isText = true,
+                                    modalToken = focusModalToken,
+                                )
+                            if (focusCoordinator.evaluate(tapTicket, checkEpochs = false, consume = true).isAllowed) {
+                                runCatching { composerFocusRequester.requestFocus() }
+                            }
+                        }
                         .padding(
                             start = ThreadComposerCardPadding,
                             top = ThreadComposerCardPadding,
@@ -3237,7 +3424,7 @@ internal fun ThreadComposerContentLeaf(
                         TextField(
                             value = fieldValue,
                             placeholder = localizedThreadComposerPlaceholder(state.placeholder),
-                            autoFocus = shouldAutoFocus,
+                            autoFocus = false,
                             onValueChange = onValueChange@ { next ->
                                 // Paste with only images on the clipboard: exactly the placeholder
                                 // that offered Paste, pasted over the selection. The text stays as it
@@ -3284,9 +3471,6 @@ internal fun ThreadComposerContentLeaf(
                                             generation = suggestionPortalGeneration,
                                             onFocusedChanged = { focused = it }
                                         )
-                                    if (shouldAutoFocus) {
-                                        handledFocusRequestNonce = state.focusRequestNonce
-                                    }
                                 }
                             },
                             onBlur = onBlur@ {

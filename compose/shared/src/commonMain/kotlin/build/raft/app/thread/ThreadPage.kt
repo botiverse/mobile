@@ -17,9 +17,13 @@ import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.designsystem.components.raftPaneGridCellExpand
+import build.raft.designsystem.focus.LocalRaftFocusModalToken
 import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.focus.RaftFocusRequestSource
+import build.raft.designsystem.focus.RaftFocusTicket
+import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.AdaptiveParentFocusOutcome
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -182,6 +186,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -4823,52 +4828,32 @@ private fun SharedThreadRouteContentContent(
         onDispose { subscription.close() }
     }
     viewerImageEditAttachment?.let { attachment ->
-        RaftViewerImageEditor(
+        ThreadViewerImageEditHost(
             attachment = attachment,
             desktop = imageLightboxEnabled,
-            resolveFullUrl = { attachmentId ->
-                when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
-                    is ThreadApiResult.Success -> response.data.url
-                    is ThreadApiResult.Failure -> {
-                        bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
-                        null
-                    }
-                }
+            threadInstanceKey = threadInstanceKey,
+            composerInstanceId = currentComposerPayload().instanceId.ifBlank { payload.instanceId },
+            bridge = bridge,
+            dataSource = dataSource,
+            composerDraftViewModel = composerDraftViewModel,
+            coroutineScope = coroutineScope,
+            genericThreadErrorLabel = genericThreadErrorLabel,
+            nextEditSequence = {
+                viewerImageEditSequence += 1
+                viewerImageEditSequence
             },
             onCancel = { viewerImageEditAttachment = null },
-            onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
-            onEdited = { fileRef ->
-                viewerImageEditSequence += 1
-                val edited = raftViewerEditedImageFile(fileRef, attachment.name, viewerImageEditSequence)
+            onDismissModals = {
                 viewerImageEditAttachment = null
                 imageLightboxRequest = null
-                bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
-                coroutineScope.launch {
-                    val prepared =
-                        threadComposerCompressPastedImages(
-                            files = listOf(edited),
-                            originalImage = composerDraftViewModel.state.value.originalImage,
-                            compress = { file ->
-                                val response =
-                                    bridge.compressThreadImage(
-                                        fileRef = file.fileRef.orEmpty(),
-                                        fileName = file.fileName,
-                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
-                                    )
-                                (parseRaftFilePreviewCompressedImageResult(response)
-                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
-                            },
-                            retire = { refs ->
-                                bridge.retireFilePreviewTemporaryFiles(
-                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
-                                    fileRefs = refs
-                                )
-                            },
-                            log = bridge::log,
-                        )
-                    latestUploadComposerAttachmentFiles(prepared, null, false, emptyMap())
-                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
-                }
+            },
+            uploadComposerAttachmentFiles = { files, replaceAttachmentId, requireAllFiles, replaceAttachmentIdsByLocalId ->
+                latestUploadComposerAttachmentFiles(
+                    files,
+                    replaceAttachmentId,
+                    requireAllFiles,
+                    replaceAttachmentIdsByLocalId,
+                )
             },
         )
     }
@@ -7529,3 +7514,112 @@ private fun rememberThreadChannelJointServers(
             conversationIdentityProvider = conversationIdentityProvider,
         )
     }
+
+/**
+ * Hosts [RaftViewerImageEditor] outside `SharedThreadRouteContentContent` (keeping that route
+ * below its JVM method-size cap) and routes the post-edit deferred refocus through
+ * [build.raft.designsystem.focus.RaftFocusCoordinator] after the editor/lightbox modals dispose.
+ */
+@Composable
+private fun ThreadViewerImageEditHost(
+    attachment: RaftThreadAttachmentItem,
+    desktop: Boolean,
+    threadInstanceKey: String,
+    composerInstanceId: String,
+    bridge: build.raft.app.base.BridgeModule,
+    dataSource: SharedThreadDataSource,
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    coroutineScope: CoroutineScope,
+    genericThreadErrorLabel: String,
+    nextEditSequence: () -> Long,
+    onCancel: () -> Unit,
+    onDismissModals: () -> Unit,
+    uploadComposerAttachmentFiles: suspend (List<PlatformFile>, String?, Boolean, Map<String, String>) -> Boolean,
+) {
+    val focusCoordinator = currentRaftFocusCoordinator()
+    val focusRegion = LocalRaftFocusRegion.current
+    val focusModalToken = LocalRaftFocusModalToken.current
+    RaftViewerImageEditor(
+        attachment = attachment,
+        desktop = desktop,
+        resolveFullUrl = { attachmentId ->
+            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
+                is ThreadApiResult.Success -> response.data.url
+                is ThreadApiResult.Failure -> {
+                    bridge.log("thread_viewer_image_edit status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
+                    null
+                }
+            }
+        },
+        onCancel = onCancel,
+        onSaveFailed = { bridge.toast(genericThreadErrorLabel) },
+        onEdited = { fileRef ->
+            val edited = raftViewerEditedImageFile(fileRef, attachment.name, nextEditSequence())
+            val startInteractionEpoch = focusCoordinator.interactionEpoch
+            val targetKey = ThreadComposerFocusTargetKey(composerInstanceId)
+            onDismissModals()
+            bridge.log("thread_viewer_image_edit status=done attachmentId=${attachment.id.take(8)}")
+            coroutineScope.launch {
+                // Wait up to two frames for the dismissed editor/lightbox modals to dispose and
+                // release their modal tokens (and let any OS window refocus settle) before
+                // capturing the deferred focus ticket's focusEpoch (audit S3 / rule 3).
+                var settleFrames = 0
+                while (settleFrames < 2 && focusCoordinator.interactionEpoch == startInteractionEpoch) {
+                    withFrameNanos { }
+                    settleFrames += 1
+                }
+                val deferredFocusTicket: RaftFocusTicket? =
+                    if (
+                        focusCoordinator.interactionEpoch == startInteractionEpoch &&
+                        focusCoordinator.topModalToken == focusModalToken
+                    ) {
+                        focusCoordinator.request(
+                            targetKey = targetKey,
+                            region = focusRegion,
+                            source = RaftFocusRequestSource.System("image_edit_complete"),
+                            isText = true,
+                            modalToken = focusModalToken,
+                        )
+                    } else {
+                        null
+                    }
+                var dispatchedFocus = false
+                try {
+                    val prepared =
+                        threadComposerCompressPastedImages(
+                            files = listOf(edited),
+                            originalImage = composerDraftViewModel.state.value.originalImage,
+                            compress = { file ->
+                                val response =
+                                    bridge.compressThreadImage(
+                                        fileRef = file.fileRef.orEmpty(),
+                                        fileName = file.fileName,
+                                        mimeType = file.mimeType?.ifBlank { null } ?: "image/png",
+                                    )
+                                (parseRaftFilePreviewCompressedImageResult(response)
+                                    as? RaftFilePreviewCompressedImageResult.Success)?.file
+                            },
+                            retire = { refs ->
+                                bridge.retireFilePreviewTemporaryFiles(
+                                    sessionId = "thread-viewer-edit-$threadInstanceKey",
+                                    fileRefs = refs
+                                )
+                            },
+                            log = bridge::log,
+                        )
+                    val admitted = uploadComposerAttachmentFiles(prepared, null, false, emptyMap())
+                    if (admitted && deferredFocusTicket != null) {
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.RequestDeferredFocus(deferredFocusTicket)
+                        )
+                        dispatchedFocus = true
+                    }
+                } finally {
+                    if (!dispatchedFocus && deferredFocusTicket != null && focusCoordinator.isLatest(deferredFocusTicket)) {
+                        focusCoordinator.cancelPending(deferredFocusTicket.targetKey)
+                    }
+                }
+            }
+        },
+    )
+}

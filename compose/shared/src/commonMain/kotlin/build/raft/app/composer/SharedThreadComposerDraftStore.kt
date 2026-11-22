@@ -11,6 +11,8 @@ import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
+import build.raft.designsystem.focus.RaftFocusRequestSource
+import build.raft.designsystem.focus.RaftFocusTicket
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -47,10 +49,11 @@ internal data class SharedThreadComposerDraftState(
     val persistBoundaryNonce: Int = 0,
     val focusRequestNonce: Int = 0,
     /**
-     * Whether the request behind [focusRequestNonce] also opens the IME. A send only keeps the
-     * editor as it was (artin 11-02: tapping Send with the keyboard down must not raise it).
+     * Source, keyboard policy, and optional deferred ticket behind [focusRequestNonce].
+     * A send only keeps an open keyboard (artin 11-02); deferred async completions carry a
+     * coordinator ticket and focus without raising the IME.
      */
-    val focusRequestShowsKeyboard: Boolean = true,
+    val focusRequestMeta: ThreadComposerFocusRequestMeta = ThreadComposerFocusRequestMeta(),
     val sending: Boolean = false,
     val failureLabel: String? = null,
     val removedAttachmentIds: Set<String> = emptySet(),
@@ -87,7 +90,11 @@ internal data class SharedThreadComposerDraftState(
      * signed out or another one signed in (see [SharedThreadComposerDraftPersistSlice]).
      */
     val accountEpoch: Long = 0L
-)
+) {
+    /** Compatibility getter: whether the active focus request explicitly raises the IME. */
+    val focusRequestShowsKeyboard: Boolean
+        get() = focusRequestMeta.showsKeyboard
+}
 
 /**
  * Exact identity of one local attachment admission.  The local id alone is not an ownership
@@ -2595,6 +2602,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.SelectMention -> "SelectMention"
         is SharedThreadComposerDraftIntent.AppendQuote -> "AppendQuote"
         SharedThreadComposerDraftIntent.RequestFocus -> "RequestFocus"
+        is SharedThreadComposerDraftIntent.RequestDeferredFocus -> "RequestDeferredFocus"
         SharedThreadComposerDraftIntent.Flush -> "Flush"
         is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
         is SharedThreadComposerDraftIntent.RestoreAfterFailure -> "RestoreAfterFailure"
@@ -2642,8 +2650,10 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class SelectMention(val mention: ThreadSendMessageMention) : SharedThreadComposerDraftIntent
     /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
     data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
-    /** Put the caret in the composer (an edited image was just added from the image viewer). */
+    /** Put the caret in the composer and raise the IME (explicit user action or keyboard handoff return). */
     data object RequestFocus : SharedThreadComposerDraftIntent
+    /** Deferred post-async focus request (e.g. after image edit compress+upload) gated by a pre-captured coordinator ticket. */
+    data class RequestDeferredFocus(val ticket: RaftFocusTicket) : SharedThreadComposerDraftIntent
     data object Flush : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
@@ -2840,7 +2850,8 @@ internal class SharedThreadComposerDraftStore(
                         } else {
                             null
                         },
-                    focusRequestNonce = intent.composer.focusRequestNonce
+                    focusRequestNonce = intent.composer.focusRequestNonce,
+                    focusRequestMeta = intent.composer.focusRequestMeta,
                 )
             }
             is SharedThreadComposerDraftIntent.Change ->
@@ -2898,7 +2909,11 @@ internal class SharedThreadComposerDraftStore(
                             edit = ThreadComposerDraftEdit.InsertMention(intent.handle),
                         ),
                     focusRequestNonce = current.focusRequestNonce + 1,
-                    focusRequestShowsKeyboard = true,
+                    focusRequestMeta =
+                        ThreadComposerFocusRequestMeta(
+                            source = RaftFocusRequestSource.User("select_mention"),
+                            keyboardMode = ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard,
+                        ),
                     sending = false,
                     failureLabel = null
                 )
@@ -2923,14 +2938,35 @@ internal class SharedThreadComposerDraftStore(
                             ),
                         // Select Text > Quote: the reader goes on typing under the quote.
                         focusRequestNonce = current.focusRequestNonce + 1,
-                        focusRequestShowsKeyboard = true,
+                        focusRequestMeta =
+                            ThreadComposerFocusRequestMeta(
+                                source = RaftFocusRequestSource.User("append_quote"),
+                                keyboardMode = ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard,
+                            ),
                         sending = false,
                         failureLabel = null
                     )
                 }
             }
             SharedThreadComposerDraftIntent.RequestFocus ->
-                current.copy(focusRequestNonce = current.focusRequestNonce + 1, focusRequestShowsKeyboard = true)
+                current.copy(
+                    focusRequestNonce = current.focusRequestNonce + 1,
+                    focusRequestMeta =
+                        ThreadComposerFocusRequestMeta(
+                            source = RaftFocusRequestSource.User("request_focus"),
+                            keyboardMode = ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard,
+                        ),
+                )
+            is SharedThreadComposerDraftIntent.RequestDeferredFocus ->
+                current.copy(
+                    focusRequestNonce = current.focusRequestNonce + 1,
+                    focusRequestMeta =
+                        ThreadComposerFocusRequestMeta(
+                            source = intent.ticket.source,
+                            keyboardMode = ThreadComposerFocusRequestKeyboardMode.FocusOnly,
+                            deferredTicket = intent.ticket,
+                        ),
+                )
             SharedThreadComposerDraftIntent.Flush ->
                 current.copy(persistBoundaryNonce = current.persistBoundaryNonce + 1)
             SharedThreadComposerDraftIntent.BeginSend ->
@@ -2952,7 +2988,11 @@ internal class SharedThreadComposerDraftStore(
                     // defer this to CompleteSend: that callback may arrive after the user has
                     // deliberately tapped outside the composer.
                     focusRequestNonce = current.focusRequestNonce + 1,
-                    focusRequestShowsKeyboard = false,
+                    focusRequestMeta =
+                        ThreadComposerFocusRequestMeta(
+                            source = RaftFocusRequestSource.User("begin_send"),
+                            keyboardMode = ThreadComposerFocusRequestKeyboardMode.KeepOpenKeyboardOnly,
+                        ),
                     sending = true,
                     failureLabel = null,
                     structuredMentions = emptyList(),
