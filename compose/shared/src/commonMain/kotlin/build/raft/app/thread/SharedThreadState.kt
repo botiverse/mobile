@@ -232,7 +232,6 @@ internal data class SharedThreadRenderSlice(
     val writeActionsEnabled: Boolean,
     val channelProfileUpdateStatus: ChannelProfileUpdateStatus,
     val channelProfileUpdateErrorCode: String?,
-    val loadingIndicatorRevealed: Boolean = false,
 )
 
 internal fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
@@ -249,7 +248,6 @@ internal fun SharedThreadState.toRenderSlice(): SharedThreadRenderSlice =
         writeActionsEnabled = writeActionsEnabled,
         channelProfileUpdateStatus = channelProfileUpdateStatus,
         channelProfileUpdateErrorCode = channelProfileUpdateErrorCode,
-        loadingIndicatorRevealed = loadingIndicatorRevealed,
     )
 
 /**
@@ -271,8 +269,10 @@ internal fun SharedThreadState.awaitsInitialLoadingIndicator(): Boolean {
     }
     if (payload.status == "error" || payload.status == "no_permission") return false
     if (
-        accessResolution == ThreadAccessResolution.Loading &&
-            RaftThreadTab.fromWireValue(payload.selectedTab) != RaftThreadTab.Chat
+        payload.shouldRenderThreadLoadingShell(
+            timelineSlice = payload.toThreadTimelineSlice(),
+            accessResolution = accessResolution,
+        )
     ) {
         return true
     }
@@ -282,10 +282,6 @@ internal fun SharedThreadState.awaitsInitialLoadingIndicator(): Boolean {
             status = payload.status,
             durableLastKnown = payload.durableLastKnown,
             mainLoadFailed = payload.mainLoadFailed,
-        ) ||
-        (
-            accessResolution == ThreadAccessResolution.Loading &&
-                payload.status !in ThreadResolvedContentStatuses
         )
 }
 

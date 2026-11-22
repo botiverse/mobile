@@ -499,9 +499,12 @@ internal class SharedThreadStore(
                 loadJob?.cancel()
                 if (intent is SharedThreadIntent.Start) {
                     cancelLoadingRevealTimer()
-                    val current = _state.value
-                    if (current.loadingIndicatorRevealed) {
-                        reduceStateInternal(current.copy(loadingIndicatorRevealed = false), manageLoadingTimer = false)
+                    _state.update { current ->
+                        if (current.loadingIndicatorRevealed) {
+                            current.copy(loadingIndicatorRevealed = false).withSynchronizedTimelineSlice()
+                        } else {
+                            current
+                        }
                     }
                     initialAccessResolutionJob?.cancel()
                     initialAccessResolutionJob = null
@@ -609,12 +612,14 @@ internal class SharedThreadStore(
         when (intent) {
             is SharedThreadIntent.Start -> start(intent.payload)
             is SharedThreadIntent.ApplyRouteIntent -> applyRouteIntent(intent.payload)
-            SharedThreadIntent.Refresh ->
+            SharedThreadIntent.Refresh -> {
+                markLoadingRevealElapsedImmediately()
                 refresh(
                     lastRoutePayload ?: _state.value.payload,
                     advanceRouteStaleToken(),
                     explicitRetry = true
                 )
+            }
             SharedThreadIntent.RetryAccessResolution -> retryAccessResolution()
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendFailure ->
@@ -725,13 +730,22 @@ internal class SharedThreadStore(
         pendingSecondaryTimelineApply = null
         releaseForegroundLoadLease(expected = null, reason = "cleared")
         advanceRouteStaleToken()
-        reducePayloadPatch(cachePayload = true) { currentPayload ->
-            if (currentPayload.newerMessagesStatus == "loading") {
-                currentPayload.copy(newerMessagesStatus = "idle")
-            } else {
-                currentPayload
+        val currentState = _state.value
+        if (currentState.payload.newerMessagesStatus == "loading") {
+            val patchedPayload = currentState.payload.copy(newerMessagesStatus = "idle")
+            val emitted =
+                reduceStateInternal(
+                    currentState.copy(payload = patchedPayload, loadingIndicatorRevealed = false),
+                    manageLoadingTimer = false,
+                )
+            if (emitted) {
+                dataSource.cachePayload(
+                    _state.value.payload,
+                    ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
+                )
             }
         }
+        cancelLoadingRevealTimer()
         visiblePayloadOwnerScopeId = null
         readInFlightMarker = null
         pendingReadMarker = null
@@ -755,6 +769,18 @@ internal class SharedThreadStore(
         jobToCancel?.cancel()
     }
 
+    private fun markLoadingRevealElapsedImmediately() {
+        val jobToCancel =
+            synchronized(loadingRevealLock) {
+                val previous = loadingRevealJob
+                loadingRevealJob = null
+                loadingRevealGeneration += 1L
+                loadingRevealElapsedGeneration = loadingRevealGeneration
+                previous
+            }
+        jobToCancel?.cancel()
+    }
+
     private fun launchLoadingRevealTimerFor(generation: Long) {
         val scheduled =
             scope.launch {
@@ -770,9 +796,16 @@ internal class SharedThreadStore(
                         }
                     }
                 if (!stillCurrent) return@launch
-                val latest = _state.value
-                if (latest.awaitsInitialLoadingIndicator() && !latest.loadingIndicatorRevealed) {
-                    reduceStateInternal(latest.copy(loadingIndicatorRevealed = true), manageLoadingTimer = false)
+                _state.update { latest ->
+                    val currentElapsed =
+                        synchronized(loadingRevealLock) {
+                            loadingRevealGeneration == generation && loadingRevealElapsedGeneration == generation
+                        }
+                    if (currentElapsed && latest.awaitsInitialLoadingIndicator() && !latest.loadingIndicatorRevealed) {
+                        latest.copy(loadingIndicatorRevealed = true).withSynchronizedTimelineSlice()
+                    } else {
+                        latest
+                    }
                 }
             }
         val keep =
@@ -797,9 +830,12 @@ internal class SharedThreadStore(
                 previous to loadingRevealGeneration
             }
         jobToCancel?.cancel()
-        val current = _state.value
-        if (current.loadingIndicatorRevealed) {
-            reduceStateInternal(current.copy(loadingIndicatorRevealed = false), manageLoadingTimer = false)
+        _state.update { current ->
+            if (current.loadingIndicatorRevealed) {
+                current.copy(loadingIndicatorRevealed = false).withSynchronizedTimelineSlice()
+            } else {
+                current
+            }
         }
         if (initialLoadingRevealDelayMillis <= 0L) {
             synchronized(loadingRevealLock) {
@@ -1061,12 +1097,14 @@ internal class SharedThreadStore(
                 threadId != null &&
                     routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
                     dataSource.hasResolvedThreadAccessIfCurrent(threadId, producerContext.provenance)
+            var immediateStale = false
             initialAccessStateMutex.withLock {
+                if (!staleTokenStillCurrent(staleToken, "thread_start", "superseded_first_frame", routeContextPayload)) {
+                    immediateStale = true
+                    return@withLock
+                }
                 val admitted =
                     dataSource.withCurrentReplyCacheProvenance(producerContext.provenance) {
-                        if (!staleTokenStillCurrent(staleToken, "thread_start", "superseded_first_frame", routeContextPayload)) {
-                            return@withCurrentReplyCacheProvenance false
-                        }
                         visiblePayloadOwnerScopeId = payloadOwnerScopeId
                         reduceState(
                             SharedThreadState(
@@ -1094,6 +1132,7 @@ internal class SharedThreadStore(
                     immediateSupersededKeptAccess = keptAccess
                 }
             }
+            if (immediateStale) return
             if (publishedImmediateSuperseded != null) {
                 if (immediateSupersededKeptAccess) {
                     diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
@@ -1122,15 +1161,25 @@ internal class SharedThreadStore(
         if (!staleTokenStillCurrent(staleToken, "thread_start", "after_durable_read", routeContextPayload)) {
             return
         }
-        // Hands 4b6ccb0d: the superseded memory copy wins only when it holds a newer server message than the
-        // durable frame (or there is no durable frame, or the durable frame is empty). An equal or older copy
-        // loses: the disk is at least as new.
+        // Hands 4b6ccb0d: when no immediate superseded memory frame was already painted, superseded
+        // memory wins when it holds a strictly newer server message than disk (or disk is empty).
+        // Once Frame 1 already painted supersededMemory, disk only upgrades it when disk holds a
+        // strictly newer server seq (equal seq keeps the richer memory payload and metadata intact).
+        val memorySeq = supersededMemory?.newestServerSeqOrNull() ?: Long.MIN_VALUE
+        val diskSeq = durableLastKnown?.newestServerSeqOrNull() ?: Long.MIN_VALUE
+        val diskStrictlyNewerThanMemory =
+            durableLastKnown != null && durableLastKnown.messages.isNotEmpty() && diskSeq > memorySeq
         val supersededFirstFrame =
             supersededMemory?.takeIf { memory ->
                 durableLastKnown == null ||
                     durableLastKnown.messages.isEmpty() ||
-                    (memory.newestServerSeqOrNull() ?: Long.MIN_VALUE) >
-                    (durableLastKnown.newestServerSeqOrNull() ?: Long.MIN_VALUE)
+                    memorySeq > diskSeq
+            }
+        val shouldAdoptDurableFrame =
+            if (publishedImmediateSuperseded != null) {
+                diskStrictlyNewerThanMemory
+            } else {
+                durableLastKnown != null && supersededFirstFrame == null
             }
         if (supersededMemory != null) {
             diagnosticsLogger?.invoke(
@@ -1138,7 +1187,7 @@ internal class SharedThreadStore(
                     "memoryMessages=${supersededMemory.messages.size} " +
                     "memorySeq=${supersededMemory.newestServerSeqOrNull()} " +
                     "durableSeq=${durableLastKnown?.newestServerSeqOrNull()} " +
-                    "chosen=${if (supersededFirstFrame != null) "memory" else "durable"}"
+                    "chosen=${if (shouldAdoptDurableFrame) "durable" else "memory"}"
             )
         }
         if (supersededFirstFrame != null && publishedImmediateSuperseded == null) {
@@ -1155,7 +1204,7 @@ internal class SharedThreadStore(
         // superseded memory won or there is no durable frame, seed beside the network fetch.
         val seededReplyWindows =
             if (cached == null && current == null && producerContext != null) {
-                if (durableLastKnown != null && supersededFirstFrame == null) {
+                if (shouldAdoptDurableFrame) {
                     seedCachedReplyWindows(routeContextPayload, producerContext)
                 } else {
                     scope.launch { seedCachedReplyWindows(routeContextPayload, producerContext) }
@@ -1169,7 +1218,7 @@ internal class SharedThreadStore(
         }
         val durableLastKnownWithReplies =
             durableLastKnown?.withSeededReplyWindows(seededReplyWindows)
-        if (durableLastKnownWithReplies != null && supersededFirstFrame == null) {
+        if (durableLastKnownWithReplies != null && shouldAdoptDurableFrame) {
             dataSource.seedThreadAuthorProfiles(
                 serverId = session?.currentServerId,
                 payload = durableLastKnownWithReplies,
@@ -1189,48 +1238,54 @@ internal class SharedThreadStore(
                 listOfNotNull(supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
             )
         if (publishedImmediateSuperseded != null) {
+            var staleDropped = false
+            var provenanceInvalidated = false
             initialAccessStateMutex.withLock {
+                if (!staleTokenStillCurrent(staleToken, "thread_start", "post_durable_reconcile", routeContextPayload)) {
+                    staleDropped = true
+                    return@withLock
+                }
                 val admitted =
                     producerContext?.let { context ->
                         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
-                            if (
-                                !staleTokenStillCurrent(
-                                    staleToken,
-                                    "thread_start",
-                                    "post_durable_reconcile",
-                                    routeContextPayload,
-                                )
-                            ) {
-                                return@withCurrentReplyCacheProvenance true
-                            }
                             val liveState = _state.value
                             val livePayload = liveState.payload
-                            if (supersededFirstFrame != null) {
+                            if (!diskStrictlyNewerThanMemory || durableLastKnownWithReplies == null) {
+                                // Disk is equal or older than the already-rendered Frame-1 memory copy:
+                                // keep the richer memory state intact (metadata, originMessage, older pages,
+                                // and any live realtime/access updates) and only enrich truncated seeds.
                                 val upgraded =
                                     durableLastKnownWithReplies?.let { livePayload.withActivitySeedBodiesFrom(it) }
                                         ?: livePayload
                                 if (upgraded !== livePayload) {
                                     reduceState(liveState.copy(payload = upgraded))
                                 }
-                            } else if (durableLastKnownWithReplies != null) {
+                            } else {
                                 val liveSeq = livePayload.newestServerSeqOrNull() ?: Long.MIN_VALUE
-                                val diskSeq = durableLastKnownWithReplies.newestServerSeqOrNull() ?: Long.MIN_VALUE
-                                val memorySeq = supersededMemory?.newestServerSeqOrNull() ?: Long.MIN_VALUE
-                                val realtimeAdvancedPastDisk = liveSeq > memorySeq && liveSeq > diskSeq
-                                if (!realtimeAdvancedPastDisk) {
-                                    val upgradedCandidate =
-                                        durableLastKnownWithReplies
-                                            .withActivityOpenSeed(activitySeedBodies)
-                                            .let { candidate ->
-                                                if (immediateSupersededKeptAccess && supersededMemory != null) {
-                                                    candidate
-                                                        .withCanonicalConversationAccessFrom(supersededMemory)
-                                                        .copy(channelArchived = supersededMemory.channelArchived)
+                                if (diskSeq > liveSeq) {
+                                    // Merge disk timeline fields onto livePayload so ReplyThread originMessage,
+                                    // header metadata (members/tasks/settingsActions), canonical access, and
+                                    // live channelArchived updates are never wiped by a bare routePayload disk copy.
+                                    val mergedFromDisk =
+                                        livePayload.copy(
+                                            status = durableLastKnownWithReplies.status,
+                                            durableLastKnown = durableLastKnownWithReplies.durableLastKnown,
+                                            messages = durableLastKnownWithReplies.messages,
+                                            canLoadMoreBefore = durableLastKnownWithReplies.canLoadMoreBefore,
+                                            durableReachedOldest = durableLastKnownWithReplies.durableReachedOldest,
+                                            canLoadMoreAfter = durableLastKnownWithReplies.canLoadMoreAfter,
+                                            olderMessagesStatus = durableLastKnownWithReplies.olderMessagesStatus,
+                                            newerMessagesStatus = durableLastKnownWithReplies.newerMessagesStatus,
+                                            errorCode = null,
+                                            originMessage = durableLastKnownWithReplies.originMessage ?: livePayload.originMessage,
+                                            originStatus =
+                                                if (durableLastKnownWithReplies.originMessage != null) {
+                                                    durableLastKnownWithReplies.originStatus
                                                 } else {
-                                                    candidate
-                                                }
-                                            }
-                                            .withRouteIntentFrom(livePayload)
+                                                    livePayload.originStatus
+                                                },
+                                        )
+                                    val upgradedCandidate = mergedFromDisk.withActivityOpenSeed(activitySeedBodies)
                                     val upgradedVisible =
                                         dataSource.restorePendingLocalSends(
                                             provenance = context.provenance,
@@ -1256,8 +1311,8 @@ internal class SharedThreadStore(
                         }
                     }
                 if (admitted == null) {
-                    visiblePayloadOwnerScopeId =
-                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+                    provenanceInvalidated = true
+                    visiblePayloadOwnerScopeId = null
                     reduceState(
                         SharedThreadState(
                             payload =
@@ -1282,6 +1337,7 @@ internal class SharedThreadStore(
                     )
                 }
             }
+            if (staleDropped || provenanceInvalidated) return
         } else {
             val standInFirstFrame =
                 supersededFirstFrame
@@ -1373,7 +1429,13 @@ internal class SharedThreadStore(
             if (keptResolvedAccess) {
                 diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
             }
+            var staleDropped = false
+            var provenanceInvalidated = false
             initialAccessStateMutex.withLock {
+                if (!staleTokenStillCurrent(staleToken, "thread_start", "initial_commit", routeContextPayload)) {
+                    staleDropped = true
+                    return@withLock
+                }
                 val admitted =
                     producerContext?.let { context ->
                         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
@@ -1404,8 +1466,13 @@ internal class SharedThreadStore(
                         }
                     }
                 if (admitted == null) {
-                    visiblePayloadOwnerScopeId =
-                        dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+                    if (producerContext != null) {
+                        provenanceInvalidated = true
+                        visiblePayloadOwnerScopeId = null
+                    } else {
+                        visiblePayloadOwnerScopeId =
+                            dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
+                    }
                     reduceState(
                         SharedThreadState(
                             payload =
@@ -1430,6 +1497,7 @@ internal class SharedThreadStore(
                     )
                 }
             }
+            if (staleDropped || provenanceInvalidated) return
         }
         if (!staleTokenStillCurrent(staleToken, "thread_start", "before_refresh", routeContextPayload)) {
             return
@@ -6277,7 +6345,7 @@ internal class SharedThreadStore(
             when {
                 !awaitsLoadingIndicator -> false
                 initialLoadingRevealDelayMillis <= 0L -> true
-                else -> payloadUpdated.loadingIndicatorRevealed
+                else -> payloadUpdated.loadingIndicatorRevealed || isLoadingRevealElapsedForCurrentGeneration()
             }
         val normalizedState =
             if (payloadUpdated.loadingIndicatorRevealed == desiredLoadingIndicatorRevealed) {

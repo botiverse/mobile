@@ -671,12 +671,196 @@ class SharedThreadCachedOpenNoFlashTest {
         activeIdentity = ownerB
         assertNotNull(dataSource.captureReplyCacheProducerContext())
         reader.releaseRead.complete(Unit)
+        runCurrent()
         assertEquals("loading", racingStore.state.value.payload.status)
         assertTrue(
             racingStore.state.value.payload.messages.isEmpty(),
             "Owner A's superseded messages must be evicted immediately on owner switch",
         )
+        assertFalse(
+            repository.getThreadStarted!!.isCompleted,
+            "provenance-invalidated start must return early instead of fetching old owner's channel under Owner B",
+        )
         repository.releaseGetThread?.complete(Unit)
+
+        // 3. Account switch + new Start(channel-2) while Owner A's SQLite read is parked must NOT
+        //    allow Owner A's post_durable_reconcile admitted == null branch to clobber Owner B's channel-2.
+        activeIdentity = ownerA
+        repository.threadResult = channelSnapshot("channel-1", "a1" to 1L)
+        reader.parkNextRead()
+        val clobberStore = SharedThreadStore(dataSource = dataSource, scope = scope)
+        clobberStore.dispatch(SharedThreadIntent.Start(channelRoute("channel-1")))
+        assertEquals(listOf("a1"), clobberStore.state.value.payload.messages.map { it.id })
+
+        activeIdentity = ownerB
+        repository.threadResult = channelSnapshot("channel-2", "b2" to 1L)
+        repository.getThreadStarted = null
+        repository.releaseGetThread = null
+        clobberStore.dispatch(SharedThreadIntent.Start(channelRoute("channel-2")))
+        advanceUntilIdle()
+        assertEquals("channel-2", clobberStore.state.value.payload.sourceThreadId)
+        assertEquals(listOf("b2"), clobberStore.state.value.payload.messages.map { it.id })
+
+        reader.releaseRead.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(
+            "channel-2",
+            clobberStore.state.value.payload.sourceThreadId,
+            "stale Owner A reconcile must never clobber Owner B's active channel-2",
+        )
+        assertEquals(listOf("b2"), clobberStore.state.value.payload.messages.map { it.id })
+        scopeJob.cancelAndJoin()
+    }
+
+    @Test
+    fun equalSeqDiskDoesNotDowngradeSupersededMemoryAndNewerDiskPreservesMetadata() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        val repository =
+            FakeConversationRepository(
+                threadResult = channelSnapshot("channel-1", "m1" to 1L, "m2" to 2L),
+            )
+        // Case A: disk seq (2) == memory seq (2) -> must NOT downgrade durableLastKnown to true or replace m1..m2.
+        val equalReader = ControllableDurableReader(frames = mapOf(partition(ownerA) to durableFrame("channel-1", 1..2)))
+        val equalDataSource =
+            makeDataSource(
+                payloadStore = payloadStore,
+                repository = repository,
+                reader = equalReader,
+                identity = { ownerA },
+            )
+        val seedStore = SharedThreadStore(dataSource = equalDataSource, scope = scope)
+        seedStore.accept(SharedThreadIntent.Start(channelRoute("channel-1")))
+        advanceUntilIdle()
+        seedStore.clear()
+
+        val provenance = assertNotNull(equalDataSource.captureReplyCacheProducerContext()).provenance
+        payloadStore.freshnessLedger.advance(
+            serverId = "server-1",
+            threadId = "channel-1",
+            ownerScopeId = provenance.threadPayloadOwnerScopeId.orEmpty(),
+            cause = "summary_advance",
+        )
+        equalReader.parkNextRead()
+        repository.getThreadStarted = CompletableDeferred()
+        repository.releaseGetThread = CompletableDeferred()
+        val equalReopen = SharedThreadStore(dataSource = equalDataSource, scope = scope)
+        equalReopen.dispatch(SharedThreadIntent.Start(channelRoute("channel-1")))
+        assertEquals(listOf("m1", "m2"), equalReopen.state.value.payload.messages.map { it.id })
+        assertFalse(equalReopen.state.value.payload.durableLastKnown)
+
+        equalReader.releaseRead.complete(Unit)
+        advanceTimeBy(30L)
+        runCurrent()
+        assertEquals(
+            listOf("m1", "m2"),
+            equalReopen.state.value.payload.messages.map { it.id },
+            "equal-seq disk must not downgrade Frame-1 memory copy",
+        )
+        assertFalse(equalReopen.state.value.payload.durableLastKnown)
+        repository.releaseGetThread?.complete(Unit)
+        equalReopen.clear()
+
+        // Case B: disk seq (4) > memory seq (2) -> upgrades messages while preserving live originMessage & metadata.
+        val cachedPayload =
+            assertNotNull(
+                equalDataSource.cachedPayloadIfCurrent("channel-1", provenance)
+                    ?: equalDataSource.supersededCachedPayloadIfCurrent("channel-1", provenance),
+            )
+        val richOrigin = RaftThreadMessageItem(id = "origin-1", authorId = "u-a", authorName = "Owner A", body = "parent post")
+        val enriched =
+            cachedPayload.copy(
+                originMessage = richOrigin,
+                originStatus = "ready",
+                subtitle = "Project channel",
+                channelArchived = true,
+            )
+        payloadStore.put("server-1", "channel-1", enriched, provenance.threadPayloadOwnerScopeId.orEmpty())
+        payloadStore.freshnessLedger.advance(
+            serverId = "server-1",
+            threadId = "channel-1",
+            ownerScopeId = provenance.threadPayloadOwnerScopeId.orEmpty(),
+            cause = "disk_ahead",
+        )
+        val newerReader = ControllableDurableReader(frames = mapOf(partition(ownerA) to durableFrame("channel-1", 1..4)))
+        val newerDataSource =
+            makeDataSource(
+                payloadStore = payloadStore,
+                repository = repository,
+                reader = newerReader,
+                identity = { ownerA },
+            )
+        newerReader.parkNextRead()
+        repository.getThreadStarted = CompletableDeferred()
+        repository.releaseGetThread = CompletableDeferred()
+        val newerReopen = SharedThreadStore(dataSource = newerDataSource, scope = scope)
+        newerReopen.dispatch(SharedThreadIntent.Start(channelRoute("channel-1")))
+        assertEquals("origin-1", newerReopen.state.value.payload.originMessage?.id)
+
+        newerReader.releaseRead.complete(Unit)
+        advanceTimeBy(30L)
+        runCurrent()
+        assertEquals(listOf("v2-1", "v2-2", "v2-3", "v2-4"), newerReopen.state.value.payload.messages.map { it.id })
+        assertEquals("origin-1", newerReopen.state.value.payload.originMessage?.id, "originMessage must survive disk upgrade")
+        assertEquals("Project channel", newerReopen.state.value.payload.subtitle, "subtitle metadata must survive disk upgrade")
+        assertTrue(newerReopen.state.value.payload.channelArchived, "live channelArchived must survive disk upgrade")
+        repository.releaseGetThread?.complete(Unit)
+        scopeJob.cancelAndJoin()
+    }
+
+    @Test
+    fun explicitRetryRevealsLoadingImmediatelyAndRemoveEvictsSupersededCache() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, foregroundLoadGate = virtualForegroundLoadGate())
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Error(ScreenError("network_down")),
+            )
+        val dataSource =
+            makeDataSource(
+                payloadStore = payloadStore,
+                repository = repository,
+                reader = ControllableDurableReader(frames = emptyMap()),
+                identity = { ownerA },
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(channelRoute("channel-1")))
+        advanceUntilIdle()
+        assertEquals("error", store.state.value.payload.status)
+        assertFalse(store.state.value.loadingIndicatorRevealed)
+
+        // Explicit Retry (Refresh) after error must reveal loading immediately without a 120ms blank flash.
+        repository.threadResult = channelSnapshot("channel-1", "m1" to 1L)
+        repository.getThreadStarted = CompletableDeferred()
+        repository.releaseGetThread = CompletableDeferred()
+        store.dispatch(SharedThreadIntent.Refresh)
+        runCurrent()
+        assertEquals("loading", store.state.value.payload.status)
+        assertTrue(store.state.value.loadingIndicatorRevealed, "explicit Retry must reveal loading immediately")
+        repository.releaseGetThread?.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("content", store.state.value.payload.status)
+        assertFalse(store.state.value.loadingIndicatorRevealed)
+        store.clear()
+
+        // Advance generation so cached entry becomes superseded, then call payloadStore.remove(...) (e.g. NoPermission):
+        // remove() must evict the superseded entry too so the next open never flashes revoked messages on Frame 1.
+        val provenance = assertNotNull(dataSource.captureReplyCacheProducerContext()).provenance
+        val ownerScope = provenance.threadPayloadOwnerScopeId.orEmpty()
+        payloadStore.freshnessLedger.advance(
+            serverId = "server-1",
+            threadId = "channel-1",
+            ownerScopeId = ownerScope,
+            cause = "stale_before_revoke",
+        )
+        assertNotNull(dataSource.supersededCachedPayloadIfCurrent("channel-1", provenance))
+        payloadStore.remove("server-1", "channel-1", ownerScope)
+        assertNull(
+            dataSource.supersededCachedPayloadIfCurrent("channel-1", provenance),
+            "payloadStore.remove must evict superseded entries as well as current ones",
+        )
         scopeJob.cancelAndJoin()
     }
 
@@ -687,6 +871,19 @@ class SharedThreadCachedOpenNoFlashTest {
                 payload = channelRoute("channel-1").copy(status = "loading"),
                 accessResolution = ThreadAccessResolution.Loading,
             ).awaitsInitialLoadingIndicator(),
+        )
+        assertTrue(
+            SharedThreadState(
+                payload =
+                    channelRoute("channel-1").copy(
+                        status = "empty",
+                        durableLastKnown = false,
+                        backgroundRefreshing = true,
+                        tasks = listOf(RaftThreadTaskItem(id = "t1", title = "Task 1", status = "open")),
+                    ),
+                accessResolution = ThreadAccessResolution.Resolved,
+            ).awaitsInitialLoadingIndicator(),
+            "backgroundRefreshing empty chat with tasks renders LoadingShell and must reveal loading indicator",
         )
         assertTrue(
             SharedThreadState(
