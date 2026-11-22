@@ -403,7 +403,9 @@ internal fun RaftSearchRow(
  * Keyboard: opened from the keyboard, the first row takes focus; the arrows move through
  * the rows (wrapping), Home / End go to the first / last, a letter to the next row
  * starting with it, Enter picks, Escape closes. On closing from the keyboard, focus goes
- * back to [returnFocusTo] (the trigger's `Modifier.focusRequester`).
+ * back to [returnFocusTo] (the trigger's `Modifier.focusRequester`). [initialFocus] takes
+ * focus instead as soon as the popup can hold it, however it was opened (a search row that
+ * is there to type in: a combobox that creates values).
  *
  * Acting on one thing goes in a menu; picking a value is a [RaftSelect].
  *
@@ -422,6 +424,7 @@ fun RaftDropdownMenu(
     returnFocusTo: FocusRequester? = null,
     header: (@Composable () -> Unit)? = null,
     alignEnd: Boolean = false,
+    initialFocus: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val inputModes = LocalInputModeManager.current
@@ -488,7 +491,11 @@ fun RaftDropdownMenu(
         // Its own window on Android: keep the host's bar icons while it holds focus.
         RaftPopupWindowPolicy(onReady = { focusable = true })
         LaunchedEffect(focusable) {
-            if (focusable && inputModes.inputMode == InputMode.Keyboard) {
+            if (focusable && initialFocus != null) {
+                // The row attaches its focus target in the first frame.
+                withFrameNanos { }
+                runCatching { initialFocus.requestFocus() }
+            } else if (focusable && inputModes.inputMode == InputMode.Keyboard) {
                 // The rows attach their focus targets in the first frame.
                 withFrameNanos { }
                 nav.focus(nav.ordered().firstOrNull())

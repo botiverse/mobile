@@ -18,6 +18,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -27,16 +28,22 @@ import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftComboboxSheetThreshold
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftMultiCombobox
+import build.raft.designsystem.components.RaftSheetScrimTestTag
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** Semantics, search and picking of [RaftCombobox] / [RaftMultiCombobox] (compose ui-test, desktop). */
+/**
+ * Semantics, search and picking of [RaftCombobox] / [RaftMultiCombobox] (compose ui-test, desktop).
+ * The test window is 1024dp wide, so the cases pin the window's scale: a phone's
+ * ([RaftScale.Compact], the sheet) unless they are about a wide window.
+ */
 @OptIn(ExperimentalTestApi::class)
 class RaftComboboxSemanticsTest {
-    private fun themed(content: @Composable () -> Unit): @Composable () -> Unit = {
-        RaftTheme(appearance = RaftAppearance.Light, systemDark = false, content = content)
+    private fun themed(scale: RaftScale = RaftScale.Compact, content: @Composable () -> Unit): @Composable () -> Unit = {
+        RaftTheme(appearance = RaftAppearance.Light, systemDark = false, scale = scale, content = content)
     }
 
     /** A few values: the anchored list. */
@@ -99,6 +106,8 @@ class RaftComboboxSemanticsTest {
             )
             onNodeWithContentDescription("Model, Choose a model").performClick()
             waitForIdle()
+            // A phone: the bottom sheet over its scrim.
+            onNodeWithTag(RaftSheetScrimTestTag).assertExists()
             // A pure pick: the search row waits for a tap; no keyboard on open.
             onNode(hasSetTextAction()).assertIsNotFocused()
             onNode(hasSetTextAction()).performTextInput("openai")
@@ -111,6 +120,34 @@ class RaftComboboxSemanticsTest {
             onAllNodes(selectableRow).assertCountEquals(0)
             onNodeWithText("No models match \"openaizz\"")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        }
+
+    /**
+     * #306: a wide window (a tablet, the web's layout) opens the search in place, raft-ui's
+     * Combobox popup under the field, as the web does: no sheet over a scrim. Its search row
+     * (not focused for a pure pick) filters, and a pick closes it.
+     */
+    @Test
+    fun onAWideWindowManyValuesOpenTheSearchUnderTheFieldNotASheet() =
+        runComposeUiTest {
+            var value by mutableStateOf<String?>(null)
+            setContent(
+                themed(RaftScale.Wide) {
+                    RaftCombobox(value, manyModels, { value = it }, emptyText = noModels, placeholder = "Choose a model", label = "Model")
+                },
+            )
+            onNodeWithContentDescription("Model, Choose a model").performClick()
+            waitForIdle()
+            onNodeWithTag(RaftSheetScrimTestTag).assertDoesNotExist()
+            onNode(hasSetTextAction()).assertIsNotFocused()
+            onNode(hasSetTextAction()).performTextInput("openai")
+            waitForIdle()
+            onAllNodes(selectableRow).assertCountEquals(1)
+            onNode(option("GPT-5 Codex")).performClick()
+            waitForIdle()
+            assertEquals("codex", value)
+            onAllNodes(hasSetTextAction()).assertCountEquals(0)
+            onNodeWithContentDescription("Model, GPT-5 Codex").assertExists()
         }
 
     @Test

@@ -10,7 +10,10 @@ import build.raft.designsystem.components.raftComboboxFocusesSearch
 import build.raft.designsystem.components.raftComboboxPresentation
 import build.raft.designsystem.components.raftComboboxLabelOf
 import build.raft.designsystem.components.raftComboboxRows
+import build.raft.designsystem.components.raftComboboxSearchPresentation
 import build.raft.designsystem.components.raftComboboxToggled
+import build.raft.designsystem.theme.RaftScale
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -84,9 +87,9 @@ class RaftComboboxRowsTest {
 
 class RaftComboboxPresentationTest {
     @Test
-    fun aFewValuesOpenTheAnchoredListAndMoreOrTypingOrSeveralTheSheet() {
+    fun onAPhoneAFewValuesOpenTheAnchoredListAndMoreOrTypingOrSeveralTheSheet() {
         assertEquals(10, RaftComboboxSheetThreshold)
-        // (options, creates, multiple) to where the list opens.
+        // (options, creates, multiple) to where the list opens in a phone's window.
         val cases =
             listOf(
                 Triple(0, false, false) to RaftComboboxPresentation.AnchoredList,
@@ -98,7 +101,32 @@ class RaftComboboxPresentationTest {
             )
         cases.forEach { (input, expected) ->
             val (count, creates, multiple) = input
-            assertEquals(expected, raftComboboxPresentation(count, creates, multiple), "$input")
+            assertEquals(expected, raftComboboxPresentation(count, creates, multiple, RaftScale.Compact), "$input")
+        }
+    }
+
+    /**
+     * #306: from the app's wide breakpoint (a tablet, the web's layout) every search opens in place,
+     * under its trigger, as the web's Combobox popup; a phone or a split-screen half keeps the
+     * sheet. A few values stay the Select's anchored list at every width.
+     */
+    @Test
+    fun aWideWindowOpensTheSearchInPlaceUnderItsTrigger() {
+        val wide = RaftScale.of(RaftScale.WideMinWidth)
+        val phone = RaftScale.of(RaftScale.WideMinWidth - 1.dp)
+        assertEquals(RaftComboboxPresentation.Popover, raftComboboxSearchPresentation(wide))
+        assertEquals(RaftComboboxPresentation.Sheet, raftComboboxSearchPresentation(phone))
+        // (options, creates, multiple) on a wide window.
+        val cases =
+            listOf(
+                Triple(RaftComboboxSheetThreshold, false, false) to RaftComboboxPresentation.AnchoredList,
+                Triple(RaftComboboxSheetThreshold + 1, false, false) to RaftComboboxPresentation.Popover,
+                Triple(3, true, false) to RaftComboboxPresentation.Popover,
+                Triple(3, false, true) to RaftComboboxPresentation.Popover,
+            )
+        cases.forEach { (input, expected) ->
+            val (count, creates, multiple) = input
+            assertEquals(expected, raftComboboxPresentation(count, creates, multiple, wide), "$input")
         }
     }
 

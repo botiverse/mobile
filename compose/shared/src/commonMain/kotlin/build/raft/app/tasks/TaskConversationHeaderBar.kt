@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskConversationHeaderState
 import build.raft.app.data.TaskStatusOption
 import build.raft.app.data.canEditAssignee
@@ -14,7 +15,7 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.designsystem.components.RaftComboboxSheet
+import build.raft.designsystem.components.RaftComboboxPicker
 import build.raft.designsystem.components.RaftTaskStatus
 
 /** The app's task status as the design system's (same order). An Unknown status is drawn neutral, as Backlog (no hue). */
@@ -82,12 +83,14 @@ internal const val TaskConversationUnassignedOptionId = "unassigned"
 internal fun MemberProfile.taskConversationAssigneeOptionId(): String = "${kind.name}:${id.value}"
 
 /**
- * The assignee picker (web TaskProperties' searchable InlineBadgeEditor): a bottom sheet of
- * "Unassigned", then the task channel's people and agents, filtered by what is typed. Picking
- * the current assignee closes it without a write.
+ * The assignee picker (web TaskProperties' searchable InlineBadgeEditor), shown while composed:
+ * "Unassigned", then the task channel's people and agents, filtered by what is typed. Where the
+ * design system opens a searchable pick ([RaftComboboxPicker]): on a wide window the popup under
+ * the assignee chip, [TaskConversationAssigneePopupWidth] wide as the web's (compose it in the
+ * chip's box); on a phone a bottom sheet. Picking the current assignee closes it without a write.
  */
 @Composable
-internal fun TaskConversationAssigneeSheet(
+internal fun TaskConversationAssigneePicker(
     current: MemberProfile?,
     candidates: List<MemberProfile>,
     query: String,
@@ -102,7 +105,8 @@ internal fun TaskConversationAssigneeSheet(
                 candidates.map { member -> RaftComboboxOption(member.taskConversationAssigneeOptionId(), member.displayName) }
         }
     val noMatches = stringResource(Res.string.common_no_matches)
-    RaftComboboxSheet(
+    RaftComboboxPicker(
+        expanded = true,
         value = current?.taskConversationAssigneeOptionId() ?: TaskConversationUnassignedOptionId,
         options = options,
         onValueChange = { id ->
@@ -118,5 +122,9 @@ internal fun TaskConversationAssigneeSheet(
         query = query,
         onQueryChange = onQueryChange,
         searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
+        width = TaskConversationAssigneePopupWidth,
     )
 }
+
+/** web InlineBadgeEditor (searchable) `w-[240px]`: the assignee popup on a wide window. */
+internal val TaskConversationAssigneePopupWidth = 240.dp

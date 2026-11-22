@@ -10,6 +10,7 @@ import build.raft.designsystem.components.RaftFitToolbarChoice
 import build.raft.designsystem.components.RaftFitToolbarPrimary
 import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
+import build.raft.designsystem.components.raftComboboxPickerInPlace
 import build.raft.designsystem.theme.LocalRaftContentColor
 import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.raftCopyable
@@ -791,6 +792,164 @@ private fun SharedTasksLoadedBodyContent(
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions, unassignedAssigneeLabel) {
         tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
+    // A filter's picker closes its own session only: a late dismiss never closes the next one.
+    val closeFilter: (String) -> Unit = { id ->
+        if (presentationState.openFilterId == id) {
+            presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null))
+        }
+    }
+    // The channel / creator / assignee filters' searchable pickers ([RaftFilterPicker]), which the
+    // toolbar composes next to each filter's trigger ([RaftFitToolbarChoice.popup]): on a wide
+    // window the Combobox popup under the chip, as the web's SelectionPopover; on a phone the
+    // bottom sheet.
+    val filterPicker: @Composable (String) -> Unit = { id ->
+        if (presentationState.openFilterId == id) {
+            when (id) {
+                "channel" ->
+                    RaftFilterPicker(
+                        title = stringResource(Res.string.tasks_filter_channel),
+                        searchPlaceholder = stringResource(Res.string.tasks_search_channels),
+                        searchText = channelSearchValue.text,
+                        onSearchChange = { channelSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
+                        options = if (query != null) queryChannelOptions else channelFilterOptions,
+                        selectedIds = queryState?.query?.channelIds ?: visibleContent.selectedChannelNames,
+                        onToggle = { channelId ->
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ToggleChannel(channelId))
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(channelId))
+                            }
+                        },
+                        onClear = {
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ClearChannels)
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels)
+                            }
+                        },
+                        onDismiss = { closeFilter("channel") }
+                    )
+                "creator" ->
+                    RaftFilterPicker(
+                        title = stringResource(Res.string.tasks_filter_creator),
+                        searchPlaceholder = stringResource(Res.string.tasks_search_creators),
+                        searchText = creatorSearchValue.text,
+                        onSearchChange = { creatorSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
+                        // The server takes people and agents (`user:` / `agent:`).
+                        options = if (query != null) creatorFilterOptions.filter { it.id.isTasksQueryIdentity() } else creatorFilterOptions,
+                        selectedIds = queryState?.query?.creators ?: visibleContent.selectedCreatorIds,
+                        onToggle = { creatorId ->
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ToggleCreator(creatorId))
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(creatorId))
+                            }
+                        },
+                        onClear = {
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ClearCreators)
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators)
+                            }
+                        },
+                        onDismiss = { closeFilter("creator") }
+                    )
+                "assignee" ->
+                    RaftFilterPicker(
+                        title = stringResource(Res.string.tasks_filter_assignee),
+                        searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
+                        searchText = assigneeSearchValue.text,
+                        onSearchChange = { assigneeSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
+                        options =
+                            if (query != null) {
+                                assigneeFilterOptions.filter { it.id == TasksUnassignedAssigneeFilterId || it.id.isTasksQueryIdentity() }
+                            } else {
+                                assigneeFilterOptions
+                            },
+                        selectedIds = queryState?.query?.assignees ?: visibleContent.selectedAssigneeIds,
+                        onToggle = { assigneeId ->
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ToggleAssignee(assigneeId))
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(assigneeId))
+                            }
+                        },
+                        onClear = {
+                            if (query != null) {
+                                query.onIntent(TasksQueryIntent.ClearAssignees)
+                            } else {
+                                presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees)
+                            }
+                        },
+                        onDismiss = { closeFilter("assignee") }
+                    )
+                else -> Unit
+            }
+        }
+    }
+    // Assignee editor (task v2 port, task #244). Per the web ruling the assignee
+    // picker reuses the searchable filter picker (stdrc msg=4c357cb1) — humans
+    // first, then agents, "unassigned" sentinel always first and never filtered
+    // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
+    // On a wide window it hangs from the tapped card's assignee chip (composed in the card,
+    // [cardAssigneePicker]); on a phone it is the bottom sheet, composed with the page's other
+    // overlays, never in a card that the keyboard of its search may scroll out of the list.
+    val assigneePickerInPlace = raftComboboxPickerInPlace()
+    val assigneePicker: @Composable (TaskSummary) -> Unit = { shown ->
+        assigneeMenuTask?.takeIf { it.id == shown.id && it.opensTaskMutationMenus(state.standIn, canWriteTaskChannel) }?.let { task ->
+            // The picker opens for the task whose assignee chip was tapped.
+            assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                ?: return@let
+            val unassignedLabel = stringResource(Res.string.tasks_assignee_unassigned)
+            val needle = assigneeMenuSearch.trim().lowercase()
+            val people =
+                visibleContent.assigneeOptions
+                    .filter { it.kind != MemberKind.System }
+                    .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
+                    .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
+            val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
+            RaftFilterPicker(
+                title = stringResource(Res.string.tasks_filter_assignee),
+                searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
+                searchText = assigneeMenuSearch,
+                onSearchChange = { assigneeMenuSearch = it },
+                options =
+                    listOf(
+                        RaftFilterOption(
+                            id = TasksUnassignedAssigneeFilterId,
+                            label = unassignedLabel
+                        )
+                    ) +
+                        people.map { member ->
+                            RaftFilterOption(
+                                id = member.tasksIdentityFilterId(),
+                                label = member.displayName
+                            )
+                        },
+                selectedIds = setOf(selectedId),
+                onToggle = { id ->
+                    assigneeMenuTask = null
+                    assigneeMenuSearch = ""
+                    if (id != selectedId) {
+                        val member = people.firstOrNull { it.tasksIdentityFilterId() == id }
+                        onIntent(SharedTasksRouteIntent.AssignTask(task, member))
+                    }
+                },
+                onClear = { assigneeMenuSearch = "" },
+                // Only this task's: a late dismiss never closes another card's picker.
+                onDismiss = {
+                    if (assigneeMenuTask?.id == task.id) {
+                        assigneeMenuTask = null
+                        assigneeMenuSearch = ""
+                    }
+                },
+                multiSelect = false,
+                showClear = false
+            )
+        }
+    }
+    // What a card composes beside its assignee chip: the picker in place, on a wide window.
+    val cardAssigneePicker: @Composable (TaskSummary) -> Unit = { task -> if (assigneePickerInPlace) assigneePicker(task) }
     RaftBackHandler(
         enabled = createDialogOpen || statusMenuTask != null || assigneeMenuTask != null || presentationState.openFilterId != null
     ) {
@@ -863,6 +1022,7 @@ private fun SharedTasksLoadedBodyContent(
                                     )
                                 )
                         },
+                        filterPicker = filterPicker,
                     )
                 } else SharedTasksToolbar(
                     channelMode = !showChannelFilter,
@@ -893,7 +1053,8 @@ private fun SharedTasksLoadedBodyContent(
                         createSubmitted = false
                         createFailureVisible = false
                         createDialogOpen = true
-                    }
+                    },
+                    filterPicker = filterPicker
                 )
                 // Task #363: the per-status Board seeds each column's first page
                 // (its rows AND cursor) once it becomes the active view. List mode
@@ -950,6 +1111,7 @@ private fun SharedTasksLoadedBodyContent(
                                         assigneeMenuTask = task
                                         assigneeMenuAnchor = anchor
                                     },
+                                    assigneePicker = cardAssigneePicker,
                                     onLongPressTask = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
@@ -999,6 +1161,7 @@ private fun SharedTasksLoadedBodyContent(
                                 assigneeMenuTask = task
                                 assigneeMenuAnchor = anchor
                             },
+                            assigneePicker = cardAssigneePicker,
                             onRetry = { query.onIntent(TasksQueryIntent.Refresh) },
                         )
                     } else {
@@ -1062,6 +1225,7 @@ private fun SharedTasksLoadedBodyContent(
                                                     assigneeMenuTask = task
                                                     assigneeMenuAnchor = anchor
                                                 },
+                                                assigneePicker = { cardAssigneePicker(task) },
                                                 onLongPress = { anchor ->
                                                     statusMenuTask = task
                                                     statusMenuAnchor = anchor
@@ -1079,88 +1243,8 @@ private fun SharedTasksLoadedBodyContent(
 
         // --- Overlays. Rendered in z-order: popovers, then status menu, then create dialog.
         // Each overlay short-circuits on null state so unmounting tears down the gesture
-        // capture overlay too (otherwise the dim layer would swallow taps).
-        when (presentationState.openFilterId) {
-            "channel" ->
-                RaftFilterSheet(
-                    title = stringResource(Res.string.tasks_filter_channel),
-                    searchPlaceholder = stringResource(Res.string.tasks_search_channels),
-                    searchText = channelSearchValue.text,
-                    onSearchChange = { channelSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
-                    options = if (query != null) queryChannelOptions else channelFilterOptions,
-                    selectedIds = queryState?.query?.channelIds ?: visibleContent.selectedChannelNames,
-                    onToggle = { id ->
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ToggleChannel(id))
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id))
-                        }
-                    },
-                    onClear = {
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ClearChannels)
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels)
-                        }
-                    },
-                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
-            "creator" ->
-                RaftFilterSheet(
-                    title = stringResource(Res.string.tasks_filter_creator),
-                    searchPlaceholder = stringResource(Res.string.tasks_search_creators),
-                    searchText = creatorSearchValue.text,
-                    onSearchChange = { creatorSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
-                    // The server takes people and agents (`user:` / `agent:`).
-                    options = if (query != null) creatorFilterOptions.filter { it.id.isTasksQueryIdentity() } else creatorFilterOptions,
-                    selectedIds = queryState?.query?.creators ?: visibleContent.selectedCreatorIds,
-                    onToggle = { id ->
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ToggleCreator(id))
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id))
-                        }
-                    },
-                    onClear = {
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ClearCreators)
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators)
-                        }
-                    },
-                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
-            "assignee" ->
-                RaftFilterSheet(
-                    title = stringResource(Res.string.tasks_filter_assignee),
-                    searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
-                    searchText = assigneeSearchValue.text,
-                    onSearchChange = { assigneeSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
-                    options =
-                        if (query != null) {
-                            assigneeFilterOptions.filter { it.id == TasksUnassignedAssigneeFilterId || it.id.isTasksQueryIdentity() }
-                        } else {
-                            assigneeFilterOptions
-                        },
-                    selectedIds = queryState?.query?.assignees ?: visibleContent.selectedAssigneeIds,
-                    onToggle = { id ->
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ToggleAssignee(id))
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id))
-                        }
-                    },
-                    onClear = {
-                        if (query != null) {
-                            query.onIntent(TasksQueryIntent.ClearAssignees)
-                        } else {
-                            presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees)
-                        }
-                    },
-                    onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                )
-            else -> Unit
-        }
+        // capture overlay too (otherwise the dim layer would swallow taps). The filters'
+        // pickers are the toolbar's ([filterPicker]), next to their chips.
 
         // Read-only tasks (e.g. historical joint tasks) never open mutation menus, like web; nor do
         // tasks of a channel the reader may not write (not joined, archived), nor does the stored
@@ -1208,58 +1292,8 @@ private fun SharedTasksLoadedBodyContent(
             )
         }
 
-        // Assignee editor (task v2 port, task #244). Per the web ruling the assignee
-        // picker reuses the searchable filter sheet (stdrc msg=4c357cb1) — humans
-        // first, then agents, "unassigned" sentinel always first and never filtered
-        // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
-        assigneeMenuTask?.takeIf { it.opensTaskMutationMenus(state.standIn, canWriteTaskChannel) }?.let { task ->
-            // The picker opens for the task whose assignee chip was tapped.
-            assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
-                ?: return@let
-            val unassignedLabel = stringResource(Res.string.tasks_assignee_unassigned)
-            val needle = assigneeMenuSearch.trim().lowercase()
-            val people =
-                visibleContent.assigneeOptions
-                    .filter { it.kind != MemberKind.System }
-                    .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
-                    .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
-            val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
-            RaftFilterSheet(
-                title = stringResource(Res.string.tasks_filter_assignee),
-                searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
-                searchText = assigneeMenuSearch,
-                onSearchChange = { assigneeMenuSearch = it },
-                options =
-                    listOf(
-                        RaftFilterOption(
-                            id = TasksUnassignedAssigneeFilterId,
-                            label = unassignedLabel
-                        )
-                    ) +
-                        people.map { member ->
-                            RaftFilterOption(
-                                id = member.tasksIdentityFilterId(),
-                                label = member.displayName
-                            )
-                        },
-                selectedIds = setOf(selectedId),
-                onToggle = { id ->
-                    assigneeMenuTask = null
-                    assigneeMenuSearch = ""
-                    if (id != selectedId) {
-                        val member = people.firstOrNull { it.tasksIdentityFilterId() == id }
-                        onIntent(SharedTasksRouteIntent.AssignTask(task, member))
-                    }
-                },
-                onClear = { assigneeMenuSearch = "" },
-                onDismiss = {
-                    assigneeMenuTask = null
-                    assigneeMenuSearch = ""
-                },
-                multiSelect = false,
-                showClear = false
-            )
-        }
+        // The assignee picker as a phone's bottom sheet ([assigneePicker]; in place on a wide window).
+        if (!assigneePickerInPlace) assigneeMenuTask?.let { assigneePicker(it) }
 
         if (createDialogOpen && createTasksChannelId != null && !state.standIn && canWriteTaskChannel(createTasksChannelId)) {
             TasksCreateDialog(
@@ -1371,8 +1405,9 @@ internal object SharedTasksToolbarTags {
  *   `[Creator] [Assignee] [Clear all] [Board | List] [⋯] [New Task]`.
  *
  * The applied filters come first and are filled; Clear all ends them while any is applied. Each
- * filter opens its searchable sheet ([onFilterClick] with its id: `channel`, `creator`,
- * `assignee`). As the toolbar narrows the view switch shows its icons, then the filters theirs
+ * filter opens its searchable picker ([onFilterClick] with its id: `channel`, `creator`,
+ * `assignee`), which [filterPicker] draws next to its chip (a popover under it on a wide
+ * window, a sheet on a phone). As the toolbar narrows the view switch shows its icons, then the filters theirs
  * (on the page they then move to a scrolling second line with their words back), New Task becomes
  * +, and the view switch folds into ⋯.
  */
@@ -1389,7 +1424,9 @@ private fun SharedTasksToolbar(
     onModeSelected: (TasksViewMode) -> Unit,
     onFilterClick: (String) -> Unit,
     onClearAll: () -> Unit,
-    onCreateClick: () -> Unit
+    onCreateClick: () -> Unit,
+    /** A filter's picker by its id, composed next to the filter's chip ([RaftFitToolbarChoice.popup]). */
+    filterPicker: @Composable (String) -> Unit = {}
 ) {
     val anyFilterActive = selectedChannels.isNotEmpty() || selectedCreatorIds.isNotEmpty() || selectedAssigneeIds.isNotEmpty()
     val channelLabel = stringResource(Res.string.tasks_chip_channel)
@@ -1405,10 +1442,11 @@ private fun SharedTasksToolbar(
             options = emptyList(),
             selectedKey = null,
             onSelect = {},
-            // Filled while applied, and while its sheet is open.
+            // Filled while applied, and while its picker is open.
             applied = selected.isNotEmpty() || openFilterId == id,
             testTag = tag,
             onOpen = { onFilterClick(id) },
+            popup = { filterPicker(id) },
         ) to selected.isNotEmpty()
     // Web: the applied filters first, so they are in view before any scrolling.
     val filters =
@@ -1504,6 +1542,8 @@ private fun SharedTasksBoardColumn(
     draftProjection: SharedThreadComposerDraftProjection,
     scrollToTopRequest: Int,
     onReachedEnd: (TaskStatus) -> Unit,
+    /** What a card composes beside its assignee chip ([SharedTaskCard]). */
+    assigneePicker: @Composable (TaskSummary) -> Unit = {},
 ) {
     val columnListState = rememberLazyListState()
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1573,6 +1613,7 @@ private fun SharedTasksBoardColumn(
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
                             onAssigneeBadgeClick = { anchor -> onAssigneeBadgeClick(task, anchor) },
+                            assigneePicker = { assigneePicker(task) },
                             onLongPress = { anchor -> onLongPressTask(task, anchor) }
                         )
                     }
@@ -1677,6 +1718,8 @@ private fun SharedTaskCard(
     onClick: () -> Unit,
     onStatusBadgeClick: (RaftPopoverAnchor) -> Unit,
     onAssigneeBadgeClick: (RaftPopoverAnchor) -> Unit = {},
+    /** Composed beside the assignee chip, in its box: the page's assignee picker hanging from it (a wide window's popover). */
+    assigneePicker: @Composable () -> Unit = {},
     onLongPress: (RaftPopoverAnchor) -> Unit
 ) {
     // Keep a live card coordinate so long-press conversion remains correct after scrolling.
@@ -1818,25 +1861,29 @@ private fun SharedTaskCard(
                 // shrink-wraps its label like Web's InlineBadgeEditor; long display names
                 // are capped and ellipsized.
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
-                RaftAnchoredMetaChip(
-                    label = assigneeDisplayName?.let { "@$it" }
-                        ?: stringResource(Res.string.tasks_assignee_unassigned),
-                    iconName = null,
-                    color = RaftColor.SurfaceWhite,
-                    onClick = onAssigneeBadgeClick,
-                    clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
-                    anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
-                    modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
-                    trailingIconName = RaftLucideIconName.Pencil,
-                    minHeight = 22.dp,
-                    horizontalPadding = 6.dp,
-                    verticalPadding = 0.dp,
-                    labelFontSize = 12.sp,
-                    labelLineHeight = 16.sp,
-                    labelFontWeight = FontWeight.SemiBold,
-                    borderWidth = RaftAppStroke.Thin,
-                    anchorPlacement = RaftAnchorPlacement.BottomEnd
-                )
+                // The chip's own box: a picker in place anchors to it.
+                Box {
+                    RaftAnchoredMetaChip(
+                        label = assigneeDisplayName?.let { "@$it" }
+                            ?: stringResource(Res.string.tasks_assignee_unassigned),
+                        iconName = null,
+                        color = RaftColor.SurfaceWhite,
+                        onClick = onAssigneeBadgeClick,
+                        clickIdentity = tasksAssigneeChipClickIdentity(task.id.value),
+                        anchorOwnerIdentity = tasksStatusMenuOwnerIdentity(task.id.value),
+                        modifier = Modifier.widthIn(max = SharedTaskCardAssigneeChipMaxWidth),
+                        trailingIconName = RaftLucideIconName.Pencil,
+                        minHeight = 22.dp,
+                        horizontalPadding = 6.dp,
+                        verticalPadding = 0.dp,
+                        labelFontSize = 12.sp,
+                        labelLineHeight = 16.sp,
+                        labelFontWeight = FontWeight.SemiBold,
+                        borderWidth = RaftAppStroke.Thin,
+                        anchorPlacement = RaftAnchorPlacement.BottomEnd
+                    )
+                    assigneePicker()
+                }
                 task.taskCardReplyCount()?.let { count ->
                     Spacer(Modifier.weight(1f))
                     SharedTaskReplyCount(count)
@@ -2282,6 +2329,8 @@ private fun SharedTasksQueryList(
     onStatusMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
     onAssigneeMenu: (TaskSummary, RaftPopoverAnchor) -> Unit,
     onRetry: () -> Unit,
+    /** What a card composes beside its assignee chip ([SharedTaskCard]). */
+    assigneePicker: @Composable (TaskSummary) -> Unit = {},
 ) {
     val anyRows = sections.any { it.rows.isNotEmpty() }
     val allLoaded = sections.all { it.loaded }
@@ -2347,6 +2396,7 @@ private fun SharedTasksQueryList(
                             onClick = { onOpenTask?.invoke(task) },
                             onStatusBadgeClick = { anchor -> onStatusMenu(task, anchor) },
                             onAssigneeBadgeClick = { anchor -> onAssigneeMenu(task, anchor) },
+                            assigneePicker = { assigneePicker(task) },
                             onLongPress = { anchor -> onStatusMenu(task, anchor) }
                         )
                     }

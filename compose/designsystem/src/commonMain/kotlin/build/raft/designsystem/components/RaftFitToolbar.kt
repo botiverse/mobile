@@ -124,9 +124,14 @@ class RaftFitToolbarSearch(
  * menu stays with it when the page reorders its choices (applied filters first).
  *
  * [onOpen], when given, is what the trigger does instead of opening a menu: a filter whose picker
- * the page draws itself (a searchable sheet of many people or channels). Such a choice belongs
+ * the page draws itself (a searchable pick of many people or channels). Such a choice belongs
  * with the filters, which never fold into More; a display control with one is a single row in
  * More that calls it.
+ *
+ * [popup] is that picker when it hangs from the trigger ([RaftComboboxPicker]: a popover under
+ * it on a wide window, a sheet on a phone): composed in the trigger's own `Box`, so a popover
+ * anchors to it, while the filter shows (never in the toolbar's measuring passes, so it opens
+ * once). Filters only: a display control's trigger may fold into More.
  */
 class RaftFitToolbarChoice(
     val text: String,
@@ -141,6 +146,7 @@ class RaftFitToolbarChoice(
     val menu: (@Composable ColumnScope.(close: () -> Unit) -> Unit)? = null,
     val key: String = testTag ?: heading ?: text,
     val onOpen: (() -> Unit)? = null,
+    val popup: (@Composable () -> Unit)? = null,
 )
 
 /** One view of a [RaftFitToolbarView]: [icon] (in a 16dp box, filling it) and [label], its name. */
@@ -662,9 +668,13 @@ private fun RaftFitToolbarSearchField(
     )
 }
 
-/** A filter or display control (web FitToolbarPicker on a Select): the trigger and its menu of options. */
+/**
+ * A filter or display control (web FitToolbarPicker on a Select): the trigger and its menu of
+ * options; with [withPopup] (a filter the toolbar shows, not one it measures) the page's own
+ * [RaftFitToolbarChoice.popup] next to the trigger.
+ */
 @Composable
-private fun RaftFitToolbarPicker(choice: RaftFitToolbarChoice, iconsOnly: Boolean, controlHeight: Dp) {
+private fun RaftFitToolbarPicker(choice: RaftFitToolbarChoice, iconsOnly: Boolean, controlHeight: Dp, withPopup: Boolean = false) {
     var open by remember { mutableStateOf(false) }
     Box {
         val trigger: @Composable () -> Unit = {
@@ -685,6 +695,8 @@ private fun RaftFitToolbarPicker(choice: RaftFitToolbarChoice, iconsOnly: Boolea
         RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }, minWidth = 190.dp, alignEnd = true) {
             RaftFitToolbarChoiceItems(choice) { open = false }
         }
+        // The page's picker, anchored to this trigger's box.
+        if (withPopup) choice.popup?.invoke()
     }
 }
 
@@ -736,7 +748,9 @@ private fun RaftFitToolbarFilterRow(
                 // An applied filter scrolls itself into view, clear of the edge fade (web `data-active`).
                 filters.forEach { choice ->
                     key(choice.key) {
-                        Box(Modifier.raftScrollIntoViewWhen(choice.applied)) { RaftFitToolbarPicker(choice, iconsOnly, controlHeight) }
+                        Box(Modifier.raftScrollIntoViewWhen(choice.applied)) {
+                            RaftFitToolbarPicker(choice, iconsOnly, controlHeight, withPopup = true)
+                        }
                     }
                 }
             }
