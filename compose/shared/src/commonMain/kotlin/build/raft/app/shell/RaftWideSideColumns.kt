@@ -17,9 +17,20 @@ import kotlinx.serialization.json.JsonObject
  * The shell's side columns on the wide layout (RaftWidePanes.kt; #189 steps 3 and 4), kept out of SettingsHomePage's
  * RaftAppShellReadyContent, whose method is at the JVM's 64 KB limit: the pages the conversation opened in the profile
  * column (a member's profile over the channel details) and the Artifact it opened in the Artifact column. Both belong
- * to that conversation: picking another one closes them. When the window leaves the wide layout they reopen as pages
- * on the platform stack, as they would have opened there.
+ * to that conversation (web: its page's address), not to what its detail shows: jumping to a message, and a reply
+ * thread replacing the conversation in the detail, folding into it or going back to it, keep them; picking another
+ * conversation closes them. When the window leaves the wide layout they reopen as pages on the platform stack, as they
+ * would have opened there.
  */
+
+/**
+ * The conversation a detail belongs to, by server and id: a channel's or a DM's own, a reply thread's parent (its
+ * thread is a pane of that conversation, as the side thread is). The side columns are this conversation's.
+ */
+internal data class RaftDetailConversation(val serverId: String, val conversationId: String)
+
+internal fun RaftAdaptiveDetailIdentity.detailConversation(): RaftDetailConversation =
+    RaftDetailConversation(serverId, parentChannelId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread } ?: threadId)
 
 /**
  * The side columns' pages, whether each column is on screen right now (Back goes by that, not the pages alone), and
@@ -33,11 +44,21 @@ internal class RaftWideSideColumns {
     var artifactShown by mutableStateOf(false)
     val expand = RaftPaneGridExpand()
 
+    /** The conversation the columns' pages belong to ([moveTo]); null before any. */
+    var conversation by mutableStateOf<RaftDetailConversation?>(null)
+        private set
+
     /** Another conversation was picked: its columns close and the row is restored. */
     fun cleared() {
         profile = profile.cleared()
         artifact = artifact.cleared()
         expand.restore()
+    }
+
+    /** [next] is the conversation now: the columns close for it ([cleared]) and are its from now on. */
+    fun moveTo(next: RaftDetailConversation?) {
+        cleared()
+        conversation = next
     }
 
     /**
@@ -80,15 +101,21 @@ internal class RaftWideSideColumns {
 }
 
 /**
- * The shell's [RaftWideSideColumns], cleared when [selectionKey] (the conversation picked) changes and reopened on the
- * platform stack when [navRailActive] goes off, in that order. Leaving [tab] restores an expanded row: Cmd+[ on
- * another tab must not restore a row nobody sees (PR #4678 review).
+ * The shell's [RaftWideSideColumns], cleared when the conversation of [selection] (the detail picked,
+ * [detailConversation]) changes, not when the detail alone does, and reopened on the platform stack when
+ * [navRailActive] goes off, in that order. Leaving [tab] restores an expanded row: Cmd+[ on another tab must not
+ * restore a row nobody sees (PR #4678 review).
  */
 @Composable
-internal fun rememberRaftWideSideColumns(selectionKey: Any?, navRailActive: Boolean, tab: Any? = null): RaftWideSideColumns {
+internal fun rememberRaftWideSideColumns(
+    selection: RaftAdaptiveDetailIdentity?,
+    navRailActive: Boolean,
+    tab: Any? = null,
+): RaftWideSideColumns {
     val columns = remember { RaftWideSideColumns() }
     val navigator = LocalRaftHost.current.navigator
-    LaunchedEffect(selectionKey) { columns.cleared() }
+    val conversation = selection?.detailConversation()
+    LaunchedEffect(conversation) { columns.moveTo(conversation) }
     LaunchedEffect(tab) { columns.expand.restore() }
     LaunchedEffect(navRailActive) { if (!navRailActive) columns.reopenOn(navigator) }
     return columns
