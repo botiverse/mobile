@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
