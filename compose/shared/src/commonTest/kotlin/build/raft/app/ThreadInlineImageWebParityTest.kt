@@ -73,7 +73,8 @@ class ThreadInlineImageWebParityTest {
         val cachedUrl = urlCache.get(RaftFilePreviewAttachmentUrlCacheKey(owner, "att-1", "inline"))
         assertEquals("https://r2.example/att-1.png?X-Amz-Signature=sig-att-1", cachedUrl)
 
-        // Opening full-screen preview starts on the inline image as placeholder instead of blank.
+        // Opening full-screen preview starts on the inline image as placeholder instead of blank,
+        // and gallery resolution accepts the same URL on cache hit instead of discarding it.
         val attachment =
             RaftThreadAttachmentItem(
                 id = "att-1",
@@ -93,11 +94,41 @@ class ThreadInlineImageWebParityTest {
         assertEquals(cachedUrl, previewPayload.currentImageThumbnailUrl())
         assertTrue(previewPayload.raftFilePreviewShowsImage())
 
+        val resolvedPayload = previewPayload.copy(kind = "image", imageUrl = cachedUrl, error = null)
+        val galleryState =
+            RaftFilePreviewImageGalleryResolutionState()
+                .completeResolution(requestPayload = previewPayload, resolvedPayload = resolvedPayload)
+        assertEquals(resolvedPayload, galleryState.resolvedPayloadByAttachmentId["att-1"])
+
         // An expired inline URL load failure invalidates the cache and triggers one fresh re-sign.
         batcher.invalidateAndRetry("att-1", cachedUrl!!)
         advanceUntilIdle()
         assertEquals(2, batches.size)
         assertEquals(listOf("att-1"), batches.last())
+
+        // Owner sign-out / account switch while a batch POST is in flight drops the stale result.
+        var activeOwner: AuthenticatedRouteOwner? = owner
+        val fencedCache = RaftFilePreviewAttachmentUrlCache()
+        var fencedState = ThreadInlineImageFallbackState()
+        val fencedBatcher =
+            ThreadInlineAttachmentUrlBatcher(
+                coroutineScope = this,
+                ownerProvider = { activeOwner },
+                urlCache = fencedCache,
+                fetchBatch = { ids ->
+                    activeOwner = null
+                    ThreadApiResult.Success(
+                        ids.associateWith { id -> ThreadAttachmentOpenTarget("https://r2.example/$id.png", null) }
+                    )
+                },
+                readState = { fencedState },
+                writeState = { fencedState = it },
+                debounceMillis = 10L,
+            )
+        fencedBatcher.request("att-signed-out")
+        advanceUntilIdle()
+        assertNull(fencedCache.get(RaftFilePreviewAttachmentUrlCacheKey(owner, "att-signed-out", "inline")))
+        assertNull(fencedState.resolvedUrls["att-signed-out"])
     }
 
     @Test
@@ -136,6 +167,21 @@ class ThreadInlineImageWebParityTest {
             )
         assertTrue(raftImageDiskEntryFresh(meta, expires = true, nowEpochMillis = 1_050_000L))
         assertFalse(raftImageDiskEntryFresh(meta, expires = true, nowEpochMillis = 1_100_001L))
+        assertFalse(raftImageDiskEntryFresh(meta, expires = true, nowEpochMillis = 999_999L), "backwards clock jump must revalidate")
+
+        // Very large max-age saturates without overflowing negative.
+        val hugeMeta =
+            assertNotNull(
+                raftImageDiskMetadataFromHttpHeaders(
+                    mimeType = "image/png",
+                    cacheControlHeader = "public, max-age=9223372036854775807",
+                    eTag = null,
+                    lastModified = null,
+                    ageSeconds = 0L,
+                    nowEpochMillis = 1_000_000L,
+                )
+            )
+        assertTrue(raftImageDiskEntryFresh(hugeMeta, expires = true, nowEpochMillis = 2_000_000L))
 
         val refreshed =
             meta.refreshedOnNotModified(

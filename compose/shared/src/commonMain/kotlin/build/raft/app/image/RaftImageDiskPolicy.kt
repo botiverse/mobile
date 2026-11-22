@@ -102,7 +102,7 @@ internal data class RaftImageDiskMetadata(
         val nextExpiresAt =
             if (nextMaxAge != null && nextMaxAge > 0L) {
                 val effectiveSeconds = (nextMaxAge - (ageSeconds ?: 0L).coerceAtLeast(0L)).coerceAtLeast(0L)
-                nowEpochMillis + effectiveSeconds * 1000L
+                addSecondsMillisSaturating(nowEpochMillis, effectiveSeconds)
             } else if (hasCacheControl) {
                 null
             } else {
@@ -113,7 +113,9 @@ internal data class RaftImageDiskMetadata(
                     } else {
                         null
                     }
-                previousDuration?.let { nowEpochMillis + it }
+                previousDuration?.let { duration ->
+                    if (duration > Long.MAX_VALUE - nowEpochMillis.coerceAtLeast(0L)) Long.MAX_VALUE else nowEpochMillis + duration
+                }
             }
         return copy(
             storedAtEpochMillis = nowEpochMillis,
@@ -144,6 +146,12 @@ internal data class RaftImageDiskMetadata(
 
 private fun String.sanitizeMetadataLine(): String = replace('\n', ' ').replace('\r', ' ').trim()
 
+private fun addSecondsMillisSaturating(nowEpochMillis: Long, seconds: Long): Long {
+    val cleanSeconds = seconds.coerceAtLeast(0L)
+    val maxAddSeconds = (Long.MAX_VALUE - nowEpochMillis.coerceAtLeast(0L)) / 1000L
+    return if (cleanSeconds >= maxAddSeconds) Long.MAX_VALUE else nowEpochMillis + cleanSeconds * 1000L
+}
+
 /**
  * Builds disk cache metadata from HTTP response headers, or returns `null` when `Cache-Control: no-store`
  * forbids persisting the response on disk (#proj-mobile:#293).
@@ -163,7 +171,7 @@ internal fun raftImageDiskMetadataFromHttpHeaders(
             ?.takeIf { it > 0L }
             ?.let { maxAge ->
                 val remainingSeconds = (maxAge - (ageSeconds ?: 0L).coerceAtLeast(0L)).coerceAtLeast(0L)
-                nowEpochMillis + remainingSeconds * 1000L
+                addSecondsMillisSaturating(nowEpochMillis, remainingSeconds)
             }
     return RaftImageDiskMetadata(
         mimeType = mimeType,
@@ -185,12 +193,14 @@ internal fun raftImageDiskEntryFresh(
 ): Boolean {
     if (metadata.noCache) return false
     if (!expires) return true
+    val storedAt = metadata.storedAtEpochMillis
+    if (storedAt != null && nowEpochMillis < storedAt) return false
     val explicitExpiry = metadata.expiresAtEpochMillis
     if (explicitExpiry != null) {
         return nowEpochMillis < explicitExpiry
     }
     if (metadata.immutable) return true
-    val storedAt = metadata.storedAtEpochMillis ?: return false
+    if (storedAt == null) return false
     val age = nowEpochMillis - storedAt
     return age in 0 until ttlMillis
 }

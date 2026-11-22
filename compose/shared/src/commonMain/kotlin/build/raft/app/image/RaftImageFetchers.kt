@@ -170,7 +170,9 @@ private class RaftNetworkImageFetcher(
                                             nowEpochMillis = raftImageNowEpochMillis(),
                                         )
                                     val noStore = parseRaftHttpCacheControl(conditional.cacheControl).noStore
-                                    if (!noStore && options.diskCachePolicy.writeEnabled) {
+                                    if (noStore) {
+                                        runCatching { diskCache.remove(diskKey) }
+                                    } else if (options.diskCachePolicy.writeEnabled) {
                                         val editor = runCatching { diskCache.openEditor(diskKey) }.getOrNull()
                                         if (editor != null) {
                                             runCatching {
@@ -242,6 +244,8 @@ private class RaftNetworkImageFetcher(
                         runCatching { editor.abort() }
                     }
                 }
+            } else {
+                runCatching { diskCache.remove(diskKey) }
             }
         }
         return SourceFetchResult(
@@ -290,7 +294,13 @@ internal class RaftImageByteFlightCache(
                         synchronized(lock) {
                             if (flights[key] !== started) return@synchronized
                             val bytes = if (failure == null) started.deferred.getCompleted() else null
-                            if (bytes == null || bytes.bytes.size > maxRetainedBytes) {
+                            val cacheControl = bytes?.cacheControl?.let(::parseRaftHttpCacheControl)
+                            if (
+                                bytes == null ||
+                                bytes.bytes.size > maxRetainedBytes ||
+                                cacheControl?.noStore == true ||
+                                cacheControl?.noCache == true
+                            ) {
                                 flights.remove(key)
                             } else {
                                 started.completedAtMillis = nowMillis()

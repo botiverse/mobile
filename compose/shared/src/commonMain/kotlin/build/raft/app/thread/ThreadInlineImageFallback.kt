@@ -4,6 +4,8 @@ import androidx.compose.runtime.compositionLocalOf
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
+import build.raft.app.data.normalizedOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -115,12 +117,16 @@ internal class ThreadInlineAttachmentUrlBatcher(
     }
 
     private fun enqueue(attachmentId: String) {
-        synchronized(lock) {
-            pendingIds += attachmentId
-            if (flight != null) return
-            val job = coroutineScope.launch(start = CoroutineStart.LAZY) { runBatchLoop() }
-            flight = job
-            job.start()
+        val jobToStart =
+            synchronized(lock) {
+                pendingIds += attachmentId
+                if (flight != null) return
+                coroutineScope.launch(start = CoroutineStart.LAZY) { runBatchLoop() }.also { flight = it }
+            }
+        if (!jobToStart.start()) {
+            synchronized(lock) {
+                if (flight === jobToStart) flight = null
+            }
         }
     }
 
@@ -160,6 +166,11 @@ internal class ThreadInlineAttachmentUrlBatcher(
                         } catch (_: Throwable) {
                             continue
                         }
+                    val currentOwner = ownerProvider()?.normalizedOrNull()
+                    if (owner != null && currentOwner != owner) {
+                        logger("thread_inline_image_fallback status=batch_dropped reason=owner_changed")
+                        continue
+                    }
                     when (response) {
                         is ThreadApiResult.Success -> {
                             val resolvedUrls = LinkedHashMap<String, String>()
@@ -168,9 +179,9 @@ internal class ThreadInlineAttachmentUrlBatcher(
                                 val cleanUrl = target.url.trim()
                                 if (cleanId.isNotEmpty() && cleanUrl.isNotEmpty()) {
                                     resolvedUrls[cleanId] = cleanUrl
-                                    if (owner != null) {
+                                    if (currentOwner != null) {
                                         urlCache.put(
-                                            key = RaftFilePreviewAttachmentUrlCacheKey(owner, cleanId, "inline"),
+                                            key = RaftFilePreviewAttachmentUrlCacheKey(currentOwner, cleanId, "inline"),
                                             url = cleanUrl,
                                             expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(target.expiresAt),
                                             fallbackTtlMillis = RaftFilePreviewAttachmentUrlCache.DefaultInlineFallbackUrlTtlMillis,

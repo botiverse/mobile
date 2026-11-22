@@ -8,6 +8,8 @@ import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
+import build.raft.app.data.normalizedOrNull
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -427,7 +429,6 @@ internal class ThreadRouteAttachmentActions(
                             key = RaftFilePreviewAttachmentUrlCacheKey(owner, attachmentId.trim(), "inline"),
                             url = response.data.url,
                             expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
-                            fallbackTtlMillis = RaftFilePreviewAttachmentUrlCache.DefaultInlineFallbackUrlTtlMillis,
                         )
                     }
                     inlineImageFallbackState =

@@ -268,7 +268,10 @@ internal fun ThreadImageAttachmentContent(
                 if (fallbackUrl == null) {
                     fallbackHost?.requestFallback?.invoke(attachment.id)
                 } else {
-                    fallbackHost?.onFallbackError?.invoke(attachment.id, fallbackUrl)
+                    val failedData = state.result.request.data?.toString()?.trim()
+                    if (failedData == fallbackUrl.trim() || sourcePlan.source == null) {
+                        fallbackHost?.onFallbackError?.invoke(attachment.id, fallbackUrl)
+                    }
                 }
             }
         }

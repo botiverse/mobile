@@ -129,7 +129,7 @@ object SharedBinaryDownloader {
         return SharedDownloadedBytes(
             bytes = combineDownloadedChunks(chunks, totalBytes),
             contentType = headers.firstHeaderValue("Content-Type")?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() },
-            cacheControl = headers.firstHeaderValue("Cache-Control"),
+            cacheControl = headers.joinedHeaderValues("Cache-Control"),
             eTag = headers.firstHeaderValue("ETag"),
             lastModified = headers.firstHeaderValue("Last-Modified"),
             ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L },
@@ -183,7 +183,7 @@ object SharedBinaryDownloader {
                 )
             }
         val headers = response.headers
-        val cacheControl = headers.firstHeaderValue("Cache-Control")
+        val cacheControl = headers.joinedHeaderValues("Cache-Control")
         val eTag = headers.firstHeaderValue("ETag")
         val lastModified = headers.firstHeaderValue("Last-Modified")
         val ageSeconds = headers.firstHeaderValue("Age")?.toLongOrNull()?.takeIf { it >= 0L }
@@ -482,6 +482,15 @@ private fun Map<String, List<String>>.firstHeaderValue(name: String): String? =
         ?.firstOrNull()
         ?.trim()
         ?.takeIf(String::isNotBlank)
+
+private fun Map<String, List<String>>.joinedHeaderValues(name: String): String? =
+    entries
+        .filter { (headerName, _) -> headerName.equals(name, ignoreCase = true) }
+        .flatMap { (_, values) -> values }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(", ")
 
 internal fun combineDownloadedChunks(chunks: List<ByteArray>, totalBytes: Int): ByteArray {
     val output = ByteArray(totalBytes)

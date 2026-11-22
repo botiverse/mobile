@@ -43,6 +43,7 @@ import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.NetworkRaftConversationArtifactsApi
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.NetworkRaftTasksApi
+import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.data.RaftQuotedPermalinkContextRead
 import build.raft.app.data.RaftQuotedPermalinkHistoryLimitedMemo
@@ -4335,7 +4336,6 @@ private fun SharedThreadRouteContentContent(
                                     key = cacheKey,
                                     url = response.data.url,
                                     expiresAtEpochMillis = parseRaftTimestampEpochMillisOrNull(response.data.expiresAt),
-                                    fallbackTtlMillis = RaftFilePreviewAttachmentUrlCache.DefaultInlineFallbackUrlTtlMillis,
                                 )
                             }
                             response.data.url
@@ -4344,6 +4344,15 @@ private fun SharedThreadRouteContentContent(
                             bridge.log("thread_image_lightbox status=url_failed attachmentId=${attachmentId.take(8)} code=${response.code}")
                             null
                         }
+                    }
+                },
+                onFullUrlError = { attachmentId, failedUrl ->
+                    val owner = sharedStores.currentAuthenticatedRouteOwner(storeScope)?.normalizedOrNull()
+                    if (owner != null) {
+                        raftFilePreviewAttachmentUrlCache().invalidate(
+                            key = RaftFilePreviewAttachmentUrlCacheKey(owner, attachmentId.trim(), "inline"),
+                            expectedUrl = failedUrl,
+                        )
                     }
                 },
                 onDismiss = { imageLightboxRequest = null },

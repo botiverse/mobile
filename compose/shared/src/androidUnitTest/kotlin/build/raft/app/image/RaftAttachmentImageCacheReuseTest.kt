@@ -1,6 +1,7 @@
 package build.raft.app.image
 
 import android.graphics.Bitmap
+import coil3.SingletonImageLoader
 import coil3.decode.DataSource
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -63,7 +64,10 @@ class RaftAttachmentImageCacheReuseTest {
         } finally {
             runCatching { loader.memoryCache?.clear() }
             runCatching { loader.diskCache?.remove(cacheKey) }
+            runCatching { loader.shutdown() }
             resetRaftImageLoaderForTest()
+            SingletonImageLoader.reset()
+            raftInstallImageLoader()
         }
     }
 }

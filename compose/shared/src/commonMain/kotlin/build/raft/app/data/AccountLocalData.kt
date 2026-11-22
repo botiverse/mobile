@@ -70,6 +70,7 @@ internal class AccountLocalData(
      * server's `sync-core.messages.v2` partition under the lost grant.
      */
     suspend fun onServerAccessLost(serverId: String, accountId: String?, messagePartition: DurablePartitionKey) {
+        build.raft.app.raftFilePreviewAttachmentUrlCache().clearServer(serverId, accountId)
         offlineResourceCache.wipeServer(serverId, accountId)
         RaftAgentLounges.forgetServer(serverId)
         homeRowHints.dropServer(serverId, accountId)
