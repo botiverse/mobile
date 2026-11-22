@@ -220,18 +220,21 @@ object RaftAndroidLocalDiagnostics {
         volumePolicy.drain(now).forEach { summary ->
             recordLog("info", RaftDiagnosticsVolumePolicy.SummaryTag, summary)
         }
-        // Requests that hang stay open across exports (fb-93123592: 20 such lines per report, some
-        // 4.7 h old, repeated in every report): the newest few, and one line for the rest.
+        // Requests still open (fb-93123592: 20 such lines per report, some 4.7 h old, repeated in
+        // every report): the newest few, and one line for the rest. Those past their timeout and the
+        // grace lost their end line: one info line, once, instead of `overdue=true` in every report.
         val unfinished = inFlightRequests.unfinished(now)
-        if (unfinished.size > MaxUnfinishedRequestLines) {
+        unfinished.finishUnobserved?.let { line -> recordLog("info", InFlightTag, line) }
+        val open = unfinished.open
+        if (open.size > MaxUnfinishedRequestLines) {
             recordLog(
                 "warn",
                 InFlightTag,
-                "network_request_unfinished_more count=${unfinished.size - MaxUnfinishedRequestLines} " +
-                    "listed=$MaxUnfinishedRequestLines total=${unfinished.size}"
+                "network_request_unfinished_more count=${open.size - MaxUnfinishedRequestLines} " +
+                    "listed=$MaxUnfinishedRequestLines total=${open.size}"
             )
         }
-        unfinished.takeLast(MaxUnfinishedRequestLines).forEach { line -> recordLog("warn", InFlightTag, line) }
+        open.takeLast(MaxUnfinishedRequestLines).forEach { line -> recordLog("warn", InFlightTag, line) }
     }
 
     /** Writes the summaries of closed windows (memory-telemetry thread, every 30s in foreground). */

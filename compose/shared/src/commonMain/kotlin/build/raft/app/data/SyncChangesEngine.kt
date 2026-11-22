@@ -245,6 +245,8 @@ internal sealed interface RaftSyncPullResult {
         val inboxReloadAfterMillis: Long? = null,
         /** The last `inboxReset` reason of the pull, for the log. */
         val inboxResetReason: String? = null,
+        /** Changes of the entities this client does not read ([RaftSyncChangesPage.ignoredEntities]) over the pull's pages. */
+        val ignoredEntities: Map<String, Int> = emptyMap(),
     ) : RaftSyncPullResult {
         /**
          * Go on in a follow-up pull: stopped at the page cap with more waiting, and the cursor moved.
@@ -378,7 +380,10 @@ internal class RaftSyncChangesEngine(
                             "cursorAdvanced=${result.cursorAdvanced}" +
                             (result.inboxResetReason?.let { " inboxReset=$it" } ?: "") +
                             (result.retryAfterMillis?.let { " retryAfterMs=$it" } ?: "") +
-                            (result.inboxReloadAfterMillis?.let { " inboxReloadAfterMs=$it" } ?: "")
+                            (result.inboxReloadAfterMillis?.let { " inboxReloadAfterMs=$it" } ?: "") +
+                            // `ignored=task:3`: one count per pull instead of a line per row.
+                            (result.ignoredEntities.entries.joinToString(",") { (entity, count) -> "$entity:$count" }
+                                .takeIf { it.isNotEmpty() }?.let { " ignored=$it" } ?: "")
                     is RaftSyncPullResult.Failed -> "result=failed code=${result.code} cursorKept=${result.cursorKept}"
                 } + " durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
             )
@@ -415,6 +420,8 @@ internal class RaftSyncChangesEngine(
         var retryAfter: Long? = null
         var inboxReloadAfter: Long? = null
         var inboxResetReason: String? = null
+        // Changes of the entities this client does not read (`task`), per entity, over the pages.
+        val ignored = LinkedHashMap<String, Int>()
         // The cursor on disk. Pages advance only [cursor] (in memory) and it is stored once the whole
         // pull is done: a pull failing at page 3 of 5 keeps the cursor from before page 1, so the
         // kept cursor (#proj-mobile:#112) asks for pages 1-2 again rather than skipping them. They
@@ -434,6 +441,7 @@ internal class RaftSyncChangesEngine(
                 retryAfterMillis = retryAfter,
                 inboxReloadAfterMillis = inboxReloadAfter,
                 inboxResetReason = inboxResetReason,
+                ignoredEntities = ignored.toMap(),
             )
         }
 
@@ -504,6 +512,7 @@ internal class RaftSyncChangesEngine(
                 }
             } else {
                 changes += page.changes.size
+                page.ignoredEntities.forEach { (entity, count) -> ignored[entity] = (ignored[entity] ?: 0) + count }
                 val plan = page.changes.toSyncApplyPlan()
                 if (!plan.isEmpty) sink.apply(scope, plan)
                 // inboxReset: the changes above still apply (unlike `reset`); then the inbox snapshot, at
