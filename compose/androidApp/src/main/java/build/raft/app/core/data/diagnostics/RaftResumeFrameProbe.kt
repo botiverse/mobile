@@ -1,9 +1,11 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.Activity
+import android.os.Build
 import android.os.SystemClock
 import android.view.Choreographer
 import android.view.ViewTreeObserver
+import build.raft.app.data.RaftFrameMetricsTraceReporter
 
 /**
  * One warn line per background -> foreground return summarising how the main thread behaved in
@@ -119,6 +121,21 @@ object RaftResumeFrameProbe {
                     "startToResumeMs=$startToResumeMillis " +
                     summary.wireFields()
             )
+            RaftFrameMetricsTraceReporter.reportResume(
+                page = pageName,
+                reason = reason,
+                backgroundMs = backgroundMillis,
+                startToResumeMs = startToResumeMillis,
+                firstFrameMs = summary.firstDrawMs,
+                windowMs = summary.windowMs,
+                frames = summary.frames,
+                jankFrames = summary.jankFrames,
+                blockedMs = summary.blockedMs,
+                longestFrameMs = summary.longestGapMs,
+                frameIntervalNanos = stats.frameIntervalNanos,
+                deviceModel = Build.MODEL,
+                osVersion = Build.VERSION.RELEASE,
+            )
         }
 
         private fun detachDrawListener() {
@@ -133,7 +150,7 @@ object RaftResumeFrameProbe {
 /** Pure accumulator for [RaftResumeFrameProbe]; all times are monotonic nanos. */
 internal class RaftResumeFrameStats(
     val startNanos: Long,
-    private val frameIntervalNanos: Long,
+    val frameIntervalNanos: Long,
 ) {
     var firstDrawNanos: Long = -1L
         private set

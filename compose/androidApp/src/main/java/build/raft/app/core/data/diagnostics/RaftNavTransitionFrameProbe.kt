@@ -1,7 +1,9 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.Activity
+import android.os.Build
 import android.view.Choreographer
+import build.raft.app.data.RaftFrameMetricsTraceReporter
 import build.raft.app.nav.RaftStackTransitionKind
 import build.raft.app.nav.RaftStackTransitionListener
 import build.raft.app.nav.RaftStackTransitionOutcome
@@ -81,6 +83,9 @@ class RaftNavTransitionFrameProbe(activity: Activity) : RaftStackTransitionListe
             finished = true
             Choreographer.getInstance().removeFrameCallback(this)
             if (active === this) active = null
+            val firstFrameMs = raftNavTransitionFirstFrameMs(stats.startNanos, firstFrameNanos)
+            val summary = stats.summary(System.nanoTime())
+            val endFrameIntervalNanos = frameIntervalNanos()
             RaftAppLog.w(
                 Tag,
                 raftNavTransitionFramesLine(
@@ -88,10 +93,26 @@ class RaftNavTransitionFrameProbe(activity: Activity) : RaftStackTransitionListe
                     outcome = outcome,
                     fromPage = fromPage,
                     toPage = toPage,
-                    firstFrameMs = raftNavTransitionFirstFrameMs(stats.startNanos, firstFrameNanos),
-                    summary = stats.summary(System.nanoTime()),
-                    endFrameIntervalNanos = frameIntervalNanos(),
+                    firstFrameMs = firstFrameMs,
+                    summary = summary,
+                    endFrameIntervalNanos = endFrameIntervalNanos,
                 ),
+            )
+            RaftFrameMetricsTraceReporter.reportNavTransition(
+                navKind = kind.wire,
+                outcome = outcome.wire,
+                fromPage = fromPage,
+                toPage = toPage,
+                firstFrameMs = firstFrameMs,
+                durationMs = summary.durationMs,
+                frames = summary.frames,
+                jankFrames = summary.jankFrames,
+                longestFrameMs = summary.longestFrameMs,
+                p95FrameMs = summary.p95FrameMs,
+                frameIntervalNanos = summary.frameIntervalNanos,
+                endFrameIntervalNanos = endFrameIntervalNanos,
+                deviceModel = Build.MODEL,
+                osVersion = Build.VERSION.RELEASE,
             )
         }
     }

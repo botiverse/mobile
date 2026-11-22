@@ -1,9 +1,11 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.Activity
+import android.os.Build
 import android.os.SystemClock
 import android.view.Choreographer
 import build.raft.app.RaftScrollFrameSignal
+import build.raft.app.data.RaftFrameMetricsTraceReporter
 import java.lang.ref.WeakReference
 
 /**
@@ -47,6 +49,15 @@ object RaftScrollFrameProbe {
                     pageName = pageName,
                     skipped = pending,
                 )
+            )
+            RaftFrameMetricsTraceReporter.reportScrollSkippedFlush(
+                page = pageName,
+                list = pending.lastList,
+                skippedSessions = pending.sessions,
+                skippedJankFrames = pending.jankFrames,
+                skippedLongestFrameMs = pending.longestFrameMs,
+                deviceModel = Build.MODEL,
+                osVersion = Build.VERSION.RELEASE,
             )
         }
         activityRef = null
@@ -104,6 +115,7 @@ object RaftScrollFrameProbe {
             // Drop tiny smooth micro-touches (< MinFrames), never a short scroll that hit jank.
             if (summary.frames < MinFrames && summary.jankFrames == 0) return
             val carried = throttle.record(nowMillis = SystemClock.elapsedRealtime(), list = list, summary = summary) ?: return
+            val endFrameIntervalNanos = frameIntervalNanos(activity.get())
             RaftAppLog.w(
                 Tag,
                 raftScrollFramesLine(
@@ -111,9 +123,27 @@ object RaftScrollFrameProbe {
                     list = list,
                     reason = reason,
                     summary = summary,
-                    endFrameIntervalNanos = frameIntervalNanos(activity.get()),
+                    endFrameIntervalNanos = endFrameIntervalNanos,
                     skipped = carried,
                 )
+            )
+            RaftFrameMetricsTraceReporter.reportScroll(
+                page = pageName,
+                list = list,
+                reason = reason,
+                firstFrameMs = summary.firstFrameMs,
+                durationMs = summary.durationMs,
+                frames = summary.frames,
+                jankFrames = summary.jankFrames,
+                longestFrameMs = summary.longestFrameMs,
+                p95FrameMs = summary.p95FrameMs,
+                frameIntervalNanos = summary.frameIntervalNanos,
+                endFrameIntervalNanos = endFrameIntervalNanos,
+                skippedSessions = carried.sessions,
+                skippedJankFrames = carried.jankFrames,
+                skippedLongestFrameMs = carried.longestFrameMs,
+                deviceModel = Build.MODEL,
+                osVersion = Build.VERSION.RELEASE,
             )
         }
     }

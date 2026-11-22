@@ -259,7 +259,12 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
     // Trace sampling (slock docs/observability/trace-sampling.md): the rate is the variant, the most
     // specific key with a flag decides (RaftTraceSampling.kt).
-) + traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME)
+) + (
+    traceSampleKeys(MOBILE_THREAD_OPEN_TRACE_NAME) +
+        traceSampleKeys(MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME) +
+        traceSampleKeys(MOBILE_FRAMES_RESUME_TRACE_NAME) +
+        traceSampleKeys(MOBILE_FRAMES_SCROLL_TRACE_NAME)
+).distinct()
 
 /**
  * The `platform` value this client reports to feature-flag evaluation. The server's `FeatureFlagPlatform`
