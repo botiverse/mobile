@@ -824,7 +824,7 @@ internal fun AppShellTaskDraftsAndBannerEffects(
             val liveDirectory =
                 listOf(liveHomeDirectoryRef.value, activityDirectory)
                     .mergedSharedConversationDirectoryState()
-                    .takeIf { it.byId.isNotEmpty() }
+                    .takeIf { it.projectionsByCanonicalId.isNotEmpty() }
                     ?: latestAppShellConversationDirectory
             RaftVisibleConversationSnapshot(
                 currentServerId = selectedServerStore.selectedServerId.value,
