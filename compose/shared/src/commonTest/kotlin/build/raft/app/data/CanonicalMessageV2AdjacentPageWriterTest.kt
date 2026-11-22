@@ -951,11 +951,11 @@ internal class InMemoryCanonicalMessageV2Store : CanonicalMessageV2Store {
     override suspend fun locateFact(
         partition: DurablePartitionKey,
         factId: String,
-    ): List<CanonicalMessageV2FactLocation> =
+    ): List<build.raft.app.network.sync.CanonicalMessageV2FactLocation> =
         facts.entries
             .filter { it.key.partition == partition }
             .mapNotNull { (scope, map) ->
-                map[factId]?.let { CanonicalMessageV2FactLocation(scope.scopeKind, scope.scopeId, it.fact.seq) }
+                map[factId]?.let { build.raft.app.network.sync.CanonicalMessageV2FactLocation(scope.scopeKind, scope.scopeId, it.fact.seq) }
             }
 }
 
