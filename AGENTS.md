@@ -343,7 +343,8 @@ When a behaviour depends on composition (what enters/leaves it, effects,
 `onDispose`), test it on a real composition, not only through the pure helper.
 
 - Put the test in `compose/shared/src/androidUnitTest` (Robolectric; runs in
-  `:shared:testDebugUnitTest`, which CI runs). Annotate the class
+  `:shared:testDebugUnitTest` on CI's full tier, not on ordinary PRs: see
+  "Android unit tiers in CI" below). Annotate the class
   `@RunWith(RobolectricTestRunner::class)`, `@Config(sdk = [34])`,
   `@OptIn(ExperimentalTestApi::class)`, and add
   `@get:Rule val activities = RobolectricComposeActivityRule()`.
@@ -391,6 +392,45 @@ Robolectric native-graphics captures of shared UI, compared with the goldens in
   the `shared-screenshots-recorded` artifact (only new or changed goldens), copy
   them into `compose/shared/src/androidUnitTest/screenshots/` and commit. The same
   run records the design system's goldens (`designsystem-screenshots-recorded`).
+- Ordinary PRs do not verify these goldens; the merge queue, `main`, the
+  nightly, `release-*` and `full-ci` PRs do (next section).
+
+### Android unit tiers in CI (artin 2026-11-22)
+
+"PRs run only a little, like slock": the web repo's ordinary PRs run types and
+lightweight checks, and its heavy suites run on staging pushes, the nightly
+and release candidates. The `Test` plan (`scripts/ci/plan_test_tier.sh`,
+output `android_unit_scope`) picks what `Android compile & tests` runs:
+
+- `jvm`, the ordinary PR tier: a pull request without `full-ci`, `scope=pr`,
+  and Stamp's premerge into `main` when it reruns Android. The job compiles
+  every main and test source set it compiles on the full tier (the type
+  check), then runs only the plain JVM unit tests:
+  `-Praft.unitTest.skipRobolectric=true` makes `:shared` and `:androidApp`
+  skip every class JUnit runs on Robolectric (found in the sources: its
+  `@RunWith` names `RobolectricTestRunner`, `ParameterizedRobolectricTestRunner`
+  or `AndroidJUnit4`, or it extends such a class; `compose/build.gradle.kts`),
+  so no `:shared` golden runs either. `:designsystem:verifyRoborazziDesktop`
+  (its tests and goldens, the design system's contract) runs only when the
+  change touches `compose/designsystem/` or has no readable diff (as on
+  `scope=pr`). A pull request that touches a build or dependency file
+  (`compose/gradle/` including the version catalog, `compose/gradle.properties`,
+  a `build.gradle.kts` or `settings.gradle.kts`, `compose/buildSrc/`,
+  `third_party/`) stays on `all`: such a change moves every golden and test.
+  commonTest, the `:core`,
+  `:realtime-socket` (socket.io interop server included) and `:ui-cmp` host
+  tests and `:shared:verifySqlDelightMigration` run as before.
+- `all`: `main` and `release-*` pushes, the nightly, `full-ci` PRs,
+  `scope=full`, premerge into a release base, the merge-queue candidate and
+  the `record_screenshots` dispatch run the whole suite and both golden sets.
+
+A green ordinary PR has therefore not run the Robolectric tests or the
+`:shared` goldens. With the merge queue off they first run on the push to
+`main` after the merge; Stamp reports a new failure there to whoever merged,
+who fixes it the same day.
+To run them on the PR, add the `full-ci` label; to see golden changes,
+dispatch `record_screenshots=true`. Say so when reporting ("Android compile +
+JVM unit: pass; Robolectric and goldens: run in the merge queue").
 
 ## Task / Commit / Thread Discipline
 
@@ -618,7 +658,9 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    check as satisfied unless a job in the same workflow run failed or was
    cancelled. In the PR and the task thread, name the checks that ran and the
    ones that were skipped or not run (for example, iOS compile never runs on
-   the PR itself; it runs on the merge queue batch, see below).
+   the PR itself; it runs on the merge queue batch, see below; and an
+   ordinary PR runs no Robolectric test or golden, see "Android unit tiers in
+   CI").
 
    iOS compile before merge (Stamp merge queue, 2026-11-19): do not dispatch
    it by hand for ordinary PRs. Neither pull_request runs nor Stamp's

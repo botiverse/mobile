@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile, no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
+        description: "Task #37: pr (default) = PR-equivalent tier (Linux gates + Android compile and plain JVM unit tests: no Robolectric class, no :shared goldens, design system tests and goldens included; no iOS, no device suite); ios = deliberate one-off iOS check (plan + 'iOS compile' only; no Android, no Xcode 27.1 lane, no device suite); premerge = Stamp's ready-to-merge check (no iOS and no Android rerun into main: the merge queue batch on stamp-mq/* compiles iOS; a diff Stamp cannot read reruns Android; a release/* or release-* base_ref runs the full tier); full = release-candidate / deliberate full readback (all platforms + device suite; the Xcode 27.1 lane stays nightly/release-*/merge-queue only)."
         type: choice
         options:
           - pr
@@ -43,7 +43,7 @@ on:
         type: string
         default: ci
       record_screenshots:
-        description: "Record the screenshot goldens (:designsystem:recordRoborazziDesktop, :shared:recordRoborazziDebug) instead of verifying them; new or changed goldens are uploaded as the designsystem-screenshots-recorded and shared-screenshots-recorded artifacts (compose/designsystem/README.md, AGENTS.md \"Screenshot tests (:shared)\")."
+        description: "Record the screenshot goldens (:designsystem:recordRoborazziDesktop, :shared:recordRoborazziDebug) instead of verifying them, with the whole Android unit suite whatever the scope (Android runs on scope=pr, full or a release premerge); new or changed goldens are uploaded as the designsystem-screenshots-recorded and shared-screenshots-recorded artifacts (compose/designsystem/README.md, AGENTS.md \"Screenshot tests (:shared)\")."
         type: boolean
         default: false
       xcode_app_path:
@@ -94,6 +94,8 @@ jobs:
       queue_tested_run: ${{ steps.queue_tested.outputs.queue_tested_run }}
       run_device_suite: ${{ steps.plan.outputs.run_device_suite }}
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
+      android_unit_scope: ${{ steps.plan.outputs.android_unit_scope }}
+      run_designsystem_tests: ${{ steps.plan.outputs.run_designsystem_tests }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       # Full history for the PR merge-base / push before..after diffs below, but
@@ -189,6 +191,8 @@ jobs:
           # The planner refuses a non-empty xcode_app_path when its plan skips the iOS compile.
           XCODE_APP_PATH: ${{ github.event_name == 'workflow_dispatch' && inputs.xcode_app_path || '' }}
           PREMERGE_BASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.scope == 'premerge' && inputs.base_ref || '' }}
+          # Recording goldens runs the whole Android unit suite (android_unit_scope=all) whatever the scope.
+          RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/test-changed-paths.txt"
@@ -247,14 +251,17 @@ jobs:
               ;;
           esac
           scripts/ci/plan_test_tier.sh "$EVENT_NAME" "$changed" "$FULL_CI" "$REF_NAME" "$DISPATCH_SCOPE" \
-            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" | tee -a "$GITHUB_OUTPUT"
+            "$XCODE_APP_PATH" "$PREMERGE_BASE_REF" "$QUEUE_TESTED" "$RECORD_SCREENSHOTS" | tee -a "$GITHUB_OUTPUT"
 
   android:
     name: Android compile & tests
     runs-on: ubuntu-latest
     needs: [plan]
     if: ${{ needs.plan.outputs.run_android == 'true' }}
-    timeout-minutes: 40
+    # 40 min for the ordinary PR tier (android_unit_scope=jvm), 60 for the full suite: on
+    # scope=full run 45013092044 "Compile, test and package Android" took 34 min and the 40-min
+    # limit cancelled the fixtures-off release compile and the uploads after it.
+    timeout-minutes: ${{ needs.plan.outputs.android_unit_scope == 'jvm' && 40 || 60 }}
     env:
       # A stable (not per-run) GRADLE_USER_HOME so the setup-gradle cache actually
       # restores across runs: its GitHub cache version hashes the resolved cache
@@ -442,6 +449,15 @@ jobs:
       #   shared suite, still a hard gate) in verify mode (AGENTS.md "Screenshot tests (:shared)").
       #   A dispatch with record_screenshots=true records both instead (recordRoborazziDesktop,
       #   recordRoborazziDebug); the rest of the suite still runs and must pass.
+      # - Unit tier (plan android_unit_scope; artin 2026-11-22: "PRs run only a little, like
+      #   slock"). jvm, the ordinary PR tier (pull_request without full-ci, scope=pr, a premerge
+      #   into main that reruns Android): the same compile, then the plain JVM unit tests only:
+      #   -Praft.unitTest.skipRobolectric=true makes :shared and :androidApp skip every Robolectric
+      #   class (compose/build.gradle.kts), so no :shared golden runs either, and
+      #   :designsystem:verifyRoborazziDesktop runs only when the change touches
+      #   compose/designsystem/ (run_designsystem_tests). all, every other tier (main and release-*
+      #   pushes, nightly, full-ci, scope=full, premerge into a release base, the merge queue,
+      #   record_screenshots): the whole suite and both golden sets, as above.
       # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
       #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
       #   regression a deterministic empty Thread composer.
@@ -469,6 +485,8 @@ jobs:
         working-directory: compose
         env:
           RECORD_SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.record_screenshots }}
+          ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+          RUN_DESIGNSYSTEM_TESTS: ${{ needs.plan.outputs.run_designsystem_tests }}
         run: |
           set -euo pipefail
           tasks=(
@@ -528,12 +546,20 @@ jobs:
             :androidApp:testDebugUnitTest
             :ui-cmp:testAndroidHostTest
           )
+          # Unit tier (comment above): anything but jvm runs the whole suite.
+          unit_tier=()
           if [ "$RECORD_SCREENSHOTS" = true ]; then
             tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
+          elif [ "$ANDROID_UNIT_SCOPE" = jvm ]; then
+            unit_tier+=(-Praft.unitTest.skipRobolectric=true)
+            if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
+              tasks+=(:designsystem:verifyRoborazziDesktop)
+            fi
           else
             tasks+=(:designsystem:verifyRoborazziDesktop :shared:verifyRoborazziDebug)
           fi
-          ./gradlew "${tasks[@]}" \
+          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (design system tests: ${RUN_DESIGNSYSTEM_TESTS}) ${unit_tier[*]}"
+          ./gradlew "${tasks[@]}" "${unit_tier[@]}" \
             --continue \
             --no-daemon \
             --console=plain \
@@ -547,6 +573,32 @@ jobs:
       - name: Check :shared JVM method sizes
         if: ${{ !cancelled() }}
         run: python3 scripts/ci/check_jvm_method_size.py compose/shared/build/tmp/kotlin-classes/debug
+
+      # What the unit tier ran: test classes and cases per test task, from the JUnit XML reports
+      # (log and job summary). On the jvm tier :shared and :androidApp list no Robolectric class.
+      - name: Summarize Android unit test results
+        if: ${{ !cancelled() }}
+        env:
+          ANDROID_UNIT_SCOPE: ${{ needs.plan.outputs.android_unit_scope }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          rows = []
+          for results in sorted(pathlib.Path("compose").glob("*/build/test-results/*")):
+              suites = []
+              for report in sorted(results.glob("*.xml")):
+                  try:
+                      suites.append(ET.parse(report).getroot())
+                  except ET.ParseError as error:
+                      print(f"::warning::{report}: {error}")
+              if suites:
+                  count = lambda key: sum(int(suite.get(key, "0")) for suite in suites)
+                  rows.append(f"| :{results.parts[1]}:{results.name} | {len(suites)} | {count('tests')} | {count('skipped')} | {count('failures') + count('errors')} |")
+          lines = [f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier)", "", "| Task | Classes | Tests | Skipped | Failed |", "| --- | ---: | ---: | ---: | ---: |", *rows]
+          print("\n".join(lines))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("\n".join(lines) + "\n")
+          PY
 
       # The gate above compiles with the visual fixtures on (SLOCK_VISUAL_FIXTURES, job env), so it
       # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,

@@ -417,3 +417,138 @@ listOf(":shared", ":androidApp").forEach { path ->
             .configureEach { maxParallelForks = raftUnitTestForks }
     }
 }
+
+// Ordinary PR tier (artin 2026-11-22: "PRs run only a little, like slock"). On ordinary pull requests
+// test.yml passes -Praft.unitTest.skipRobolectric=true (planner android_unit_scope=jvm): the unit-test
+// tasks of :shared and :androidApp then skip every test class JUnit runs on Robolectric, every :shared
+// screenshot test among them, and run the plain JVM classes. The classes come from the test sources,
+// so a new Robolectric test needs nothing extra: a top-level class whose @RunWith names
+// RobolectricTestRunner, ParameterizedRobolectricTestRunner or AndroidJUnit4 (Robolectric off a
+// device), or that extends a class or runner of these sources that does (@RunWith is inherited).
+// Comments and string literals do not count. The full tier (main and release-* pushes, nightly,
+// full-ci, scope=full, the merge queue, record_screenshots) and local runs never set the property;
+// without it nothing below runs. The other modules' host tests have no Robolectric on the classpath.
+val raftSkipRobolectric =
+    providers.gradleProperty("raft.unitTest.skipRobolectric")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+
+// [source] without comments (Kotlin block comments nest) and with string, char and backtick literals
+// emptied; line breaks outside literals stay, so line-anchored patterns still see every line start.
+fun raftCodeOnly(source: String): String {
+    val out = StringBuilder(source.length)
+    var i = 0
+    while (i < source.length) {
+        val c = source[i]
+        if (source.startsWith("//", i)) {
+            while (i < source.length && source[i] != '\n') i++
+        } else if (source.startsWith("/*", i)) {
+            var depth = 0
+            while (i < source.length) {
+                if (source.startsWith("/*", i)) {
+                    depth++
+                    i += 2
+                } else if (source.startsWith("*/", i)) {
+                    depth--
+                    i += 2
+                    if (depth == 0) break
+                } else {
+                    if (source[i] == '\n') out.append('\n')
+                    i++
+                }
+            }
+        } else if (source.startsWith("\"\"\"", i)) {
+            val end = source.indexOf("\"\"\"", i + 3)
+            i = if (end < 0) source.length else end + 3
+            out.append("\"\"")
+        } else if (c == '"' || c == '\'' || c == '`') {
+            var j = i + 1
+            while (j < source.length && source[j] != c && source[j] != '\n') j += if (source[j] == '\\') 2 else 1
+            i = if (j < source.length && source[j] == c) j + 1 else j
+            out.append(c).append(c)
+        } else {
+            out.append(c)
+            i++
+        }
+    }
+    return out.toString()
+}
+
+// Fully qualified names of the classes under [roots] that JUnit runs on Robolectric (see above).
+fun raftRobolectricTestClasses(roots: List<File>): Set<String> {
+    class Declared(val fqcn: String, val name: String, val runWith: String?, val supertypes: Set<String>)
+    // Annotations at the start of a line, and a declaration's modifiers.
+    val annotations = """(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"""
+    val modifiers =
+        """(?:(?:public|internal|private|protected|open|abstract|final|sealed|data|enum|annotation|value|inner|expect|actual)[ \t]+)*"""
+    val runWithPattern = Regex("""^$annotations@(?:org\.junit\.runner\.)?RunWith\s*\(([^)]*)\)""", RegexOption.MULTILINE)
+    val declarationPattern = Regex("""^$annotations$modifiers(?:class|interface|object)[ \t]+(\w+)""", RegexOption.MULTILINE)
+    val packagePattern = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
+    val parensPattern = Regex("""\((?:[^()]|\([^()]*\))*\)""")
+    val wordPattern = Regex("""\w+""")
+    val declared = mutableListOf<Declared>()
+    roots.filter { it.isDirectory }
+        .flatMap { root -> root.walkTopDown().filter { it.isFile && (it.extension == "kt" || it.extension == "java") }.toList() }
+        .forEach { source ->
+            val code = raftCodeOnly(source.readText())
+            val pkg = packagePattern.find(code)?.groupValues?.get(1)
+            val runWiths = runWithPattern.findAll(code).toList()
+            val classes = declarationPattern.findAll(code).toList()
+            // A top-level class's annotations lie between the previous top-level declaration and it.
+            var regionStart = 0
+            classes.forEachIndexed { index, match ->
+                val name = match.groupValues[1]
+                val headerStart = match.range.last + 1
+                val next = classes.getOrNull(index + 1)?.range?.first ?: code.length
+                val brace = code.indexOf('{', headerStart)
+                val headerEnd = if (brace < 0 || brace > next) next else brace
+                // Its supertypes are among the header's words once the parameter lists are gone.
+                val header = code.substring(headerStart, headerEnd).replace(parensPattern, " ")
+                declared += Declared(
+                    fqcn = if (pkg == null) name else "$pkg.$name",
+                    name = name,
+                    runWith = runWiths.lastOrNull { it.range.first in regionStart..match.range.first }?.groupValues?.get(1),
+                    supertypes = wordPattern.findAll(header).map { it.value }.toSet(),
+                )
+                regionStart = headerStart
+            }
+        }
+    val robolectric = mutableSetOf("RobolectricTestRunner", "ParameterizedRobolectricTestRunner", "AndroidJUnit4")
+    val skipped = sortedSetOf<String>()
+    do {
+        val before = skipped.size
+        declared.filter { it.fqcn !in skipped }.forEach { declaration ->
+            val runner = declaration.runWith?.let { arg -> wordPattern.findAll(arg).any { it.value in robolectric } } == true
+            if (runner || declaration.supertypes.any { it in robolectric }) {
+                skipped += declaration.fqcn
+                robolectric += declaration.name
+            }
+        }
+    } while (skipped.size != before)
+    return skipped
+}
+
+if (raftSkipRobolectric) {
+    mapOf(
+        ":shared" to listOf("src/commonTest", "src/androidUnitTest"),
+        ":androidApp" to listOf("src/test"),
+    ).forEach { (path, roots) ->
+        project(path) {
+            val robolectricClasses by lazy {
+                raftRobolectricTestClasses(roots.map { file(it) }).also { classes ->
+                    logger.lifecycle("raft.unitTest.skipRobolectric: $path unit tests skip ${classes.size} Robolectric test classes")
+                }
+            }
+            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                .matching { it.name.endsWith("UnitTest") }
+                .configureEach {
+                    filter {
+                        robolectricClasses.forEach { excludeTestsMatching(it) }
+                        // A module whose tests are all Robolectric is not misconfigured on this tier.
+                        isFailOnNoMatchingTests = false
+                    }
+                    failOnNoDiscoveredTests.set(false)
+                }
+        }
+    }
+}

@@ -18,7 +18,7 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 
 | Event | Android | iOS compile | Device suite |
 | --- | --- | --- | --- |
-| Ordinary PR touching `compose/**` | yes | **no**, even for iOS paths (task #37) | no |
+| Ordinary PR touching `compose/**` | yes, **plain JVM unit tests only** (no Robolectric, no goldens) | **no**, even for iOS paths (task #37) | no |
 | PR with label `full-ci` | yes | yes (Xcode 27.0) | yes |
 | PR touching only docs/other | no (skipped = NOT RUN) | no | no |
 | **Merge-queue candidate** (Stamp's draft PR from `stamp-mq/*`) | yes | **yes, every batch** (Xcode 27.1 lane only) | no (emulator jobs run as no-op successes) |
@@ -26,9 +26,21 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 | Push to `main` | by path | only if iOS paths changed | no |
 | Push to `release-*` | yes | yes (27.0 + 27.1) | no |
 | Nightly schedule | yes | yes (27.0 + 27.1) | yes |
-| `workflow_dispatch` `scope=pr` / `scope=ios` / `scope=full` | yes / **no** / yes | no / yes / yes | no / no / yes |
+| `workflow_dispatch` `scope=pr` / `scope=ios` / `scope=full` | JVM unit tests only / **no** / yes | no / yes / yes | no / no / yes |
 | `workflow_dispatch` `scope=premerge` (`base_ref`, default `main`) | **no** (fail-closed: yes if the diff is unavailable) | **no** (moved to the merge queue, 2026-11-19) | no |
 | `workflow_dispatch` `scope=premerge` with `base_ref=release/*` | yes | yes | yes (= `scope=full`) |
+
+Android unit tier (artin 2026-11-22: "PRs run only a little, like slock";
+planner output `android_unit_scope`): where the table says "plain JVM unit
+tests only" (also premerge into `main` when it reruns Android), the Android
+job compiles everything as usual but runs only the plain JVM unit tests:
+`-Praft.unitTest.skipRobolectric=true` skips every Robolectric class in
+`:shared` and `:androidApp`, so no `:shared` golden runs, and
+`:designsystem:verifyRoborazziDesktop` runs only when the PR touches
+`compose/designsystem/` (always on `scope=pr`, which has no diff). Every
+other Android run (and `record_screenshots`)
+runs the whole suite and both golden sets. To run them on a PR before the
+queue, add `full-ci`; AGENTS.md "Android unit tiers in CI".
 
 ### The merge queue (pre-merge iOS compile)
 
@@ -132,8 +144,8 @@ task #37 and the planner script is authoritative.
 ## 2. Report honestly
 
 In the PR and task thread list the checks that ran and the ones skipped or not
-run (e.g. "Android compile + unit: pass; iOS compile: not run on the PR, runs
-in the merge queue batch").
+run (e.g. "Android compile + JVM unit: pass; Robolectric, goldens and iOS
+compile: not run on the PR, run in the merge queue batch").
 A skipped job counts as satisfied for the gate; it is not a green result.
 
 ## 3. Installable builds
