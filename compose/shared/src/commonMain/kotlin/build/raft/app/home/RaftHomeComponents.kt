@@ -36,6 +36,7 @@ import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.raftAvatarTriggerFace
 import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
@@ -8618,7 +8619,13 @@ internal fun RaftAppAvatarFrame(
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier = Modifier.fillMaxSize().padding(edge).clip(RaftAvatarFaceShape),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(edge)
+                    .clip(RaftAvatarFaceShape)
+                    // A 0 edge is a face in RaftAvatar's slot, which has the overlay itself.
+                    .then(if (edge > 0.dp) raftAvatarTriggerFace() else Modifier),
             contentAlignment = Alignment.Center,
             content = face
         )
