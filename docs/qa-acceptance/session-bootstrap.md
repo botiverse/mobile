@@ -279,7 +279,8 @@ contents.
   `SWIFT_ACTIVE_COMPILATION_CONDITIONS` of the `iosApp` target's **Debug** configuration
   only; the Release configuration (`ios-release.yml` archive → TestFlight / App Store)
   never defines it.
-- `scripts/ci/check_ios_qa_bootstrap_exclusion.py source` (every PR, `test.yml` plan job)
+- `scripts/ci/check_ios_qa_bootstrap_exclusion.py source` (QA contract tests in
+  `qa-infra-test.yml`, `scripts/qa/ios_qa_bootstrap.test.mjs`)
   fails if any other build configuration, xcconfig, script or workflow defines the flag,
   or if any Swift file references the bootstrap outside the `#if`.
 - `compose/iosApp/scripts/test_qa_session_bootstrap_contract.sh` (every iOS compile)

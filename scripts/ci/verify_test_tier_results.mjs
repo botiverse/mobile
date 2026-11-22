@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const DEVICE_SUITE_JOB = "android-device";
-const CANONICAL_FINAL_JOB = "android-canonical-final-actual-host";
 const ATTACHMENT_JOB = "android-minimum-supported-attachment-runtime";
 const IOS_DEFAULT_LANE = "github-xcode27.0";
 const IOS_XCODE271_LANE = "github-xcode27.1";
@@ -25,7 +24,6 @@ export function verifyTierResults(needs) {
   const runIosXcode271 = requireBoolean(outputs.run_ios_xcode271, "run_ios_xcode271");
   const runIosTests = requireBoolean(outputs.run_ios_tests, "run_ios_tests");
   const runDeviceSuite = requireBoolean(outputs.run_device_suite, "run_device_suite");
-  const runCanonicalFinal = requireBoolean(outputs.run_canonical_final, "run_canonical_final");
   // Stamp merge queue (2026-11-19). queueCandidate: Stamp's managed draft PR; Stamp accepts the
   // run only when every job succeeded, so the emulator jobs the plan does not select run as
   // no-op successes. queueReuse: a main push proven by stamp/queue-tested; only queue-ci-reuse runs.
@@ -46,11 +44,10 @@ export function verifyTierResults(needs) {
   }
   const runAttachment = attachmentLevels.length > 0;
   if (queueCandidate && queueReuse) throw new Error("queue_candidate and queue_reuse are exclusive");
-  if (queueReuse && (runAndroid || runIos || runDeviceSuite || runCanonicalFinal || runAttachment)) {
+  if (queueReuse && (runAndroid || runIos || runDeviceSuite || runAttachment)) {
     throw new Error("queue_reuse plans no other job");
   }
   if (runDeviceSuite && !runAndroid) throw new Error("device suite requires Android");
-  if (runCanonicalFinal && !runAndroid) throw new Error("canonical-final requires Android");
   if (runAttachment && !runAndroid) throw new Error("attachment legs require Android");
   if (runIosXcode270 && !runIos) throw new Error("Xcode 27.0 iOS lane requires iOS");
   if (runIosXcode271 && !runIos) throw new Error("Xcode 27.1 iOS lane requires iOS");
@@ -81,7 +78,6 @@ export function verifyTierResults(needs) {
     ["ios", runIos],
     // On a queue candidate the emulator jobs always run: for real when planned, else as no-ops.
     [DEVICE_SUITE_JOB, runDeviceSuite || queueCandidate],
-    [CANONICAL_FINAL_JOB, runCanonicalFinal || queueCandidate],
     [ATTACHMENT_JOB, runAttachment || queueCandidate],
     [QUEUE_REUSE_JOB, queueReuse],
   ]);
@@ -101,7 +97,6 @@ export function verifyTierResults(needs) {
     ios_lanes: iosLanes,
     run_ios_tests: runIosTests,
     run_device_suite: runDeviceSuite,
-    run_canonical_final: runCanonicalFinal,
     attachment_api_levels: attachmentLevels,
     queue_candidate: queueCandidate,
     queue_reuse: queueReuse,
@@ -109,7 +104,7 @@ export function verifyTierResults(needs) {
   };
 }
 
-function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, deviceSuite, canonicalFinal, attachmentLevels, queueCandidate = false, queueReuse = false }) {
+function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTests = false, deviceSuite, attachmentLevels, queueCandidate = false, queueReuse = false }) {
   const levels = attachmentLevels ?? [];
   const lanes = [...(iosXcode270 ? [IOS_DEFAULT_LANE] : []), ...(iosXcode271 ? [IOS_XCODE271_LANE] : [])];
   const needs = {
@@ -123,7 +118,6 @@ function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTest
         ios_lanes: JSON.stringify(lanes),
         run_ios_tests: String(iosTests),
         run_device_suite: String(deviceSuite),
-        run_canonical_final: String(canonicalFinal),
         attachment_api_levels: JSON.stringify(levels),
         queue_candidate: String(queueCandidate),
         queue_reuse: String(queueReuse),
@@ -134,7 +128,6 @@ function fixture({ android, ios, iosXcode270 = ios, iosXcode271 = false, iosTest
   needs.android = { result: android ? "success" : "skipped" };
   needs.ios = { result: ios ? "success" : "skipped" };
   needs[DEVICE_SUITE_JOB] = { result: deviceSuite || queueCandidate ? "success" : "skipped" };
-  needs[CANONICAL_FINAL_JOB] = { result: canonicalFinal || queueCandidate ? "success" : "skipped" };
   needs[ATTACHMENT_JOB] = { result: levels.length > 0 || queueCandidate ? "success" : "skipped" };
   needs[QUEUE_REUSE_JOB] = { result: queueReuse ? "success" : "skipped" };
   return needs;
@@ -150,7 +143,7 @@ function expectFailure(needs, message) {
 }
 
 function selfTest() {
-  const none = { android: false, ios: false, deviceSuite: false, canonicalFinal: false, attachmentLevels: [] };
+  const none = { android: false, ios: false, deviceSuite: false, attachmentLevels: [] };
   verifyTierResults(fixture(none));
   verifyTierResults(fixture({ ...none, android: true }));
   verifyTierResults(fixture({ ...none, ios: true }));
@@ -166,12 +159,12 @@ function selfTest() {
   verifyTierResults(fixture({ ...none, queueReuse: true }));
   // main push touching iOS test sources: iOS compile + tests
   verifyTierResults(fixture({ ...none, ios: true, iosTests: true }));
-  // full-ci PR: device suite + API31 only, no canonical-final, Xcode 27.0 iOS lane only
-  verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, canonicalFinal: false, attachmentLevels: [31], iosTests: true }));
-  // scope=full dispatch: full device suite + canonical-final + all attachment legs, Xcode 27.0 iOS lane only
-  verifyTierResults(fixture({ android: true, ios: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
-  // nightly: full device suite + canonical-final + all attachment legs, both iOS lanes
-  verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, deviceSuite: true, canonicalFinal: true, attachmentLevels: [29, 31, 34] }));
+  // full-ci PR: device suite + API31 only, Xcode 27.0 iOS lane only
+  verifyTierResults(fixture({ android: true, ios: true, deviceSuite: true, attachmentLevels: [31], iosTests: true }));
+  // scope=full dispatch: full device suite + all attachment legs, Xcode 27.0 iOS lane only
+  verifyTierResults(fixture({ android: true, ios: true, iosTests: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
+  // nightly: full device suite + all attachment legs, both iOS lanes
+  verifyTierResults(fixture({ android: true, ios: true, iosXcode271: true, iosTests: true, deviceSuite: true, attachmentLevels: [29, 31, 34] }));
 
   // fixture() and the expectation table must not share one formula: a self-test whose fixture
   // is generated by the rule under test cannot fail on a wrong rule (#2294). Pin the iOS-only
@@ -194,10 +187,6 @@ function selfTest() {
   accidentalDevice[DEVICE_SUITE_JOB].result = "success";
   expectFailure(accidentalDevice, "unplanned device suite cost");
 
-  const accidentalCanonical = fixture({ ...none, android: true });
-  accidentalCanonical[CANONICAL_FINAL_JOB].result = "success";
-  expectFailure(accidentalCanonical, "unplanned canonical-final cost");
-
   const accidentalAttachment = fixture({ ...none, android: true });
   accidentalAttachment[ATTACHMENT_JOB].result = "success";
   expectFailure(accidentalAttachment, "unplanned attachment cost");
@@ -205,10 +194,6 @@ function selfTest() {
   const deviceWithoutAndroid = fixture({ ...none, ios: true });
   deviceWithoutAndroid.plan.outputs.run_device_suite = "true";
   expectFailure(deviceWithoutAndroid, "device suite without Android");
-
-  const canonicalWithoutAndroid = fixture({ ...none, ios: true });
-  canonicalWithoutAndroid.plan.outputs.run_canonical_final = "true";
-  expectFailure(canonicalWithoutAndroid, "canonical-final without Android");
 
   const attachmentWithoutAndroid = fixture({ ...none, ios: true });
   attachmentWithoutAndroid.plan.outputs.attachment_api_levels = "[31]";

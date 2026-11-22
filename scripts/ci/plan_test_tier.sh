@@ -106,7 +106,7 @@ classify_relevant_path() {
     .gitmodules|.github/actions/*|.github/gradle-cache-epoch|.github/gradle-cache-quarantine)
       mark_all_platforms
       ;;
-    scripts/check_commonmain_map_compat.sh|scripts/check_commonmain_raw_clickable.sh|scripts/check_commonmain_raw_clickable.baseline|scripts/check_auth_session_writes.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_search_snippet_vector.sh|scripts/check_human_pixel_avatar_vector.sh|scripts/generate_human_pixel_avatars.mjs|scripts/check_notification_copy_vector.sh|scripts/prepare_*.sh|scripts/ci/*)
+    scripts/check_auth_session_writes.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_human_pixel_avatar_vector.sh|scripts/generate_human_pixel_avatars.mjs|scripts/check_notification_copy_vector.sh|scripts/prepare_*.sh|scripts/ci/*)
       mark_all_platforms
       ;;
     third_party/kuikly-compose-markdown/*|third_party/markdown-parser/*)
@@ -178,7 +178,6 @@ emit_plan() {
   run_android=false
   run_ios=false
   local run_device_suite=false
-  local run_canonical_final=false
   local attachment_api_levels="[]"
   # iOS compile lanes. The Xcode 27.0 lane (run_ios_xcode270) is the default
   # for every iOS run except the merge queue. The Xcode 27.1 lane
@@ -190,8 +189,8 @@ emit_plan() {
   local run_ios_xcode271=false
   # iOS tests in the iOS compile job (step 1 of the mobile test prune, Lagoon
   # 2026-11-13, artin's go-ahead): the K/N commonTest compile + iosTest
-  # simulator run, the iosAppTests and adaptive-editor XCTests and the UI-test
-  # harness build run only on the full tier: nightly schedule, release-*
+  # simulator run and the iosAppTests and adaptive-editor XCTests run only on
+  # the full tier: nightly schedule, release-*
   # pushes, scope=full, premerge into a release base and full-ci PRs. Every
   # other iOS run (premerge, scope=ios, main push, merge queue) compiles the
   # iOS targets, links the framework and builds the host app only; iOS-only
@@ -259,9 +258,8 @@ emit_plan() {
       elif test "$full_ci" = true; then
         mark_all_platforms
         # Task #26 closure: full-ci PR keeps the device suite but only the
-        # API31 attachment leg; canonical-final stays nightly/manual only.
+        # API31 attachment leg.
         run_device_suite=true
-        run_canonical_final=false
         attachment_api_levels="[31]"
         run_ios_tests=true
         reason="pull-request-full-ci"
@@ -283,7 +281,6 @@ emit_plan() {
       mark_all_platforms
       # Emulator/connected jobs stay out of the blocking queue.
       run_device_suite=false
-      run_canonical_final=false
       attachment_api_levels="[]"
       reason="merge-group-deterministic-all"
       ;;
@@ -298,7 +295,6 @@ emit_plan() {
             queue_reuse=true
             reason="main-push-queue-tested-reuse"
             run_device_suite=false
-            run_canonical_final=false
             attachment_api_levels="[]"
           else
             classify_changed_paths "$changed_paths_file" "main-push"
@@ -319,7 +315,6 @@ emit_plan() {
             # Task #26 closure: routine main pushes no longer run the device
             # suite; nightly and explicit manual dispatch keep the readback.
             run_device_suite=false
-            run_canonical_final=false
             attachment_api_levels="[]"
           fi
           ;;
@@ -328,7 +323,6 @@ emit_plan() {
           # pushes no longer run the device suite (nightly/manual keep it).
           mark_all_platforms
           run_device_suite=false
-          run_canonical_final=false
           attachment_api_levels="[]"
           run_ios_xcode271=true
           run_ios_tests=true
@@ -342,10 +336,9 @@ emit_plan() {
       ;;
     schedule)
       mark_all_platforms
-      # Task #26 closure: nightly keeps the full device suite, the
-      # canonical-final readback, and all three attachment API legs.
+      # Task #26 closure: nightly keeps the full device suite and all
+      # three attachment API legs.
       run_device_suite=true
-      run_canonical_final=true
       attachment_api_levels="[29,31,34]"
       run_ios_xcode271=true
       run_ios_tests=true
@@ -366,7 +359,6 @@ emit_plan() {
           run_android=true
           run_ios=false
           run_device_suite=false
-          run_canonical_final=false
           attachment_api_levels="[]"
           reason="workflow_dispatch-pr-tier"
           ;;
@@ -374,7 +366,6 @@ emit_plan() {
           run_android=false
           run_ios=true
           run_device_suite=false
-          run_canonical_final=false
           attachment_api_levels="[]"
           reason="workflow_dispatch-ios-tier"
           ;;
@@ -395,7 +386,6 @@ emit_plan() {
             release/*|release-*)
               mark_all_platforms
               run_device_suite=true
-              run_canonical_final=true
               attachment_api_levels="[29,31,34]"
               run_ios_tests=true
               reason="workflow_dispatch-premerge:release-full"
@@ -404,7 +394,6 @@ emit_plan() {
               classify_changed_paths "$changed_paths_file" "workflow_dispatch-premerge"
               echo "premerge base=${premerge_base_ref} classification=${reason} platforms=$(platform_summary)" >&2
               run_device_suite=false
-              run_canonical_final=false
               attachment_api_levels="[]"
               run_ios=false
               case "$reason" in
@@ -423,7 +412,6 @@ emit_plan() {
         full)
           mark_all_platforms
           run_device_suite=true
-          run_canonical_final=true
           attachment_api_levels="[29,31,34]"
           run_ios_tests=true
           reason="workflow_dispatch-full-readback"
@@ -442,10 +430,6 @@ emit_plan() {
 
   if test "$run_device_suite" = true && test "$run_android" != true; then
     echo "invalid CI plan: device suite requires Android" >&2
-    return 1
-  fi
-  if test "$run_canonical_final" = true && test "$run_android" != true; then
-    echo "invalid CI plan: canonical-final requires Android" >&2
     return 1
   fi
   if test "$attachment_api_levels" != "[]" && test "$run_android" != true; then
@@ -489,7 +473,6 @@ emit_plan() {
   printf 'ios_lanes=%s\n' "$ios_lanes"
   printf 'run_ios_tests=%s\n' "$run_ios_tests"
   printf 'run_device_suite=%s\n' "$run_device_suite"
-  printf 'run_canonical_final=%s\n' "$run_canonical_final"
   printf 'attachment_api_levels=%s\n' "$attachment_api_levels"
   printf 'queue_candidate=%s\n' "$queue_candidate"
   printf 'queue_reuse=%s\n' "$queue_reuse"

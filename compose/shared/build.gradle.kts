@@ -486,50 +486,6 @@ android {
     }
 }
 
-val verifyNoProductionVisualPages by tasks.registering {
-    val productionSourceDirs =
-        listOf(
-            layout.projectDirectory.dir("src/commonMain/kotlin"),
-            layout.projectDirectory.dir("src/androidMain/kotlin"),
-            rootProject.layout.projectDirectory.dir("androidApp/src/main/java")
-        )
-    inputs.files(productionSourceDirs)
-
-    doLast {
-        val visualPagePatterns =
-            listOf(
-                Regex("""@Page\s*\(\s*[A-Za-z0-9_]*_VISUAL_PAGE\b"""),
-                Regex("""@Page\s*\(\s*"[^"]*_visual"""")
-            )
-        val violations =
-            productionSourceDirs
-                .flatMap { sourceDir ->
-                    sourceDir.asFile.walkTopDown()
-                        .filter { file -> file.isFile && file.extension in setOf("kt", "java") }
-                        .flatMap { file ->
-                            file.readLines().mapIndexedNotNull { index, line ->
-                                if (visualPagePatterns.any { pattern -> pattern.containsMatchIn(line) }) {
-                                    "${file.relativeTo(rootProject.projectDir)}:${index + 1}: ${line.trim()}"
-                                } else {
-                                    null
-                                }
-                            }
-                        }
-                }
-        if (violations.isNotEmpty()) {
-            error(
-                "Visual fixture @Page registrations must live under " +
-                    "compose/shared/src/visualFixtures/kotlin:\n" +
-                    violations.joinToString("\n")
-            )
-        }
-    }
-}
-
-tasks.named("check").configure {
-    dependsOn(verifyNoProductionVisualPages)
-}
-
 // Robolectric screenshot tests (src/androidUnitTest, RaftRobolectricScreenshot), compared and
 // recorded by Roborazzi against the goldens in src/androidUnitTest/screenshots. See AGENTS.md
 // "Screenshot tests (:shared)".

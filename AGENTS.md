@@ -281,8 +281,17 @@ botiverse/slock #12392 / #proj-o11y:#18).
 
 ## Unit Test Case Rule
 
-Origin: Raft #Perf task #17 audit (2026-07-21); full report in the #Perf
-task thread. Admission checklist for new cases:
+Owner rule (artin, 2026-11-22): keep a test only if it proves a product
+assumption (what a user sees or can do), a logic assumption (data, sync, auth,
+privacy, a wire contract the server really sends), or keeps packaging and
+release working. Delete tests that only check the implementation: internal
+structure; efficiency (caching, dedup, prefetch, request counts); log or
+telemetry formats without a named consumer; exact dp/colour values, which the
+goldens cover; variants that re-prove one rule. When several layers (plain
+JVM, Robolectric, full page, golden) prove the same thing, keep the cheapest.
+
+Admission checklist for new cases (Raft #Perf task #17 audit, 2026-07-21;
+full report in the #Perf task thread):
 
 - **Assert substance.** Every test asserts a value/state of the behavior under
   test. `withTimeout` alone is not an assertion. Polling waits must fail with
@@ -304,7 +313,9 @@ task thread. Admission checklist for new cases:
   single unsynchronized read, never an unbounded wait, and never a wall-clock
   duration assertion as the property under test.
 - **No literal clones.** A case differing from an existing one only in literal
-  values is parameterized into it, not added as a new method.
+  values re-proves the same rule: do not add it, as a method or as a parameter
+  row. Keep one or two representative inputs (for a parser, one per real wire
+  shape plus one malformed payload).
 - **Shared fixtures.** Do not re-declare `sampleSession`/`Fake*` helpers per
   file; extend the shared test-support fixtures instead.
 - **No mirror assertions.** Do not assert entire serialized JSON bodies or
@@ -318,15 +329,13 @@ task thread. Admission checklist for new cases:
 
 Retirement rules:
 
-- Literal-duplicate cases are merged; incidental-format assertions (key
-  order, toString, log wording) are rewritten or dropped; anything @Ignore'd
-  for 90 days is deleted.
+- A test that proves none of the three assumptions above is deleted, whatever
+  bug prompted it and however fast it runs; so is anything @Ignore'd for 90
+  days. A CI check (lint, script, workflow step) follows the same rule.
 - An instrumented class that CI compiles but no workflow runs must be
   promoted to a workflow, documented in
   `docs/instrumented-manual-harnesses.md`, or deleted.
-- Suite runtime is never a reason to delete unit cases (the JVM suite runs in
-  under a minute); flaky tests are fixed or quarantined visibly, never
-  silently retried.
+- Flaky tests are fixed or quarantined visibly, never silently retried.
 
 ### Compose UI tests (:shared)
 
@@ -634,8 +643,8 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    auto-merge again. The candidate's
    iOS compile (like `scope=ios` and main pushes) compiles, links the shared
    framework and builds the host app only; the iOS tests (`iosTest`, the
-   `iosAppTests` XCTests, adaptive editor snapshots, the UI-test harness build)
-   run only on the nightly schedule, `release-*` pushes, `scope=full`, premerge
+   `iosAppTests` XCTests, adaptive editor snapshots) run only on the nightly
+   schedule, `release-*` pushes, `scope=full`, premerge
    into a release base, and PRs with the `full-ci` label (2026-11-13); a queue
    candidate or main push whose diff touches iOS test sources (`*/iosTest/*`,
    `iosAppTests`, `iosAppUITests`) runs them too. `scope=premerge` into `main`
@@ -649,7 +658,7 @@ The canonical flow is (Stamp commands, run from a Stamp checkout):
    fallback (the `ios_runner` input with `blacksmith-6vcpu-macos-latest` was
    removed on 2026-11-22). `scope=full` is only for release candidates
    or a deliberate full readback (it adds the Android emulator/device suite
-   and canonical-final). The nightly (Xcode 27.0 and 27.1 lanes) and
+   and the attachment legs). The nightly (Xcode 27.0 and 27.1 lanes) and
    `release-*` pushes are unchanged. While the queue is not enabled on `main`
    (`stamp queue status botiverse/mobile`), nothing compiles iOS before merge:
    the main push readback (iOS-specific or CI paths) and the nightly catch it.

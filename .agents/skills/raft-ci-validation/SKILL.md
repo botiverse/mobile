@@ -99,8 +99,8 @@ The iOS compile job runs the iOS tests (planner output `run_ios_tests`) only
 on the full tier: nightly schedule, `release-*` pushes, `scope=full`, premerge
 with a `release/*` base, and `full-ci` PRs. That is the K/N commonTest compile
 (`compileTestKotlinIosSimulatorArm64`), the shared `iosTest` simulator run, the
-`iosAppTests` XCTest bundle (including `RaftRouterLoginTransitionTests`),
-adaptive editor snapshots and the UI-test harness build. The merge queue,
+`iosAppTests` XCTest bundle (including `RaftRouterLoginTransitionTests`) and
+adaptive editor snapshots. The merge queue,
 `scope=ios` and main pushes compile the iOS targets, link the shared framework
 and build the host app only, so a green queue iOS compile is not an iOS test
 result; iOS-only behaviour regressions surface in the nightly within 24h.
@@ -123,7 +123,7 @@ after a rebase alone:
 ```bash
 bin/stamp workflow run test.yml --repo botiverse/mobile --ref <branch> -f scope=ios
 ```
-`scope=full` (Android device/emulator suite, canonical-final, attachment legs)
+`scope=full` (Android device/emulator suite, attachment legs)
 is only for release candidates or a deliberate full readback — never just to
 check that iOS compiles.
 `docs/ci-test-path-scoping.md` describes the path groups; its iOS rows predate
