@@ -123,7 +123,6 @@ internal fun HomeSearchIncompleteEmptyState(
     RaftSearchEmptyState(
         title = stringResource(Res.string.search_incomplete_no_matches_yet),
         detail = note,
-        typography = RaftTheme.typography,
         modifier = modifier.heightIn(min = 300.dp),
         actions = {
             RaftButton(
