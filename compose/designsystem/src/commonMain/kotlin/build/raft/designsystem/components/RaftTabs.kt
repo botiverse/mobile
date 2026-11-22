@@ -224,7 +224,7 @@ private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScrol
  * - Default variant: 32dp tall, 12dp padding, hugging its label. [selected] is the active
  *   sticker: `selected`, 1.5dp `sticker-ink` edge, bold `sticker-ink` label, the die-cut edge
  *   in dark. Pressed lays `fill-pressed` (`sticker-pressed` on the sticker) over it; a
- *   mouse or trackpad hover lays `fill-medium` over an unselected tab (faded over 100ms).
+ *   mouse or trackpad hover lays `fill-medium` over an unselected tab.
  * - Underline variant: 44dp tall, no padding or fill. [selected] turns the label
  *   `foreground` and draws a 2dp `foreground` line along the tab's bottom; hover and press
  *   turn an unselected label `foreground`.
@@ -388,7 +388,7 @@ internal fun RaftStickerItem(
 ) {
     val colors = RaftTheme.colors
     val look = raftStickerItemLook(active, enabled, colors)
-    // Unselected: `hover:bg-fill-medium active:bg-fill-medium`, faded over 100ms. The active
+    // Unselected: `hover:bg-fill-medium active:bg-fill-medium`. The active
     // sticker doesn't hover, and presses with `overlay-sticker-medium`.
     val overlay =
         rememberRaftStateOverlay(

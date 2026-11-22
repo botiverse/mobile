@@ -418,7 +418,7 @@ Internal modifiers every component draws its states with; none takes layout room
   items), `Highlight` (`brand-soft`: menu and select items, also the keyboard highlight),
   `Cell` (list cells: `fill-cell-hover` / `fill-cell-press`), `Media` (`ink-8`), `None`.
   Press is the medium tier (`fill-cell-press` for a cell), at once and for at least 120ms;
-  hover fades over 100ms (cells 150ms ease-out, media 75ms; at once with reduced motion).
+  hover and press change at once, with no fade (raft-ui 0.102.13).
   Selected, disabled and display-only items don't hover; a selected cell doesn't press.
 - `Modifier.raftPointerHover(source)`: the only source of Raft's hover. It emits hover
   only for a mouse, trackpad or pen (`PointerType.Mouse` / `Stylus` / `Eraser`), never for

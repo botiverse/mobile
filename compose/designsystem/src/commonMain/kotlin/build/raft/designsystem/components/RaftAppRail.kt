@@ -380,7 +380,7 @@ private fun ColumnScope.RaftAppRailDecor() {
  * radius holding its 20dp [icon] (drawn in the `ink` it is given). Selected, it is the sticker on
  * the frame: `layer-frame-active` (white in light mode, yellow in dark) with a 1.5dp
  * `line-frame-active` edge and the die-cut `sticker-edge` ring; a press or a mouse / trackpad
- * hover (faded over 100ms) lays `fill-frame-medium` over an unselected one. [attention] puts the
+ * hover lays `fill-frame-medium` over an unselected one. [attention] puts the
  * pink pixel (`Status sm`, 8dp) on the icon's top-right corner; the selected item never shows it.
  * Screen readers read [label], plus [attentionDescription] while the pixel shows ("Activity,
  * new"). A rail never shows a count (raft-ui Badge rules).
