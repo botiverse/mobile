@@ -118,8 +118,10 @@ overlay host so menus and the bar agree on stacking).
   screen behind them; `raftAppBottomTabBarContentInset` only reserves
   `bottomSafeArea + Lg` so the last scroll rows clear the dock.
 - The native floating host box is `92dp + bottomSafeArea`.
-- `SharedCompose` uses a solid `58dp + safe area` bar and insets content by the
-  full host height + `Lg`.
+- `SharedCompose` uses a solid bar, raft-ui MobileNav's: 52dp plus a bottom
+  padding of the safe area, at least 8dp (`RaftMobileNavDefaults.height`: 60dp
+  with no safe area, 76dp over a 24dp gesture handle, 86dp over an iPhone's
+  home indicator), and insets content by that height + `Lg`.
 
 ## Hit-testing & tap-through (important)
 

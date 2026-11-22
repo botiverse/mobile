@@ -59,9 +59,9 @@ class ActivityFilterBarScreenshotTest {
                             )
                         }
                         if (menuOpen) {
-                            // RaftDropdownMenu's place: under the 32dp button (centred in the 53dp
-                            // row, 16dp in), 6dp below it.
-                            RaftMenuSurface(Modifier.offset(x = 16.dp, y = 48.dp)) {
+                            // RaftDropdownMenu's place: under the 32dp button (centred in the 48dp
+                            // row over the seam, 16dp in), 6dp below it.
+                            RaftMenuSurface(Modifier.offset(x = 16.dp, y = 46.dp)) {
                                 ActivityFilterMenuRows(selectedFilter = filter, onPick = {})
                             }
                         }

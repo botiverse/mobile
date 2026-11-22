@@ -37,7 +37,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
+import build.raft.designsystem.components.RaftSearchRowDefaults
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftPointerInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -64,14 +66,28 @@ internal object RaftSearchMetrics {
     /** search `list` / search-thread `threadMessages`: `py-2` round the rows. */
     val ListPaddingVertical = 8.dp
 
-    /** search-entity / search-message rows: `py-3`. */
+    /**
+     * search-message rows: `py-3`, with a finger too (search-message has no `pointer-coarse:`
+     * padding); search-entity rows under a mouse or trackpad ([entityPaddingVertical]).
+     */
     val RowPaddingVertical = 12.dp
 
     /** search-entity: `gap-3` between the leading slot and the text. */
     val EntityGap = 12.dp
 
-    /** search-entity: `max-md:min-h-16`. */
+    /** search-entity under a mouse or trackpad: at least 64dp, as before raft-ui 0.65 (`max-md:min-h-16`). */
     val EntityMinHeight = 64.dp
+
+    /**
+     * A search-entity row's least height under [pointer]: with a finger the design system's
+     * [RaftSearchRowDefaults.TouchMinHeight] (raft-ui 0.65 `pointer-coarse:min-h-14`, 56dp), so a
+     * title over its subtitle is the web's 62dp; [EntityMinHeight] under a mouse or trackpad.
+     */
+    fun entityMinHeight(pointer: RaftPointerInput): Dp =
+        if (pointer == RaftPointerInput.Fine) EntityMinHeight else RaftSearchRowDefaults.TouchMinHeight
+
+    /** A search-entity row's padding above and below under [pointer]: 8dp with a finger (`pointer-coarse:py-2`), else 12. */
+    fun entityPaddingVertical(pointer: RaftPointerInput): Dp = RaftSearchRowDefaults.paddingVertical(pointer)
 
     /** Avatar `sm` / IconTile `sm`. */
     val EntityLeading = 27.dp

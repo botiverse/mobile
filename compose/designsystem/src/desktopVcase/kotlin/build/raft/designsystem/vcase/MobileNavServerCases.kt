@@ -203,7 +203,7 @@ private fun Phone(
 ) {
     Column(Modifier.width(width)) {
         Box(Modifier.width(width).height(height).background(RaftTheme.colors.layerCanvas)) {
-            RaftMobileNavServerPopover(state, screenHeight = height + RaftMobileNavDefaults.BarHeight) {
+            RaftMobileNavServerPopover(state, screenHeight = height + RaftMobileNavDefaults.height()) {
                 RaftMobileNavServerPopoverContent(paneTitle = "Server panel") {
                     RaftMobileNavServerPopoverList(reorderState = reorder) {
                         sampleServers(servers).forEach { (id, name, unread) ->
@@ -286,7 +286,7 @@ private fun Bar(
     pressedServerOnly: Boolean = false,
     width: Dp = 375.dp,
 ) {
-    Box(Modifier.width(width).height(RaftMobileNavDefaults.BarHeight).background(RaftTheme.colors.layerCard)) {
+    Box(Modifier.width(width).height(RaftMobileNavDefaults.height()).background(RaftTheme.colors.layerCard)) {
         Row(Modifier.fillMaxWidth().fillMaxHeight().padding(top = RaftStroke.Hairline + RaftMobileNavDefaults.TopPadding)) {
             CompositionLocalProvider(LocalRaftPressedPreview provides false) {
                 listOf(

@@ -97,8 +97,31 @@ import build.raft.designsystem.tokens.RaftUiPalette
 /** raft-ui MobileNav metrics: the phone's edge-to-edge bottom bar (stdrc 2026-10-21). */
 object RaftMobileNavDefaults {
     // raft-ui 0.57 MobileNav (artin 2026-11-02: the phone bar follows the web's metrics).
-    /** The bar, without the bottom safe area: 1 seam + 6 + a 45dp item + the 8dp bottom pad. */
-    val BarHeight: Dp = 60.dp
+    /**
+     * The bar above its bottom padding: the 1dp seam, [TopPadding] and a 45dp item (MobileNavItem
+     * `pt-1`, the 22dp icon, `gap-[7px]`, the 12dp label line).
+     */
+    val ContentHeight: Dp = 52.dp
+
+    /** The bar's bottom padding where nothing is under it (`pb-[max(8px,…)]`). */
+    val MinBottomPadding: Dp = 8.dp
+
+    /**
+     * The bar's bottom padding over [bottomSafeArea] (the home indicator, Android's navigation
+     * bar): the safe area, at least [MinBottomPadding]. raft-ui mobile-nav.mjs pads
+     * `max(8px,min(env(safe-area-inset-bottom,0px),34px))`; its 34px cap, which the web keeps
+     * against bad PWA and browser reports, is not ported (README › Differences from raft-ui): an
+     * iPhone's inset is never past 34, and on Android the app draws under the 3-button navigation
+     * bar (48dp), which the tabs must clear.
+     */
+    fun bottomPadding(bottomSafeArea: Dp): Dp = maxOf(MinBottomPadding, bottomSafeArea)
+
+    /**
+     * The whole bar over [bottomSafeArea]: [ContentHeight] + [bottomPadding]. 60dp with nothing
+     * under it, 76dp over Android's 24dp gesture handle, 86dp over an iPhone's 34pt home
+     * indicator, as on the web.
+     */
+    fun height(bottomSafeArea: Dp = 0.dp): Dp = ContentHeight + bottomPadding(bottomSafeArea)
 
     /** From the bar's top seam to the tab pills (`pt-1.5`). */
     val TopPadding: Dp = 6.dp
