@@ -508,11 +508,82 @@ class SharedThreadComposerDraftStoreTest {
         // The composer takes focus so the reader types under the quote.
         assertEquals(focusBefore + 1, store.state.value.focusRequestNonce)
         assertTrue(store.state.value.focusRequestShowsKeyboard)
+        assertEquals(ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard, store.state.value.focusRequestMeta.keyboardMode)
+        assertEquals(
+            build.raft.designsystem.focus.RaftFocusRequestSource.User("append_quote"),
+            store.state.value.focusRequestMeta.source,
+        )
+
+        // Explicit RequestFocus carries its own reason and raises the keyboard.
+        store.dispatch(SharedThreadComposerDraftIntent.RequestFocus)
+        assertEquals(focusBefore + 2, store.state.value.focusRequestNonce)
+        assertEquals(ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard, store.state.value.focusRequestMeta.keyboardMode)
+        assertEquals(
+            build.raft.designsystem.focus.RaftFocusRequestSource.User("request_focus"),
+            store.state.value.focusRequestMeta.source,
+        )
 
         // Send keeps the editor as it was: a focus request that never raises a put-away keyboard.
         store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-        assertEquals(focusBefore + 2, store.state.value.focusRequestNonce)
+        assertEquals(focusBefore + 3, store.state.value.focusRequestNonce)
         assertFalse(store.state.value.focusRequestShowsKeyboard)
+        assertEquals(ThreadComposerFocusRequestKeyboardMode.KeepOpenKeyboardOnly, store.state.value.focusRequestMeta.keyboardMode)
+        assertEquals(
+            build.raft.designsystem.focus.RaftFocusRequestSource.User("begin_send"),
+            store.state.value.focusRequestMeta.source,
+        )
+
+        // Deferred system completion (e.g. edited image upload) carries its pre-captured ticket with FocusOnly mode.
+        val coordinator = build.raft.designsystem.focus.RaftFocusCoordinator()
+        val deferredTicket =
+            coordinator.request(
+                targetKey = ThreadComposerFocusTargetKey("reply-composer"),
+                region = build.raft.designsystem.focus.RaftFocusRegion.Conversation,
+                source = build.raft.designsystem.focus.RaftFocusRequestSource.System("image_edit_complete"),
+                isText = true,
+            )
+        store.dispatch(SharedThreadComposerDraftIntent.RequestDeferredFocus(deferredTicket))
+        assertEquals(focusBefore + 4, store.state.value.focusRequestNonce)
+        assertFalse(store.state.value.focusRequestShowsKeyboard)
+        assertEquals(ThreadComposerFocusRequestKeyboardMode.FocusOnly, store.state.value.focusRequestMeta.keyboardMode)
+        assertEquals(deferredTicket, store.state.value.focusRequestMeta.deferredTicket)
+        assertEquals(deferredTicket.source, store.state.value.focusRequestMeta.source)
+
+        // withRouteIntentFrom preserves focusRequestMeta for whichever side holds the newer nonce.
+        val newerMeta = store.state.value.focusRequestMeta
+        val existingMeta =
+            ThreadComposerFocusRequestMeta(
+                source = build.raft.designsystem.focus.RaftFocusRequestSource.User("append_quote"),
+                keyboardMode = ThreadComposerFocusRequestKeyboardMode.RaiseKeyboard,
+            )
+        val basePayload =
+            RaftThreadScreenPayload(
+                instanceId = "thread-1",
+                composer =
+                    RaftThreadComposerPayload(
+                        instanceId = "reply-composer",
+                        focusRequestNonce = 2,
+                        focusRequestMeta = existingMeta,
+                    ),
+            )
+        val newerRoutePayload =
+            basePayload.copy(
+                composer =
+                    basePayload.composer.copy(
+                        focusRequestNonce = 3,
+                        focusRequestMeta = newerMeta,
+                    ),
+            )
+        val olderRoutePayload =
+            basePayload.copy(
+                composer =
+                    basePayload.composer.copy(
+                        focusRequestNonce = 2,
+                        focusRequestMeta = newerMeta,
+                    ),
+            )
+        assertEquals(newerMeta, basePayload.withRouteIntentFrom(newerRoutePayload).composer.focusRequestMeta)
+        assertEquals(existingMeta, basePayload.withRouteIntentFrom(olderRoutePayload).composer.focusRequestMeta)
 
         val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(

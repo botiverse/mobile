@@ -934,7 +934,7 @@ internal fun RaftThreadComposerPayload.withThreadComposerDraftState(
         syncNonce = draftState.syncNonce,
         editorCommand = draftState.editorCommand,
         focusRequestNonce = draftState.focusRequestNonce,
-        focusRequestShowsKeyboard = draftState.focusRequestShowsKeyboard,
+        focusRequestMeta = draftState.focusRequestMeta,
         pendingAttachments = pendingAttachmentItems,
         composerMode =
             when {

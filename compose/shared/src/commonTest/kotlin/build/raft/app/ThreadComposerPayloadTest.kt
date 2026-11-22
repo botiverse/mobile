@@ -622,6 +622,27 @@ class ThreadComposerPayloadTest {
                 explicitRequestShowsKeyboard = false,
             ),
         )
+        // Deferred system focus (e.g. image edit completion): focus only, never raises the IME.
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = false),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = false,
+                editorFocused = false,
+                keyboardInsetDp = 0f,
+                explicitKeyboardMode = ThreadComposerFocusRequestKeyboardMode.FocusOnly,
+            ),
+        )
+        assertEquals(
+            ThreadComposerSessionFocusRestorePlan(requestFocus = true, showKeyboard = false),
+            threadComposerSessionFocusRestorePlan(
+                explicitFocusRequest = true,
+                editorSessionReplaced = false,
+                editorFocused = false,
+                keyboardInsetDp = 280f,
+                explicitKeyboardMode = ThreadComposerFocusRequestKeyboardMode.FocusOnly,
+            ),
+        )
     }
 
     @Test

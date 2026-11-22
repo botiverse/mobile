@@ -146,9 +146,17 @@ internal class ComposerFocusOnOpen(
     yieldsToSideThread: Boolean = false,
     opensOnMessage: Boolean = false,
     userInitiated: Boolean = false,
+    policy: Boolean = enabled,
 ) {
     /** The platform allows it (desktop / hardware keyboard) and no reply thread beside takes it. */
     var enabled: Boolean by mutableStateOf(enabled)
+
+    /**
+     * The platform allows automatic composer focus (desktop / hardware keyboard), kept distinct
+     * from [yieldsToSideThread] so deferred system requests can read touch-only status cleanly.
+     */
+    var policy: Boolean by mutableStateOf(policy)
+        private set
 
     /** The page is on screen. */
     var shown: Boolean by mutableStateOf(shown)
@@ -200,8 +208,10 @@ internal class ComposerFocusOnOpen(
         opensOnMessage: Boolean = false,
         userInitiated: Boolean = false,
         sideThreadDetachedWithFocus: Boolean = false,
+        policy: Boolean = enabled,
     ) {
         if (this.enabled != enabled) this.enabled = enabled
+        if (this.policy != policy) this.policy = policy
         if (this.opensOnMessage != opensOnMessage) this.opensOnMessage = opensOnMessage
         if (this.userInitiated != userInitiated) this.userInitiated = userInitiated
         if (this.shown != shown) this.shown = shown
@@ -317,6 +327,7 @@ internal fun rememberComposerFocusOnOpen(
                 yieldsToSideThread = yieldsToSideThread,
                 opensOnMessage = opensOnMessage,
                 userInitiated = userInitiated,
+                policy = policy,
             )
         }
     // Sample without read observation during composition (before applyChanges detaches the closing
@@ -335,6 +346,7 @@ internal fun rememberComposerFocusOnOpen(
             opensOnMessage = opensOnMessage,
             userInitiated = userInitiated,
             sideThreadDetachedWithFocus = sideThreadDetachedWithFocus,
+            policy = policy,
         )
     }
     return focus
@@ -476,7 +488,7 @@ internal fun ComposerAutofocusOnOpenEffect(
             val restoreDecision =
                 coordinator.evaluateRestoreIfLost(
                     ticket = restoreTicket,
-                    touchPrimary = !focus.enabled,
+                    touchPrimary = !focus.policy,
                     consume = true,
                     allowNonTextPlatformDetachFallback = detachedWithFocus,
                 )

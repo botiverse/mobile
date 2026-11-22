@@ -317,7 +317,13 @@ internal fun RaftThreadScreenPayload.withRouteIntentFrom(routePayload: RaftThrea
         composer =
             composer.copy(
                 syncNonce = maxOf(composer.syncNonce, routePayload.composer.syncNonce),
-                focusRequestNonce = maxOf(composer.focusRequestNonce, routePayload.composer.focusRequestNonce)
+                focusRequestNonce = maxOf(composer.focusRequestNonce, routePayload.composer.focusRequestNonce),
+                focusRequestMeta =
+                    if (routePayload.composer.focusRequestNonce > composer.focusRequestNonce) {
+                        routePayload.composer.focusRequestMeta
+                    } else {
+                        composer.focusRequestMeta
+                    },
             )
     )
 }
