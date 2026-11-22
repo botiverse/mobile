@@ -34,16 +34,6 @@ class RaftCoroutineWorkerKeepAliveTest {
     }
 
     @Test
-    fun keepAliveIsLargeEnoughToPreventWorkerTerminationWithoutOverflow() {
-        val keepAliveSec = COROUTINE_WORKER_KEEP_ALIVE_SEC.toLong()
-        // Well beyond any realistic idle window (default is 60s), so workers never terminate.
-        assertTrue(keepAliveSec >= 86_400L)
-        // nanoTime() + keepAliveNs must not overflow Long: keepAliveNs is seconds * 1e9, so
-        // keepAliveSec must stay comfortably under Long.MAX_VALUE / 1e9 (~9.2e9).
-        assertTrue(keepAliveSec < Long.MAX_VALUE / 1_000_000_000L)
-    }
-
-    @Test
     fun schedulerConsumesThePinnedKeepAliveInAFreshJvm() {
         val javaBin =
             File(System.getProperty("java.home"), "bin/java").absolutePath

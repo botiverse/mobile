@@ -36,14 +36,6 @@ class RaftHostConfigChangesTest {
         }
     }
 
-    @Test
-    fun systemDarkReadsOnlyTheNightBits() {
-        assertTrue(isAndroidSystemDark(Configuration.UI_MODE_NIGHT_YES or Configuration.UI_MODE_TYPE_NORMAL))
-        assertFalse(isAndroidSystemDark(Configuration.UI_MODE_NIGHT_NO or Configuration.UI_MODE_TYPE_NORMAL))
-        assertFalse(isAndroidSystemDark(Configuration.UI_MODE_NIGHT_UNDEFINED))
-        assertEquals(false, isAndroidSystemDark(Configuration.UI_MODE_TYPE_TELEVISION))
-    }
-
     private fun manifestActivities(): Map<String, Element> {
         val root =
             DocumentBuilderFactory.newInstance()

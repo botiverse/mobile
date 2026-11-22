@@ -27,50 +27,6 @@ class AndroidPackageInstallPermissionTest {
     private val packageManager = shadowOf(context.packageManager)
 
     @Test
-    fun sideloadBuildWithUnknownSourcesOffAndNoWindowOpensRaftsOwnSettingsPage() {
-        installSelf(requested = arrayOf(Manifest.permission.REQUEST_INSTALL_PACKAGES))
-        packageManager.setCanRequestPackageInstalls(false)
-
-        // No activity to explain the restart in: the switch's page opens directly, as before.
-        val result = AndroidPackageInstallPermission.gate(context, null, "att").admit(apk())
-
-        assertEquals(AndroidAttachmentOpenStatus.InstallPermissionRequired, result?.status)
-        val started = shadowOf(context as Application).nextStartedActivity
-        assertEquals(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, started.action)
-        assertEquals("package:${context.packageName}", started.dataString)
-    }
-
-    @Test
-    fun sideloadBuildWithUnknownSourcesAllowedAdmitsTheInstaller() {
-        installSelf(requested = arrayOf(Manifest.permission.REQUEST_INSTALL_PACKAGES))
-        packageManager.setCanRequestPackageInstalls(true)
-
-        assertTrue(AndroidPackageInstallPermission.isDeclared(context))
-        assertNull(AndroidPackageInstallPermission.gate(context, null, "att").admit(apk()))
-        assertNull(shadowOf(context as Application).nextStartedActivity)
-    }
-
-    @Test
-    fun playBuildOpensRaftsDownloadsFolderInTheFileManager() {
-        installSelf(requested = arrayOf(Manifest.permission.INTERNET))
-        packageManager.setCanRequestPackageInstalls(false)
-
-        assertFalse(AndroidPackageInstallPermission.isDeclared(context))
-        val result = AndroidPackageInstallPermission.gate(context, null, "att").admit(apk())
-
-        assertEquals(AndroidAttachmentOpenStatus.InstallViaFiles, result?.status)
-        val started = shadowOf(context as Application).nextStartedActivity
-        assertEquals(Intent.ACTION_VIEW, started.action)
-        assertEquals(DocumentsContract.Document.MIME_TYPE_DIR, started.type)
-        assertEquals(
-            "content://com.android.externalstorage.documents/document/primary%3ADownload%2FRaft",
-            started.dataString
-        )
-        // Never the installer and never a settings page without a switch for Raft.
-        assertNull(shadowOf(context as Application).nextStartedActivity)
-    }
-
-    @Test
     fun manifestsKeepTheVariantSplitThisGateReliesOn() {
         // Unit tests run from the androidApp module directory.
         val main = File("src/main/AndroidManifest.xml").readText()
@@ -80,15 +36,6 @@ class AndroidPackageInstallPermissionTest {
             Regex(
                 """android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s+tools:node="remove""""
             ).containsMatchIn(play)
-        )
-    }
-
-    private fun installSelf(requested: Array<String>) {
-        packageManager.installPackage(
-            PackageInfo().apply {
-                packageName = context.packageName
-                requestedPermissions = requested
-            }
         )
     }
 

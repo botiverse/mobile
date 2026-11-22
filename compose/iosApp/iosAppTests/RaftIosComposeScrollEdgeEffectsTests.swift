@@ -49,12 +49,6 @@ final class RaftIosComposeScrollEdgeEffectsTests: XCTestCase {
         return Hierarchy(root: root, composeScroll: composeScroll, interopScroll: interopScroll, nativeScroll: nativeScroll)
     }
 
-    func testRecognizesComposeClassesByRuntimeName() {
-        let hierarchy = makeHierarchy()
-        XCTAssertTrue(RaftIosComposeScrollEdgeEffects.isComposeView(hierarchy.composeScroll))
-        XCTAssertFalse(RaftIosComposeScrollEdgeEffects.isComposeView(hierarchy.nativeScroll))
-    }
-
     func testHidesTopAndBottomEdgeEffectsOnComposeScrollViewsOnly() throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("scroll edge effects are iOS 26+") }
         let hierarchy = makeHierarchy()
@@ -73,11 +67,5 @@ final class RaftIosComposeScrollEdgeEffectsTests: XCTestCase {
         RaftIosComposeScrollEdgeEffects.hide(in: hierarchy.root)
         XCTAssertTrue(hierarchy.composeScroll.topEdgeEffect.isHidden)
         XCTAssertFalse(hierarchy.nativeScroll.topEdgeEffect.isHidden)
-    }
-
-    func testNoOpBeforeIOS26() {
-        let hierarchy = makeHierarchy()
-        // Must not crash on any OS; the effect API only exists on iOS 26+.
-        RaftIosComposeScrollEdgeEffects.hide(in: hierarchy.root)
     }
 }

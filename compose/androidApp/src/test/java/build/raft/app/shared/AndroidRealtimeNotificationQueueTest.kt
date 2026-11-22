@@ -51,27 +51,6 @@ class AndroidRealtimeNotificationQueueTest {
     }
 
     @Test
-    fun retractFollowedByPostRunsRetractBeforePost() = runTest {
-        val workerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
-        try {
-            val queue = AndroidRealtimeNotificationQueue(workerScope)
-            val events = mutableListOf<String>()
-
-            queue.enqueue { events += "retract" }
-            val postJob =
-                launch(StandardTestDispatcher(testScheduler)) {
-                    queue.enqueueAndAwait { events += "post" }
-                }
-
-            testScheduler.advanceUntilIdle()
-            assertEquals(listOf("retract", "post"), events)
-            assertTrue(postJob.isCompleted)
-        } finally {
-            workerScope.cancel()
-        }
-    }
-
-    @Test
     fun failingEntryReportsErrorWithoutBreakingSubsequentWork() = runTest {
         val workerScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         try {

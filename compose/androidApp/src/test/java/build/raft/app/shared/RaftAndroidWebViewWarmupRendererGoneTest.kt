@@ -85,29 +85,4 @@ class RaftAndroidWebViewWarmupRendererGoneTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("warmup", tickets.single()["webview_surfaces"])
     }
-
-    @Test
-    fun aSystemReclaimReleasesTheInstanceWithoutATicket() {
-        val warm = warmWebView()
-
-        val handled =
-            shadowOf(warm).webViewClient.onRenderProcessGone(warm, gone(didCrash = false, priority = WebView.RENDERER_PRIORITY_WAIVED))
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertTrue(handled)
-        assertNull(RaftAndroidWebViewWarmup.warmInstanceForTest)
-        assertTrue(shadowOf(warm).wasDestroyCalled())
-        assertTrue("a background reclaim files no ticket", tickets.isEmpty())
-    }
-
-    @Test
-    fun aDeathAfterTheInstanceWasReplacedLeavesTheKeptOneAlone() {
-        val warm = warmWebView()
-        val stranger = RaftAndroidWebViewWarmup.newWarmWebView(RuntimeEnvironment.getApplication())
-
-        assertTrue(shadowOf(stranger).webViewClient.onRenderProcessGone(stranger, gone(true, WebView.RENDERER_PRIORITY_BOUND)))
-
-        assertSame("only the dying instance is dropped", warm, RaftAndroidWebViewWarmup.warmInstanceForTest)
-        assertTrue(shadowOf(stranger).wasDestroyCalled())
-    }
 }

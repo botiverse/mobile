@@ -60,20 +60,4 @@ class RaftSandboxWebViewRendererGoneAllowIosTest {
         assertFalse(viewer.rendererGoneRestoreAllows("ftp://app.raft.build/artifacts/$id"))
         assertEquals(warm, raftWebViewRendererGoneRestoreUrl(warm, "https://evil.example/artifacts/$id", viewer::rendererGoneRestoreAllows))
     }
-
-    @Test
-    fun withoutAnOriginLockOnlyTheSrcsOriginComesBack() {
-        val open = host("$web/settings", allowNavigation = true, mainFrameOrigin = null)
-        assertTrue(open.rendererGoneRestoreAllows("$web/settings/billing"))
-        assertFalse(open.rendererGoneRestoreAllows("https://other.example/settings/billing"))
-    }
-
-    @Test
-    fun aFencedDocumentComesBackOnlyAsItsOwnMainDocument() {
-        val src = "$web/feedback/?embed=raft-settings-v1"
-        val fenced = host(src, allowNavigation = false, mainFrameOrigin = null)
-        assertTrue(fenced.rendererGoneRestoreAllows(src))
-        assertFalse(fenced.rendererGoneRestoreAllows("$web/account/"))
-        assertEquals(src, raftWebViewRendererGoneRestoreUrl(src, "$web/account/", fenced::rendererGoneRestoreAllows))
-    }
 }

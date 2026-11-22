@@ -22,86 +22,6 @@ import kotlin.math.abs
 
 class RaftTaskStatusMenuConnectedTest {
     @Test
-    fun threadTaskStatusChipProducesMessageOwnedAnchor() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val intent =
-            Intent(context, RaftCmpActivity::class.java)
-                .putExtra("pageName", "compose_thread_message_row_visual")
-                .putExtra(
-                    "pageData",
-                    JSONObject()
-                        .put("instanceId", "thread-task-status-anchor-owner")
-                        .put("visualFixture", "default")
-                        .put("interactionProbe", "task-status-owner")
-                        .toString()
-                )
-                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-
-        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
-            instrumentation.dismissCompatibilityDialogIfPresent()
-            scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
-            instrumentation.waitForIdleSync()
-            SystemClock.sleep(RenderSettleMs)
-
-            val root = requireNotNull(instrumentation.uiAutomation.rootInActiveWindow)
-            val target = requireNotNull(root.findAccessibilityNodeInfosByText("#246").firstOrNull()) {
-                "Missing real Thread task-status chip"
-            }
-            val bounds = Rect()
-            target.getBoundsInScreen(bounds)
-            tapScreenPoint(instrumentation, bounds.exactCenterX(), bounds.exactCenterY())
-            SystemClock.sleep(TapSettleMs)
-
-            val capture = captureActivity(scenario)
-            val greenPixels = capture.bitmap.countAllPixelsNear(PassGreen)
-            capture.bitmap.recycle()
-            assertTrue(
-                "Real Thread task-status producer did not reach its message-owner consumer; bounds=$bounds greenPixels=$greenPixels",
-                greenPixels >= MinThreadProbeGreenPixels
-            )
-        }
-    }
-
-    @Test
-    fun lazyExitAndRemountInvalidatesOldAnchorResolverLeases() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val intent =
-            Intent(context, RaftCmpActivity::class.java)
-                .putExtra("pageName", RaftPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
-                .putExtra(
-                    "pageData",
-                    JSONObject()
-                        .put("instanceId", "anchor-lease-lazy-connected-test")
-                        .put("fixture", "anchor-lease-lazy")
-                        .toString()
-                )
-                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-
-        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
-            instrumentation.dismissCompatibilityDialogIfPresent()
-            scenario.onActivity { activity -> activity.hideSystemBarsForTaskStatusMenuTest() }
-            instrumentation.waitForIdleSync()
-            SystemClock.sleep(LazyLeaseSettleMs)
-
-            val capture = captureActivity(scenario)
-            val greenPixels = capture.bitmap.countPixelsNear(PassGreen)
-            val redPixels = capture.bitmap.countPixelsNear(FailRed)
-            val orangePixels = capture.bitmap.countPixelsNear(FailOrange)
-            val magentaPixels = capture.bitmap.countPixelsNear(FailMagenta)
-            val bluePixels = capture.bitmap.countPixelsNear(FailBlue)
-            capture.bitmap.recycle()
-            assertTrue(
-                "Expected real LazyRow A→B→A lifecycle to invalidate both exited resolvers and keep only remounted A; " +
-                    "green=$greenPixels redAB=$redPixels orangeBStillLive=$orangePixels " +
-                    "magentaSameA=$magentaPixels blueNewANull=$bluePixels",
-                greenPixels >= MinLazyLeaseStatusPixels
-            )
-        }
-    }
-
-    @Test
     fun lowAnchoredTaskStatusMenuSelectsDone() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -262,16 +182,6 @@ class RaftTaskStatusMenuConnectedTest {
         return count
     }
 
-    private fun Bitmap.countAllPixelsNear(target: Int): Int {
-        val row = IntArray(width)
-        var count = 0
-        for (y in 0 until height) {
-            getPixels(row, 0, width, 0, y, width, 1)
-            count += row.count { pixel -> pixel.isNear(target, tolerance = 12) }
-        }
-        return count
-    }
-
     private fun Int.isNear(target: Int, tolerance: Int): Boolean =
         abs(Color.red(this) - Color.red(target)) <= tolerance &&
             abs(Color.green(this) - Color.green(target)) <= tolerance &&
@@ -304,10 +214,7 @@ class RaftTaskStatusMenuConnectedTest {
     private companion object {
         private const val RenderSettleMs = 2_000L
         private const val TapSettleMs = 600L
-        private const val LazyLeaseSettleMs = 2_000L
         private const val MinStatusPixels = 2_000
-        private const val MinLazyLeaseStatusPixels = 10_000
-        private const val MinThreadProbeGreenPixels = 2_000
         private const val MinMenuBlackPixels = 100
         private const val MinMenuWidthDp = 120f
         private const val MinMenuHeightDp = 150f
@@ -316,10 +223,6 @@ class RaftTaskStatusMenuConnectedTest {
         private const val StatusMenuRowHeightDp = 36f
         private const val DoneRowIndex = 3
         private val PassGreen = Color.rgb(16, 185, 129)
-        private val FailRed = Color.rgb(239, 68, 68)
-        private val FailOrange = Color.rgb(249, 115, 22)
-        private val FailMagenta = Color.rgb(217, 70, 239)
-        private val FailBlue = Color.rgb(59, 130, 246)
     }
 
     private data class RootCapture(

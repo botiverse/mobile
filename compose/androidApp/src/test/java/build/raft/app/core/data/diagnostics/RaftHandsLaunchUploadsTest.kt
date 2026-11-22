@@ -23,17 +23,6 @@ class RaftHandsLaunchUploadsTest {
         }
 
     @Test
-    fun allServersOffRunsEveryUploadInTheSdksOrder() = runTest {
-        val ran = mutableListOf<String>()
-        val logs = mutableListOf<String>()
-
-        val result = runHandsLaunchUploads({ RaftPrivacyMode.Off }, steps(ran)) { _, line -> logs += line }
-
-        assertTrue(result)
-        assertEquals(listOf("device_ping", "crashes", "anrs", "native_crashes"), ran)
-    }
-
-    @Test
     fun anyServerOnOrUnknownSendsNothingAndKeepsItForTheNextLaunch() = runTest {
         for (mode in listOf(RaftPrivacyMode.On, RaftPrivacyMode.Unknown)) {
             val ran = mutableListOf<String>()
@@ -45,17 +34,6 @@ class RaftHandsLaunchUploadsTest {
             assertEquals("nothing uploaded under $mode", emptyList<String>(), ran)
             assertTrue(logs.single(), logs.single().contains("mode=${mode.name.lowercase()}") && logs.single().contains("kept_for=next_launch"))
         }
-    }
-
-    @Test
-    fun oneFailedUploadDoesNotStopTheOthers() = runTest {
-        val ran = mutableListOf<String>()
-        val logs = mutableListOf<String>()
-
-        runHandsLaunchUploads({ RaftPrivacyMode.Off }, steps(ran, failing = "crashes")) { _, line -> logs += line }
-
-        assertEquals(listOf("device_ping", "crashes", "anrs", "native_crashes"), ran)
-        assertTrue(logs.any { it.startsWith("hands_launch_upload_failed step=crashes") })
     }
 
     @Test

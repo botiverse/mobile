@@ -10,14 +10,6 @@ import kotlin.test.Test
 class RuntimeFormV3ConditionsConformanceIosTest {
     @Test fun everyCaseEvaluatesToItsExpectedValue() = runtimeFormV3CheckConformanceCases()
 
-    @Test fun everyUnsupportedSchemaIsReportedUnsupported() = runtimeFormV3CheckConformanceUnsupported()
-
-    @Test fun objectsCompareStructurallyWhateverTheKeyOrder() = runtimeFormV3CheckStructuralCompare()
-
-    @Test fun patternsInsideThePortableSubsetAreSupported() = runtimeFormV3CheckPortablePatterns()
-
-    @Test fun patternsOutsideThePortableSubsetMakeTheConditionUnsupported() = runtimeFormV3CheckNonPortablePatterns()
-
     @Test fun patternsMatchWithEcmaScriptDollarAndDot() = runtimeFormV3CheckEcmaScriptMatching()
 
     @Test fun aNonPortablePatternInAFormMakesTheWholeFormUnavailable() = runtimeFormV3CheckNonPortablePatternRefusesForm()

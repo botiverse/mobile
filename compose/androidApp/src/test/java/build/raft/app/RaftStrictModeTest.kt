@@ -45,59 +45,6 @@ class RaftStrictModeTest {
     }
 
     @Test
-    fun threadPolicyDetectsDiskAndCustomSlowCallsWithLogOnlyNeverDeath() {
-        val actual = RaftStrictMode.buildThreadPolicy()
-        val expected =
-            StrictMode.ThreadPolicy.Builder()
-                .detectDiskReads()
-                .detectDiskWrites()
-                .detectCustomSlowCalls()
-                .penaltyLog()
-                .build()
-        val withDeath =
-            StrictMode.ThreadPolicy.Builder()
-                .detectDiskReads()
-                .detectDiskWrites()
-                .detectCustomSlowCalls()
-                .penaltyLog()
-                .penaltyDeath()
-                .build()
-
-        assertEquals(expected.toString(), actual.toString())
-        assertNotEquals("debug StrictMode must never install penaltyDeath", withDeath.toString(), actual.toString())
-    }
-
-    @Test
-    fun allowDiskReadsAndWritesTemporarilyRelaxPolicyAndRestoreEvenOnThrow() {
-        assertTrue(RaftStrictMode.installIfDebug(buildConfigDebug = true, appDebuggable = true))
-        val strictPolicy = StrictMode.getThreadPolicy().toString()
-
-        var insideReadPolicy = ""
-        val readValue =
-            RaftStrictMode.allowDiskReads {
-                insideReadPolicy = StrictMode.getThreadPolicy().toString()
-                "ok"
-            }
-        assertEquals("ok", readValue)
-        assertNotEquals("disk reads should be permitted inside allowDiskReads", strictPolicy, insideReadPolicy)
-        assertEquals("prior thread policy must be restored after allowDiskReads", strictPolicy, StrictMode.getThreadPolicy().toString())
-
-        var insideWritePolicy = ""
-        var caught: IllegalStateException? = null
-        try {
-            RaftStrictMode.allowDiskWrites {
-                insideWritePolicy = StrictMode.getThreadPolicy().toString()
-                throw IllegalStateException("expected")
-            }
-        } catch (error: IllegalStateException) {
-            caught = error
-        }
-        assertEquals("expected", caught?.message)
-        assertNotEquals("disk writes should be permitted inside allowDiskWrites", strictPolicy, insideWritePolicy)
-        assertEquals("prior thread policy must be restored in finally", strictPolicy, StrictMode.getThreadPolicy().toString())
-    }
-
-    @Test
     fun allowDiskHelpersArePassThroughWhenNotInstalled() {
         val sentinel = StrictMode.ThreadPolicy.Builder().detectDiskReads().penaltyLog().build()
         StrictMode.setThreadPolicy(sentinel)

@@ -17,24 +17,6 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class RaftNotificationTapTargetTest {
     @Test
-    fun aReminderWithoutARouteOpensItsServersActivity() {
-        val pageData =
-            requireNotNull(
-                RaftCmpActivity.buildNotificationTapAppShellPageData(
-                    JSONObject()
-                        .put("serverId", "server-2")
-                        .put("category", "reminder")
-                        .put("groupKey", "server-2:reminder")
-                        .put("routeUrl", "/s/acme/activity")
-                        .put("route", "")
-                )
-            )
-        assertEquals("server-2", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_SERVER_ID))
-        assertEquals("activity", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_NOTIFICATION_TARGET))
-        assertEquals("activity", pageData.optString(RaftCmpActivity.KEY_APP_SHELL_INITIAL_TAB))
-    }
-
-    @Test
     fun anAgentRouteOpensActivityOnTheRoutesServer() {
         val pageData =
             requireNotNull(

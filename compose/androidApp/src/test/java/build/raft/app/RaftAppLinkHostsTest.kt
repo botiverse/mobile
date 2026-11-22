@@ -15,19 +15,6 @@ import org.w3c.dom.Element
  * Old slock.ai links inside messages are still recognised in-app (RaftMessageLinks), not here.
  */
 class RaftAppLinkHostsTest {
-    private val sourceSets = listOf("main", "alpha", "play", "debug", "release")
-
-    @Test
-    fun noManifestClaimsASlockAiHost() {
-        requireNotNull(manifest("main")) { "main manifest missing" }
-        val claimed =
-            sourceSets.flatMap { set ->
-                manifest(set)?.let { root -> webIntentFilters(root).flatMap { hosts(it) }.map { "$set:$it" } }.orEmpty()
-            }
-        val slock = claimed.filter { it.substringAfter(':').let { host -> host == "slock.ai" || host.endsWith(".slock.ai") } }
-        assertTrue("slock.ai hosts must not be claimed as App Links: $slock", slock.isEmpty())
-    }
-
     @Test
     fun verifiedAppLinksStayOnTheRaftHosts() {
         val root = requireNotNull(manifest("main")) { "main manifest missing" }

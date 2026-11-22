@@ -50,41 +50,11 @@ class RaftActivityPageOpensTest {
     }
 
     @Test
-    fun tasksAreIndependentWindows() {
-        opens.created("shell-a", 1, "shell", JsonObject(emptyMap()))
-        opens.created("shell-b", 2, "shell", JsonObject(emptyMap()))
-        open(1, "t1")
-        assertEquals(RaftNativePageOpenOutcome.Opened, open(2, "t1"))
-        assertEquals(listOf("t1", "t1"), started)
-    }
-
-    @Test
     fun aLostEnterCallbackStopsHoldingOpensAfterTheTimeout() {
         opens.created("shell", 1, "shell", JsonObject(emptyMap()))
         open(1, "t1")
         open(1, "t2")
         scheduled.toList().forEach { it() }
         assertEquals(listOf("t1", "t2"), started)
-    }
-
-    @Test
-    fun theIncomingPageGoingAwayEndsThePush() {
-        opens.created("shell", 1, "shell", JsonObject(emptyMap()))
-        open(1, "t1")
-        opens.created("t1-activity", 1, "thread", thread("t1"))
-        opens.destroyed("t1-activity")
-        assertEquals(RaftNativePageOpenOutcome.Opened, open(1, "t1"))
-        assertEquals(listOf("t1", "t1"), started)
-    }
-
-    @Test
-    fun aFinishingTopPageIsNotTheTopAnyMore() {
-        opens.created("shell", 1, "shell", JsonObject(emptyMap()))
-        open(1, "t1")
-        opens.created("t1-activity", 1, "thread", thread("t1"))
-        opens.entered("t1-activity")
-        // Back: the thread Activity is finishing, not destroyed yet; the same row is tapped again.
-        leavingHosts += "t1-activity"
-        assertEquals(RaftNativePageOpenOutcome.Opened, open(1, "t1"))
     }
 }

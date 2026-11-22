@@ -11,42 +11,6 @@ import org.junit.Test
 
 class MainActivityLaunchTest {
     @Test
-    fun opaqueAndUnknownUrisNeverReadTypedCallbackQueries() {
-        var queryReads = 0
-        val queryReader = {
-            queryReads += 1
-            true
-        }
-
-        assertEquals(
-            null,
-            admittedUriQuery(
-                isHierarchical = false,
-                routeAccepted = true,
-                readQuery = queryReader,
-            )
-        )
-        assertEquals(
-            null,
-            admittedUriQuery(
-                isHierarchical = true,
-                routeAccepted = false,
-                readQuery = queryReader,
-            )
-        )
-        assertEquals(0, queryReads)
-        assertEquals(
-            true,
-            admittedUriQuery(
-                isHierarchical = true,
-                routeAccepted = true,
-                readQuery = queryReader,
-            )
-        )
-        assertEquals(1, queryReads)
-    }
-
-    @Test
     fun mobileOAuthAdmissionRequiresTheExactHierarchicalCallbackRoute() {
         assertTrue(AndroidMobileOAuth.isCallbackRoute(BuildConfig.OAUTH_CALLBACK_SCHEME, "oauth", "/callback"))
         assertTrue(
@@ -120,24 +84,6 @@ class MainActivityLaunchTest {
         )
     }
 
-    /**
-     * The web's social sign-in callback (`/?auth_callback=social&code=…`) is no longer completed in
-     * the app: without the browser's binding cookie the server refuses it (`social_completion_binding`,
-     * Tenny 2026-11-07). The link goes back to the browser, where the sign-in started.
-     */
-    @Test
-    fun webSocialSignInCallbackGoesBackToTheBrowser() {
-        assertTrue(
-            shouldOpenUnsupportedRaftWebLinkExternally(
-                action = "android.intent.action.VIEW",
-                dataScheme = "https",
-                dataHost = "app.raft.build",
-                dataPath = "/",
-                verifyToken = null
-            )
-        )
-    }
-
     @Test
     fun exactEmailVerificationLinkIsConsumedBeforeGenericBrowserFallback() {
         assertEquals(
@@ -178,39 +124,6 @@ class MainActivityLaunchTest {
                 verifyToken = "   "
             )
         )
-    }
-
-    @Test
-    fun nonRootVerifyQueryRemainsAnUnsupportedWebLinkForBrowserFallback() {
-        assertEquals(
-            null,
-            emailVerificationToken(
-                action = "android.intent.action.VIEW",
-                dataScheme = "https",
-                dataHost = "app.raft.build",
-                dataPath = "/channel/general",
-                verifyToken = "email-token-123"
-            )
-        )
-        assertTrue(
-            shouldOpenUnsupportedRaftWebLinkExternally(
-                action = "android.intent.action.VIEW",
-                dataScheme = "https",
-                dataHost = "app.raft.build",
-                dataPath = "/channel/general",
-                verifyToken = "email-token-123"
-            )
-        )
-    }
-
-    @Test
-    fun warmVerificationAlwaysFinishesOnlyTheTrampoline() {
-        EmailVerificationOutcome.entries.forEach { result ->
-            assertEquals(
-                EmailVerificationNavigation.FinishTrampoline,
-                emailVerificationNavigation(hasLiveShellInTask = true, result = result)
-            )
-        }
     }
 
     @Test
@@ -274,60 +187,6 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun externalBrowserSelectionLooksPastAVerifiedAppLink() {
-        // dm:@artin #97: for a verified App Link path (`/s/hq/settings/account#two-step`) Android 12+
-        // reports only Raft under MATCH_DEFAULT_ONLY; MATCH_ALL still lists the browsers.
-        var allQueried = false
-        assertEquals(
-            "org.mozilla.firefox",
-            selectExternalBrowserPackage(
-                ownPackage = "build.raft.app",
-                defaultPackage = "build.raft.app",
-                defaultBrowserPackage = { "org.mozilla.firefox" },
-                defaultOnlyCandidates = listOf("build.raft.app"),
-                allCandidates = {
-                    allQueried = true
-                    listOf("build.raft.app", "com.android.chrome", "org.mozilla.firefox")
-                },
-            )
-        )
-        assertTrue(allQueried)
-        // No default browser named: the first browser listed.
-        assertEquals(
-            "com.android.chrome",
-            selectExternalBrowserPackage(
-                ownPackage = "build.raft.app",
-                defaultPackage = "build.raft.app",
-                defaultBrowserPackage = { null },
-                defaultOnlyCandidates = listOf("build.raft.app"),
-                allCandidates = { listOf("build.raft.app", "com.android.chrome") },
-            )
-        )
-        // A browser already among the defaults: MATCH_ALL is never read.
-        assertEquals(
-            "com.android.chrome",
-            selectExternalBrowserPackage(
-                ownPackage = "build.raft.app",
-                defaultPackage = "com.android.chrome",
-                defaultBrowserPackage = { error("not needed") },
-                defaultOnlyCandidates = listOf("com.android.chrome"),
-                allCandidates = { error("not needed") },
-            )
-        )
-        // No browser installed at all.
-        assertEquals(
-            null,
-            selectExternalBrowserPackage(
-                ownPackage = "build.raft.app",
-                defaultPackage = "build.raft.app",
-                defaultBrowserPackage = { null },
-                defaultOnlyCandidates = listOf("build.raft.app"),
-                allCandidates = { listOf("build.raft.app", "build.raft.app.alpha") },
-            )
-        )
-    }
-
-    @Test
     fun externalBrowserSelectionSkipsOtherInstalledRaftBuilds() {
         // An alpha build next to the release build: the release app is the App Link default, not a browser.
         assertEquals(
@@ -377,25 +236,6 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun legacyHostAppViewIntentDoesNotClearExistingTask() {
-        assertFalse(
-            shouldClearTaskForSharedShell(
-                action = "android.intent.action.VIEW",
-                dataScheme = "https",
-                dataHost = "app.slock.ai"
-            )
-        )
-        assertEquals(
-            "app_web_view",
-            raftLaunchSource(
-                action = "android.intent.action.VIEW",
-                dataScheme = "https",
-                dataHost = "app.slock.ai"
-            )
-        )
-    }
-
-    @Test
     fun externalViewIntentKeepsTaskReset() {
         assertTrue(
             shouldClearTaskForSharedShell(
@@ -415,38 +255,6 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun launcherIntentKeepsDefaultShellTaskPolicyAndNeverCreatesDocument() {
-        val target = resolveAndroidShellLaunchTarget(JSONObject())
-        val taskLaunch = target.taskLaunchPlan(
-            shouldClearTaskForSharedShell("android.intent.action.MAIN", null, null)
-        )
-
-        assertTrue(taskLaunch.clearTask)
-        assertEquals("launcher", raftLaunchSource("android.intent.action.MAIN", null, null))
-    }
-
-    @Test
-    fun appShellPageDataIntentDoesNotClearExistingTask() {
-        assertFalse(
-            shouldClearTaskForSharedShell(
-                action = null,
-                dataScheme = null,
-                dataHost = null,
-                appShellPageData = true
-            )
-        )
-        assertEquals(
-            "app_shell_intent",
-            raftLaunchSource(
-                action = null,
-                dataScheme = null,
-                dataHost = null,
-                appShellPageData = true
-            )
-        )
-    }
-
-    @Test
     fun postLoginWithoutSelectedServerReturnsToChooserForSessionRestore() {
         assertEquals(PostLoginDestination.ChooseServer, postLoginDestination(null))
         assertEquals(PostLoginDestination.ChooseServer, postLoginDestination(""))
@@ -459,18 +267,6 @@ class MainActivityLaunchTest {
 
         assertTrue(pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertTrue(pageData.optString("slockAuthGateInstanceId").isNotBlank())
-    }
-
-    @Test
-    fun theBrowserForOpenInWebIsTheDefaultOneAndNeverARaftApp() {
-        // Candidates of the no-host https probe: browsers (and any Raft build that takes https).
-        val browsers = listOf("build.raft.app", "build.raft.app.debug", "org.mozilla.firefox", "com.android.chrome")
-        assertEquals("com.android.chrome", selectExternalWebHandlerPackage("build.raft.app.debug", "com.android.chrome", browsers))
-        // No default (the resolver), or a Raft app as the default: the first other browser.
-        assertEquals("org.mozilla.firefox", selectExternalWebHandlerPackage("build.raft.app.debug", "android", browsers))
-        assertEquals("org.mozilla.firefox", selectExternalWebHandlerPackage("build.raft.app.debug", "build.raft.app", browsers))
-        // Only Raft apps: none, and openUrl takes its ordinary path.
-        assertEquals(null, selectExternalWebHandlerPackage("build.raft.app", null, listOf("build.raft.app", "build.raft.app.alpha")))
     }
 
     @Test

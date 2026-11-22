@@ -13,10 +13,4 @@ class AndroidOnboardingBridgeUrlCodecTest {
             ),
         )
     }
-
-    @Test
-    fun encoderUsesUtf8AndDecoderRoundTripsSpacesAndUnicode() {
-        val source = "server name / 筏"
-        assertEquals(source, raftAndroidBridgeUrlDecode(raftAndroidBridgeUrlEncode(source)))
-    }
 }

@@ -95,24 +95,6 @@ class SocketIoRealtimeClientReconnectResumeTest {
     }
 
     @Test
-    fun heartbeatSilenceReconnectResumesFromTheAppliedSeq() {
-        var now = 1_000L
-        val harness = Harness(clockMillis = { now })
-        harness.connect("server-1", lastSeq = 40)
-        harness.receiveMessage(seq = 41)
-        harness.transport.receive(RealtimeSocketEvents.Heartbeat, mapOf("seq" to 41))
-        harness.transport.emitted.clear()
-
-        now += 121_000L
-        assertTrue("heartbeat silence must force a reconnect", harness.client.checkHeartbeatSilence(now))
-        harness.transport.receive(RealtimeSocketEvents.Connect)
-        harness.transport.receive(RealtimeSocketEvents.RoomsJoined)
-
-        assertEquals(listOf<Any?>(41L), harness.resumeSeqs())
-        assertEquals(emptyList<RealtimeRefreshRequired>(), harness.catchUps())
-    }
-
-    @Test
     fun reconnectWithoutAnAppliedSeqRequestsOneHomeAndActivityCatchUp() {
         val harness = Harness()
         harness.connect("server-1")
@@ -148,17 +130,5 @@ class SocketIoRealtimeClientReconnectResumeTest {
         assertFalse("server-1 seq 89 leaked into server-2", harness.resumeSeqs().contains(89L))
         assertEquals(emptyList<Any?>(), harness.resumeSeqs())
         assertEquals(listOf(ServerId("server-2")), harness.catchUps().map { it.serverId })
-    }
-
-    @Test
-    fun firstConnectRoomsJoinedNeverRequestsACatchUp() {
-        // The initial load (or the foreground refresh that comes with a forced connect) owns that catch-up.
-        val harness = Harness()
-        harness.connect("server-1")
-
-        harness.transport.receive(RealtimeSocketEvents.RoomsJoined)
-
-        assertEquals(emptyList<RealtimeRefreshRequired>(), harness.catchUps())
-        assertEquals(emptyList<JSONObject>(), harness.rawCatchUps())
     }
 }

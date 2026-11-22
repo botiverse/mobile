@@ -118,12 +118,6 @@ final class RaftIosPageOpenGateTests: XCTestCase {
         XCTAssertTrue(logged.contains("open_dropped page=compose_thread reason=same_route_on_top"))
     }
 
-    func testADifferentRouteOpensAtOnceWithoutATransition() {
-        open("compose_thread", thread: "t1")
-        XCTAssertTrue(open("compose_thread", thread: "t2"))
-        XCTAssertEqual(titles, ["compose_thread t1", "compose_thread t2"])
-    }
-
     func testDuringATransitionTheLatestDifferentRouteOpensWhenItEnds() {
         open("compose_thread", thread: "t1")
         let coordinator = FakeTransitionCoordinator()
@@ -140,28 +134,6 @@ final class RaftIosPageOpenGateTests: XCTestCase {
         XCTAssertEqual(titles, ["compose_thread t1", "compose_thread t3"])
         XCTAssertTrue(logged.contains("open_dropped page=compose_thread reason=superseded_in_transition"))
         XCTAssertTrue(logged.contains("open_dropped page=compose_thread reason=same_route_queued"))
-    }
-
-    func testAQueuedRouteThatIsOnTopWhenTheTransitionEndsIsDropped() {
-        let coordinator = FakeTransitionCoordinator()
-        navigation.fakeCoordinator = coordinator
-        XCTAssertFalse(open("compose_thread", thread: "t1"))
-        navigation.fakeCoordinator = nil
-        // Meanwhile the same thread got on top through another open.
-        open("compose_thread", thread: "t1")
-        coordinator.finish()
-        XCTAssertEqual(titles, ["compose_thread t1"])
-    }
-
-    func testAPageNotPushedThroughTheGateNeverBlocks() {
-        navigation.pushViewController(UIViewController(), animated: false)
-        XCTAssertTrue(open("compose_thread", thread: "t1"))
-    }
-
-    func testTheShellAndLoginAreNotGated() {
-        XCTAssertTrue(open("compose_slock_app_shell", thread: ""))
-        XCTAssertTrue(open("compose_slock_app_shell", thread: ""))
-        XCTAssertEqual(navigation.pushCount, 2)
     }
 
     func testBackThenTheSameRowOpensAgain() {

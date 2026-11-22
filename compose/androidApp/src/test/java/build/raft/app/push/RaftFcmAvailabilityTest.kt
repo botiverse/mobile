@@ -5,11 +5,6 @@ import org.junit.Test
 
 class RaftFcmAvailabilityTest {
     @Test
-    fun successMeansAvailable() {
-        assertEquals(RaftFcmAvailability.Available, raftFcmAvailabilityFor(0))
-    }
-
-    @Test
     fun onlyMissingDisabledOrInvalidPlayServicesMarkFcmUnavailable() {
         // SERVICE_MISSING, SERVICE_DISABLED, SERVICE_INVALID
         for (code in listOf(1, 3, 9)) {

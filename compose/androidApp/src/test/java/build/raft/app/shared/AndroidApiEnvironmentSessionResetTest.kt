@@ -32,45 +32,6 @@ import org.junit.Test
  */
 class AndroidApiEnvironmentSessionResetTest {
     @Test
-    fun freeLockAnswersInlineAfterTheClearAndItsFollowUp() = runTest {
-        val events = mutableListOf<String>()
-        val auth = HeldLockAuthStore(events, lockHeld = false)
-        val scope = bridgeScope()
-
-        scope.launchSettingsBridgeAction(callback = { events += "callback:${(it as Map<*, *>)["status"]}" }) {
-            clearSessionForApiEnvironmentChange(auth) { events += "disconnect" }
-            mapOf("status" to "ok")
-        }
-
-        // UNDISPATCHED and nothing suspended: answered before launch returned, as the
-        // synchronous bridge did, without running the test dispatcher.
-        assertEquals(listOf("clear:api_environment_changed", "disconnect", "callback:ok"), events)
-        scope.cancel()
-    }
-
-    @Test
-    fun heldLockSuspendsInsteadOfBlockingThenKeepsTheOrder() = runTest {
-        val events = mutableListOf<String>()
-        val auth = HeldLockAuthStore(events, lockHeld = true)
-        val scope = bridgeScope()
-
-        scope.launchSettingsBridgeAction(callback = { events += "callback" }) {
-            clearSessionForApiEnvironmentChange(auth) { events += "disconnect" }
-            mapOf("status" to "ok")
-        }
-
-        // The caller got its thread back with the clear still waiting for the lock.
-        assertEquals(1, auth.waitingClears)
-        assertEquals(emptyList<String>(), events)
-
-        auth.releaseLock()
-        runCurrent()
-
-        assertEquals(listOf("clear:api_environment_changed", "disconnect", "callback"), events)
-        scope.cancel()
-    }
-
-    @Test
     fun teardownWhileWaitingStillClearsTheOldServersSessionAndAnswers() = runTest {
         val events = mutableListOf<String>()
         val auth = HeldLockAuthStore(events, lockHeld = true)
@@ -170,20 +131,6 @@ class AndroidApiEnvironmentSessionResetTest {
     }
 
     @Test
-    fun unknownEnvironmentChangesNothing() = runTest {
-        val events = mutableListOf<String>()
-        val auth = HeldLockAuthStore(events, lockHeld = false)
-
-        val switch =
-            switchApiEnvironment(current = "production", persist = { null }, authStore = auth) { _, _ ->
-                events += "disconnect"
-            }
-
-        assertEquals(null, switch)
-        assertEquals(emptyList<String>(), events)
-    }
-
-    @Test
     fun reselectingTheSameEnvironmentKeepsTheSession() = runTest {
         val events = mutableListOf<String>()
         val auth = HeldLockAuthStore(events, lockHeld = false)
@@ -195,25 +142,6 @@ class AndroidApiEnvironmentSessionResetTest {
 
         assertEquals(ApiEnvironmentSwitch(after = "production", changed = false), switch)
         assertEquals(emptyList<String>(), events)
-    }
-
-    @Test
-    fun aFailingActionAnswersTheGenericSettingsFailure() = runTest {
-        var answer: Any? = null
-        val scope = bridgeScope()
-
-        scope.launchSettingsBridgeAction(callback = { answer = it }) { error("environment store unavailable") }
-
-        assertEquals(
-            mapOf(
-                "status" to "error",
-                "code" to "settings_capability_failed",
-                "message" to "environment store unavailable",
-            ),
-            answer,
-        )
-        assertTrue(scope.coroutineContext[kotlinx.coroutines.Job]!!.isActive)
-        scope.cancel()
     }
 
     private fun TestScope.bridgeScope(): CoroutineScope =

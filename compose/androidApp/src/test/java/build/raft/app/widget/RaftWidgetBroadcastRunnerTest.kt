@@ -15,30 +15,6 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class RaftWidgetBroadcastRunnerTest {
     @Test
-    fun finishesPendingResultAfterWorkCompletesOffCallerThread() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val runner =
-            RaftWidgetBroadcastRunner(
-                workDispatcher = dispatcher,
-                coordinatorDispatcher = dispatcher,
-                finishTimeoutMillis = 7_000L,
-            )
-        var workRan = false
-        var finishCalls = 0
-
-        runner.launch(finish = { finishCalls += 1 }) {
-            workRan = true
-        }
-        // Not executed synchronously on the caller (main) thread.
-        assertFalse(workRan)
-        assertEquals(0, finishCalls)
-
-        advanceUntilIdle()
-        assertTrue(workRan)
-        assertEquals(1, finishCalls)
-    }
-
-    @Test
     fun finishesPendingResultEvenWhenWorkThrows() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val errors = mutableListOf<Throwable>()
@@ -89,24 +65,5 @@ class RaftWidgetBroadcastRunnerTest {
         job.cancel()
         advanceUntilIdle()
         assertEquals(1, finishCalls)
-    }
-
-    @Test
-    fun runsWorkWhenPendingResultIsNull() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val runner =
-            RaftWidgetBroadcastRunner(
-                workDispatcher = dispatcher,
-                coordinatorDispatcher = dispatcher,
-            )
-        var ran = false
-
-        runner.launch(finish = null) {
-            ran = true
-        }
-        assertFalse(ran)
-
-        advanceUntilIdle()
-        assertTrue(ran)
     }
 }

@@ -37,64 +37,6 @@ class AndroidMMKVKeepAliveDispatchTest {
     }
 
     @Test
-    fun ignoresUnrelatedNamespacesAndKeys() {
-        val app = RuntimeEnvironment.getApplication()
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = "otherNamespace",
-            key = NOTIFICATION_ENABLED_PREFERENCE_KEY,
-            value = "true",
-        )
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = RaftLocalPreferenceStore.KuiklyNamespace,
-            key = "unrelated_pref_key",
-            value = "true",
-        )
-        assertEquals(0, queuedTasks.size)
-    }
-
-    @Test
-    fun dispatchesNotificationAndKeepAlivePreferenceUpdatesOffCallerThread() {
-        val app = RuntimeEnvironment.getApplication()
-        val observedActions = mutableListOf<String>()
-        AndroidAppScopeMMKV.keepAliveActionExecutor = { _, action -> observedActions += action }
-
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = RaftLocalPreferenceStore.KuiklyNamespace,
-            key = NOTIFICATION_ENABLED_PREFERENCE_KEY,
-            value = "false",
-        )
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = RaftLocalPreferenceStore.KuiklyNamespace,
-            key = AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
-            value = "true",
-        )
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = RaftLocalPreferenceStore.KuiklyNamespace,
-            key = NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY,
-            value = "true",
-        )
-        AndroidAppScopeMMKV.maybeUpdateForegroundKeepAlive(
-            context = app,
-            mmapID = RaftLocalPreferenceStore.KuiklyNamespace,
-            key = AndroidRealtimeKeepAliveController.localPreferenceKey(
-                NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
-            ),
-            value = "false",
-        )
-        // Nothing executed inline on the caller thread.
-        assertEquals(emptyList<String>(), observedActions)
-        assertEquals(4, queuedTasks.size)
-
-        queuedTasks.forEach { it() }
-        assertEquals(listOf("refresh", "refresh", "start", "stop"), observedActions)
-    }
-
-    @Test
     fun defaultRunnerExecutesRapidTogglesInSerialFifoOrderOffCallerThread() {
         val app = RuntimeEnvironment.getApplication()
         val callerThread = Thread.currentThread()

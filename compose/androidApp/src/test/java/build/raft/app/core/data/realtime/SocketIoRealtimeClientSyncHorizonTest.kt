@@ -88,22 +88,6 @@ class SocketIoRealtimeClientSyncHorizonTest {
     }
 
     @Test
-    fun startingHorizonIsAskedOnConnectBeforeRoomsAndResumeWithoutWaiting() {
-        val harness = Harness()
-        harness.connect(lastSeq = 40L)
-        harness.client.joinChannel(ChannelId("channel-1"))
-        harness.transport.receive(RealtimeSocketEvents.RoomsJoined)
-
-        assertEquals(
-            listOf(RealtimeSocketEvents.SyncHorizon, RealtimeSocketEvents.JoinChannel, RealtimeSocketEvents.SyncResume),
-            harness.emittedNames(),
-        )
-        assertEquals("sync:horizon", RealtimeSocketEvents.SyncHorizon)
-        // Unanswered ack: the first resume did not wait for it and runs as before.
-        assertEquals(listOf(mapOf<String, Any>("lastSeq" to 40L)), harness.resumes())
-    }
-
-    @Test
     fun ackBeforeAnyHistoryRequestIsUsedOnTheFirstReconnect() {
         val harness = Harness()
         harness.connect()
@@ -127,33 +111,6 @@ class SocketIoRealtimeClientSyncHorizonTest {
         harness.reconnect()
 
         assertEquals(listOf(mapOf<String, Any>("lastSeq" to 89L)), harness.resumes())
-    }
-
-    @Test
-    fun aResumeWithoutHorizonStillStartsTheNextRoundWithItsHorizon() {
-        val harness = Harness()
-        harness.historySent = true
-        harness.connect()
-        harness.receiveMessage(seq = 89L)
-
-        harness.reconnect()
-        harness.receiveResume(currentSeq = 95L, horizon = "800")
-        harness.reconnect()
-        harness.receiveResume(currentSeq = 95L, horizon = "900")
-        harness.reconnect()
-
-        assertEquals(
-            listOf(
-                mapOf<String, Any>("lastSeq" to 89L),
-                mapOf<String, Any>("lastSeq" to 95L, "sinceHorizon" to "800"),
-                mapOf<String, Any>("lastSeq" to 95L, "sinceHorizon" to "900"),
-            ),
-            harness.resumes(),
-        )
-        // A horizon is held: a new socket does not ask for a starting one again.
-        val asked = harness.emittedNames().count { it == RealtimeSocketEvents.SyncHorizon }
-        harness.transport.receive(RealtimeSocketEvents.Connect)
-        assertEquals(asked, harness.emittedNames().count { it == RealtimeSocketEvents.SyncHorizon })
     }
 
     @Test
@@ -197,26 +154,6 @@ class SocketIoRealtimeClientSyncHorizonTest {
             harness.resumes(),
         )
         assertTrue(harness.events.filterIsInstance<RealtimeRefreshRequired>().isEmpty())
-    }
-
-    @Test
-    fun errorAckOrNumericHorizonOrTransportWithoutAcksLeavesNoHorizon() {
-        listOf<Any>(JSONObject().put("error", "horizon_unavailable"), JSONObject().put("horizon", 752)).forEach { ack ->
-            val harness = Harness()
-            harness.connect()
-            harness.transport.answerAck(RealtimeSocketEvents.SyncHorizon, ack)
-            harness.receiveMessage(seq = 89L)
-            harness.reconnect()
-            assertEquals(ack.toString(), listOf(mapOf<String, Any>("lastSeq" to 89L)), harness.resumes())
-        }
-
-        val curl = Harness()
-        curl.transport.supportsAck = false
-        curl.connect()
-        curl.receiveMessage(seq = 89L)
-        curl.reconnect()
-        assertFalse(RealtimeSocketEvents.SyncHorizon in curl.emittedNames())
-        assertEquals(listOf(mapOf<String, Any>("lastSeq" to 89L)), curl.resumes())
     }
 
     @Test

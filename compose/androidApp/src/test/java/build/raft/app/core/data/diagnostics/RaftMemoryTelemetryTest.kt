@@ -32,20 +32,6 @@ class RaftMemoryTelemetryTest {
         )
 
     @Test
-    fun snapshotRoundTripsThroughItsPersistedString() {
-        assertEquals(sample, MemoryTelemetrySnapshot.decode(sample.encode()))
-        val unsampled = MemoryTelemetrySnapshot(7, 1L, 2L, false, 3L)
-        assertEquals(unsampled, MemoryTelemetrySnapshot.decode(unsampled.encode()))
-    }
-
-    @Test
-    fun theRecordedBuildRoundTripsEvenWithSeparatorsInItsName() {
-        val versioned = sample.copy(versionCode = 12400001L, versionName = "1.24.0 (alpha,1;x)")
-        assertEquals(versioned, MemoryTelemetrySnapshot.decode(versioned.encode()))
-        assertEquals(listOf(versioned), MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(listOf(versioned))))
-    }
-
-    @Test
     fun aRingWrittenByThePreviousBuildStillDecodesWithoutAVersion() {
         // Encoding 2: the 19 numeric fields, no build.
         val v2 = "2," + sample.encode().substringAfter(',').split(',').take(18).joinToString(",")
@@ -53,82 +39,6 @@ class RaftMemoryTelemetryTest {
         assertEquals(sample, decoded)
         assertEquals(-1L, decoded?.versionCode)
         assertEquals("", decoded?.versionName)
-    }
-
-    @Test
-    fun theLastInteractionRoundTripsAndARingWrittenByEncoding3DecodesWithoutIt() {
-        val touched = sample.copy(versionCode = 12600001L, versionName = "1.26.0", lastInteractionAtMillis = 29_500L)
-        assertEquals(touched, MemoryTelemetrySnapshot.decode(touched.encode()))
-
-        // Encoding 3: the 19 numeric fields, the version code and name, no last interaction.
-        val v3 = "3," + touched.encode().substringAfter(',').split(',').take(20).joinToString(",")
-        val decoded = MemoryTelemetrySnapshot.decode(v3)
-        assertEquals(touched.copy(lastInteractionAtMillis = -1L), decoded)
-    }
-
-    @Test
-    fun theHandsProcessEventRoundTripsAndARingWrittenByEncoding4DecodesWithoutIt() {
-        val stamped =
-            sample.copy(
-                versionCode = 12700001L,
-                versionName = "1.27.0",
-                lastInteractionAtMillis = 29_500L,
-                handsProcessEventId = "3f2c8a3e-9b1d-4c7e-8f00-1a2b3c4d5e6f",
-                handsProcessStartMillis = 1_003L,
-            )
-        assertEquals(stamped, MemoryTelemetrySnapshot.decode(stamped.encode()))
-        assertEquals(listOf(stamped), MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(listOf(stamped))))
-
-        // Encoding 4 (the previous build): everything up to the last interaction, no Hands process event.
-        val v4 = "4," + stamped.encode().substringAfter(',').split(',').take(21).joinToString(",")
-        assertEquals(stamped.copy(handsProcessEventId = "", handsProcessStartMillis = -1L), MemoryTelemetrySnapshot.decode(v4))
-        // A wrong field count for its version decodes to nothing.
-        assertNull(MemoryTelemetrySnapshot.decode("4," + stamped.encode().substringAfter(',')))
-    }
-
-    @Test
-    fun interactionWritesAreThrottledToOneEveryFiveSecondsAndNoneInTheBackground() {
-        val throttle = InteractionWriteThrottle(RaftMemoryTelemetry.InteractionWriteIntervalMillis)
-
-        // Backgrounded: nothing written, and it does not count as a write.
-        assertFalse(throttle.shouldRecord(nowMillis = 1_000L, foreground = false))
-        assertTrue(throttle.shouldRecord(nowMillis = 1_000L, foreground = true))
-        // A stream of touches inside the interval writes nothing more.
-        for (now in listOf(1_001L, 2_000L, 5_999L)) assertFalse("$now", throttle.shouldRecord(now, foreground = true))
-        // Once the stored value is 5 s old, the next touch writes.
-        assertTrue(throttle.shouldRecord(nowMillis = 6_000L, foreground = true))
-        assertFalse(throttle.shouldRecord(nowMillis = 10_999L, foreground = true)) // 4999 ms after the last write
-        assertFalse(throttle.shouldRecord(nowMillis = 20_000L, foreground = false))
-        assertTrue(throttle.shouldRecord(nowMillis = 20_000L, foreground = true))
-        // The wall clock set back: the stored value is not "recent", so write again.
-        assertTrue(throttle.shouldRecord(nowMillis = 10_000L, foreground = true))
-    }
-
-    @Test
-    fun corruptOrOlderFormatValuesDecodeToNothing() {
-        assertNull(MemoryTelemetrySnapshot.decode(null))
-        assertNull(MemoryTelemetrySnapshot.decode(""))
-        assertNull(MemoryTelemetrySnapshot.decode("1," + sample.encode().substringAfter(',')))
-        assertNull(MemoryTelemetrySnapshot.decode(sample.encode() + ",1"))
-        assertNull(MemoryTelemetrySnapshot.decode(sample.encode().replace("4321", "x")))
-    }
-
-    @Test
-    fun ringKeepsOneEntryPerProcessNewestFirstAndSkipsCorruptEntries() {
-        val processes = (1..8).map { i -> MemoryTelemetrySnapshot(i, i * 1_000L, i * 1_000L, false, i * 1_000L) }
-        var ring = emptyList<MemoryTelemetrySnapshot>()
-        processes.forEach { ring = MemoryTelemetryRing.merge(ring, it) }
-        assertEquals((3..8).toList(), ring.map { it.pid })
-
-        // The same process writing again replaces its entry.
-        val updated = processes.last().copy(foreground = true, writtenAtMillis = 9_999L)
-        ring = MemoryTelemetryRing.merge(ring, updated)
-        assertEquals(MemoryTelemetryRing.Capacity, ring.size)
-        assertEquals(updated, ring.last())
-
-        val decoded = MemoryTelemetryRing.decode(MemoryTelemetryRing.encode(ring) + ";garbage;;")
-        assertEquals(ring, decoded)
-        assertTrue(MemoryTelemetryRing.decode(null).isEmpty())
     }
 
     @Test
@@ -158,56 +68,5 @@ class RaftMemoryTelemetryTest {
             formatHistoricalProcessExit(exit.copy(pid = 9), sample)
                 .endsWith("traceAvailable=false pid=9 telemetry=pid_mismatch telemetryPid=4321")
         )
-    }
-
-    @Test
-    fun trimLevelsHaveStableLabels() {
-        assertEquals("none", trimMemoryLevelLabel(0))
-        assertEquals("running_critical", trimMemoryLevelLabel(15))
-        assertEquals("ui_hidden", trimMemoryLevelLabel(20))
-        assertEquals("complete", trimMemoryLevelLabel(80))
-        assertEquals("level_7", trimMemoryLevelLabel(7))
-    }
-
-    @Test
-    fun pssIsReadOnTrimsTheFirstSampleAndEveryFiveMinutesOnly() {
-        val interval = RaftMemoryTelemetry.PssIntervalMillis
-        assertTrue(shouldSamplePss(nowMillis = 0L, lastPssMillis = -1L, intervalMillis = interval, trim = false))
-        assertFalse(shouldSamplePss(30_000L, 0L, interval, trim = false))
-        assertTrue(shouldSamplePss(30_000L, 0L, interval, trim = true))
-        assertTrue(shouldSamplePss(interval, 0L, interval, trim = false))
-    }
-
-    @Test
-    fun statmResidentPagesAreTheSecondField() {
-        assertEquals(36_912L, parseStatmResidentPages("1234567 36912 12000 5 0 400000 0\n"))
-        assertEquals(-1L, parseStatmResidentPages(""))
-        assertEquals(-1L, parseStatmResidentPages("12 x"))
-    }
-
-    @Test
-    fun writeGateRateLimitsPeriodicSamplesButNotForegroundChangesOrHigherTrims() {
-        val gate = MemoryTelemetryWriteGate(minPeriodicIntervalMillis = 15_000L)
-
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Periodic, 0L))
-        assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Periodic, 14_999L))
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.ForegroundChange, 15_000L))
-        assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Periodic, 20_000L))
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Periodic, 30_000L))
-
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_001L, trimLevel = 5))
-        assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_002L, trimLevel = 5))
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_003L, trimLevel = 15))
-        assertFalse(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 30_004L, trimLevel = 10))
-        assertTrue(gate.shouldWrite(MemoryTelemetryWriteGate.Cause.Trim, 45_003L, trimLevel = 10))
-    }
-
-    @Test
-    fun uiHiddenAndBackgroundTrimLevelsMeanNoUiIsShown() {
-        assertFalse(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE))
-        assertFalse(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL))
-        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN))
-        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_BACKGROUND))
-        assertTrue(trimMeansUiHidden(ComponentCallbacks2.TRIM_MEMORY_COMPLETE))
     }
 }

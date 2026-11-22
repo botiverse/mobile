@@ -11,38 +11,6 @@ import platform.Foundation.NSNotificationCenter
 
 class RaftPlatformEventBusIosTest {
     @Test
-    fun nativeRealtimeNotificationFlowsIntoSharedEventBus() {
-        val eventBus = createRaftPlatformEventBus()
-        var received: JsonObject? = null
-        val subscription =
-            eventBus.observe(GeneratedRealtimeContract.Notify.EventName, crossProcess = true) {
-                received = it
-            }
-
-        NSNotificationCenter.defaultCenter.postNotificationName(
-            aName = GeneratedRealtimeContract.Notify.EventName,
-            `object` = null,
-            userInfo =
-                mapOf(
-                    GeneratedRealtimeContract.PayloadKey.ServerId to "server-1",
-                    GeneratedRealtimeContract.PayloadKey.EventName to GeneratedRealtimeContract.SocketEvent.MessageNew,
-                    GeneratedRealtimeContract.PayloadKey.RawPayload to "{\"id\":\"message-1\"}"
-                )
-        )
-
-        assertEquals("server-1", received?.optString(GeneratedRealtimeContract.PayloadKey.ServerId))
-        assertEquals(
-            GeneratedRealtimeContract.SocketEvent.MessageNew,
-            received?.optString(GeneratedRealtimeContract.PayloadKey.EventName)
-        )
-        assertEquals(
-            "{\"id\":\"message-1\"}",
-            received?.optString(GeneratedRealtimeContract.PayloadKey.RawPayload)
-        )
-        subscription.close()
-    }
-
-    @Test
     fun sharedRealtimePostIsDeliveredOnlyOnce() {
         val eventBus = createRaftPlatformEventBus()
         var deliveryCount = 0

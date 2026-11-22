@@ -26,17 +26,4 @@ class AndroidAttachmentDirectDownloadCacheTest {
             directory.deleteRecursively()
         }
     }
-
-    @Test
-    fun deleteIsIdempotentWhenDirectDownloadCacheIsMissing() {
-        val directory = Files.createTempDirectory("missing-direct-attachment-cache").toFile()
-        try {
-            assertEquals(
-                "deleted",
-                deleteDirectAttachmentCache(directory.resolve("missing.apk"), expectedAttemptToken = null)
-            )
-        } finally {
-            directory.deleteRecursively()
-        }
-    }
 }

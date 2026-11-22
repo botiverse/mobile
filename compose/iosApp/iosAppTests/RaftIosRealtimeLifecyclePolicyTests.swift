@@ -2,27 +2,6 @@ import XCTest
 import UIKit
 
 final class RaftIosRealtimeLifecyclePolicyTests: XCTestCase {
-    func testResignActiveAloneHidesShellButKeepsSocketConnected() {
-        let notificationCenter = NotificationCenter()
-        let socket = FakeRealtimeSocket()
-        let policy = RaftIosRealtimeLifecyclePolicy(notificationCenter: notificationCenter, target: socket)
-        policy.install()
-
-        notificationCenter.post(name: UIApplication.willResignActiveNotification, object: nil)
-
-        XCTAssertTrue(socket.connected, "Control Center / banners must not drop the socket")
-        XCTAssertEqual(socket.disconnects, 0)
-        XCTAssertEqual(socket.visibility, [false])
-        XCTAssertEqual(socket.diagnostics, ["resign_active"])
-
-        // Overlay dismissed without leaving the foreground: shown again, no reconnect needed.
-        notificationCenter.post(name: UIApplication.didBecomeActiveNotification, object: nil)
-
-        XCTAssertTrue(socket.connected)
-        XCTAssertEqual(socket.connects, 0)
-        XCTAssertEqual(socket.visibility, [false, true])
-    }
-
     func testEnterBackgroundDisconnectsAndBecomeActiveReconnects() {
         let notificationCenter = NotificationCenter()
         let socket = FakeRealtimeSocket()

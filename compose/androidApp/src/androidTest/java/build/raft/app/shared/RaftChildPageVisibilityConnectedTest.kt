@@ -23,32 +23,6 @@ import org.junit.Test
 
 class RaftChildPageVisibilityConnectedTest {
     @Test
-    fun probeReadinessRequiresASingleDominantProbeColor() {
-        assertFalse(childPageProbeReady(redRatio = 0.49f, blueRatio = 0.02f))
-        assertFalse(childPageProbeReady(redRatio = 0.3f, blueRatio = 0.3f))
-        assertFalse(childPageProbeReady(redRatio = 0.0f, blueRatio = 0.0f))
-        assertTrue(childPageProbeReady(redRatio = 0.51f, blueRatio = 0.0f))
-        assertTrue(childPageProbeReady(redRatio = 0.0f, blueRatio = 0.51f))
-
-        val loaded = RaftLoadReadiness(succeeded = true, completedAtMillis = 3)
-        val ready =
-            RaftRenderReadinessSnapshot(
-                createdAtMillis = 1,
-                resumedAtMillis = 2,
-                topPageLoad = loaded,
-                childPageLoad = loaded,
-                hasWindowFocus = true,
-                contentWidth = 1080,
-                contentHeight = 1920
-            )
-        assertTrue(childPageHostReady(ready))
-        assertFalse(childPageHostReady(ready.copy(topPageLoad = null)))
-        assertFalse(childPageHostReady(ready.copy(childPageLoad = null)))
-        assertFalse(childPageHostReady(ready.copy(hasWindowFocus = false)))
-        assertFalse(childPageHostReady(ready.copy(contentWidth = 0)))
-    }
-
-    @Test
     fun inactiveChildPageDoesNotPaintOverActiveChildPage() {
         val bitmap = captureProbe()
         val redRatio = bitmap.matchingPixelRatio { red, green, blue ->

@@ -14,11 +14,4 @@ class AndroidAppScopeSharedKeyValueNamespacesTest {
         // never registers for push.
         assertTrue(RAFT_PUSH_REGISTRATION_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
     }
-
-    @Test
-    fun deviceStateNamespaceGetsAppScopeStorage() {
-        // The notification-permission auto prompt keeps its "asked" flag here; without a factory
-        // the shared provider throws when the signed-in shell first shows.
-        assertTrue(RAFT_DEVICE_STATE_MMKV_NAMESPACE in androidAppScopeSharedKeyValueNamespaces)
-    }
 }

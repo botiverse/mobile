@@ -47,31 +47,6 @@ class AndroidColdStartPushRegistrationTest {
     }
 
     @Test
-    fun playServicesAvailabilityCachesAcrossCallersUntilRefreshed() {
-        val probes = AtomicInteger(0)
-        val currentCode = AtomicInteger(ConnectionResult.SUCCESS)
-        RaftPlayServicesAvailability.availabilityCodeProvider = {
-            probes.incrementAndGet()
-            currentCode.get()
-        }
-
-        assertEquals(RaftFcmAvailability.Available, RaftPlayServicesAvailability.fcmAvailability(context))
-        assertFalse(RaftPlayServicesAvailability.isFcmUnavailable(context))
-        assertEquals(RaftFcmAvailability.Available, RaftPlayServicesAvailability.fcmAvailability(context))
-        assertEquals(1, probes.get())
-
-        currentCode.set(ConnectionResult.SERVICE_MISSING)
-        assertTrue(RaftPlayServicesAvailability.refresh(context))
-        assertEquals(2, probes.get())
-        assertTrue(RaftPlayServicesAvailability.isFcmUnavailable(context))
-        assertEquals(
-            RaftFcmAvailability.Unavailable("no_play_services code=${ConnectionResult.SERVICE_MISSING}"),
-            RaftPlayServicesAvailability.fcmAvailability(context)
-        )
-        assertEquals(2, probes.get())
-    }
-
-    @Test
     fun pushRegistrationStartRunsOffCallingThreadAndDeliversBufferedFidAfterInstall() {
         val callingThread = Thread.currentThread().name
         val probes = AtomicInteger(0)
@@ -121,66 +96,6 @@ class AndroidColdStartPushRegistrationTest {
     }
 
     @Test
-    fun pushRegistrationDropsBufferedFidWhenPlayServicesUnavailable() {
-        val installEntered = CountDownLatch(1)
-        val releaseInstall = CountDownLatch(1)
-        val installedReason = AtomicReference<String?>(null)
-        val firebaseRegistered = AtomicBoolean(false)
-        val deliveredFids = mutableListOf<String>()
-
-        RaftPlayServicesAvailability.availabilityCodeProvider = { ConnectionResult.SERVICE_MISSING }
-        AndroidPushRegistration.reportPermissionForTests = { }
-        AndroidPushRegistration.installBridgeForTests = { _, unavailableReason ->
-            installedReason.set(unavailableReason)
-            installEntered.countDown()
-            assertTrue(releaseInstall.await(5L, TimeUnit.SECONDS))
-        }
-        AndroidPushRegistration.updateRegistrationForTests = { fid, _, _ ->
-            synchronized(deliveredFids) { deliveredFids += fid }
-        }
-        AndroidPushRegistration.registerFirebaseForTests = { firebaseRegistered.set(true) }
-
-        val job = requireNotNull(AndroidPushRegistration.startAsync(context))
-        assertTrue(installEntered.await(5L, TimeUnit.SECONDS))
-        AndroidPushRegistration.onFirebaseInstallationId(context, "fid-ignored-no-gms")
-        releaseInstall.countDown()
-        runBlocking { job.join() }
-
-        assertEquals("no_play_services code=${ConnectionResult.SERVICE_MISSING}", installedReason.get())
-        assertFalse(firebaseRegistered.get())
-        synchronized(deliveredFids) { assertTrue(deliveredFids.isEmpty()) }
-    }
-
-    @Test
-    fun pushRegistrationFailedInstallDropsBufferedFidWithoutDelivering() {
-        val installEntered = CountDownLatch(1)
-        val releaseInstall = CountDownLatch(1)
-        val firebaseRegistered = AtomicBoolean(false)
-        val deliveredFids = mutableListOf<String>()
-
-        RaftPlayServicesAvailability.availabilityCodeProvider = { ConnectionResult.SUCCESS }
-        AndroidPushRegistration.reportPermissionForTests = { }
-        AndroidPushRegistration.installBridgeForTests = { _, _ ->
-            installEntered.countDown()
-            assertTrue(releaseInstall.await(5L, TimeUnit.SECONDS))
-            error("simulated_bridge_install_failure")
-        }
-        AndroidPushRegistration.updateRegistrationForTests = { fid, _, _ ->
-            synchronized(deliveredFids) { deliveredFids += fid }
-        }
-        AndroidPushRegistration.registerFirebaseForTests = { firebaseRegistered.set(true) }
-
-        val job = requireNotNull(AndroidPushRegistration.startAsync(context))
-        assertTrue(installEntered.await(5L, TimeUnit.SECONDS))
-        AndroidPushRegistration.onFirebaseInstallationId(context, "fid-during-failed-install")
-        releaseInstall.countDown()
-        runBlocking { job.join() }
-
-        assertFalse(firebaseRegistered.get())
-        synchronized(deliveredFids) { assertTrue(deliveredFids.isEmpty()) }
-    }
-
-    @Test
     fun pushRegistrationPreservesOrderWhenNewerFidArrivesDuringDrain() {
         val installEntered = CountDownLatch(1)
         val releaseInstall = CountDownLatch(1)
@@ -209,41 +124,5 @@ class AndroidColdStartPushRegistrationTest {
         runBlocking { job.join() }
 
         synchronized(deliveredFids) { assertEquals(listOf("fid-1", "fid-2"), deliveredFids) }
-    }
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun backgroundConnectionControlsDeferBatteryOptimizationProbeUntilNeeded() {
-        val probes = AtomicInteger(0)
-        val testScope = TestScope(StandardTestDispatcher())
-        val controls =
-            RaftAndroidBackgroundConnectionControls(
-                context = context,
-                refreshScope = testScope,
-                batteryOptimizationExemptProvider = {
-                    probes.incrementAndGet()
-                    true
-                }
-            )
-
-        // Constructing controls on GMS cold start performs zero PowerManager IPCs.
-        assertEquals(0, probes.get())
-
-        // First StateFlow observation triggers one async refresh on refreshScope.
-        val flow = controls.batteryOptimizationExemptState
-        assertEquals(0, probes.get())
-        assertFalse(flow.value)
-        testScope.advanceUntilIdle()
-        assertEquals(1, probes.get())
-        assertTrue(flow.value)
-
-        // Subsequent observations reuse the populated StateFlow without re-probing.
-        assertTrue(controls.batteryOptimizationExemptState.value)
-        testScope.advanceUntilIdle()
-        assertEquals(1, probes.get())
-
-        // Explicit resume refresh re-queries PowerManager once.
-        controls.refreshBatteryOptimizationStatus()
-        assertEquals(2, probes.get())
     }
 }

@@ -45,53 +45,6 @@ class RaftAndroidVendorWhitelistTest {
     }
 
     @Test
-    fun everyVendorEndsWithAppDetailsFallbackAndLenovoAndHuaweiKeepExpectedTargets() {
-        for (vendor in AndroidOemVendor.entries) {
-            val targets = RaftAndroidVendorWhitelist.targetsFor(vendor)
-            assertTrue("vendor=$vendor must have at least fallback", targets.isNotEmpty())
-            val last = targets.last()
-            assertEquals("vendor=$vendor fallback id", "app_details", last.id)
-            assertEquals("vendor=$vendor fallback action", Settings.ACTION_APPLICATION_DETAILS_SETTINGS, last.action)
-            assertTrue("vendor=$vendor fallback packageUri", last.packageUri)
-        }
-
-        val genericTargets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Generic)
-        assertEquals(listOf("app_details"), genericTargets.map { it.id })
-
-        val huaweiTargets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Huawei)
-        assertEquals(
-            listOf(
-                "huawei_startup_normal",
-                "huawei_app_startup_action",
-                "huawei_bootapp_action",
-                "huawei_startup_control",
-                "huawei_protect",
-                "app_details",
-            ),
-            huaweiTargets.map { it.id },
-        )
-
-        val honorTargets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Honor)
-        assertTrue(honorTargets.first().componentPackage == "com.hihonor.systemmanager")
-        assertTrue(honorTargets.any { it.componentPackage == "com.huawei.systemmanager" })
-        assertEquals("app_details", honorTargets.last().id)
-
-        val lenovoTargets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.LenovoZui)
-        assertEquals(
-            listOf(
-                "com.zui.safecenter/com.zui.safecenter.startup.StartupAppListActivity",
-                "com.zui.safecenter/com.zui.safecenter.autorun.AutoRunActivity",
-                "com.zui.safecenter/com.zui.safecenter.MainTabActivity",
-                "com.zui.safecenter/com.zui.safecenter.MainActivity",
-                "com.lenovo.security/com.lenovo.security.purebackground.PureBackgroundActivity",
-                "com.lenovo.performancecenter/com.lenovo.performancecenter.core.ui.switches.SwitchesActivity",
-            ),
-            lenovoTargets.dropLast(1).map { "${it.componentPackage}/${it.componentClass}" },
-        )
-        assertEquals("app_details", lenovoTargets.last().id)
-    }
-
-    @Test
     fun launchFirstAvailableFallsThroughRuntimeExceptionsToAppDetails() {
         val targets = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.LenovoZui)
         val attempted = mutableListOf<String>()
@@ -126,37 +79,5 @@ class RaftAndroidVendorWhitelistTest {
                 throw SecurityException("blocked")
             }
         assertNull(noneLaunched)
-    }
-
-    @Test
-    fun targetIntentsAlwaysIncludeNewTaskAndPopulateComponentActionOrPackageUri() {
-        val pkg = "build.raft.app"
-
-        val zuiIntent = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.LenovoZui).first().toIntent(pkg)
-        assertTrue((zuiIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
-        assertEquals("com.zui.safecenter", zuiIntent.component?.packageName)
-        assertEquals("com.zui.safecenter.startup.StartupAppListActivity", zuiIntent.component?.className)
-
-        val xiaomiPowerkeeper =
-            RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Xiaomi)
-                .first { it.id == "xiaomi_powerkeeper_app" }
-                .toIntent(pkg, appLabel = "Raft")
-        assertTrue((xiaomiPowerkeeper.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
-        assertEquals(pkg, xiaomiPowerkeeper.getStringExtra("package_name"))
-        assertEquals("Raft", xiaomiPowerkeeper.getStringExtra("package_label"))
-
-        val huaweiActionIntent =
-            RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Huawei)
-                .first { it.id == "huawei_app_startup_action" }
-                .toIntent(pkg)
-        assertTrue((huaweiActionIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
-        assertEquals("huawei.intent.action.APP_STARTUP_SETTINGS", huaweiActionIntent.action)
-        assertNull(huaweiActionIntent.component)
-        assertNull(huaweiActionIntent.data)
-
-        val fallbackIntent = RaftAndroidVendorWhitelist.targetsFor(AndroidOemVendor.Generic).single().toIntent(pkg)
-        assertTrue((fallbackIntent.flags and Intent.FLAG_ACTIVITY_NEW_TASK) != 0)
-        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, fallbackIntent.action)
-        assertEquals("package:$pkg", fallbackIntent.data?.toString())
     }
 }

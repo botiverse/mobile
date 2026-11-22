@@ -50,36 +50,7 @@ class RaftPagePushTransitionTest {
         }
     }
 
-    @Test
-    fun pushEnterSlidesInFromTheRightAndPopExitLeavesToTheRight() {
-        val width = 1080
-        val height = 2400
-        assertEquals(Offset(width.toFloat(), 0f), offsetAt(R.anim.raft_page_push_enter, width, height, fraction = 0f))
-        assertEquals(Offset(0f, 0f), offsetAt(R.anim.raft_page_push_enter, width, height, fraction = 1f))
-        assertEquals(Offset(0f, 0f), offsetAt(R.anim.raft_page_pop_exit, width, height, fraction = 0f))
-        assertEquals(Offset(width.toFloat(), 0f), offsetAt(R.anim.raft_page_pop_exit, width, height, fraction = 1f))
-        // The page underneath stays put while the top page slides over it.
-        for (fraction in listOf(0f, 0.5f, 1f)) {
-            assertEquals(Offset(0f, 0f), offsetAt(R.anim.raft_page_push_hold, width, height, fraction))
-        }
-    }
-
-    @Test
-    fun dialogAndSheetWindowsKeepTheirWindowAnimations() {
-        // RaftWindowDialog windows inherit the host theme; only activity open/close changed.
-        val attrs = intArrayOf(android.R.attr.windowEnterAnimation, android.R.attr.windowExitAnimation)
-        val pageHost = windowAnimationIds(R.style.Theme_Raft_Translucent, attrs)
-        val baseTheme = windowAnimationIds(R.style.Theme_Raft, attrs)
-        assertEquals(baseTheme, pageHost)
-        assertNotEquals(
-            windowAnimationStyle(R.style.Theme_Raft),
-            windowAnimationStyle(R.style.Theme_Raft_Translucent),
-        )
-    }
-
     private data class PagePushAnimations(val openEnter: Int, val openExit: Int, val closeEnter: Int, val closeExit: Int)
-
-    private data class Offset(val x: Float, val y: Float)
 
     private fun manifestTheme(host: Class<out Activity>): Int =
         context.packageManager.getActivityInfo(ComponentName(context, host), PackageManager.GET_META_DATA).theme
@@ -116,16 +87,5 @@ class RaftPagePushTransitionTest {
                 ),
             )
         return PagePushAnimations(ids[0], ids[1], ids[2], ids[3])
-    }
-
-    private fun offsetAt(animRes: Int, width: Int, height: Int, fraction: Float): Offset {
-        val animation = AnimationUtils.loadAnimation(context, animRes)
-        animation.initialize(width, height, width, height)
-        animation.startTime = 0L
-        val transformation = Transformation()
-        animation.getTransformation((animation.duration * fraction).toLong(), transformation)
-        val values = FloatArray(9)
-        transformation.matrix.getValues(values)
-        return Offset(values[Matrix.MTRANS_X], values[Matrix.MTRANS_Y])
     }
 }

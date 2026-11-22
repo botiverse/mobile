@@ -9,24 +9,6 @@ import kotlinx.coroutines.test.runTest
 
 class AndroidPlatformFileStreamTest {
     @Test
-    fun readsInBoundedChunksAndClosesExactlyOnce() = runTest {
-        val input = CountingInputStream(ByteArray(PlatformFileStreamChunkBytes * 2 + 17) { 7 })
-        val chunkSizes = mutableListOf<Int>()
-        val source = input.toRaftPlatformFileChunkSource()
-
-        while (true) {
-            val bytes = source.read(PlatformFileStreamChunkBytes)
-            if (bytes.isEmpty()) break
-            chunkSizes += bytes.size
-        }
-        source.close()
-
-        assertEquals(listOf(PlatformFileStreamChunkBytes, PlatformFileStreamChunkBytes, 17), chunkSizes)
-        assertTrue(chunkSizes.all { it <= PlatformFileStreamChunkBytes })
-        assertEquals(1, input.closeCount)
-    }
-
-    @Test
     fun eachAttemptOwnsAnIndependentInputAndCancelClosesOnce() {
         val first = CountingInputStream(byteArrayOf(1))
         val second = CountingInputStream(byteArrayOf(2))

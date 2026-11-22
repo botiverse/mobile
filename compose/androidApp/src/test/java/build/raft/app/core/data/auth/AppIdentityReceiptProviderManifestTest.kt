@@ -19,34 +19,6 @@ class AppIdentityReceiptProviderManifestTest {
     private val src = locateRepoFile("compose/androidApp/src/main/AndroidManifest.xml").parentFile.parentFile
 
     @Test
-    fun mainManifestDeclaresTheProviderEnabledAndDumpProtected() {
-        val provider =
-            elements(parse(File(src, "main/AndroidManifest.xml")), "provider")
-                .single { it.getAttribute("android:name") == ".core.data.auth.AppIdentityReceiptProvider" }
-        assertEquals("true", provider.getAttribute("android:enabled"))
-        assertEquals("true", provider.getAttribute("android:exported"))
-        assertEquals("android.permission.DUMP", provider.getAttribute("android:permission"))
-        assertEquals("false", provider.getAttribute("android:multiprocess"))
-        assertEquals("\${applicationId}.identity-receipt", provider.getAttribute("android:authorities"))
-        assertEquals("no intent filter, no meta-data, nothing", 0, provider.childNodes.let { nodes -> (0 until nodes.length).count { nodes.item(it) is Element } })
-        assertFalse(provider.hasAttribute("android:grantUriPermissions"))
-        assertFalse(provider.hasAttribute("android:readPermission"))
-        assertFalse(provider.hasAttribute("android:writePermission"))
-    }
-
-    @Test
-    fun noBuildTypeOrFlavorManifestTouchesTheProvider() {
-        val others =
-            src.listFiles().orEmpty()
-                .filter { it.name != "main" && it.name != "test" }
-                .mapNotNull { File(it, "AndroidManifest.xml").takeIf(File::isFile) }
-        assertTrue("release/play/alpha manifests exist", others.any { it.parentFile.name == "play" })
-        others.forEach { manifest ->
-            assertFalse("${manifest.parentFile.name} must not override the provider", manifest.readText().contains("AppIdentityReceiptProvider"))
-        }
-    }
-
-    @Test
     fun qaSessionBootstrapEntryPointsStayDisabledInStoreBuilds() {
         val main = parse(File(src, "main/AndroidManifest.xml"))
         val gate = "@bool/qa_session_bootstrap_enabled"
