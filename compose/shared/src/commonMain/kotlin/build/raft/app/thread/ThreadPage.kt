@@ -1087,39 +1087,38 @@ private fun ThreadPageScreen(
         onOpenThreadPayload = { nextPayload -> openStandaloneThreadPayload(nextPayload) },
         onReplaceThreadPayload = {},
         onOpenThreadPayloadWithoutAnimation = { nextPayload -> openStandaloneThreadPayload(nextPayload, animated = false) },
-        onOpenPendingTask =
-            if (adaptivePaneState.layout == RaftAdaptivePaneLayout.DualPane) {
-                null
+        // The Tasks tab's rule (taskPendingOpensAsPage), read when the task is opened: its page,
+        // but on the wide layout, where false leaves the task to the conversation's own surface.
+        onOpenPendingTask = openPending@{ pendingTask, serverId, channelJoined, canWriteChannel ->
+            val desktopModeEnabled =
+                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
+            if (!taskPendingOpensAsPage(desktopModeEnabled, adaptivePaneState)) return@openPending false
+            val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: storeScope.initialServerId
+            val targetStoreScope =
+                RaftShellStoreScope.create(
+                    shellInstanceId = storeScope.shellInstanceId,
+                    initialServerId = resolvedServerId,
+                )
+            val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
+            if (workspaceStore.snapshot().routeThreadOpen(adaptiveCloseRequest, desktopModeEnabled, targetStoreScope.initialServerId) ==
+                AdaptiveThreadOpenRoute.Ignored
+            ) {
+                bridge.logWarn("task_pending_open_skip reason=stale_adaptive_source")
             } else {
-                { pendingTask, serverId, channelJoined, canWriteChannel ->
-                    val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: storeScope.initialServerId
-                    val targetStoreScope =
-                        RaftShellStoreScope.create(
-                            shellInstanceId = storeScope.shellInstanceId,
-                            initialServerId = resolvedServerId,
-                        )
-                    val workspaceStore = sharedStores.adaptiveWorkspaceStore(storeScope)
-                    val desktopModeEnabled =
-                        KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()).readDesktopModeOnLargeScreenSync()
-                    if (workspaceStore.snapshot().routeThreadOpen(adaptiveCloseRequest, desktopModeEnabled, targetStoreScope.initialServerId) ==
-                        AdaptiveThreadOpenRoute.Ignored
-                    ) {
-                        bridge.logWarn("task_pending_open_skip reason=stale_adaptive_source")
-                    } else {
-                        pager.openTaskPendingPage(
-                            task = pendingTask,
-                            serverId = resolvedServerId,
-                            storeScope = targetStoreScope,
-                            foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
-                            timeContext = liveTimeContextProvider.dateContext ?: timeCapabilities.staticContext(),
-                            alignOwnMessagesRight = payload.alignOwnMessagesRight,
-                            compactConsecutiveMessages = payload.compactConsecutiveMessages,
-                            channelJoined = channelJoined,
-                            canWriteChannel = canWriteChannel,
-                        )
-                    }
-                }
-            },
+                pager.openTaskPendingPage(
+                    task = pendingTask,
+                    serverId = resolvedServerId,
+                    storeScope = targetStoreScope,
+                    foregroundBannerStore = sharedStores.foregroundBannerStore(storeScope),
+                    timeContext = liveTimeContextProvider.dateContext ?: timeCapabilities.staticContext(),
+                    alignOwnMessagesRight = payload.alignOwnMessagesRight,
+                    compactConsecutiveMessages = payload.compactConsecutiveMessages,
+                    channelJoined = channelJoined,
+                    canWriteChannel = canWriteChannel,
+                )
+            }
+            true
+        },
         onOpenParentThread = { currentPayload, currentSessionServerId ->
             val parentServerId = threadParentNavigationServerId(currentSessionServerId)
                 ?: return@SharedThreadRouteContent false
@@ -1369,8 +1368,12 @@ private class SharedThreadRouteContentCallbacks(
     val onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit,
     /** The last argument is the opening conversation's [ThreadSettingsPageLinks] key. */
     val onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit,
-    /** Opens a task without a conversation as its own pushed stack page (#proj-mobile:#161). */
-    val onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Unit)? = null,
+    /**
+     * Opens a task without a conversation as its own pushed stack page (#proj-mobile:#161) where
+     * that is how it opens ([taskPendingOpensAsPage]) and says true; false, or none, opens it in
+     * this page's task surface.
+     */
+    val onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Boolean)? = null,
 )
 
 @Composable
@@ -1404,7 +1407,7 @@ internal fun SharedThreadRouteContent(
     onOpenMemberProfile: (RaftThreadScreenPayload, ThreadTimelineSlice, MemberDetailIdentity) -> Unit = { _, _, _ -> },
     onOpenMembersPager: (RaftThreadScreenPayload, ServerId, ChannelId, RaftShellStoreScope, Boolean) -> Unit = { _, _, _, _, _ -> },
     onOpenChannelSettings: (ServerId, ChannelId, RaftShellStoreScope, String) -> Unit = { _, _, _, _ -> },
-    onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Unit)? = null,
+    onOpenPendingTask: ((TaskSummary, String?, Boolean?, Boolean?) -> Boolean)? = null,
 ) {
     SharedThreadRouteContentContent(
         data =
@@ -5424,7 +5427,6 @@ private fun SharedThreadRouteContentContent(
         task.taskOpenSurface()?.let { surface ->
             val openPending = callbacks.onOpenPendingTask
             if (surface is TaskOpenSurface.Pending && openPending != null) {
-                bridge.log("thread_task_open result=pending_page source=$source taskId=${task.id.value}")
                 val channelJoined =
                     task.channelId?.takeIf { it == renderedThread.joinChannelTargetId() }?.let { renderedThread.joined }
                 val canWriteChannel =
@@ -5432,8 +5434,10 @@ private fun SharedThreadRouteContentContent(
                         task.channelId == null ||
                         task.channelId != renderedThread.joinChannelTargetId() ||
                         renderedThread.channelTaskWritesShown()
-                openPending(surface.task, currentServerId, channelJoined, canWriteChannel)
-                return@open
+                if (openPending(surface.task, currentServerId, channelJoined, canWriteChannel)) {
+                    bridge.log("thread_task_open result=pending_page source=$source taskId=${task.id.value}")
+                    return@open
+                }
             }
             bridge.log("thread_task_open result=surface kind=${surface::class.simpleName} source=$source taskId=${task.id.value}")
             taskOpenSurfaceFlow.open(surface)

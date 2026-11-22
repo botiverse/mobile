@@ -192,6 +192,16 @@ internal fun Pager.openTaskPendingPage(
 }
 
 /**
+ * Whether a task without a conversation opens as its own page ([openTaskPendingPage]) rather than
+ * in the task surface the opening page draws ([TaskOpenSurfaceHost]): everywhere but the wide
+ * layout ([raftAdaptiveNavRailActive]: "Desktop layout on large screens" on, in a dual-pane
+ * window). The Tasks tab and a conversation both ask this, so with Desktop layout off a wide
+ * window opens the page from either; a chat used to check the window alone (#307).
+ */
+internal fun taskPendingOpensAsPage(desktopModeEnabled: Boolean, pane: RaftAdaptivePaneState): Boolean =
+    !raftAdaptiveNavRailActive(desktopModeEnabled, pane)
+
+/**
  * Picks the freshest copy of [taskId] across ordered candidates (most authoritative first, e.g.
  * channel tasks view model, channel tasks store, server tasks store, opener seed):
  * - any copy that already has a conversation beats one that does not;

@@ -5950,9 +5950,8 @@ private fun RaftAppShellReadyContent(
                                     openSurface = { surface ->
                                         when (surface) {
                                             is TaskOpenSurface.Pending -> {
-                                                val useAdaptiveDetail =
-                                                    desktopModeOnLargeScreen && adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
-                                                if (useAdaptiveDetail) {
+                                                // The rule a chat opens it by too: the page, but on the wide layout.
+                                                if (!taskPendingOpensAsPage(desktopModeOnLargeScreen, adaptivePane)) {
                                                     bridge.log("tasks_open_surface kind=Pending task=${surface.task.id.value} layout=dual_pane")
                                                     tasksOpenSurfaceFlow.open(surface)
                                                 } else {
