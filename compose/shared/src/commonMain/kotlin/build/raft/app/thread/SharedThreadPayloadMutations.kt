@@ -55,6 +55,8 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
             if (acceptsPatchHeader && patch.isLoadedContentFrame()) patch.channelCanUnarchive else channelCanUnarchive,
         // The content slice carries its own provenance: a network patch is never last-known.
         durableLastKnown = patch.durableLastKnown,
+        durableReachedOldest = patch.durableReachedOldest,
+        timelineGaps = patch.timelineGaps,
         mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
         originMessage = patch.originMessage,
