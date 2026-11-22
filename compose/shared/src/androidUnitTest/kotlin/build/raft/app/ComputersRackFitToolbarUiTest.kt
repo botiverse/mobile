@@ -145,7 +145,7 @@ class ComputersRackFitToolbarUiTest {
         waitForIdle()
         assertTrue(has(RaftComputersRackTags.Toolbar), "the toolbar with no computers")
         assertTrue(has(RaftComputersRackTags.Add), "Add Computer at the toolbar's end with no computers")
-        assertEquals(1, onAllNodes(hasText("Add Computer")).fetchSemanticsNodes().size, "the empty state has no button of its own")
+        assertEquals(1, onAllNodes(hasText("Add computer")).fetchSemanticsNodes().size, "the empty state has no button of its own")
 
         model = RaftComputersListModel.Failed(RaftComputersFailure(noAccess = false, retryable = true, code = "network"))
         waitForIdle()

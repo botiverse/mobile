@@ -68,7 +68,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * "Back to Bottom" from a window that does not hold the newest messages (left by a search hit, a
+ * "Back to bottom" from a window that does not hold the newest messages (left by a search hit, a
  * link, the first unread): one tap must be enough. Composes the production [ThreadMessagesList]
  * bottom-up (as the app always lays it out) over a real [SharedThreadStore], whose request for the
  * newest page waits until the test releases it, as the network does.
@@ -270,7 +270,7 @@ class ThreadBackToBottomJumpUiTest {
 
     /**
      * The report: from a window short of the newest messages, Back to Bottom needed many taps. One
-     * tap is enough now: it asks for the newest page and says so (busy, "Loading Messages…"), the
+     * tap is enough now: it asks for the newest page and says so (busy, "Loading messages…"), the
      * further taps meanwhile start nothing, and the list lands at the bottom when the page arrives.
      */
     @Test
@@ -347,8 +347,8 @@ class ThreadBackToBottomJumpUiTest {
     }
 
     private companion object {
-        const val BackToBottom = "Back to Bottom"
-        const val Loading = "Loading Messages…"
+        const val BackToBottom = "Back to bottom"
+        const val Loading = "Loading messages…"
         const val JumpLoadFailed = "Couldn't load these messages. Try again."
 
         /** RaftMessageListJumpHitOverhang: (44 - 32) / 2. */

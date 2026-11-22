@@ -211,6 +211,6 @@ class ThreadShareSelectionSurvivesRealtimeMessageUiTest {
         const val RealtimeBody = "A fourth message arrives over realtime"
 
         /** thread_action_select_message. */
-        const val SelectMessage = "Select Message"
+        const val SelectMessage = "Select message"
     }
 }

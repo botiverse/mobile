@@ -72,15 +72,15 @@ class ActivityConversationRowAccessibilityTest {
         val expected =
             mapOf(
                 // A followed thread: the left swipe's Done and Unfollow, the right swipe's Read.
-                "thread:followed" to listOf("Mark as Read", "Mark as Done", "Unfollow Thread"),
+                "thread:followed" to listOf("Mark as read", "Mark as Done", "Unfollow thread"),
                 // An unfollowed thread: no read toggle (no right swipe), Done, then Follow.
-                "thread:unfollowed" to listOf("Mark as Done", "Follow Thread"),
+                "thread:unfollowed" to listOf("Mark as Done", "Follow thread"),
                 // A joined channel: Unread on a read row, Done, Mute (or Unmute when muted).
-                "general" to listOf("Mark as Unread", "Mark as Done", "Mute Activity"),
-                "launch" to listOf("Mark as Read", "Mark as Done", "Unmute Activity"),
+                "general" to listOf("Mark as unread", "Mark as Done", "Mute Activity"),
+                "launch" to listOf("Mark as read", "Mark as Done", "Unmute Activity"),
                 // A channel with no reachable mute, and a DM: read toggle and Done only.
-                "browse" to listOf("Mark as Read", "Mark as Done"),
-                "dm" to listOf("Mark as Unread", "Mark as Done"),
+                "browse" to listOf("Mark as read", "Mark as Done"),
+                "dm" to listOf("Mark as unread", "Mark as Done"),
             )
         val ran = mutableListOf<Pair<String, String>>()
         val activity = activities.launch()
