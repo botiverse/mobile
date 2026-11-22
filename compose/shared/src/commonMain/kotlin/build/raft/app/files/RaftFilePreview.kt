@@ -2741,28 +2741,33 @@ private fun RaftFilePreviewStandalonePageContent() {
                 },
                 openHost = { externalUrl ->
                     val preHostTarget = activeOpenCancelTarget.value
-                    if (preHostTarget != null && preHostTarget.operation.operationId == operation.operationId) {
-                        if (preHostTarget.stopRequested) {
-                            return@openHost JSONObject().put("status", "cancelled")
+                    if (
+                        preHostTarget != null &&
+                        preHostTarget.operation.operationId == operation.operationId &&
+                        preHostTarget.stopRequested
+                    ) {
+                        JSONObject().put("status", "cancelled")
+                    } else {
+                        if (preHostTarget != null && preHostTarget.operation.operationId == operation.operationId) {
+                            activeOpenCancelTarget.value = preHostTarget.copy(hostOpenStarted = true)
                         }
-                        activeOpenCancelTarget.value = preHostTarget.copy(hostOpenStarted = true)
+                        bridge.openAttachment(
+                            url = externalUrl,
+                            attachmentId = currentPayload.attachmentCacheId(),
+                            fileName = currentPayload.attachmentCacheFileName(),
+                            owner = operation.owner,
+                            mimeType = currentPayload.externalMimeType,
+                            downloadId = downloadId,
+                            requirePublicDownload = policy.requirePublicDownload,
+                            share = share,
+                            onProgress =
+                                if (policy.trackProgress) {
+                                    { progress -> downloadProgressMailbox.offer(operation, progress) }
+                                } else {
+                                    null
+                                }
+                        )
                     }
-                    bridge.openAttachment(
-                        url = externalUrl,
-                        attachmentId = currentPayload.attachmentCacheId(),
-                        fileName = currentPayload.attachmentCacheFileName(),
-                        owner = operation.owner,
-                        mimeType = currentPayload.externalMimeType,
-                        downloadId = downloadId,
-                        requirePublicDownload = policy.requirePublicDownload,
-                        share = share,
-                        onProgress =
-                            if (policy.trackProgress) {
-                                { progress -> downloadProgressMailbox.offer(operation, progress) }
-                            } else {
-                                null
-                            }
-                    )
                 },
                 statusOf = { result -> result?.optString("status") },
                 errorKindOf = { result -> result?.optString("errorKind") },
