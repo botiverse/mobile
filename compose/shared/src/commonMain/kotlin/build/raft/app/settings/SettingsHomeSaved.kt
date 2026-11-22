@@ -44,6 +44,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
 import build.raft.app.components.raftHeaderRefreshIndicatorVisible
@@ -51,10 +52,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -62,8 +67,24 @@ import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
+import build.raft.designsystem.tokens.RaftRadius
 
 private val SavedUnsaveHitTargetSize = 44.dp
+
+/** The list's top: the scroller's `py-1` and the list's own `py-1` (web SavedPanel). */
+private val SavedListTop = 8.dp
+
+/** The list's `gap-0.5`: rows 2dp apart, no line between them (raft-design patterns/lists.md). */
+private val SavedRowGap = 2.dp
+
+/** raft-ui list cell `--cell-inset-x` (lib/list-cell.ts): the state shape, 8dp in from each side. */
+private val SavedCellInset = 8.dp
+
+/** `--cell-pad-x`: the content 12dp inside the shape, so 20dp from the column's edge. */
+private val SavedCellPaddingX = 12.dp
+
+/** ListRow `plain` `py-(--settings-row-inset)`: 12dp above and below the content. */
+private val SavedCellPaddingY = 12.dp
 
 @Composable
 internal fun SharedHomeSavedPanel(
@@ -167,8 +188,10 @@ internal fun SharedHomeSavedPanel(
                         Modifier
                             .fillMaxSize()
                             .background(RaftColor.SurfaceWhite),
-                    // web SavedPanel scroller `py-1`: plain rows stacked edge to edge.
-                    contentPadding = PaddingValues(top = 4.dp)
+                    // web SavedPanel, a list of cells (slock #11846): 8dp above the first row (the
+                    // scroller's `py-1` and the list's), rows 2dp apart with no line between them.
+                    contentPadding = PaddingValues(top = SavedListTop),
+                    verticalArrangement = Arrangement.spacedBy(SavedRowGap)
                 ) {
                     val hasSavedRows = projectedItems.isNotEmpty()
                     if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
@@ -456,11 +479,13 @@ private fun SharedHomeSavedSelectedSurface(
             modifier
                 .fillMaxWidth()
     ) {
-        // raft-ui ListRow `plain`: no frame; the open row keeps the fill-pressed wash.
+        // raft-ui ListRow `plain` `cell`: no frame; the open row keeps the fill-pressed wash, drawn on
+        // the cell's shape, [SavedCellInset] in from each side with the control radius.
         content(
             Modifier
                 .fillMaxWidth()
-                .background(if (selected) RaftColor.FillPressed else Color.Transparent)
+                .padding(horizontal = SavedCellInset)
+                .background(if (selected) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftRadius.Control))
         )
     }
 }
@@ -554,8 +579,9 @@ private fun SharedHomeSavedResultCard(
                     }
                 )
         )
-    // web SavedPanel row: a plain raft-ui ListRow (16/12dp padding, no card frame); the
-    // pressed / open row takes the fill-pressed wash.
+    // web SavedPanel row: a raft-ui ListRow `plain` `cell` (slock #11846), no card frame and no
+    // line; the content 20dp from the column's edge and 12dp above and below it; the open row
+    // takes the fill-pressed wash on the cell's shape.
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier = Modifier.fillMaxWidth()
@@ -563,7 +589,7 @@ private fun SharedHomeSavedResultCard(
         Row(
             modifier =
                 surfaceModifier
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = SavedCellPaddingX, vertical = SavedCellPaddingY)
                     .raftCaptureLiveRootAnchor(contentAnchor)
                     .raftGesturePointerInput(gestureOwner) { owner ->
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
@@ -594,19 +620,22 @@ private fun SharedHomeSavedResultCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 // Meta line: `text-caption`, 8dp gaps: place, Thread, sender (14dp avatar), time.
-                Row(
+                // A long place and a long sender give way together (slock #10867), so the Thread
+                // mark and the time stay whole in a narrow column.
+                SharedHomeSavedMetaLine(
+                    gap = 8.dp,
                     // One 16dp caption line (web `items-center text-caption`), 4dp above the preview.
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(16.dp)
                 ) {
                     source?.let {
                         Text(
                             text = it,
+                            modifier = Modifier.layoutId(SharedHomeSavedMetaGivesWay),
                             style = RaftType.Caption,
                             color = RaftColor.ForegroundHint,
                             maxLines = 1,
-                            softWrap = false
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                     // A task conversation is not a reply thread (web SavedItem marks only `channelType: "thread"`).
@@ -639,7 +668,7 @@ private fun SharedHomeSavedResultCard(
                             senderKind = item.latestActivitySenderKind ?: item.lastMessageSenderKind,
                             avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
                             avatarCacheIdentity = avatarCacheIdentity,
-                            modifier = Modifier.weight(1f, fill = false)
+                            modifier = Modifier.layoutId(SharedHomeSavedMetaGivesWay)
                         )
                     }
                     time?.let { timestamp ->
@@ -673,6 +702,62 @@ private data class SharedHomeSavedResultGestureCallbacks(
     val onTap: (Offset, Float, Float) -> Unit,
     val onLongPress: (Offset, Float, Float) -> Unit
 )
+
+/** The [layoutId] of a [SharedHomeSavedMetaLine] part that gives way (web `min-w-0 truncate`). */
+private object SharedHomeSavedMetaGivesWay
+
+/**
+ * web SavedItem's meta line (`flex min-w-0 items-center gap-2`): its parts in order, [gap] apart
+ * and centred on the line. The parts with the [SharedHomeSavedMetaGivesWay] id (the place and the
+ * sender) are a flex row's `min-w-0` items: short of room they shrink in proportion to their own
+ * widths and cut their text with an ellipsis. Every other part (the Thread mark, the draft mark,
+ * the time) is `shrink-0` and keeps its whole width.
+ */
+@Composable
+private fun SharedHomeSavedMetaLine(
+    gap: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val gapPx = gap.roundToPx()
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val givesWay = measurables.map { it.layoutId == SharedHomeSavedMetaGivesWay }
+        val placeables = arrayOfNulls<Placeable>(measurables.size)
+        val gaps = gapPx * (measurables.size - 1).coerceAtLeast(0)
+        val bounded = constraints.hasBoundedWidth
+        // The parts that keep their width first, each at its own width (cut only when even they
+        // don't fit the line, so nothing runs past its end).
+        var room = if (bounded) (constraints.maxWidth - gaps).coerceAtLeast(0) else Constraints.Infinity
+        measurables.forEachIndexed { index, measurable ->
+            if (!givesWay[index]) {
+                val placeable = measurable.measure(loose.copy(maxWidth = room))
+                placeables[index] = placeable
+                if (bounded) room -= placeable.width
+            }
+        }
+        val wants = measurables.mapIndexed { index, measurable -> if (givesWay[index]) measurable.maxIntrinsicWidth(loose.maxHeight) else 0 }
+        val wanted = wants.sum()
+        if (!bounded) room = wanted
+        // Then the parts that give way: whole while they fit, else each its share of the room left.
+        measurables.forEachIndexed { index, measurable ->
+            if (givesWay[index]) {
+                val width = if (wanted <= room) wants[index] else (wants[index].toLong() * room / wanted).toInt()
+                placeables[index] = measurable.measure(loose.copy(maxWidth = width))
+            }
+        }
+        val parts = placeables.map { checkNotNull(it) }
+        val lineWidth = (parts.sumOf { it.width } + gaps).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val lineHeight = (parts.maxOfOrNull { it.height } ?: 0).coerceIn(constraints.minHeight, constraints.maxHeight)
+        layout(lineWidth, lineHeight) {
+            var x = 0
+            parts.forEach { part ->
+                part.placeRelative(x, (lineHeight - part.height) / 2)
+                x += part.width + gapPx
+            }
+        }
+    }
+}
 
 /**
  * web SavedPanel toggle: a pressed PanelToggleAction drawn quiet (no sticker fill) on a phone,
