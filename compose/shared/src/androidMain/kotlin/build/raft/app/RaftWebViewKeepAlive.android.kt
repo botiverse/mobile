@@ -109,40 +109,93 @@ internal actual fun raftWebViewKeepAliveClear() {
     }
 }
 
+internal interface RaftAndroidWebStorageClearTarget {
+    fun deleteAllData()
+}
+
+internal interface RaftAndroidCookieClearTarget {
+    suspend fun clearOrigin(origin: String)
+    suspend fun clearAll()
+    fun flush()
+}
+
+internal suspend fun clearAndroidWebViewAuthStorage(
+    origins: Set<String>,
+    dropKeepAlive: () -> Unit,
+    webStorage: RaftAndroidWebStorageClearTarget?,
+    cookies: RaftAndroidCookieClearTarget?,
+) {
+    runCatching { dropKeepAlive() }
+    // Chromium's WebStorage.deleteOrigin() (aw_quota_manager_bridge.cc DeleteOriginFramework)
+    // only clears FILE_SYSTEMS | INDEXEDDB and omits LOCAL_STORAGE; only deleteAllData()
+    // (DeleteAllDataFramework) clears localStorage where slock_access_token is stored.
+    // Always call deleteAllData() so sign-out / account switch never leaves a web access token
+    // behind on shared devices, while still clearing cookies per-origin so third-party cookie
+    // logins in InAppBrowserPage survive.
+    runCatching { webStorage?.deleteAllData() }
+    if (cookies != null) {
+        if (origins.isNotEmpty()) {
+            for (origin in origins) {
+                try {
+                    cookies.clearOrigin(origin)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (_: Throwable) {
+                }
+            }
+        } else {
+            try {
+                cookies.clearAll()
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Throwable) {
+            }
+        }
+        runCatching { cookies.flush() }
+    }
+}
+
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
     val mainLooper = runCatching { Looper.getMainLooper() }.getOrNull() ?: return
     val clearAction: suspend () -> Unit = {
-        runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
         val storage = runCatching { android.webkit.WebStorage.getInstance() }.getOrNull()
         val cookieManager = runCatching { android.webkit.CookieManager.getInstance() }.getOrNull()
-        if (origins.isNotEmpty()) {
-            for (origin in origins) {
-                runCatching {
-                    storage?.deleteOrigin(origin)
-                    storage?.deleteOrigin("$origin/")
-                }
-                if (cookieManager != null) {
-                    clearAndroidCookiesForOrigin(cookieManager, origin)
-                }
-            }
-            runCatching { cookieManager?.flush() }
-        } else {
-            runCatching { storage?.deleteAllData() }
-            if (cookieManager != null) {
-                withTimeoutOrNull(2_000L) {
-                    suspendCancellableCoroutine<Unit> { cont ->
-                        runCatching {
-                            cookieManager.removeAllCookies {
-                                if (cont.isActive) cont.resume(Unit)
+        clearAndroidWebViewAuthStorage(
+            origins = origins,
+            dropKeepAlive = { RaftAndroidWebViewKeepAlive.drop("logout") },
+            webStorage =
+                storage?.let { instance ->
+                    object : RaftAndroidWebStorageClearTarget {
+                        override fun deleteAllData() = instance.deleteAllData()
+                    }
+                },
+            cookies =
+                cookieManager?.let { manager ->
+                    object : RaftAndroidCookieClearTarget {
+                        override suspend fun clearOrigin(origin: String) {
+                            clearAndroidCookiesForOrigin(manager, origin)
+                        }
+
+                        override suspend fun clearAll() {
+                            withTimeoutOrNull(2_000L) {
+                                suspendCancellableCoroutine<Unit> { cont ->
+                                    runCatching {
+                                        manager.removeAllCookies {
+                                            if (cont.isActive) cont.resume(Unit)
+                                        }
+                                    }.onFailure {
+                                        if (cont.isActive) cont.resume(Unit)
+                                    }
+                                }
                             }
-                        }.onFailure {
-                            if (cont.isActive) cont.resume(Unit)
+                        }
+
+                        override fun flush() {
+                            manager.flush()
                         }
                     }
-                }
-                runCatching { cookieManager.flush() }
-            }
-        }
+                },
+        )
     }
     if (Looper.myLooper() == mainLooper) {
         clearAction()
@@ -155,6 +208,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
             // Fallback when Main dispatcher is absent (unit tests without Robolectric Main).
             Handler(mainLooper).post {
                 runCatching { RaftAndroidWebViewKeepAlive.drop("logout") }
+                runCatching { android.webkit.WebStorage.getInstance().deleteAllData() }
             }
         }
     }
