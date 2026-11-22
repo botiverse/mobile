@@ -29,8 +29,8 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
+import kotlin.math.ceil
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -118,10 +118,17 @@ class SavedRowMetaLineUiTest {
             assertTrue(channel.textLayout().isLineEllipsized(0), "the long channel name ends in an ellipsis")
             assertTrue(sender.textLayout().isLineEllipsized(0), "the long sender ends in an ellipsis")
             assertTrue(channel.boundsInRoot.width > 0f && sender.boundsInRoot.width > 0f, "both names keep a part of themselves")
-            // The Thread mark and the time are whole, side by side, before the remove button.
+            // The Thread mark and the time are whole, side by side, before the remove button. Whole =
+            // laid out at least as wide as the text's natural width, with no ellipsis. (Not
+            // `didOverflowWidth`: the semantics layout re-lays the text out at its max width, so a
+            // short text that doesn't fill its constraint reads as overflowing.)
             listOf("Thread mark" to thread, "time" to time).forEach { (part, node) ->
                 val layout = node.textLayout()
-                assertFalse(layout.didOverflowWidth || layout.isLineEllipsized(0), "the $part is shown whole")
+                val natural = ceil(layout.multiParagraph.intrinsics.maxIntrinsicWidth).toInt()
+                assertTrue(
+                    !layout.isLineEllipsized(0) && layout.size.width >= natural,
+                    "the $part is shown whole: ${layout.size.width}px laid out for ${natural}px of text"
+                )
             }
             assertTrue(channel.boundsInRoot.right <= thread.boundsInRoot.left, "the Thread mark starts after the channel")
             assertTrue(thread.boundsInRoot.right <= sender.boundsInRoot.left, "the sender starts after the Thread mark")
