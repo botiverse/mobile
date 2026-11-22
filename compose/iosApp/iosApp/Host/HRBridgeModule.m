@@ -19,6 +19,7 @@
 #import <PhotosUI/PhotosUI.h>
 #import <SDWebImage/SDImageCache.h>
 #import <stdatomic.h>
+#import <stdio.h>
 #import <string.h>
 #import <sys/stat.h>
 #import <time.h>
@@ -3555,6 +3556,9 @@ static NSDictionary *RaftFeedbackDiagnosticsWriteArchive(BOOL (^isCancelled)(voi
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportRequestId;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportDownloadId;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportOperationId;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportOwnerKey;
+@property(nonatomic, copy, nullable) NSString *raft_attachmentExportAttachmentId;
+@property(nonatomic) BOOL raft_attachmentExportReusedCache;
 @property(nonatomic, strong, nullable) NSURL *raft_attachmentExportURL;
 @property(nonatomic, copy, nullable) NSString *raft_attachmentExportFileName;
 @property(nonatomic) BOOL raft_attachmentExportFileNameFromResponse;
@@ -5134,6 +5138,77 @@ NSString *RaftAttachmentReusableExportFileName(
     return usable.firstObject;
 }
 
+BOOL RaftPersistExportedAttachmentToCache(
+    NSString * _Nullable storeRoot,
+    NSString * _Nullable ownerKey,
+    NSString * _Nullable attachmentId,
+    NSString * _Nullable fileName,
+    NSURL * _Nullable sourceURL,
+    BOOL moveSource) {
+    NSString *safeStoreRoot = storeRoot ?: @"";
+    NSString *safeOwnerKey = ownerKey ?: @"";
+    NSString *safeAttachmentId = attachmentId ?: @"";
+    if (safeStoreRoot.length == 0 || safeAttachmentId.length == 0 || !sourceURL || !sourceURL.isFileURL) {
+        return NO;
+    }
+    NSURL *safeSourceURL = sourceURL;
+    NSString *sourcePath = safeSourceURL.path ?: @"";
+    if (sourcePath.length == 0) {
+        return NO;
+    }
+    NSString *key = RaftAttachmentCacheKey(safeOwnerKey, safeAttachmentId);
+    if (key.length == 0 || [key isEqualToString:@"."] || [key isEqualToString:@".."]) {
+        return NO;
+    }
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSDictionary<NSFileAttributeKey, id> *sourceAttrs = [fileManager attributesOfItemAtPath:sourcePath error:nil];
+    if (![sourceAttrs[NSFileType] isEqualToString:NSFileTypeRegular] ||
+        [sourceAttrs[NSFileSize] longLongValue] <= 0) {
+        return NO;
+    }
+    NSString *cachedDir = [safeStoreRoot stringByAppendingPathComponent:key];
+    if (![fileManager createDirectoryAtPath:cachedDir withIntermediateDirectories:YES attributes:nil error:nil]) {
+        return NO;
+    }
+    [[NSURL fileURLWithPath:safeStoreRoot isDirectory:YES] setResourceValue:@YES
+                                                                     forKey:NSURLIsExcludedFromBackupKey
+                                                                      error:nil];
+    NSString *leaf = RaftAttachmentSafeComponent(fileName ?: @"attachment");
+    if (leaf.length == 0 || [leaf isEqualToString:@"."] || [leaf isEqualToString:@".."]) {
+        leaf = @"attachment";
+    }
+    NSURL *cachedDirURL = [NSURL fileURLWithPath:cachedDir isDirectory:YES];
+    NSURL *destURL = [cachedDirURL URLByAppendingPathComponent:leaf isDirectory:NO];
+    if ([safeSourceURL.URLByStandardizingPath isEqual:destURL.URLByStandardizingPath]) {
+        return YES;
+    }
+    // Fixed-length temp name (42 bytes) so long display filenames near NAME_MAX still stage cleanly.
+    NSString *tempName = [NSString stringWithFormat:@".part-%@", NSUUID.UUID.UUIDString];
+    NSURL *tempURL = [cachedDirURL URLByAppendingPathComponent:tempName isDirectory:NO];
+    BOOL staged = NO;
+    if (moveSource) {
+        staged = [fileManager moveItemAtURL:safeSourceURL toURL:tempURL error:nil];
+    }
+    if (!staged) {
+        staged = [fileManager copyItemAtURL:safeSourceURL toURL:tempURL error:nil];
+    }
+    if (!staged) {
+        [fileManager removeItemAtURL:tempURL error:nil];
+        return NO;
+    }
+    if (rename(tempURL.fileSystemRepresentation, destURL.fileSystemRepresentation) != 0) {
+        [fileManager removeItemAtURL:tempURL error:nil];
+        return NO;
+    }
+    for (NSString *existingName in [fileManager contentsOfDirectoryAtPath:cachedDir error:nil] ?: @[]) {
+        if ([existingName isEqualToString:leaf] || [existingName containsString:@".part-"]) {
+            continue;
+        }
+        [fileManager removeItemAtPath:[cachedDir stringByAppendingPathComponent:existingName] error:nil];
+    }
+    return YES;
+}
+
 static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSFileManager *fm = NSFileManager.defaultManager;
     NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:directoryPath error:nil];
@@ -5166,6 +5241,12 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
 }
 
 - (void)openAttachment:(NSDictionary *)args {
+    RaftBridgeRunOnMain(^{
+        [self raft_openAttachmentOnMain:args];
+    });
+}
+
+- (void)raft_openAttachmentOnMain:(NSDictionary *)args {
     RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
     if (!callback) {
         return;
@@ -5431,6 +5512,9 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     self.raft_attachmentExportCallback = callback;
     self.raft_attachmentExportDownloadId = RaftBridgeString(params[@"downloadId"]);
     self.raft_attachmentExportOperationId = operationId;
+    self.raft_attachmentExportOwnerKey = RaftBridgeString(params[@"ownerKey"] ?: params[@"owner"]);
+    self.raft_attachmentExportAttachmentId = RaftBridgeString(params[@"attachmentId"]);
+    self.raft_attachmentExportReusedCache = NO;
     self.raft_attachmentExportDestination = destination;
     self.raft_attachmentExportMimeType = genericBinaryMime && !savesToPhotos ? @"" : mimeType;
     self.raft_attachmentExportFileName = fileName;
@@ -5545,6 +5629,7 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
         [fileManager removeItemAtURL:directory error:nil];
         return NO;
     }
+    self.raft_attachmentExportReusedCache = YES;
     self.raft_attachmentExportURL = targetURL;
     [self raft_presentAttachmentExportWithURL:targetURL sizeBytes:sizeBytes];
     return YES;
@@ -5914,6 +5999,17 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     if (self.raft_attachmentPickerCallback) {
         [self raft_processDocumentPickerURLs:urls];
         return;
+    }
+    if (!self.raft_attachmentExportReusedCache &&
+        [self.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationFiles] &&
+        self.raft_attachmentExportURL) {
+        RaftPersistExportedAttachmentToCache(
+            RaftAttachmentStoreRoot(),
+            self.raft_attachmentExportOwnerKey,
+            self.raft_attachmentExportAttachmentId,
+            self.raft_attachmentExportFileName,
+            self.raft_attachmentExportURL,
+            YES);
     }
     NSURL *savedURL = urls.firstObject;
     [self raft_finishAttachmentExport:@{
@@ -6637,6 +6733,9 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     self.raft_attachmentExportRequestId = nil;
     self.raft_attachmentExportDownloadId = nil;
     self.raft_attachmentExportOperationId = nil;
+    self.raft_attachmentExportOwnerKey = nil;
+    self.raft_attachmentExportAttachmentId = nil;
+    self.raft_attachmentExportReusedCache = NO;
     self.raft_attachmentExportURL = nil;
     self.raft_attachmentExportFileName = nil;
     self.raft_attachmentExportSizeBytes = nil;
@@ -7147,6 +7246,24 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         [self raft_showToast:SharedRaftHostStrings.shared.shareOpenFailed];
         return;
     }
+    UIViewController *dismissing = controller.presentedViewController;
+    if (dismissing && dismissing.isBeingDismissed && attempt < 3) {
+        // Strongly capture self in this bounded one-shot retry so a popped page's bridge module
+        // stays alive until the dismissing picker/sheet finishes and UIActivityViewController presents.
+        id<UIViewControllerTransitionCoordinator> coordinator = dismissing.transitionCoordinator;
+        if (coordinator) {
+            [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> ctx) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self raft_presentShareItems:items attempt:attempt + 1];
+                });
+            }];
+        } else {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self raft_presentShareItems:items attempt:attempt + 1];
+            });
+        }
+        return;
+    }
     UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];
     UIPopoverPresentationController *popover = activityController.popoverPresentationController;
     if (popover) {
@@ -7191,7 +7308,8 @@ NSString *RaftShareControllerFailureReason(BOOL hasRootViewWindow,
 
 - (UIViewController *)raft_currentViewController {
     UIViewController *controller = self.raftHostController;
-    if (!controller) {
+    if (!controller || controller.viewIfLoaded.window == nil ||
+        controller.isBeingDismissed || controller.isMovingFromParentViewController) {
         controller = [self raft_keyWindow].rootViewController;
     }
     return [self raft_topViewControllerFrom:controller] ?: controller;
@@ -7204,8 +7322,9 @@ NSString *RaftShareControllerFailureReason(BOOL hasRootViewWindow,
     if ([controller isKindOfClass:UITabBarController.class]) {
         return [self raft_topViewControllerFrom:((UITabBarController *)controller).selectedViewController];
     }
-    if (controller.presentedViewController) {
-        return [self raft_topViewControllerFrom:controller.presentedViewController];
+    UIViewController *presented = controller.presentedViewController;
+    if (presented && !presented.isBeingDismissed) {
+        return [self raft_topViewControllerFrom:presented];
     }
     return controller;
 }

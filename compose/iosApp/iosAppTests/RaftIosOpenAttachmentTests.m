@@ -182,4 +182,92 @@
     XCTAssertTrue(completedOnMain, @"nil completionQueue must deliver completion on the main queue");
 }
 
+- (void)testPersistExportedAttachmentMovesFileIntoOwnerAttachmentCache {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *tempRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    NSString *storeRoot = [tempRoot stringByAppendingPathComponent:@"store"];
+    NSString *exportDir = [tempRoot stringByAppendingPathComponent:@"export"];
+    XCTAssertTrue([fm createDirectoryAtPath:exportDir withIntermediateDirectories:YES attributes:nil error:nil]);
+    NSURL *sourceURL = [NSURL fileURLWithPath:[exportDir stringByAppendingPathComponent:@"report.pdf"]];
+    NSData *payload = [@"pdf-bytes" dataUsingEncoding:NSUTF8StringEncoding];
+    XCTAssertTrue([payload writeToURL:sourceURL atomically:YES]);
+
+    XCTAssertTrue(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"att42", @"report.pdf", sourceURL, YES));
+    XCTAssertFalse([fm fileExistsAtPath:sourceURL.path]);
+
+    NSString *cachedDir = [storeRoot stringByAppendingPathComponent:@"srv1-att42"];
+    NSArray<NSString *> *stored = [fm contentsOfDirectoryAtPath:cachedDir error:nil];
+    XCTAssertEqualObjects(stored, @[ @"report.pdf" ]);
+    XCTAssertEqualObjects([NSData dataWithContentsOfFile:[cachedDir stringByAppendingPathComponent:@"report.pdf"]], payload);
+
+    [fm removeItemAtPath:tempRoot error:nil];
+}
+
+- (void)testPersistExportedAttachmentReplacesStaleEntryAtomically {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *tempRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    NSString *storeRoot = [tempRoot stringByAppendingPathComponent:@"store"];
+    NSString *cachedDir = [storeRoot stringByAppendingPathComponent:@"srv1-artifact-01"];
+    XCTAssertTrue([fm createDirectoryAtPath:cachedDir withIntermediateDirectories:YES attributes:nil error:nil]);
+    NSString *stalePath = [cachedDir stringByAppendingPathComponent:@"old.zip"];
+    XCTAssertTrue([[@"old" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:stalePath atomically:YES]);
+
+    NSURL *sourceURL = [NSURL fileURLWithPath:[tempRoot stringByAppendingPathComponent:@"new-export.zip"]];
+    NSData *fresh = [@"fresh-zip-bytes" dataUsingEncoding:NSUTF8StringEncoding];
+    XCTAssertTrue([fresh writeToURL:sourceURL atomically:YES]);
+
+    XCTAssertTrue(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"artifact-01", @"new/export.zip", sourceURL, NO));
+    XCTAssertTrue([fm fileExistsAtPath:sourceURL.path]);
+
+    NSArray<NSString *> *stored = [fm contentsOfDirectoryAtPath:cachedDir error:nil];
+    XCTAssertEqualObjects(stored, @[ @"new_export.zip" ]);
+    XCTAssertEqualObjects([NSData dataWithContentsOfFile:[cachedDir stringByAppendingPathComponent:@"new_export.zip"]], fresh);
+
+    [fm removeItemAtPath:tempRoot error:nil];
+}
+
+- (void)testPersistExportedAttachmentRejectsEmptySourceOrMissingIdentity {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *tempRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    NSString *storeRoot = [tempRoot stringByAppendingPathComponent:@"store"];
+    XCTAssertTrue([fm createDirectoryAtPath:tempRoot withIntermediateDirectories:YES attributes:nil error:nil]);
+
+    NSURL *emptyURL = [NSURL fileURLWithPath:[tempRoot stringByAppendingPathComponent:@"empty.bin"]];
+    XCTAssertTrue([[NSData data] writeToURL:emptyURL atomically:YES]);
+    XCTAssertFalse(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"att1", @"empty.bin", emptyURL, YES));
+
+    NSURL *nonEmptyURL = [NSURL fileURLWithPath:[tempRoot stringByAppendingPathComponent:@"ok.bin"]];
+    XCTAssertTrue([[@"x" dataUsingEncoding:NSUTF8StringEncoding] writeToURL:nonEmptyURL atomically:YES]);
+    XCTAssertFalse(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"", @"ok.bin", nonEmptyURL, YES));
+    XCTAssertFalse(RaftPersistExportedAttachmentToCache(@"", @"srv1", @"att1", @"ok.bin", nonEmptyURL, YES));
+    XCTAssertFalse([fm fileExistsAtPath:storeRoot]);
+
+    [fm removeItemAtPath:tempRoot error:nil];
+}
+
+- (void)testPersistExportedAttachmentHandlesDotAndLongFileNames {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSString *tempRoot = [NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString];
+    NSString *storeRoot = [tempRoot stringByAppendingPathComponent:@"store"];
+    XCTAssertTrue([fm createDirectoryAtPath:tempRoot withIntermediateDirectories:YES attributes:nil error:nil]);
+
+    NSURL *sourceURL = [NSURL fileURLWithPath:[tempRoot stringByAppendingPathComponent:@"src.bin"]];
+    NSData *payload = [@"dot-and-long" dataUsingEncoding:NSUTF8StringEncoding];
+    XCTAssertTrue([payload writeToURL:sourceURL atomically:YES]);
+
+    XCTAssertTrue(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"dot1", @"..", sourceURL, NO));
+    NSArray<NSString *> *dotStored =
+        [fm contentsOfDirectoryAtPath:[storeRoot stringByAppendingPathComponent:@"srv1-dot1"] error:nil];
+    XCTAssertEqualObjects(dotStored, @[ @"attachment" ]);
+
+    NSString *longName = [[@"" stringByPaddingToLength:230 withString:@"a" startingAtIndex:0]
+        stringByAppendingString:@".pdf"];
+    XCTAssertTrue(RaftPersistExportedAttachmentToCache(storeRoot, @"srv1", @"long1", longName, sourceURL, NO));
+    NSArray<NSString *> *longStored =
+        [fm contentsOfDirectoryAtPath:[storeRoot stringByAppendingPathComponent:@"srv1-long1"] error:nil];
+    XCTAssertEqualObjects(longStored, @[ longName ]);
+
+    [fm removeItemAtPath:tempRoot error:nil];
+}
+
 @end

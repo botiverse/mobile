@@ -686,6 +686,16 @@ private fun RaftArtifactViewerScreen() {
     val downloadAlreadySaved = stringResource(Res.string.file_preview_download_already_saved)
     val downloadSavedToFiles = stringResource(Res.string.file_preview_export_saved)
     val downloadFailed = stringResource(Res.string.file_preview_error_download_attachment)
+    val downloadOpenAction = stringResource(Res.string.file_preview_action_open)
+    val downloadOpenResultTerms =
+        RaftAttachmentOpenResultTerms(
+            downloadStopped = stringResource(Res.string.file_preview_download_stopped),
+            unableToDownloadAttachment = downloadFailed,
+            noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app),
+            storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(Res.string.file_preview_download_failed),
+            unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment),
+        )
     val downloadScope = rememberCoroutineScope()
     fun toggleDesktopMode(from: String) {
         desktopModeChosen = !desktopModeChosen
@@ -788,6 +798,8 @@ private fun RaftArtifactViewerScreen() {
                                         alreadySavedMessage = downloadAlreadySaved,
                                         savedToFilesMessage = downloadSavedToFiles,
                                         failedMessage = downloadFailed,
+                                        openActionLabel = downloadOpenAction,
+                                        openResultTerms = downloadOpenResultTerms,
                                     )
                                 }
                             },
@@ -1509,24 +1521,66 @@ private suspend fun raftArtifactViewerSaveDownload(
     alreadySavedMessage: String,
     savedToFilesMessage: String,
     failedMessage: String,
+    openActionLabel: String,
+    openResultTerms: RaftAttachmentOpenResultTerms,
 ) {
-    val owner = currentAttachmentOwnerLease(host.storeScope)
+    raftSaveArtifactDownloadWithOpenToast(
+        bridge = host.bridge,
+        scope = scope,
+        owner = currentAttachmentOwnerLease(host.storeScope),
+        readSession = {
+            runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }
+                .getOrNull()
+        },
+        download = download,
+        savedMessage = savedMessage,
+        savedToDownloadsMessage = savedToDownloadsMessage,
+        alreadySavedMessage = alreadySavedMessage,
+        savedToFilesMessage = savedToFilesMessage,
+        failedMessage = failedMessage,
+        openActionLabel = openActionLabel,
+        openResultTerms = openResultTerms,
+    )
+}
+
+internal suspend fun raftSaveArtifactDownloadWithOpenToast(
+    bridge: BridgeModule,
+    scope: RaftArtifactViewerScope,
+    owner: AttachmentOwnerLease?,
+    readSession: suspend () -> StoredAuthSession?,
+    download: RaftWebViewDownload,
+    savedMessage: String,
+    savedToDownloadsMessage: String,
+    alreadySavedMessage: String,
+    savedToFilesMessage: String,
+    failedMessage: String,
+    openActionLabel: String,
+    openResultTerms: RaftAttachmentOpenResultTerms,
+    hasDesktopDownloadBar: Boolean = raftPlatformSavedFileHost() != null,
+    openScope: kotlinx.coroutines.CoroutineScope = raftSavedDownloadToastOpenScope,
+) {
+    var savedAttachmentId = ""
+    var fallbackFileName = ""
+    var savedMimeType: String? = null
     val result: JSONObject? =
         when (download) {
             is RaftWebViewDownload.Failed -> {
-                host.bridge.log("artifact_viewer_download action=save result=failed reason=${download.reason}")
-                host.bridge.errorToast(failedMessage)
+                bridge.log("artifact_viewer_download action=save result=failed reason=${download.reason}")
+                bridge.errorToast(failedMessage)
                 return
             }
             is RaftWebViewDownload.Bytes -> {
                 if (owner == null) {
-                    host.bridge.log("artifact_viewer_download action=save kind=bytes result=no_owner")
-                    host.bridge.errorToast(failedMessage)
+                    bridge.log("artifact_viewer_download action=save kind=bytes result=no_owner")
+                    bridge.errorToast(failedMessage)
                     return
                 }
-                host.bridge.log("artifact_viewer_download action=save kind=bytes bytes=${download.bytes.size}")
+                bridge.log("artifact_viewer_download action=save kind=bytes bytes=${download.bytes.size}")
                 val token = raftArtifactViewerDownloadCacheId(scope.serverId, download.fileName + "|" + kotlin.random.Random.nextLong())
-                host.bridge.saveAttachment(
+                savedAttachmentId = token
+                fallbackFileName = download.fileName
+                savedMimeType = download.mimeType
+                bridge.saveAttachment(
                     url = "${AttachmentDownloadLocalBytes.SCHEME}://download/$token",
                     attachmentId = token,
                     fileName = download.fileName,
@@ -1537,20 +1591,24 @@ private suspend fun raftArtifactViewerSaveDownload(
             }
             is RaftWebViewDownload.Url -> {
                 val session =
-                    runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }
-                        .getOrNull()
+                    readSession()
                         ?.takeIf { it.user.id.trim() == scope.accountId && it.accessToken.isNotBlank() }
                 if (owner == null || session == null || raftWebOriginOf(download.url) != raftWebOriginOf(scope.webOrigin)) {
-                    host.bridge.log("artifact_viewer_download action=save kind=url result=refused")
-                    host.bridge.errorToast(failedMessage)
+                    bridge.log("artifact_viewer_download action=save kind=url result=refused")
+                    bridge.errorToast(failedMessage)
                     return
                 }
-                host.bridge.log("artifact_viewer_download action=save kind=url")
+                bridge.log("artifact_viewer_download action=save kind=url")
                 val pageName = download.pageFileName
-                host.bridge.saveAttachment(
+                val cacheId = raftArtifactViewerDownloadCacheId(scope.serverId, download.url)
+                val requestedName = raftWebViewDownloadFileName(pageName, download.contentDisposition, download.url, download.mimeType)
+                savedAttachmentId = cacheId
+                fallbackFileName = requestedName
+                savedMimeType = download.mimeType
+                bridge.saveAttachment(
                     url = download.url,
-                    attachmentId = raftArtifactViewerDownloadCacheId(scope.serverId, download.url),
-                    fileName = raftWebViewDownloadFileName(pageName, download.contentDisposition, download.url, download.mimeType),
+                    attachmentId = cacheId,
+                    fileName = requestedName,
                     owner = owner,
                     mimeType = download.mimeType,
                     // The page's own name wins; else the name the response gives.
@@ -1565,8 +1623,8 @@ private suspend fun raftArtifactViewerSaveDownload(
         }
     when (val status = result?.optString("status").orEmpty()) {
         "saved" -> {
-            host.bridge.log("artifact_viewer_download action=save result=saved")
-            host.bridge.toast(
+            bridge.log("artifact_viewer_download action=save result=saved")
+            val toastMessage =
                 raftArtifactViewerSavedToast(
                     result,
                     saved = savedMessage,
@@ -1574,15 +1632,33 @@ private suspend fun raftArtifactViewerSaveDownload(
                     alreadySaved = alreadySavedMessage,
                     savedToFiles = savedToFilesMessage,
                 )
+            val openTarget =
+                owner?.let { currentOwner ->
+                    raftSavedDownloadTargetFromResult(
+                        attachmentId = savedAttachmentId,
+                        fallbackFileName = fallbackFileName,
+                        owner = currentOwner,
+                        mimeType = savedMimeType,
+                        result = result,
+                    )
+                }
+            raftShowSavedDownloadToast(
+                bridge = bridge,
+                message = toastMessage,
+                openLabel = openActionLabel,
+                target = openTarget,
+                openResultTerms = openResultTerms,
+                hasDesktopDownloadBar = hasDesktopDownloadBar,
+                openScope = openScope,
             )
         }
-        "cancelled" -> host.bridge.log("artifact_viewer_download action=save result=cancelled")
+        "cancelled" -> bridge.log("artifact_viewer_download action=save result=cancelled")
         else -> {
-            host.bridge.log(
+            bridge.log(
                 "artifact_viewer_download action=save result=failed status=${status.ifBlank { "none" }} " +
                     "errorKind=${result?.optString("errorKind").orEmpty().ifBlank { "none" }}"
             )
-            host.bridge.errorToast(failedMessage)
+            bridge.errorToast(failedMessage)
         }
     }
 }
