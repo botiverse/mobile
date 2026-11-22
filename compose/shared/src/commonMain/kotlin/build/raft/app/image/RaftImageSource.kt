@@ -138,11 +138,12 @@ internal fun raftImageDiskKeyIsImmutable(diskKey: String): Boolean =
     diskKey.startsWith(RaftAttachmentImageCacheKeyPrefix)
 
 internal fun raftNetworkImageCacheKey(url: String): String {
-    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(url) }.getOrNull()
+    val canonical = raftRewriteRetiredContentHost(url.trim())
+    val identity: RaftAvatarContentIdentity? = runCatching { raftAvatarContentIdentity(canonical) }.getOrNull()
     return if (identity != null) {
         "raft-img-v1:url:${identity.kind.storageValue}:${identity.fingerprint}"
     } else {
-        "raft-img-v1:url-raw:${url.trim().substringBefore('#')}"
+        "raft-img-v1:url-raw:${canonical.substringBefore('#')}"
     }
 }
 
