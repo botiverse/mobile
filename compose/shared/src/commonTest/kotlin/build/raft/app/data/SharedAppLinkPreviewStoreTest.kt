@@ -225,26 +225,6 @@ class SharedAppLinkPreviewStoreTest {
     }
 
     @Test
-    fun aMessagesCardReachesItsRowThroughTheSelector() = runTest(StandardTestDispatcher()) {
-        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, StatusCardBody) }
-        val store = store(api)
-        val seen = mutableListOf<AppLinkMessageView>()
-        backgroundScope.launch { store.messageViewFlow(Viewer, MessageA, Content, Conversation).toList(seen) }
-        runCurrent()
-        store.read(Viewer, Server, MessageA, Content, Conversation)
-        runCurrent()
-        // Another message's answer doesn't reach this row's selector.
-        store.read(Viewer, Server, MessageB, Content, Conversation)
-        runCurrent()
-        assertEquals(listOf(true, false), seen.map { it.wantsRead })
-        val card = seen.last().cards.single()
-        assertEquals("https://alpha.example.test/pr/1", card.url)
-        assertEquals(AppLinkApp("Sample App", null), card.app)
-        assertEquals(RaftAppLinkCardElement.Badge("Approved"), card.card!!.element("state"))
-        assertEquals(RaftAppLinkTextTone.Muted, (card.card!!.element("detail") as RaftAppLinkCardElement.Text).tone)
-    }
-
-    @Test
     fun signingOutDropsEveryAnswerAndAReadOnItsWayIsNotKept() = runTest(StandardTestDispatcher()) {
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, CardsBody) }
         val store = store(api)

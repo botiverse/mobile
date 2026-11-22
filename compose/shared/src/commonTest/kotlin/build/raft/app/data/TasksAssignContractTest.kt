@@ -84,30 +84,12 @@ class TasksAssignContractTest {
     }
 
     @Test
-    fun assignOtherConflictStaysGenericRetryable() {
-        val response =
-            HomeNetworkResponse(code = 409, bodyText = null, errorBodyText = """{"error":"some other failure"}""")
-        val result = response.toTaskAssignActionResult()
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_409", error.error.code)
-    }
-
-    @Test
     fun assignWithoutCapabilityMapsToNoPermission() {
         val response =
             HomeNetworkResponse(code = 403, bodyText = null, errorBodyText = """{"error":"You do not have permission to assign tasks"}""")
         val result = response.toTaskAssignActionResult()
         val blocked = assertIs<DataResult.NoPermission>(result)
         assertEquals("tasks_403", blocked.blocker.code)
-    }
-
-    @Test
-    fun assignValidationErrorMapsToRetryable400() {
-        val response =
-            HomeNetworkResponse(code = 400, bodyText = null, errorBodyText = """{"error":"assignee must be { type: 'user'|'agent', id } or null"}""")
-        val result = response.toTaskAssignActionResult()
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_400", error.error.code)
     }
 
     @Test

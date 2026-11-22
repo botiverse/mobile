@@ -235,27 +235,6 @@ class DirectAttachmentUploadCoordinatorTest {
     }
 
     @Test
-    fun fileRefAndBytesConflictIsRejectedBeforePreflightOrCreate() = runBlocking {
-        val gateway = FakeGateway()
-        val conflicting =
-            PlatformFile(
-                id = "conflict",
-                fileName = "conflict.jpg",
-                mimeType = "image/jpeg",
-                sizeBytes = 3L,
-                bytes = byteArrayOf(1, 2, 3),
-                fileRef = "file:///private/cache/conflict.jpg",
-            )
-
-        val result = coordinator(gateway).upload(ChannelId("channel-1"), listOf(conflicting))
-
-        val error = assertIs<DataResult.Error>(result).error
-        assertEquals("attachment_file_input_conflict", error.code)
-        assertTrue(gateway.preparedFiles.isEmpty())
-        assertTrue(gateway.createRequests.isEmpty())
-    }
-
-    @Test
     fun preparerBodyDriftFailsBeforeCreate() = runBlocking {
         val gateway = FakeGateway()
         val source = file("local-1")

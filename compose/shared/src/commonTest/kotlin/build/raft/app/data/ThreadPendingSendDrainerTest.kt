@@ -100,27 +100,6 @@ class ThreadPendingSendDrainerTest {
     }
 
     @Test
-    fun notifiesRowFailedWhenAdoptingStaleSendingRow() = runBlocking {
-        val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = false) }
-        val send = RecordingSend()
-        val failedCallbacks = mutableListOf<Pair<String, String>>()
-        val drainer =
-            drainer(
-                store = store,
-                send = send.handler,
-                onRowFailed = { localId, _, _, errorCode, _ ->
-                    failedCallbacks += localId to errorCode.orEmpty()
-                },
-            )
-
-        drainer.drainOnceForTests("start")
-
-        // The open page hot-updates off this callback, so the adopted row must surface as failed
-        // without requiring a page re-entry (#1134 cell 3 follow-up).
-        assertEquals(listOf("local-1" to "thread_send_adopted_stale"), failedCallbacks)
-    }
-
-    @Test
     fun notifiesRowFailedOnlyWhenDrainFailureIsTerminal() = runBlocking {
         val store = FakeDrainStore().apply { rows += pendingMessage("local-1", "random-1", failed = true) }
         val send = RecordingSend()

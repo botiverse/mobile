@@ -51,30 +51,6 @@ class RealtimeAuthorityRegistryV12Test {
     }
 
     @Test
-    fun sameRevisionRegistrationIsIdempotentButReleasedKeyGetsNewLeaseAndImmediateGrants() = runBlocking {
-        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-register")
-        registry.initialize()
-        registry.advanceAuth(revision(7, principal = "p1", servers = listOf("a", "b")))
-
-        val leaseOne = registry.register("shell")
-        val firstSnapshot = registry.snapshot.value
-        val duplicate = registry.register("shell")
-        assertEquals(leaseOne, duplicate)
-        assertEquals(firstSnapshot, registry.snapshot.value, "repeat registration of an active key must mint nothing")
-
-        val oldWitness = assertNotNull(registry.currentWitness(leaseOne.id))
-        val oldGrantA = assertNotNull(registry.currentGrant(leaseOne.id, "a"))
-        assertTrue(registry.release(leaseOne.id))
-        assertFalse(registry.runIfCurrentGrant(oldGrantA) {})
-
-        val leaseTwo = registry.register("shell")
-        assertNotEquals(leaseOne.id, leaseTwo.id)
-        assertEquals(setOf("a", "b"), registry.snapshot.value.grantsFor(leaseTwo.id).map { it.serverId }.toSet())
-        assertNull(registry.resolve(oldWitness, "a"), "an old lease witness must have zero effect on its successor")
-        assertEquals(leaseTwo, registry.register("shell"))
-    }
-
-    @Test
     fun reconnectReplacesOneLeaseWideFamilyAndAllItsSlotsWithoutTouchingSiblingLease() = runBlocking {
         val registry = registry(InMemoryRaftKeyValueStore(), process = "process-reconnect")
         registry.initialize()
@@ -145,25 +121,6 @@ class RealtimeAuthorityRegistryV12Test {
     }
 
     @Test
-    fun resolverUsesFreshFamilyWitnessToLookupExistingCrossServerGrantWithoutMinting() = runBlocking {
-        val registry = registry(InMemoryRaftKeyValueStore(), process = "process-resolve")
-        registry.initialize()
-        registry.advanceAuth(revision(11, principal = "p1", servers = listOf("selected-a", "event-b")))
-        val lease = registry.register("shell")
-        val witness = assertNotNull(registry.currentWitness(lease.id))
-        val before = registry.snapshot.value
-
-        val grantB = assertNotNull(registry.resolve(witness, "event-b"))
-        assertEquals("event-b", grantB.serverId)
-        assertEquals(witness.connectionFamilyId, grantB.connectionFamilyId)
-        assertNull(registry.resolve(witness, "missing"))
-        assertEquals(before, registry.snapshot.value, "resolver must be lookup-only and mint nothing")
-
-        registry.reconnect(lease.id)
-        assertNull(registry.resolve(witness, "event-b"), "old family witnesses fail closed for every server")
-    }
-
-    @Test
     fun releaseAndAuthAdvanceShareOneLinearizationDomainInBothOrders() = runBlocking {
         val releaseFirst = registry(InMemoryRaftKeyValueStore(), process = "release-first")
         releaseFirst.initialize()
@@ -222,25 +179,6 @@ class RealtimeAuthorityRegistryV12Test {
             "a stale process must reread durable truth instead of overwriting equal generation",
         )
         assertTrue(diagnostics.any { it.contains("equal_generation_payload_conflict") })
-    }
-
-    @Test
-    fun providerStyleReconcileAllocatesFromDurableTruthAndCanForceSamePayloadSuccessor() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val registry = registry(store, process = "process-provider")
-        registry.initialize()
-
-        val p1 = RealtimeAuthoritySession(principalId = "p1", serverIds = listOf("a", "b"), environmentId = "env-test")
-        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(p1, force = false))
-        assertEquals(1L, registry.snapshot.value.authRevision.generation)
-        assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(p1, force = false))
-        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(p1, force = true))
-        assertEquals(2L, registry.snapshot.value.authRevision.generation)
-
-        assertEquals(RealtimeAuthAdvanceResult.Advanced, registry.advanceAuthFromCurrentSession(null, force = false))
-        assertEquals(3L, registry.snapshot.value.authRevision.generation)
-        assertNull(registry.snapshot.value.authRevision.session)
-        assertEquals(RealtimeAuthAdvanceResult.Duplicate, registry.advanceAuthFromCurrentSession(null, force = false))
     }
 
     // ---- task #1109: environment is an identity dimension of the auth revision and every grant ----

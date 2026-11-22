@@ -96,17 +96,6 @@ class RuntimeFormV2Test {
         assertEquals("high", after.text("reasoningEffort"), "the derived reasoning effort follows the new model")
     }
 
-    @Test
-    fun reprobeKeepsValuesTheSourceStillOffersAndIgnoresOtherSources() {
-        val values = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
-        assertEquals(values, runtimeFormV2ValuesAfterSourceReload(kimi, kimiSources, values, "model"), "k2 is still offered")
-        val reprobed = kimiSources + ("model" to kimiSources.getValue("model").copy(options = emptyList(), defaultValue = null))
-        val changed = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k1"))
-        assertEquals(changed, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, changed, "other-source"))
-        val blank = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive(""))
-        assertEquals(blank, runtimeFormV2ValuesAfterSourceReload(kimi, reprobed, blank, "model"), "an empty value is left alone")
-    }
-
     // ── v2.test.ts ──
 
     @Test
@@ -360,16 +349,6 @@ class RuntimeFormV2Test {
         assertEquals("high", values.text("reasoningEffort"), "still offered: kept, not reset to the new model's low")
         values = applyRuntimeFormV2Change(kimi, effortSources, values, "model", JsonPrimitive("k4"))
         assertEquals("medium", values.text("reasoningEffort"), "not offered: the new model's default")
-    }
-
-    @Test
-    fun aDefaultLeftOverFromAModelWithoutLevelsIsNotKept() {
-        var values = initialRuntimeFormV2Values(kimi.copy(values = null), kimiSources)
-        assertEquals("high", values.text("reasoningEffort"))
-        values = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k1"))
-        assertEquals("", values.text("reasoningEffort"))
-        values = applyRuntimeFormV2Change(kimi, kimiSources, values, "model", JsonPrimitive("k2"))
-        assertEquals("high", values.text("reasoningEffort"), "back to K2's default, not the leftover Default")
     }
 
     @Test

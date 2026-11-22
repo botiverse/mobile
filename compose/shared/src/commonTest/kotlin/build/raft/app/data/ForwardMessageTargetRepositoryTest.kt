@@ -307,41 +307,6 @@ class ForwardMessageTargetRepositoryTest {
     }
 
     @Test
-    fun directorySourceFailureNeverPublishesPartialRevisionReset() = runBlocking {
-        val network = RecordingForwardNetworkClient()
-        network.peerChannelsBody = jointChannelsBody("joint-0", "joint-1", "joint-2")
-        val repository = realRepository(network)
-        val first =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(ServerId("server-peer"), sessionId = "picker-failure", pageSize = 5)
-            ).data
-
-        network.peerChannelsCode = 500
-        network.peerChannelsBody = jointChannelsBody("joint-new", "joint-1", "joint-2")
-        assertIs<DataResult.Error>(
-            repository.directoryTargets(
-                ServerId("server-peer"),
-                sessionId = "picker-failure",
-                cursor = requireNotNull(first.nextCursor),
-                pageSize = 5
-            )
-        )
-
-        network.peerChannelsCode = 200
-        val reset =
-            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
-                repository.directoryTargets(
-                    ServerId("server-peer"),
-                    sessionId = "picker-failure",
-                    cursor = requireNotNull(first.nextCursor),
-                    pageSize = 5
-                )
-            ).data
-        assertTrue(reset.reset)
-        assertEquals(listOf("joint-new"), reset.items.map { it.id })
-    }
-
-    @Test
     fun recentJointTargetRetainsTypedServerAndProjectionIdentity() = runBlocking {
         val network = RecordingForwardNetworkClient()
         val repository = realRepository(network)

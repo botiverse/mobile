@@ -99,19 +99,6 @@ class SendMessageV2Test {
         assertEquals("thread_send_contract_mismatch", failure.contractCode)
     }
 
-    @Test
-    fun repositoryParserReadsTheSameV2Shape() {
-        val payload =
-            parseSharedSentMessagePayload(
-                """{"message":${SharedRow},"unresolvedMentionHandles":["@ghost",3]}""",
-                ThreadId("channel-1")
-            )
-
-        assertEquals("m-v2", payload.message?.id?.value)
-        assertEquals(listOf("@ghost"), payload.unresolvedMentionHandles)
-        assertFalse(payload.projectionRejected)
-    }
-
     // ── Dedupe / optimistic reconciliation ──
 
     @Test

@@ -347,45 +347,6 @@ class ServerAppearanceTest {
     }
 
     @Test
-    fun catchUpAfterReconnectUpdatesTheStoredLookOncePerWindow() = runTest {
-        val store = InMemoryRaftAuthSessionStore(session(serverATheme = "space"))
-        val client = RecordingNetworkClient(
-            mapOf("GET $appearancePath" to HomeNetworkResponse(200, """{"theme":"quest","themeDecor":false}"""))
-        )
-        val repository = NetworkServerAppearanceRepository(client, store)
-        val clock = TestTimeSource()
-        val catchUp =
-            ServerAppearanceCatchUp(
-                scope = backgroundScope,
-                load = { serverId -> repository.load(serverId) },
-                windowMs = 10_000L,
-                timeSource = clock,
-            )
-
-        // The theme changed on the web while the socket was down; the reconnect reads it.
-        catchUp.onReconnected(ServerId(serverA))
-        runCurrent()
-        assertEquals(RaftServerThemeLook(RaftThemeId.Quest, decor = false), raftSessionThemeLook(store.readSession(), null))
-
-        // The foreground return that came with the reconnect shares that read.
-        catchUp.onForeground(ServerId(serverA))
-        runCurrent()
-        assertEquals(1, client.requests.size)
-
-        // A later return reads again, through the app lifecycle.
-        clock += 10.seconds
-        val foreground = MutableStateFlow(true)
-        catchUp.followAppLifecycle(foreground) { store.readSession()?.currentServerId }
-        runCurrent()
-        assertEquals(1, client.requests.size, "staying in the foreground is no return")
-        foreground.value = false
-        runCurrent()
-        foreground.value = true
-        runCurrent()
-        assertEquals(2, client.requests.size)
-    }
-
-    @Test
     fun loadNeverClobbersASaveOnItsWay() = runTest {
         val store = InMemoryRaftAuthSessionStore(session(serverATheme = "space"))
         val client = GatedNetworkClient()

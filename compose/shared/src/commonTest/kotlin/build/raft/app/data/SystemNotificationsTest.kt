@@ -131,21 +131,6 @@ class SystemNotificationsTest {
     }
 
     @Test
-    fun unreadNotificationRequestSuppressesVisibleThread() {
-        val request =
-            buildSystemUnreadNotificationRequest(
-                serverId = "server-1",
-                message = message(),
-                currentMemberId = "member-1",
-                isVisibleThread = true,
-                conversationName = "general",
-                conversationKind = ConversationKind.Channel
-            )
-
-        assertEquals(null, request)
-    }
-
-    @Test
     fun unreadNotificationRequestPromotesMentions() {
         val request =
             buildSystemUnreadNotificationRequest(

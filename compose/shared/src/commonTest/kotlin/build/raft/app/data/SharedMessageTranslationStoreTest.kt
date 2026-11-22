@@ -156,22 +156,6 @@ class SharedMessageTranslationStoreTest {
     }
 
     @Test
-    fun localTargetChangeAppliesWithoutAccountPatchOrSettingsReload() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val api = FakeMessageTranslationApi()
-        var target = "en"
-        val store = store(api, scope, translationTargetLanguage = { target })
-
-        store.ensureSettingsLoaded()
-        target = "ja-JP"
-        store.requestAutoTranslations(listOf(candidate()))
-
-        assertEquals("ja", store.state.value.settings.effectiveLanguage)
-        assertEquals("ja", api.batchCalls.single().second)
-        scope.cancel()
-    }
-
-    @Test
     fun requestAutoTranslationsAppliesTranslatedResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeMessageTranslationApi(

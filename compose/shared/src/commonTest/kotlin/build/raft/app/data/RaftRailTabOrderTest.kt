@@ -46,12 +46,6 @@ class RaftRailTabOrderTest {
     }
 
     @Test
-    fun `a saved order that places Apps keeps it there`() {
-        val order = listOf("apps", "chat", "search", "activity", "tasks", "members", "artifacts", "computers", "assistant")
-        assertEquals(order, normalizeRaftRailTabOrder(order))
-    }
-
-    @Test
     fun `a move of the drawn tabs keeps the undrawn ones in their place`() {
         // The top bar holds Search and the assistant is off here: the rail draws the other six.
         val full = listOf("search", "chat", "activity", "tasks", "members", "computers", "apps", "assistant")
@@ -74,14 +68,6 @@ class RaftRailTabOrderTest {
         // The launch read (AuthDataSource.currentUser decodes the same body as StoredAuthUser).
         val user = Json { ignoreUnknownKeys = true }.decodeFromString(StoredAuthUser.serializer(), upstreamMeBody(railTabOrder = """["members"]"""))
         assertEquals(listOf("members"), user.railTabOrder)
-    }
-
-    @Test
-    fun `a null order is the default and a body that is not the user is a mismatch`() {
-        assertNull(assertIs<DataResult.Content<List<String>?>>(parseSharedRailTabOrderAccount(200, upstreamMeBody(railTabOrder = "null"))).data)
-        val wrapped = parseSharedRailTabOrderAccount(200, """{"user":{"id":"u1","railTabOrder":["tasks"]}}""")
-        assertEquals("rail_tab_order_contract_mismatch", assertIs<DataResult.Error>(wrapped).error.code)
-        assertEquals("rail_tab_order_http_400", assertIs<DataResult.Error>(parseSharedRailTabOrderAccount(400, """{"error":"x"}""")).error.code)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)

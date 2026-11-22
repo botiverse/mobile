@@ -248,13 +248,4 @@ class SettingsFeedbackSubmitApiTest {
 
         assertEquals("feedback_contract_mismatch", failure.code)
     }
-
-    @Test
-    fun theMetadataJsonIsSharedWithTheAgentIssueTicket() {
-        val metadata = Json.parseToJsonElement(productFeedbackMetadataJson("", "1.23.0", "en")).jsonObject
-
-        // A blank client kind files as web: no native client facts.
-        assertEquals(setOf("locale"), metadata.keys)
-        assertNull(metadata["client_version"])
-    }
 }

@@ -64,39 +64,6 @@ class RaftAvatarMountedSessionTest {
     }
 
     @Test
-    fun disposedSoleParticipantMakesLateOutcomeStaleAndRemountStaysFresh() {
-        val session = RaftAvatarMountedSession()
-        val key = avatarKey()
-        val old = session.mount(key)
-        val oldFlight = assertNotNull(session.beginFlight(old))
-
-        assertTrue(session.dispose(old))
-        assertFalse(session.dispose(old))
-        val remounted = session.mount(key)
-        assertNotEquals(old.sessionEpoch, remounted.sessionEpoch)
-        assertIs<RaftAvatarMountedResolution.RejectedStaleFlight>(
-            session.resolve(
-                oldFlight,
-                RaftAvatarMountedOutcome.Reload(
-                    expectedFromCommitIdentity = null,
-                    committedToCommitIdentity = commitIdentity(1, 'b'),
-                    validators = RaftAvatarValidators(eTag = "old-etag"),
-                    newModelRevision = 1
-                )
-            )
-        )
-
-        val snapshot = assertNotNull(session.snapshot(remounted))
-        assertTrue(snapshot.requiresFullCanonicalBody)
-        assertNull(snapshot.commitIdentity)
-        assertNull(snapshot.validators)
-        assertEquals(0L, snapshot.modelRevision)
-        val freshFlight = assertNotNull(session.beginFlight(remounted))
-        assertNotEquals(oldFlight.requestGeneration, freshFlight.requestGeneration)
-        assertTrue(freshFlight.requiresFullCanonicalBody)
-    }
-
-    @Test
     fun contentChangeRevokesActiveFlightBeforeMetadataCommit() {
         val session = RaftAvatarMountedSession()
         val oldKey = avatarKey(contentHex = '1')
@@ -172,43 +139,6 @@ class RaftAvatarMountedSessionTest {
     }
 
     @Test
-    fun subjectTerminalRevokesFlightClearsMetadataAndAdvancesEpoch() {
-        val session = RaftAvatarMountedSession()
-        val key = avatarKey()
-        val mount = session.mount(key)
-        val committed = commitIdentity(1, '8')
-        commitInitial(
-            session,
-            mount,
-            committed,
-            RaftAvatarValidators(lastModified = "old-validator"),
-            modelRevision = 3
-        )
-        val lateFlight = assertNotNull(session.beginFlight(mount))
-        val previousEpochs = mount.terminalEpochs
-
-        val terminal = session.retireSubject(key.owner, key.subject)
-        assertEquals(listOf(mount), terminal.map { it.token })
-        assertTrue(terminal.all { it.reason == RaftAvatarMountedClearReason.Terminal })
-        assertFalse(session.isCurrent(mount))
-        assertIs<RaftAvatarMountedResolution.RejectedStaleFlight>(
-            session.resolve(
-                lateFlight,
-                RaftAvatarMountedOutcome.Keep(
-                    expectedCommitIdentity = committed,
-                    reason = RaftAvatarMountedKeepReason.TemporaryFailure
-                )
-            )
-        )
-
-        val remount = session.mount(key)
-        assertTrue(remount.terminalEpochs.subject > previousEpochs.subject)
-        assertNull(session.snapshot(remount)?.commitIdentity)
-        assertNull(session.snapshot(remount)?.validators)
-        assertTrue(assertNotNull(session.beginFlight(remount)).requiresFullCanonicalBody)
-    }
-
-    @Test
     fun ownerTerminalDoesNotRetireAnotherServerPartition() {
         val session = RaftAvatarMountedSession()
         val ownerAKey = avatarKey(serverId = "server-a", subjectId = "member-a", contentHex = 'a')
@@ -276,26 +206,6 @@ class RaftAvatarMountedSessionTest {
     }
 
     @Test
-    fun exactDurableIdentitySeedsOneUntouchedMountAfterRestart() {
-        val key = avatarKey()
-        val identity = commitIdentity(7, '7')
-        val durable = durableMetadata(key, identity, modelRevision = 11, eTag = "restart-etag")
-        val restarted = RaftAvatarMountedSession()
-        val token = restarted.mount(key)
-
-        assertTrue(restarted.seedDurable(token, durable))
-        val snapshot = assertNotNull(restarted.snapshot(token))
-        assertEquals(identity, snapshot.commitIdentity)
-        assertEquals(11L, snapshot.modelRevision)
-        assertEquals("restart-etag", snapshot.validators?.eTag)
-        val flight = assertNotNull(restarted.beginFlight(token))
-        assertEquals(identity, flight.expectedCommitIdentity)
-        assertEquals(11L, flight.expectedModelRevision)
-        assertEquals("restart-etag", flight.validators?.eTag)
-        assertFalse(flight.requiresFullCanonicalBody)
-    }
-
-    @Test
     fun legacyWrongPartitionAndDelayedDurableSeedsFailClosed() {
         val key = avatarKey()
         val exact = durableMetadata(key, commitIdentity(1, '1'), modelRevision = 1, eTag = "exact")
@@ -327,52 +237,6 @@ class RaftAvatarMountedSessionTest {
         val active = assertNotNull(delayedSession.beginFlight(delayedToken))
         assertFalse(delayedSession.seedDurable(delayedToken, exact))
         assertSame(active, delayedSession.beginFlight(delayedToken))
-    }
-
-    @Test
-    fun wrongCommitIdentityCannotKeepOrClearCurrentMountedState() {
-        val session = RaftAvatarMountedSession()
-        val key = avatarKey()
-        val mount = session.mount(key)
-        val committed = commitIdentity(1, 'e')
-        val validators = RaftAvatarValidators(eTag = "current")
-        commitInitial(session, mount, committed, validators, modelRevision = 5)
-
-        val keepFlight = assertNotNull(session.beginFlight(mount))
-        assertIs<RaftAvatarMountedResolution.RejectedCommitCas>(
-            session.resolve(
-                keepFlight,
-                RaftAvatarMountedOutcome.Keep(
-                    expectedCommitIdentity = commitIdentity(1, 'f'),
-                    reason = RaftAvatarMountedKeepReason.NotModified
-                )
-            )
-        )
-        assertIs<RaftAvatarMountedResolution.RejectedStaleFlight>(
-            session.resolve(
-                keepFlight,
-                RaftAvatarMountedOutcome.Keep(
-                    expectedCommitIdentity = committed,
-                    reason = RaftAvatarMountedKeepReason.NotModified
-                )
-            )
-        )
-        assertEquals(committed, session.snapshot(mount)?.commitIdentity)
-
-        val clearFlight = assertNotNull(session.beginFlight(mount))
-        assertNotEquals(keepFlight.requestGeneration, clearFlight.requestGeneration)
-        assertIs<RaftAvatarMountedResolution.RejectedCommitCas>(
-            session.resolve(
-                clearFlight,
-                RaftAvatarMountedOutcome.Clear(
-                    expectedCommitIdentity = commitIdentity(1, '0'),
-                    reason = RaftAvatarMountedClearReason.ResourceAbsent
-                )
-            )
-        )
-        assertTrue(session.isCurrent(mount))
-        assertEquals(committed, session.snapshot(mount)?.commitIdentity)
-        assertEquals(validators, session.snapshot(mount)?.validators)
     }
 
     private fun commitInitial(

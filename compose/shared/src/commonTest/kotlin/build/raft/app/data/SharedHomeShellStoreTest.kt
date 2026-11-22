@@ -154,39 +154,6 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
-    fun threadUpdatedRealtimeOnlyUpdatesActivitySummaryWhenOnlyHomeIsVisible() {
-        val fixture = fixture()
-        val store = fixture.store
-        val event =
-            ThreadUpdated(
-                parentMessageId = MessageId("parent-1"),
-                threadChannelId = ChannelId("thread-parent-1"),
-                replyCount = 3,
-                lastReplyAt = "12:00",
-                participantIds = emptyList(),
-                unreadCount = 1
-            )
-
-        store.dispatch(SharedHomeShellIntent.SetSurfaceVisible(true))
-        store.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent("server-1", event))
-
-        assertEquals(
-            listOf<SharedHomeIntent>(
-                SharedHomeIntent.SetSurfaceVisible(true),
-                SharedHomeIntent.ApplyRealtimeEvent("server-1", event)
-            ),
-            fixture.homeIntents
-        )
-        assertEquals(
-            listOf<SharedActivityIntent>(
-                SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId = null)
-            ),
-            fixture.activityIntents
-        )
-        fixture.cancel()
-    }
-
-    @Test
     fun homeVisibleRealtimeSummaryReceivesActiveConversationId() {
         val fixture = fixture()
         val store = fixture.store

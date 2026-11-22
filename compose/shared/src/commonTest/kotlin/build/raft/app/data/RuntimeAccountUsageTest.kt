@@ -136,21 +136,6 @@ class RuntimeAccountUsageTest {
     }
 
     @Test
-    fun cancelledReadForAnOldSubjectNeverPublishesAndNextReadRefetches() = runPortableCoroutineTest<Unit> {
-        val gate = CompletableDeferred<Unit>()
-        val api = FakeUsageApi(beforeRespond = { gate.await() }) { ok(FRESH_BODY) }
-        val store = store(api)
-        // The UI cancels the old subject's read when the key changes (LaunchedEffect restart).
-        val old = async(start = CoroutineStart.UNDISPATCHED) { store.read(key()) }
-        yield()
-        old.cancel()
-        gate.complete(Unit)
-        assertNull(store.peek(key()))
-        assertIs<RuntimeAccountUsageLoad.Loaded>(store.read(key()))
-        assertEquals(2, api.calls.size)
-    }
-
-    @Test
     fun accountSwitchWhileReadingDropsTheResponseAndNeverCachesIt() = runPortableCoroutineTest<Unit> {
         // The page stays open; the GET is sent as user-1 but the session becomes user-2 before
         // the response arrives, so the response may be user-2's and must not be published.

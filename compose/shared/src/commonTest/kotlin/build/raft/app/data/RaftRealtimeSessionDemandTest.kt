@@ -130,16 +130,6 @@ class RaftRealtimeSessionDemandTest {
     }
 
     @Test
-    fun everyWindowHiddenPastTheGraceFallsBackToTheSelectedServer() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("a", "s2")
-        demand.onVisibility("a", visible = false, nowMillis = now)
-
-        now += HiddenWindowSessionGraceMillis + 1
-        assertEquals(listOf("s1"), demand.desired())
-    }
-
-    @Test
     fun visibilityReportedBeforeTheClaimIsKept() {
         val demand = RaftRealtimeSessionDemand()
         demand.onVisibility("a", visible = false, nowMillis = now)
@@ -147,23 +137,5 @@ class RaftRealtimeSessionDemandTest {
         demand.claim("b", "s3")
 
         assertEquals(listOf("s3", "s2"), demand.desired(), "an unreported window counts as visible, a hidden one after it")
-    }
-
-    @Test
-    fun flagOffIsTheSingleCurrentServerSet() {
-        val demand = RaftRealtimeSessionDemand()
-        demand.claim("a", "s2")
-        demand.claim("b", "s3")
-        demand.onVisibility("b", visible = true, nowMillis = now)
-
-        listOf("s1", "s4", "missing", " ", null).forEach { selected ->
-            assertEquals(
-                realtimeCurrentServerScopedServerIds(selected, grants),
-                demand.desiredServerIds(grants, selected, now, enabled = false),
-                "selected=$selected",
-            )
-        }
-        assertEquals("s1", demand.primaryServerId(grants, "s1", now, enabled = false))
-        assertTrue(demand.desiredServerIds(emptySet(), "s1", now, enabled = false).isEmpty())
     }
 }

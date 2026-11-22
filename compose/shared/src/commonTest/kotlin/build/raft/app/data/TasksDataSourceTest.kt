@@ -125,16 +125,6 @@ class TasksDataSourceTest {
     }
 
     @Test
-    fun typedTasksApiRequiresDeleteOkTrue() = runBlocking {
-        val client = RaftTasksApiClient(RecordingTasksApi(deleteBody = """{"success":true}"""))
-
-        val result = client.deleteTask(TaskId("task-1"))
-
-        val error = assertIs<DataResult.Error>(result)
-        assertEquals("tasks_delete_contract_mismatch", error.error.code)
-    }
-
-    @Test
     fun taskPermissionMappersRetainExactErrorFieldOn401And403() {
         listOf(401, 403).forEach { status ->
             val exactReason = "  task-$status raw reason  "

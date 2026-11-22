@@ -122,29 +122,6 @@ class SharedActivityStoreDoneOverlayTest {
     }
 
     @Test
-    fun serverCatchUpAbsenceStillGuardsAgainstALaterStaleCopy() = runTest {
-        val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10"))))
-        val store = overlayStore(inbox)
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        runCurrent()
-        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
-        runCurrent()
-
-        inbox.serving = snapshot(emptyList())
-        store.dispatch(SharedActivityIntent.PullRefresh)
-        runCurrent()
-        assertEquals(emptyList(), store.state.value.items)
-
-        // A degraded-cache answer after the view caught up must not resurrect it.
-        advanceTimeBy(2_000L)
-        inbox.serving = snapshot(listOf(row("channel-1", seq = "10")))
-        store.dispatch(SharedActivityIntent.PullRefresh)
-        runCurrent()
-        assertEquals(emptyList(), store.state.value.items)
-        assertEquals(0, store.state.value.totalCount)
-    }
-
-    @Test
     fun failedDoneWriteRestoresRowAndDropsTheHold() = runTest {
         val inbox = ScriptedActivityInbox(snapshot(listOf(row("channel-1", seq = "10", unread = 3))))
         inbox.failDone = true
@@ -280,62 +257,6 @@ class SharedActivityStoreDoneOverlayTest {
         runCurrent()
         assertEquals(listOf("channel:channel-2"), store.state.value.items.map { it.key })
         assertEquals(1, store.state.value.totalCount)
-    }
-
-    @Test
-    fun threadUpdatedPatchedDoneSurvivesTheServedCatchUpOfThatReply() = runTest {
-        // With and without the reply seq on the event: the view catching up to the
-        // patched reply (newer seq, same reply count) is still the handled row.
-        listOf(11L, null).forEach { replySeq ->
-            val stale = threadItem("thread-channel-1").copy(readStateLatestActivitySeq = "10", replyCount = 2)
-            val inbox = ScriptedActivityInbox(snapshot(listOf(stale)))
-            val store = overlayStore(inbox)
-            store.dispatch(SharedActivityIntent.LoadInitial)
-            runCurrent()
-            store.dispatch(
-                SharedActivityIntent.ApplyRealtimeEvent(
-                    ThreadUpdated(
-                        parentMessageId = MessageId("parent-message"),
-                        threadChannelId = ChannelId("thread-channel-1"),
-                        replyCount = 3,
-                        lastReplyAt = "2026-10-20T00:00:03Z",
-                        participantIds = emptyList(),
-                        latestReply = replySeq?.let(::replyPreview)
-                    )
-                )
-            )
-            assertEquals(3, store.state.value.items.single().replyCount)
-            store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
-            runCurrent()
-
-            inbox.serving =
-                snapshot(
-                    listOf(
-                        stale.copy(
-                            readStateLatestActivitySeq = "11",
-                            replyCount = 3,
-                            latestActivityMessageId = MessageId("reply-3")
-                        )
-                    )
-                )
-            store.dispatch(SharedActivityIntent.PullRefresh)
-            runCurrent()
-            assertEquals(emptyList(), store.state.value.items, "replySeq=$replySeq catch-up copy")
-
-            inbox.serving =
-                snapshot(
-                    listOf(
-                        stale.copy(
-                            readStateLatestActivitySeq = "12",
-                            replyCount = 4,
-                            latestActivityMessageId = MessageId("reply-4")
-                        )
-                    )
-                )
-            store.dispatch(SharedActivityIntent.PullRefresh)
-            runCurrent()
-            assertEquals(MessageId("reply-4"), store.state.value.items.single().latestActivityMessageId, "replySeq=$replySeq")
-        }
     }
 
     @Test

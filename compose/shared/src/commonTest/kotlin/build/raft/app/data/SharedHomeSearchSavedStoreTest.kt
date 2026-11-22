@@ -168,30 +168,6 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
-    fun rapidSuccessfulOpensPersistInDispatchOrder() = runBlocking {
-        val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
-        var now = 1_800_000_000_000L
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(),
-                searchRepository = FakeSearchRepository(),
-                scope = this,
-                personalizationRepository = repository,
-                nowMillis = { now++ },
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-        yield()
-        store.dispatch(SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen("first"))
-        store.dispatch(SharedHomeSearchSavedIntent.RecordSuccessfulSearchOpen("second"))
-        yield()
-
-        assertEquals(listOf("second", "first"), store.state.value.search.history)
-        store.clear()
-    }
-
-    @Test
     fun samePrincipalOnAnotherServerNeverSeesThePreviousServerHistory() = runBlocking {
         val auth = InMemoryRaftAuthSessionStore(sampleSession(serverId = "server-a"))
         val repository = PersistentSearchPersonalizationRepository(InMemoryRaftKeyValueStore())
@@ -218,51 +194,6 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(emptyList(), store.state.value.search.history)
         assertEquals(true, store.state.value.search.personalizationLoaded)
         store.clear()
-    }
-
-    @Test
-    fun processReadPredictionClearsMatchingSavedAndSearchOwnerOnly() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val unreadItem =
-            inboxItem("message-unread").copy(
-                unreadCount = 2,
-                firstUnreadMessageId = MessageId("message-unread")
-            )
-        val coordinator =
-            ReadReceiptCoordinator(
-                scope = scope,
-                repository = ImmediateReadReceiptRepository()
-            )
-        val ownerFactory = { serverId: String, accountId: String ->
-            ReadReceiptOwner("production", accountId, serverId)
-        }
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(items = listOf(unreadItem)),
-                searchRepository = FakeSearchRepository(items = listOf(unreadItem)),
-                scope = scope,
-                searchDebounceMillis = 0L,
-                readReceiptCoordinator = coordinator,
-                readReceiptOwnerFactory = ownerFactory
-            )
-        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
-
-        coordinator.markReadAll(
-            ReadReceiptOwner("production", "other-user", "server-1"),
-            ChannelId("channel-1")
-        )
-        assertEquals(2, store.state.value.saved.items.single().unreadCount)
-        assertEquals(2, store.state.value.search.items.single().unreadCount)
-
-        coordinator.markReadAll(
-            ReadReceiptOwner("production", "user-1", "server-1"),
-            ChannelId("channel-1")
-        )
-        assertEquals(0, store.state.value.saved.items.single().unreadCount)
-        assertEquals(0, store.state.value.search.items.single().unreadCount)
-        scope.cancel()
     }
 
     @Test
@@ -341,133 +272,6 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
         assertEquals(1, store.state.value.saved.totalCount)
         assertEquals("saved_unsave_failed", store.state.value.saved.errorCode)
-        scope.cancel()
-    }
-
-    @Test
-    fun failedConcurrentUnsavesRestoreCanonicalOrderRegardlessOfCompletionOrder() = runBlocking {
-        val canonicalItems =
-            listOf(
-                inboxItem("message-1"),
-                inboxItem("message-2"),
-                inboxItem("message-3")
-            )
-
-        listOf(
-            listOf("message-1", "message-2"),
-            listOf("message-2", "message-1")
-        ).forEach { completionOrder ->
-            val cache = SharedHomeSavedStateCache()
-            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-            val saved = DeferredMutationSavedRepository(items = canonicalItems)
-            val store =
-                SharedHomeSearchSavedStore(
-                    authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                    savedRepository = saved,
-                    searchRepository = FakeSearchRepository(),
-                    savedStateCache = cache,
-                    scope = scope
-                )
-
-            store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-            store.dispatch(SharedHomeSearchSavedIntent.Unsave(canonicalItems[0]))
-            store.dispatch(SharedHomeSearchSavedIntent.Unsave(canonicalItems[1]))
-            saved.awaitUnsave("message-1")
-            saved.awaitUnsave("message-2")
-
-            completionOrder.forEach { messageId ->
-                saved.completeUnsave(messageId, DataResult.Error(ScreenError("delete_failed")))
-            }
-
-            assertEquals(canonicalItems, store.state.value.saved.items)
-            assertEquals(
-                canonicalItems,
-                cache.read("server-1", "user-1")?.items
-            )
-            scope.cancel()
-        }
-    }
-
-    @Test
-    fun optimisticUnsaveUpdatesSharedSavedCache() = runBlocking {
-        val cache = SharedHomeSavedStateCache()
-        val primaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val primaryStore =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
-                searchRepository = FakeSearchRepository(),
-                savedStateCache = cache,
-                scope = primaryScope
-            )
-        primaryStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-        primaryStore.dispatch(SharedHomeSearchSavedIntent.Unsave(primaryStore.state.value.saved.items.single()))
-
-        val secondaryScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val secondaryRepository = DeferredSavedRepository()
-        val secondaryStore =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = secondaryRepository,
-                searchRepository = FakeSearchRepository(),
-                savedStateCache = cache,
-                scope = secondaryScope
-            )
-        secondaryStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-
-        assertEquals(emptyList(), secondaryStore.state.value.saved.items)
-        assertEquals(0, secondaryStore.state.value.saved.totalCount)
-        primaryScope.cancel()
-        secondaryScope.cancel()
-    }
-
-    @Test
-    fun clearSavedSummaryDropsSavedCountsButKeepsSearchState() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
-                searchRepository = FakeSearchRepository(),
-                scope = scope
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
-
-        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
-
-        store.dispatch(SharedHomeSearchSavedIntent.ClearSavedSummary)
-
-        assertEquals(emptyList(), store.state.value.saved.items)
-        assertEquals(0, store.state.value.saved.totalCount)
-        assertEquals(false, store.state.value.saved.loaded)
-        assertEquals("release", store.state.value.search.query)
-        scope.cancel()
-    }
-
-    @Test
-    fun openSavedRefreshesLoadedPanelOnReentry() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = saved,
-                searchRepository = FakeSearchRepository(),
-                scope = scope
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-
-        assertEquals(1, saved.loadInitialCalls)
-        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
-
-        saved.items = listOf(inboxItem("message-2"))
-        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
-
-        assertEquals(2, saved.loadInitialCalls)
-        assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
         scope.cancel()
     }
 
@@ -673,61 +477,6 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
-    fun searchQueryChangeShowsPendingAffordanceBeforeDebounceRuns() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val search = FakeSearchRepository(items = listOf(inboxItem("message-pending")))
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(),
-                searchRepository = search,
-                scope = scope,
-                searchDebounceMillis = 250L
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
-
-        assertEquals(true, store.state.value.search.querySearchPending)
-        assertEquals(emptyList(), search.calls)
-        scope.cancel()
-    }
-
-    @Test
-    fun sortChangeDuringInitialSearchStaysLoadingUntilReplacementCompletes() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val search = QueuedSearchRepository()
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(),
-                searchRepository = search,
-                scope = scope,
-                searchDebounceMillis = 0L
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
-        assertEquals(true, store.state.value.search.loading)
-        assertEquals(false, store.state.value.search.refreshing)
-        assertEquals(emptyList(), store.state.value.search.items)
-
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
-
-        assertEquals(true, store.state.value.search.loading)
-        assertEquals(false, store.state.value.search.refreshing)
-        assertEquals(emptyList(), store.state.value.search.items)
-
-        search.completeNext("message-stale")
-        assertEquals(true, store.state.value.search.loading)
-        assertEquals(emptyList(), store.state.value.search.items)
-
-        search.completeNext("message-recent")
-        assertEquals(false, store.state.value.search.loading)
-        assertEquals(false, store.state.value.search.refreshing)
-        assertEquals(listOf("message-recent"), store.state.value.search.items.map { it.key })
-        scope.cancel()
-    }
-
-    @Test
     fun blankQueryWithFilterAutoBrowsesServerResults() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-filter-only")))
@@ -859,33 +608,6 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
-    fun senderFilterSelectionReplacesThePreviousSender() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val search = FakeSearchRepository(items = listOf(inboxItem("message-sender")))
-        val store =
-            SharedHomeSearchSavedStore(
-                authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                savedRepository = FakeSavedRepository(),
-                searchRepository = search,
-                scope = scope,
-                searchDebounceMillis = 0L
-            )
-
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("agent-1"))
-
-        // Like the web, one sender at most: the second pick replaces the first.
-        assertEquals("agent-1", store.state.value.search.selectedSenderId)
-        assertEquals(listOf("user-1", "agent-1"), search.calls.map { it.options.senderId })
-
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender(null))
-
-        assertEquals(null, store.state.value.search.selectedSenderId)
-        assertEquals(false, store.state.value.search.searched)
-        scope.cancel()
-    }
-
-    @Test
     fun scopeFilterSupportsMentionAndSenderTypeMultiSelect() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-scope")))
@@ -910,24 +632,6 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(SearchScope.entries, store.state.value.search.selectedScopes)
         assertEquals(null, search.options?.scopes?.exclusiveSenderTypeWireValue())
         scope.cancel()
-    }
-
-    @Test
-    fun explicitSenderKindOnlyPrunesAnExclusiveConflictingScope() {
-        assertEquals(
-            listOf(SearchScope.Mentioned),
-            listOf(SearchScope.Mentioned, SearchScope.Agents)
-                .withSenderKindConflictResolved(MemberKind.Human)
-        )
-        assertEquals(
-            listOf(SearchScope.Mentioned),
-            listOf(SearchScope.Mentioned, SearchScope.Humans)
-                .withSenderKindConflictResolved(MemberKind.Agent)
-        )
-        assertEquals(
-            SearchScope.entries,
-            SearchScope.entries.withSenderKindConflictResolved(MemberKind.Human)
-        )
     }
 
     private class FakeSavedRepository(

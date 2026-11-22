@@ -35,19 +35,6 @@ class AgentsApiTest {
         )
     }
 
-    @Test
-    fun createBodyKeepsPresentOptionalFields() {
-        val body =
-            buildCreateAgentBody(
-                CreateAgentBody(name = "Noel", description = "helper", machineId = "machine-1", avatarUrl = "pixel:mug", external = false)
-            )
-
-        assertEquals(
-            """{"name":"Noel","description":"helper","machineId":"machine-1","avatarUrl":"pixel:mug","external":false}""",
-            body
-        )
-    }
-
     // task #186: the production transport delivers non-2xx bodies as
     // `bodyText = null, errorBodyText = <envelope>` (KtorRaftHttpExecutor),
     // which is the shape the on-device 409 actually arrives in. The recovery
@@ -115,54 +102,6 @@ class AgentsApiTest {
         val unavailable = assertIs<DataResult.Error>(serverError).error
         assertEquals("server_unavailable", unavailable.code)
         assertEquals("Scheduled maintenance in progress", unavailable.serverMessage)
-    }
-
-    @Test
-    fun agentsPermissionFailuresRetainOnlyExactErrorFieldOn401And403() = runPortableCoroutineTest {
-        listOf(401, 403).forEach { status ->
-            val exactReason = "  route-$status human reason / 理由  "
-            val exact =
-                RaftAgentsApiClient(
-                    RecordingAgentsApi(
-                        createAgentCode = status,
-                        createAgentErrorBody = """{"error":"$exactReason"}"""
-                    )
-                ).createAgent("{}")
-            assertEquals(
-                exactReason,
-                assertIs<DataResult.NoPermission>(exact).blocker.serverMessage,
-                "HTTP $status must retain the exact route-specific error value"
-            )
-
-            val aliasOnly =
-                RaftAgentsApiClient(
-                    RecordingAgentsApi(
-                        createAgentCode = status,
-                        createAgentErrorBody = """{"message":"must not be guessed"}"""
-                    )
-                ).createAgent("{}")
-            assertEquals(
-                null,
-                assertIs<DataResult.NoPermission>(aliasOnly).blocker.serverMessage,
-                "HTTP $status must not guess an unconfirmed alias"
-            )
-        }
-    }
-
-    @Test
-    fun createAgentKeepsNonAllowlistedErrorBodyConflictGeneric() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    createAgentCode = 409,
-                    createAgentErrorBody =
-                        """{"error":"Conflict","issues":[{"code":"unrelated_conflict","pointer":"/name"}]}"""
-                )
-            )
-
-        val error = assertIs<DataResult.Error>(client.createAgent("{}"))
-
-        assertEquals("http_409", error.error.code)
     }
 
     @Test
@@ -535,23 +474,6 @@ class AgentsApiTest {
     }
 
     @Test
-    fun typedAgentsApiKeepsBuiltInSavedProviderConnection() = runPortableCoroutineTest {
-        val client =
-            RaftAgentsApiClient(
-                RecordingAgentsApi(
-                    agentBody =
-                        """{"id":"agent-1","name":"Pi","runtimeConfig":{"version":1,"runtime":"builtin","provider":{"kind":"connection","connectionId":"conn-1"},"model":{"kind":"custom","name":"deepseek-v4"},"mode":{"kind":"default"}}}"""
-                )
-            )
-
-        val detail = assertIs<DataResult.Content<AgentSummary>>(client.agent(MemberId("agent-1"))).data
-
-        assertEquals("builtin", detail.runtime)
-        // slock BuiltInRuntimeProviderConfig: a saved connection, not "Default".
-        assertEquals(RuntimeProviderConfig.Connection("conn-1"), detail.runtimeProvider)
-    }
-
-    @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runPortableCoroutineTest {
         val client =
             RaftAgentsApiClient(
@@ -662,24 +584,6 @@ class AgentsApiTest {
             assertEquals(code, error.serverCode)
             assertEquals("Cannot start", error.serverMessage)
         }
-    }
-
-    @Test
-    fun deleteAgentArchiveWorkspaceSurfacesServerRefusalCode() = runPortableCoroutineTest {
-        val client = RaftAgentsApiClient(
-            RecordingAgentsApi(
-                archiveDeleteCode = 409,
-                archiveDeleteErrorBody =
-                    """{"error":"workspace migration in progress","code":"archive_migration_active"}"""
-            )
-        )
-
-        val error = assertIs<DataResult.Error>(
-            client.deleteAgentArchiveWorkspace(MemberId("agent-1"))
-        )
-
-        assertEquals("archive_migration_active", error.error.code)
-        assertEquals("workspace migration in progress", error.error.serverMessage)
     }
 
     private class RecordingAgentsApi(

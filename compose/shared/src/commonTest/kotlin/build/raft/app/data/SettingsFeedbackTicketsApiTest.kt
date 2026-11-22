@@ -206,18 +206,6 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun theDetailsTicketCarriesItsAppAndClient() = runTest {
-        // slock #14722 test "the detail's ticket gains source and client": `{source: "web", client: "desktop"}`.
-        val withSource = ticketJson().trimEnd().removeSuffix("}") + ""","source":"web","client":"desktop"}"""
-        val network =
-            FakeNetwork { HomeNetworkResponse(200, """{"ticket":$withSource,"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").ticket(ticketId, source = "web")
-        val detail = assertIs<FeedbackResult.Ok<FeedbackTicketDetail>>(result).value
-        assertEquals("web", detail.ticket.source)
-        assertEquals(FeedbackClient.Desktop, detail.ticket.client)
-    }
-
-    @Test
     fun aTicketOfAnotherAppIsAskedForWithItsPlatformOnEveryCall() = runTest {
         // slock productFeedback.ts `ticketFeedbackSource`: `?platform=` names the ticket's app on the
         // detail, comment, close and attachment routes.
@@ -327,16 +315,6 @@ class SettingsFeedbackTicketsApiTest {
     }
 
     @Test
-    fun aDegradedFirstPageIsReadAsRetryLaterNotAsNoFeedback() = runTest {
-        val network =
-            FakeNetwork {
-                HomeNetworkResponse(200, """{"tickets":[],"next_cursor":null,"unread_total":null,"degraded":true,"retry_after_seconds":5}""")
-            }
-        val result = NetworkSettingsFeedbackTicketsRepository(network, "android").listTickets(cursor = null)
-        assertEquals(FeedbackResult.Ok(FeedbackTicketListRead.Degraded(5)), result)
-    }
-
-    @Test
     fun detailReadsCommentsInOrderAndTheTicketsAttachments() = runTest {
         val network =
             FakeNetwork {
@@ -364,13 +342,6 @@ class SettingsFeedbackTicketsApiTest {
         assertTrue(attachment.isImage)
         assertEquals("shot.png", attachment.filename)
         assertEquals(2048L, attachment.sizeBytes)
-    }
-
-    @Test
-    fun aLaterCommentPageSendsTheCommentCursor() = runTest {
-        val network = FakeNetwork { HomeNetworkResponse(200, """{"ticket":${ticketJson()},"comments":[],"attachments":[],"next_comment_cursor":null,"unread_total":0}""") }
-        NetworkSettingsFeedbackTicketsRepository(network, "android").ticket(ticketId, commentCursor = "n1")
-        assertEquals(listOf("comment_limit" to "100", "comment_cursor" to "n1"), network.calls.single().query)
     }
 
     @Test

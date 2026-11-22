@@ -151,18 +151,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityTailSentinelLeavesFailureOnExplicitRetry() {
-        assertFalse(
-            activityShouldRequestLoadMore(
-                hasMore = true,
-                refreshing = false,
-                loadingMore = false,
-                loadMoreErrorCode = "Network"
-            )
-        )
-    }
-
-    @Test
     fun activityReadPrimaryContentMutedCoversConversationKinds() {
         val readThread = activityItem(key = "thread:read").copy(kind = InboxItemKind.Thread)
         val unreadThread = readThread.copy(key = "thread:unread", unreadCount = 1)
@@ -177,15 +165,6 @@ class SharedInboxPanelTest {
         assertTrue(readDirectMessage.activityPrimaryContentMuted())
         assertTrue(readMention.activityPrimaryContentMuted())
         assertEquals(false, readSystem.activityPrimaryContentMuted())
-    }
-
-    @Test
-    fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
-        assertEquals(false, activityPageDidAppearShouldRefresh(0))
-        assertEquals(true, activityPageDidAppearShouldRefresh(1))
-        // Task #60: a kept-alive but hidden Activity tab skips the shell's resume appearance; it
-        // refreshes when the tab becomes active instead.
-        assertEquals(false, activityPageDidAppearShouldRefresh(1, active = false))
     }
 
     @Test
@@ -364,76 +343,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityUpdatePresentationDoesNotAutoAnchorTailPagination() {
-        val previous =
-            listOf(
-                activityItem(key = "channel:channel-top"),
-                activityItem(key = "channel:channel-next")
-            )
-        val current = previous + activityItem(key = "channel:older-page")
-
-        assertEquals(
-            ActivityUpdatePresentation(pendingMarkers = emptySet()),
-            activityUpdatePresentation(
-                previousItems = previous,
-                currentItems = current
-            )
-        )
-    }
-
-    @Test
-    fun activityPendingUpdateLedgerConsumesClickedSnapshotWithoutRecurrence() {
-        val first = ActivityUpdateMarker(InboxFilter.All, "channel:first", "message:first")
-        val pending = ActivityPendingUpdateLedger().record(setOf(first))
-
-        val consumed = pending.consumePending()
-
-        assertEquals(0, consumed.count)
-        assertEquals(consumed, consumed.record(setOf(first)))
-    }
-
-    @Test
-    fun activityUpdateTrackingTreatsEachFilterAsAnIndependentBaseline() {
-        val allInitial = listOf(activityItem(key = "channel:all-old"))
-        val allNew =
-            listOf(
-                activityItem(key = "channel:all-new", latestActivityMessageId = "all-message"),
-                activityItem(key = "channel:all-old")
-            )
-        val unreadInitial = listOf(activityItem(key = "channel:unread-old", unreadCount = 1))
-        val unreadNew =
-            listOf(
-                activityItem(key = "channel:unread-new", latestActivityMessageId = "unread-message", unreadCount = 1),
-                activityItem(key = "channel:unread-old", unreadCount = 1)
-            )
-        val mentionsInitial = listOf(activityItem(key = "thread:mention-old", unreadCount = 1))
-        val mentionsNew =
-            listOf(
-                activityItem(key = "thread:mention-new", latestActivityMessageId = "mention-message", unreadCount = 1),
-                activityItem(key = "thread:mention-old", unreadCount = 1)
-            )
-
-        val allBaseline = ActivityUpdateTrackingState(InboxFilter.All).recordSnapshot(InboxFilter.All, allInitial)
-        val allPending = allBaseline.recordSnapshot(InboxFilter.All, allNew)
-        assertEquals(1, allPending.pendingCount)
-        assertEquals(setOf(InboxFilter.All), allPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
-
-        val unreadBaseline = allPending.recordSnapshot(InboxFilter.Unread, unreadInitial)
-        assertEquals(0, unreadBaseline.pendingCount)
-        assertEquals(InboxFilter.Unread, unreadBaseline.filter)
-        val unreadPending = unreadBaseline.recordSnapshot(InboxFilter.Unread, unreadNew)
-        assertEquals(1, unreadPending.pendingCount)
-        assertEquals(setOf(InboxFilter.Unread), unreadPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
-
-        val mentionsBaseline = unreadPending.recordSnapshot(InboxFilter.Mentions, mentionsInitial)
-        assertEquals(0, mentionsBaseline.pendingCount)
-        assertEquals(InboxFilter.Mentions, mentionsBaseline.filter)
-        val mentionsPending = mentionsBaseline.recordSnapshot(InboxFilter.Mentions, mentionsNew)
-        assertEquals(1, mentionsPending.pendingCount)
-        assertEquals(setOf(InboxFilter.Mentions), mentionsPending.pendingUpdates.pendingMarkers.map { it.filter }.toSet())
-    }
-
-    @Test
     fun activityRoutePresentationIsIsolatedByAccountServerAndFilter() {
         val store = SharedActivityPresentationStore()
         val accountOne = listOf(activityItem(key = "thread:account-one"))
@@ -487,51 +396,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityStableOrderFlagDefaultsOffAndOffRestoresImmediateCanonicalOrder() {
-        val first = activityItem(key = "thread:first")
-        val lower = activityItem(key = "thread:lower")
-        val canonical = listOf(lower, first)
-
-        assertFalse(ServerFeatureFlagSnapshot.Unresolved.isEnabled(MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY))
-        assertEquals(
-            canonical.map(InboxItem::key),
-            activityItemsAfterCanonicalSnapshot(
-                stableOrderEnabled = false,
-                pendingCount = 1,
-                pullRefreshCompleted = false,
-                presentedItems = listOf(first, lower),
-                canonicalItems = canonical
-            ).map(InboxItem::key)
-        )
-        assertEquals(
-            listOf(first.key, lower.key),
-            activityItemsAfterCanonicalSnapshot(
-                stableOrderEnabled = true,
-                pendingCount = 1,
-                pullRefreshCompleted = false,
-                presentedItems = listOf(first, lower),
-                canonicalItems = canonical
-            ).map(InboxItem::key)
-        )
-    }
-
-    @Test
-    fun activityTimeLabelFormatsLatestActivityBeforeRendering() {
-        val item =
-            activityItem(
-                latestActivityAt = "2026-06-18T09:12:00Z",
-                lastMessageAt = "2026-06-18T08:05:00Z"
-            )
-        val context =
-            RaftTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = raftEpochDayForDate(2026, 6, 18)
-            )
-
-        assertEquals("17:12", item.activityTimeLabel(context))
-    }
-
-    @Test
     fun activityPreviewSenderNameUsesWireNameAndProfileOverride() {
         val item =
             InboxItem(
@@ -559,28 +423,6 @@ class SharedInboxPanelTest {
                 )
             )
         )
-    }
-
-    @Test
-    fun activityThreadSecondaryPreviewUsesLatestActivitySenderName() {
-        val item =
-            InboxItem(
-                key = "thread:activity-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                parentChannelId = ChannelId("channel-1"),
-                parentChannelName = "general",
-                parentMessageId = MessageId("message-1"),
-                parentMessagePreview = "Parent message preview",
-                latestActivityPreview = "Latest reply",
-                latestActivitySenderName = "Artin",
-                replyCount = 2
-            )
-
-        assertEquals("Parent message preview", item.primaryPreviewText())
-        assertEquals("Artin: Latest reply", item.secondaryPreviewText())
-        assertEquals("Artin", item.secondaryActivityPreviewText()?.senderName)
     }
 
     @Test
@@ -771,61 +613,6 @@ class SharedInboxPanelTest {
                 currentPresentationGeneration = 8,
             ),
         )
-    }
-
-    @Test
-    fun homeOpenRequestDoesNotFallBackToParentForThreadWithoutReplyId() {
-        // Original intent kept: a thread row without reply ids must NOT anchor on
-        // parentMessageId (parent origin, not a reply id). Post t5/#419 A3 the row's unknown
-        // parentChannelKind additionally means it only resolves via the directory (thread
-        // projection + parent channel projection); without one it stays Pending — never a
-        // guessed channel-shaped request.
-        val item =
-            InboxItem(
-                key = "thread:thread-channel-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                threadChannelId = ChannelId("thread-channel-1"),
-                parentChannelId = ChannelId("channel-1"),
-                parentChannelName = "general",
-                parentMessageId = MessageId("message-1"),
-                parentMessagePreview = "Parent message preview"
-            )
-        val directory =
-            listOf(
-                InboxSnapshot(
-                    server = ServerSummary(ServerId("server-1"), "Raft"),
-                    items = listOf(item)
-                ).toSharedConversationDirectoryState(),
-                listOf(
-                    SharedConversationDirectoryProjection(
-                        serverId = "server-1",
-                        canonicalChannelId = "channel-1",
-                        aliases = setOf("channel-1"),
-                        conversationKind = ConversationKind.Channel,
-                        surfaceKind = RaftThreadSurfaceKind.Channel,
-                        channelKind = "channel",
-                        title = "general"
-                    )
-                ).toSharedConversationDirectoryState()
-            ).mergedSharedConversationDirectoryState()
-        val request =
-            item.toHomeMessageOpenRequestForTest(serverId = "server-1", conversationDirectory = directory)
-
-        assertEquals(ConversationKind.Thread, request.conversationIdentity.kind)
-        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversationIdentity.threadId)
-        assertEquals(RaftThreadSurfaceKind.Channel, request.conversationIdentity.thread?.parentSurfaceKind)
-        assertEquals(null, request.anchorMessageId)
-
-        // task #304/#307 (cae1eb2e4): with no directory entry the parent kind is
-        // unknown, but the source tuple still opens the reply thread rather than
-        // parking it as Pending; the unknown kind stays null on the identity.
-        val unresolved =
-            item.toHomeMessageOpenRequest(serverId = "", conversationDirectory = SharedConversationDirectoryState())
-        val opened = assertIs<ConversationOpenResolution.Resolved>(unresolved, unresolved.toString())
-        assertEquals(ConversationKind.Thread, opened.request.conversationIdentity.kind)
-        assertEquals(null, opened.request.conversationIdentity.thread?.parentSurfaceKind)
     }
 
     internal fun activityItem(

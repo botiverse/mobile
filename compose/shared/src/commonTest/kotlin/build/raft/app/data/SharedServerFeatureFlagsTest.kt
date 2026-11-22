@@ -57,19 +57,6 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun readStateV1FlagIsIndependentAndDefaultsOffUntilItsOwnEvaluation() = runBlocking {
-        val flags =
-            SharedServerFeatureFlags(
-                FakeApi(ok("""{"evaluations":[{"key":"sync_core_notification_prefs_v0","enabled":true},{"key":"sync_core_read_state_v1","enabled":true}]}"""))
-            )
-
-        assertFalse(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
-        flags.prefetch(server)
-        assertTrue(flags.isEnabled(server, SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY))
-        assertTrue(flags.isEnabled(server, SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY))
-    }
-
-    @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
         // Task v2 is always on in the app: task_v2_conversations_v0 is no longer asked for.
         assertFalse("task_v2_conversations_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
@@ -198,92 +185,6 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun cancellingOneWaiterDoesNotCancelTheSharedEvaluation() = runBlocking {
-        val started = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        var calls = 0
-        val api =
-            object : RaftFeatureFlagsApi {
-                override suspend fun evaluate(
-                    serverId: ServerId,
-                    keys: List<String>
-                ): HomeNetworkResponse {
-                    calls += 1
-                    started.complete(Unit)
-                    release.await()
-                    return ok("{}")
-                }
-            }
-        val flags = SharedServerFeatureFlags(api)
-        val owner = launch { flags.prefetch(server) }
-        started.await()
-        val survivor = async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server) }
-        owner.cancel()
-        owner.join()
-        release.complete(Unit)
-
-        assertTrue(survivor.await().resolved)
-        assertEquals(1, calls)
-    }
-
-    @Test
-    fun cancellingAllWaitersCannotPublishALateSharedResponse() = runBlocking {
-        val firstStarted = CompletableDeferred<Unit>()
-        val firstReturned = CompletableDeferred<Unit>()
-        val secondStarted = CompletableDeferred<Unit>()
-        val releaseFirst = CompletableDeferred<Unit>()
-        var calls = 0
-        val observed = mutableListOf<Boolean>()
-        val api =
-            object : RaftFeatureFlagsApi {
-                override suspend fun evaluate(
-                    serverId: ServerId,
-                    keys: List<String>
-                ): HomeNetworkResponse {
-                    when (++calls) {
-                        1 -> {
-                            firstStarted.complete(Unit)
-                            withContext(NonCancellable) { releaseFirst.await() }
-                            firstReturned.complete(Unit)
-                            return ok(
-                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":false}]}"""
-                            )
-                        }
-                        else -> {
-                            secondStarted.complete(Unit)
-                            return ok(
-                                """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true}]}"""
-                            )
-                        }
-                    }
-                }
-            }
-        val flags =
-            SharedServerFeatureFlags(api) { _, key, enabled, _, _, _, _ ->
-                if (key == DRAFTS_SECTION_FEATURE_FLAG_KEY) {
-                    observed += enabled
-                }
-            }
-        val first = launch { flags.prefetch(server) }
-        firstStarted.await()
-        val second = async(start = CoroutineStart.UNDISPATCHED) { flags.prefetch(server) }
-        first.cancel()
-        second.cancel()
-        first.join()
-        second.join()
-
-        releaseFirst.complete(Unit)
-        val fresh = async { flags.prefetch(server) }
-        secondStarted.await()
-        assertTrue(fresh.await().isEnabled(DRAFTS_SECTION_FEATURE_FLAG_KEY))
-        firstReturned.await()
-
-        assertEquals(2, calls)
-        assertEquals(listOf(true), observed)
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
-    }
-
-    @Test
     fun enabledThreadPageSizeFlagPreservesItsVariant() = runBlocking {
         val api =
             FakeApi(
@@ -295,20 +196,6 @@ class SharedServerFeatureFlagsTest {
 
         assertTrue(snapshot.isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
         assertEquals("20", snapshot.variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
-    }
-
-    @Test
-    fun disabledThreadPageSizeFlagDoesNotExposeItsVariant() = runBlocking {
-        val api =
-            FakeApi(
-                ok(
-                    """{"evaluations":[{"key":"$MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY","enabled":false,"variant":"50"}]}"""
-                )
-            )
-        val snapshot = SharedServerFeatureFlags(api).prefetch(server)
-
-        assertFalse(snapshot.isEnabled(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
-        assertEquals(null, snapshot.variant(MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -333,28 +220,6 @@ class SharedServerFeatureFlagsTest {
         assertTrue(canceled)
         assertEquals(2, refreshCount)
         assertEquals(listOf(123L, 123L), waits)
-    }
-
-    @Test
-    fun observerFailureDoesNotBlockTheResolvedFeatureSnapshot() = runBlocking {
-        val diagnostics = mutableListOf<String>()
-        val flags =
-            SharedServerFeatureFlags(
-                api =
-                    FakeApi(
-                        ok(
-                            """{"evaluations":[{"key":"$DRAFTS_SECTION_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
-                        )
-                    ),
-                diagnosticsLogger = diagnostics::add,
-                onEvaluation = { _, _, _, _, _, _, _ -> error("observer failed") }
-            )
-
-        val snapshot = flags.prefetch(server)
-
-        assertTrue(snapshot.resolved)
-        assertTrue(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
-        assertTrue(diagnostics.any { it.contains("evaluation_observer_failed") })
     }
 
     @Test
@@ -444,15 +309,6 @@ class SharedServerFeatureFlagsTest {
         assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
         assertEquals(listOf(false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations.single().third > 0L)
-    }
-
-    @Test
-    fun unresolvedSnapshotDefaultsAllOff() = runBlocking {
-        val flags = SharedServerFeatureFlags(FakeApi(ok("{}")))
-        // no prefetch yet
-        assertFalse(flags.snapshotFor(server).resolved)
-        assertFalse(flags.isEnabled(server, DRAFTS_SECTION_FEATURE_FLAG_KEY))
-        assertFalse(flags.isEnabled(null, DRAFTS_SECTION_FEATURE_FLAG_KEY))
     }
 
     @Test

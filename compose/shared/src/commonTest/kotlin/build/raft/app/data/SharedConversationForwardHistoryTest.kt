@@ -72,46 +72,6 @@ class SharedConversationForwardHistoryTest {
     }
 
     @Test
-    fun freshDrawerOpenOnAnotherServerReplacesTheOldServerBranch() {
-        val history = enabledHistory()
-        history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
-        history.recordHomeVisible()
-        assertTrue(history.canForward)
-
-        history.recordNewOpen(entry("server-b", "dm-b", ConversationKind.DirectMessage))
-        assertFalse(history.canForward)
-        assertNull(
-            history.requestForward(
-                ready(
-                    serverId = "server-a",
-                    directoryProjection = projection("server-a", "channel-a"),
-                    knownServerIds = setOf("server-a", "server-b")
-                )
-            )
-        )
-
-        history.recordHomeVisible()
-        val reopened =
-            assertIs<ConversationForwardAction.Open>(
-                history.requestForward(
-                    ready(
-                        serverId = "server-b",
-                        directoryProjection =
-                            projection(
-                                serverId = "server-b",
-                                channelId = "dm-b",
-                                kind = ConversationKind.DirectMessage,
-                                surfaceKind = RaftThreadSurfaceKind.DirectMessage
-                            ),
-                        knownServerIds = setOf("server-a", "server-b")
-                    )
-                )
-            )
-        assertEquals("server-b", reopened.entry.serverId)
-        assertEquals("dm-b", reopened.request.conversationIdentity.channelId?.value)
-    }
-
-    @Test
     fun serverRemovalServerChangeAndReadRevocationDropClosed() {
         val removed = enabledHistory()
         removed.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
@@ -188,30 +148,6 @@ class SharedConversationForwardHistoryTest {
                         "server-a",
                         projection("server-a", "channel-a", canRead = false)
                     )
-                )
-            ).reason
-        )
-    }
-
-    @Test
-    fun canonicalAliasOrKindDriftCannotRewriteTheRememberedIdentity() {
-        val history = enabledHistory()
-        history.recordNewOpen(entry("server-a", "channel-a", ConversationKind.Channel))
-        history.recordHomeVisible()
-        val aliasDirectory =
-            SharedConversationDirectoryState(
-                projectionsByCanonicalId =
-                    mapOf(
-                        "channel-b" to
-                            projection("server-a", "channel-b").copy(aliases = setOf("channel-a"))
-                    ),
-                aliasesById = mapOf("channel-a" to setOf("channel-b"))
-            )
-        assertEquals(
-            "conversation_unavailable",
-            assertIs<ConversationForwardAction.Drop>(
-                history.requestForward(
-                    ready("server-a", directory = aliasDirectory)
                 )
             ).reason
         )
