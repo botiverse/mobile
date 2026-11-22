@@ -228,6 +228,13 @@ def main():
                 if name in ANY_MEMBERS:
                     continue
                 lines.append(f"{kind} {fq}.{name}")
+                if kind == "property":
+                    # A property's accessors are separate callables (`<get-x>`, `<set-x>`): listing the
+                    # property alone exports it without its getter, and Kotlin/Native's export then
+                    # fails an assertion on every class overriding it (ObjCExportMapper.bridgePropertyType:
+                    # isBaseProperty). A setter line for a val matches nothing and is harmless.
+                    lines.append(f"function {fq}.<get-{name}>")
+                    lines.append(f"function {fq}.<set-{name}>")
             lines.append(f"callable {fq}.Companion.*")
             continue
         lines.append(f"callable {fq}.*")

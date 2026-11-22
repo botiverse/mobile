@@ -278,6 +278,8 @@ callable build.raft.app.network.sync.CanonicalConversationContextV2.Thread.Compa
 callable build.raft.app.network.sync.SyncRequestDescription.Snapshot.*
 callable build.raft.app.network.sync.SyncRequestDescription.Snapshot.Companion.*
 property com.tencent.kuiklybase.markdown.model.State.referenceLinkHandler
+function com.tencent.kuiklybase.markdown.model.State.<get-referenceLinkHandler>
+function com.tencent.kuiklybase.markdown.model.State.<set-referenceLinkHandler>
 callable com.tencent.kuiklybase.markdown.model.State.Companion.*
 callable com.tencent.kuiklybase.markdown.model.State.Error.*
 callable com.tencent.kuiklybase.markdown.model.State.Error.Companion.*
