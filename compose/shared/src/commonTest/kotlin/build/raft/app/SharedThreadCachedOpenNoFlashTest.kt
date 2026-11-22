@@ -1050,8 +1050,8 @@ class SharedThreadCachedOpenNoFlashTest {
             cursor =
                 PersistedCursor(
                     latestSeq = seqRange.last.toLong(),
-                    oldestSeq = seqRange.first.toLong(),
-                    newestSeq = seqRange.last.toLong(),
+                    oldestLoadedSeq = seqRange.first.toLong(),
+                    newestLoadedSeq = seqRange.last.toLong(),
                     hasLoadedOldest = true,
                     epoch = "epoch-v2",
                 ),
