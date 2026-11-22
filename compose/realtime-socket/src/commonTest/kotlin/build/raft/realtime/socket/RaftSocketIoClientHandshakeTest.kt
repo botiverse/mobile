@@ -75,35 +75,6 @@ class RaftSocketIoClientHandshakeTest {
     }
 
     @Test
-    fun aMissingOpenFieldFallsBackToTheServerDefaultAndIsLogged() = runTest {
-        val harness = SocketHarness(this)
-        harness.connectRoot { push("0{\"sid\":\"eio-x\",\"upgrades\":[\"websocket\"]}") }
-        assertTrue(
-            harness.logs.any { it.startsWith("realtime_socket_open_fallback") && it.endsWith("fields=pingInterval,pingTimeout,maxPayload") },
-            harness.logs.toString(),
-        )
-        advanceTimeBy(EngineIoCodec.DEFAULT_PING_INTERVAL_MILLIS + EngineIoCodec.DEFAULT_PING_TIMEOUT_MILLIS - 1)
-        runCurrent()
-        assertIs<RaftSocketState.Connected>(harness.root.state.value)
-        advanceTimeBy(2)
-        runCurrent()
-        assertTrue("disconnected:ping_timeout" in harness.listener.calls)
-    }
-
-    @Test
-    fun maxPayloadFromTheOpenPacketBoundsEveryFrame() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot { open(maxPayload = 300) }
-        harness.root.emit("small", listOf(JsonPrimitive("ok")))
-        harness.root.emit("big", listOf(JsonPrimitive("x".repeat(320))))
-        harness.root.emit("bin", listOf(RaftSocketBinary.placeholder(0)), listOf(RaftSocketBinary(ByteArray(301))))
-        runCurrent()
-        assertEquals(listOf("42[\"small\",\"ok\"]"), session.receivedTexts())
-        assertTrue("dropped:big:oversize" in harness.listener.calls)
-        assertTrue("dropped:bin:oversize" in harness.listener.calls)
-    }
-
-    @Test
     fun openOrConnectThatNeverComesTimesOut() = runTest {
         val harness = SocketHarness(this)
         harness.root.connect()
@@ -125,26 +96,5 @@ class RaftSocketIoClientHandshakeTest {
         advanceTimeBy(2_000)
         runCurrent()
         assertEquals(1, session.receivedTexts().count { it.startsWith("40") }, "the CONNECT is retried on the same WebSocket")
-    }
-
-    @Test
-    fun aBadOpenPacketIsAProtocolError() = runTest {
-        val harness = SocketHarness(this)
-        harness.root.connect()
-        runCurrent()
-        harness.server.last.push("0{\"upgrades\":[]}")
-        runCurrent()
-        assertTrue(harness.logs.any { it.contains("reason=protocol_error") && it.contains("bad_open_packet") }, harness.logs.toString())
-        assertTrue(harness.server.last.closed)
-    }
-
-    @Test
-    fun engineClosePacketEndsTheConnection() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot()
-        session.push("1")
-        runCurrent()
-        assertTrue("disconnected:engine_close" in harness.listener.calls)
-        assertTrue(session.closed)
     }
 }

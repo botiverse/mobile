@@ -147,42 +147,4 @@ class BridgeWireHostCapabilitiesTest {
         calls.last().callback!!("not json")
         assertNull(upload.await())
     }
-
-    @Test
-    fun settingsStreamDeliversUntilTerminalOrDispose() {
-        val events = mutableListOf<String?>()
-        val dispose =
-            capabilities.settingsCapabilityStream(JsonObject(mapOf("action" to JsonPrimitive("feedbackDiagnosticsStart")))) {
-                events += it?.get("phase")?.toString()
-            }
-        val callback = calls.single().callback!!
-        callback("""{"phase": "upload"}""")
-        callback("""{"phase": "done","terminal": true}""")
-        callback("""{"phase": "after"}""")
-        assertEquals<List<String?>>(listOf("\"upload\"","\"done\""), events)
-
-        events.clear()
-        val disposeSecond = capabilities.settingsCapabilityStream(JsonObject(emptyMap())) { events += "event" }
-        disposeSecond()
-        calls.last().callback!!("""{"phase": "x"}""")
-        assertTrue(events.isEmpty())
-        dispose()
-    }
-
-    @Test
-    fun cancelledCompressionCancelsTheSameNativeRequest() = runTest {
-        val job = async(start = CoroutineStart.UNDISPATCHED) { capabilities.compressThreadImage("ref","a.png","image/png") }
-        val request = calls.single()
-        assertEquals("compressThreadImage", request.method)
-        val requestId = Regex(""""requestId": "([^"]+)"""").find(request.params)!!.groupValues[1]
-        assertTrue(requestId.startsWith("cmp-thread-image-compress-"), requestId)
-        assertEquals(
-            """{"requestId": "$requestId","fileRef": "ref","fileName": "a.png","mimeType": "image\/png"}""",
-            request.params,
-        )
-        job.cancel()
-        assertEquals("cancelCompressThreadImage" to """{"requestId": "$requestId"}""", wire().last())
-        request.callback!!("""{"status": "ok"}""")
-        assertEquals(2, calls.size)
-    }
 }

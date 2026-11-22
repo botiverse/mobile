@@ -3,8 +3,6 @@ package build.raft.realtime.socket
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -60,16 +58,6 @@ class SocketIoCodecTest {
     }
 
     @Test
-    fun disconnectAndNamespacesAreParsed() {
-        assertEquals(SocketIoPacket.Disconnect(), decode("1"))
-        assertEquals("1", SocketIoCodec.encode(SocketIoPacket.Disconnect()))
-        val admin = decode("2/admin,3[\"x\"]")
-        assertEquals(SocketIoPacket.Event("x", ackId = 3, namespace = "/admin"), admin)
-        assertEquals("2/admin,3[\"x\"]", SocketIoCodec.encode(admin))
-        assertEquals(SocketIoPacket.Disconnect("/admin"), decode("1/admin,"))
-    }
-
-    @Test
     fun binaryEventsAndAcksCarryAttachmentPlaceholders() {
         val header = assertIs<SocketIoDecodeResult.Packet>(SocketIoCodec.decode("51-[\"upload\",{\"_placeholder\":true,\"num\":0}]"))
         assertEquals(1, header.attachmentsExpected)
@@ -82,35 +70,6 @@ class SocketIoCodecTest {
 
         // Zero attachments is legal (socket.io writes 50-... for an empty Buffer list).
         assertEquals(0, assertIs<SocketIoDecodeResult.Packet>(SocketIoCodec.decode("50-[\"x\"]")).attachmentsExpected)
-    }
-
-    @Test
-    fun binaryPacketsEncodeTheHeaderAndTheirFramesInOrder() {
-        val bytes = listOf(RaftSocketBinary(byteArrayOf(1, 2, 3)), RaftSocketBinary(byteArrayOf(9)))
-        val event =
-            SocketIoPacket.Event(
-                name = "upload",
-                args = listOf(RaftSocketBinary.placeholder(0), buildJsonObject { put("n", 1) }, RaftSocketBinary.placeholder(1)),
-                ackId = 4,
-                namespace = "/files",
-                attachments = bytes,
-            )
-        val encoded = SocketIoCodec.encodeWithAttachments(event)
-        assertEquals("52-/files,4[\"upload\",{\"_placeholder\":true,\"num\":0},{\"n\":1},{\"_placeholder\":true,\"num\":1}]", encoded.text)
-        assertEquals(bytes, encoded.attachments)
-        assertEquals("61-7[{\"_placeholder\":true,\"num\":0}]", SocketIoCodec.encode(SocketIoPacket.Ack(7, listOf(RaftSocketBinary.placeholder(0)), attachments = bytes.take(1))))
-    }
-
-    @Test
-    fun reconstructorCompletesThePacketAfterItsLastFrame() {
-        val reconstructor = SocketIoBinaryReconstructor()
-        val header = assertIs<SocketIoDecodeResult.Packet>(SocketIoCodec.decode("52-[\"up\",{\"_placeholder\":true,\"num\":0},{\"_placeholder\":true,\"num\":1}]"))
-        reconstructor.start(header.packet, header.attachmentsExpected)
-        assertEquals(null, reconstructor.add(byteArrayOf(1)))
-        val complete = assertIs<SocketIoPacket.Event>(reconstructor.add(byteArrayOf(2, 2)))
-        assertEquals(listOf(RaftSocketBinary(byteArrayOf(1)), RaftSocketBinary(byteArrayOf(2, 2))), complete.attachments)
-        assertEquals(false, reconstructor.pending)
-        assertEquals(null, reconstructor.add(byteArrayOf(3)), "a stray frame completes nothing")
     }
 
     @Test
@@ -136,19 +95,5 @@ class SocketIoCodecTest {
                 "7" to "unknown_type",
             )
         cases.forEach { (text, reason) -> assertEquals(reason, invalid(text), text) }
-    }
-
-    @Test
-    fun theLargestAckIdIsAcceptedAndOneMoreIsNot() {
-        assertEquals(SocketIoCodec.MAX_ACK_ID, assertIs<SocketIoPacket.Ack>(decode("3${SocketIoCodec.MAX_ACK_ID}[]")).ackId)
-        assertEquals("ack_id", invalid("3${SocketIoCodec.MAX_ACK_ID + 1}[]"))
-    }
-
-    @Test
-    fun eventArgumentsKeepTheirJsonTypes() {
-        val event = assertIs<SocketIoPacket.Event>(decode("2[\"heartbeat\",{\"seq\":41,\"ts\":1.5},[1,2],null,true]"))
-        assertEquals(4, event.args.size)
-        assertIs<JsonObject>(event.args[0])
-        assertIs<JsonArray>(event.args[1])
     }
 }

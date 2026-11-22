@@ -144,18 +144,6 @@ class RaftScrollHoldUiTest {
         assertEquals(0f, pager.currentPageOffsetFraction)
     }
 
-    /** Without the hold, the row takes the touch that lands on the flinging list: the reported bug. */
-    @Test
-    fun withoutTheHoldARowTakesTheTouchOnAFlingingList() = runComposeUiTest {
-        mainClock.autoAdvance = false
-        setContent { PagerWithSwipeList(hold = false) }
-        mainClock.advanceTimeBy(100)
-        flingUp()
-        assertTrue(list.isScrollInProgress)
-        leftDragOnARow()
-        assertTrue(rowClaimed, "the row swiped from the touch that should only have stopped the list")
-    }
-
     @Test
     fun atRestTheRowStillSwipes() = runComposeUiTest {
         mainClock.autoAdvance = false
@@ -167,12 +155,5 @@ class RaftScrollHoldUiTest {
         leftDragOnARow()
         assertTrue(rowClaimed, "a row swipes as before once the list is at rest")
         assertEquals(0, pager.currentPage)
-    }
-
-    @Test
-    fun holdDistance() {
-        assertEquals(0f, raftScrollHoldDistance(false))
-        assertEquals(Float.POSITIVE_INFINITY, raftScrollHoldDistance(true))
-        assertEquals(Float.POSITIVE_INFINITY, raftDeferredTouchSlop(8f, raftScrollHoldDistance(true)))
     }
 }

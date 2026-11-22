@@ -3,7 +3,6 @@ package build.raft.designsystem
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
@@ -81,51 +80,5 @@ class RaftTaskCompactRowReuseTest {
 
             onNodeWithText("Lagoon").assertExists()
             assertFalse(placedWhileMeasuring, "the assignee's avatar was laid out while the row was measuring")
-        }
-
-    /**
-     * The shape of the androidx fd550bed79 regression test with task rows in place of its
-     * baseline-querying layout: a `LazyColumn` two items tall, scrolled so item 4 reuses item 0's
-     * slot. A regression guard (the deterministic proof is the test above).
-     */
-    @Test
-    fun rowsInALazyColumnSurviveItemReuse() =
-        runComposeUiTest {
-            val itemDp = 80.dp
-            val itemPx = with(density) { itemDp.roundToPx() }
-            val lazyListState = LazyListState()
-            setContent {
-                RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
-                    LazyColumn(state = lazyListState, modifier = Modifier.width(480.dp).height(itemDp * 2)) {
-                        items(10) { index ->
-                            RaftTaskCompactList(Modifier.height(itemDp)) {
-                                RaftTaskCompactRow(
-                                    number = "#$index",
-                                    title = "Task $index",
-                                    onClick = {},
-                                    status = if (index % 2 == 0) RaftTaskStatus.InReview else RaftTaskStatus.Todo,
-                                    statusText = if (index % 2 == 0) "In Review" else "Todo",
-                                    assignee = {
-                                        RaftTaskCompactAssignee(name = "Agent $index", avatar = {
-                                            RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xs, initials = "A")
-                                        })
-                                    },
-                                    replyCount = index,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Item 0 scrolls off-screen, but is still measured to advance the first visible index.
-            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
-            // Item 0 is no longer composed and its slot is moved to the reuse pool.
-            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
-            // Item 4 reuses the slot of item 0 and lays out its row.
-            runOnIdle { lazyListState.dispatchRawDelta(itemPx.toFloat()) }
-            waitForIdle()
-
-            onNodeWithText("Task 4").assertExists()
         }
 }

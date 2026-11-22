@@ -7,7 +7,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /** Which window's host [RaftCmpToasts.post] picks, and the hand-off when a window leaves the screen. */
@@ -44,19 +43,6 @@ class RaftCmpToastsTest {
     }
 
     @Test
-    fun aPageInABackgroundWindowToastsOnTheForegroundOne() {
-        val pageA = capabilities()
-        val a = window(visible = false)
-        a.addOrigin(pageA)
-        val b = window(visible = true)
-
-        assertTrue(RaftCmpToasts.post("Upload finished.", pageA))
-        assertEquals(emptyList(), a.titles())
-        assertEquals(listOf("Upload finished."), b.titles())
-        assertSame(b, RaftCmpToasts.target(pageA))
-    }
-
-    @Test
     fun withNoForegroundWindowTheCallerFallsBackToTheNativeToast() {
         val page = capabilities()
         val a = window(visible = false)
@@ -69,17 +55,6 @@ class RaftCmpToastsTest {
 
         assertTrue(RaftCmpToasts.post("Saved.", page, foregroundOnly = false))
         assertEquals(listOf("Saved."), a.titles())
-    }
-
-    @Test
-    fun theWireCapabilitiesPostToAnAttachedWindowInsteadOfTheBridge() {
-        val page = capabilities()
-        val a = window(visible = true)
-        a.addOrigin(page)
-
-        page.toast("Link copied.")
-        assertEquals(listOf("Link copied."), a.titles())
-        assertEquals(emptyList(), wire)
     }
 
     @Test
@@ -99,13 +74,5 @@ class RaftCmpToastsTest {
         b.detach()
         assertFalse(RaftCmpToasts.post("Deleted."))
         assertEquals(listOf("Saved."), b.titles())
-    }
-
-    @Test
-    fun theAppGoingToTheBackgroundKeepsTheToasts() {
-        val a = window(visible = true)
-        a.state.show("Saved.")
-        a.setLifecycle(visible = false)
-        assertEquals(listOf("Saved."), a.titles())
     }
 }

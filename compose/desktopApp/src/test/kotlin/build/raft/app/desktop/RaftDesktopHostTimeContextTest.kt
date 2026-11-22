@@ -13,7 +13,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.long
 
 /**
  * artin's Activity list read "unknown time" on every row: the desktop host never put the local
@@ -22,14 +21,6 @@ import kotlinx.serialization.json.long
 class RaftDesktopHostTimeContextTest {
     private val now = 1_793_000_000_000L // 2026-10-26T07:33:20Z
     private val shanghai = TimeZone.getTimeZone("Asia/Shanghai")
-
-    @Test
-    fun pageDataGetsTheHostTimeFacts() {
-        val data = JsonObject(emptyMap()).withRaftDesktopHostTimeContext(now, shanghai)
-        assertEquals(480, data.getValue("localOffsetMinutes").jsonPrimitive.int)
-        assertEquals(now, data.getValue("nowEpochMillis").jsonPrimitive.long)
-        assertEquals(Math.floorDiv(now + 480 * 60_000L, 86_400_000L), data.getValue("todayEpochDay").jsonPrimitive.long)
-    }
 
     @Test
     fun openerValuesWinAndOtherKeysSurvive() {

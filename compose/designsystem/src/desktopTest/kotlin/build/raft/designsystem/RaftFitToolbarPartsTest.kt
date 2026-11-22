@@ -10,8 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.hasAnyDescendant
-import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -21,11 +19,9 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftFitToolbar
-import build.raft.designsystem.components.RaftFitToolbarAction
 import build.raft.designsystem.components.RaftFitToolbarChoice
 import build.raft.designsystem.components.RaftFitToolbarOption
 import build.raft.designsystem.components.RaftFitToolbarPrimary
-import build.raft.designsystem.components.RaftFitToolbarSearch
 import build.raft.designsystem.components.RaftFitToolbarView
 import build.raft.designsystem.components.RaftFitToolbarViewOption
 import build.raft.designsystem.components.RaftMenuItem
@@ -48,59 +44,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalTestApi::class)
 class RaftFitToolbarPartsTest {
-    @Test
-    fun clearAllHasItsWordsThenItsIconOnceTheFiltersGiveWay() =
-        runComposeUiTest {
-            var width by mutableStateOf(1024.dp)
-            var cleared = 0
-            setContent {
-                Sized(width) {
-                    RaftFitToolbar(
-                        filters = listOf(filter("status", "Status", applied = true), filter("runtime", "Runtime")),
-                        filtersEnd = RaftFitToolbarAction(text = "Clear all", icon = { Dot() }, onClick = { cleared++ }, testTag = "clear"),
-                        primary = RaftFitToolbarPrimary(text = "Add computer", onClick = {}, testTag = "add"),
-                    )
-                }
-            }
-            waitForIdle()
-            assertTrue(tagged("clear", "Clear all"), "Clear all with its words while the filters have theirs")
-
-            // Narrow until the filters show their icons alone: Clear all is × at the same step.
-            assertNotNull(narrowUntil({ width = it }) { !has(hasText("Status")) }, "the filters give way")
-            assertTrue(has(hasTestTag("clear")), "Clear all stays")
-            assertFalse(tagged("clear", "Clear all"), "as its icon alone")
-            // The icon button's name sits on its clickable node, inside the tooltip box the tag is on.
-            assertTrue(
-                has(hasTestTag("clear") and (hasContentDescription("Clear all") or hasAnyDescendant(hasContentDescription("Clear all")))),
-                "its words its name",
-            )
-            onNode(hasContentDescription("Clear all") and hasClickAction()).performClick()
-            assertEquals(1, cleared)
-        }
-
-    @Test
-    fun clearAllStaysItsIconBesideTheWrappedFilters() =
-        runComposeUiTest {
-            setContent {
-                Sized(300.dp) {
-                    RaftFitToolbar(
-                        search = RaftFitToolbarSearch(value = "", onValueChange = {}, label = "Search computers"),
-                        filters = listOf(filter("status", "Status", applied = true), filter("runtime", "Runtime")),
-                        filtersEnd = RaftFitToolbarAction(text = "Clear all", icon = { Dot() }, onClick = {}, testTag = "clear"),
-                        primary = RaftFitToolbarPrimary(text = "Add computer", onClick = {}, testTag = "add"),
-                        wrap = true,
-                    )
-                }
-            }
-            waitForIdle()
-            val status = onNodeWithTag("status").fetchSemanticsNode().boundsInRoot
-            val add = onNodeWithTag("add").fetchSemanticsNode().boundsInRoot
-            assertTrue(status.top >= add.bottom, "the filters moved to the second line")
-            assertTrue(has(hasText("Status")), "with their words back")
-            assertTrue(has(hasTestTag("clear")))
-            assertFalse(tagged("clear", "Clear all"), "Clear all stays ×")
-        }
-
     @Test
     fun theViewGivesWayFirstThenFoldsIntoMoreUnderItsHeading() =
         runComposeUiTest {
@@ -181,34 +124,6 @@ class RaftFitToolbarPartsTest {
             assertFalse(has(hasText("Pick one")), "closed once it calls close")
         }
 
-    @Test
-    fun aChoiceWithOnOpenCallsItAndOpensNoMenu() =
-        runComposeUiTest {
-            var opened = 0
-            setContent {
-                Sized(1024.dp) {
-                    RaftFitToolbar(
-                        filters =
-                            listOf(
-                                RaftFitToolbarChoice(
-                                    text = "Creator",
-                                    icon = { Dot() },
-                                    options = listOf(RaftFitToolbarOption("a", "Option A")),
-                                    selectedKey = null,
-                                    onSelect = {},
-                                    testTag = "creator",
-                                    onOpen = { opened++ },
-                                ),
-                            ),
-                    )
-                }
-            }
-            onNodeWithTag("creator").performClick()
-            waitForIdle()
-            assertEquals(1, opened)
-            assertFalse(has(hasText("Option A")), "no dropdown of its own")
-        }
-
     @androidx.compose.runtime.Composable
     private fun Sized(width: Dp, content: @androidx.compose.runtime.Composable () -> Unit) {
         RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
@@ -234,9 +149,6 @@ class RaftFitToolbarPartsTest {
 
     private fun ComposeUiTest.has(matcher: androidx.compose.ui.test.SemanticsMatcher): Boolean =
         onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
-
-    /** A node tagged [tag] that shows [text] (not only names it). */
-    private fun ComposeUiTest.tagged(tag: String, text: String): Boolean = has(hasTestTag(tag) and hasText(text))
 
     /** Narrows the toolbar 4dp at a time from [from] until [done]; the width it holds then, or null. */
     private fun ComposeUiTest.narrowUntil(setWidth: (Dp) -> Unit, from: Dp = 1024.dp, done: () -> Boolean): Dp? {

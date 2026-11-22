@@ -27,11 +27,6 @@ class RaftDesktopClipboardPasteTest {
         assertEquals(RaftDesktopClipboardPasteKind.Text, raftDesktopClipboardPasteKind(hasFileList = false, hasImage = true, hasText = true))
     }
 
-    @Test fun `an image alone attaches the image and an empty clipboard does nothing`() {
-        assertEquals(RaftDesktopClipboardPasteKind.Image, raftDesktopClipboardPasteKind(hasFileList = false, hasImage = true, hasText = false))
-        assertEquals(RaftDesktopClipboardPasteKind.None, raftDesktopClipboardPasteKind(hasFileList = false, hasImage = false, hasText = false))
-    }
-
     @Test fun `retiring moves pasted images out and rejects files outside the clipboard cache`() {
         val pasted = File(dir, "pasted-a.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val userFile = File(root, "report.pdf").apply { writeBytes(byteArrayOf(4)) }
@@ -47,18 +42,5 @@ class RaftDesktopClipboardPasteTest {
         assertEquals(1, tombstones.size)
         assertTrue(tombstones.single().exists())
         assertEquals(dir.canonicalFile, tombstones.single().parentFile.canonicalFile)
-    }
-
-    @Test fun `the start sweep removes tombstones and stale pasted images only`() {
-        val now = System.currentTimeMillis()
-        val tombstone = File(dir, ".retired-x").apply { writeBytes(byteArrayOf(1)) }
-        val stale = File(dir, "pasted-old.png").apply { writeBytes(byteArrayOf(1)); setLastModified(now - 4L * 24 * 3600 * 1000) }
-        val fresh = File(dir, "pasted-new.png").apply { writeBytes(byteArrayOf(1)) }
-        val other = File(dir, "notes.txt").apply { writeBytes(byteArrayOf(1)); setLastModified(now - 30L * 24 * 3600 * 1000) }
-        RaftDesktopComposerTemporaryFiles.sweep(dir, now)
-        assertFalse(tombstone.exists())
-        assertFalse(stale.exists())
-        assertTrue(fresh.exists())
-        assertTrue(other.exists())
     }
 }

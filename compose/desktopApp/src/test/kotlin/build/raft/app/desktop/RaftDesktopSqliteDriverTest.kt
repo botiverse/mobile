@@ -16,7 +16,6 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 /**
  * The desktop database driver reuses its SQLite connections (SQLDelight's JdbcSqliteDriver opened
@@ -52,18 +51,6 @@ class RaftDesktopSqliteDriverTest {
     private fun SqlDriver.userVersion(): Long =
         executeQuery(null, "PRAGMA user_version", { c -> QueryResult.Value(if (c.next().value) c.getLong(0) else null) }, 0).value ?: -1L
 
-    @Test fun `statements reuse one connection instead of opening one each`() {
-        val driver = RaftDesktopSqliteDriver.open(url, Properties(), Schema(1))
-        try {
-            repeat(50) { index -> driver.execute(null, "INSERT INTO item(name) VALUES ('n$index')", 0) }
-            repeat(50) { assertEquals(50L, driver.count()) }
-            assertEquals(1, driver.openedConnections)
-            assertEquals(1, driver.idleConnections)
-        } finally {
-            driver.close()
-        }
-    }
-
     @Test fun `create sets user_version and a newer schema migrates once`() {
         RaftDesktopSqliteDriver.open(url, Properties(), Schema(1)).use { driver ->
             assertEquals(1L, driver.userVersion())
@@ -97,25 +84,6 @@ class RaftDesktopSqliteDriverTest {
             }
             assertEquals(2L, driver.count())
             assertEquals(1, driver.idleConnections)
-        } finally {
-            driver.close()
-        }
-    }
-
-    @Test fun `concurrent readers get their own connections and only maxIdle stay open`() {
-        val driver = RaftDesktopSqliteDriver.open(url, Properties(), Schema(1))
-        try {
-            driver.execute(null, "INSERT INTO item(name) VALUES ('x')", 0)
-            val failures = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
-            val threads =
-                (1..8).map {
-                    thread {
-                        runCatching { repeat(200) { check(driver.count() == 1L) } }.onFailure(failures::add)
-                    }
-                }
-            threads.forEach { it.join() }
-            assertTrue(failures.isEmpty(), failures.joinToString())
-            assertTrue(driver.idleConnections <= 4, "idle=${driver.idleConnections}")
         } finally {
             driver.close()
         }

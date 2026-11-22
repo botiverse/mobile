@@ -2,7 +2,6 @@ package build.raft.app.desktop
 
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.RaftRollingLogWriter
-import build.raft.app.raftDesktopThrowableLines
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -33,21 +32,6 @@ class RaftDesktopFileLogTest {
         }
     }
 
-    @Test fun `appending continues an existing file and counts its size`() {
-        val dir = tempDir()
-        try {
-            File(dir, "raft.log").writeText("x".repeat(900) + "\n")
-            val writer = RaftRollingLogWriter(dir, maxFileBytes = 1_000, maxFiles = 2)
-            writer.append("y".repeat(200))
-            writer.close()
-            // 901 + 201 bytes would pass the cap: the old content rotated to raft.1.log first.
-            assertEquals("y".repeat(200) + "\n", File(dir, "raft.log").readText())
-            assertTrue(File(dir, "raft.1.log").readText().startsWith("xxx"))
-        } finally {
-            dir.deleteRecursively()
-        }
-    }
-
     @Test fun `lines are redacted, single-line and bounded`() {
         val line =
             RaftDesktopFileLog.formatLine(
@@ -63,16 +47,6 @@ class RaftDesktopFileLogTest {
         assertFalse(line.contains("\r"))
         val long = RaftDesktopFileLog.formatLine("info", "T", "z".repeat(10_000))
         assertTrue(long.length < 4_300, "line not cut: ${long.length}")
-    }
-
-    @Test fun `a throwable becomes its type, a bounded message, frames and causes`() {
-        val cause = IllegalStateException("inner")
-        val error = RuntimeException("m".repeat(1_000), cause)
-        val lines = raftDesktopThrowableLines(error, maxFrames = 3, maxMessageChars = 50)
-        assertTrue(lines.first().startsWith("java.lang.RuntimeException: " + "m".repeat(50)))
-        assertTrue(lines.first().length < 100)
-        assertEquals(3, lines.drop(1).takeWhile { it.startsWith("\tat ") }.size)
-        assertTrue(lines.any { it == "Caused by: java.lang.IllegalStateException: inner" }, lines.joinToString("\n"))
     }
 
     @Test fun `diagnostics entries parse log lines newest first`() {

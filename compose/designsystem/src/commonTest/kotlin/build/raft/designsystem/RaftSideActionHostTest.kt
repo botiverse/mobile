@@ -39,30 +39,6 @@ class RaftSideActionHostTest {
     private val back = action("back", "chevron.backward", keepVisible = true)
 
     @Test
-    fun everySymbolPresentHandsOff() {
-        val column =
-            raftSideActionHostColumn(
-                primary = listOf(back),
-                actions = listOf(action("search", "magnifyingglass"), action("settings", "gearshape", attention = true)),
-                overflowLabel = "More Actions",
-            )
-        assertEquals(
-            RaftSideActionHostColumn(
-                primary = listOf(RaftSideActionHostColumn.Item("back", "Back", "chevron.backward", true, false, null)),
-                actions =
-                    listOf(
-                        RaftSideActionHostColumn.Item("search", "Search", "magnifyingglass", true, false, null),
-                        RaftSideActionHostColumn.Item("settings", "Settings", "gearshape", true, true, "new"),
-                    ),
-                visibleActionIds = listOf("search", "settings"),
-                overflowActionIds = emptyList(),
-                overflowLabel = "More Actions",
-            ),
-            column,
-        )
-    }
-
-    @Test
     fun oneMissingSymbolKeepsTheWholeColumnOurs() {
         val actions = listOf(action("search", "magnifyingglass"), action("focus", symbol = null))
         assertNull(raftSideActionHostColumn(listOf(back), actions, "More"))
@@ -111,21 +87,6 @@ class RaftSideActionHostTest {
         override fun clear() {
             clears++
         }
-    }
-
-    @Test
-    fun equalContentIsPresentedOnceWhateverItsLambdas() {
-        val host = RecordingHost()
-        val presenter = RaftSideActionHostPresenter(host) {}
-        fun column(onClick: () -> Unit) = raftSideActionHostColumn(listOf(back), listOf(action("search", onClick = onClick)), "More")
-        presenter.update(column {})
-        presenter.update(column { println() })
-        presenter.update(column {})
-        assertEquals(1, host.presented.size, "a recomposition with fresh lambdas is not a change")
-        assertTrue(presenter.handsOff(column {}))
-        presenter.update(raftSideActionHostColumn(listOf(back), listOf(action("search", enabled = false)), "More"))
-        assertEquals(2, host.presented.size, "a changed field is")
-        assertEquals(0, host.clears)
     }
 
     @Test

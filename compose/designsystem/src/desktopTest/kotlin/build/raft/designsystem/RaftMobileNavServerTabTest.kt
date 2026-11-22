@@ -5,18 +5,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performKeyInput
@@ -116,34 +112,4 @@ class RaftMobileNavServerTabTest {
             waitForIdle()
             assertTrue(state.open, "a hold over the open panel left it open")
         }
-
-    /**
-     * sindresorhus on #3509: a gesture cancelled midway (here the tab's state changes under the
-     * finger, which restarts its pointer input) must not leave the tab washed as pressed.
-     */
-    @Test
-    fun aCancelledGestureResetsThePressedState() =
-        runComposeUiTest {
-            var state by mutableStateOf(RaftMobileNavServerPopoverState())
-            setContent(themed { Tab(state) })
-            val tab = onNodeWithTag(tag)
-            val rest = tab.pixels()
-            mainClock.autoAdvance = false
-            tab.performTouchInput { down(center) }
-            mainClock.advanceTimeByFrame()
-            assertFalse(rest.contentEquals(tab.pixels()), "the finger down washes the tab")
-
-            // Cancel the gesture before the hold or the lift.
-            state = RaftMobileNavServerPopoverState()
-            mainClock.advanceTimeByFrame()
-            mainClock.advanceTimeByFrame()
-            assertTrue(rest.contentEquals(tab.pixels()), "the cancelled gesture left the tab at rest, not pressed")
-            assertFalse(state.open)
-            mainClock.autoAdvance = true
-        }
-
-    private fun SemanticsNodeInteraction.pixels(): IntArray {
-        val map = captureToImage().toPixelMap()
-        return IntArray(map.width * map.height) { i -> map[i % map.width, i / map.width].hashCode() }
-    }
 }

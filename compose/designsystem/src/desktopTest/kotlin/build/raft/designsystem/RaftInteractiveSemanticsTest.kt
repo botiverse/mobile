@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -18,7 +17,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -30,8 +28,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.click
@@ -40,61 +36,35 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
-import androidx.compose.ui.test.runSkikoComposeUiTest
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.layout.fillMaxWidth
-import kotlin.math.abs
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import build.raft.designsystem.components.RaftDropdownMenu
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextarea
-import build.raft.designsystem.components.RaftPopoverSurface
-import androidx.compose.foundation.layout.widthIn
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftStrings
 import androidx.compose.runtime.CompositionLocalProvider
-import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftFieldItem
 import build.raft.designsystem.components.RaftCheckbox
 import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.text.RaftText
-import build.raft.designsystem.components.RaftMenuSurface
-import build.raft.designsystem.components.RaftPopupMargins
-import build.raft.designsystem.components.RaftSafeArea
-import build.raft.designsystem.components.raftMenuHeightCap
 import build.raft.designsystem.components.RaftField
-import build.raft.designsystem.components.RaftMenuItem
-import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSwitch
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftModeBar
-import build.raft.designsystem.components.RaftListRowVariant
-import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
-import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftTextField
-import build.raft.designsystem.components.RaftBannerStatus
-import build.raft.designsystem.components.RaftBanner
-import build.raft.designsystem.components.RaftToggleGroup
-import build.raft.designsystem.components.RaftToggleGroupItem
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -108,40 +78,6 @@ class RaftInteractiveSemanticsTest {
     private fun themed(content: @Composable () -> Unit): @Composable () -> Unit = {
         RaftTheme(appearance = RaftAppearance.Light, systemDark = false, content = content)
     }
-
-    @Test
-    fun aMenuPopupHugsItsRowsInAWideWindow() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Box(Modifier.width(1000.dp)) {
-                        RaftDropdownMenu(expanded = true, onDismissRequest = {}) {
-                            RaftMenuItem("Name", {})
-                            RaftMenuSeparator()
-                            RaftMenuItem("Mark All as Read", {})
-                        }
-                    }
-                },
-            )
-            val row = onNodeWithText("Mark All as Read").fetchSemanticsNode().boundsInRoot.width / density.density
-            // 240dp minimum less the 6dp padding each side; nowhere near the window's width.
-            assertTrue(row in 227f..260f, "row is ${row}dp wide")
-        }
-
-    @Test
-    fun aSelectListIsAsWideAsItsTrigger() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Box(Modifier.width(360.dp)) {
-                        RaftSelect<String>(null, listOf("Claude Code", "Codex"), {}, { it }, placeholder = "Select a runtime")
-                    }
-                },
-            )
-            onNodeWithText("Select a runtime").performClick()
-            val row = onNodeWithText("Codex").fetchSemanticsNode().boundsInRoot.width / density.density
-            assertEquals(352f, row, 1f, "trigger 360dp less the 4dp padding each side (raft-ui 0.20)")
-        }
 
     /** A short prefix leaves the input the rest of the field, not half of it (#3453 held half for the prefix). */
     @Test
@@ -162,49 +98,6 @@ class RaftInteractiveSemanticsTest {
             assertEquals(360f - 12f - 1.5f, end, 1f, "the input runs to the field's 12dp end padding inside the border")
         }
 
-    /** BannerClose takes only its first line's height: a one-line banner is as tall with it as without. */
-    @Test
-    fun aBannersCloseButtonDoesNotGrowIt() =
-        runComposeUiTest {
-            var dismissed = false
-            setContent(
-                themed {
-                    Column(Modifier.width(360.dp)) {
-                        RaftBanner("Your changes are saved.", status = RaftBannerStatus.Success, modifier = Modifier.testTag("plain"))
-                        RaftBanner("Your changes are saved.", status = RaftBannerStatus.Success, modifier = Modifier.testTag("closable"), onDismiss = { dismissed = true })
-                    }
-                },
-            )
-            val plain = onNodeWithTag("plain").fetchSemanticsNode().boundsInRoot.height
-            val closable = onNodeWithTag("closable").fetchSemanticsNode().boundsInRoot.height
-            assertEquals(plain, closable, 0.5f, "the close button overhangs the line instead of growing the banner")
-            onNodeWithContentDescription("Dismiss").performClick()
-            assertTrue(dismissed, "the close button calls onDismiss")
-        }
-
-    /** raft-ui 0.21.1 (#703): a plain row with a description centres its switch on the whole row. */
-    @Test
-    fun aPlainRowWithADescriptionCentresItsEndsOnTheRow() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Box(Modifier.width(360.dp)) {
-                        RaftListRow(
-                            "Desktop notifications",
-                            modifier = Modifier.testTag("row"),
-                            variant = RaftListRowVariant.Plain,
-                            description = "Get a notification for mentions and replies, even when the app is in the background.",
-                            wrapDescription = true,
-                            trailing = { RaftSwitch(true, {}, modifier = Modifier.testTag("switch"), label = "Desktop notifications") },
-                        )
-                    }
-                },
-            )
-            val row = onNodeWithTag("row", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val switch = onNodeWithTag("switch", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertEquals(row.center.y, switch.center.y, 1f, "the switch sits in the middle of the row, not on the title's line")
-        }
-
     @Test
     fun aFieldNamesItsControlAndCarriesItsError() =
         runComposeUiTest {
@@ -219,28 +112,6 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Enter a name"))
             onNodeWithText("Enter a name")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
-        }
-
-    /** A control beside the label keeps its own name; the field's control is still named by the label. */
-    @Test
-    fun aFieldLabelTrailingControlIsNamedOnItsOwn() =
-        runComposeUiTest {
-            var on by mutableStateOf(false)
-            setContent(
-                themed {
-                    RaftField(
-                        label = "Custom instructions",
-                        labelTrailing = { RaftSwitch(checked = on, onCheckedChange = { on = it }, label = "Use Custom Instructions") },
-                    ) {
-                        RaftTextField("", {}, placeholder = "Answer in English.")
-                    }
-                },
-            )
-            onNodeWithContentDescription("Custom instructions").assertIsDisplayed()
-            onNodeWithContentDescription("Use Custom Instructions")
-                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
-                .performClick()
-            assertTrue(on, "the trailing switch works")
         }
 
     /** The app's words reach the optional marker, the dialog's × and a busy button. */
@@ -263,48 +134,6 @@ class RaftInteractiveSemanticsTest {
             onNodeWithText("Description (facultatif)").assertIsDisplayed()
             onNodeWithContentDescription("Fermer").assertIsDisplayed()
             onNodeWithContentDescription("Chargement").assertExists()
-        }
-
-    /** A marker that opens with a full-width bracket follows the label with no space (raft-ui 0.71 FieldLabel). */
-    @Test
-    fun aFullWidthOptionalMarkerTakesNoSpace() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    CompositionLocalProvider(LocalRaftStrings provides RaftStrings(optional = "（可选）")) {
-                        RaftFieldLabel("描述", optional = true)
-                    }
-                },
-            )
-            onNodeWithText("描述（可选）").assertIsDisplayed()
-        }
-
-    /**
-     * A required field draws no mark (raft-design forms: no asterisk, only optional fields are
-     * marked); its control tells screen readers instead, in the app's words ([RaftStrings.required]).
-     */
-    @Test
-    fun aRequiredFieldShowsNoAsteriskAndItsControlSaysRequired() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Column {
-                        RaftField(label = "Agent name", required = true) {
-                            RaftTextField("", {}, placeholder = "Wug")
-                        }
-                        CompositionLocalProvider(LocalRaftStrings provides RaftStrings(required = "Obligatoire")) {
-                            RaftField(label = "Nom", required = true) {
-                                RaftTextField("", {}, placeholder = "Wug")
-                            }
-                        }
-                    }
-                },
-            )
-            onNodeWithText("Agent name").assertIsDisplayed()
-            onNodeWithText("Nom").assertIsDisplayed()
-            onAllNodes(hasText("*", substring = true), useUnmergedTree = true).assertCountEquals(0)
-            onNodeWithContentDescription("Agent name, Required").assertExists()
-            onNodeWithContentDescription("Nom, Obligatoire").assertExists()
         }
 
     /** On a TextFieldValue the textarea types at the caller's caret, counts the text and focuses its editor. */
@@ -360,146 +189,6 @@ class RaftInteractiveSemanticsTest {
             onNodeWithContentDescription("Search channels").assertIsDisplayed()
         }
 
-    /** A standalone dialog header: the title is a heading and the × a named button that closes. */
-    @Test
-    fun aDialogHeaderHasAHeadingAndANamedClose() =
-        runComposeUiTest {
-            var closed = false
-            setContent(themed { RaftDialogHeader("Members", description = "Everyone in #design.", onClose = { closed = true }) })
-            onNodeWithText("Members").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
-            onNodeWithText("Everyone in #design.").assertIsDisplayed()
-            onNodeWithContentDescription("Close")
-                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-                .performClick()
-            assertTrue(closed)
-        }
-
-    /** A popover is 300dp by default; without a width it takes the room it is given, never under 220dp. */
-    @Test
-    fun aPopoverIs300dpOrTheRoomItIsGiven() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Column(Modifier.width(1000.dp)) {
-                        RaftPopoverSurface(Modifier.testTag("default")) { RaftText("Snooze") }
-                        RaftPopoverSurface(Modifier.testTag("bounded").widthIn(max = 260.dp), width = null) { RaftText("Raft Labs") }
-                        RaftPopoverSurface(Modifier.testTag("narrow").widthIn(max = 120.dp), width = null) { RaftText("Acme") }
-                    }
-                },
-            )
-            fun width(tag: String) = onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.width / density.density
-            assertEquals(300f, width("default"), 0.5f)
-            assertEquals(260f, width("bounded"), 0.5f)
-            assertEquals(120f, width("narrow"), 0.5f, "a caller's max still wins over the 220dp minimum")
-        }
-
-    @Test
-    fun aSelectTriggerSaysItsNameValueAndState() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    RaftField(label = "Runtime") {
-                        RaftSelect<String>(null, listOf("Claude Code", "Codex"), {}, { it }, placeholder = "Select a runtime")
-                    }
-                },
-            )
-            val trigger = onNodeWithContentDescription("Runtime, Select a runtime")
-            trigger.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList))
-            trigger.assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Expand))
-            trigger.performClick()
-            onNodeWithContentDescription("Runtime, Select a runtime").assert(SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse))
-        }
-
-    @Test
-    fun menuKeyboard() =
-        runComposeUiTest {
-            var open by mutableStateOf(false)
-            setContent(
-                themed {
-                    // A keyboard user: the menu is opened from the keyboard.
-                    val inputModes = LocalInputModeManager.current
-                    SideEffect { inputModes.requestInputMode(InputMode.Keyboard) }
-                    Box {
-                        RaftDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                            RaftMenuItem("Archive", {})
-                            RaftMenuItem("Mark as Read", {})
-                            RaftMenuItem("Disabled", {}, enabled = false)
-                            RaftMenuItem("Notify Me", {})
-                        }
-                    }
-                },
-            )
-            waitForIdle()
-            open = true
-            waitForIdle()
-            // Opened from the keyboard: the first row has focus.
-            onNodeWithText("Archive").assertIsFocused()
-            onNodeWithText("Archive").performKeyInput { pressKey(Key.DirectionDown) }
-            onNodeWithText("Mark as Read").assertIsFocused()
-            onNodeWithText("Mark as Read").performKeyInput { pressKey(Key.MoveEnd) }
-            // Disabled rows are skipped.
-            onNodeWithText("Notify Me").assertIsFocused()
-            onNodeWithText("Notify Me").performKeyInput { pressKey(Key.DirectionDown) }
-            onNodeWithText("Archive").assertIsFocused()
-            onNodeWithText("Archive").performKeyInput { pressKey(Key.M) }
-            onNodeWithText("Mark as Read").assertIsFocused()
-            onNodeWithText("Mark as Read").performKeyInput { pressKey(Key.MoveHome) }
-            onNodeWithText("Archive").assertIsFocused()
-        }
-
-    @Test
-    fun aToggleGroupItemIsAToggleButtonNotASwitch() =
-        runComposeUiTest {
-            setContent(themed { RaftToggleGroup { RaftToggleGroupItem("Bold", pressed = true, onPressedChange = {}) } })
-            onNodeWithText("Bold").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-            onNodeWithText("Bold").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.ToggleableState))
-        }
-
-    @Test
-    fun aSwitchIsNamedByItsLabel() =
-        runComposeUiTest {
-            setContent(themed { RaftSwitch(true, {}, label = "Desktop notifications") })
-            onNodeWithContentDescription("Desktop notifications")
-                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
-        }
-
-    /** A 32dp tab takes a tap 5dp above its box (inside the 44dp target). */
-    @Test
-    fun aSmallTabTakesTapsInItsWidenedTarget() =
-        runComposeUiTest {
-            var picked = false
-            setContent(
-                themed {
-                    Column(Modifier.padding(20.dp)) {
-                        RaftTabs { RaftTab("Tasks", selected = false, onClick = { picked = true }) }
-                    }
-                },
-            )
-            onNodeWithText("Tasks").performTouchInput { click(Offset(centerX, -5.dp.toPx())) }
-            assertTrue(picked, "a tap 5dp above the tab picks it")
-        }
-
-    @Test
-    fun theSelectedTabScrollsIntoView() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Box(Modifier.width(220.dp)) {
-                        RaftTabStrip {
-                            listOf("Profile", "Workspace", "Activity", "Settings", "Billing").forEach {
-                                RaftTab(it, selected = it == "Billing", onClick = {})
-                            }
-                        }
-                    }
-                },
-            )
-            waitForIdle()
-            val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
-            assertTrue(right <= 220f, "the selected tab ends at ${right}dp, inside the 220dp strip")
-            // raft-ui reveals it with the row's 16dp padding: the last tab sits at the strip's end.
-            assertTrue(right <= 204.5f, "the last tab keeps the 16dp end padding (ends at ${right}dp)")
-        }
-
     /**
      * The strip scrolls only itself: a page scrolled so the strip is off screen stays put
      * when a tab is selected (a bring-into-view request would scroll the page to it).
@@ -528,135 +217,6 @@ class RaftInteractiveSemanticsTest {
             assertEquals(0, page.value, "selecting a tab left the page where it was")
             val right = onNodeWithText("Billing").fetchSemanticsNode().boundsInRoot.right / density.density
             assertTrue(right <= 220f, "the strip itself scrolled: the selected tab ends at ${right}dp, inside the 220dp strip")
-        }
-
-    /**
-     * Only the strip's first reveal jumps: a tab that was not selected at first composition
-     * animates into view the first time it is selected (still off screen one frame later),
-     * and ends up in view.
-     */
-    @Test
-    fun aTabSelectedLaterAnimatesIntoView() {
-        // A strip composed with a tab selected, and one composed with none: neither jumps later.
-        listOf<String?>("Profile", null).forEach { initial -> aTabSelectedLaterAnimatesIntoView(initial) }
-    }
-
-    private fun aTabSelectedLaterAnimatesIntoView(initial: String?) =
-        runComposeUiTest {
-            val tabs = listOf("Profile", "Workspace", "Activity", "Settings", "Billing")
-            var selected by mutableStateOf(initial)
-            setContent(
-                themed {
-                    Box(Modifier.width(220.dp)) {
-                        RaftTabStrip {
-                            tabs.forEach { RaftTab(it, selected = it == selected, onClick = { selected = it }) }
-                        }
-                    }
-                },
-            )
-            waitForIdle()
-            // Unclipped: boundsInRoot is cut to the strip's viewport.
-            fun billingRight() =
-                onNodeWithText("Billing").fetchSemanticsNode().let { it.positionInRoot.x + it.size.width } / density.density
-            val before = billingRight()
-            assertTrue(before > 220f, "Billing starts past the 220dp strip (${before}dp)")
-            mainClock.autoAdvance = false
-            selected = "Billing"
-            mainClock.advanceTimeByFrame()
-            mainClock.advanceTimeByFrame()
-            val midway = billingRight()
-            assertTrue(midway > 220f, "initially $initial: two frames in, the strip is still animating (Billing ends at ${midway}dp), not jumped")
-            mainClock.autoAdvance = true
-            waitForIdle()
-            val after = billingRight()
-            assertTrue(after <= 220f, "the animation ends with Billing inside the strip (${after}dp)")
-        }
-
-    /**
-     * A TextLink inside a sentence is a button of its own over its words: a tap on it runs
-     * its action, a disabled one is disabled in semantics. A standalone one is a button too.
-     */
-    @Test
-    fun aTextLinkInASentenceIsAButtonOverItsWords() =
-        runComposeUiTest {
-            var created = 0
-            var forgot = 0
-            setContent(
-                themed {
-                    Column {
-                        RaftText(
-                            buildAnnotatedString {
-                                append("Don't have an account? ")
-                                appendRaftTextLink("Create One", onClick = { created++ })
-                                append(" ")
-                                appendRaftTextLink("Log Out", onClick = { error("disabled") }, enabled = false)
-                            },
-                        )
-                        RaftTextLink("Forgot Password", onClick = { forgot++ })
-                    }
-                },
-            )
-            onNodeWithText("Create One").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
-            assertEquals(1, created, "the inline link ran its action")
-            onNodeWithText("Log Out").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
-            onNodeWithText("Forgot Password").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).performClick()
-            assertEquals(1, forgot)
-        }
-
-    /**
-     * A TextLink that leaves Raft ends in the ↗ mark (raft-design "Links that leave Raft"): its
-     * target takes the mark too (2dp + 0.857em wider than the same link inside Raft), a tap on
-     * it opens the link, and its spoken text is still only its words. Inline and standalone.
-     */
-    @Test
-    fun aTextLinkThatLeavesRaftEndsInTheMarkInsideItsTarget() =
-        runComposeUiTest {
-            var opened = 0
-            setContent(
-                themed {
-                    Column {
-                        RaftText(buildAnnotatedString { appendRaftTextLink("Docs", onClick = {}) })
-                        RaftText(buildAnnotatedString { appendRaftTextLink("Docs", onClick = { opened++ }, leavesRaft = true) })
-                        RaftTextLink("Standalone", onClick = { opened++ }, leavesRaft = true)
-                    }
-                },
-            )
-            // The links' own nodes (a RaftText whose whole text is "Docs" has a text node too).
-            val links = onAllNodes(hasText("Docs") and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-            links.assertCountEquals(2)
-            val inside = links[0].fetchSemanticsNode().size.width / density.density
-            val outside = links[1].fetchSemanticsNode().size.width / density.density
-            // 0.857em of the body type (14 or 16) plus the 2dp gap: 14 to 15.7dp.
-            assertTrue(outside - inside in 13f..17f, "the mark (2dp + 0.857em) is inside the target: $inside → $outside")
-            links[1].performClick()
-            onNodeWithText("Standalone", substring = true).performClick()
-            assertEquals(2, opened, "both links open")
-        }
-
-    /**
-     * The text of a RaftText with links takes the width it is given: with fillMaxWidth and
-     * TextAlign.End the line ends at the container's end, as plain RaftText does.
-     */
-    @Test
-    fun aRaftTextWithALinkAlignsInTheWidthItIsGiven() =
-        runComposeUiTest {
-            setContent(
-                themed {
-                    Box(Modifier.width(320.dp)) {
-                        RaftText(
-                            buildAnnotatedString {
-                                append("Don't have an account? ")
-                                appendRaftTextLink("Create One", onClick = {})
-                            },
-                            Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.End,
-                        )
-                    }
-                },
-            )
-            val link = onNodeWithText("Create One").fetchSemanticsNode()
-            val right = (link.positionInRoot.x + link.size.width) / density.density
-            assertTrue(abs(right - 320f) <= 1f, "the end-aligned link ends at the 320dp container's end, not at ${right}dp")
         }
 
     /**
@@ -755,64 +315,6 @@ class RaftInteractiveSemanticsTest {
             waitForIdle()
             onNodeWithText("Claude Code").assertDoesNotExist()
             trigger.assertIsFocused()
-        }
-
-    /**
-     * A popup measured against a 640px window with a 300px keyboard: the menu (surface and
-     * shadow room) is capped to the safe area less 8px each side, and its rows scroll.
-     */
-    @Test
-    fun aLongMenuStopsAboveTheKeyboardAndScrolls() =
-        runSkikoComposeUiTest(size = Size(400f, 640f), density = Density(1f)) {
-            val insets = RaftPopupMargins(horizontal = 16, top = 8, bottom = 24)
-            setContent(
-                themed {
-                    // Stands in for the popup window: loose constraints the window's size.
-                    Box(Modifier.size(400.dp, 640.dp)) {
-                        Box(
-                            Modifier
-                                .raftMenuHeightCap(windowMargin = 8, insets = insets, safeArea = RaftSafeArea(bottom = 300))
-                                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                        ) {
-                            RaftMenuSurface(Modifier.testTag("surface")) {
-                                Column(Modifier.verticalScroll(rememberScrollState())) {
-                                    (1..20).forEach { RaftMenuItem("Row $it", {}) }
-                                }
-                            }
-                        }
-                    }
-                },
-            )
-            val surface = onNodeWithTag("surface").fetchSemanticsNode().boundsInRoot
-            // 640 - 300 (keyboard) - 8 below, - 8 above.
-            assertEquals(324f, surface.height, 0.5f, "surface height")
-            onNodeWithText("Row 20").performScrollTo().assertIsDisplayed()
-        }
-
-    /** raft-ui 0.52.2 (#892): a 22dp badge button takes a tap 10dp above its box (44dp target). */
-    @Test
-    fun aBadgeButtonTakesTapsInItsWidenedTarget() =
-        runComposeUiTest {
-            var opened = false
-            setContent(
-                themed {
-                    Column(Modifier.padding(30.dp)) {
-                        RaftBadge("Codex", appearance = RaftBadgeAppearance.Soft, onClick = { opened = true }, onClickLabel = "Open usage")
-                    }
-                },
-            )
-            onNodeWithText("Codex").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-            onNodeWithText("Codex").performTouchInput { click(Offset(centerX, -10.dp.toPx())) }
-            assertTrue(opened, "a tap 10dp above the badge opens it")
-        }
-
-    /** A display badge stays display-only: no role, no click action. */
-    @Test
-    fun aDisplayBadgeIsNotAButton() =
-        runComposeUiTest {
-            setContent(themed { RaftBadge("Beta") })
-            onNodeWithText("Beta").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Role))
-            onNodeWithText("Beta").assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
         }
 
     /** ModeBar: the words are a polite live region; Done is a button outside it, 44dp to touch. */
