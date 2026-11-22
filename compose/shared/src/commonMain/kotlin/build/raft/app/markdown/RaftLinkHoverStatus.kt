@@ -38,11 +38,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftOwnLinkRoute
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAppScopeApiEnvironment
+import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
 import build.raft.app.raftArgbHex
 import build.raft.app.raftMarkdownUrlOpen
+import build.raft.app.raftOwnLinkRoute
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -68,11 +73,14 @@ internal fun raftLinkHoverLocalizedTerms(): RaftLinkHoverTerms =
 
 /**
  * The status of a message-body link, classified as a click on it opens ([raftMarkdownUrlOpen],
- * ThreadPage `openMarkdownUrl`): a channel / DM message or thread link opens in the app and reads
- * "#proj-mobile · message" (the name from [conversationName], the message-link chip's resolver), or
- * its web link while the name is not known; a Raft Desktop link (`raft://…`) reads as its web link
- * and is never external.
- * Anything else opens in the browser and shows its full URL, [RaftLinkHoverLabel.external].
+ * [raftOwnLinkRoute], ThreadPage `openMarkdownUrl`): a channel / DM message or thread link opens in
+ * the app and reads "#proj-mobile · message" (the name from [conversationName], the message-link
+ * chip's resolver), or its web link while the name is not known; other in-app Raft destinations
+ * (conversations without a message, Artifacts, server join / external invite links), Raft Desktop
+ * links (`raft://…`), and chips whose own tap opens an in-app viewer ([forceInApp], e.g. Artifact
+ * chips) read as their web link and are never external.
+ * Anything else (Raft web pages without an in-app screen and third-party URLs) opens in the browser
+ * and shows its full URL, [RaftLinkHoverLabel.external].
  * [webUrl] is the Developer environment's web URL (blank or null: production).
  */
 internal fun raftLinkHoverLabel(
@@ -80,15 +88,47 @@ internal fun raftLinkHoverLabel(
     webUrl: String?,
     conversationName: (ParsedRaftPermalink) -> String?,
     terms: RaftLinkHoverTerms,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+    forceInApp: Boolean = false,
 ): RaftLinkHoverLabel? {
     val raw = url.trim().takeIf(String::isNotEmpty) ?: return null
-    val open = raftMarkdownUrlOpen(raw, webUrl)
+    val open = raftMarkdownUrlOpen(raw, webUrl, appHosts)
     // A Raft Desktop link stays with Raft even where it is not a message (the app's own scheme).
     val scheme = raw.substringBefore("://", missingDelimiterValue = "").lowercase()
     val raftScheme = scheme == "raft" || scheme.startsWith("raft-")
-    // A conversation link without a message (or one the shell resolves) opens in the app too.
-    if (open.target == null) return RaftLinkHoverLabel(text = open.url, external = !raftScheme && open.conversationLink == null)
-    val permalink = open.url.toParsedRaftPermalink(configuredWebUrl = webUrl)
+    val hasMessageTarget = open.target != null || open.conversationLink?.focusMessageId != null
+    if (!hasMessageTarget) {
+        // In-app Raft destinations (conversations, Artifacts, join/invite links), Raft Desktop
+        // links, and chips whose own click handler opens an in-app viewer (forceInApp) stay in
+        // the app. Raft web pages without an in-app screen and third-party URLs leave the app.
+        val opensInApp =
+            forceInApp ||
+                raftScheme ||
+                when (raftOwnLinkRoute(open.url, webUrl, appHosts)) {
+                    is RaftOwnLinkRoute.Conversation,
+                    is RaftOwnLinkRoute.Artifact,
+                    is RaftOwnLinkRoute.ServerJoin,
+                    is RaftOwnLinkRoute.ExternalInvite,
+                    -> true
+                    is RaftOwnLinkRoute.WebPage,
+                    null,
+                    -> false
+                }
+        return RaftLinkHoverLabel(text = open.url, external = !opensInApp)
+    }
+    val permalink =
+        open.url.toParsedRaftPermalink(configuredWebUrl = webUrl, appHosts = appHosts)
+            ?: open.conversationLink?.let { link ->
+                val focusMessageId = link.focusMessageId ?: return@let null
+                ParsedRaftPermalink(
+                    rawUrl = open.url,
+                    serverSlug = link.serverSlug,
+                    routeKind = link.routeKind,
+                    channelId = ChannelId(link.channelId),
+                    messageId = MessageId(focusMessageId),
+                    threadParentMessageId = link.threadParentMessageId?.let(::MessageId),
+                )
+            }
     val name =
         permalink?.let(conversationName)
             ?.trim()
@@ -103,8 +143,7 @@ internal fun raftLinkHoverLabel(
         return RaftLinkHoverLabel(text = "$lounge · $kindTerm", external = false)
     }
     val prefix = if (permalink.routeKind == ConversationKind.DirectMessage) "@" else "#"
-    val kind = if (permalink.threadParentMessageId != null) terms.thread else terms.message
-    return RaftLinkHoverLabel(text = "$prefix$name · $kind", external = false)
+    return RaftLinkHoverLabel(text = "$prefix$name · $kindTerm", external = false)
 }
 
 /**
@@ -262,60 +301,117 @@ private suspend fun awaitFrameTime(millis: Long) {
     while (withFrameMillis { it } - start < millis) Unit
 }
 
-/** One link of a rendered text: its characters [start] until [end], and where it goes. */
-internal data class RaftHoverableLink(val start: Int, val end: Int, val url: String)
+/**
+ * One link of a rendered text: its characters [start] until [end], where it goes ([url]), and
+ * whether its own tap opens an in-app screen regardless of [url] ([opensInApp]: Artifact chips and
+ * labelled Artifact links open the in-app Artifact viewer directly).
+ */
+internal data class RaftHoverableLink(
+    val start: Int,
+    val end: Int,
+    val url: String,
+    val opensInApp: Boolean = false,
+)
+
+/**
+ * Resolves a string annotation from [annotations] for a link span `[start, end)`: strict overlap
+ * first, else word-joiner-glued chip padding flanks added by [withRaftInlineChipGapLinks]
+ * (leading gap ending in `\u2060` before an annotation starting at [end], or trailing gap starting
+ * in `\u2060` after an annotation ending at [start]).
+ */
+private fun AnnotatedString.raftLinkFlankAwareAnnotation(
+    annotations: List<AnnotatedString.Range<String>>,
+    start: Int,
+    end: Int,
+): String? {
+    if (end <= start || annotations.isEmpty()) return null
+    annotations.firstOrNull { it.end > it.start && it.start < end && start < it.end }?.let { return it.item }
+    if (text[end - 1] == '\u2060') {
+        annotations.firstOrNull { it.end > it.start && it.start == end }?.let { return it.item }
+    }
+    if (text[start] == '\u2060') {
+        annotations.firstOrNull { it.end > it.start && it.end == start }?.let { return it.item }
+    }
+    return null
+}
 
 /**
  * The links of a rendered text a status describes: URL links (plain links, message-link and App
- * link chips) and App link card chips (their URL is the hover-card annotation). A rich-text tag
+ * link chips), App link card chips (their URL is the hover-card annotation), and Artifact or App
+ * link consent chips (their URL is [RaftMarkdownLinkUrlTag]). Flank gap links added by
+ * [withRaftInlineChipGapLinks] resolve to their chip's URL and are coalesced with the chip body so
+ * every chip yields one continuous hoverable range covering its painted padding. A rich-text tag
  * (@mention, #channel, task) and the body's own click are not links to a place.
  */
 internal fun AnnotatedString.raftHoverableLinks(): List<RaftHoverableLink> {
     if (isEmpty()) return emptyList()
     val cardUrls = getStringAnnotations(RaftAppLinkHoverTag, 0, length)
-    return getLinkAnnotations(0, length)
-        .mapNotNull { range ->
-            if (range.end <= range.start) return@mapNotNull null
-            val url =
-                when (val link = range.item) {
-                    is LinkAnnotation.Url -> link.url
-                    is LinkAnnotation.Clickable ->
-                        if (link.tag == RaftAppLinkCardTag) {
-                            cardUrls.firstOrNull { it.start < range.end && range.start < it.end }?.item
-                        } else {
-                            null
-                        }
-                    else -> null
-                }
-            url?.takeIf(String::isNotBlank)?.let { RaftHoverableLink(range.start, range.end, it) }
+    val markdownUrls = getStringAnnotations(RaftMarkdownLinkUrlTag, 0, length)
+    val raw =
+        getLinkAnnotations(0, length)
+            .mapNotNull { range ->
+                if (range.end <= range.start) return@mapNotNull null
+                var opensInApp = false
+                val url =
+                    when (val link = range.item) {
+                        is LinkAnnotation.Url -> link.url
+                        is LinkAnnotation.Clickable ->
+                            when (link.tag) {
+                                RaftAppLinkCardTag ->
+                                    raftLinkFlankAwareAnnotation(cardUrls, range.start, range.end)
+                                RaftArtifactLabelledLinkTag,
+                                RaftArtifactLinkTag,
+                                -> {
+                                    opensInApp = true
+                                    raftLinkFlankAwareAnnotation(markdownUrls, range.start, range.end)
+                                }
+                                RaftAppLinkConsentTag ->
+                                    raftLinkFlankAwareAnnotation(markdownUrls, range.start, range.end)
+                                else -> null
+                            }
+                        else -> null
+                    }
+                url?.takeIf(String::isNotBlank)?.let { RaftHoverableLink(range.start, range.end, it, opensInApp) }
+            }
+            .distinct()
+            .sortedWith(compareBy<RaftHoverableLink>({ it.start }, { it.end }))
+    if (raw.size <= 1) return raw
+    val merged = ArrayList<RaftHoverableLink>(raw.size)
+    for (link in raw) {
+        val prev = merged.lastOrNull()
+        if (prev != null && prev.end == link.start && prev.url == link.url && prev.opensInApp == link.opensInApp) {
+            merged[merged.lastIndex] = prev.copy(end = link.end)
+        } else {
+            merged += link
         }
-        .distinct()
+    }
+    return merged
 }
 
 /**
  * Feeds one text's hovered link to the page's link status. [layout] is the text's last layout (set
- * from its onTextLayout); [describe] turns a URL into its status.
+ * from its onTextLayout); [describe] turns a hovered link into its status.
  */
 @Stable
 internal class RaftMarkdownLinkHoverStatus(
     private val links: List<RaftHoverableLink>,
     private val status: RaftLinkHoverStatusState,
-    private val describe: (String) -> RaftLinkHoverLabel?,
+    private val describe: (RaftHoverableLink) -> RaftLinkHoverLabel?,
 ) {
     var layout: TextLayoutResult? = null
-    private var hoveredUrl: String? = null
+    private var hoveredLink: RaftHoverableLink? = null
 
     fun hover(position: Offset?) {
-        val url = position?.let { at -> layout?.let { linkAt(it, at) } }
-        if (url == hoveredUrl) return
-        hoveredUrl = url
-        val label = url?.let(describe)
+        val link = position?.let { at -> layout?.let { linkAt(it, at) } }
+        if (link == hoveredLink) return
+        hoveredLink = link
+        val label = link?.let(describe)
         if (label == null) status.hide(this) else status.show(this, label)
     }
 
     fun leave() = hover(null)
 
-    private fun linkAt(layout: TextLayoutResult, position: Offset): String? {
+    private fun linkAt(layout: TextLayoutResult, position: Offset): RaftHoverableLink? {
         val textLength = layout.layoutInput.text.length
         if (textLength == 0) return null
         val caret = layout.getOffsetForPosition(position)
@@ -323,7 +419,7 @@ internal class RaftMarkdownLinkHoverStatus(
         for (offset in intArrayOf(caret, caret - 1)) {
             if (offset !in 0 until textLength) continue
             val link = links.firstOrNull { offset >= it.start && offset < it.end } ?: continue
-            if (layout.getBoundingBox(offset).contains(position)) return link.url
+            if (layout.getBoundingBox(offset).contains(position)) return link
         }
         return null
     }
@@ -342,8 +438,14 @@ internal fun rememberRaftMarkdownLinkHoverStatus(text: AnnotatedString): RaftMar
     val terms = raftLinkHoverLocalizedTerms()
     val tracker =
         remember(links, status, conversationName, terms) {
-            RaftMarkdownLinkHoverStatus(links, status) { url ->
-                raftLinkHoverLabel(url, raftLinkHoverWebUrl(), conversationName, terms)
+            RaftMarkdownLinkHoverStatus(links, status) { link ->
+                raftLinkHoverLabel(
+                    url = link.url,
+                    webUrl = raftLinkHoverWebUrl(),
+                    conversationName = conversationName,
+                    terms = terms,
+                    forceInApp = link.opensInApp,
+                )
             }
         }
     DisposableEffect(tracker) { onDispose { tracker.leave() } }
