@@ -402,22 +402,21 @@ class SharedAdaptiveWorkspaceStoreTest {
         val store = SharedAdaptiveWorkspaceStore()
         val wide =
             RaftAdaptivePaneState(
+                widthPx = 2400,
+                heightPx = 1600,
+                density = 2f,
+                posture = RaftAdaptivePanePosture.Flat,
                 layout = RaftAdaptivePaneLayout.DualPane,
-                widthDp = 1280f,
-                heightDp = 800f,
-                posture = RaftAdaptivePosture.Flat,
-                hingeBoundsDp = null,
             )
-        val compact =
-            RaftAdaptivePaneState(
-                layout = RaftAdaptivePaneLayout.Compact,
-                widthDp = 420f,
-                heightDp = 800f,
-                posture = RaftAdaptivePosture.Flat,
-                hingeBoundsDp = null,
+        val compact = wide.copy(widthPx = 900, heightPx = 1600, layout = RaftAdaptivePaneLayout.Compact)
+        val payload = WireThreadLaunchPayload(threadId = "thread-user", sourceThreadId = "thread-user")
+        val identity =
+            RaftAdaptiveDetailIdentity(
+                serverId = "server-a",
+                threadId = "thread-user",
+                surfaceKind = "channel",
+                channelId = "thread-user",
             )
-        val identity = detailIdentity("server-a", "thread-user")
-        val payload = launchPayload("server-a", "thread-user")
 
         store.update {
             SharedAdaptiveWorkspaceSession(
