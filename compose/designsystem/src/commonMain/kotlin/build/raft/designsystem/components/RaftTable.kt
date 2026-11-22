@@ -76,6 +76,8 @@ fun RaftTable(
             .fillMaxWidth()
             .raftScrollbar(scroll, trigger = RaftScrollbarTrigger.Hover, size = RaftScrollbarSize.Small)
             .horizontalScroll(scroll),
+        // The table fills its container: the scroller's own width reaches it as the least.
+        propagateMinConstraints = true,
     ) {
         Layout(
             modifier =
