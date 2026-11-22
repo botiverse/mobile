@@ -4,10 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.raftLogWarn
+import build.raft.mermaid.compose.rememberMermaidTextMeasurer
 import build.raft.mermaid.core.MermaidParseResult
 import build.raft.mermaid.core.MermaidParser
 import build.raft.mermaid.layout.LayoutConfig
 import build.raft.mermaid.layout.LayoutScene
+import build.raft.mermaid.layout.TextMeasurer
 import build.raft.mermaid.layout.simple.FixedWidthTextMeasurer
 import build.raft.mermaid.layout.simple.SimpleMermaidLayout
 
@@ -27,8 +29,10 @@ internal fun RaftMermaidDiagramBlock(
     diagramTextStyle: TextStyle,
     fallback: @Composable () -> Unit
 ) {
+    // The font the diagram is drawn in, so boxes fit their labels.
+    val textMeasurer = rememberMermaidTextMeasurer(diagramTextStyle)
     val result: RaftMermaidLayoutResult =
-        remember(code) { raftMermaidLayout(code).also { if (it is RaftMermaidLayoutResult.Fallback) raftLogMermaidFallback(it) } }
+        remember(code, textMeasurer) { raftMermaidLayout(code, textMeasurer).also { if (it is RaftMermaidLayoutResult.Fallback) raftLogMermaidFallback(it) } }
 
     if (result is RaftMermaidLayoutResult.Rendered) {
         val layoutScene = result.scene
@@ -103,14 +107,14 @@ internal fun raftMermaidThrowReason(errorType: String?): RaftMermaidFallbackReas
         RaftMermaidFallbackReason.LayoutThrew
     }
 
-internal fun raftMermaidLayout(code: String): RaftMermaidLayoutResult =
+internal fun raftMermaidLayout(code: String, textMeasurer: TextMeasurer = FixedWidthTextMeasurer): RaftMermaidLayoutResult =
     try {
         val parseResult = MermaidParser.parse(code.trim())
         if (parseResult is MermaidParseResult.Success) {
             val scene =
                 SimpleMermaidLayout.layout(
                     diagram = parseResult.diagram,
-                    textMeasurer = FixedWidthTextMeasurer,
+                    textMeasurer = textMeasurer,
                     config = LayoutConfig()
                 )
             if (scene.width > 0 && scene.height > 0) {
