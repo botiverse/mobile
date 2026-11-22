@@ -2010,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">Задачи в каналах</string>
     <string name="tasks_header_channel_tasks_count">Задач в каналах: %1$d</string>
     <string name="tasks_header_channel_tasks_filtered">Задач в каналах: %1$d из %2$d</string>
+    <string name="tasks_header_view_count">Задач: %1$s</string>
     <string name="tasks_unavailable">Задачи недоступны</string>
     <string name="tasks_empty">Пока нет задач</string>
     <string name="tasks_empty_filtered">Нет задач, подходящих под этот фильтр</string>

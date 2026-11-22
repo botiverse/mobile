@@ -2010,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">채널 작업</string>
     <string name="tasks_header_channel_tasks_count">채널 작업 %1$d개</string>
     <string name="tasks_header_channel_tasks_filtered">채널 작업 %2$d개 중 %1$d개</string>
+    <string name="tasks_header_view_count">작업 %1$s개</string>
     <string name="tasks_unavailable">작업을 사용할 수 없어요</string>
     <string name="tasks_empty">아직 작업이 없어요</string>
     <string name="tasks_empty_filtered">이 필터와 일치하는 작업이 없어요</string>

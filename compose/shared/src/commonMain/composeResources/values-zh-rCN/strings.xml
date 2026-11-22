@@ -2011,6 +2011,7 @@
     <string name="tasks_header_channel_tasks">频道任务</string>
     <string name="tasks_header_channel_tasks_count">%1$d 个频道任务</string>
     <string name="tasks_header_channel_tasks_filtered">显示 %1$d / %2$d 个频道任务</string>
+    <string name="tasks_header_view_count">%1$s 个任务</string>
     <string name="tasks_unavailable">任务不可用</string>
     <string name="tasks_empty">暂无任务</string>
     <string name="tasks_empty_filtered">没有匹配此筛选条件的任务</string>
