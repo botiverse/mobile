@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.RaftBesideMemoryRepository
 import build.raft.app.RaftComputersRackToolbarStore
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.toJointConnectionsDurableRecord
@@ -769,6 +770,12 @@ internal class RaftSharedStoreProvider private constructor(
         agentDetailCache.evict(owner.agentDetailCacheKey(MemberId(agentId)))
     }
 
+    /**
+     * What was open beside each conversation on the wide layout (RaftBesideMemory.kt), per person and server on this
+     * device: one instance, so its reads and writes share one lock.
+     */
+    internal val besideMemoryRepository = RaftBesideMemoryRepository(sharedPreferenceStore)
+
     /** The account's local data on sign-out and on server-access loss (see the class). */
     private val accountLocalData =
         AccountLocalData(
@@ -797,6 +804,7 @@ internal class RaftSharedStoreProvider private constructor(
                 RaftModelLabelCatalogs.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
+            besideMemory = besideMemoryRepository,
         )
 
     /**

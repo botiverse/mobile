@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.RaftBesideMemoryRepository
+import build.raft.app.RaftBesideState
 import build.raft.app.SharedThreadPayloadStore
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
@@ -28,6 +30,8 @@ import kotlin.test.assertNull
  *   mode or messages; A signing back in offline reads all three again;
  * - losing access to a server drops that server's offline rows, Home hints, Activity pages, notification
  *   preference, reply windows and messages, and keeps the account's other servers.
+ *
+ * What was open beside each conversation is the exception: sign-out forgets it on every server, as the web does.
  */
 class AccountLocalDataTest {
     // One test per kept copy, so a wipe re-added for any one of them turns exactly its test red.
@@ -66,6 +70,18 @@ class AccountLocalDataTest {
 
         assertNull(device.read(USER_B), "the next account reads none of A's data")
         assertEquals(expected, reopen().read(USER_A), "A signing back in offline reads its data again")
+    }
+
+    @Test
+    fun signOutForgetsWhatWasOpenBesideConversationsOnEveryServer() = withDevice { device, reopen ->
+        device.besideMemory.write(USER_A, S1, "channel-1", RaftBesideState(thread = "message-1"))
+        device.besideMemory.write(USER_A, S2, "channel-1", RaftBesideState(thread = "message-2"))
+
+        device.accountLocalData.onSignOut()
+
+        val coldStart = reopen()
+        assertNull(coldStart.besideMemory.read(USER_A, S1, "channel-1"))
+        assertNull(coldStart.besideMemory.read(USER_A, S2, "channel-1"))
     }
 
     @Test
@@ -114,6 +130,12 @@ class AccountLocalDataTest {
         read = { server -> storedMessageSeqs(partition(USER_A, server)).takeIf { it.isNotEmpty() } },
     )
 
+    @Test
+    fun losingAServerDropsWhatWasOpenBesideItsConversations() = serverLossDrops(
+        write = { server -> besideMemory.write(USER_A, server, "channel-1", RaftBesideState(thread = "message-$server")) },
+        read = { server -> besideMemory.read(USER_A, server, "channel-1") },
+    )
+
     /** A has the copy for S1 and S2; access to S1 is lost: S1's copy is gone on disk, S2's stays. */
     private fun serverLossDrops(
         write: suspend Device.(serverId: String) -> Unit,
@@ -157,6 +179,7 @@ class AccountLocalDataTest {
         val homeRowHints = HomeRowHintPersistStorage(preferences)
         val activityPages = SharedActivityPersistStorage(preferences)
         val replyWindowStorage = SqlDelightRaftThreadReplyWindowStorage(database, now = { 1L })
+        val besideMemory = RaftBesideMemoryRepository(preferences, nowMillis = { 1L })
         private val engine =
             CanonicalMessageV2GenerationEngine(
                 coordinator = CanonicalMessageV2BaselineCoordinator(),
@@ -182,6 +205,7 @@ class AccountLocalDataTest {
                 replyWindowCache = RaftThreadReplyWindowCache(replyWindowStorage, scope),
                 threadPayloadStore = SharedThreadPayloadStore(scope),
                 clearViewerMemoryCaches = {},
+                besideMemory = besideMemory,
             )
 
         suspend fun writeSaved(userId: String, serverId: String, messageId: String) {
