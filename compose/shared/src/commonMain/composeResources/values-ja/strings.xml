@@ -2013,6 +2013,7 @@
     <string name="tasks_header_channel_tasks">チャンネルのタスク</string>
     <string name="tasks_header_channel_tasks_count">チャンネルのタスク %1$d 件</string>
     <string name="tasks_header_channel_tasks_filtered">チャンネルのタスク %2$d 件中 %1$d 件</string>
+    <string name="tasks_header_view_count">%1$s 件のタスク</string>
     <string name="tasks_unavailable">タスクを利用できません</string>
     <string name="tasks_empty">まだタスクはありません</string>
     <string name="tasks_empty_filtered">このフィルターに一致するタスクはありません</string>

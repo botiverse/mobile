@@ -2010,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">頻道任務</string>
     <string name="tasks_header_channel_tasks_count">%1$d 個頻道任務</string>
     <string name="tasks_header_channel_tasks_filtered">顯示 %1$d / %2$d 個頻道任務</string>
+    <string name="tasks_header_view_count">%1$s 個任務</string>
     <string name="tasks_unavailable">無法使用任務</string>
     <string name="tasks_empty">還沒有任務</string>
     <string name="tasks_empty_filtered">沒有符合此篩選條件的任務</string>

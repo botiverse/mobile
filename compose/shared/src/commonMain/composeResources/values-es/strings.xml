@@ -2010,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">Tareas del canal</string>
     <string name="tasks_header_channel_tasks_count">%1$d tareas del canal</string>
     <string name="tasks_header_channel_tasks_filtered">%1$d de %2$d tareas del canal</string>
+    <string name="tasks_header_view_count">%1$s tareas</string>
     <string name="tasks_unavailable">Tareas no disponibles</string>
     <string name="tasks_empty">Aún no hay tareas</string>
     <string name="tasks_empty_filtered">Ninguna tarea coincide con este filtro</string>
