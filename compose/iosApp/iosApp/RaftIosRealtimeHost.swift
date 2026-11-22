@@ -20,16 +20,15 @@ final class RaftIosRealtimeHost: NSObject {
         let connectionFamilyId: String
         let accessToken: String
 
-        // task #333: identity = the env/account binding (environmentId, socketUrl,
-        // principalId, connectionFamilyId). authGeneration and accessToken rotate on
-        // every silent token refresh on the SAME binding — a credential refresh, not
-        // an identity replacement. Only a real binding swap may disconnect-all with
-        // process_identity_replaced.
+        // task #333 / #proj-mobile:#312: binding = the durable env/account identity
+        // (environmentId, socketUrl, principalId). authGeneration, connectionFamilyId
+        // (rebuilt on every auth revision), and accessToken rotate on every silent token
+        // refresh on the SAME binding — a credential refresh, not an identity replacement.
+        // Only a real binding swap may disconnect-all with process_identity_replaced.
         func sameBinding(as other: ProcessIdentity) -> Bool {
             environmentId == other.environmentId &&
                 socketUrl == other.socketUrl &&
-                principalId == other.principalId &&
-                connectionFamilyId == other.connectionFamilyId
+                principalId == other.principalId
         }
     }
 
@@ -300,8 +299,9 @@ final class RaftIosRealtimeHost: NSObject {
             if runtime.state == .disconnected { kmpSocket.kick(reason: "token_updated") }
             return
         }
+        let sameBinding = runtime.connectParams.map { sameAccountServerBinding($0, params) } ?? false
         let previousResumeLastSeq = runtime.resumeLastSeq
-        if !sameSession {
+        if !sameBinding {
             runtime.joinedChannels.removeAll()
             runtime.roomEngine.resetRoomStateForHost()
             runtime.resumeLastSeq = max(0, params.lastSeq)
@@ -865,6 +865,19 @@ final class RaftIosRealtimeHost: NSObject {
     private func currentRuntime(serverId: String, generation: UInt64) -> Runtime? {
         guard let runtime = runtimes[serverId], runtime.generation == generation else { return nil }
         return runtime
+    }
+
+    /// Same server, URL and durable account/scope binding; token, authGeneration and connectionFamilyId
+    /// may rotate on silent refresh without clearing joined channel rooms or the resume cursor.
+    /// Legacy connect requests without authority lease/principal fields fall back to exact session identity.
+    private func sameAccountServerBinding(_ left: ConnectParams, _ right: ConnectParams) -> Bool {
+        guard !left.authorityScopeLeaseId.isEmpty, !left.authorityPrincipalId.isEmpty else {
+            return sameSessionIdentity(left, right)
+        }
+        return left.serverId == right.serverId &&
+            left.socketUrl == right.socketUrl &&
+            left.authorityScopeLeaseId == right.authorityScopeLeaseId &&
+            left.authorityPrincipalId == right.authorityPrincipalId
     }
 
     /// Same server, URL and authority binding; only the access token may differ (a silent refresh).

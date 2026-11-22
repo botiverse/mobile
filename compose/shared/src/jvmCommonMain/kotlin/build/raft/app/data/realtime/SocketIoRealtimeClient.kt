@@ -91,6 +91,7 @@ class SocketIoRealtimeClient(
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
     private var connectedServerId: String? = null
+    private var connectedPrincipalId: String? = null
     private var currentAuth: RealtimeAuth? = null
     private var currentConnectionContext: RealtimeSocketConnectionContext? = null
     private var authRefreshProvider: ((String, RealtimeAuth?) -> RealtimeAuth?)? = null
@@ -131,15 +132,19 @@ class SocketIoRealtimeClient(
 
     fun connect(request: RealtimeConnectRequest) {
         transport.linearize {
-            val sameServer = connectedServerId == request.auth.serverId.value
-            if (!sameServer) {
+            val requestPrincipalId = request.witness.principalId.trim().takeIf { it.isNotBlank() }
+            val principalChanged =
+                connectedPrincipalId != null && requestPrincipalId != null && connectedPrincipalId != requestPrincipalId
+            val sameServerSession = connectedServerId == request.auth.serverId.value && !principalChanged
+            if (!sameServerSession) {
                 joinedChannels.clear()
                 connectedServerId = request.auth.serverId.value
             }
+            connectedPrincipalId = requestPrincipalId ?: if (!sameServerSession) null else connectedPrincipalId
             currentAuth = request.auth
             val connectionContext = RealtimeSocketConnectionContext(request.auth.serverId, request.witness)
             currentConnectionContext = connectionContext
-            cursor = RealtimeCursorPolicy.connect(cursor, request.lastSeq, sameServer)
+            cursor = RealtimeCursorPolicy.connect(cursor, request.lastSeq, sameServerSession)
             resumeProjectionRetryLastSeq = null
             pendingCatchUpReason = null
             if (!reconnectAllowed) {
@@ -166,6 +171,7 @@ class SocketIoRealtimeClient(
             currentConnectionContext = null
             currentAuth = null
             connectedServerId = null
+            connectedPrincipalId = null
             joinedChannels.clear()
             cursor = RealtimeCursorPolicy.fromAppliedSeq(0L)
             resumeProjectionRetryLastSeq = null

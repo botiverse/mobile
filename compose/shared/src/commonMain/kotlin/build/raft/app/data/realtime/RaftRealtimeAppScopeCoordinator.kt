@@ -188,7 +188,8 @@ class RaftRealtimeAppScopeEngine {
         accessToken: String,
         requestedLastSeq: Long,
         forceReconnect: Boolean,
-        currentState: RealtimeConnectionState
+        currentState: RealtimeConnectionState,
+        principalId: String = "",
     ): RaftRealtimeAppScopeConnectDecision =
         connectDecision(
             serverId = serverId,
@@ -199,7 +200,8 @@ class RaftRealtimeAppScopeEngine {
             isConnectionActive =
                 currentState == RealtimeConnectionState.Connected ||
                     currentState == RealtimeConnectionState.RoomsJoined ||
-                    currentState == RealtimeConnectionState.Connecting
+                    currentState == RealtimeConnectionState.Connecting,
+            principalId = principalId,
         )
 
     private fun connectDecision(
@@ -208,7 +210,8 @@ class RaftRealtimeAppScopeEngine {
         requestedLastSeq: Long,
         forceReconnect: Boolean,
         currentStateLabel: String,
-        isConnectionActive: Boolean
+        isConnectionActive: Boolean,
+        principalId: String = "",
     ): RaftRealtimeAppScopeConnectDecision {
         if (!forceReconnect && state.isSameSession(serverId, accessToken)) {
             if (isConnectionActive) {
@@ -224,7 +227,8 @@ class RaftRealtimeAppScopeEngine {
                 state.prepareConnect(
                     serverId = serverId,
                     accessToken = accessToken,
-                    requestedLastSeq = requestedLastSeq
+                    requestedLastSeq = requestedLastSeq,
+                    principalId = principalId,
                 )
             return RaftRealtimeAppScopeConnectDecision(
                 shouldConnect = true,
@@ -238,11 +242,11 @@ class RaftRealtimeAppScopeEngine {
                 serverId = serverId,
                 accessToken = accessToken,
                 requestedLastSeq = requestedLastSeq,
-                // A transport reconnect must resume the same authority
-                // session. Environment/account/auth-family replacement
-                // creates a new runtime/session and resets through
-                // sessionChanged instead.
-                rebaseline = false
+                // A transport reconnect or same-principal token rotation must resume the same
+                // authority session (keeping joined rooms and applied cursor). Environment/account
+                // replacement creates a new runtime/session and resets through sessionChanged.
+                rebaseline = false,
+                principalId = principalId,
             )
         return RaftRealtimeAppScopeConnectDecision(
             shouldConnect = true,
@@ -523,6 +527,8 @@ class RaftRealtimeAppScopeCoordinator(
             }
     }
 
+    private var connectedWitness: RealtimeConnectionWitnessToken? = null
+
     suspend fun connect(
         serverId: ServerId,
         accessToken: String,
@@ -530,18 +536,21 @@ class RaftRealtimeAppScopeCoordinator(
         forceReconnect: Boolean,
         witness: RealtimeConnectionWitnessToken,
     ): DataResult<Unit> {
+        val witnessChanged = connectedWitness != null && connectedWitness != witness
         val decision =
             engine.connectDecision(
                 serverId = serverId,
                 accessToken = accessToken,
                 requestedLastSeq = requestedLastSeq,
-                forceReconnect = forceReconnect,
-                currentState = connection.state
+                forceReconnect = forceReconnect || witnessChanged,
+                currentState = connection.state,
+                principalId = witness.principalId,
             )
         if (decision.logMessage.isNotEmpty()) sink.log(decision.logMessage)
         if (!decision.shouldConnect) {
             return DataResult.Content(Unit)
         }
+        connectedWitness = witness
         val result =
             connection.connect(
                 serverId = serverId,
@@ -562,6 +571,7 @@ class RaftRealtimeAppScopeCoordinator(
             sink.log("disconnect_ignored reason=$cleanReason")
             return false
         }
+        connectedWitness = null
         connection.disconnect()
         sink.log("disconnect_requested reason=$cleanReason visibility=${if (isAppInForeground) "Foreground" else "Background"}")
         return true
