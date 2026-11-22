@@ -29,12 +29,12 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.resources.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -85,10 +85,13 @@ internal fun Pager.openAgentMigrationLogPage(storeScope: RaftShellStoreScope, ag
 internal data class AgentMigrationLogState(
     val load: AgentMigrationLogLoad = AgentMigrationLogLoad.Loading,
     val filters: AgentMigrationLogFilters = AgentMigrationLogFilters(),
+    val view: AgentMigrationLogView = AgentMigrationLogView.Chart,
     val query: String = "",
     /** The table's rows shown; a new filter or search starts again at one page. */
     val rowLimit: Int = AGENT_MIGRATION_LOG_PAGE_SIZE,
 )
+
+internal enum class AgentMigrationLogView { Chart, Table }
 
 /** Web `PAGE_SIZE`: rows drawn at first and added by each "Show next". */
 internal const val AGENT_MIGRATION_LOG_PAGE_SIZE = 100
@@ -99,6 +102,8 @@ internal sealed interface AgentMigrationLogIntent {
     data object Retry : AgentMigrationLogIntent
 
     data class SetFilters(val filters: AgentMigrationLogFilters) : AgentMigrationLogIntent
+
+    data class SetView(val view: AgentMigrationLogView) : AgentMigrationLogIntent
 
     data class Search(val query: String) : AgentMigrationLogIntent
 
@@ -121,6 +126,7 @@ internal class AgentMigrationLogViewModel(
             AgentMigrationLogIntent.Retry -> serverId?.let(::load)
             is AgentMigrationLogIntent.SetFilters ->
                 mutableState.update { it.copy(filters = intent.filters, rowLimit = AGENT_MIGRATION_LOG_PAGE_SIZE) }
+            is AgentMigrationLogIntent.SetView -> mutableState.update { it.copy(view = intent.view) }
             is AgentMigrationLogIntent.Search ->
                 mutableState.update { it.copy(query = intent.query, rowLimit = AGENT_MIGRATION_LOG_PAGE_SIZE) }
             AgentMigrationLogIntent.ShowMore -> mutableState.update { it.copy(rowLimit = it.rowLimit + AGENT_MIGRATION_LOG_PAGE_SIZE) }
@@ -170,7 +176,7 @@ private fun AgentMigrationLogRoute() {
     val state by viewModel.state.collectAsState()
     val machines by
         remember(computersStore, serverId) {
-            computersStore.migrationComputersFlow(serverId).map { list -> list.map { it.id to it.name } }
+            computersStore.migrationLogMachinesFlow(serverId)
         }.collectAsState(emptyList())
     val members by
         remember(sharedStores, serverId) {
@@ -178,28 +184,38 @@ private fun AgentMigrationLogRoute() {
         }.collectAsState(SharedServerMembersEntry(serverId = serverId.orEmpty()))
     val windowWidth = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }
     val avatarResolver = rememberRaftMemberAvatarResolver(serverId, sharedStores.serverMembersStore)
+    val copied = stringResource(Res.string.agent_migration_log_copied)
+    val openMember: (String, MemberKind) -> Unit = { id, kind ->
+        val pageData =
+            RaftMembersPayload(instanceId = "agent-migration-log")
+                .toMemberDetailPageData(MemberDetailIdentity(MemberId(id), kind, serverId?.let(::ServerId)))
+        if (pageData == null) {
+            bridge.log("agent_migration_log_open_member_skip reason=invalid_member")
+        } else {
+            pager.openRaftPage(
+                pageName = MEMBER_DETAIL_PAGE,
+                pageData = pageData,
+                storeScopeOverride = storeScope,
+                onMissingScope = { bridge.log("agent_migration_log_open_member_skip reason=missing_shell_scope") },
+            )
+        }
+    }
     AgentMigrationLogScreen(
         state = state,
         machines = machines,
-        agentName = { id ->
-            members.membersById[id]?.takeIf { it.kind == MemberKind.Agent }?.let { it.displayName.ifBlank { it.handle } }
-        },
+        agents =
+            remember(members.membersById) {
+                members.membersById.values
+                    .filter { it.kind == MemberKind.Agent }
+                    .associate { it.id.value to AgentMigrationLogAgent(it.id.value, it.displayName.ifBlank { it.handle }, it.membersComputerId?.takeIf(String::isNotBlank)) }
+            },
         wide = LocalRaftSettingsWideDetail.current || windowWidth.value >= DualPaneMinimumWidthDp,
         onIntent = viewModel::dispatch,
-        onOpenAgent = { id ->
-            val pageData =
-                RaftMembersPayload(instanceId = "agent-migration-log")
-                    .toMemberDetailPageData(MemberDetailIdentity(MemberId(id), MemberKind.Agent, serverId?.let(::ServerId)))
-            if (pageData == null) {
-                bridge.log("agent_migration_log_open_agent_skip reason=invalid_agent")
-            } else {
-                pager.openRaftPage(
-                    pageName = MEMBER_DETAIL_PAGE,
-                    pageData = pageData,
-                    storeScopeOverride = storeScope,
-                    onMissingScope = { bridge.log("agent_migration_log_open_agent_skip reason=missing_shell_scope") },
-                )
-            }
+        onOpenAgent = { openMember(it, MemberKind.Agent) },
+        onOpenPerson = { openMember(it, MemberKind.Human) },
+        onCopy = {
+            bridge.copyToPasteboard(it)
+            bridge.toast(copied)
         },
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         avatar = { id, size ->
