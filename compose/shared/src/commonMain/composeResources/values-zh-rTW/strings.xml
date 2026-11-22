@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">在網頁開啟</string>
     <string name="settings_step_up_web_body">你的通行密鑰可以在瀏覽器中使用。請在瀏覽器中繼續，確認是你本人。</string>
     <string name="settings_step_up_web_continue">在瀏覽器中繼續</string>
+    <string name="settings_step_up_web_verify_with_passkey">在瀏覽器中用通行密鑰驗證</string>
     <string name="settings_step_up_web_waiting">正在等待你在瀏覽器中完成…</string>
     <string name="settings_step_up_web_cancelled">瀏覽器在確認前已關閉。請再試一次。</string>
     <string name="settings_step_up_web_expired">此請求已過期。請再試一次。</string>

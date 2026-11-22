@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">在网页打开</string>
     <string name="settings_step_up_web_body">你的通行密钥可以在浏览器中使用。请在浏览器中继续，确认是你本人。</string>
     <string name="settings_step_up_web_continue">在浏览器中继续</string>
+    <string name="settings_step_up_web_verify_with_passkey">在浏览器中用通行密钥验证</string>
     <string name="settings_step_up_web_waiting">正在等待你在浏览器中完成…</string>
     <string name="settings_step_up_web_cancelled">浏览器在确认前已关闭。请再试一次。</string>
     <string name="settings_step_up_web_expired">此请求已过期。请再试一次。</string>

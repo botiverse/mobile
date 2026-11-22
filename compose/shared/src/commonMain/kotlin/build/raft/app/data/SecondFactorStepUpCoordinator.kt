@@ -126,9 +126,11 @@ data class SecondFactorStepUpDialogState(
      */
     val webUrl: String? = null,
     /**
-     * Continue in browser, with no way to answer here and only legacy passkeys (iOS): the passkey
-     * is checked on a web page and this sign-in verified. Null: not offered (other platforms, or
-     * the server has none: 404), and Open on the web stands in.
+     * The web step-up for only legacy passkeys (iOS, [withOnlyOlderPasskeys]): the passkey is
+     * checked on a web page and this sign-in verified. With no way to answer here it is Continue in
+     * browser ([continuesInBrowser]); beside a code, the link under the field
+     * ([webStepUpBesideCode]). Null: not offered (other platforms, or the server has none: 404),
+     * and with no way to answer here Open on the web stands in.
      */
     val webStepUp: SecondFactorWebStepUpPhase? = null,
     /** The web page the dialog is to open for Continue in browser. */
@@ -142,6 +144,14 @@ data class SecondFactorStepUpDialogState(
     val continuesInBrowser: Boolean
         get() = method == null && webStepUp != null
 
+    /** A code answers here, and the web step-up is offered under its field too (#158). */
+    val webStepUpBesideCode: Boolean
+        get() = method in SECOND_FACTOR_STEP_UP_CODE_METHODS && webStepUp != null
+
+    /** The web step-up is starting, its page is up, or its code is being exchanged. */
+    val webStepUpUnderWay: Boolean
+        get() = webStepUp != null && webStepUp != SecondFactorWebStepUpPhase.Ready
+
     /** Checking an answer, or the passkey prompt is up. */
     val busy: Boolean
         get() = submitting || passkeyCeremony != null
@@ -151,7 +161,8 @@ data class SecondFactorStepUpDialogState(
             when (method) {
                 null -> false
                 SecondFactorStepUpMethod.Passkey -> !busy
-                else -> !busy && normalizedSecondFactorAnswer(input).isNotEmpty()
+                // Not while the web step-up beside it runs: one answer at a time.
+                else -> !busy && !webStepUpUnderWay && normalizedSecondFactorAnswer(input).isNotEmpty()
             }
 
     val otherMethods: List<SecondFactorStepUpMethod>
@@ -216,6 +227,40 @@ internal fun normalizedSecondFactorAnswer(value: String): String = value.filterN
 private const val TOTP_CODE_LENGTH = 6
 
 /**
+ * The dialog without the passkey: the next method with [banner] saying why, or, with none left,
+ * no method (the dialog's own "do this on the web" says it then).
+ */
+internal fun SecondFactorStepUpDialogState.withoutPasskey(banner: SecondFactorStepUpBanner): SecondFactorStepUpDialogState {
+    val rest = methods - SecondFactorStepUpMethod.Passkey
+    val next = rest.firstOrNull()
+    return copy(
+        methods = rest,
+        method = next,
+        input = "",
+        fieldError = null,
+        banner = banner.takeIf { next != null },
+        submitting = false,
+        passkeyCeremony = null,
+    )
+}
+
+/**
+ * "Verify it's you" once Use passkey found only passkeys this platform can't ask for: iOS asks for
+ * those under the current RP ID (`app.raft.build`), and the person has only older ones, under
+ * `raft.build` (`passkey_rp_unavailable`), which only a web page can use. The passkey leaves the
+ * methods and a code, if there is one, takes over saying why ([withoutPasskey]). Where this
+ * platform and the server have the web step-up ([webStepUpOffered]), it checks the passkey
+ * instead: with no code the dialog goes straight on to it
+ * ([SecondFactorStepUpDialogState.continuesInBrowser], #5129); with a code the code entry stays
+ * and the web step-up is offered under the field ([SecondFactorStepUpDialogState.webStepUpBesideCode],
+ * #158). Without it: the code alone, or the web hand-off (Open on the web).
+ */
+internal fun SecondFactorStepUpDialogState.withOnlyOlderPasskeys(webStepUpOffered: Boolean): SecondFactorStepUpDialogState {
+    val rest = withoutPasskey(SecondFactorStepUpBanner.PasskeyUnsupported)
+    return if (webStepUpOffered && rest.webStepUp == null) rest.copy(webStepUp = SecondFactorWebStepUpPhase.Ready) else rest
+}
+
+/**
  * Step-up for any sensitive action (web `withSecondFactorStepUp`). [run] sends the action; when
  * the server refuses it with 403 `second_factor_step_up_required`, it opens the dialog, and once
  * POST /step-up passed (or two-step verification turned out to be off) it sends the action
@@ -239,8 +284,9 @@ private const val TOTP_CODE_LENGTH = 6
  * run's target ([webTarget] unless [run] names another); without a [webUrl] it only says to.
  *
  * Continue in browser (only with [webStepUp], iOS): when the passkey drops out because the person
- * has only legacy passkeys (`passkey_rp_unavailable`) and no other method is left, the dialog
- * offers it instead of Open on the web. It starts a web step-up for this sign-in (the refused
+ * has only legacy passkeys (`passkey_rp_unavailable`, [withOnlyOlderPasskeys]), the dialog offers
+ * it instead of Open on the web when no other method is left, and under the code's field when
+ * one is (#158). It starts a web step-up for this sign-in (the refused
  * action's `StepUpAction` key: [webStepUpAction], or the one [run] names), keeps the request and
  * its PKCE verifier on disk, has the dialog open the page in a web session, takes the page's
  * callback for that request only, exchanges its code (this sign-in's bearer and the verifier) and
@@ -527,12 +573,11 @@ class SecondFactorStepUpCoordinator(
             is SecondFactorPasskeyOptionsResult.Refused ->
                 when (val refusal = options.result) {
                     // No passkey (in the group this platform asked for): go on without it.
-                    is SecondFactorStepUpResult.PasskeyNotFound -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyNoCredential))
+                    is SecondFactorStepUpResult.PasskeyNotFound -> publish(shown.withoutPasskey(SecondFactorStepUpBanner.PasskeyNoCredential))
                     // None this platform can use (iOS: only passkeys under the legacy RP ID): the
-                    // other methods, or the web with none.
-                    // With nothing left, Continue in browser where the platform has it.
-                    is SecondFactorStepUpResult.PasskeyRpUnavailable ->
-                        publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported).offeringWebStepUp())
+                    // other methods, or the web with none; where the platform has it, the web
+                    // step-up too (Continue in browser, or beside a code).
+                    is SecondFactorStepUpResult.PasskeyRpUnavailable -> publish(shown.withOnlyOlderPasskeys(webStepUpOffered()))
                     is SecondFactorStepUpResult.CodeInvalid -> publish(shown.copy(banner = SecondFactorStepUpBanner.PasskeyInvalid(refusal.traceId)))
                     else -> publish(shown.copy(banner = refusalBanner(refusal)))
                 }
@@ -564,47 +609,28 @@ class SecondFactorStepUpCoordinator(
                     publish(shown.copy(submitting = true, banner = null))
                     requestPasskeyCeremony(fallback, firstAsk = false, deferred = deferred)
                 } else {
-                    publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyNoCredential))
+                    publish(shown.withoutPasskey(SecondFactorStepUpBanner.PasskeyNoCredential))
                 }
             }
-            RaftNativePasskeyAssertionResult.Unsupported -> publish(withoutPasskey(shown, SecondFactorStepUpBanner.PasskeyUnsupported))
+            RaftNativePasskeyAssertionResult.Unsupported -> publish(shown.withoutPasskey(SecondFactorStepUpBanner.PasskeyUnsupported))
             is RaftNativePasskeyAssertionResult.Error -> publish(shown.copy(banner = SecondFactorStepUpBanner.Failed(null)))
         }
     }
 
+    /** Whether the open dialog can have the web step-up: the platform and server have one. */
+    private fun webStepUpOffered(): Boolean =
+        // Start needs the action's key (400 `invalid_action` without): none, no web step-up.
+        webStepUp != null && openAction != null && !webStepUpUnavailable
+
     /**
-     * The dialog without the passkey: the next method with [banner] saying why, or, with none left,
-     * no method (the dialog's own "do this on the web" says it then).
+     * Continue in browser, or beside a code Verify with your passkey in the browser: the request,
+     * then the page in a web session (the dialog opens it).
      */
-    private fun withoutPasskey(
-        state: SecondFactorStepUpDialogState,
-        banner: SecondFactorStepUpBanner,
-    ): SecondFactorStepUpDialogState {
-        val methods = state.methods - SecondFactorStepUpMethod.Passkey
-        val method = methods.firstOrNull()
-        return state.copy(
-            methods = methods,
-            method = method,
-            input = "",
-            fieldError = null,
-            banner = banner.takeIf { method != null },
-            submitting = false,
-            passkeyCeremony = null,
-        )
-    }
-
-    /** [state] with Continue in browser where it has no way to answer and the platform and server have one. */
-    private fun SecondFactorStepUpDialogState.offeringWebStepUp(): SecondFactorStepUpDialogState {
-        // Start needs the action's key (400 `invalid_action` without): none, no Continue in browser.
-        val offered = this@SecondFactorStepUpCoordinator.webStepUp != null && openAction != null && !webStepUpUnavailable
-        return if (method == null && webStepUp == null && offered) copy(webStepUp = SecondFactorWebStepUpPhase.Ready) else this
-    }
-
-    /** Continue in browser: the request, then the page in a web session (the dialog opens it). */
     private suspend fun continueInBrowser() {
         val current = _state.value ?: return
         val web = webStepUp ?: return
-        if (!current.continuesInBrowser || current.webStepUp != SecondFactorWebStepUpPhase.Ready || current.submitting) return
+        // Not while a code is being checked (or the passkey prompt is up).
+        if (current.webStepUp != SecondFactorWebStepUpPhase.Ready || current.busy) return
         val deferred = pending ?: return
         val action = openAction ?: return
         publish(current.copy(webStepUp = SecondFactorWebStepUpPhase.Opening, webStepUpSession = null, banner = null))
@@ -643,10 +669,11 @@ class SecondFactorStepUpCoordinator(
                 )
             }
             AppWebStepUpStartResult.Unavailable -> {
-                // Flag off, or no legacy passkey after all: Open on the web (#5035), from now on.
+                // Flag off, or no legacy passkey after all: Open on the web (#5035), from now on;
+                // beside a code, the code alone again, saying why.
                 web.log("app_web_step_up_start result=unavailable")
                 webStepUpUnavailable = true
-                publish(shown.copy(webStepUp = null))
+                publish(shown.copy(webStepUp = null, banner = SecondFactorStepUpBanner.PasskeyUnsupported.takeIf { shown.method != null }))
             }
             AppWebStepUpStartResult.NotEnabled -> settle(SecondFactorStepUpSettle.Verified)
             AppWebStepUpStartResult.SessionFamilyRequired ->

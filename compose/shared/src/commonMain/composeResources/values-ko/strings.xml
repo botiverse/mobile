@@ -212,6 +212,7 @@
     <string name="settings_step_up_open_on_web">웹에서 열기</string>
     <string name="settings_step_up_web_body">패스키는 브라우저에서 사용할 수 있어요. 브라우저에서 계속해서 본인임을 확인해 주세요.</string>
     <string name="settings_step_up_web_continue">브라우저에서 계속</string>
+    <string name="settings_step_up_web_verify_with_passkey">브라우저에서 패스키로 인증</string>
     <string name="settings_step_up_web_waiting">브라우저에서 완료하기를 기다리는 중…</string>
     <string name="settings_step_up_web_cancelled">확인하기 전에 브라우저가 닫혔어요. 다시 시도해 주세요.</string>
     <string name="settings_step_up_web_expired">요청이 만료되었어요. 다시 시도해 주세요.</string>

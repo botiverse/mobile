@@ -73,10 +73,12 @@ internal const val SECOND_FACTOR_STEP_UP_DIALOG_TAG = "second-factor-step-up-dia
  * on iOS with only legacy passkeys Continue in browser ([SecondFactorStepUpDialogState.webStepUp]:
  * [webStepUpBrowser] runs the coordinator's [SecondFactorStepUpDialogState.webStepUpSession], and
  * while it waits the step-up callbacks handed to the app elsewhere ([webStepUpCallbacks]) go back
- * to the coordinator). A scrim tap does not close it; Cancel, the close button and Back do (not
- * while the answer is being checked). With a [SecondFactorStepUpDialogState.recovery] (signing out
- * a lost device) it also offers "Lost the device with your authenticator?"
- * ([SecondFactorStepUpRecoveryPage]).
+ * to the coordinator). Only legacy passkeys and a code as well: the code stays, and "Verify with
+ * your passkey in the browser" under its field starts the same web step-up
+ * ([SecondFactorStepUpDialogState.webStepUpBesideCode], #158). A scrim tap does not close it;
+ * Cancel, the close button and Back do (not while the answer is being checked). With a
+ * [SecondFactorStepUpDialogState.recovery] (signing out a lost device) it also offers "Lost the
+ * device with your authenticator?" ([SecondFactorStepUpRecoveryPage]).
  */
 @Composable
 internal fun SecondFactorStepUpDialog(
@@ -245,6 +247,17 @@ internal fun SecondFactorStepUpDialog(
             } else {
                 // A passkey is its Use passkey button; a code its field (web VerifyItsYouDialog).
                 if (method != SecondFactorStepUpMethod.Passkey) SecondFactorStepUpAnswerField(state, method, onIntent)
+                // Only legacy passkeys, and a code (#158): Continue in browser's web step-up, under the field.
+                if (state.webStepUpBesideCode) {
+                    RaftTextLink(
+                        text = stringResource(Res.string.settings_step_up_web_verify_with_passkey),
+                        onClick = { onIntent(SecondFactorStepUpIntent.ContinueInBrowser) },
+                        modifier = Modifier.testTag(SECOND_FACTOR_STEP_UP_PASSKEY_IN_BROWSER_TAG),
+                        variant = RaftTextLinkVariant.Strong,
+                        style = RaftTheme.typography.callout,
+                        enabled = !state.busy && !state.webStepUpUnderWay
+                    )
+                }
                 state.otherMethods.forEach { other ->
                     RaftTextLink(
                         text =
@@ -273,6 +286,15 @@ internal fun SecondFactorStepUpDialog(
                     enabled = !state.submitting
                 )
             }
+            // Beside a code, while the web step-up's page opens or is up; its code exchange then shows on Verify.
+            val webOpening = state.webStepUp == SecondFactorWebStepUpPhase.Opening || state.webStepUp == SecondFactorWebStepUpPhase.Waiting
+            if (state.webStepUpBesideCode && webOpening) {
+                RaftBanner(
+                    description = stringResource(Res.string.settings_step_up_web_waiting),
+                    status = RaftBannerStatus.Info,
+                    size = RaftBannerSize.Sm
+                )
+            }
             state.banner?.let { banner -> SecondFactorStepUpBannerView(banner, formatClock, onIntent) }
         }
     }
@@ -282,6 +304,7 @@ internal const val SECOND_FACTOR_STEP_UP_LOST_LINK_TAG = "step-up-lost-authentic
 internal const val SECOND_FACTOR_STEP_UP_SUBMIT_TAG = "step-up-submit"
 internal const val SECOND_FACTOR_STEP_UP_OPEN_ON_WEB_TAG = "step-up-open-on-web"
 internal const val SECOND_FACTOR_STEP_UP_CONTINUE_IN_BROWSER_TAG = "step-up-continue-in-browser"
+internal const val SECOND_FACTOR_STEP_UP_PASSKEY_IN_BROWSER_TAG = "step-up-passkey-in-browser"
 internal const val SECOND_FACTOR_STEP_UP_BANNER_TAG = "step-up-banner"
 
 /** The "Use …" link that switches to [method]. */
