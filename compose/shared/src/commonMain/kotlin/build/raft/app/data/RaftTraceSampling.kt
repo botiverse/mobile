@@ -12,8 +12,11 @@ import kotlin.random.Random
  */
 const val TRACE_SAMPLE_FLAG_PREFIX: String = "trace_sample"
 
-/** The App's one sampled trace today: a thread / channel open (`mobile.thread_open` span). */
+/** Sampled mobile trace span names (`trace_sample.<name>` hierarchy). */
 const val MOBILE_THREAD_OPEN_TRACE_NAME: String = "mobile.thread_open"
+const val MOBILE_FRAMES_NAV_TRANSITION_TRACE_NAME: String = "mobile.frames.nav_transition"
+const val MOBILE_FRAMES_RESUME_TRACE_NAME: String = "mobile.frames.resume"
+const val MOBILE_FRAMES_SCROLL_TRACE_NAME: String = "mobile.frames.scroll"
 
 /** The evaluate answer fields the rate is read from (a subset of the server's FeatureFlagEvaluation). */
 data class TraceSampleEvaluation(
@@ -83,6 +86,7 @@ fun ServerFeatureFlagSnapshot.traceSampleEvaluations(traceName: String): List<Tr
 
 /** The App's built-in rates when no flag decides: every open on alpha and debug builds, 1 in 10 on release. */
 const val TRACE_SAMPLE_DEFAULT_RELEASE_RATE: Double = 0.1
+const val TRACE_SAMPLE_SCROLL_DEFAULT_RELEASE_RATE: Double = 0.02
 const val TRACE_SAMPLE_DEFAULT_PRERELEASE_RATE: Double = 1.0
 
 fun defaultTraceSampleRate(
@@ -90,3 +94,10 @@ fun defaultTraceSampleRate(
     debugBuild: Boolean = RaftCmpRouter.isDebugBuild,
 ): Double =
     if (debugBuild || buildType == "alpha" || buildType == "debug") TRACE_SAMPLE_DEFAULT_PRERELEASE_RATE else TRACE_SAMPLE_DEFAULT_RELEASE_RATE
+
+/** Scroll sessions fire much more frequently than nav transitions or resumes: 2% on release builds by default. */
+fun defaultScrollFrameTraceSampleRate(
+    buildType: String? = RaftAppIdentityRegistry.current()?.buildType,
+    debugBuild: Boolean = RaftCmpRouter.isDebugBuild,
+): Double =
+    if (debugBuild || buildType == "alpha" || buildType == "debug") TRACE_SAMPLE_DEFAULT_PRERELEASE_RATE else TRACE_SAMPLE_SCROLL_DEFAULT_RELEASE_RATE
