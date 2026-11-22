@@ -11,12 +11,12 @@ rollout: full
 
 ## zh-CN
 
-按住或用鼠标指向消息的头像时，头像会变暗一点，和网页一致。
+按住消息的头像，或用鼠标指向它时，头像会有变化提示，和网页一致。
 
 ## en
 
-Pressing or pointing at a message's avatar now dims it slightly, as on the web.
+Pressing a message's avatar, or pointing at it, now shows feedback on the avatar, as on the web.
 
 ## ja
 
-メッセージのアバターを押したり、ポインターを合わせたりすると、ウェブ版と同じようにアバターが少し暗くなります。
+メッセージのアバターを押したり、ポインターを合わせたりすると、ウェブ版と同じようにアバターの見た目が変わります。
