@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.reportUnknownTypeDropped
+import build.raft.app.strictProjectionDiagnosticsLogger
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -24,6 +25,8 @@ import kotlinx.serialization.json.longOrNull
  * - `reset`: take `reset.snapshots`, continue from the returned cursor (`changes` is empty).
  * - An unknown `entity` is skipped; a known entity with an unknown `op` means "resnapshot that
  *   entity". New entities and ops are added, never renamed.
+ * - `task` (slock #14975) is known and not read: its changes are skipped and counted
+ *   ([RaftSyncChangesPage.ignoredEntities]), not reported row by row as an unknown entity.
  *
  * The cursor is opaque: echo it back, never parse or compare it.
  *
@@ -291,6 +294,8 @@ data class RaftSyncChangesPage(
     val reset: RaftSyncReset?,
     /** Changes of an entity this client does not know (skipped, per the contract). */
     val skippedUnknownEntities: Int = 0,
+    /** Changes of an entity this client knows and does not read (`task`), per entity: skipped and counted. */
+    val ignoredEntities: Map<String, Int> = emptyMap(),
     /** inbox_row capability: retake the inbox snapshot (the changes still apply). */
     val inboxReset: RaftSyncInboxReset? = null,
     /** inbox_row capability: pull again after about this many milliseconds (a row is held back). */
@@ -326,8 +331,12 @@ private val syncChangesJson = Json {
 /**
  * Parses a `GET /api/sync/changes` body; null on a contract mismatch (no cursor, no `hasMore`, a
  * change without `seq` / `entity` / `id` / `op`, or a row-entity upsert without a `row` object).
+ * [diagnostics] gets the `projection_value_unknown` lines of the values this client does not know.
  */
-fun parseSyncChangesPage(bodyText: String): RaftSyncChangesPage? {
+fun parseSyncChangesPage(
+    bodyText: String,
+    diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
+): RaftSyncChangesPage? {
     val wire =
         try {
             syncChangesJson.decodeFromString(SyncChangesResponseWire.serializer(), bodyText)
@@ -338,11 +347,13 @@ fun parseSyncChangesPage(bodyText: String): RaftSyncChangesPage? {
         }
     val cursor = wire.cursor.takeIf { it.isNotBlank() } ?: return null
     var skipped = 0
+    val ignored = LinkedHashMap<String, Int>()
     val changes = ArrayList<RaftSyncChange>(wire.changes.size)
     for (element in wire.changes) {
-        when (val parsed = parseSyncChange(element)) {
+        when (val parsed = parseSyncChange(element, diagnostics)) {
             ParsedSyncChange.Malformed -> return null
             ParsedSyncChange.UnknownEntity -> skipped += 1
+            is ParsedSyncChange.IgnoredEntity -> ignored[parsed.entity] = (ignored[parsed.entity] ?: 0) + 1
             is ParsedSyncChange.Known -> changes += parsed.change
         }
     }
@@ -357,10 +368,13 @@ fun parseSyncChangesPage(bodyText: String): RaftSyncChangesPage? {
             )
         },
         skippedUnknownEntities = skipped,
+        ignoredEntities = ignored,
         inboxReset = wire.inboxReset?.let { reset ->
             if (reset.reason !in SyncInboxResetReasons) {
                 // Still retaken: a reset of a kind this client does not know is a reset all the same.
-                reportUnknownTypeDropped("sync_changes", "inbox_reset_reason", reset.reason, fallback = "inbox_snapshot")
+                reportUnknownTypeDropped(
+                    "sync_changes", "inbox_reset_reason", reset.reason, fallback = "inbox_snapshot", diagnostics = diagnostics,
+                )
             }
             RaftSyncInboxReset(reset.reason)
         },
@@ -373,12 +387,15 @@ private val SyncInboxResetReasons = setOf("init", "too_many", "held_too_long")
 private sealed interface ParsedSyncChange {
     data class Known(val change: RaftSyncChange) : ParsedSyncChange
 
+    /** A known entity this client does not read: skipped, counted per entity, not reported. */
+    data class IgnoredEntity(val entity: String) : ParsedSyncChange
+
     data object UnknownEntity : ParsedSyncChange
 
     data object Malformed : ParsedSyncChange
 }
 
-private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
+private fun parseSyncChange(element: JsonObject, diagnostics: (String) -> Unit): ParsedSyncChange {
     val seq = element.longField("seq") ?: return ParsedSyncChange.Malformed
     val entity = element.stringField("entity") ?: return ParsedSyncChange.Malformed
     val id = element.stringField("id") ?: return ParsedSyncChange.Malformed
@@ -407,10 +424,16 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
                 }
             )
         "scope" -> ParsedSyncChange.Known(parseScopeChange(element, seq, id, op))
-        "inbox_row" -> parseInboxRowChange(element, seq, id, op)
+        "inbox_row" -> parseInboxRowChange(element, seq, id, op, diagnostics)
+        // slock #14975 sends every client its task rows (an upsert with the GET /api/tasks/channel/:id
+        // row, a delete naming its `channelId`, a `resnapshot` of one channel's list). Not read here:
+        // task lists follow the realtime `task:*` pushes plus the RaftLiveCatchUpEffect re-reads
+        // (foreground, reconnect), as on web (slock packages/web/src/store/syncChangesClient.ts skips
+        // them too). Known, so counted for the pull's log line (`ignored=task:N`), not reported per row.
+        "task" -> ParsedSyncChange.IgnoredEntity(entity)
         else -> {
             // Skipped on purpose (the log moves on), but never silently.
-            reportUnknownTypeDropped("sync_changes", "entity", entity)
+            reportUnknownTypeDropped("sync_changes", "entity", entity, diagnostics = diagnostics)
             ParsedSyncChange.UnknownEntity
         }
     }
@@ -422,7 +445,13 @@ private fun parseSyncChange(element: JsonObject): ParsedSyncChange {
  * applies (the source does not change how). An upsert without a `row` object, or a delete whose
  * `position` is neither a string nor null, is a contract mismatch.
  */
-private fun parseInboxRowChange(element: JsonObject, seq: Long, id: String, op: String): ParsedSyncChange {
+private fun parseInboxRowChange(
+    element: JsonObject,
+    seq: Long,
+    id: String,
+    op: String,
+    diagnostics: (String) -> Unit,
+): ParsedSyncChange {
     val inboxOnly = setOf(RaftSyncSnapshot.Inbox)
     return when (op) {
         "upsert" -> {
@@ -432,7 +461,7 @@ private fun parseInboxRowChange(element: JsonObject, seq: Long, id: String, op: 
                     "log" -> RaftSyncInboxRowSource.Log
                     "message" -> RaftSyncInboxRowSource.Message
                     else -> {
-                        reportUnknownTypeDropped("sync_changes", "inbox_row_source", raw, fallback = "applied")
+                        reportUnknownTypeDropped("sync_changes", "inbox_row_source", raw, fallback = "applied", diagnostics = diagnostics)
                         RaftSyncInboxRowSource.Unknown
                     }
                 }
@@ -449,14 +478,16 @@ private fun parseInboxRowChange(element: JsonObject, seq: Long, id: String, op: 
                     "done" -> RaftSyncInboxRowDeleteReason.Done
                     "left" -> RaftSyncInboxRowDeleteReason.Left
                     else -> {
-                        reportUnknownTypeDropped("sync_changes", "inbox_row_delete_reason", raw, fallback = "inbox_snapshot")
+                        reportUnknownTypeDropped(
+                            "sync_changes", "inbox_row_delete_reason", raw, fallback = "inbox_snapshot", diagnostics = diagnostics,
+                        )
                         return ParsedSyncChange.Known(RaftSyncChange.Resnapshot(seq, "inbox_row", op, inboxOnly))
                     }
                 }
             ParsedSyncChange.Known(RaftSyncChange.InboxRowDelete(seq, id, position, reason))
         }
         else -> {
-            reportUnknownTypeDropped("sync_changes", "inbox_row_op", op, fallback = "inbox_snapshot")
+            reportUnknownTypeDropped("sync_changes", "inbox_row_op", op, fallback = "inbox_snapshot", diagnostics = diagnostics)
             ParsedSyncChange.Known(RaftSyncChange.Resnapshot(seq, "inbox_row", op, inboxOnly))
         }
     }
