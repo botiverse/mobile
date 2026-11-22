@@ -726,7 +726,21 @@ private fun ThreadInlineReplyRow(
             ?: reply.senderName.trim().ifBlank { reply.senderId }
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(resolvedAvatar)
-    val senderKind = participant?.kind?.parsedMemberKindOrNull()
+    val senderKind =
+        participant?.kind?.parsedMemberKindOrNull()
+            ?: when (reply.senderType?.trim()?.lowercase()) {
+                "human", "user" -> MemberKind.Human
+                "agent" -> MemberKind.Agent
+                else -> null
+            }
+    val replyAvatarPending =
+        avatarWireValue.isNullOrBlank() &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = memberAvatarResolver,
+                kind = senderKind,
+                memberId = reply.senderId,
+                jointSurface = memberAvatarResolver.jointSurface,
+            )
     build.raft.designsystem.components.RaftMessageRepliesItem(
         sender = displayName,
         content = threadInlineReplyPreviewText(reply.content),
@@ -742,6 +756,7 @@ private fun ThreadInlineReplyRow(
                 label = if (displayName == reply.senderId) "" else displayName,
                 avatarSize = 20.dp,
                 cacheSubject = raftMemberAvatarCacheSubject(senderKind, reply.senderId),
+                avatarPending = replyAvatarPending,
             )
         },
         time =

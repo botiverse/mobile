@@ -1137,9 +1137,7 @@ final class RaftNativeNavTitleView: UIStackView {
     /// for an agent or a person, whose fallback face is the app's to draw: robot / placeholder).
     private static func leadingView(_ leading: [String: Any], image: UIImage?, size: CGFloat) -> UIView? {
         let kind = leading["kind"] as? String
-        // The native Home title's server tile (#4464): drawn here from its own image / initial.
-        if kind == "server" { return serverTile(leading, size: size) }
-        guard kind == "channel" || kind == "avatar" else { return nil }
+        guard kind == "channel" || kind == "avatar" || kind == "server" else { return nil }
         if let image {
             let view = UIImageView(image: image)
             view.contentMode = .scaleAspectFit
@@ -1150,6 +1148,10 @@ final class RaftNativeNavTitleView: UIStackView {
             ])
             return view
         }
+        // Pre-capture stand-in for the native Home title's server tile until Compose's Coil-backed
+        // capture arrives (never downloads through URLSession.shared and never flashes the initial
+        // letter when a server image URL is configured).
+        if kind == "server" { return serverTile(leading, size: size) }
         let ink = color(leading["inkArgb"], fallback: .label)
         let tile = UIView()
         tile.layer.cornerRadius = 4
@@ -1191,8 +1193,9 @@ final class RaftNativeNavTitleView: UIStackView {
     }
 
     private static func serverTile(_ leading: [String: Any], size: CGFloat) -> UIView {
-        // raft-ui server avatar (the web switcher's trigger): the ink tile with the server's
-        // initial in brand yellow, under the server's image when it has one.
+        // raft-ui server avatar stand-in before the Coil-backed RaftNativeNavBarTitleImageCapture
+        // bitmap arrives: shows the server initial only when no server image URL is configured,
+        // otherwise keeps a neutral ink tile until the cached image lands.
         let tile = UIView()
         tile.backgroundColor = color(leading["fillArgb"], fallback: .black)
         tile.layer.cornerRadius = 4
@@ -1200,37 +1203,24 @@ final class RaftNativeNavTitleView: UIStackView {
         tile.layer.borderColor = color(leading["fillArgb"], fallback: .black).cgColor
         tile.clipsToBounds = true
         tile.translatesAutoresizingMaskIntoConstraints = false
-        let label = UILabel()
-        label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
-        label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
-        label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        tile.addSubview(label)
-        let image = UIImageView()
-        image.contentMode = .scaleAspectFill
-        image.translatesAutoresizingMaskIntoConstraints = false
-        tile.addSubview(image)
-        NSLayoutConstraint.activate([
+        var constraints: [NSLayoutConstraint] = [
             tile.widthAnchor.constraint(equalToConstant: size),
             tile.heightAnchor.constraint(equalToConstant: size),
-            label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
-            image.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
-            image.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
-            image.topAnchor.constraint(equalTo: tile.topAnchor),
-            image.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
-        ])
-        if let urlText = leading["imageUrl"] as? String, let url = URL(string: urlText) {
-            URLSession.shared.dataTask(with: url) { data, _, _ in
-                guard let data, let loaded = UIImage(data: data) else { return }
-                DispatchQueue.main.async {
-                    image.image = loaded
-                    // An uploaded image brings its own ground (a transparent one shows the bar).
-                    tile.backgroundColor = .clear
-                    label.isHidden = true
-                }
-            }.resume()
+        ]
+        let hasImageUrl = ((leading["imageUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        if !hasImageUrl {
+            let label = UILabel()
+            label.text = String(((leading["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).prefix(1)).uppercased()
+            label.font = .monospacedSystemFont(ofSize: size >= 28 ? 14 : 12, weight: .bold)
+            label.textColor = color(leading["inkArgb"], fallback: .systemYellow)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            tile.addSubview(label)
+            constraints += [
+                label.centerXAnchor.constraint(equalTo: tile.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: tile.centerYAnchor),
+            ]
         }
+        NSLayoutConstraint.activate(constraints)
         return tile
     }
 }

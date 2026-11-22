@@ -119,6 +119,35 @@ internal class RaftMemberAvatarRefStore(
         }
     }
 
+    /**
+     * Most recently confirmed http(s) / relative avatar URLs across persisted servers (for startup
+     * disk-to-memory prewarm in [build.raft.app.image.raftPrewarmCachedImagesFromDisk]).
+     */
+    fun recentHttpAvatarUrls(maxCount: Int): List<String> {
+        if (maxCount <= 0) return emptyList()
+        return synchronized(lock) {
+            val urls = LinkedHashSet<String>()
+            val serverIds = indexedServerIdsLocked().asReversed()
+            for (serverKey in serverIds) {
+                val page = pageLocked(serverKey)
+                val values = page.refs.values.toList()
+                for (index in values.lastIndex downTo 0) {
+                    val value = values[index].trim()
+                    if (
+                        value.startsWith("http://", ignoreCase = true) ||
+                        value.startsWith("https://", ignoreCase = true) ||
+                        value.startsWith("/api/avatars/", ignoreCase = true) ||
+                        value.startsWith("/avatars/", ignoreCase = true)
+                    ) {
+                        urls += value
+                        if (urls.size >= maxCount) return@synchronized urls.toList()
+                    }
+                }
+            }
+            urls.toList()
+        }
+    }
+
     private fun pageLocked(serverKey: String): RaftMemberAvatarRefPage =
         loadedByServerId.getOrPut(serverKey) {
             runCatching { store.getString(serverKeyFor(serverKey)) }

@@ -36,6 +36,7 @@ import build.raft.app.data.realtime.RealtimeAppliedSeqCursorStore
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.refreshPixelAvatarsFromWeb
 import build.raft.app.RaftLogLevel
+import build.raft.app.raftAvatarImageCandidates
 import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.raftLogWarn
@@ -489,6 +490,8 @@ internal class RaftSharedStoreProvider private constructor(
     private val sharedPreferenceStore: RaftKeyValueStore,
     /** Durable member avatar references shared by every members store (Hands dd79da45). */
     private val memberAvatarRefStore: RaftMemberAvatarRefStore,
+    /** Durable joint-channel actor references shared by every members store (#proj-mobile:#290). */
+    private val jointActorRefStore: RaftJointActorRefStore,
     /** Durable server rosters shared by every members store (data-layer plan step 3). */
     private val serverMembersDurableStore: RaftServerMembersDurableStore,
     private val apiEnvironmentKeyValueStore: RaftKeyValueStore,
@@ -776,6 +779,7 @@ internal class RaftSharedStoreProvider private constructor(
             notificationPreferences = settingsServerNotificationLastKnownStore,
             messageEngine = canonicalMessageV2GenerationEngine,
             memberAvatarRefStore = memberAvatarRefStore,
+            jointActorRefStore = jointActorRefStore,
             jointConnectionsCache = { jointConnectionsCache },
             agentDetailCache = agentDetailCache,
             replyWindowCache = threadDurableLastKnownReader.replyWindowCache,
@@ -805,6 +809,35 @@ internal class RaftSharedStoreProvider private constructor(
             val account = context.accountId.trim().takeIf { it.isNotBlank() }
             if (environment == null || account == null) null else environment to account
         }
+
+    /**
+     * #proj-mobile:#290: recently used server logos and member/joint-actor http(s) avatar URLs to
+     * promote from Coil's disk cache into its memory cache at startup so frame 1 paints directly
+     * from memory without flashing placeholders.
+     */
+    internal fun startupPrewarmAvatarUrls(
+        maxMemberUrls: Int = 48,
+        maxJointUrls: Int = 16,
+    ): List<String> {
+        val apiBaseUrl = apiEnvironmentStore.current().apiBaseUrl.trimEnd('/')
+        val session = authStore.readCommittedSessionSnapshot()
+        val rawUrls = ArrayList<String>()
+        if (session != null) {
+            val selectedId = session.currentServerId
+            session.servers
+                .sortedByDescending { it.id == selectedId }
+                .forEach { server -> server.avatarUrl?.let(rawUrls::add) }
+            session.user.avatarUrl?.let(rawUrls::add)
+        }
+        rawUrls += memberAvatarRefStore.recentHttpAvatarUrls(maxMemberUrls)
+        rawUrls += jointActorRefStore.recentHttpAvatarUrls(maxJointUrls)
+        val resolved = LinkedHashSet<String>()
+        for (raw in rawUrls) {
+            val candidate = raftAvatarImageCandidates(raw, apiBaseUrl).firstOrNull() ?: continue
+            resolved += candidate
+        }
+        return resolved.toList()
+    }
 
     private fun allComputersStores(): List<SharedComputersStore> =
         shellComputersStores.entries().map { (_, store) -> store }.distinct()
@@ -2533,6 +2566,7 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
                     avatarRefStore = memberAvatarRefStore,
+                    jointActorRefStore = jointActorRefStore,
                     durableStore = serverMembersDurableStore,
                     channelMembersOffline = channelMembersOffline,
                     actorResolve = jointActorResolve(networkClient(scope)),
@@ -4004,6 +4038,7 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             }
             val memberAvatarRefStore = RaftMemberAvatarRefStore(sharedPreferenceStore)
+            val jointActorRefStore = RaftJointActorRefStore(sharedPreferenceStore)
             val serverMembersDurableStore =
                 RaftServerMembersDurableStore(
                     storage = SqlDelightRaftServerMembersDurableStorage(database),
@@ -4037,6 +4072,7 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     },
                     avatarRefStore = memberAvatarRefStore,
+                    jointActorRefStore = jointActorRefStore,
                     durableStore = serverMembersDurableStore,
                     channelMembersOffline = channelMembersOffline,
                     actorResolve = jointActorResolve(networkClient),
@@ -4193,6 +4229,7 @@ internal class RaftSharedStoreProvider private constructor(
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
                 memberAvatarRefStore = memberAvatarRefStore,
+                jointActorRefStore = jointActorRefStore,
                 serverMembersDurableStore = serverMembersDurableStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,

@@ -40,6 +40,7 @@ internal class AccountLocalData(
     private val notificationPreferences: SettingsServerNotificationLastKnownStore,
     private val messageEngine: CanonicalMessageV2GenerationEngine,
     private val memberAvatarRefStore: RaftMemberAvatarRefStore,
+    private val jointActorRefStore: RaftJointActorRefStore? = null,
     private val jointConnectionsCache: () -> RaftJointConnectionsCache,
     private val agentDetailCache: RaftAgentDetailCache,
     private val replyWindowCache: RaftThreadReplyWindowCache?,
@@ -54,6 +55,7 @@ internal class AccountLocalData(
         homeSavedStateCache.clear()
         offlineResourceCache.fenceInFlightWrites()
         memberAvatarRefStore.clearAll()
+        jointActorRefStore?.clearAll()
         jointConnectionsCache().clearMemory()
         agentDetailCache.clearMemory()
         replyWindowCache?.clearMemory()
@@ -70,6 +72,7 @@ internal class AccountLocalData(
      */
     suspend fun onServerAccessLost(serverId: String, accountId: String?, messagePartition: DurablePartitionKey) {
         offlineResourceCache.wipeServer(serverId, accountId)
+        jointActorRefStore?.forgetServer(serverId)
         RaftAgentLounges.forgetServer(serverId)
         homeRowHints.dropServer(serverId, accountId)
         activityFirstPages.dropServer(serverId, accountId)
