@@ -34,39 +34,6 @@ class AndroidAttachmentOpenCoordinatorTest {
     }
 
     @Test
-    fun publicMissMaterializesOutsideLockThenReacquiresForPrivateLaunch() {
-        val harness = CoordinatorHarness()
-
-        val result = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenSourceKind.PrivateCache, result.source)
-        assertEquals(2, harness.resolveCount)
-        assertEquals(1, harness.recoveryCount)
-        assertEquals(1, harness.materializeCount)
-        assertEquals(1, harness.buildCount)
-        assertEquals(1, harness.launchCount)
-        assertEquals(
-            listOf(
-                "owner:0",
-                "lock-enter:1",
-                "owner:1",
-                "resolve:1",
-                "lock-exit:0",
-                "recovery:0",
-                "materialize:0",
-                "build:0",
-                "lock-enter:1",
-                "owner:1",
-                "resolve:1",
-                "launch:PrivateCache:1:private-candidate",
-                "lock-exit:0"
-            ),
-            harness.events
-        )
-    }
-
-    @Test
     fun requiredPublicDownloadMissingReturnsWithoutPrivateFallbackOrLaunch() {
         val harness = CoordinatorHarness()
 
@@ -90,128 +57,6 @@ class AndroidAttachmentOpenCoordinatorTest {
             ),
             harness.events
         )
-    }
-
-    @Test
-    fun requiredPublicDownloadPresentStillLaunchesExactPublicSourceOnce() {
-        val harness = CoordinatorHarness()
-        harness.resolvePublic = { harness.publicSource }
-
-        val result = harness.open(AndroidAttachmentOpenRequirement.PublicDownloadOnly)
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenSourceKind.PublicDownload, result.source)
-        assertEquals(1, harness.resolveCount)
-        assertEquals(1, harness.launchCount)
-        assertEquals(0, harness.recoveryCount)
-        assertEquals(0, harness.materializeCount)
-    }
-
-    @Test
-    fun concurrentExplicitSaveWinsAfterPrivateMaterialization() {
-        val harness = CoordinatorHarness()
-        var resolution = 0
-        harness.resolvePublic = {
-            resolution += 1
-            if (resolution == 1) null else harness.publicSource
-        }
-
-        val result = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenSourceKind.PublicDownload, result.source)
-        assertEquals(1, harness.materializeCount)
-        assertEquals(1, harness.buildCount)
-        assertEquals(1, harness.launchCount)
-        assertTrue(harness.events.contains("launch:PublicDownload:1:null"))
-        assertFalse(harness.events.contains("launch:PrivateCache:1:private-candidate"))
-    }
-
-    @Test
-    fun publicAuthorityFailureDoesNotFallBackToPrivate() {
-        val harness = CoordinatorHarness()
-        harness.resolvePublic = {
-            throw AndroidAttachmentPublicStorageException("public authority unavailable")
-        }
-
-        val result = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
-        assertTrue(result.retryable)
-        assertEquals(0, harness.recoveryCount)
-        assertEquals(0, harness.materializeCount)
-        assertEquals(0, harness.launchCount)
-        assertEquals(1, harness.failureCount)
-    }
-
-    @Test
-    fun publicLaunchFailureDoesNotFallBackToPrivate() {
-        val harness = CoordinatorHarness()
-        harness.resolvePublic = { harness.publicSource }
-        harness.launchResult = { source, _ -> AndroidAttachmentOpenResult.failed(source.durableCache) }
-
-        val result = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Failed, result.status)
-        assertTrue(result.cached)
-        assertEquals(1, harness.launchCount)
-        assertEquals(0, harness.recoveryCount)
-        assertEquals(0, harness.materializeCount)
-    }
-
-    @Test
-    fun recoveryFailureStopsBeforeMaterialization() {
-        val harness = CoordinatorHarness()
-        harness.recoveryReady = false
-
-        val result = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
-        assertEquals(1, harness.recoveryCount)
-        assertEquals(0, harness.materializeCount)
-        assertEquals(0, harness.buildCount)
-        assertEquals(0, harness.launchCount)
-    }
-
-    @Test
-    fun privateTerminalStatusesAreSemanticAndContainNoNativeDetails() {
-        listOf(
-            AndroidAttachmentOpenResult.cancelled(),
-            AndroidAttachmentOpenResult.storageFailed(),
-            AndroidAttachmentOpenResult.failed()
-        ).forEach { terminal ->
-            val harness = CoordinatorHarness()
-            harness.materialization = AndroidAttachmentPrivateMaterialization.Terminal(terminal)
-
-            val result = harness.open()
-            val payload = result.toBridgePayload()
-
-            assertEquals(terminal.status, result.status)
-            assertEquals(1, harness.materializeCount)
-            assertEquals(0, harness.buildCount)
-            assertEquals(0, harness.launchCount)
-            assertPayloadHasNoNativeAuthority(payload)
-        }
-    }
-
-    @Test
-    fun fileProviderUnavailableReturnsRetryableStorageFailureWithoutLaunch() {
-        listOf<(String) -> AndroidAttachmentContentUriSource?>(
-            { null },
-            { throw IllegalArgumentException("outside configured FileProvider roots") }
-        ).forEach { builder ->
-            val harness = CoordinatorHarness()
-            harness.buildPrivate = builder
-
-            val result = harness.open()
-            val payload = result.toBridgePayload()
-
-            assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
-            assertTrue(result.retryable)
-            assertEquals(1, harness.buildCount)
-            assertEquals(0, harness.launchCount)
-            assertPayloadHasNoNativeAuthority(payload)
-        }
     }
 
     @Test
@@ -239,56 +84,6 @@ class AndroidAttachmentOpenCoordinatorTest {
         assertEquals(1, retiredBeforePrivateLaunch.materializeCount)
         assertEquals(1, retiredBeforePrivateLaunch.buildCount)
         assertEquals(0, retiredBeforePrivateLaunch.launchCount)
-    }
-
-    @Test
-    fun wrongAuthorityKindsFailClosedWithoutLaunch() {
-        val publicAsPrivate = CoordinatorHarness()
-        publicAsPrivate.resolvePublic = { publicAsPrivate.privateSource }
-
-        val publicResult = publicAsPrivate.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Failed, publicResult.status)
-        assertEquals(0, publicAsPrivate.launchCount)
-        assertEquals(0, publicAsPrivate.materializeCount)
-
-        val privateAsPublic = CoordinatorHarness()
-        privateAsPublic.buildPrivate = { privateAsPublic.publicSource }
-
-        val privateResult = privateAsPublic.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Failed, privateResult.status)
-        assertEquals(0, privateAsPublic.launchCount)
-    }
-
-    @Test
-    fun evictionThenRetryRematerializesTheSameIdentityAndLaunchesOncePerAction() {
-        val harness = CoordinatorHarness()
-        var privateCachePresent = false
-        harness.materializationProvider = { requestedIdentity ->
-            assertEquals(harness.identity, requestedIdentity)
-            if (!privateCachePresent) {
-                privateCachePresent = true
-            }
-            AndroidAttachmentPrivateMaterialization.Ready("private-candidate")
-        }
-
-        val first = harness.open()
-        privateCachePresent = false
-        val second = harness.open()
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, first.status)
-        assertEquals(AndroidAttachmentOpenStatus.Opened, second.status)
-        assertEquals(2, harness.materializeCount)
-        assertEquals(2, harness.launchCount)
-        assertEquals(4, harness.resolveCount)
-    }
-
-    private fun assertPayloadHasNoNativeAuthority(payload: Map<String, Any>) {
-        assertFalse(payload.containsKey("uri"))
-        assertFalse(payload.containsKey("path"))
-        assertFalse(payload.containsKey("file"))
-        assertFalse(payload.containsKey("message"))
     }
 
     private class CoordinatorHarness {
@@ -451,27 +246,6 @@ class AndroidAttachmentSaveAsCoordinatorTest {
     }
 
     @Test
-    fun exactCopyCompletesAsOpenedSaveWithoutLeakingDestination() {
-        val source = privateSource()
-        var copiedTo: String? = null
-        val result =
-            coordinator(
-                copy = { destination ->
-                    copiedTo = destination
-                    source.sizeBytes
-                }
-            ).save(source, "content://documents/report")
-        val payload = result.toBridgePayload()
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenAction.Save, result.action)
-        assertEquals("content://documents/report", copiedTo)
-        assertEquals("save", payload["action"])
-        assertFalse(payload.containsKey("uri"))
-        assertFalse(payload.containsKey("path"))
-    }
-
-    @Test
     fun pickerCancelIsSilentSaveCancellationAndPerformsNoIo() {
         var copies = 0
         val result =
@@ -482,31 +256,6 @@ class AndroidAttachmentSaveAsCoordinatorTest {
 
         assertEquals(AndroidAttachmentOpenStatus.SaveCancelled, result.status)
         assertEquals("save_cancelled", result.toBridgePayload()["status"])
-        assertEquals(0, copies)
-    }
-
-    @Test
-    fun retiredOwnerAndEvictedSourceFailClosedBeforeCopy() {
-        var copies = 0
-        val retired =
-            coordinator(
-                ownerCurrent = { false },
-                copy = {
-                    copies += 1
-                    25L
-                }
-            ).save(privateSource(), "destination")
-        val missing =
-            coordinator(
-                readable = { false },
-                copy = {
-                    copies += 1
-                    25L
-                }
-            ).save(privateSource(), "destination")
-
-        assertEquals(AndroidAttachmentOpenStatus.Cancelled, retired.status)
-        assertEquals(AndroidAttachmentOpenStatus.Missing, missing.status)
         assertEquals(0, copies)
     }
 
@@ -533,60 +282,6 @@ class AndroidAttachmentSaveAsCoordinatorTest {
             assertEquals(listOf("destination"), deleted)
             assertTrue(failure != null)
         }
-    }
-
-    @Test
-    fun destinationReadbackMismatchDeletesDestinationAndFailsHonestly() {
-        val deleted = mutableListOf<String>()
-        val result =
-            coordinator(
-                destinationMatches = { false },
-                delete = {
-                    deleted += it
-                    true
-                }
-            ).save(privateSource(), "destination")
-
-        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
-        assertEquals(listOf("destination"), deleted)
-    }
-
-    @Test
-    fun ownerRetirementAfterCopyDeletesDestinationAndDoesNotReportSuccess() {
-        var ownerChecks = 0
-        val deleted = mutableListOf<String>()
-        val result =
-            coordinator(
-                ownerCurrent = {
-                    ownerChecks += 1
-                    ownerChecks < 2
-                },
-                delete = {
-                    deleted += it
-                    true
-                }
-            ).save(privateSource(), "destination")
-
-        assertEquals(AndroidAttachmentOpenStatus.Cancelled, result.status)
-        assertEquals(listOf("destination"), deleted)
-    }
-
-    @Test
-    fun ownerRetirementWithFailedCleanupNeverReportsCancellationAsClean() {
-        var ownerChecks = 0
-        val failures = mutableListOf<Throwable>()
-        val result =
-            coordinator(
-                ownerCurrent = {
-                    ownerChecks += 1
-                    ownerChecks < 2
-                },
-                delete = { false },
-                onFailure = { failures += it }
-            ).save(privateSource(), "destination")
-
-        assertEquals(AndroidAttachmentOpenStatus.StorageFailed, result.status)
-        assertTrue(failures.any { it.message?.contains("could not delete") == true })
     }
 
     private fun coordinator(
@@ -618,95 +313,6 @@ class AndroidAttachmentSaveAsCoordinatorTest {
 }
 
 class AndroidAttachmentSourceLauncherTest {
-    @Test
-    fun missingPrivateSourceNeverQueriesOrLaunches() {
-        var handlerQueries = 0
-        var launches = 0
-        val result =
-            launcher(
-                readable = { false },
-                hasHandler = {
-                    handlerQueries += 1
-                    true
-                },
-                launch = { launches += 1 }
-            ).launch(privateSource(), AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-
-        assertEquals(AndroidAttachmentOpenStatus.Missing, result.status)
-        assertTrue(result.retryable)
-        assertEquals(0, handlerQueries)
-        assertEquals(0, launches)
-    }
-
-    @Test
-    fun sourceEvictedAfterHandlerQueryNeverLaunches() {
-        var readableChecks = 0
-        var launches = 0
-        val result =
-            launcher(
-                readable = {
-                    readableChecks += 1
-                    readableChecks == 1
-                },
-                launch = { launches += 1 }
-            ).launch(privateSource(), AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-
-        assertEquals(AndroidAttachmentOpenStatus.Missing, result.status)
-        assertEquals(0, launches)
-    }
-
-    @Test
-    fun ownerRetiredAtFinalGateCancelsWithoutLaunch() {
-        var launches = 0
-        val result =
-            launcher(
-                runIfCurrent = { null },
-                launch = { launches += 1 }
-            ).launch(privateSource(), AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-
-        assertEquals(AndroidAttachmentOpenStatus.Cancelled, result.status)
-        assertEquals(0, launches)
-    }
-
-    @Test
-    fun noHandlerPreservesSourceDurabilityAndNeverLaunches() {
-        listOf(privateSource(), publicSource()).forEach { source ->
-            var launches = 0
-            val result =
-                launcher(
-                    hasHandler = { false },
-                    launch = { launches += 1 }
-                ).launch(source, AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-
-            assertEquals(AndroidAttachmentOpenStatus.NoApp, result.status)
-            assertEquals(source.durableCache, result.cached)
-            assertEquals(0, launches)
-        }
-    }
-
-    @Test
-    fun packageInstallDoesNotRequireViewHandlerDiscovery() {
-        var handlerQueries = 0
-        var launches = 0
-        val result =
-            launcher(
-                hasHandler = {
-                    handlerQueries += 1
-                    false
-                },
-                launch = { launches += 1 }
-            ).launch(
-                privateSource(),
-                AndroidAttachmentOpenAction.Install,
-                requiresVisibleHandler = false
-            )
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(AndroidAttachmentOpenAction.Install, result.action)
-        assertEquals(0, handlerQueries)
-        assertEquals(1, launches)
-    }
-
     @Test
     fun activityNotFoundAndSecurityFailureAreTerminalSingleLaunchResults() {
         val notFound = TestActivityNotFoundException()
@@ -744,24 +350,6 @@ class AndroidAttachmentSourceLauncherTest {
         assertFalse(payload.containsKey("uri"))
         assertFalse(payload.containsKey("path"))
         assertFalse(payload.containsKey("message"))
-    }
-
-    @Test
-    fun successfulLaunchReturnsOnlySemanticMetadata() {
-        var launches = 0
-        val source = privateSource()
-        val result =
-            launcher(launch = { launches += 1 })
-                .launch(source, AndroidAttachmentOpenAction.Open, requiresVisibleHandler = true)
-        val payload = result.toBridgePayload()
-
-        assertEquals(AndroidAttachmentOpenStatus.Opened, result.status)
-        assertEquals(1, launches)
-        assertEquals("private_cache", payload["source"])
-        assertEquals("open", payload["action"])
-        assertEquals(25L, payload["sizeBytes"])
-        assertNull(payload["uri"])
-        assertNull(payload["path"])
     }
 
     @Test

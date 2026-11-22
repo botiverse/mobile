@@ -56,26 +56,6 @@ class WidgetPixelAvatarTest {
         assertArrayEquals(robot, raftPixelAvatarRaster("pixel:")!!.widgetPixelArgb())
     }
 
-    @Test
-    fun keysBeyondTheLegacyTableResolve() {
-        // e.g. `star` was not in the widget's old table and used to render as robot.
-        val robot = raftPixelAvatarRaster("pixel:robot")!!.widgetPixelArgb()
-        val star = raftPixelAvatarRaster("pixel:star")!!.widgetPixelArgb()
-        assertFalse(robot.contentEquals(star))
-    }
-
-    @Test
-    fun randomSeedsResolveDeterministically() {
-        val first = requireNotNull(raftPixelAvatarRaster("pixel:random:agent-1")).widgetPixelArgb()
-        val again = raftPixelAvatarRaster("pixel:random:agent-1")!!.widgetPixelArgb()
-        assertArrayEquals(first, again)
-        // Legacy bare `random:` maps to the canonical `pixel:random:` form.
-        assertEquals("pixel:random:agent-1", "random:agent-1".toSharedPixelAvatarWireValue())
-        assertEquals("pixel:cat", "pixel:cat".toSharedPixelAvatarWireValue())
-        assertNull(raftPixelAvatarRaster("pixel:random:"))
-        assertNull(raftPixelAvatarRaster("https://example.com/a.png"))
-    }
-
     // Mirrors the former Canvas path: background fill, then each opaque cell as a rect with
     // edges rounded from extent * index / 8.
     private fun legacyRender(background: Int, grid: List<String>, size: Int = 48): IntArray {

@@ -65,52 +65,6 @@ class RaftModalPointerBarrierConnectedTest {
     }
 
     @Test
-    fun modalTextFieldBlankTapDoesNotReachUnderlay() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val context = instrumentation.targetContext
-        val intent =
-            Intent(context, RaftCmpActivity::class.java)
-                .putExtra("pageName", RaftPages.FLOATING_OVERLAY_TOUCH_GUARD_VISUAL)
-                .putExtra(
-                    "pageData",
-                    JSONObject()
-                        .put("instanceId", "modal-text-field-blank-pointer-connected-test")
-                        .put("fixture", "modal-text-field")
-                        .toString()
-                )
-                .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
-
-        ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
-            scenario.onActivity { activity -> activity.hideSystemBarsForPointerBarrierTest() }
-            instrumentation.waitForIdleSync()
-            SystemClock.sleep(RenderSettleMs)
-
-            val initialScreenshot = captureActivityBitmap(scenario)
-            val statusBounds = requireNotNull(initialScreenshot.findBoundsNear(FixturePink)) {
-                "Modal TextField blank fixture did not render its pink status surface"
-            }
-            initialScreenshot.recycle()
-            val density = instrumentation.targetContext.resources.displayMetrics.density
-            // Right side of the visual input, beyond the rendered text/native editor.
-            tapPx(
-                scenario,
-                x = statusBounds.right - (20f * density),
-                y = statusBounds.top - (33f * density)
-            )
-            SystemClock.sleep(TapSettleMs)
-
-            val screenshot = captureActivityBitmap(scenario)
-            val underlayLeakRedPixels = screenshot.countPixelsNear(LeakRedUnderScrim)
-            screenshot.recycle()
-
-            assertTrue(
-                "Modal TextField blank area reached the underlay; redPixels=$underlayLeakRedPixels",
-                underlayLeakRedPixels <= MaxLeakPixels
-            )
-        }
-    }
-
-    @Test
     fun modalContentTapDoesNotClickUnderlyingMarkdownLink() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext

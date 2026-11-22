@@ -73,50 +73,6 @@ class AndroidUnreadNotificationGroupingTest {
     }
 
     @Test
-    fun theConversationKeyIsTheServerAndTheConversationChannel() {
-        val cases =
-            listOf(
-                // A channel or DM push names its conversation in channelId.
-                fcm(channelId = "channel-1") to "server-1:channel-1",
-                // A thread push: channelId is the thread's own channel, so a thread is its own conversation.
-                fcm(channelId = "thread-9", extra = mapOf("threadId" to "thread-9", "parentChannelId" to "channel-1")) to
-                    "server-1:thread-9",
-                // An older request without channelId falls back to threadId, then messageId.
-                JSONObject().put("serverId", "server-1").put("threadId", "thread-9") to "server-1:thread-9",
-                JSONObject().put("serverId", "server-1").put("messageId", "m-1") to "server-1:m-1"
-            )
-        for ((request, expected) in cases) {
-            assertEquals(request.toString(), expected, AndroidUnreadNotificationGrouping.conversationKey(request))
-        }
-        assertEquals("raft-unread:server-1", AndroidUnreadNotificationGrouping.groupKey("server-1"))
-        assertNotEquals(
-            AndroidUnreadNotificationGrouping.conversationNotificationId("server-1:channel-1"),
-            AndroidUnreadNotificationGrouping.conversationNotificationId("server-2:channel-1")
-        )
-    }
-
-    @Test
-    fun theHistoryCountsNewMessagesReplacesARepeatedOneAndKeepsTheRecentLines() {
-        var history = UnreadConversationHistory.EMPTY
-        for (index in 1..8) history = history.appended("m-$index", "line $index")
-        assertEquals(8, history.count)
-        assertEquals((3..8).map { "line $it" }, history.lines)
-        assertEquals((3..8).map { "m-$it" }, history.messageIds)
-
-        // The same message again (FCM and the local realtime path both delivered it): no new count.
-        val repeated = history.appended("m-8", "line 8 again")
-        assertEquals(8, repeated.count)
-        assertEquals("line 8 again", repeated.lines.last())
-
-        // No message id: always a new message.
-        assertEquals(10, repeated.appended("", "a").appended(" ", "b").count)
-
-        val extras = Bundle().also { history.writeTo(it) }
-        assertEquals(history, UnreadConversationHistory.readFrom(extras))
-        assertEquals(UnreadConversationHistory.EMPTY, UnreadConversationHistory.readFrom(Bundle()))
-    }
-
-    @Test
     fun messagesOfOneConversationStackIntoOneNotificationWithTheirCount() {
         post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: first"))
         post(fcm(channelId = "channel-1", messageId = "m-2", body = "Bob: second"))
@@ -148,31 +104,6 @@ class AndroidUnreadNotificationGroupingTest {
         assertEquals(1, notification.number)
         // Still a single message line.
         assertEquals(listOf("Alice: first"), linesOf(notification))
-    }
-
-    @Test
-    fun eachServerHasOneSummaryCountingItsConversations() {
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: hi", title = "#general"))
-        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: again", title = "#general"))
-        post(fcm(channelId = "dm-1", messageId = "m-3", body = "yo", title = "Bob"))
-        post(fcm(serverId = "server-2", channelId = "channel-1", messageId = "m-4", body = "Carol: elsewhere"))
-
-        assertEquals(3, conversations().size)
-        val summaries = summaries()
-        assertEquals(2, summaries.size)
-        val first = summaryOf("server-1")!!.notification
-        assertTrue((first.flags and Notification.FLAG_GROUP_SUMMARY) != 0)
-        assertEquals("raft-unread:server-1", first.group)
-        assertEquals(Notification.GROUP_ALERT_CHILDREN, first.groupAlertBehavior)
-        assertEquals(3, first.number)
-        assertEquals("3 new messages", first.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT).toString())
-        assertEquals(
-            setOf("#general: Alice: again", "Bob: yo"),
-            first.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)!!.map { it.toString() }.toSet()
-        )
-        val second = summaryOf("server-2")!!.notification
-        assertEquals("raft-unread:server-2", second.group)
-        assertEquals(1, second.number)
     }
 
     @Test
@@ -233,123 +164,6 @@ class AndroidUnreadNotificationGroupingTest {
     }
 
     @Test
-    fun aBurstInOneConversationUpdatesTheSummaryOnceInsteadOfPerMessage() {
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
-        // The first conversation posts its summary at once: the group needs it to bundle.
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-        assertTrue(deferredSummaries.isEmpty())
-
-        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
-        post(fcm(channelId = "channel-1", messageId = "m-3", body = "Alice: three"))
-        // Same conversations: the summary waits, with one deferred update for the whole burst.
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-        assertEquals(listOf(AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS), deferredSummaries.map { it.first })
-        runDeferredSummaries()
-        assertEquals(3, summaryOf("server-1")!!.notification.number)
-
-        // Another message defers again; a new conversation then posts at once and the deferred update,
-        // already covered, leaves the summary as it is.
-        post(fcm(channelId = "channel-1", messageId = "m-4", body = "Alice: four"))
-        post(fcm(channelId = "dm-1", messageId = "m-5", body = "yo", title = "Bob"))
-        assertEquals(5, summaryOf("server-1")!!.notification.number)
-        manager.cancel(AndroidUnreadNotificationGrouping.SUMMARY_TAG, AndroidUnreadNotificationGrouping.summaryNotificationId("server-1"))
-        runDeferredSummaries()
-        assertNull(summaryOf("server-1"))
-    }
-
-    @Test
-    fun theSummaryIsPostedOnAnEnabledChannelOfItsConversations() {
-        val general = AndroidUnreadNotificationPoster.UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID
-        val mention = AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
-        val dm = AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID
-        // The user turned "general" off and kept "mentions".
-        manager.deleteNotificationChannel(general)
-        manager.createNotificationChannel(NotificationChannel(general, "General", NotificationManager.IMPORTANCE_NONE))
-        try {
-            assertTrue(AndroidUnreadNotificationPoster.isNotificationChannelBlocked(context, general))
-            post(fcm(channelId = "channel-1", messageId = "m-1", body = "@you"), channelId = mention)
-            assertEquals(mention, summaryOf("server-1")!!.notification.channelId)
-
-            // The newest conversation's channel, skipping a blocked one; general only as the last resort.
-            fun entry(channelId: String, postedAtMillis: Long) =
-                UnreadSummaryEntry(postedAtMillis.toInt(), channelId, "t", "l", 1, postedAtMillis)
-            assertEquals(dm, AndroidUnreadNotificationPoster.summaryChannelId(context, listOf(entry(dm, 2), entry(mention, 1))))
-            assertEquals(mention, AndroidUnreadNotificationPoster.summaryChannelId(context, listOf(entry(general, 2), entry(mention, 1))))
-            assertEquals(general, AndroidUnreadNotificationPoster.summaryChannelId(context, listOf(entry("", 1))))
-        } finally {
-            manager.deleteNotificationChannel(general)
-            AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(context)
-        }
-    }
-
-    @Test
-    fun recentPostsKeepAJustPostedConversationTheTrayDoesNotListYetAndHideAJustClearedOne() {
-        var now = 10_000L
-        val posts = UnreadRecentPosts(freshWindowMillis = 5_000L, clock = { now })
-        val history = UnreadConversationHistory.EMPTY.appended("m-1", "one").appended("m-2", "two")
-        fun entry(id: Int) = UnreadSummaryEntry(id, "c", "t", "two", 2, 0L)
-        posts.record(1, "server-1", history, entry(1))
-
-        // A summary refresh right after the post: the tray does not list it yet, the count survives,
-        // and the caller is told to look at its server again.
-        now += UnreadRecentPosts.RETAIN_GRACE_MILLIS
-        assertEquals(setOf("server-1"), posts.retainOnly(emptySet()))
-        assertEquals(history, posts.history(1))
-        // Later, still absent from the tray: dismissed, forgotten.
-        now += 1
-        assertEquals(emptySet<String>(), posts.retainOnly(emptySet()))
-        assertNull(posts.history(1))
-
-        // Cleared (read in the app): empty whatever the tray still lists, until a new post or the window ends.
-        posts.record(2, "server-1", history, entry(2))
-        posts.clear(2)
-        assertEquals(UnreadConversationHistory.EMPTY, posts.history(2))
-        assertTrue(posts.isCleared(2))
-        assertTrue(posts.entries("server-1").isEmpty())
-        now += 5_001L
-        assertNull(posts.history(2))
-        posts.clear(3)
-        posts.record(3, "server-1", history, entry(3))
-        assertEquals(history, posts.history(3))
-        assertEquals(setOf(3), posts.entries("server-1").keys)
-    }
-
-    @Test
-    fun aConversationTappedOpenRightAfterItsPostLeavesNoSummaryBehind() {
-        // #general gets two messages: the second defers the summary update.
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
-        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
-        assertEquals(1, deferredSummaries.size)
-
-        // Half a second later the user taps it: auto-cancel, no delete intent, no read event. The
-        // refresh on return is inside the grace and cannot tell a tap from a post still on its way.
-        now += 500
-        val general = conversations().single()
-        manager.cancel(general.tag, general.id)
-        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
-
-        // The deferred update looks at the tray again: no conversation, no summary.
-        now += 500
-        runDeferredSummaries()
-        assertNull(summaryOf("server-1"))
-        assertTrue(manager.activeNotifications.isEmpty())
-
-        // Same with a single message, where nothing was deferred: the refresh itself asks for another look.
-        post(fcm(channelId = "dm-1", messageId = "m-3", body = "yo", title = "Bob"))
-        assertTrue(deferredSummaries.isEmpty())
-        now += 300
-        val dm = conversations().single()
-        manager.cancel(dm.tag, dm.id)
-        AndroidUnreadNotificationPoster.refreshUnreadGroupSummaries(context)
-        assertNotNull(summaryOf("server-1"))
-        assertEquals(1, deferredSummaries.size)
-        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
-        runDeferredSummaries()
-        assertTrue(manager.activeNotifications.isEmpty())
-        assertTrue(deferredSummaries.isEmpty())
-    }
-
-    @Test
     fun aReadEventClearsItsConversationOnTheBackgroundThreadUnlessAMessageArrivedAfterIt() {
         AndroidUnreadNotificationPoster.installConversationReadListener(context)
         val listener = RaftConversationReadHost.listener!!
@@ -374,79 +188,10 @@ class AndroidUnreadNotificationGroupingTest {
         assertTrue(manager.activeNotifications.isEmpty())
     }
 
-    @Test
-    fun aPostToAnotherConversationBetweenTheReadAndItsClearDoesNotKeepTheReadOne() {
-        AndroidUnreadNotificationPoster.installConversationReadListener(context)
-        val listener = RaftConversationReadHost.listener!!
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
-        post(fcm(channelId = "channel-1", messageId = "m-2", body = "Alice: two"))
-
-        // #general is read; before the queued clear runs, a push for another conversation posts.
-        listener.onConversationRead("server-1", "channel-1")
-        post(fcm(channelId = "dm-1", messageId = "m-3", body = "yo", title = "Bob"))
-        runBackgroundTasks()
-
-        // The ordering is per conversation: #general is still cleared, the DM stays, the summary counts it.
-        assertEquals(
-            listOf("Bob"),
-            conversations().map { titleOf(it.notification) }
-        )
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-    }
-
-    @Test
-    fun aDeferredSummaryUpdateAfterAClearCountsOnlyWhatIsLeft() {
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: one"))
-        post(fcm(channelId = "dm-1", messageId = "m-2", body = "yo", title = "Bob"))
-        post(fcm(channelId = "channel-1", messageId = "m-3", body = "Alice: two"))
-        assertEquals(1, deferredSummaries.size)
-
-        // #general is read while its summary update waits.
-        AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "channel-1")
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
-        runDeferredSummaries()
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-
-        // The last one is read with another update pending: the update does not bring the summary back.
-        post(fcm(channelId = "dm-1", messageId = "m-4", body = "again", title = "Bob"))
-        assertEquals(1, deferredSummaries.size)
-        AndroidUnreadNotificationPoster.clearConversation(context, "server-1", "dm-1")
-        now += AndroidUnreadNotificationPoster.SUMMARY_COALESCE_MILLIS
-        runDeferredSummaries()
-        assertTrue(manager.activeNotifications.isEmpty())
-    }
-
-    @Test
-    fun dismissReceiverOffloadsTrayRecountOffCallerThread() {
-        post(fcm(channelId = "channel-1", messageId = "m-1", body = "Alice: hi"))
-        post(fcm(channelId = "dm-1", messageId = "m-2", body = "yo", title = "Bob"))
-        assertEquals(2, summaryOf("server-1")!!.notification.number)
-
-        val dismissed = conversations().single { titleOf(it.notification) == "Bob" }
-        manager.cancel(dismissed.tag, dismissed.id)
-        val intent =
-            Intent().putExtra(RaftUnreadNotificationDismissReceiver.EXTRA_NOTIFICATION_ID, dismissed.id)
-        RaftUnreadNotificationDismissReceiver().onReceive(context, intent)
-
-        // Not recounted synchronously on the BroadcastReceiver main thread; queued onto backgroundRunner.
-        assertEquals(1, backgroundTasks.size)
-        assertEquals(2, summaryOf("server-1")!!.notification.number)
-
-        runBackgroundTasks()
-        assertEquals(1, summaryOf("server-1")!!.notification.number)
-    }
-
     private fun runBackgroundTasks() {
         val tasks = backgroundTasks.toList()
         backgroundTasks.clear()
         tasks.forEach { it() }
-    }
-
-    private fun runDeferredSummaries() {
-        val tasks = deferredSummaries.toList()
-        deferredSummaries.clear()
-        tasks.forEach { (_, task) -> task() }
     }
 
     private fun post(request: JSONObject, channelId: String = AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID) {

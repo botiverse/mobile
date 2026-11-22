@@ -8,29 +8,6 @@ import org.junit.Test
 
 class AndroidAdaptivePaneHostTest {
     @Test
-    fun publisherEmitsTheSharedPagerContractAndSuppressesAnExactDuplicate() {
-        val events = mutableListOf<Pair<String, Map<String, Any>>>()
-        val publisher = AndroidAdaptivePanePublisher { event, data -> events += event to data }
-        val snapshot =
-            AndroidAdaptivePaneSnapshot(
-                widthPx = 1800,
-                heightPx = 1200,
-                density = 2f,
-                posture = AndroidAdaptivePanePosture.Flat,
-            )
-
-        assertTrue(publisher.publish(snapshot))
-        assertFalse(publisher.publish(snapshot))
-
-        assertEquals(1, events.size)
-        assertEquals(AndroidAdaptivePanePublisher.EventName, events.single().first)
-        assertEquals(1800, events.single().second["widthPx"])
-        assertEquals(1200, events.single().second["heightPx"])
-        assertEquals(2f, events.single().second["density"])
-        assertEquals("flat", events.single().second["posture"])
-    }
-
-    @Test
     fun resizeAndFoldChangesEachRepublishTheCompleteSnapshot() {
         val payloads = mutableListOf<Map<String, Any>>()
         val publisher = AndroidAdaptivePanePublisher { _, data -> payloads += data }

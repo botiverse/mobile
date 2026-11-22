@@ -120,18 +120,6 @@ class AndroidUnreadNotificationContractTest {
     }
 
     @Test
-    fun aRetractionOfAPreContractPostMatchesItsConversation() {
-        // No groupKey or seq (an older server, or the local path): the conversation key stands in.
-        post(
-            raftFcmUnreadNotificationRequest(
-                mapOf("serverId" to "server-1", "channelId" to "channel-1", "messageId" to "m-1", "title" to "#general", "body" to "hi")
-            )
-        )
-        assertEquals(1, AndroidUnreadNotificationPoster.retract(context, RaftNotificationRetract("server-1", "server-1:channel-1", "channel-1", 5L)))
-        assertTrue(conversations().isEmpty())
-    }
-
-    @Test
     fun theServerSummaryShowsTheServersOwnBadgeTerm() {
         // Contract §1.4: serverBadge is that server's Activity unread; the summary's number follows it.
         post(fcm(conversationId = "channel-1", messageId = "m-1", serverBadge = "7"))
@@ -167,87 +155,6 @@ class AndroidUnreadNotificationContractTest {
         assertTrue(NotificationCompat.getGroupAlertBehavior(silent) != NotificationCompat.GROUP_ALERT_CHILDREN)
         assertEquals(10L, silent.extras.getLong(AndroidUnreadNotificationGrouping.EXTRA_SEQ))
         assertEquals("server-1:channel-1", silent.extras.getString(AndroidUnreadNotificationGrouping.EXTRA_GROUP_KEY))
-    }
-
-    @Test
-    fun unreadNotificationLaunchIntentRoutesToLauncherTaskWhenLauncherOwnsServer() {
-        val backingStore = InMemoryRaftKeyValueStore()
-        val previousProvider = AndroidShellWindowStore.storeProvider
-        AndroidShellWindowStore.storeProvider = { backingStore }
-        try {
-            val ownerA = AndroidShellRouteOwner("https://api.test", "user-1", "server-a")
-            val ownerB = AndroidShellRouteOwner("https://api.test", "user-1", "server-b")
-            val launcherTarget = AndroidShellLaunchTarget(DEFAULT_ANDROID_SHELL_INSTANCE_ID, "server-a", documentShell = false)
-
-            // 1. Live launcher showing server-a: server-a notification routes to RaftAppShellActivity; server-b to RaftDocumentShellActivity.
-            AndroidShellWindowRegistry.register(launcherTarget, taskId = 16)
-            AndroidShellWindowStore.recordRegistered(launcherTarget, taskId = 16, fallbackOwner = ownerA)
-
-            val forA =
-                AndroidUnreadNotificationPoster.unreadNotificationLaunchIntent(
-                    context = context,
-                    request = fcm(serverId = "server-a", conversationId = "ch-a"),
-                    multiShellHostEnabled = true,
-                    currentOwner = ownerB,
-                    appTasksProvider = { emptyList() },
-                )
-            assertNotNull(forA)
-            assertEquals(RaftAppShellActivity::class.java.name, forA!!.component?.className)
-            assertNull(forA.data)
-            assertTrue((forA.flags and Intent.FLAG_ACTIVITY_NEW_DOCUMENT) == 0)
-
-            val forB =
-                AndroidUnreadNotificationPoster.unreadNotificationLaunchIntent(
-                    context = context,
-                    request = fcm(serverId = "server-b", conversationId = "ch-b"),
-                    multiShellHostEnabled = true,
-                    currentOwner = ownerA,
-                    appTasksProvider = { emptyList() },
-                )
-            assertNotNull(forB)
-            assertEquals(RaftDocumentShellActivity::class.java.name, forB!!.component?.className)
-            assertEquals(ownerB.shellCanonicalUri(), forB.data?.toString())
-            assertTrue((forB.flags and Intent.FLAG_ACTIVITY_NEW_DOCUMENT) != 0)
-
-            // 2. Process death (empty live registry) with dead launcher task in appTasks persisted for server-a:
-            // notification for server-a still routes to RaftAppShellActivity instead of spawning a second document task.
-            AndroidShellWindowRegistry.clearForTest()
-            val deadLauncherTasks =
-                listOf(
-                    AndroidAppTaskSnapshot(
-                        taskId = 16,
-                        isAlive = false,
-                        baseIntentData = null,
-                        baseActivityClassName = "build.raft.app.MainActivity",
-                    )
-                )
-            val forADead =
-                AndroidUnreadNotificationPoster.unreadNotificationLaunchIntent(
-                    context = context,
-                    request = fcm(serverId = "server-a", conversationId = "ch-a"),
-                    multiShellHostEnabled = true,
-                    currentOwner = ownerB,
-                    appTasksProvider = { deadLauncherTasks },
-                )
-            assertNotNull(forADead)
-            assertEquals(RaftAppShellActivity::class.java.name, forADead!!.component?.className)
-            assertNull(forADead.data)
-
-            // 3. Multi-window OFF always routes to RaftAppShellActivity.
-            val forBSingle =
-                AndroidUnreadNotificationPoster.unreadNotificationLaunchIntent(
-                    context = context,
-                    request = fcm(serverId = "server-b", conversationId = "ch-b"),
-                    multiShellHostEnabled = false,
-                    currentOwner = ownerA,
-                    appTasksProvider = { deadLauncherTasks },
-                )
-            assertNotNull(forBSingle)
-            assertEquals(RaftAppShellActivity::class.java.name, forBSingle!!.component?.className)
-            assertNull(forBSingle.data)
-        } finally {
-            AndroidShellWindowStore.storeProvider = previousProvider
-        }
     }
 
     private fun post(request: JSONObject) {

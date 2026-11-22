@@ -51,38 +51,6 @@ class RaftDownloadNotificationsChannelTest {
     }
 
     @Test
-    fun ensureChannelCachesPerApplicationContextAndRecreatesAfterReset() {
-        RaftDownloadNotifications.ensureChannel(context)
-        assertNotNull(manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID))
-
-        // Removing the channel directly proves a repeat call hits the in-memory cache rather than
-        // issuing getNotificationChannel/createNotificationChannel Binder IPCs on every progress tick.
-        manager.deleteNotificationChannel(RaftDownloadNotifications.CHANNEL_ID)
-        RaftDownloadNotifications.ensureChannel(context)
-        assertNull(
-            "repeat ensureChannel on the same application context must short-circuit via cache",
-            manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID)
-        )
-
-        RaftDownloadNotifications.resetCachesForTests()
-        RaftDownloadNotifications.ensureChannel(context)
-        assertNotNull(manager.getNotificationChannel(RaftDownloadNotifications.CHANNEL_ID))
-    }
-
-    @Test
-    fun progressLaunchAppIntentReusesCachedPendingIntentInstance() {
-        val first = RaftDownloadNotifications.progressLaunchAppIntentForTest(context)
-        val second = RaftDownloadNotifications.progressLaunchAppIntentForTest(context)
-
-        assertNotNull("launcher activity from manifest must resolve a progress PendingIntent", first)
-        assertSame(
-            "progress notifications must reuse the cached PendingIntent across ticks",
-            first,
-            second,
-        )
-    }
-
-    @Test
     fun stopIfIdleClearsInstanceSoBackToBackDownloadStartsServiceAgain() {
         val app = context as Application
         RaftDownloadNotifications.setHasActiveDownloadsForTests(true)

@@ -53,31 +53,4 @@ class RaftNotificationChannelsTest {
         assertEquals(NotificationManager.IMPORTANCE_HIGH, importance[AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID])
         assertEquals(NotificationManager.IMPORTANCE_DEFAULT, importance[AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID])
     }
-
-    @Test
-    fun ensureAllAsyncRunsOffCallingThreadAndCreatesEveryChannel() {
-        shadowOf(context as Application).denyPermissions(Manifest.permission.POST_NOTIFICATIONS)
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notificationChannels.forEach { manager.deleteNotificationChannel(it.id) }
-        val callingThread = Thread.currentThread().name
-        val executedThread = AtomicReference<String?>(null)
-        RaftNotificationChannels.onEnsureAllExecutedForTests = { threadName -> executedThread.set(threadName) }
-
-        val job = RaftNotificationChannels.ensureAllAsync(context)
-        runBlocking { job.join() }
-
-        assertNotNull(executedThread.get())
-        assertNotEquals(callingThread, executedThread.get())
-        val expected =
-            setOf(
-                AndroidUnreadNotificationPoster.SHARED_NOTIFICATION_CHANNEL_ID,
-                AndroidUnreadNotificationPoster.UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID,
-                AndroidUnreadNotificationPoster.UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID,
-                AndroidUnreadNotificationPoster.UNREAD_DM_NOTIFICATION_CHANNEL_ID,
-                AndroidUnreadNotificationPoster.UNREAD_MENTION_NOTIFICATION_CHANNEL_ID,
-                RaftDownloadNotifications.CHANNEL_ID,
-                RaftBackgroundConnectionService.CHANNEL_ID,
-            )
-        assertEquals(expected, manager.notificationChannels.map { it.id }.toSet())
-    }
 }

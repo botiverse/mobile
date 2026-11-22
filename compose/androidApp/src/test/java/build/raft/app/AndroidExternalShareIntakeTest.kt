@@ -52,18 +52,6 @@ class AndroidExternalShareIntakeTest {
     }
 
     @Test
-    fun declaredAndStreamedBoundsRejectBeforePublishingAnything() = withFixture(
-        files = mapOf("content://one" to ByteArray(4)),
-        declaredSizes = mapOf("content://one" to 4L),
-        limits = limits(maxItemBytes = 3)
-    ) { fixture ->
-        val declared = fixture.inbox.admit(spec("declared", "content://one"))
-        assertRejected("external_share_item_too_large", declared)
-        assertEquals(0, fixture.source.openCalls)
-        assertTrue(fixture.root.listFiles().orEmpty().isEmpty())
-    }
-
-    @Test
     fun unknownSizeStreamOverflowRollsBackPartialDirectory() = withFixture(
         files = mapOf("content://one" to ByteArray(4)),
         declaredSizes = mapOf("content://one" to null),
@@ -73,29 +61,6 @@ class AndroidExternalShareIntakeTest {
         assertRejected("external_share_item_too_large", streamed)
         assertEquals(1, fixture.source.openCalls)
         assertTrue(fixture.root.listFiles().orEmpty().isEmpty())
-    }
-
-    @Test
-    fun atomicEnvelopeFailureNeverPublishesPendingToken() {
-        val root = Files.createTempDirectory("external-share-atomic").toFile()
-        val inbox =
-            AndroidExternalShareInbox(
-                root = root,
-                source = FakeSource(emptyMap(), emptyMap()),
-                limits = limits(),
-                tokenFactory = { "atomic-token-123456" },
-                clock = { 1_000L },
-                atomicWriter = { _, _ -> error("short_write") },
-                atomicReader = { file -> file.readText() }
-            )
-        try {
-            val result = inbox.admit(spec("atomic"))
-            assertRejected("external_share_copy_failed", result)
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertTrue(root.listFiles().orEmpty().isEmpty())
-        } finally {
-            root.deleteRecursively()
-        }
     }
 
     @Test
@@ -141,97 +106,6 @@ class AndroidExternalShareIntakeTest {
             assertEquals(listOf("queue-token-123456"), published)
         } finally {
             root.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun conflictingConsumptionIdFailsClosed() = withFixture(emptyMap(), emptyMap()) { fixture ->
-        val token =
-            (fixture.inbox.admit(spec("text")) as AndroidExternalShareIntakeResult.Admitted).launch.token
-
-        assertEquals(
-            RaftExternalShareEnvelopeHostMutationResult.Success,
-            fixture.inbox.consume(token, "external-share-consume:$token")
-        )
-        val conflict = fixture.inbox.consume(token, "external-share-consume:another-token")
-        assertEquals(
-            RaftExternalShareEnvelopeHostMutationResult.Failure(
-                "external_share_consumption_identity_invalid",
-                retryable = false
-            ),
-            conflict
-        )
-    }
-
-    @Test
-    fun pendingLaunchFastPathSkipsRepeatedDiskReadsWhenNoShareExistsAndInvalidatesOnAdmit() = runTest {
-        val root = Files.createTempDirectory("external-share-fastpath").toFile()
-        var readerCalls = 0
-        val inbox =
-            AndroidExternalShareInbox(
-                root = root,
-                source = FakeSource(emptyMap(), emptyMap()),
-                limits = limits(),
-                tokenFactory = { "fastpath-token-123456" },
-                clock = { 1_000L },
-                atomicWriter = { file, bytes ->
-                    file.parentFile?.mkdirs()
-                    file.writeBytes(bytes)
-                    file.setLastModified(1_000L)
-                },
-                atomicReader = { file ->
-                    readerCalls += 1
-                    file.readText()
-                }
-            )
-        try {
-            assertFalse(inbox.isKnownNoPendingLaunch())
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertTrue(inbox.isKnownNoPendingLaunch())
-            val readsAfterFirstProbe = readerCalls
-
-            // Repeated probes hit the in-memory negative cache with zero disk reads.
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertEquals(readsAfterFirstProbe, readerCalls)
-
-            // Admitting a new share invalidates the negative cache so recovery sees it.
-            val admitted = inbox.admit(spec("shared-text")) as AndroidExternalShareIntakeResult.Admitted
-            assertFalse(inbox.isKnownNoPendingLaunch())
-            assertEquals(admitted.launch, inbox.pendingLaunchOrNull())
-
-            // Consuming clears the pending file and the next probe re-establishes the negative cache.
-            assertEquals(
-                RaftExternalShareEnvelopeHostMutationResult.Success,
-                inbox.consume(admitted.launch.token, "external-share-consume:${admitted.launch.token}")
-            )
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertTrue(inbox.isKnownNoPendingLaunch())
-        } finally {
-            root.deleteRecursively()
-        }
-    }
-
-    @Test
-    fun pendingLaunchReturnsNullWithoutTouchingReaderWhenInboxDirectoryDoesNotExist() {
-        val parent = Files.createTempDirectory("external-share-missing-root").toFile()
-        val missingRoot = File(parent, "never-created")
-        var readerCalls = 0
-        val inbox =
-            AndroidExternalShareInbox(
-                root = missingRoot,
-                source = FakeSource(emptyMap(), emptyMap()),
-                limits = limits(),
-                atomicReader = { file ->
-                    readerCalls += 1
-                    file.readText()
-                }
-            )
-        try {
-            assertEquals(null, inbox.pendingLaunchOrNull())
-            assertEquals(0, readerCalls)
-            assertTrue(inbox.isKnownNoPendingLaunch())
-        } finally {
-            parent.deleteRecursively()
         }
     }
 

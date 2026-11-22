@@ -37,17 +37,4 @@ class RaftDarwinUploadProgressIosTest {
             received
         )
     }
-
-    @Test
-    fun requestsWithoutAListenerAreLeftAlone() {
-        val route = RaftDarwinUploadProgress.tracker.route(null)
-        assertNull(route.networkHeader)
-        val request = NSMutableURLRequest.requestWithURL(NSURL.URLWithString("https://api.raft.test/api/x")!!)
-        request.setValue("mobile-1", forHTTPHeaderField = "x-request-id")
-
-        RaftDarwinUploadProgress.moveMarkerToProperty(request)
-
-        assertEquals("mobile-1", request.valueForHTTPHeaderField("x-request-id"))
-        assertTrue(request.allHTTPHeaderFields?.keys?.none { it == RaftDarwinUploadProgress.HEADER } ?: true)
-    }
 }

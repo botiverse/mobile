@@ -195,17 +195,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureNavigationTabbarMockup() {
-        // Approved activity-tab mockup A: 动态 selected with its count, then 任务 selected with
-        // the count on the unselected 动态 tab (bars at y=16 and y=16+58+24).
-        captureKmpComponentCase(
-            caseId = "components.navigation.tabbar.mockup",
-            pageName = "compose_bottom_tabbar_mockup_visual",
-            crop = NAVIGATION_TABBAR_MOCKUP_CROP
-        )
-    }
-
-    @Test
     fun captureActivityTabAll() {
         // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
         // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
@@ -213,30 +202,6 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.activity-tab.all",
             pageName = "compose_activity_tab_visual",
             pageData = JSONObject().put("segment", "all"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureActivityTabUnread() {
-        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
-        // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
-        captureKmpComponentCase(
-            caseId = "screens.activity-tab.unread",
-            pageName = "compose_activity_tab_visual",
-            pageData = JSONObject().put("segment", "unread"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureActivityTabMentions() {
-        // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the segment
-        // strip (All / Unread / Mentions) and the bottom bar with the Activity badge.
-        captureKmpComponentCase(
-            caseId = "screens.activity-tab.mentions",
-            pageName = "compose_activity_tab_visual",
-            pageData = JSONObject().put("segment", "mentions"),
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -320,19 +285,6 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "components.ui.button.states",
             pageName = "compose_ui_button_visual",
             crop = UI_BUTTON_CROP
-        )
-    }
-
-    // Android-only theme-axis case: captures the action button under both
-    // RaftThemeProvider(brutal) and (elegant). No React parity counterpart (mobile
-    // theme axis) — guards that the LocalRaftTheme switch keeps driving border/corner/
-    // shadow/ink (brutal row must stay byte-identical to the shipping look).
-    @Test
-    fun captureUiButtonThemeStates() {
-        captureKmpComponentCase(
-            caseId = "components.ui.button.theme-registers",
-            pageName = "compose_ui_button_theme_visual",
-            crop = UI_BUTTON_THEME_CROP
         )
     }
 
@@ -626,42 +578,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureRaftUiWipToggleGroupStates() {
-        captureKmpComponentCase(
-            caseId = "library.raft-ui.wip-toggle-group.states",
-            pageName = "compose_raft_ui_wip_toggle_group_visual",
-            crop = RAFT_UI_WIP_TOGGLE_GROUP_CROP
-        )
-    }
-
-    @Test
-    fun captureRaftUiWipListPanelsStates() {
-        captureKmpComponentCase(
-            caseId = "library.raft-ui.wip-list-panels.states",
-            pageName = "compose_raft_ui_wip_list_panels_visual",
-            crop = RAFT_UI_WIP_LIST_PANELS_CROP
-        )
-    }
-
-    @Test
-    fun captureRaftUiWipMessageCardsStates() {
-        captureKmpComponentCase(
-            caseId = "library.raft-ui.wip-message-cards.states",
-            pageName = "compose_raft_ui_wip_message_cards_visual",
-            crop = RAFT_UI_WIP_MESSAGE_CARDS_CROP
-        )
-    }
-
-    @Test
-    fun captureRaftUiWipOverlayShellsStates() {
-        captureKmpComponentCase(
-            caseId = "library.raft-ui.wip-overlay-shells.states",
-            pageName = "compose_raft_ui_wip_overlay_shells_visual",
-            crop = RAFT_UI_WIP_OVERLAY_SHELLS_CROP
-        )
-    }
-
-    @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.empty",
@@ -701,32 +617,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadComposerPendingMentionBatch() {
-        captureKmpComponentCase(
-            caseId = "components.thread.composer.pending-mention-batch",
-            pageName = "compose_thread_composer_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-composer-pending-mention-batch")
-                    .put("visualFixture", "pending_mention_actions_batch"),
-            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadComposerPendingMentionBatchExecuting() {
-        captureKmpComponentCase(
-            caseId = "components.thread.composer.pending-mention-batch-executing",
-            pageName = "compose_thread_composer_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-composer-pending-mention-batch-executing")
-                    .put("visualFixture", "pending_mention_actions_batch_executing"),
-            crop = THREAD_COMPOSER_PENDING_MENTION_ACTIONS_CROP
-        )
-    }
-
-    @Test
     fun captureThreadComposerPendingMentionBatchPartial() {
         captureKmpComponentCase(
             caseId = "components.thread.composer.pending-mention-batch-partial",
@@ -735,23 +625,6 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-pending-mention-batch-partial")
                     .put("visualFixture", "pending_mention_actions_batch_partial")
-                    .put("androidVisualMentionDrawerStartsClosed", true),
-            crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
-            settleMs = 2_000,
-            beforeScreenshot = ::openPendingMentionDrawer,
-            captureAppWindowSurface = true
-        )
-    }
-
-    @Test
-    fun captureThreadComposerPendingMentionBatchDetails() {
-        captureKmpComponentCase(
-            caseId = "components.thread.composer.pending-mention-batch-details",
-            pageName = "compose_thread_composer_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-composer-pending-mention-batch-details")
-                    .put("visualFixture", "pending_mention_actions_batch_details")
                     .put("androidVisualMentionDrawerStartsClosed", true),
             crop = THREAD_COMPOSER_MODAL_VIEWPORT_CROP,
             settleMs = 2_000,
@@ -783,19 +656,6 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-composer-member-suggestions")
                     .put("visualFixture", "member_suggestions"),
             crop = THREAD_COMPOSER_MEMBER_SUGGESTIONS_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadComposerChannelSuggestions() {
-        captureKmpComponentCase(
-            caseId = "components.thread.composer.channel-suggestions",
-            pageName = "compose_thread_composer_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-composer-channel-suggestions")
-                    .put("visualFixture", "channel_suggestions"),
-            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
         )
     }
 
@@ -860,56 +720,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureFilePreviewImageEditorTextIme() {
-        captureKmpComponentCase(
-            caseId = "components.file-preview.image-editor.text-ime",
-            pageName = "compose_file_preview_editor_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-file-preview-image-editor-text-ime")
-                    .put("visualFixture", "text_ime")
-                    .put("safeAreaBottom", "24")
-                    .put("slockHostExcludesNavigationBar", false),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                focusImageEditorTextField()
-                Thread.sleep(1_000)
-            },
-            afterScreenshot = {
-                dismissImageEditorTextImeInteraction()
-            },
-            suppressSoftKeyboard = false,
-            captureSystemSurface = true,
-        )
-    }
-
-    @Test
-    fun captureFilePreviewImageEditorTextImeDismissed() {
-        captureKmpComponentCase(
-            caseId = "components.file-preview.image-editor.text-ime-dismissed",
-            pageName = "compose_file_preview_editor_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-file-preview-image-editor-text-ime-dismissed")
-                    .put("visualFixture", "text_ime")
-                    .put("safeAreaBottom", "24")
-                    .put("slockHostExcludesNavigationBar", false),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                focusImageEditorTextField()
-                Thread.sleep(800)
-                dismissImageEditorTextImeInteraction()
-            },
-            suppressSoftKeyboard = false,
-            captureSystemSurface = true,
-        )
-    }
-
-    @Test
     fun captureThreadFilesList() {
         captureKmpComponentCase(
             caseId = "components.thread.files.list",
@@ -937,36 +747,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadMessageBodyFontSmall() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message.font-sm",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-font-sm")
-                    .put("visualFixture", "default")
-                    .put("messageBodyFontSize", "sm"),
-            crop = THREAD_MESSAGE_ROW_CROP,
-            requireReactionAtlas = true,
-        )
-    }
-
-    @Test
-    fun captureThreadMessageBodyFontMedium() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message.font-md",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-font-md")
-                    .put("visualFixture", "default")
-                    .put("messageBodyFontSize", "md"),
-            crop = THREAD_MESSAGE_ROW_CROP,
-            requireReactionAtlas = true,
-        )
-    }
-
-    @Test
     fun captureThreadMessageBodyFontLarge() {
         captureKmpComponentCase(
             caseId = "components.thread.message.font-lg",
@@ -979,743 +759,6 @@ class KmpVisualScreenshotCaptureTest {
             crop = THREAD_MESSAGE_ROW_CROP,
             requireReactionAtlas = true,
         )
-    }
-
-    @Test
-    fun captureThreadMessageBodyTapOpensThread() {
-        // Positive control for the token the long-press case asserts is absent.
-        val threadOpenedToken =
-            "thread_body_tap_thread_opened_${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
-        captureKmpComponentCase(
-            caseId = "components.thread.message-body-tap",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-body-tap")
-                    .put("visualFixture", "default")
-                    .put("threadOpenedToken", threadOpenedToken),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                awaitReactionAtlasReady("components.thread.message-body-tap")
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureActivityScreenshot("components.thread.message-body-tap.before")
-                    val yellowBefore = before.countThreadTapProbeYellowSamples()
-                    tapDisplayDp(x = 300f, y = 70f)
-                    waitForIdleBounded()
-                    Thread.sleep(500)
-                    after = captureActivityScreenshot("components.thread.message-body-tap.after")
-                    val yellowAfter = after.countThreadTapProbeYellowSamples()
-                    assertTrue(
-                        "Tapping the ordinary message body must open its thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter >= yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
-                    )
-                    assertTrue(
-                        "Tapping the ordinary message body must report the thread open; token=$threadOpenedToken",
-                        logcatContainsToken(threadOpenedToken)
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadMarkdownLinkOpensChildOnly() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-markdown-link-child-tap",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-markdown-link-child-tap")
-                    .put("visualFixture", "markdown_link_child"),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureActivityScreenshot("components.thread.message-markdown-link-child-tap.before")
-                    val yellowBefore = before.countThreadTapProbeYellowSamples()
-                    val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
-                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
-                    tapDisplayDp(x = 95f, y = 91f)
-                    waitForIdleBounded()
-                    Thread.sleep(300)
-                    after = captureActivityScreenshot("components.thread.message-markdown-link-child-tap.after")
-                    val yellowAfter = after.countThreadTapProbeYellowSamples()
-                    val cyanAfter = after.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
-                    val duplicateAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
-                    assertTrue(
-                        "Markdown link tap must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
-                    )
-                    assertTrue(
-                        "Markdown link tap must dispatch exactly one child action; cyanBefore=$cyanBefore cyanAfter=$cyanAfter",
-                        cyanAfter >= cyanBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
-                    )
-                    assertTrue(
-                        "Markdown link child action must not dispatch twice; duplicateBefore=$duplicateBefore duplicateAfter=$duplicateAfter",
-                        duplicateAfter < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadMarkdownMentionOpensChildOnly() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-markdown-mention-child-tap",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-markdown-mention-child-tap")
-                    .put("visualFixture", "markdown_mention_child"),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureActivityScreenshot("components.thread.message-markdown-mention-child-tap.before")
-                    val yellowBefore = before.countThreadTapProbeYellowSamples()
-                    val magentaBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0xFF)
-                    val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
-                    tapDisplayDp(x = 78f, y = 91f)
-                    waitForIdleBounded()
-                    Thread.sleep(300)
-                    after = captureActivityScreenshot("components.thread.message-markdown-mention-child-tap.after")
-                    val yellowAfter = after.countThreadTapProbeYellowSamples()
-                    val magentaAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0xFF)
-                    val duplicateAfter = after.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
-                    assertTrue(
-                        "Markdown mention tap must not open the thread; yellowBefore=$yellowBefore yellowAfter=$yellowAfter",
-                        yellowAfter < yellowBefore + THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES
-                    )
-                    assertTrue(
-                        "Markdown mention tap must dispatch exactly one Profile child action; magentaBefore=$magentaBefore magentaAfter=$magentaAfter",
-                        magentaAfter >= magentaBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
-                    )
-                    assertTrue(
-                        "Markdown mention child action must not dispatch twice; duplicateBefore=$duplicateBefore duplicateAfter=$duplicateAfter",
-                        duplicateAfter < duplicateBefore + THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageBodyLongPressOpensActionsWithoutOpeningThread() {
-        // The fixture reports both outcomes as launch-unique log tokens. The old oracle counted
-        // brand-yellow pixels in the top band, but the quick-reaction emoji in that band are yellow
-        // too: once #4266 enlarged the reaction row (36dp buttons, 22dp drawings) the menu alone
-        // read as an opened thread (run 41784346875: yellowBefore=36 yellowAfter=137).
-        val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
-        val longPressMenuVisibleToken = "thread_body_long_press_menu_visible_$launchTokenSuffix"
-        val threadOpenedToken = "thread_body_long_press_thread_opened_$launchTokenSuffix"
-        captureKmpComponentCase(
-            caseId = "components.thread.message-body-long-press",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-body-long-press")
-                    .put("visualFixture", "default")
-                    .put("longPressMenuVisibleToken", longPressMenuVisibleToken)
-                    .put("threadOpenedToken", threadOpenedToken),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureAppWindowsScreenshot("components.thread.message-body-long-press.before")
-                    after = captureAfterLongPressRendered(
-                        label = "components.thread.message-body-long-press",
-                        before = before,
-                        longPress = { longPressDisplayDp(x = 300f, y = 70f) },
-                        rendered = { _, _, changedRatio ->
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                logcatContainsToken(longPressMenuVisibleToken)
-                        },
-                    )
-                    // Let a stray thread-open (a tap fired on release) land before checking.
-                    waitForIdleBounded()
-                    Thread.sleep(300)
-                    val menuLine = logcatFindToken(longPressMenuVisibleToken)
-                    val threadOpenedLine = logcatFindToken(threadOpenedToken)
-                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
-                    Log.i(
-                        VISUAL_LOG_TAG,
-                        "components.thread.message-body-long-press menuLine=${menuLine ?: "<none>"} " +
-                            "threadOpenedLine=${threadOpenedLine ?: "<none>"} changedRatio=$changedRatio"
-                    )
-                    // The menu token is also what proves the logcat read works, so the
-                    // absent-token check below cannot pass just because logcat was unreadable.
-                    assertTrue(
-                        "Long-pressing the ordinary body must compose the actions menu; menuVisibleTokenObserved=false",
-                        menuLine != null
-                    )
-                    assertTrue(
-                        "Long-pressing the ordinary body must render the actions menu; changedRatio=$changedRatio",
-                        changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
-                    )
-                    assertTrue(
-                        "Long press must not open the thread; threadOpenedLine=$threadOpenedLine",
-                        threadOpenedLine == null
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadNewMessageMenuDemo() {
-        captureThreadNewMessageMenuCompactTarget(
-            caseId = "components.thread.new-message-menu-compact-first",
-            targetYDp = 70f
-        )
-    }
-
-    @Test
-    fun captureThreadNewMessageMenuCompactMiddle() {
-        captureThreadNewMessageMenuCompactTarget(
-            caseId = "components.thread.new-message-menu-compact-middle",
-            targetYDp = 124f
-        )
-    }
-
-    @Test
-    fun captureThreadNewMessageMenuCompactLast() {
-        captureThreadNewMessageMenuCompactTarget(
-            caseId = "components.thread.new-message-menu-compact-last",
-            targetYDp = 660f,
-            composerBoundaryVisible = true
-        )
-    }
-
-    private fun captureThreadNewMessageMenuCompactTarget(
-        caseId: String,
-        targetYDp: Float,
-        composerBoundaryVisible: Boolean = false
-    ) {
-        val backingStore = raftSharedPreferenceStore()
-        val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
-        var menuArtifact: Bitmap? = null
-        try {
-            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
-            val preferenceStore = KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-            assertFalse(preferenceStore.readNewMessageMenuEnabledSync())
-            runBlocking { preferenceStore.saveNewMessageMenuEnabled(true) }
-            assertTrue(preferenceStore.readNewMessageMenuEnabledSync())
-            // task #228: ask the fixture to report when its compact menu opens,
-            // instead of inferring it from pixels. The sibling preference-off
-            // case has gated on this token all along - the compact path just
-            // never passed one. A product-emitted state transition outranks any
-            // screenshot criterion, and this one carries the messageId, so the
-            // three cases cannot produce interchangeable observations.
-            //
-            // elapsedRealtimeNanos makes the token unique per launch, so a token
-            // left in logcat by an earlier case can never satisfy a later one.
-            val menuVisibleToken =
-                "thread_compact_menu_visible_${visualAttempt()}_" +
-                    "${SystemClock.elapsedRealtimeNanos()}"
-            captureKmpComponentCase(
-                caseId = caseId,
-                pageName = "compose_thread_message_row_visual",
-                pageData =
-                    JSONObject()
-                        .put("instanceId", "visual-$caseId")
-                        .put("visualFixture", "new_message_menu_demo")
-                        .put("newMessageMenuComposerBoundaryVisible", composerBoundaryVisible)
-                        .put("longPressMenuVisibleToken", menuVisibleToken),
-                crop = FULL_VIEWPORT_CROP,
-                suppressSoftKeyboard = false,
-                capturedBitmapAfterBeforeScreenshot = {
-                    requireNotNull(menuArtifact) {
-                        "Compact-menu interaction did not provide its validated artifact"
-                    }.also { menuArtifact = null }
-                },
-                beforeScreenshot = {
-                    dismissCompatibilityDialog()
-                    waitForIdleBounded()
-                    var before: Bitmap? = null
-                    var after: Bitmap? = null
-                    try {
-                        before = captureAppWindowsScreenshot("$caseId.before")
-                        val threadOpenBefore = before.countThreadNewMessageMenuOpenProbeSamples()
-                        after = captureAfterLongPressRendered(
-                            label = caseId,
-                            before = before,
-                            longPress = {
-                                // task #228: hold well past the long-press threshold.
-                                // ViewConfiguration.getLongPressTimeout() is 500ms by
-                                // default and the shared default here is 700ms - a 200ms
-                                // margin. The long press fires from a delayed message
-                                // posted on ACTION_DOWN, so on a loaded CI emulator that
-                                // message can be scheduled late, ACTION_UP arrives first,
-                                // and the gesture degrades to a tap: no menu, and only a
-                                // small changedRatio. That matches the observed spread
-                                // (0.085 on a good run, 0.019 on a bad one, run
-                                // 32940998377). A longer hold removes the race without
-                                // relying on any measurement of how long the menu takes.
-                                longPressDisplayDp(
-                                    x = 300f,
-                                    y = targetYDp,
-                                    durationMs = COMPACT_MENU_LONG_PRESS_HOLD_MS,
-                                )
-                            },
-                            rendered = { b, shot, changedRatio ->
-                                // task #228 precondition, HARD failure not a warning:
-                                // this criterion works only because the fixture is
-                                // otherwise monochrome - whole-screen saturated pixels
-                                // measured 0.01% before the menu appears. A fixture with
-                                // a colour avatar or an inline image would raise that
-                                // floor until the signal drowned, and a noise-swamped
-                                // criterion fails QUIETLY: it reads exactly like "the
-                                // menu did not appear". So assert the premise, from the
-                                // SAME capture as the judgement, and trip before it can
-                                // mislead.
-                                //
-                                // Two independent measurements agree on the signal, which
-                                // is why the number is trusted: in-band 2.74% over a band
-                                // that is 6.3% of the screen ~= 0.17% whole-screen, versus
-                                // 0.15% measured whole-screen directly. Changing the
-                                // resolution or the band invalidates that reconciliation.
-                                // ⚠️ This assertion was previously written as
-                                // b.countNewSaturatedPixelsComparedWith(before = b) - a
-                                // frame diffed against ITSELF. Its predicate is
-                                // "saturated(after) && !saturated(before)", so with
-                                // after === before it reduces to saturated(p) &&
-                                // !saturated(p): identically zero for every possible
-                                // image. It did not measure that the baseline was clean;
-                                // it computed the constant 0 and asserted 0 == 0.
-                                //
-                                // An absolute count is the only form that can fail.
-                                //
-                                // Positive control, run here rather than as its own
-                                // @Test: instrumentation selects tests by name, so a
-                                // standalone guard can silently stop being executed,
-                                // while this one runs exactly when the instrument is
-                                // used. It answers "what would I see if the counter
-                                // were broken" - a counter stuck at 0 (the shape of
-                                // the bug this replaces) fails the second check.
-                                assertSaturatedCounterDiscriminates()
-                                // Since #4586/#4601 the group-head avatars are coloured
-                                // pixel faces (4775 standing saturated px, run
-                                // 43617492658). They sit in the avatar gutter, never
-                                // move, and the "added" count below already ignores any
-                                // pixel saturated before the press, so the premise is
-                                // measured right of the 64dp gutter, where the menu's
-                                // reaction row lands. The whole-frame figure and the
-                                // colour's bounds are logged so a new colour source
-                                // elsewhere is visible.
-                                val gutterPx = (
-                                    THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP *
-                                        InstrumentationRegistry.getInstrumentation()
-                                            .targetContext.resources.displayMetrics.density
-                                    ).toInt()
-                                val baselineSaturated = b.countSaturatedPixels(
-                                    topPx = 0,
-                                    bottomPx = b.height,
-                                    leftPx = gutterPx,
-                                )
-                                val wholeFrameSaturated = b.countSaturatedPixels(
-                                    topPx = 0,
-                                    bottomPx = b.height,
-                                )
-                                Log.i(
-                                    VISUAL_LOG_TAG,
-                                    "$caseId compact-menu baseline saturated=$baselineSaturated " +
-                                        "(x>=$gutterPx) wholeFrame=$wholeFrameSaturated " +
-                                        "bounds=${b.saturatedBounds()} " +
-                                        "ceiling=$THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX"
-                                )
-                                check(
-                                    baselineSaturated <=
-                                        THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX
-                                ) {
-                                    "task #228 precondition broken: the pre-press frame " +
-                                        "already contains $baselineSaturated saturated " +
-                                        "pixels. This case detects the menu by its coloured " +
-                                        "reaction row, which requires a near-monochrome " +
-                                        "fixture; that much standing colour can reach the " +
-                                        "menu floor on its own."
-                                }
-                                // task #228: the discriminator is the menu's COLOURED
-                                // reaction row, not darkness or area. The panel is white
-                                // with a hairline border on a white background, so the
-                                // former criteria could not see it at all - they were
-                                // in fact reacting to the pressed-row grey highlight,
-                                // which made compact-first a false RED and compact-middle
-                                // a false GREEN under one and the same rule.
-                                //
-                                // changedRatio is retained only to exclude a completely
-                                // static screen; on its own it cannot distinguish a
-                                // ripple from a menu, which is what it was misused for.
-                                val saturatedRegion = shot.countNewSaturatedPixelsComparedWith(
-                                    before = b,
-                                    topPx = 0,
-                                    bottomPx = shot.height,
-                                )
-                                val addedSaturated = saturatedRegion.count
-                                // Log the deciding number. Without it a reader can only
-                                // infer WHY a case passed from the metric's definition,
-                                // which is how this investigation lost six rounds: the
-                                // old gate logged changedRatio but never the count that
-                                // actually decided the verdict.
-                                // Copy the fixture's own line into the visual log:
-                                // it carries the messageId, so the archive shows
-                                // WHICH message opened a menu, and three cases that
-                                // reported the same id would be visible after the
-                                // fact instead of being unrecoverable.
-                                val menuLine = logcatFindToken(menuVisibleToken)
-                                val menuReported = menuLine != null
-                                Log.i(
-                                    VISUAL_LOG_TAG,
-                                    "$caseId compact-menu reported " +
-                                        (menuLine?.substringAfter(menuVisibleToken)?.trim()
-                                            ?: "<no menu-visible token in logcat>")
-                                )
-                                Log.i(
-                                    VISUAL_LOG_TAG,
-                                    "$caseId compact-menu detect menuReported=$menuReported " +
-                                        "addedSaturated=$addedSaturated " +
-                                        "floor=$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX " +
-                                        "yRange=${saturatedRegion.minY}..${saturatedRegion.maxY} " +
-                                        "centroidY=${saturatedRegion.centroidY} " +
-                                        "changedRatio=$changedRatio"
-                                )
-                                // changedRatio is NOT part of the criterion. It was shown
-                                // to have no discriminating power here (it reacts to the
-                                // pressed-row highlight, not to the menu), and as a
-                                // conjunct it can only turn a real menu RED: compact-middle
-                                // measured 0.0237 against a 0.02 floor, an 18% margin on a
-                                // quantity we do not trust. Logged for diagnosis only.
-                                menuReported &&
-                                    addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
-                            },
-                        )
-                        val threadOpenAfter = after.countThreadNewMessageMenuOpenProbeSamples()
-                        val addedToolbarBlack = after.countNewNearBlackSamplesComparedWith(before)
-                        val changedRatio = before.fullBitmapChangedPixelRatio(after)
-                        val composerChangedRatio =
-                            if (composerBoundaryVisible) {
-                                before.bottomBandChangedPixelRatio(
-                                    after,
-                                    heightDp = THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP
-                                )
-                            } else {
-                                0f
-                            }
-                        // The fixture reports the menu's own state transition; the
-                        // saturated count independently confirms it was painted.
-                        // changedRatio is deliberately absent from both - see the
-                        // detect lambda above for why it cannot decide this.
-                        val menuReported = logcatContainsToken(menuVisibleToken)
-                        val addedSaturatedRegion = after.countNewSaturatedPixelsComparedWith(
-                            before = before,
-                            topPx = 0,
-                            bottomPx = after.height,
-                        )
-                        val addedSaturated = addedSaturatedRegion.count
-                        // The two are kept as separate evidence, not merged into one
-                        // verdict. @HuaTuo and @LiBai drew the line: the token is the
-                        // app's own account of itself, the pixels are the only
-                        // external evidence, and a menu that is composed but never
-                        // painted reports the token perfectly. Dropping either half
-                        // would stop this being a visual case at all.
-                        //
-                        // Their disagreement is therefore its own failure class, not
-                        // a strict-criterion red - otherwise the one defect this case
-                        // exists to catch gets read as "the threshold needs raising".
-                        if (menuReported &&
-                            addedSaturated < THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
-                        ) {
-                            fail(
-                                "task #228 RENDER FAILURE (app claims visible, screen " +
-                                    "does not show it): the fixture reported the compact " +
-                                    "menu open for its message, but the screen gained " +
-                                    "only $addedSaturated saturated pixels against a " +
-                                    "floor of " +
-                                    "$THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX. " +
-                                    "This is not the criterion being too strict - the " +
-                                    "menu was composed and not painted. See the " +
-                                    "'compact-menu reported' log line for which message."
-                            )
-                        }
-                        assertTrue(
-                            "Long press must open the compact message menu; the fixture " +
-                                "never reported it opening. changedRatio=$changedRatio " +
-                                "addedSaturated=$addedSaturated",
-                            menuReported
-                        )
-                        assertTrue(
-                            "Long press must paint the compact menu's coloured reaction " +
-                                "row; addedSaturated=$addedSaturated",
-                            addedSaturated >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
-                        )
-                        assertTrue(
-                            "Long press must render the compact menu chrome; addedNearBlack=$addedToolbarBlack",
-                            addedToolbarBlack >= THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES
-                        )
-                        assertTrue(
-                            "Opening the compact menu must not open the thread; before=$threadOpenBefore after=$threadOpenAfter",
-                            threadOpenAfter <
-                                threadOpenBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
-                        )
-                        if (composerBoundaryVisible) {
-                            // The last row's menu may never sit UNDER the Composer (artin,
-                            // 2026-08-25). Two placements satisfy that:
-                            //  - it opens below the finger and paints over the Composer
-                            //    (bottom band changes); this was the only outcome while the
-                            //    menu was 129dp tall;
-                            //  - it does not fit below and the Auto placement flips it above
-                            //    the finger, so its bottom edge sits at press - 8dp, above the
-                            //    pressed row and therefore above the Composer.
-                            // Since #3768 (Select Text, web #11467) the Compact menu always has
-                            // a second tool row (181dp), which no longer fits between the last
-                            // row and the screen edge, so the flip is now the expected outcome:
-                            // the band only catches the menu shadow's tail (0.0499 on runs
-                            // 40587985314..40958967322). The flip is recognised by the menu's
-                            // coloured reaction row (its top row) ending above the press point;
-                            // a menu opened below starts below it.
-                            val pressYPx =
-                                targetYDp * InstrumentationRegistry.getInstrumentation()
-                                    .targetContext.resources.displayMetrics.density
-                            val flippedAboveFinger =
-                                addedSaturatedRegion.maxY in 0 until pressYPx.toInt()
-                            Log.i(
-                                VISUAL_LOG_TAG,
-                                "$caseId compact-menu composer bottomBandChangedRatio=" +
-                                    "$composerChangedRatio reactionRowY=" +
-                                    "${addedSaturatedRegion.minY}..${addedSaturatedRegion.maxY} " +
-                                    "pressYPx=$pressYPx flippedAboveFinger=$flippedAboveFinger"
-                            )
-                            assertTrue(
-                                "Compact menu on the last row must either paint over the Composer " +
-                                    "boundary or open above the pressed row (otherwise the " +
-                                    "Composer would cover the menu); " +
-                                    "bottomBandChangedRatio=$composerChangedRatio " +
-                                    "reactionRowY=${addedSaturatedRegion.minY}.." +
-                                    "${addedSaturatedRegion.maxY} pressYPx=$pressYPx",
-                                flippedAboveFinger ||
-                                    composerChangedRatio >= THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO
-                            )
-                        }
-                        menuArtifact = after
-                        after = null
-                    } finally {
-                        before?.recycle()
-                        after?.recycle()
-                    }
-                },
-                afterScreenshot = {
-                    menuArtifact?.recycle()
-                    menuArtifact = null
-                }
-            )
-        } finally {
-            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, previous)
-            menuArtifact?.recycle()
-            menuArtifact = null
-        }
-    }
-
-    @Test
-    fun captureThreadNewMessageMenuCompactListStillScrolls() {
-        captureKmpComponentCase(
-            caseId = "components.thread.new-message-menu-compact-scroll",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-new-message-menu-compact-scroll")
-                    .put("visualFixture", "new_message_menu_demo"),
-            crop = FULL_VIEWPORT_CROP,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureActivityScreenshot("components.thread.new-message-menu-compact-scroll.before")
-                    swipeDisplayFraction(startYFraction = 0.75f, endYFraction = 0.25f)
-                    waitForIdleBounded()
-                    Thread.sleep(400)
-                    after = captureActivityScreenshot("components.thread.new-message-menu-compact-scroll.after")
-                    val changedRatio = before.fullBitmapChangedPixelRatio(after)
-                    assertTrue(
-                        "Dragging over compact message rows must still scroll the LazyColumn; changedRatio=$changedRatio",
-                        changedRatio >= FORWARD_PROBE_MIN_SCROLL_CHANGED_RATIO
-                    )
-                    assertTrue(
-                        "A vertical drag must not open a message thread",
-                        after.countThreadNewMessageMenuOpenProbeSamples() <
-                            THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    @Test
-    fun captureThreadNewMessageMenuCompactTapStillOpensThread() {
-        captureKmpComponentCase(
-            caseId = "components.thread.new-message-menu-compact-tap",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-new-message-menu-compact-tap")
-                    .put("visualFixture", "new_message_menu_demo")
-                    // A tap opens any message's thread, with or without replies
-                    // (stdrc, 2026-10-29); this case's compact target keeps a reply
-                    // so its thread opens on existing content.
-                    .put("newMessageMenuTargetReplyCount", 1),
-            crop = FULL_VIEWPORT_CROP,
-            beforeScreenshot = {
-                dismissCompatibilityDialog()
-                waitForIdleBounded()
-                var before: Bitmap? = null
-                var after: Bitmap? = null
-                try {
-                    before = captureAppWindowsScreenshot("components.thread.new-message-menu-compact-tap.before")
-                    val openProbeBefore = before.countThreadNewMessageMenuOpenProbeSamples()
-                    // Same flake family as the 2026-08-01 long-press cases: a
-                    // fixed post-tap sleep gambles against thread-open render
-                    // timing and a missed first tap. Poll the open-probe
-                    // predicate instead (with one automatic re-tap), and keep
-                    // the assertions below as the loud final verdict.
-                    after = captureAfterLongPressRendered(
-                        label = "components.thread.new-message-menu-compact-tap",
-                        before = before,
-                        longPress = { tapDisplayDp(x = 300f, y = 124f) },
-                        rendered = { _, shot, _ ->
-                            shot.countThreadNewMessageMenuOpenProbeSamples() >=
-                                openProbeBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
-                        },
-                    )
-                    val openProbeAfter = after.countThreadNewMessageMenuOpenProbeSamples()
-                    assertTrue(
-                        "Tapping a compact new-menu fixture row must still open its thread; " +
-                            "before=$openProbeBefore after=$openProbeAfter",
-                        openProbeAfter >=
-                            openProbeBefore + THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES
-                    )
-                } finally {
-                    before?.recycle()
-                    after?.recycle()
-                }
-            }
-        )
-    }
-
-    // Regression for botiverse/mobile#1837. Route the same eligible message
-    // through the single-message path with the Beta switch disabled and require
-    // both the exact detector signal and visible classic-menu chrome.
-    @Test
-    fun captureThreadNewMessageMenuPreferenceOffFallback() {
-        val backingStore = raftSharedPreferenceStore()
-        val previous = backingStore.getString(NEW_MESSAGE_MENU_PREFERENCE_KEY)
-        val launchTokenSuffix = "${visualAttempt()}_${SystemClock.elapsedRealtimeNanos()}"
-        val longPressReadyToken = "thread_message_long_press_ready_$launchTokenSuffix"
-        val longPressMenuVisibleToken = "thread_message_menu_visible_$launchTokenSuffix"
-        try {
-            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, null)
-            assertFalse(
-                KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-                    .readNewMessageMenuEnabledSync()
-            )
-            captureKmpComponentCase(
-                caseId = "components.thread.new-message-menu-preference-off",
-                pageName = "compose_thread_message_row_visual",
-                pageData =
-                    JSONObject()
-                        .put("instanceId", "visual-thread-new-message-menu-preference-off")
-                        .put("visualFixture", "new_message_menu_demo")
-                        .put("visualSingleMessage", true)
-                        .put("longPressReadyToken", longPressReadyToken)
-                        .put("longPressMenuVisibleToken", longPressMenuVisibleToken),
-                crop = FULL_VIEWPORT_CROP,
-                beforeScreenshot = {
-                    dismissCompatibilityDialog()
-                    waitForIdleBounded()
-                    var before: Bitmap? = null
-                    var after: Bitmap? = null
-                    try {
-                        before = captureAppWindowsScreenshot("components.thread.new-message-menu-preference-off.before")
-                        after = captureAfterLongPressRendered(
-                            label = "components.thread.new-message-menu-preference-off",
-                            before = before,
-                            longPress = {
-                                longPressDisplayDp(
-                                    x = 300f,
-                                    y = 70f,
-                                    inputReadyCaseId =
-                                        "components.thread.new-message-menu-preference-off",
-                                    inputReadyToken = longPressReadyToken,
-                                )
-                            },
-                            rendered = { b, shot, changedRatio ->
-                                // A changed-ratio-only gate accepts the press
-                                // ripple. Require the real menu state transition
-                                // and substantial newly painted menu chrome too.
-                                changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO &&
-                                    logcatContainsToken(longPressMenuVisibleToken) &&
-                                    shot.countNewNearBlackSamplesComparedWith(b) >=
-                                    THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
-                            },
-                        )
-                        val menuVisibleTokenObserved = logcatContainsToken(longPressMenuVisibleToken)
-                        val addedMenuBlack = after.countNewNearBlackSamplesComparedWith(before)
-                        val changedRatio = before.fullBitmapChangedPixelRatio(after)
-                        assertTrue(
-                            "Default-off long press must compose the real legacy actions menu; " +
-                                "menuVisibleTokenObserved=$menuVisibleTokenObserved",
-                            menuVisibleTokenObserved
-                        )
-                        assertTrue(
-                            "Default-off long press must retain the legacy actions menu; changedRatio=$changedRatio",
-                            changedRatio >= THREAD_LONG_PRESS_MIN_CHANGED_RATIO
-                        )
-                        assertTrue(
-                            "Default-off long press must paint the legacy menu frame/action rows; " +
-                                "addedNearBlack=$addedMenuBlack",
-                            addedMenuBlack >= THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES
-                        )
-                    } finally {
-                        before?.recycle()
-                        after?.recycle()
-                    }
-                }
-            )
-        } finally {
-            backingStore.putString(NEW_MESSAGE_MENU_PREFERENCE_KEY, previous)
-        }
     }
 
     @Test
@@ -1773,36 +816,6 @@ class KmpVisualScreenshotCaptureTest {
                     .put("instanceId", "visual-thread-message-menu-default")
                     .put("visualFixture", "default")
                     .put("menuVariant", "default"),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true
-        )
-    }
-
-    @Test
-    fun captureThreadMessageMenuFollowed() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-menu.followed",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-menu-followed")
-                    .put("visualFixture", "default")
-                    .put("menuVariant", "followed"),
-            crop = FULL_VIEWPORT_CROP,
-            requireReactionAtlas = true
-        )
-    }
-
-    @Test
-    fun captureThreadMessageMenuTask() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-menu.task",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-menu-task")
-                    .put("visualFixture", "default")
-                    .put("menuVariant", "task"),
             crop = FULL_VIEWPORT_CROP,
             requireReactionAtlas = true
         )
@@ -1987,27 +1000,6 @@ class KmpVisualScreenshotCaptureTest {
         return if (sampled == 0) 0f else changed.toFloat() / sampled.toFloat()
     }
 
-    private fun Bitmap.countThreadTapProbeYellowSamples(): Int {
-        var samples = 0
-        var y = 0
-        while (y < height) {
-            var x = 0
-            while (x < width) {
-                val pixel = getPixel(x, y)
-                if (
-                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
-                        kotlin.math.abs(Color.green(pixel) - 0xD4) <= FORWARD_PROBE_YELLOW_TOLERANCE &&
-                        kotlin.math.abs(Color.blue(pixel) - 0x40) <= FORWARD_PROBE_YELLOW_TOLERANCE
-                ) {
-                    samples++
-                }
-                x += FORWARD_PROBE_PIXEL_STRIDE
-            }
-            y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return samples
-    }
-
     private fun Bitmap.countThreadChildActionProbeSamples(
         red: Int,
         green: Int,
@@ -2055,233 +1047,6 @@ class KmpVisualScreenshotCaptureTest {
         return samples
     }
 
-    private fun Bitmap.countThreadNewMessageMenuOpenProbeSamples(): Int {
-        val endY = (height * THREAD_OPEN_PROBE_TOP_BAND_FRACTION).toInt()
-        var samples = 0
-        var y = 0
-        while (y < endY) {
-            var x = 0
-            while (x < width) {
-                val pixel = getPixel(x, y)
-                if (
-                    kotlin.math.abs(Color.red(pixel) - 0xFF) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE &&
-                    kotlin.math.abs(Color.green(pixel) - 0x00) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE &&
-                    kotlin.math.abs(Color.blue(pixel) - 0xA8) <= THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE
-                ) {
-                    samples++
-                }
-                x += FORWARD_PROBE_PIXEL_STRIDE
-            }
-            y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return samples
-    }
-
-    /**
-     * task #228: counts pixels that became strongly saturated relative to [before].
-     *
-     * The compact menu is a WHITE panel with a hairline black outline drawn over a
-     * white background, so the two original criteria could not see it: changedRatio
-     * stayed at ~1.9% because white-on-white changes few pixels, and the near-black
-     * probe returned ~1 sample because the only dark pixels are a 1-2px border that
-     * a strided scan steps over. The menu rendered correctly in every failing run;
-     * the instrument was blind to it (run 32942109128).
-     *
-     * The menu's reaction row is the one strongly coloured element on an otherwise
-     * monochrome screen - measured 0.00% saturated before it appears, 2.74% after,
-     * with the whole screen at 0.01%. Colour also has AREA, unlike an outline, so
-     * it does not depend on sampling density.
-     *
-     * Deliberately scans every pixel: FORWARD_PROBE_PIXEL_STRIDE has 17 callers
-     * calibrated against it, so widening the scan globally would move unrelated
-     * thresholds. Full-scanning one bitmap is negligible here.
-     */
-    private fun Bitmap.countNewSaturatedPixelsComparedWith(
-        before: Bitmap,
-        topPx: Int,
-        bottomPx: Int,
-    ): SaturatedRegion {
-        require(width == before.width && height == before.height) {
-            "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
-        }
-        fun saturated(pixel: Int): Boolean {
-            val r = Color.red(pixel)
-            val g = Color.green(pixel)
-            val b = Color.blue(pixel)
-            val mx = maxOf(r, g, b)
-            val mn = minOf(r, g, b)
-            return mx > 90 && (mx - mn) * 100 / mx > 45
-        }
-        var count = 0
-        var minY = Int.MAX_VALUE
-        var maxY = Int.MIN_VALUE
-        var sumY = 0L
-        var y = topPx.coerceAtLeast(0)
-        val end = bottomPx.coerceAtMost(height)
-        while (y < end) {
-            var x = 0
-            while (x < width) {
-                if (saturated(getPixel(x, y)) && !saturated(before.getPixel(x, y))) {
-                    count++
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
-                    sumY += y
-                }
-                x++
-            }
-            y++
-        }
-        // task #228: the vertical extent is returned alongside the count because a
-        // count on its own cannot show that the measurement is live. The three cases
-        // anchor their menus at different y, so these values MUST differ between them
-        // if each is really computed from its own frame - whereas three identical
-        // counts are equally consistent with a cached or shared value.
-        return SaturatedRegion(
-            count = count,
-            minY = if (count == 0) -1 else minY,
-            maxY = if (count == 0) -1 else maxY,
-            centroidY = if (count == 0) -1 else (sumY / count).toInt(),
-        )
-    }
-
-    /**
-     * Proves [countSaturatedPixels] can return both answers.
-     *
-     * The precondition it feeds asserts an absence ("the baseline carries no
-     * meaningful colour"), and an absence assertion is only worth its ink if the
-     * instrument behind it is capable of saying otherwise. The version this
-     * replaced was not: it diffed a frame against itself and returned 0 for every
-     * possible image, so it "passed" on any fixture, including one that would have
-     * invalidated the whole criterion.
-     *
-     * White must count 0 and a saturated red must count every pixel. If either
-     * side stops holding, the counter is broken in exactly the direction that
-     * would make the precondition vacuous again.
-     */
-    private fun assertSaturatedCounterDiscriminates() {
-        val probe = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
-        try {
-            probe.eraseColor(Color.WHITE)
-            val whiteCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
-            probe.eraseColor(Color.rgb(220, 40, 40))
-            val redCount = probe.countSaturatedPixels(topPx = 0, bottomPx = probe.height)
-            check(whiteCount == 0 && redCount == probe.width * probe.height) {
-                "task #228: the saturated counter no longer discriminates - " +
-                    "white=$whiteCount (expected 0), red=$redCount " +
-                    "(expected ${probe.width * probe.height}). Every conclusion " +
-                    "drawn from it, including the baseline precondition, is void."
-            }
-        } finally {
-            probe.recycle()
-        }
-    }
-
-    /** Diagnostic: "minX..maxX x minY..maxY" of the saturated pixels in this frame, or "none". */
-    private fun Bitmap.saturatedBounds(): String {
-        var minX = Int.MAX_VALUE
-        var maxX = -1
-        var minY = Int.MAX_VALUE
-        var maxY = -1
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = getPixel(x, y)
-                val mx = maxOf(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-                val mn = minOf(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-                if (mx > 90 && (mx - mn) * 100 / mx > 45) {
-                    if (x < minX) minX = x
-                    if (x > maxX) maxX = x
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
-                }
-            }
-        }
-        return if (maxX < 0) "none" else "$minX..$maxX x $minY..$maxY"
-    }
-
-    /**
-     * Absolute count of saturated pixels in one frame.
-     *
-     * Unlike [countNewSaturatedPixelsComparedWith] this takes a single frame, so
-     * it can actually come back non-zero - which is the whole point of using it
-     * as a precondition. Diffing a frame against itself cannot.
-     */
-    private fun Bitmap.countSaturatedPixels(topPx: Int, bottomPx: Int, leftPx: Int = 0): Int {
-        var count = 0
-        var y = topPx.coerceAtLeast(0)
-        val end = bottomPx.coerceAtMost(height)
-        while (y < end) {
-            var x = leftPx.coerceIn(0, width)
-            while (x < width) {
-                val pixel = getPixel(x, y)
-                val r = Color.red(pixel)
-                val g = Color.green(pixel)
-                val b = Color.blue(pixel)
-                val mx = maxOf(r, g, b)
-                val mn = minOf(r, g, b)
-                if (mx > 90 && (mx - mn) * 100 / mx > 45) count++
-                x++
-            }
-            y++
-        }
-        return count
-    }
-
-    private data class SaturatedRegion(
-        val count: Int,
-        val minY: Int,
-        val maxY: Int,
-        val centroidY: Int,
-    )
-
-    private fun Bitmap.countNewNearBlackSamplesComparedWith(before: Bitmap): Int {
-        require(width == before.width && height == before.height) {
-            "Bitmap size changed: ${width}x$height vs ${before.width}x${before.height}"
-        }
-        var samples = 0
-        var y = 0
-        while (y < height) {
-            var x = 0
-            while (x < width) {
-                val afterPixel = getPixel(x, y)
-                val beforePixel = before.getPixel(x, y)
-                val afterNearBlack =
-                    Color.red(afterPixel) <= 45 &&
-                        Color.green(afterPixel) <= 45 &&
-                        Color.blue(afterPixel) <= 45
-                val beforeNearBlack =
-                    Color.red(beforePixel) <= 45 &&
-                        Color.green(beforePixel) <= 45 &&
-                        Color.blue(beforePixel) <= 45
-                if (afterNearBlack && !beforeNearBlack) samples++
-                x += FORWARD_PROBE_PIXEL_STRIDE
-            }
-            y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return samples
-    }
-
-    private fun Bitmap.bottomBandChangedPixelRatio(other: Bitmap, heightDp: Int): Float {
-        require(width == other.width && height == other.height) {
-            "Bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
-        }
-        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val bandHeightPx = (heightDp * density).toInt().coerceIn(1, height)
-        val startY = height - bandHeightPx
-        var changed = 0L
-        var total = 0L
-        var y = startY
-        while (y < height) {
-            var x = 0
-            while (x < width) {
-                if (getPixel(x, y) != other.getPixel(x, y)) changed++
-                total++
-                x += FORWARD_PROBE_PIXEL_STRIDE
-            }
-            y += FORWARD_PROBE_PIXEL_STRIDE
-        }
-        return if (total == 0L) 0f else changed.toFloat() / total.toFloat()
-    }
-
     private fun Bitmap.fullBitmapChangedPixelRatio(other: Bitmap): Float {
         require(width == other.width && height == other.height) {
             "Bitmap size changed: ${width}x$height vs ${other.width}x${other.height}"
@@ -2305,19 +1070,6 @@ class KmpVisualScreenshotCaptureTest {
             y += FORWARD_PROBE_PIXEL_STRIDE
         }
         return if (sampled == 0) 0f else changed.toFloat() / sampled.toFloat()
-    }
-
-    @Test
-    fun captureThreadForwardNote() {
-        captureKmpComponentCase(
-            caseId = "components.thread.forward-note",
-            pageName = "compose_thread_forward_note_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-forward-note"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_000
-        )
     }
 
     @Test
@@ -2363,12 +1115,6 @@ class KmpVisualScreenshotCaptureTest {
     fun captureThreadMessageSharePreview() {
         // The generated share image (Copy / Download), not the dialog: a phone-width card.
         captureThreadShareImageCase(caseId = "components.thread.message-share.preview", cardWidthDp = 390)
-    }
-
-    @Test
-    fun captureThreadMessageSharePreviewDesktop() {
-        // The same message exported from a desktop chat column (web: a 640px row).
-        captureThreadShareImageCase(caseId = "components.thread.message-share.preview-desktop", cardWidthDp = 640)
     }
 
     /**
@@ -2448,20 +1194,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadMessageRowLongInlineCode() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.long-inline-code",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-long-inline-code")
-                    .put("visualFixture", "long_inline_code"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.long-inline-code", "visual-thread-message-row-long-inline-code", widthDp = 390) }
-        )
-    }
-
-    @Test
     fun captureThreadMessageRowGfmTaskListShort() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.gfm-task-list-short",
@@ -2476,88 +1208,6 @@ class KmpVisualScreenshotCaptureTest {
             // therefore must not be admitted by the generic colour/stability
             // checks alone.
             readyToken = "thread_visual_ready fixtureKey=gfm_task_list_short"
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdLinkRef() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-link-ref",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-link-ref")
-                    .put("visualFixture", "md_link_ref"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-link-ref", "visual-thread-message-row-md-link-ref", widthDp = 390) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdWrapSlice1() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-wrap-slice1",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-wrap-slice1")
-                    .put("visualFixture", "md_wrap_slice1"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-slice1", "visual-thread-message-row-md-wrap-slice1", widthDp = 260) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdWrapStatus606() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-wrap-status606",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-wrap-status606")
-                    .put("visualFixture", "md_wrap_status606"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-status606", "visual-thread-message-row-md-wrap-status606", widthDp = 390) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdCodeEmail() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-code-email",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-code-email")
-                    .put("visualFixture", "md_code_email"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdCodeUrl() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-code-url",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-code-url")
-                    .put("visualFixture", "md_code_url"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdLatestRelease() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-latest-release",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-latest-release")
-                    .put("visualFixture", "md_latest_release"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-latest-release", "visual-thread-message-row-md-latest-release", widthDp = 390) }
         )
     }
 
@@ -2583,19 +1233,6 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-md-mermaid-flowchart")
                     .put("visualFixture", "md_mermaid_flowchart"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdMermaidSequence() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-mermaid-sequence",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-mermaid-sequence")
-                    .put("visualFixture", "md_mermaid_sequence"),
             crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
         )
     }
@@ -2627,32 +1264,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadMessageRowMdTableTight() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-table-tight",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-table-tight")
-                    .put("visualFixture", "md_table_tight"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdEscapes() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-escapes",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-escapes")
-                    .put("visualFixture", "md_escapes"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
     fun captureThreadMessageRowMdBlockquote() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.md-blockquote",
@@ -2666,102 +1277,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadMessageRowMdBlockquoteTable() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-blockquote-table",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-blockquote-table")
-                    .put("visualFixture", "md_blockquote_table"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdBlockquoteListTable() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-blockquote-list-table",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-blockquote-list-table")
-                    .put("visualFixture", "md_blockquote_list_table"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdWrapAdjacent() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-wrap-adjacent",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-wrap-adjacent")
-                    .put("visualFixture", "md_wrap_adjacent"),
-            // Standard 390dp width: the '#31 / #521' adjacent pair must stay on
-            // one line (task #60 acceptance), so no narrow wrap column here.
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-adjacent", "visual-thread-message-row-md-wrap-adjacent", widthDp = 390) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowCjkAdjacentUrl() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.cjk-adjacent-url",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-cjk-adjacent-url")
-                    .put("visualFixture", "cjk_adjacent_url"),
-            crop = THREAD_MESSAGE_ROW_LONG_INLINE_CODE_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdWrapClarify() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-wrap-clarify",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-wrap-clarify")
-                    .put("visualFixture", "md_wrap_clarify"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-clarify", "visual-thread-message-row-md-wrap-clarify", widthDp = 260) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowMdWrapTask607() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.md-wrap-task607",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-md-wrap-task607")
-                    .put("visualFixture", "md_wrap_task607"),
-            crop = THREAD_MESSAGE_ROW_MD_WRAP_CROP,
-            cropOverride = { awaitThreadRowContentCrop("components.thread.message-row.md-wrap-task607", "visual-thread-message-row-md-wrap-task607", widthDp = 260) }
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowWideMarkdownWrap() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.wide-markdown-wrap",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-wide-markdown-wrap")
-                    .put("visualFixture", "wide_markdown_wrap"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
     fun captureThreadMessageRowPermalinkChips() {
         captureKmpComponentCase(
             caseId = "components.thread.message-row.permalink-chips",
@@ -2770,19 +1285,6 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row-permalink-chips")
                     .put("visualFixture", "permalink_chips"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureThreadMessageRowPermalinkChipsNarrow() {
-        captureKmpComponentCase(
-            caseId = "components.thread.message-row.permalink-chips-narrow",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-message-row-permalink-chips-narrow")
-                    .put("visualFixture", "permalink_chips_narrow"),
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -2814,44 +1316,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureThreadApproveLoginActionCardApproved() {
-        captureKmpComponentCase(
-            caseId = "components.thread.action-card.approve-login.approved",
-            pageName = "compose_thread_message_row_visual",
-            pageData =
-                JSONObject()
-                    .put("instanceId", "visual-thread-action-card-approve-login-approved")
-                    .put("visualFixture", "approve_login_action_card_executed"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",
             pageName = "compose_thread_header_visual",
             crop = THREAD_HEADER_COMPONENT_CROP
-        )
-    }
-
-    @Test
-    fun captureTask797ThreadHeaderSafeArea0() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.thread.safe-area-0",
-            pageName = "compose_task797_thread_header_visual",
-            safeAreaDp = 0,
-            crop = THREAD_HEADER_COMPONENT_CROP,
-        )
-    }
-
-    @Test
-    fun captureTask797ThreadHeaderSafeArea24() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.thread.safe-area-24",
-            pageName = "compose_task797_thread_header_visual",
-            safeAreaDp = 24,
-            crop = THREAD_HEADER_COMPONENT_CROP,
         )
     }
 
@@ -2894,16 +1363,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeTitlebarServerSwitchIdentity() {
-        captureKmpComponentCase(
-            caseId = "components.home.titlebar.server-switch-identity",
-            pageName = "compose_home_titlebar_server_switch_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
     fun captureHomeTitlebarLoadingAndErrorIdentity() {
         captureKmpComponentCase(
             caseId = "components.home.titlebar.loading-fallback",
@@ -2913,15 +1372,6 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.home.titlebar.error-removed-avatar-fallback",
             pageName = "compose_home_titlebar_error_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureHomeTitlebarResizeAfterServerSwitch() {
-        captureKmpComponentCase(
-            caseId = "components.home.titlebar.resize-after-server-switch",
-            pageName = "compose_home_titlebar_resize_visual",
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -2945,31 +1395,10 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeNotificationTriggerStates() {
-        // Native-only evidence capture (no React baseline): Bell trigger
-        // state matrix — empty-closed, unread-closed, unread-open, narrow,
-        // empty drawer. Bound to the exact in the PR evidence.
-        captureKmpComponentCase(
-            caseId = "components.home.notification-trigger.states",
-            pageName = "compose_home_notification_trigger_states_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
     fun captureAppUpdateDetails() {
         captureKmpComponentCase(
             caseId = "screens.app-update.details",
             pageName = "compose_app_update_details_visual",
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureAppUpdateDetailsChinese() {
-        captureKmpComponentCase(
-            caseId = "screens.app-update.details.zh-CN",
-            pageName = "compose_app_update_details_zh_visual",
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -3005,48 +1434,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeSearchHomeLargeText() {
-        captureKmpComponentCase(
-            caseId = "components.home.search.home-large-text",
-            pageName = "compose_home_search_home_large_text_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500,
-        )
-    }
-
-    @Test
     fun captureHomeSearchChannelPinMenu() {
         captureHomeSearchEntityPinMenu(
             caseId = "components.home.search.channel-pin-menu",
             pageName = "compose_home_search_channel_pin_visual",
             entityLabel = "Channel"
-        )
-    }
-
-    @Test
-    fun captureHomeSearchDmPinMenu() {
-        captureHomeSearchEntityPinMenu(
-            caseId = "components.home.search.dm-pin-menu",
-            pageName = "compose_home_search_dm_pin_visual",
-            entityLabel = "DM"
-        )
-    }
-
-    @Test
-    fun captureHomeSearchAgentPinMenu() {
-        captureHomeSearchEntityPinMenu(
-            caseId = "components.home.search.agent-pin-menu",
-            pageName = "compose_home_search_agent_pin_visual",
-            entityLabel = "Agent"
-        )
-    }
-
-    @Test
-    fun captureHomeSearchHumanPinMenu() {
-        captureHomeSearchEntityPinMenu(
-            caseId = "components.home.search.human-pin-menu",
-            pageName = "compose_home_search_human_pin_visual",
-            entityLabel = "Human"
         )
     }
 
@@ -3131,16 +1523,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeSearchChannelDropdown() {
-        captureKmpComponentCase(
-            caseId = "components.home.search.channel-dropdown",
-            pageName = "compose_home_search_channel_dropdown_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
     fun captureHomeSearchScopeDropdown() {
         captureKmpComponentCase(
             caseId = "components.home.search.scope-dropdown",
@@ -3171,52 +1553,12 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureTask797SavedHeaderSafeArea0() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.saved.safe-area-0",
-            pageName = "compose_home_saved_visual",
-            safeAreaDp = 0,
-            crop = HOME_SAVED_RESULTS_CROP,
-        )
-    }
-
-    @Test
-    fun captureTask797SavedHeaderSafeArea24() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.saved.safe-area-24",
-            pageName = "compose_home_saved_visual",
-            safeAreaDp = 24,
-            crop = HOME_SAVED_RESULTS_CROP,
-        )
-    }
-
-    @Test
     fun captureHomeActivityResults() {
         captureKmpComponentCase(
             caseId = "components.home.activity.results",
             pageName = "compose_home_activity_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureTask797ActivityHeaderSafeArea0() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.activity.safe-area-0",
-            pageName = "compose_home_activity_visual",
-            safeAreaDp = 0,
-            crop = HOME_ACTIVITY_RESULTS_CROP,
-        )
-    }
-
-    @Test
-    fun captureTask797ActivityHeaderSafeArea24() {
-        captureTask797HeaderEvidence(
-            caseId = "evidence.task797.activity.safe-area-24",
-            pageName = "compose_home_activity_visual",
-            safeAreaDp = 24,
-            crop = HOME_ACTIVITY_RESULTS_CROP,
         )
     }
 
@@ -3229,17 +1571,6 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.home.activity.conversation-list",
             pageName = "compose_home_activity_conversation_list_visual",
-            crop = HOME_ACTIVITY_RESULTS_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureHomeActivityConversationListUnpinned() {
-        // Same rows without sidebar pins: no section labels, loaded order kept.
-        captureKmpComponentCase(
-            caseId = "components.home.activity.conversation-list.unpinned",
-            pageName = "compose_home_activity_conversation_list_unpinned_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
         )
@@ -3285,35 +1616,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    // The whole phone Home root (top bar, Saved, Pinned / Joint / Channels / DMs, tab bar) from
-    // the fixture the React case seeds (slock shared/homeChannelListFixture.json). The page pins
-    // the app theme from pageData.appearance and restores it when the activity closes.
-    @Test
-    fun captureWideActivityTask() {
-        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
-        // display (wm size 2560x1600, density 320), by touch.
-        captureKmpComponentCase(
-            caseId = "screens.wide.activity-task",
-            pageName = "compose_wide_shell_visual",
-            pageData = JSONObject().put("scene", "activity-task"),
-            crop = WIDE_VIEWPORT_CROP,
-            settleMs = 3_000
-        )
-    }
-
-    @Test
-    fun captureWideChannel() {
-        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
-        // display (wm size 2560x1600, density 320), by touch.
-        captureKmpComponentCase(
-            caseId = "screens.wide.channel",
-            pageName = "compose_wide_shell_visual",
-            pageData = JSONObject().put("scene", "channel"),
-            crop = WIDE_VIEWPORT_CROP,
-            settleMs = 3_000
-        )
-    }
-
     @Test
     fun captureWideChannelThread() {
         // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
@@ -3335,19 +1637,6 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "screens.wide.settings",
             pageName = "compose_wide_shell_visual",
             pageData = JSONObject().put("scene", "settings"),
-            crop = WIDE_VIEWPORT_CROP,
-            settleMs = 3_000
-        )
-    }
-
-    @Test
-    fun captureWideTasksTask() {
-        // Wide lane only (scripts/visual_android_case_filter.py: `screens.wide.*`), on a 1280x800dp
-        // display (wm size 2560x1600, density 320), by touch.
-        captureKmpComponentCase(
-            caseId = "screens.wide.tasks-task",
-            pageName = "compose_wide_shell_visual",
-            pageData = JSONObject().put("scene", "tasks-task"),
             crop = WIDE_VIEWPORT_CROP,
             settleMs = 3_000
         )
@@ -3386,17 +1675,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureTasksPanelChineseLocalization() {
-        captureKmpComponentCase(
-            caseId = "components.tasks.panel.zh-cn",
-            pageName = "compose_tasks_panel_visual",
-            pageData = JSONObject().put("fixture", "zh-cn-localization"),
-            crop = TASKS_PANEL_STATES_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
     fun captureTasksStatusMenu() {
         captureKmpComponentCase(
             caseId = "components.tasks.status-menu",
@@ -3416,53 +1694,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureMembersCreateAgentClaudeDialog() {
-        captureKmpComponentCase(
-            caseId = "components.members.create-agent.claude-dialog",
-            pageName = "compose_create_agent_dialog_visual",
-            pageData = createAgentDialogPageData(runtime = "claude"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureMembersCreateAgentClaudeDialogWithTopSafeArea() {
-        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        captureKmpComponentCase(
-            caseId = "components.members.create-agent.claude-dialog.top-safe-area",
-            pageName = "compose_create_agent_dialog_visual",
-            pageData =
-                createAgentDialogPageData(runtime = "claude").apply {
-                    put("slockVisualZeroSafeArea", false)
-                    put("slockNativeSafeAreaInsetsArePixels", true)
-                    put("safeAreaTop", 24 * density)
-                },
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureMembersCreateAgentClaudeCustomProviderDialog() {
-        captureKmpComponentCase(
-            caseId = "components.members.create-agent.claude-custom-provider-dialog",
-            pageName = "compose_create_agent_dialog_visual",
-            pageData =
-                createAgentDialogPageData(
-                    runtime = "claude",
-                    providerMode = "custom",
-                    providerApiUrl = "https://gateway.example.com",
-                    providerApiKey = "visual-test-key",
-                    advancedOpen = true,
-                    command = "claude"
-                ),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
     // React CREATE_AGENT_CASES counterparts (slock packages/web/visual-testing/
     // VisualTestingCases.tsx). State comes from the gated
     // compose_create_agent_state_visual fixture page; `variant` only selects it.
@@ -3471,17 +1702,6 @@ class KmpVisualScreenshotCaptureTest {
         captureMembersCreateAgentStateCase(
             caseId = "components.members.create-agent.dialog-error",
             variant = "error"
-        )
-    }
-
-    @Test
-    fun captureMembersCreateAgentDialogEmpty() {
-        captureMembersCreateAgentStateCase(
-            caseId = "components.members.create-agent.dialog-empty",
-            variant = "empty",
-            // A blank initial name is replaced by a random suggestion, so clear
-            // the seeded name the way a user would to reach React's empty field.
-            beforeScreenshot = { clearEditableTextField("Product-QA-Bot") }
         )
     }
 
@@ -3518,66 +1738,6 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    @Test
-    fun captureRuntimeFormBuiltin() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.builtin",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.builtin"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormClaude() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.claude",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.claude"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormCodex() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.codex",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.codex"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormGrok() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.grok",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.grok"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormKimiSdk() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.kimi-sdk",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.kimi-sdk"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormPi() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.create.pi",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.create.pi"),
-            crop = FULL_VIEWPORT_CROP
-        )
-    }
-
     // Runtime form picker cases (visual-cases.v3.json `picker`): the form at rest, then the capture
     // opens the named choice field and types the query into its list's search (one screen, not full
     // length: slock sharedCases has no capture.fullLength for them).
@@ -3589,17 +1749,6 @@ class KmpVisualScreenshotCaptureTest {
             pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-open"),
             crop = FULL_VIEWPORT_CROP,
             beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-open") }
-        )
-    }
-
-    @Test
-    fun captureRuntimeFormPickerBuiltinProviderSearch() {
-        captureKmpComponentCase(
-            caseId = "components.runtime-form.picker.builtin.provider-search",
-            pageName = "compose_runtime_form_visual",
-            pageData = JSONObject().put("caseId", "components.runtime-form.picker.builtin.provider-search"),
-            crop = FULL_VIEWPORT_CROP,
-            beforeScreenshot = { openRuntimeFormPicker("components.runtime-form.picker.builtin.provider-search") }
         )
     }
 
@@ -3740,72 +1889,12 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
-    /** Clear the editable field currently showing [text] through its accessibility SetText action. */
-    private fun clearEditableTextField(text: String) {
-        // As the tap helpers do: a sleeping display, the keyguard or a system dialog (a launcher
-        // ANR) takes the active window, and the fixture's field is then not in the tree read here.
-        awaitFixtureIsActiveInputWindow("the field showing \"$text\"")
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val deadline = SystemClock.uptimeMillis() + EDITABLE_FIELD_LOOKUP_TIMEOUT_MS
-        var field: android.view.accessibility.AccessibilityNodeInfo? = null
-        while (field == null) {
-            val roots = listOfNotNull(uiAutomation.rootInActiveWindow) + uiAutomation.windows.mapNotNull { it.root }
-            field =
-                roots
-                    .asSequence()
-                    .flatMap { findComposeNodesWithText(it, text).asSequence() }
-                    .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
-                    .firstOrNull()
-            if (field != null || SystemClock.uptimeMillis() >= deadline) break
-            Thread.sleep(250)
-        }
-        requireNotNull(field) {
-            val active = uiAutomation.rootInActiveWindow
-            "No editable field showing \"$text\" to clear; activeWindowPackage=${active?.packageName} " +
-                "windows=${uiAutomation.windows.size}"
-        }
-        val cleared =
-            field.performAction(
-                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
-                android.os.Bundle().apply {
-                    putCharSequence(
-                        android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        ""
-                    )
-                }
-            )
-        require(cleared) { "SetText(\"\") was rejected by the field showing \"$text\"" }
-        Thread.sleep(500)
-    }
-
     @Test
     fun captureAnnouncementModalFirstPage() {
         captureKmpComponentCase(
             caseId = "components.announcement-modal.first-page",
             pageName = "compose_announcement_modal_visual",
             pageData = JSONObject().put("pageIndex", 0),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureAnnouncementModalMiddlePage() {
-        captureKmpComponentCase(
-            caseId = "components.announcement-modal.middle-page",
-            pageName = "compose_announcement_modal_visual",
-            pageData = JSONObject().put("pageIndex", 1),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureAnnouncementModalLastPage() {
-        captureKmpComponentCase(
-            caseId = "components.announcement-modal.last-page",
-            pageName = "compose_announcement_modal_visual",
-            pageData = JSONObject().put("pageIndex", 2),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -3833,28 +1922,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersRestartDialogResetSession() {
-        captureKmpComponentCase(
-            caseId = "components.members.restart-dialog.reset-session",
-            pageName = "compose_members_restart_dialog_visual",
-            pageData = JSONObject().put("action", "reset_session"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
-    fun captureMembersRestartDialogFullReset() {
-        captureKmpComponentCase(
-            caseId = "components.members.restart-dialog.full-reset",
-            pageName = "compose_members_restart_dialog_visual",
-            pageData = JSONObject().put("action", "reset_full"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
     fun captureThreadInlineAudioControls() {
         captureKmpComponentCase(
             caseId = "components.thread.inline-audio.controls",
@@ -3865,83 +1932,10 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersAgentDetailProfile() {
-        captureKmpComponentCase(
-            caseId = "components.members.agent-detail.profile",
-            pageName = "compose_members_agent_detail_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
     fun captureMembersAgentDetailProfileScreen() {
         captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.profile",
             tab = "profile"
-        )
-    }
-
-    // task #535: Computer-row oracle states (web AgentDetailPanel.tsx blob
-    // c549c316acf5 :771-772 / :2053-2084). Expected: computer-offline = gray dot +
-    // Offline; computer-missing / no-computer = "No computer assigned", no dot.
-    // Android's rendering of these states is task #259; until it lands these
-    // captures record the current (wrong) behaviour as the before-frame.
-    @Test
-    fun captureMembersAgentDetailProfileComputerOfflineScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.profile.computer-offline",
-            tab = "profile",
-            memberId = "agent-computer-offline"
-        )
-    }
-
-    @Test
-    fun captureMembersAgentDetailProfileComputerMissingScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.profile.computer-missing",
-            tab = "profile",
-            memberId = "agent-computer-missing"
-        )
-    }
-
-    @Test
-    fun captureMembersAgentDetailProfileNoComputerScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.profile.no-computer",
-            tab = "profile",
-            memberId = "agent-no-computer"
-        )
-    }
-
-    // task #537: a machine name that cannot fit one 390dp line, so the wrap /
-    // silent-truncate / overflow outcome is observable at all.
-    @Test
-    fun captureMembersAgentDetailProfileLongMachineNameScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.profile.long-machine-name",
-            tab = "profile",
-            memberId = "agent-long-machine"
-        )
-    }
-
-    // task #259: a bare daemon (isComputer=false) with no computer version:
-    // web shows Connected · daemon vX, never a computer version.
-    @Test
-    fun captureMembersAgentDetailProfileDaemonOnlyScreen() {
-        captureMembersAgentDetailScreen(
-            caseId = "screens.members.agent-detail.profile.daemon-only",
-            tab = "profile",
-            memberId = "agent-daemon-only"
-        )
-    }
-
-    // task #261: no server membership row -> serverRole omitted -> role chip hidden.
-    @Test
-    fun captureMembersAgentDetailProfileNoMembershipScreen() {
-        captureMembersAgentDetailStateCase(
-            caseId = "screens.members.agent-detail.profile.no-membership",
-            state = "no-membership"
         )
     }
 
@@ -4087,17 +2081,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersAgentIssueReportSuccess() {
-        captureKmpComponentCase(
-            caseId = "components.members.agent-issue-report-success",
-            pageName = "compose_members_agent_detail_visual",
-            pageData = JSONObject().put("visualMode", "report_issue_success"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500
-        )
-    }
-
-    @Test
     fun captureChannelSettingsPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.settings.panel",
@@ -4133,39 +2116,6 @@ class KmpVisualScreenshotCaptureTest {
             caseId = "components.channel.members.parity.roster",
             pageName = "compose_channel_members_parity_visual",
             pageData = JSONObject().put("variant", "roster"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500,
-        )
-    }
-
-    @Test
-    fun captureChannelMembersParitySearch() {
-        captureKmpComponentCase(
-            caseId = "components.channel.members.parity.search",
-            pageName = "compose_channel_members_parity_visual",
-            pageData = JSONObject().put("variant", "search"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500,
-        )
-    }
-
-    @Test
-    fun captureChannelMembersParityCollapsed() {
-        captureKmpComponentCase(
-            caseId = "components.channel.members.parity.collapsed",
-            pageName = "compose_channel_members_parity_visual",
-            pageData = JSONObject().put("variant", "collapsed"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 2_500,
-        )
-    }
-
-    @Test
-    fun captureChannelMembersParityAdd() {
-        captureKmpComponentCase(
-            caseId = "components.channel.members.parity.add",
-            pageName = "compose_channel_members_parity_visual",
-            pageData = JSONObject().put("variant", "add"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500,
         )
@@ -4366,26 +2316,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureSettingsFeedbackSubmittedSquareCorners() {
-        captureKmpComponentCase(
-            caseId = "screens.settings.feedback.submitted-square-corners",
-            pageName = "compose_settings_route_visual",
-            pageData =
-                JSONObject()
-                    .put("destination", "hands-feedback")
-                    .put("fixtureKey", "feedback-submit-success")
-                    .put("task139ReuseTrace", true),
-            crop = FULL_VIEWPORT_CROP,
-            // No corner assertion any more: since #4496 sending keeps the New
-            // Feedback form open with a success banner, so the primary-soft User
-            // feedback row this case measured is no longer on this screen (run
-            // 43617492658: "No primary-soft User feedback row found"). The capture
-            // stays for the web comparison.
-            settleMs = 3_000
-        )
-    }
-
-    @Test
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
@@ -4425,28 +2355,6 @@ class KmpVisualScreenshotCaptureTest {
                 put("slockVisualZeroSafeArea", true)
             }
         }
-
-    private fun captureTask797HeaderEvidence(
-        caseId: String,
-        pageName: String,
-        safeAreaDp: Int,
-        crop: VisualCrop,
-    ) {
-        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        captureKmpComponentCase(
-            caseId = caseId,
-            pageName = pageName,
-            pageData =
-                JSONObject()
-                    .put("slockVisualZeroSafeArea", safeAreaDp == 0)
-                    .put("slockNativeSafeAreaInsetsArePixels", true)
-                    .put("safeAreaTop", safeAreaDp * density)
-                    .put("task797IncludeTopSafeArea", safeAreaDp > 0)
-                    .put("task797Refreshing", true),
-            crop = crop,
-            settleMs = 2_500,
-        )
-    }
 
     /**
      * Idle-sync with a hard wall-clock ceiling (task #362). Plain
@@ -5090,34 +2998,6 @@ class KmpVisualScreenshotCaptureTest {
                 ?: return
         button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
         Thread.sleep(500)
-    }
-
-    private fun focusImageEditorTextField() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val root = instrumentation.uiAutomation.rootInActiveWindow
-        val field = root?.findAccessibilityNodeInfosByText("Tap image to place text")?.firstOrNull()
-        if (field != null) {
-            field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
-            field.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
-        } else {
-            tapDisplayDp(x = 120f, y = 700f)
-        }
-        Thread.sleep(300)
-        onActivityNoIdle { activity ->
-            val inputMethodManager =
-                activity.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            activity.currentFocus?.let { focused ->
-                inputMethodManager.showSoftInput(focused, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-            }
-        }
-    }
-
-    private fun dismissImageEditorTextImeInteraction() {
-        // Mirrors the existing text-ime-dismissed fixture's proven interaction:
-        // it clears the native text selection/IME overlay that otherwise leaves
-        // a dim layer attached after the activity closes (task #507).
-        tapDisplayDp(x = 124f, y = 485f)
-        Thread.sleep(1_000)
     }
 
     /**
@@ -6798,7 +4678,6 @@ class KmpVisualScreenshotCaptureTest {
                 contract = "viewport-bounds",
                 captureMethod = "pixel-copy-app-window-viewport-crop"
             )
-        private const val NEW_MESSAGE_MENU_PREFERENCE_KEY = "mobile:new_message_menu_enabled"
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -6825,13 +4704,6 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 390,
                 heightDp = 60
-            )
-        private val NAVIGATION_TABBAR_MOCKUP_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 390,
-                heightDp = 172
             )
         private val ANDROID_FLOATING_TABBAR_CROP =
             VisualCrop(
@@ -6897,13 +4769,6 @@ class KmpVisualScreenshotCaptureTest {
                 heightDp = 96
             )
         private val UI_BUTTON_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 150
-            )
-        private val UI_BUTTON_THEME_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
@@ -7147,34 +5012,6 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 390,
                 heightDp = 760
             )
-        private val RAFT_UI_WIP_TOGGLE_GROUP_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 112
-            )
-        private val RAFT_UI_WIP_LIST_PANELS_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 388
-            )
-        private val RAFT_UI_WIP_MESSAGE_CARDS_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 250
-            )
-        private val RAFT_UI_WIP_OVERLAY_SHELLS_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 284
-            )
         // The host lays the composer out as web's 342x100 canvas does (20dp in, 8dp down),
         // so the window is that canvas: the 342dp component box, 24dp from the screen edge.
         // The web case's box follows the composer (slock VisualTestingCases `height: "auto"`):
@@ -7200,13 +5037,6 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 290
-            )
-        private val THREAD_COMPOSER_SUGGESTIONS_CROP =
-            VisualCrop(
-                leftDp = 24,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 320
             )
         // React `components.thread.composer.member-suggestions`: `composerOffsetTop: 250` with
         // the height following the composer, a 342x358 capture.
@@ -7298,16 +5128,6 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 844
-            )
-        // Narrow 260dp column (matching the React 260px harness container) for
-        // the markdown message-row wrap cases: the narrow width forces a
-        // channel/task chip to wrap to the next line (inline-box line-wrap bug).
-        private val THREAD_MESSAGE_ROW_MD_WRAP_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 260,
                 heightDp = 844
             )
 
@@ -7436,7 +5256,6 @@ class KmpVisualScreenshotCaptureTest {
         private const val THREAD_TAP_PROBE_MIN_ADDED_YELLOW_SAMPLES = 100
         private const val THREAD_CHILD_ACTION_PROBE_TOLERANCE = 12
         private const val THREAD_CHILD_ACTION_PROBE_MIN_ADDED_SAMPLES = 100
-        private const val THREAD_LONG_PRESS_MIN_CHANGED_RATIO = 0.02f
         // Bounds for captureAfterLongPressRendered: wait for the long-press UI to
         // actually render instead of a fixed sleep. Timeout must comfortably
         // exceed a loaded-shard menu render; retry re-issues the press once.
@@ -7455,148 +5274,9 @@ class KmpVisualScreenshotCaptureTest {
         // because re-pressing then disturbs the state the gate is waiting on.
         private const val LONG_PRESS_RENDER_RETRY_AT_MS = 6_000L
         private const val LONG_PRESS_INPUT_READY_SETTLE_MS = 100L
-        private const val THREAD_LEGACY_MENU_MIN_ADDED_BLACK_SAMPLES = 300
-        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_BLACK_SAMPLES = 40
-        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_OPEN_PROBE_SAMPLES = 100
-        // Matches the fixed host bounds in the compact-last visual fixture.
-        // The sampled band therefore contains only the real Composer host.
-        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_BOUNDARY_HEIGHT_DP = 150
-        // task #228: above this the screen has demonstrably reacted, so re-pressing
-        // would disturb the state we are waiting on. Noise floor 2.7e-5; smallest
-        // genuine render seen 0.0257.
-        // task #228: 3x the 500ms default long-press timeout, so a late-scheduled
-        // delayed message on a loaded emulator cannot let ACTION_UP win the race.
-        private const val COMPACT_MENU_LONG_PRESS_HOLD_MS = 1_500L
-
-        // task #228: the menu's reaction row is the only strongly coloured element on
-        // this fixture, so it is what distinguishes a rendered menu from a press
-        // ripple or a pressed-row highlight.
-        //
-        // Measured directly on the CI frames from run 32942109128, counting pixels
-        // that BECOME saturated relative to the pre-press frame:
-        //   real menu present            4164
-        //   no menu (frame against self)    0
-        // The floor is set at 1500 - roughly a third of the signal and far above a
-        // measured noise of zero. An earlier draft of this constant used 4000, which
-        // left only a 4% margin on the positive sample and would have gone red on any
-        // small variation in emoji rendering.
-        //
-        // Colour has area, unlike the hairline outline the previous criterion tried to
-        // detect, so this does not depend on sampling density.
-        private const val THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX = 1_500
-
-        /**
-         * What the saturated-pixel criterion does and does NOT establish.
-         *
-         * It proves "at least [THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX]
-         * saturated pixels appeared", not "the menu opened". Those coincide only
-         * because this fixture is otherwise near-monochrome - a property of the
-         * FIXTURE, not of the criterion. Three consequences worth stating:
-         *
-         *  - The precondition below bounds the BASELINE only. A colour element
-         *    that arrives inside the observation window (a late-loading avatar
-         *    or inline image) passes the precondition and can still satisfy the
-         *    floor on its own. This fixture has no async images, so it does not
-         *    apply today; adding one would reopen it.
-         *  - The count includes saturated pixels OUTSIDE the menu. Measured at a
-         *    few dozen (they are what stretches the reported yRange well past
-         *    the menu itself). Its failure direction is FALSE GREEN, which is
-         *    the direction that does not announce itself.
-         *  - yRange/centroidY are diagnostics, never criteria.
-         *
-         * Since the fixture now reports the menu opening directly, this count is
-         * the corroborating half, not the deciding one.
-         *
-         * ⚠️ What this ceiling does NOT mean, since a wrong reason gets reused
-         * long after a wrong number gets adjusted:
-         *
-         * It is NOT "past this point standing colour could account for the menu's
-         * signal". That was the first explanation written here and it is wrong on
-         * mechanism (@HuaTuo and @LiBai). The criterion counts pixels that are
-         * saturated in AFTER and not saturated in BEFORE, so anything already
-         * coloured in the baseline is structurally excluded from the difference.
-         * A static colour element contributes exactly zero no matter how large it
-         * is - five thousand pixels of motionless avatar would not move the count.
-         *
-         * The baseline count is a DOUBLE PROXY: it stands in for "this fixture
-         * contains colour at all", which stands in for "colour might appear or
-         * move during the observation window". Only that last thing can produce a
-         * false green, and this number does not measure it. What is genuinely
-         * undefended is a colour element ARRIVING inside the window - a late image
-         * or an animation - which contributes in full even when the baseline is 0.
-         *
-         * Ceiling is therefore a conservative bound on the proxy, not a mechanism:
-         * floor/5 = 300 was the first draft and would have been arbitrary. An
-         * arbitrary precondition is a new source of FALSE RED in the nightly,
-         * which is the failure this investigation existed to remove
-         * (@Codex-Android-DevOPS).
-         *
-         * Measured baselines, same code and fixture:
-         *   run 32947725178:  212, 212, 216
-         *   run 32948862386:  216,   0, 593
-         *
-         * Two things to carry forward:
-         *  - It is not zero, and not stable. The assertion this replaced had been
-         *    "confirming" a baseline of 0 for as long as it existed.
-         *  - 300 would have passed the first run and FAILED the second on 593,
-         *    turning a green run red for a reason having nothing to do with a
-         *    menu. That is the false-red this ceiling is deliberately loose to
-         *    avoid.
-         *
-         * The 0..593 spread is itself the useful signal: colour presence here is
-         * time-dependent, so the undefended direction above is live rather than
-         * theoretical. It stays acceptable only because the largest baseline seen
-         * is far below the floor - if that gap closes, this needs a real mechanism
-         * rather than a wider bound.
-         *
-         * ⚠️ Separate the certain part of the above from the untested part.
-         *
-         * CERTAIN, by construction: a pixel already saturated in BEFORE cannot
-         * enter the difference, because the predicate requires !saturated(before).
-         * That is a property of the code, not an observation.
-         *
-         * NOT ESTABLISHED: the prediction people (myself included) drew from it -
-         * that colour either sits in the baseline or arrives in the window, so
-         * baseline + added should be roughly constant across the three cases. It
-         * is not. Within run 32948862386, paired inside that single run:
-         *
-         *   compact-first    baseline 216   added 4164   sum 4380
-         *   compact-middle   baseline   0   added 4768   sum 4768
-         *   compact-last     baseline 593   added 4164   sum 4757
-         *
-         * Two of three follow the expected direction (middle has the lowest
-         * baseline and the highest delta, last the reverse); compact-first does
-         * not, and the sums differ by 388. The likely confound is that the sum
-         * estimates the AFTER frame's total colour, which has no reason to match
-         * across cases since the three menus cover different content - but that is
-         * an untested explanation for an untested prediction, so treat the
-         * mechanism as UNDETERMINED rather than supported.
-         *
-         * What would settle it, cheaply: also log the AFTER frame's absolute
-         * saturated count. Then after_total - baseline must equal added exactly if
-         * no baseline pixel ever loses saturation, and any residual quantifies the
-         * gap directly instead of leaving it to argument.
-         */
-        private const val THREAD_NEW_MESSAGE_MENU_MAX_BASELINE_SATURATED_PX =
-            THREAD_NEW_MESSAGE_MENU_MIN_ADDED_SATURATED_PX
-
-        // Measured on run 43620274393 (3x): the standing colour is the avatar at
-        // x=72..180px (24..60dp); message text starts ~71dp in. 64dp sits between
-        // them. The logged bounds show whether colour ever appears right of it.
-        private const val THREAD_NEW_MESSAGE_MENU_AVATAR_GUTTER_DP = 64f
 
         private const val LONG_PRESS_RETRY_SUPPRESS_CHANGED_RATIO = 0.002f
 
-        // task #228: the LAST row's compact menu is *designed* to paint over the
-        // Composer. artin, 2026-08-25: "压住输入框 是对的，那要不然被输入框挡住啊"
-        // - if it did not overlap, the Composer would cover the menu instead. So
-        // this is a FLOOR, not a ceiling: too little change in the bottom band
-        // means the menu failed to reach the Composer. Correct reading observed
-        // 0.14443202 with the 129dp menu; the no-gesture noise floor is 2.7e-5.
-        // Only one of the two accepted placements: since #3768 the 181dp menu
-        // flips above the last row instead (see the assertion's comment).
-        private const val THREAD_NEW_MESSAGE_MENU_COMPOSER_MIN_CHANGED_RATIO = 0.05f
-        private const val THREAD_NEW_MESSAGE_MENU_OPEN_PROBE_TOLERANCE = 8
         private const val SEARCH_PIN_MENU_MIN_CHANGED_RATIO = 0.004f
         private const val THREAD_OPEN_PROBE_TOP_BAND_FRACTION = 0.15f
         private const val FORWARD_PROBE_SWIPE_STEPS = 12

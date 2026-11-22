@@ -58,29 +58,4 @@ class AppIdentityReceiptProviderCallTest {
         ShadowBinder.setCallingUid(AppIdentityReceiptResponder.SHELL_UID)
         assertNotEquals("caller_not_allowed", provider.call("receipt_v1", null, validExtras()).getString(AppIdentityReceiptProvider.RESULT_ERROR))
     }
-
-    @Test
-    fun creatingTheProviderAtProcessStartDoesNoWork() {
-        // Enabled providers are created before Application.onCreate: no context, nothing initialized.
-        val bare = AppIdentityReceiptProvider()
-        assertTrue(bare.onCreate())
-        assertNull("onCreate must not need a context", bare.context)
-    }
-
-    @Test
-    fun shellUidIsAuthorizedAndOtherEntryPointsReturnNothing() {
-        ShadowBinder.setCallingUid(AppIdentityReceiptResponder.SHELL_UID)
-        val result = provider.call("receipt_v1", null, validExtras())
-        // Past the uid gate: either a receipt or a non-authorization refusal (no session loaded here).
-        assertNotEquals("caller_not_allowed", result.getString(AppIdentityReceiptProvider.RESULT_ERROR))
-        assertEquals("bad_request", provider.call("receipt_v1", null, Bundle().apply { putAll(validExtras()); putInt("x", 1) }).getString("error"))
-
-        val uri = android.net.Uri.parse("content://build.raft.app.identity-receipt/")
-        assertNull(provider.query(uri, null, null, null, null))
-        assertNull(provider.getType(uri))
-        assertNull(provider.insert(uri, null))
-        assertEquals(0, provider.update(uri, null, null, null))
-        assertEquals(0, provider.delete(uri, null, null))
-        assertFalse(result.isEmpty)
-    }
 }

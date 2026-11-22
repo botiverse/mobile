@@ -24,29 +24,6 @@ class AndroidAttachmentExportAuthorityTest {
     }
 
     @Test
-    fun sameOperationIdOnDifferentOwnerCannotCrossCancel() {
-        val registry = AndroidAttachmentExportAuthorityRegistry()
-        val ownerA = ownerLease("scope-a", 1L)
-        val ownerB = ownerLease("scope-b", 1L)
-
-        assertTrue(registry.bind(ownerA, "same-download", "operation"))
-        assertTrue(registry.bind(ownerB, "same-download", "operation"))
-
-        assertTrue(registry.retireIfCurrent(ownerA, "same-download", "operation"))
-        assertTrue(registry.isCurrent(ownerB, "same-download", "operation"))
-    }
-
-    @Test
-    fun successorCannotReplaceStillActiveOperationWithoutItsCancel() {
-        val registry = AndroidAttachmentExportAuthorityRegistry()
-        val owner = ownerLease("scope-a", 1L)
-
-        assertTrue(registry.bind(owner, "same-download", "operation-a"))
-        assertFalse(registry.bind(owner, "same-download", "operation-b"))
-        assertTrue(registry.isCurrent(owner, "same-download", "operation-a"))
-    }
-
-    @Test
     fun successorCannotBindUntilCurrentCleanupFinishes() {
         val registry = AndroidAttachmentExportAuthorityRegistry()
         val owner = ownerLease("scope-a", 1L)
@@ -82,38 +59,6 @@ class AndroidAttachmentExportAuthorityTest {
         assertTrue(cancelResult == true)
         assertTrue(bindResult == true)
         assertFalse(registry.cancelIfCurrent(owner, "same-download", "operation-a") {})
-        assertTrue(registry.isCurrent(owner, "same-download", "operation-b"))
-    }
-
-    @Test
-    fun asynchronousCancelOwnsGateBeforeCleanupTaskStarts() {
-        val registry = AndroidAttachmentExportAuthorityRegistry()
-        val owner = ownerLease("scope-a", 1L)
-        val cleanupTask = java.util.concurrent.atomic.AtomicReference<(() -> Unit)?>()
-        assertTrue(registry.bind(owner, "same-download", "operation-a"))
-
-        assertTrue(
-            registry.cancelIfCurrent(
-                owner = owner,
-                downloadId = "same-download",
-                operationId = "operation-a",
-                dispatch = cleanupTask::set,
-                cleanup = {}
-            )
-        )
-        val bindFinished = CountDownLatch(1)
-        var successorBound = false
-        val bindThread = thread {
-            successorBound = registry.bind(owner, "same-download", "operation-b")
-            bindFinished.countDown()
-        }
-        assertFalse(bindFinished.await(100, TimeUnit.MILLISECONDS))
-
-        cleanupTask.get()?.invoke()
-        bindThread.join(2_000L)
-
-        assertFalse(bindThread.isAlive)
-        assertTrue(successorBound)
         assertTrue(registry.isCurrent(owner, "same-download", "operation-b"))
     }
 

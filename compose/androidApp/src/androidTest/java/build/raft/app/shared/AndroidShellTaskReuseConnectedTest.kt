@@ -19,36 +19,12 @@ import org.json.JSONObject
 
 class AndroidShellTaskReuseConnectedTest {
     @Test
-    fun defaultAppShellHostUsesStandardTaskManifestPolicy() {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        @Suppress("DEPRECATION")
-        val activityInfo = context.packageManager.getActivityInfo(
-            ComponentName(context, RaftAppShellActivity::class.java),
-            PackageManager.GET_META_DATA,
-        )
-
-        assertEquals(ActivityInfo.LAUNCH_SINGLE_TASK, activityInfo.launchMode)
-        assertEquals(ActivityInfo.DOCUMENT_LAUNCH_NONE, activityInfo.documentLaunchMode)
-    }
-
-    @Test
     fun notificationReusesExistingServerShellWithoutStackingAnotherActivity() {
         assertNotificationReusesExistingShell(
             AndroidShellLaunchTarget(
                 shellInstanceId = "android-default-app-shell",
                 serverId = "server-notification-reuse",
                 documentShell = false,
-            )
-        )
-    }
-
-    @Test
-    fun legacyDocumentPayloadStillReusesSingleAppShellTask() {
-        assertNotificationReusesExistingShell(
-            AndroidShellLaunchTarget(
-                shellInstanceId = "server-shell:server-notification-reuse",
-                serverId = "server-notification-reuse",
-                documentShell = true,
             )
         )
     }

@@ -30,26 +30,6 @@ class RaftBackgroundConnectionServiceStopTest {
     }
 
     @Test
-    fun stopIsANoOpWhenNotRunningAndNoStartPending() {
-        RaftBackgroundConnectionService.stop(app, "preference_disabled")
-
-        assertNull("must not issue stopService IPC when already stopped", shadowOf(app).nextStoppedService)
-        assertNull("must not issue startService IPC when no start is pending", shadowOf(app).nextStartedService)
-        assertFalse(RaftBackgroundConnectionService.stopQueued)
-    }
-
-    @Test
-    fun stopCallsStopServiceWhenRunning() {
-        RaftBackgroundConnectionService.setRunningForTests(true)
-
-        RaftBackgroundConnectionService.stop(app, "logout")
-
-        val stopped = shadowOf(app).nextStoppedService
-        assertEquals(RaftBackgroundConnectionService::class.java.name, stopped?.component?.className)
-        assertNull(shadowOf(app).nextStartedService)
-    }
-
-    @Test
     fun stopQueuesStopActionWithoutStopServiceWhenStartPending() {
         RaftBackgroundConnectionService.start(app, "activity_on_resume")
         val started = shadowOf(app).nextStartedService

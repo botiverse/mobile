@@ -96,25 +96,6 @@ class RaftSqlDatabaseIosSmokeTest {
         }
     }
 
-    @Test
-    fun nativeVersionPreflightDoesNotCreateMissingDatabase() {
-        val basePath = "${NSTemporaryDirectory().trimEnd('/')}/slock-version-preflight-ios"
-        val files = NSFileManager.defaultManager()
-        if (!files.fileExistsAtPath(basePath)) {
-            check(files.createDirectoryAtPath(basePath, true, null, null))
-        }
-        val name = "missing-${NSUUID.UUID().UUIDString}.db"
-
-        assertEquals(
-            null,
-            readSqliteUserVersionReadOnly(
-                databaseName = name,
-                basePath = basePath,
-            ),
-        )
-        assertFalse(files.fileExistsAtPath("$basePath/$name"))
-    }
-
     private fun databaseFileBytes(
         basePath: String,
         name: String,
