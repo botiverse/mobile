@@ -300,14 +300,23 @@ fun TabPager(
                     }
                 }
         ) {
+            // Latch one-way once initial push motion settles so returning to this page on pop-back
+            // never drops beyondViewportPageCount back to 0 and disposes kept-alive tabs.
+            val initialMotionSettledLatch = remember { booleanArrayOf(false) }
+            val initialMotionSettled =
+                initialMotionSettledLatch[0] || !build.raft.app.nav.LocalRaftStackPageInMotion.current
+            if (initialMotionSettled && !initialMotionSettledLatch[0]) {
+                androidx.compose.runtime.SideEffect { initialMotionSettledLatch[0] = true }
+            }
             nestedDrags.ProvideScrollerConfiguration {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                     userScrollEnabled = gesturePolicy.swipeEnabled && backSwipe.userScrollEnabled,
                     key = { page -> page },
-                    // Kuikly keepItemAlive kept every page composed.
-                    beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
+                    // Kuikly keepItemAlive kept every page composed; wait until the initial push
+                    // slide settles before pre-composing inactive tabs so Frame 1 only builds the active tab.
+                    beyondViewportPageCount = if (keepItemAlive && initialMotionSettled) pageCount else 0,
                     // Kuikly's pager had no edge bounce; on iOS the CMP rubber band could stay
                     // stuck at an offset (see raftPlatformTabPagerOverscrollEnabled).
                     overscrollEffect = if (raftPlatformTabPagerOverscrollEnabled()) rememberOverscrollEffect() else null,

@@ -171,6 +171,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import build.raft.app.compat.ui.collectAsStateWhileStarted
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -203,6 +204,7 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -351,9 +353,15 @@ internal class AppShellChildTabEntry(
         selectedTab: String,
         retainedTabs: Set<String>,
         renderer: AppShellChildTabRenderer,
-        parentVisible: Boolean = true
+        parentVisible: Boolean = true,
+        parentStarted: Boolean = parentVisible,
     ) {
-        updateRenderer(selectedTab, renderer)
+        // Update the selected tab's renderer while STARTED (including pop-back slide so fresh data
+        // paints on Frame 1) or when the selected tab changed (deep link); skip only when covered
+        // (`CREATED`) on the same tab so hidden recompositions do not churn child tabs.
+        if (parentStarted || selectedTab != this.selectedTab) {
+            updateRenderer(selectedTab, renderer)
+        }
         this.retainedTabs = retainedTabs
         this.selectedTab = selectedTab
         this.parentVisible = parentVisible
@@ -1104,7 +1112,7 @@ private fun RaftAppShellReadyContent(
             )
         }
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
-    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsState()
+    val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsStateWhileStarted()
     val draftProjection =
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
@@ -1435,7 +1443,7 @@ private fun RaftAppShellReadyContent(
                 homeShellStore.state.value
             }
         }
-    val homeShellState by homeShellRenderState.collectAsState(initialHomeShellRenderState)
+    val homeShellState by homeShellRenderState.collectAsStateWhileStarted(initialHomeShellRenderState)
     val homeState = homeShellState.home
     val homeActivityState = homeShellState.activity
     val homeSearchSavedState = homeShellState.searchSaved
@@ -2084,7 +2092,7 @@ private fun RaftAppShellReadyContent(
         remember(sharedStores.activityUnreadSummaryStore, activityUnreadServerId) {
             sharedStores.activityUnreadSummaryStore.projectionFlow(activityUnreadServerId)
         }
-    val activityUnreadSummary by activityUnreadSummaryFlow.collectAsState(
+    val activityUnreadSummary by activityUnreadSummaryFlow.collectAsStateWhileStarted(
         sharedStores.activityUnreadSummaryStore.currentProjection(activityUnreadServerId)
     )
     val serverActivityExpectedOwner =
@@ -2098,8 +2106,9 @@ private fun RaftAppShellReadyContent(
     AppShellNotificationBadgeEffects(
         readySession = readySession,
         readyServerId = readyServerId,
+        homeShellStore = homeShellStore,
         homeState = homeState,
-        activityUnreadSummary = activityUnreadSummary,
+        activityUnreadSummaryFlow = activityUnreadSummaryFlow,
         authoritativeHomeStartAllowed = authoritativeHomeStartAllowed,
         serverActivityExpectedOwner = serverActivityExpectedOwner,
         bridge = bridge,
@@ -2155,7 +2164,7 @@ private fun RaftAppShellReadyContent(
                 readySession != null && authoritativeHomeStartAllowed
         }
     }
-    val activeAnnouncement by announcementStore.announcement.collectAsState()
+    val activeAnnouncement by announcementStore.announcement.collectAsStateWhileStarted()
     val latestAnnouncementStore by rememberUpdatedState(announcementStore)
     AppShellAnnouncementEffects(
         announcementStore = announcementStore,
@@ -2175,7 +2184,7 @@ private fun RaftAppShellReadyContent(
                 homeStore.observeServer(ServerId(serverId))
             }
         }
-    val homeConversationDirectory by homeConversationDirectoryFlow.collectAsState(SharedConversationDirectoryState())
+    val homeConversationDirectory by homeConversationDirectoryFlow.collectAsStateWhileStarted(SharedConversationDirectoryState())
     val appShellConversationDirectory =
         remember(homeConversationDirectory, homeActivityState.snapshot, homeActivityState.dmPeerNames) {
             val activityDirectory =
@@ -2360,7 +2369,7 @@ private fun RaftAppShellReadyContent(
         remember(sharedStores, navigationStoreScope) {
             sharedStores.foregroundBannerStore(navigationStoreScope)
         }
-    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsState()
+    val foregroundMessageBanner by foregroundBannerStore.banner.collectAsStateWhileStarted()
     AppShellTaskDraftsAndBannerEffects(
         sharedStores = sharedStores,
         pager = pager,
@@ -2372,6 +2381,8 @@ private fun RaftAppShellReadyContent(
         latestSelectedTabState = latestSelectedTabState,
         latestSelectedHomeDestinationState = latestSelectedHomeDestinationState,
         latestAppShellConversationDirectoryState = latestAppShellConversationDirectoryState,
+        homeConversationDirectoryFlow = homeConversationDirectoryFlow,
+        homeShellStore = homeShellStore,
         latestSelectedHomeConversationIdState = latestSelectedHomeConversationIdState,
         foregroundBannerStore = foregroundBannerStore,
     )
@@ -6768,10 +6779,14 @@ private fun RaftAppShellReadyContent(
                             AppShellChildTabRegistration(entry = entry, replacedEntryId = replaced?.debugId ?: 0)
                         }
                     val childTabEntry = childTabRegistration.entry
+                    val shellLifecycleOwner = LocalLifecycleOwner.current
                     SideEffect {
+                        val parentStarted =
+                            pageVisible || shellLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
                         childTabEntry.updateSelection(
                             selectedTab = currentChildTab,
                             parentVisible = pageVisible,
+                            parentStarted = parentStarted,
                             retainedTabs = retainedAppShellTabs,
                             renderer = childTabRenderer
                         )

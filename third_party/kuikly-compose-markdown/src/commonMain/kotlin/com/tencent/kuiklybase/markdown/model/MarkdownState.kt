@@ -45,6 +45,8 @@ fun rememberMarkdownState(
     )
 }
 
+internal val DefaultRaftGFMFlavourDescriptor: MarkdownFlavourDescriptor = RaftGFMFlavourDescriptor()
+
 @Composable
 internal fun rememberMarkdownParserState(
     lookupLinks: Boolean = true,
@@ -52,7 +54,7 @@ internal fun rememberMarkdownParserState(
     initialContent: MarkdownParserContent? = null
 ): MarkdownState {
     val state = remember(lookupLinks, isShareMode, initialContent) {
-        val flavour = RaftGFMFlavourDescriptor()
+        val flavour = DefaultRaftGFMFlavourDescriptor
         val initialParserContent = initialContent?.parserContent
         MarkdownState(
             Input(
@@ -102,7 +104,7 @@ suspend fun prepareMarkdownContent(content: MarkdownParserContent, lookupLinks: 
     }
     val parsed =
         withContext(RaftMarkdownParseDispatcher) {
-            val flavour = RaftGFMFlavourDescriptor()
+            val flavour = DefaultRaftGFMFlavourDescriptor
             parseMarkdownContent(
                 content = parserContent,
                 lookupLinks = lookupLinks,
@@ -148,7 +150,7 @@ fun parseMarkdownInlineSyntax(
     val key = MarkdownParseResultCacheKey(content, lookupLinks)
     val (cached, _) =
         MarkdownParseResultCache.getOrPut(key) {
-            val flavour = RaftGFMFlavourDescriptor()
+            val flavour = DefaultRaftGFMFlavourDescriptor
             parseMarkdownContent(
                 content = content,
                 lookupLinks = lookupLinks,
@@ -177,7 +179,7 @@ internal fun parseMarkdownTopLevelNodes(
     val key = MarkdownParseResultCacheKey(content, lookupLinks)
     val (cached, _) =
         MarkdownParseResultCache.getOrPut(key) {
-            val flavour = RaftGFMFlavourDescriptor()
+            val flavour = DefaultRaftGFMFlavourDescriptor
             parseMarkdownContent(
                 content = content,
                 lookupLinks = lookupLinks,

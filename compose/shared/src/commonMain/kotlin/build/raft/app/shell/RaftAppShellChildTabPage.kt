@@ -72,11 +72,12 @@ private fun RaftAppShellChildTabPageContent() {
                 "result=hit entryId=${entry.debugId} selectedTab=${entry.selectedTab}"
         )
     }
-    LaunchedEffect(tab, active, entry.selectedTab) {
-        if (active) {
+    if (active) {
+        val selectedTab = entry.selectedTab
+        LaunchedEffect(tab, selectedTab) {
             bridge.log(
                 "app_shell_child_tab_render shellId=$shellId pageDataTab=$tab " +
-                    "pageTab=$tab selectedTab=${entry.selectedTab} active=$active entryId=${entry.debugId}"
+                    "pageTab=$tab selectedTab=$selectedTab active=true entryId=${entry.debugId}"
             )
         }
     }

@@ -300,6 +300,7 @@ fun RaftFitToolbar(
             .padding(start = horizontalPadding, end = horizontalPadding, top = airTop, bottom = airBottom + RaftStroke.Hairline),
     ) { constraints ->
         val available = constraints.maxWidth
+        if (available <= 0) return@SubcomposeLayout layout(constraints.minWidth, constraints.minHeight) {}
         val gap = RaftFitToolbarDefaults.Gap.roundToPx()
         val lineHeight = controlHeight.roundToPx()
         val searchChrome = RaftFitToolbarDefaults.SearchChrome.roundToPx()

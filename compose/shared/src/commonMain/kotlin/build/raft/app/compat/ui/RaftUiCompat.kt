@@ -8,11 +8,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler as ComposeBackHandler
@@ -38,6 +42,32 @@ import coil3.size.Size
 import build.raft.app.image.raftInstallImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+
+/**
+ * Collects [this] only while the enclosing [LocalLifecycleOwner] is at least [Lifecycle.State.STARTED],
+ * holding the last received value while covered (`CREATED` in `RaftMobilePageStackDisplay`).
+ *
+ * When the page returns to [Lifecycle.State.STARTED], collection restarts and catches up from the
+ * upstream `StateFlow` / replay flow immediately, so covered pages (the app shell or an older
+ * conversation under a pushed thread) do not recompose mid-transition on store updates.
+ */
+@Composable
+internal fun <T> Flow<T>.collectAsStateWhileStarted(initial: T): State<T> {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val state = remember(this) { mutableStateOf(initial) }
+    LaunchedEffect(this, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            collect { state.value = it }
+        }
+    }
+    return state
+}
+
+/** [collectAsStateWhileStarted] for a [StateFlow], seeded with its live [StateFlow.value]. */
+@Composable
+internal fun <T> StateFlow<T>.collectAsStateWhileStarted(): State<T> = collectAsStateWhileStarted(value)
 
 /*
  * TODO(cmp-switch): replacements for the Kuikly-only compose extensions
