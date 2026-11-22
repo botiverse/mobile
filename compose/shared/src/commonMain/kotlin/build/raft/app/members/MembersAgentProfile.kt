@@ -8,6 +8,9 @@ import build.raft.app.resources.*
 import androidx.compose.runtime.setValue
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionListDirection
+import build.raft.designsystem.components.RaftDescriptionListScope
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.app.data.AgentDetailSnapshot
@@ -204,14 +207,11 @@ internal fun MembersAgentRoleHelpRow(
     }
 }
 
-// Web AgentProfileInfo spacings (raft-ui DescriptionList stacked at phone width, section
-// paddings). Kept as separate constants on purpose so one can change without the others
-// (task #257).
+// Web AgentProfileInfo spacings (section paddings). Kept as separate constants on purpose so one
+// can change without the others (task #257).
 internal val MembersInfoStatusGapX = 6.dp // web gap-1.5: term to its icons, dot to the status word
 
-private val MembersInfoTermGap = 2.dp // raft-ui DescriptionList gap-y-0.5, term above its value (stacked)
-
-internal val MembersInfoItemGap = 10.dp // gap-y-0.5 + the stacked term's mt-2, between two rows
+internal val MembersInfoItemGap = 10.dp // between a section's blocks
 
 internal val MembersProfileSectionPaddingY = 16.dp // web section py-4, separator to eyebrow
 
@@ -299,47 +299,43 @@ private val MembersInfoValueFontSize = 14.sp
 private val MembersInfoValueLineHeight = 20.sp
 
 /**
- * One stacked property of the agent profile (web InfoRow on a raft-ui DescriptionList that has
- * stacked under 384px): the term -- footnote medium `foreground-hint`, its icon actions 6dp after
- * it -- 2dp (`gap-y-0.5`) above the value.
+ * One property of the agent profile (web InfoRow on a raft-ui DescriptionList): the label, its icon
+ * actions 6dp after it, and the value. [copyText]: the raw value a long press on the value copies
+ * (never the label).
  *
  * Every Info and Runtime config row goes through here, so a label change cannot land on some
  * rows and miss one.
  */
 @Composable
-internal fun MembersAgentInfoField(
+internal fun RaftDescriptionListScope.MembersAgentInfoField(
     label: String,
-    modifier: Modifier = Modifier,
     copyText: String? = null,
     labelActions: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(bottom = MembersInfoTermGap),
-            horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RaftText(
-                text = label,
-                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-                color = RaftTheme.colors.foregroundHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            labelActions?.invoke(this)
-        }
-        // [copyText]: the raw value a long press on the value copies (never the label).
+    Item(
+        term = label,
+        termAccessory =
+            labelActions?.let { actions ->
+                {
+                    Row(
+                        // The list pulls a ghost icon button 5dp towards the label; these have no padding to pull.
+                        modifier = Modifier.padding(start = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = actions
+                    )
+                }
+            }
+    ) {
         Column(Modifier.raftCopyable(copyText), content = content)
     }
 }
 
 /**
  * A profile body section (web AgentProfileInfo `<Separator/>` + `px-5 py-4`): the hairline, 16dp,
- * the eyebrow row (with its optional pencil) and 12dp (`mb-3`) above the stacked rows, which sit
- * 10dp apart (`gap-y-0.5` + the stacked term's `mt-2`). The 16dp under the last row is the profile
- * column's own spacing.
+ * the eyebrow row (with its optional pencil) and 12dp (`mb-3`) above its content. The 16dp under
+ * the last block is the profile column's own spacing.
  */
 @Composable
 internal fun MembersProfileSection(
@@ -1597,82 +1593,84 @@ private fun MembersAgentInfoSection(
     }
 
     // INFO section — web AgentProfileInfo: a separator, then `px-5 py-4` with the eyebrow
-    // (`mb-3`) over a raft-ui DescriptionList (horizontal). Below 384px of list width that list
-    // stacks: one item per row, the label above its value. Order: Role, Computer, Computer
-    // status, Computer Version, Created, Creator.
+    // (`mb-3`) over a raft-ui DescriptionList (horizontal): each label beside its value, all labels
+    // above their values once one doesn't fit. Order: Role, Computer, Computer status, Computer
+    // Version, Created, Creator.
     MembersProfileSection(title = stringResource(Res.string.member_section_info)) {
         val isAppBot = !member.managedByAppInstallId.isNullOrBlank() || !summary?.managedByAppInstallId.isNullOrBlank()
-        // Role: web AgentProfileInfo hides server-role editing for an App bot (its authority is
-        // the App's grant, not a server role).
-        if (!isAppBot) {
-            // Role: the label carries the "Agent roles" help and, for whoever may change it, the pencil;
-            // the value is the plain role word (hidden role = empty value, web parity #261).
-            MembersAgentInfoField(
-                label = stringResource(Res.string.member_label_role),
-                labelActions = {
-                    MembersProfileIconAction(
-                        iconName = RaftLucideIconName.CircleQuestionMark,
-                        contentDescription = stringResource(Res.string.member_title_agent_roles),
-                        onClick = { roleHelpOpen = true }
-                    )
-                    if (canEditServerRole && !editingServerRole) {
-                        MembersProfilePencilButton(
-                            contentDescription = stringResource(Res.string.member_action_edit_role),
-                            onClick = {
-                                serverRoleEditorAuthority = agentProfileEditAuthority
+        RaftDescriptionList(Modifier.fillMaxWidth(), RaftDescriptionListDirection.Horizontal) {
+            // Role: web AgentProfileInfo hides server-role editing for an App bot (its authority is
+            // the App's grant, not a server role).
+            if (!isAppBot) {
+                // Role: the label carries the "Agent roles" help and, for whoever may change it, the pencil;
+                // the value is the plain role word (hidden role = empty value, web parity #261).
+                MembersAgentInfoField(
+                    label = stringResource(Res.string.member_label_role),
+                    labelActions = {
+                        MembersProfileIconAction(
+                            iconName = RaftLucideIconName.CircleQuestionMark,
+                            contentDescription = stringResource(Res.string.member_title_agent_roles),
+                            onClick = { roleHelpOpen = true }
+                        )
+                        if (canEditServerRole && !editingServerRole) {
+                            MembersProfilePencilButton(
+                                contentDescription = stringResource(Res.string.member_action_edit_role),
+                                onClick = {
+                                    serverRoleEditorAuthority = agentProfileEditAuthority
+                                    draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
+                                    serverRoleError = null
+                                    serverRoleMenuExpanded = true
+                                    editingServerRole = true
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    if (editingServerRole) {
+                        val serverRoleLabels = MembersAgentServerRole.entries.associateWith { it.localizedLabel() }
+                        MembersServerRoleEditor(
+                            displayValue = draftServerRole.localizedLabel(),
+                            expanded = serverRoleMenuExpanded,
+                            enabled = !savingServerRole,
+                            saving = savingServerRole,
+                            saveEnabled = draftServerRole != currentServerRole,
+                            options = membersAgentServerRoleOptions(draftServerRole) { serverRoleLabels.getValue(it) },
+                            selectedId = draftServerRole.wireValue,
+                            error = serverRoleError,
+                            onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
+                            onSelect = { roleId ->
+                                roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
+                                    draftServerRole = nextRole
+                                    serverRoleMenuExpanded = false
+                                    serverRoleError = null
+                                }
+                            },
+                            onSave = { saveServerRole() },
+                            onCancel = {
                                 draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
                                 serverRoleError = null
-                                serverRoleMenuExpanded = true
-                                editingServerRole = true
+                                serverRoleMenuExpanded = false
+                                editingServerRole = false
                             }
                         )
+                    } else {
+                        MembersAgentServerRoleChip(serverRoleDisplay)
                     }
                 }
-            ) {
-                if (editingServerRole) {
-                    val serverRoleLabels = MembersAgentServerRole.entries.associateWith { it.localizedLabel() }
-                    MembersServerRoleEditor(
-                        displayValue = draftServerRole.localizedLabel(),
-                        expanded = serverRoleMenuExpanded,
-                        enabled = !savingServerRole,
-                        saving = savingServerRole,
-                        saveEnabled = draftServerRole != currentServerRole,
-                        options = membersAgentServerRoleOptions(draftServerRole) { serverRoleLabels.getValue(it) },
-                        selectedId = draftServerRole.wireValue,
-                        error = serverRoleError,
-                        onToggle = { serverRoleMenuExpanded = !serverRoleMenuExpanded },
-                        onSelect = { roleId ->
-                            roleId.toMembersAgentServerRoleOrNull()?.let { nextRole ->
-                                draftServerRole = nextRole
-                                serverRoleMenuExpanded = false
-                                serverRoleError = null
-                            }
-                        },
-                        onSave = { saveServerRole() },
-                        onCancel = {
-                            draftServerRole = currentServerRole ?: MembersAgentServerRole.Member
-                            serverRoleError = null
-                            serverRoleMenuExpanded = false
-                            editingServerRole = false
-                        }
-                    )
-                } else {
-                    MembersAgentServerRoleChip(serverRoleDisplay)
-                }
             }
-            if (roleHelpOpen) {
-                MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
-            }
+            MembersAgentComputerInfoRows(
+                member = member,
+                summary = summary,
+                machineStatusRow = machineStatusRow,
+                onOpenComputer = onOpenComputer,
+                onOpenManagedApp = onOpenManagedApp,
+                timeContext = timeContext,
+                memberAvatarResolver = memberAvatarResolver
+            )
         }
-        MembersAgentComputerInfoRows(
-            member = member,
-            summary = summary,
-            machineStatusRow = machineStatusRow,
-            onOpenComputer = onOpenComputer,
-            onOpenManagedApp = onOpenManagedApp,
-            timeContext = timeContext,
-            memberAvatarResolver = memberAvatarResolver
-        )
+        if (!isAppBot && roleHelpOpen) {
+            MembersAgentRoleHelpDialog(onDismiss = { roleHelpOpen = false })
+        }
     }
 }
 
