@@ -206,7 +206,7 @@ class MembersAgentRuntimeUsageTest {
         signedIn = null
         blockClearResolve = true
         val clearing = async(start = CoroutineStart.UNDISPATCHED) {
-            clearTracker.onAuthSessionEvent(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.UserLogout))
+            clearTracker.onAuthSessionEvent(AuthSessionEvent.Cleared(generation = 3, reason = AuthSessionClearReason.Logout))
         }
         assertNull(clearTracker.owner.value)
         clearGate.complete(Unit)
@@ -237,7 +237,7 @@ class MembersAgentRuntimeUsageTest {
             refreshInPlace = { actions += "refresh" },
         )
         applyShellRuntimeAccountUsageAuthEvent(
-            event = AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.UserLogout),
+            event = AuthSessionEvent.Cleared(generation = 4, reason = AuthSessionClearReason.Logout),
             clearImmediateAndRead = { actions += "clear" },
             refreshInPlace = { actions += "refresh" },
         )
