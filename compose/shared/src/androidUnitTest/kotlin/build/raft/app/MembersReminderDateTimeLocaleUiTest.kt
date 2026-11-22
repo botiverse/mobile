@@ -2,20 +2,24 @@ package build.raft.app
 
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
+import build.raft.app.base.BridgeModule
+import build.raft.app.compat.pager.IModuleCreator
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -39,9 +43,23 @@ class MembersReminderDateTimeLocaleUiTest {
 
     private val originalLocaleType = StringDesc.localeType
 
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "members-reminder-datetime-locale"
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest
+    fun setUp() {
+        RaftTimeFormatRuntime.resetForTest()
+        PagerManager.register(livePager)
+    }
+
     @AfterTest
     fun restoreLocale() {
         StringDesc.localeType = originalLocaleType
+        RaftTimeFormatRuntime.resetForTest()
+        PagerManager.unregister(livePager)
     }
 
     @Test
@@ -109,9 +127,8 @@ class MembersReminderDateTimeLocaleUiTest {
                 )
 
             setContent {
-                val pager = remember { object : Pager() {} }
                 CompositionLocalProvider(
-                    LocalActivity provides RaftPageActivity(pager),
+                    LocalActivity provides RaftPageActivity(livePager),
                     LocalRaftTimeContextProvider provides liveProvider,
                 ) {
                     val inherited = rememberMemberDetailTimeContextProvider(dayOnlyLivePayload, pageVisibleTick = 0, pageVisible = true)
