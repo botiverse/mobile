@@ -114,7 +114,12 @@ sealed interface RaftDownloadOutcome {
 
     data class Cancelled(override val hostStatus: String = "cancelled") : RaftDownloadOutcome
 
-    data class Failed(override val hostStatus: String, val message: String? = null) : RaftDownloadOutcome
+    data class Failed(
+        override val hostStatus: String,
+        val message: String? = null,
+        val errorKind: String? = null,
+        val traceId: String? = null,
+    ) : RaftDownloadOutcome
 }
 
 /** Host control actions forwarded to a running task. */
@@ -196,6 +201,9 @@ class RaftDownloadCenter internal constructor(
         state.map { it.forOwner(ownerKey, accountKey) }.distinctUntilChanged()
 
     fun isActive(id: String): Boolean = running.containsKey(id)
+
+    /** The active run's result for [id], or null when [id] is not running. */
+    fun activeResult(id: String): Deferred<RaftDownloadOutcome>? = running[id]?.result
 
     fun canRetry(id: String): Boolean = tasks.containsKey(id) && !running.containsKey(id)
 

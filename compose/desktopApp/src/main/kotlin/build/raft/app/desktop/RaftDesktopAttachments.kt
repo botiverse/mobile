@@ -227,7 +227,12 @@ class RaftDesktopAttachments(
                         put("sizeBytes", target.length().toString())
                     }.toRaftJsonString()
                 "cancelled" -> status("cancelled")
-                else -> status("download_failed", result.message ?: result.errorKind ?: "Attachment download failed")
+                else ->
+                    buildJsonObject {
+                        put("status", "download_failed")
+                        put("message", result.message ?: result.errorKind ?: "Attachment download failed")
+                        result.errorKind?.takeIf(String::isNotBlank)?.let { put("errorKind", it) }
+                    }.toRaftJsonString()
             }
 
         /** One progress sample, as Android's `raftTransferBridgePayload`. */
