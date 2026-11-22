@@ -171,12 +171,17 @@ class RaftDownloadCenterTest {
     fun startWhileActiveJoinsTheRunningDownload() = runTest {
         val center = center()
         val task = ScriptedTask()
+        assertNull(center.activeResult("a1"))
         val first = center.start(descriptor(), task)
+        assertTrue(center.activeResult("a1") === first, "activeResult exposes the running deferred")
         val second = center.start(descriptor(), ScriptedTask())
         runCurrent()
         assertTrue(first === second, "same id while active must single-flight")
         assertEquals(listOf(1), task.runs)
         assertEquals(1, center.state.value.entries.size)
+        task.finish(RaftDownloadOutcome.Completed())
+        runCurrent()
+        assertNull(center.activeResult("a1"), "activeResult clears once settled")
     }
 
     @Test
@@ -235,6 +240,20 @@ class RaftDownloadCenterTest {
         assertEquals(
             RaftDownloadOutcome.Failed("storage_failed", "disk full"),
             raftDownloadOutcomeForSaveStatus("storage_failed", "disk full")
+        )
+        assertEquals(
+            RaftDownloadOutcome.Failed(
+                hostStatus = "download_failed",
+                message = "HTTP 502",
+                errorKind = "http_status",
+                traceId = "0123456789abcdef0123456789abcdef",
+            ),
+            raftDownloadOutcomeForSaveStatus(
+                status = "download_failed",
+                message = "HTTP 502",
+                errorKind = "http_status",
+                traceId = "0123456789abcdef0123456789abcdef",
+            )
         )
         assertEquals(RaftDownloadOutcome.Failed("failed", null), raftDownloadOutcomeForSaveStatus("", null))
     }

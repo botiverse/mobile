@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,6 +63,15 @@ fun RaftDesktopDownloadBar(modifier: Modifier = Modifier) {
         }
     }
     val host = remember { raftPlatformSavedFileHost() }
+    val savedState = state as? RaftDownloadBarState.Saved
+    val savedUri = savedState?.localUri
+    val savedUpdatedAt =
+        savedState?.let { saved -> snapshot.entries.firstOrNull { it.id == saved.entryId }?.updatedAtMillis }
+    var savedFileRecheck by remember(savedState?.entryId, savedUri, savedUpdatedAt) { mutableIntStateOf(0) }
+    val savedFileExists =
+        remember(host, savedState?.entryId, savedUri, savedUpdatedAt, savedFileRecheck) {
+            host != null && savedUri != null && host.exists(savedUri)
+        }
     val scope = rememberCoroutineScope()
     RaftDesignSystemTheme {
         val colors = RaftTheme.colors
@@ -103,7 +113,7 @@ fun RaftDesktopDownloadBar(modifier: Modifier = Modifier) {
                 }
                 when (state) {
                     is RaftDownloadBarState.Saved ->
-                        if (host != null && state.localUri != null && host.exists(state.localUri)) {
+                        if (host != null && state.localUri != null && savedFileExists) {
                             RaftButton(
                                 text =
                                     stringResource(
@@ -113,7 +123,13 @@ fun RaftDesktopDownloadBar(modifier: Modifier = Modifier) {
                                             Res.string.file_preview_action_show_in_folder
                                         }
                                     ),
-                                onClick = { scope.launch { host.reveal(state.localUri) } },
+                                onClick = {
+                                    scope.launch {
+                                        if (!host.reveal(state.localUri)) {
+                                            savedFileRecheck += 1
+                                        }
+                                    }
+                                },
                                 variant = RaftButtonVariant.Ghost,
                             )
                         }

@@ -2884,19 +2884,16 @@ private fun SharedThreadRouteContentContent(
     val attachmentOpenStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
-    var attachmentOpenStates by attachmentOpenStatesHolder
+    val attachmentOpenStates by attachmentOpenStatesHolder
     val attachmentOperationTokensState = remember(threadInstanceKey) {
         mutableStateOf<Map<String, AttachmentOperationToken>>(emptyMap())
     }
-    var attachmentOperationTokens by attachmentOperationTokensState
-    LaunchedEffect(attachmentOwner?.scopeId, attachmentOwner?.generation, threadInstanceKey) {
-        val currentOwner = attachmentOwner
-        val hasForeign = attachmentOperationTokens.values.any { it.owner != currentOwner }
-        if (hasForeign) {
-            attachmentOperationTokens = emptyMap()
-            attachmentOpenStates = emptyMap()
-        }
-    }
+    ThreadAttachmentOperationLifecycleEffects(
+        threadInstanceKey = threadInstanceKey,
+        attachmentOwner = attachmentOwner,
+        attachmentOpenStatesHolder = attachmentOpenStatesHolder,
+        attachmentOperationTokensState = attachmentOperationTokensState,
+    )
     val nextAttachmentDownloadGenerationState = remember(threadInstanceKey) { mutableStateOf(0L) }
     val inlineVideoPreviewStatesHolder = remember(threadInstanceKey) {
         mutableStateOf<Map<String, ThreadInlineVideoPreviewUiState>>(emptyMap())

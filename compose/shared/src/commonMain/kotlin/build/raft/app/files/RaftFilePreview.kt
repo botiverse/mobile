@@ -2795,6 +2795,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                 JSONObject().apply {
                     put("status", outcome.hostStatus)
                     (outcome as? RaftDownloadOutcome.Failed)?.message?.let { put("message", it) }
+                    (outcome as? RaftDownloadOutcome.Failed)?.errorKind?.let { put("errorKind", it) }
+                    (outcome as? RaftDownloadOutcome.Failed)?.traceId?.let { put("traceId", it) }
                     (outcome as? RaftDownloadOutcome.Completed)?.localUri?.let { put("uri", it) }
                 }
             } else {
@@ -11282,10 +11284,10 @@ private fun canOpenPayloadWithExternalViewer(payload: RaftFilePreviewPayload): B
     payload.externalUrl?.isNotBlank() == true ||
         (payload.source == RaftFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
 
-private fun RaftFilePreviewPayload.attachmentCacheId(): String =
+internal fun RaftFilePreviewPayload.attachmentCacheId(): String =
     attachmentId.ifBlank { path.ifBlank { name.ifBlank { externalFileName.ifBlank { "attachment" } } } }
 
-private fun RaftFilePreviewPayload.attachmentCacheFileName(): String =
+internal fun RaftFilePreviewPayload.attachmentCacheFileName(): String =
     externalFileName
         .ifBlank { name }
         .ifBlank { path }

@@ -176,6 +176,14 @@ class RaftDesktopAttachmentsTest {
         )!!
         assertEquals("download_failed", failed["status"]!!.jsonPrimitive.content)
         assertEquals("HTTP 403", failed["message"]!!.jsonPrimitive.content)
+        assertEquals("http", failed["errorKind"]!!.jsonPrimitive.content)
+
+        val noErrorKind = parseRaftJsonObjectOrNull(
+            RaftDesktopAttachments.saveResult(AttachmentDownloadResult("d", "t", "failed", 0, null, null, " ", "network lost"), File(root, "x"))
+        )!!
+        assertEquals("download_failed", noErrorKind["status"]!!.jsonPrimitive.content)
+        assertEquals("network lost", noErrorKind["message"]!!.jsonPrimitive.content)
+        assertFalse(noErrorKind.containsKey("errorKind"))
     }
 
     @Test fun `the share image is copied where the user picks and its cache PNG deleted`() {

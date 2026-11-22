@@ -36,6 +36,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
+import build.raft.app.downloads.RaftDownloadCenter
+import build.raft.app.downloads.RaftDownloadCenterProcess
+import build.raft.app.downloads.RaftDownloadDescriptor
+import build.raft.app.downloads.RaftDownloadOutcome
+import build.raft.app.downloads.raftDownloadCenterEntryId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.Channel
@@ -46,7 +53,11 @@ internal data class ThreadAttachmentOpenResult(
     val message: String = "",
     /** The host's failure category (`http_status`, `storage_publish`...), for the log. */
     val errorKind: String = "",
-    val traceId: String? = null
+    val traceId: String? = null,
+    /** Host location of the saved file (e.g. desktop `file:` URI or Android `content://` URI), when known. */
+    val localUri: String? = null,
+    /** True when the transfer ran through [RaftDownloadCenter]. */
+    val handledByDownloadCenter: Boolean = false,
 )
 
 @Composable
@@ -168,46 +179,191 @@ internal suspend fun openSharedThreadAttachment(
     }
 }
 
+/**
+ * The download-centre descriptor for a thread/Files/lightbox attachment, sharing the exact
+ * [raftDownloadCenterEntryId] key as `FileDetailPage` (`RaftFilePreview`) so in-flight progress,
+ * desktop download bar rows, and saved-file state stay unified across surfaces.
+ */
+internal fun RaftThreadAttachmentItem.threadAttachmentDownloadDescriptor(
+    owner: AttachmentOwnerLease,
+): RaftDownloadDescriptor? {
+    val attachmentId = id.takeIf { it.isNotBlank() } ?: return null
+    val fileName = name.ifBlank { "attachment-${attachmentId.take(8)}" }
+    return RaftDownloadDescriptor(
+        id = raftDownloadCenterEntryId(
+            ownerKey = owner.principalKey.value,
+            attachmentId = attachmentId,
+            fileName = fileName,
+        ),
+        ownerKey = owner.principalKey.value,
+        attachmentId = attachmentId,
+        fileName = fileName,
+        mimeType = mimeType.takeIf { it.isNotBlank() },
+        totalBytes = sizeBytes.takeIf { it > 0L },
+        accountKey = owner.accountKey,
+    )
+}
+
+internal fun RaftDownloadOutcome.toThreadAttachmentSaveResult(): ThreadAttachmentOpenResult =
+    when (this) {
+        is RaftDownloadOutcome.Completed ->
+            ThreadAttachmentOpenResult(
+                status = "saved",
+                localUri = localUri,
+                handledByDownloadCenter = true,
+            )
+        is RaftDownloadOutcome.Cancelled ->
+            ThreadAttachmentOpenResult(
+                status = "cancelled",
+                handledByDownloadCenter = true,
+            )
+        is RaftDownloadOutcome.Failed ->
+            ThreadAttachmentOpenResult(
+                status =
+                    when (hostStatus) {
+                        "storage_failed", "download_failed" -> hostStatus
+                        else -> "failed"
+                    },
+                message = message.orEmpty(),
+                errorKind = errorKind.orEmpty(),
+                traceId = traceId,
+                handledByDownloadCenter = true,
+            )
+    }
+
 internal suspend fun saveSharedThreadAttachment(
     bridge: build.raft.app.base.BridgeModule,
     dataSource: SharedThreadDataSource,
     attachment: RaftThreadAttachmentItem,
     owner: AttachmentOwnerLease,
     downloadId: String? = null,
-    onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
+    onProgress: ((build.raft.app.base.BridgeAttachmentDownloadProgress) -> Unit)? = null,
+    downloadCenter: RaftDownloadCenter = RaftDownloadCenterProcess.center,
 ): ThreadAttachmentOpenResult {
-    val attachmentId = attachment.id.takeIf { it.isNotBlank() }
-        ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_id_missing")
-    return when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
-        is ThreadApiResult.Success -> {
-            val nativeResult =
-                bridge.saveAttachment(
-                    url = response.data.url,
-                    attachmentId = attachmentId,
-                    fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
-                    owner = owner,
-                    mimeType = attachment.mimeType,
-                    downloadId = downloadId,
-                    onProgress = onProgress
-                )
-            val nativeMessage = nativeResult?.optString("message").orEmpty()
-            val nativeErrorKind = nativeResult?.optString("errorKind").orEmpty()
-            when (val status = nativeResult?.optString("status").orEmpty()) {
-                "saved" ->
-                    ThreadAttachmentOpenResult(status = "saved")
-                "cancelled" -> ThreadAttachmentOpenResult(status = "cancelled")
-                "storage_failed" ->
-                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind)
-                "download_failed" ->
-                    ThreadAttachmentOpenResult(status = status, message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
-                else ->
-                    ThreadAttachmentOpenResult(status = "failed", message = nativeMessage, errorKind = nativeErrorKind, traceId = null)
-            }
-        }
-        is ThreadApiResult.Failure ->
-            ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_failed code=${response.code}", traceId = response.traceId)
+    val descriptor =
+        attachment.threadAttachmentDownloadDescriptor(owner)
+            ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_id_missing")
+    if (!ProcessAttachmentAuthScopes.allows(owner)) {
+        return ThreadAttachmentOpenResult(status = "cancelled")
     }
+    downloadCenter.activeResult(descriptor.id)?.let { active ->
+        return active.await().toThreadAttachmentSaveResult()
+    }
+    val attachmentId = descriptor.attachmentId
+    val fileName = descriptor.fileName
+    val initialUrl =
+        when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
+            is ThreadApiResult.Success ->
+                response.data.url.takeIf { it.isNotBlank() }
+                    ?: return ThreadAttachmentOpenResult(status = "failed", message = "attachment_url_empty")
+            is ThreadApiResult.Failure ->
+                return ThreadAttachmentOpenResult(
+                    status = "failed",
+                    message = "attachment_url_failed code=${response.code}",
+                    traceId = response.traceId,
+                )
+        }
+    if (!ProcessAttachmentAuthScopes.allows(owner)) {
+        return ThreadAttachmentOpenResult(status = "cancelled")
+    }
+    val baseDownloadId = downloadId?.takeIf { it.isNotBlank() } ?: "thread_attachment:$attachmentId:$fileName"
+    // App-scoped download centre (matching RaftFilePreview): leaving the thread keeps the transfer
+    // alive, drives the desktop download bar and Settings › Storage, and shares saved-file state
+    // with FileDetailPage under the same descriptor id.
+    var livePageProgress = onProgress
+    val outcome =
+        try {
+            downloadCenter.start(
+                descriptor = descriptor,
+                task =
+                    RaftBridgeSaveAttachmentTask(
+                        bridge = bridge,
+                        owner = owner,
+                        attachmentId = attachmentId,
+                        fileName = fileName,
+                        mimeType = descriptor.mimeType,
+                        initialUrl = initialUrl,
+                        downloadIdForAttempt = { attempt ->
+                            if (attempt <= 1) baseDownloadId else "$baseDownloadId:retry$attempt"
+                        },
+                        resolveUrl = resolveUrl@{
+                            if (!ProcessAttachmentAuthScopes.allows(owner)) return@resolveUrl null
+                            try {
+                                when (
+                                    val refreshed =
+                                        dataSource.attachmentUrl(
+                                            DataRequestPriority.Visible,
+                                            attachmentId,
+                                            disposition = "attachment",
+                                        )
+                                ) {
+                                    is ThreadApiResult.Success -> refreshed.data.url.takeIf { it.isNotBlank() }
+                                    is ThreadApiResult.Failure -> null
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Throwable) {
+                                null
+                            }
+                        },
+                        onPageProgress = { progress -> livePageProgress?.invoke(progress) },
+                    ),
+            ).await()
+        } finally {
+            livePageProgress = null
+        }
+    return outcome.toThreadAttachmentSaveResult()
 }
+
+internal sealed interface ThreadAttachmentSaveToast {
+    data class Info(val message: String) : ThreadAttachmentSaveToast
+
+    data class Error(val message: String, val traceId: String?) : ThreadAttachmentSaveToast
+}
+
+/**
+ * The toast shown after [saveSharedThreadAttachment] finishes, or null when no toast should fire.
+ *
+ * On desktop ([hasDesktopDownloadBar] true, i.e. `raftPlatformSavedFileHost() != null`),
+ * `RaftDesktopDownloadBar` already shows `"Saved to <Folder>"` + Show in Finder (or `"Downloaded"`)
+ * for centre-handled saves, so no second generic saved toast is fired — matching `RaftFilePreview`.
+ * Mobile platforms keep the saved toast, and failures keep their error toasts with [ThreadAttachmentOpenResult.traceId].
+ */
+internal fun raftThreadAttachmentSaveToast(
+    result: ThreadAttachmentOpenResult,
+    hasDesktopDownloadBar: Boolean,
+    savedMessage: String,
+    fallbackSavedMessage: String,
+    downloadFailedMessage: String,
+    storageUnavailableMessage: String,
+    unableToDownloadMessage: String,
+): ThreadAttachmentSaveToast? =
+    when (result.status) {
+        "saved" ->
+            if (hasDesktopDownloadBar && result.handledByDownloadCenter) {
+                null
+            } else {
+                ThreadAttachmentSaveToast.Info(
+                    raftThreadAttachmentSavedMessage(
+                        nativeMessage = savedMessage,
+                        fallbackMessage = fallbackSavedMessage,
+                    )
+                )
+            }
+        "cancelled" -> null
+        else ->
+            when (
+                raftAttachmentSaveFailure(result.status, RaftAttachmentSaveDestination.Downloads)
+                    ?: RaftAttachmentSaveFailure.UnableToDownload
+            ) {
+                RaftAttachmentSaveFailure.DownloadFailed ->
+                    ThreadAttachmentSaveToast.Error(downloadFailedMessage, result.traceId)
+                RaftAttachmentSaveFailure.StorageUnavailable ->
+                    ThreadAttachmentSaveToast.Info(storageUnavailableMessage)
+                else ->
+                    ThreadAttachmentSaveToast.Error(unableToDownloadMessage, result.traceId)
+            }
+    }
 
 internal fun raftThreadAttachmentSavedMessage(
     nativeMessage: String,

@@ -16,6 +16,7 @@ import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -417,7 +418,22 @@ private fun ThreadFileRow(
     onDownload: () -> Unit,
     onOpenSource: () -> Unit
 ) {
-    val isOpening = openState.threadAttachmentIsOpening()
+    val downloadHost = LocalThreadAttachmentDownloadHost.current
+    val centerEntryFlow = remember(downloadHost, item.attachmentId) { downloadHost?.entry(item.attachmentId) }
+    val centerEntry = centerEntryFlow?.collectAsState(initial = null)?.value
+    val effectiveOpenState = effectiveThreadAttachmentOpenState(openState, centerEntry)
+    val centerLabel =
+        raftThreadAttachmentCardDownloadLabel(
+            entry = centerEntry,
+            terms =
+                RaftFilePreviewDownloadStatusTerms(
+                    downloading = stringResource(Res.string.file_preview_download_downloading),
+                    paused = stringResource(Res.string.file_preview_download_paused),
+                    saving = stringResource(Res.string.file_preview_download_saving)
+                )
+        )
+    val isOpening = effectiveOpenState.threadAttachmentIsOpening() || centerEntry?.status?.isActive == true
+    val statusLabel = centerLabel ?: effectiveOpenState.localizedThreadAttachmentStatusLabel()
     val canOpenSource = item.threadFileHasSourceTarget()
     val openIfIdle = if (isOpening) ({}) else onOpen
     val shape = RoundedCornerShape(RaftAppRadius.Container)
@@ -453,9 +469,9 @@ private fun ThreadFileRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 ThreadFileMetaLine(item)
-                openState.localizedThreadAttachmentStatusLabel()?.let { statusLabel ->
+                statusLabel?.let { label ->
                     Text(
-                        text = statusLabel,
+                        text = label,
                         style = ThreadFileMetaStyle.copy(
                             color = if (isOpening) RaftColor.TextBlack else RaftColor.ForegroundHint
                         ),
