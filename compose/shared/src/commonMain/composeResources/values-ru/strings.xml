@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 файл</string>
     <string name="thread_quoted_permalink_images">Изображений: %1$d</string>
     <string name="thread_quoted_permalink_attachments">Вложений: %1$d</string>
+    <string name="thread_quote_reply_jump">Перейти к цитируемому сообщению (автор: %1$s): %2$s</string>
     <string name="thread_member_role_member">Участник</string>
     <string name="thread_member_role_system">Система</string>
     <string name="thread_settings_preferences">Параметры</string>
@@ -2009,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">Задачи в каналах</string>
     <string name="tasks_header_channel_tasks_count">Задач в каналах: %1$d</string>
     <string name="tasks_header_channel_tasks_filtered">Задач в каналах: %1$d из %2$d</string>
+    <string name="tasks_header_view_count">Задач: %1$s</string>
     <string name="tasks_unavailable">Задачи недоступны</string>
     <string name="tasks_empty">Пока нет задач</string>
     <string name="tasks_empty_filtered">Нет задач, подходящих под этот фильтр</string>

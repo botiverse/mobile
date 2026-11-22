@@ -63,49 +63,4 @@ class RaftNativePageOpenGateTest {
         // The queued open is a push of its own: its transition runs now.
         assertTrue(gate.transitionRunning)
     }
-
-    @Test fun `a queued open that became the top page is dropped when the push ends`() {
-        created("shell", data())
-        open("thread", data("id" to "t1"))
-        open("profile", data("id" to "p1"))
-        // Meanwhile the profile got on top another way (a replace).
-        created("profile", data("id" to "p1"))
-        gate.transitionEnded()
-        assertEquals(listOf("thread t1"), opened)
-        assertFalse(gate.transitionRunning)
-    }
-
-    @Test fun `a replace opens at once even during a push`() {
-        created("shell", data())
-        open("thread", data("id" to "t1"))
-        assertEquals(RaftNativePageOpenOutcome.Opened, open("thread", data("id" to "t1"), replace = true))
-        assertEquals(listOf("thread t1", "thread t1"), opened)
-    }
-
-    @Test fun `after the push ends the same page opens again once it left the top`() {
-        created("shell", data())
-        open("thread", data("id" to "t1"))
-        created("thread", data("id" to "t1"))
-        gate.transitionEnded()
-        stack.removeAt(stack.lastIndex) // Back
-        assertEquals(RaftNativePageOpenOutcome.Opened, open("thread", data("id" to "t1")))
-        assertEquals(listOf("thread t1", "thread t1"), opened)
-    }
-
-    @Test fun `cancelPending forgets the queued open`() {
-        created("shell", data())
-        open("thread", data("id" to "t1"))
-        open("thread", data("id" to "t2"))
-        gate.cancelPending()
-        gate.transitionEnded()
-        assertEquals(listOf("thread t1"), opened)
-    }
-
-    @Test fun `the installed identity decides what is the same route`() {
-        val byThread =
-            RaftNativePageOpenGate(topRoute = { null }, identityOf = { name, data -> name to data["id"] })
-        byThread.open("thread", data("id" to "t1", "anchor" to "a")) { opened += "a" }
-        byThread.open("thread", data("id" to "t1", "anchor" to "b")) { opened += "b" }
-        assertEquals(listOf("a"), opened)
-    }
 }

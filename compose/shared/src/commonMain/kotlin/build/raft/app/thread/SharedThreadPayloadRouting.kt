@@ -74,6 +74,7 @@ internal fun RaftThreadScreenPayload.asRefreshEmpty(base: RaftThreadScreenPayloa
         errorServerMessage = null,
         errorTraceId = null,
         messages = emptyList(),
+        timelineGaps = emptyList(),
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
         olderMessagesStatus = "idle",
@@ -87,6 +88,7 @@ internal fun RaftThreadScreenPayload.asLoadedEmptyReplyThreadPayload(): RaftThre
         copy(
             status = "empty",
             messages = emptyList(),
+            timelineGaps = emptyList(),
             canLoadMoreBefore = false,
             canLoadMoreAfter = false,
             olderMessagesStatus = "idle",

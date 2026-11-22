@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 file</string>
     <string name="thread_quoted_permalink_images">%1$d images</string>
     <string name="thread_quoted_permalink_attachments">%1$d attachments</string>
+    <string name="thread_quote_reply_jump">Jump to quoted message from %1$s: %2$s</string>
     <string name="thread_member_role_member">Member</string>
     <string name="thread_member_role_system">System</string>
     <string name="thread_settings_preferences">Preferences</string>
@@ -2013,6 +2014,7 @@
     <string name="tasks_header_channel_tasks">Channel tasks</string>
     <string name="tasks_header_channel_tasks_count">%1$d channel tasks</string>
     <string name="tasks_header_channel_tasks_filtered">%1$d of %2$d channel tasks</string>
+    <string name="tasks_header_view_count">%1$s tasks</string>
     <string name="tasks_unavailable">Tasks unavailable</string>
     <string name="tasks_empty">No tasks yet</string>
     <string name="tasks_empty_filtered">No tasks match this filter</string>

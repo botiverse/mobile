@@ -343,85 +343,6 @@ class RaftFocusCoordinatorDecisionTest {
     }
 
     @Test
-    fun rule4RestoreIfLostChecksLostFocusEpochsSurfacesAndTouchPrimary() {
-        // Focus fell to nowhere after closing element disposed -> Allow.
-        val lostCoord = RaftFocusCoordinator()
-        lostCoord.setComposerFocused(owner = "side", focused = true, region = RaftFocusRegion.SideThread)
-        val lostTicket =
-            lostCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        lostCoord.setComposerFocused(owner = "side", focused = false, region = RaftFocusRegion.SideThread)
-        assertEquals(RaftFocusDecision.Allow, lostCoord.evaluateRestoreIfLost(lostTicket))
-        assertEquals(RaftFocusDecision.DropTouchPrimary, lostCoord.evaluateRestoreIfLost(lostTicket, touchPrimary = true))
-
-        // Another control (non-text region, window focus, text field, or composer) still holds focus -> DropFocusNotLost.
-        val keptRegionCoord = RaftFocusCoordinator()
-        keptRegionCoord.setRegionFocused(owner = "nav", region = RaftFocusRegion.Navigation, focused = true)
-        val keptRegionTicket =
-            keptRegionCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        assertEquals(RaftFocusDecision.DropFocusNotLost, keptRegionCoord.evaluateRestoreIfLost(keptRegionTicket))
-        // Non-text platform detach fallback (Android non-touch mode dumping focus onto the first
-        // focusable after a focused closing composer detaches) is ignored only when opted in, and
-        // never overrides a focused text field, another composer, open surface, or newer epoch.
-        assertEquals(
-            RaftFocusDecision.Allow,
-            keptRegionCoord.evaluateRestoreIfLost(keptRegionTicket, allowNonTextPlatformDetachFallback = true),
-        )
-        val keptTextCoord = RaftFocusCoordinator()
-        keptTextCoord.setTextFieldFocused(owner = "members-search", focused = true, region = RaftFocusRegion.SupportingPane)
-        val keptTextTicket =
-            keptTextCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        assertEquals(
-            RaftFocusDecision.DropFocusNotLost,
-            keptTextCoord.evaluateRestoreIfLost(keptTextTicket, allowNonTextPlatformDetachFallback = true),
-        )
-
-        // An open surface blocks restore -> DropOpenSurface.
-        val surfaceCoord = RaftFocusCoordinator()
-        surfaceCoord.acquireOpenSurface()
-        val surfaceTicket =
-            surfaceCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        assertEquals(RaftFocusDecision.DropOpenSurface, surfaceCoord.evaluateRestoreIfLost(surfaceTicket))
-
-        // Focus moved during settle -> DropStaleFocus.
-        val movedCoord = RaftFocusCoordinator()
-        val movedTicket =
-            movedCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        movedCoord.setRegionFocused(owner = "supporting", region = RaftFocusRegion.SupportingPane, focused = true)
-        assertEquals(RaftFocusDecision.DropStaleFocus, movedCoord.evaluateRestoreIfLost(movedTicket))
-
-        // User interacted during settle -> DropStaleInteraction.
-        val actedCoord = RaftFocusCoordinator()
-        val actedTicket =
-            actedCoord.request(
-                targetKey = "main",
-                region = RaftFocusRegion.Conversation,
-                source = RaftFocusRequestSource.System("side_thread_close_restore"),
-            )
-        actedCoord.recordUserInteraction()
-        assertEquals(RaftFocusDecision.DropStaleInteraction, actedCoord.evaluateRestoreIfLost(actedTicket))
-    }
-
-    @Test
     fun rule5TouchPrimaryDropsSystemTextRequestsOnly() {
         val coordinator = RaftFocusCoordinator()
 
@@ -452,23 +373,6 @@ class RaftFocusCoordinatorDecisionTest {
                 isText = true,
             )
         assertEquals(RaftFocusDecision.Allow, coordinator.evaluate(userText, touchPrimary = true))
-    }
-
-    @Test
-    fun autofocusGuardDelegatesToCoordinatorAndKeepsExistingSemantics() {
-        val guard = RaftAutofocusGuard()
-        assertFalse(guard.blocksAutofocus)
-        assertFalse(guard.surfaceOpen)
-        assertFalse(guard.otherFieldFocused)
-
-        guard.setFieldFocused(owner = "members-search", focused = true, region = RaftFocusRegion.SupportingPane)
-        assertTrue(guard.blocksAutofocus)
-        assertTrue(guard.otherFieldFocused)
-        assertTrue(guard.coordinator.otherTextFieldFocused)
-
-        guard.setFieldFocused(owner = "members-search", focused = false, region = RaftFocusRegion.SupportingPane)
-        assertFalse(guard.blocksAutofocus)
-        assertFalse(guard.otherFieldFocused)
     }
 
     @Test

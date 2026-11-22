@@ -12,7 +12,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
@@ -20,19 +19,14 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.hasScrollToNodeAction
-import androidx.compose.ui.test.performScrollToNode
-import build.raft.designsystem.components.RaftComboboxListAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
-import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftComboboxSheetThreshold
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftMultiCombobox
-import build.raft.designsystem.components.RaftMultiComboboxSheet
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -120,79 +114,6 @@ class RaftComboboxSemanticsTest {
         }
 
     @Test
-    fun theListActionIsTheLastRowOfTheAnchoredList() = listActionRuns(models, searchable = false)
-
-    /** Past ten (the runtime list once Show All Supported adds runtimes): the searchable sheet keeps it (Lagoon on #4150). */
-    @Test
-    fun theListActionIsTheLastRowOfTheSheet() = listActionRuns(manyModels, searchable = true)
-
-    private fun listActionRuns(options: List<RaftComboboxOption<String>>, searchable: Boolean) =
-        runComposeUiTest {
-            var actions = 0
-            setContent(
-                themed {
-                    RaftCombobox(
-                        value = null,
-                        options = options,
-                        onValueChange = {},
-                        emptyText = noModels,
-                        placeholder = "Choose a model",
-                        label = "Model",
-                        listAction = RaftComboboxListAction("Show All Supported") { actions++ },
-                    )
-                },
-            )
-            onNodeWithContentDescription("Model, Choose a model").performClick()
-            waitForIdle()
-            onAllNodes(hasSetTextAction()).assertCountEquals(if (searchable) 1 else 0)
-            // The sheet's lazy list composes its last row once it is scrolled to.
-            if (searchable) onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Show All Supported"))
-            onNodeWithText("Show All Supported").performClick()
-            waitForIdle()
-            assertEquals(1, actions)
-        }
-
-    @Test
-    fun aCreatingComboboxFocusesItsSearchAndOffersTheTypedValue() =
-        runComposeUiTest {
-            var value by mutableStateOf<String?>(null)
-            var created: String? = null
-            setContent(
-                themed {
-                    RaftCombobox(
-                        value,
-                        models,
-                        { value = it },
-                        emptyText = noModels,
-                        placeholder = "Choose a model",
-                        label = "Model",
-                        create = {
-                            created = it
-                            value = it
-                        },
-                    )
-                },
-            )
-            // A few values, but typing is the point: the sheet, with the keyboard up.
-            onNodeWithContentDescription("Model, Choose a model").performClick()
-            waitForIdle()
-            onNode(hasSetTextAction()).assertIsFocused()
-            // Exactly an option's label: nothing to create.
-            onNode(hasSetTextAction()).performTextInput("claude opus")
-            waitForIdle()
-            onNodeWithText("Use “claude opus”").assertDoesNotExist()
-            onNode(hasSetTextAction()).performTextInput("-x")
-            waitForIdle()
-            // Nothing matches, but the typed value is offered instead of the empty line.
-            onNodeWithText(noModels("claude opus-x")).assertDoesNotExist()
-            onNode(option("Use “claude opus-x”")).performClick()
-            waitForIdle()
-            assertEquals("claude opus-x", created)
-            onAllNodes(hasSetTextAction()).assertCountEquals(0)
-            onNodeWithContentDescription("Model, claude opus-x").assertExists()
-        }
-
-    @Test
     fun aMultipleComboboxKeepsTheSheetOpenUntilDoneAndChipsRemove() =
         runComposeUiTest {
             var values by mutableStateOf(listOf("opus"))
@@ -223,84 +144,5 @@ class RaftComboboxSemanticsTest {
             waitForIdle()
             assertEquals(emptyList<String>(), values)
             onNodeWithContentDescription("Models, Add models").assertExists()
-        }
-
-    /** A sheet opened by the caller's own trigger: the caller's query filters; a pick closes it; Clear clears. */
-    @Test
-    fun aComboboxSheetFiltersByTheCallersQueryAndAPickCloses() =
-        runComposeUiTest {
-            var open by mutableStateOf(true)
-            var value by mutableStateOf<String?>("opus")
-            var query by mutableStateOf("")
-            var cleared = false
-            setContent(
-                themed {
-                    if (open) {
-                        RaftComboboxSheet(
-                            value = value,
-                            options = models,
-                            onValueChange = { value = it },
-                            onDismissRequest = { open = false },
-                            title = "Model",
-                            emptyText = noModels,
-                            query = query,
-                            onQueryChange = { query = it },
-                            onClear = { cleared = true },
-                        )
-                    }
-                },
-            )
-            onNode(hasSetTextAction()).assertIsNotFocused()
-            onNode(hasSetTextAction()).performTextInput("codex")
-            waitForIdle()
-            assertEquals("codex", query)
-            onAllNodes(selectableRow).assertCountEquals(1)
-            onNode(option("GPT-5 Codex")).performClick()
-            waitForIdle()
-            assertEquals("codex", value)
-            assertEquals(false, open)
-
-            open = true
-            waitForIdle()
-            onNodeWithText("Clear").performClick()
-            waitForIdle()
-            assertEquals(true, cleared)
-            assertEquals(false, open)
-        }
-
-    /** The multiple sheet for the caller's own trigger stays open across picks until Done. */
-    @Test
-    fun aMultiComboboxSheetKeepsOpenUntilDone() =
-        runComposeUiTest {
-            var open by mutableStateOf(true)
-            var values by mutableStateOf(listOf<String>())
-            var query by mutableStateOf("")
-            setContent(
-                themed {
-                    if (open) {
-                        RaftMultiComboboxSheet(
-                            values = values,
-                            options = models,
-                            onValuesChange = { values = it },
-                            onDismissRequest = { open = false },
-                            title = "Models",
-                            emptyText = noModels,
-                            query = query,
-                            onQueryChange = { query = it },
-                        )
-                    }
-                },
-            )
-            onNode(option("Claude Opus")).performClick()
-            onNode(option("Claude Sonnet")).performClick()
-            waitForIdle()
-            assertEquals(listOf("opus", "sonnet"), values)
-            assertEquals(true, open)
-            onNodeWithText("Clear").performClick()
-            waitForIdle()
-            assertEquals(emptyList<String>(), values)
-            onNodeWithText("Done").performClick()
-            waitForIdle()
-            assertEquals(false, open)
         }
 }

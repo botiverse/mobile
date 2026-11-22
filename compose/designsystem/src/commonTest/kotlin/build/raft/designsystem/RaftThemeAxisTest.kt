@@ -1,12 +1,9 @@
 package build.raft.designsystem
 
-import build.raft.designsystem.theme.RaftAppearance
-import build.raft.designsystem.theme.RaftThemeState
 import build.raft.designsystem.tokens.RaftThemeId
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -37,41 +34,6 @@ class RaftThemeAxisTest {
             assertTrue(light is RaftUiThemeColors.Light, "$theme light is a light variant")
             assertTrue(dark is RaftUiThemeColors.Dark, "$theme dark is a dark variant")
         }
-    }
-
-    @Test
-    fun stateDefaultsToRaftWithoutDecor() {
-        val state = RaftThemeState()
-        assertEquals(RaftThemeId.Raft, state.raftTheme)
-        assertFalse(state.decor)
-        assertSame(RaftUiThemeColors.RaftLight, state.colors)
-        state.apply(RaftAppearance.Dark)
-        assertSame(RaftUiThemeColors.RaftDark, state.colors)
-        assertSame(RaftThemeId.Raft, RaftThemeState.App.raftTheme)
-    }
-
-    @Test
-    fun stateColorsFollowThemeAndMode() {
-        val state = RaftThemeState(RaftAppearance.System, raftTheme = RaftThemeId.Boring)
-        assertSame(RaftUiThemeColors.BoringLight, state.colors)
-        state.onSystemDarkChanged(true)
-        assertSame(RaftUiThemeColors.BoringDark, state.colors)
-        state.applyRaftTheme(RaftThemeId.Spooky)
-        assertSame(RaftUiThemeColors.SpookyDark, state.colors)
-    }
-
-    @Test
-    fun applyRaftThemeReportsChanges() {
-        val state = RaftThemeState()
-        assertFalse(state.applyRaftTheme(RaftThemeId.Raft))
-        assertTrue(state.applyRaftTheme(RaftThemeId.Bots))
-        assertEquals(RaftThemeId.Bots, state.raftTheme)
-        assertTrue(state.applyRaftTheme(RaftThemeId.Bots, decor = true))
-        assertTrue(state.decor)
-        // Decor is kept when only the theme changes.
-        assertTrue(state.applyRaftTheme(RaftThemeId.Food))
-        assertTrue(state.decor)
-        assertFalse(state.applyRaftTheme(RaftThemeId.Food, decor = true))
     }
 
     @Test

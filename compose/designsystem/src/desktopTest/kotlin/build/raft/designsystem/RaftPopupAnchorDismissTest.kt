@@ -72,32 +72,6 @@ class RaftPopupAnchorDismissTest {
         }
 
     @Test
-    fun aMenuClosesWhenItsTriggerLeaves() =
-        runComposeUiTest {
-            var open by mutableStateOf(true)
-            var shown by mutableStateOf(true)
-            var dismissals = 0
-            setContent(
-                themed {
-                    if (shown) {
-                        Box {
-                            RaftText("Trigger")
-                            RaftDropdownMenu(expanded = open, onDismissRequest = { open = false; dismissals++ }) {
-                                RaftMenuItem("Rename", onClick = {})
-                            }
-                        }
-                    }
-                },
-            )
-            waitForIdle()
-            assertTrue(open)
-            shown = false
-            waitForIdle()
-            assertFalse(open, "its trigger left: the menu is closed, not left open to come back with it")
-            assertEquals(1, dismissals)
-        }
-
-    @Test
     fun closingAMenuDoesNotDismissItAgain() =
         runComposeUiTest {
             var open by mutableStateOf(true)

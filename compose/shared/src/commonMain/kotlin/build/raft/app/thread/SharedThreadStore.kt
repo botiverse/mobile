@@ -43,6 +43,7 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.network.sync.SyncScopeKey
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadDurableEnterTicket
@@ -599,6 +600,9 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadNewer -> {
                 scope.launch { loadNewer() }
             }
+            is SharedThreadIntent.FillTimelineGap -> {
+                scope.launch { fillTimelineGap(intent.afterSeq, intent.beforeSeq) }
+            }
             SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> {
                 scope.launch { refreshLatestAfterVisibleMaxSeq() }
             }
@@ -693,6 +697,7 @@ internal class SharedThreadStore(
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
             SharedThreadIntent.LoadNewer -> loadNewer()
+            is SharedThreadIntent.FillTimelineGap -> fillTimelineGap(intent.afterSeq, intent.beforeSeq)
             SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq -> refreshLatestAfterVisibleMaxSeq()
             is SharedThreadIntent.RecoverRealtimeGap -> recoverRealtimeGap(intent.serverSeq)
         }
@@ -1143,21 +1148,26 @@ internal class SharedThreadStore(
                 )
             }
         }
-        // Offline cache read entry (task #1123): only when no in-memory candidate exists does the
-        // durable last-known frame stand in for the loading shell. Memory candidates are newer by
-        // construction (they were written by a network response in this process).
-        val durableLastKnown =
-            if (cached == null && current == null && threadId != null && staleConversationCause == null) {
+        // Offline cache read entry (task #1123 / Phase 2d): when no in-memory candidate exists, or
+        // an anchored open's in-memory cache lacks the target message, read the bounded durable window
+        // (newest page or stored island around focusedMessageId).
+        val needsDurableAnchoredLookup =
+            cached != null && routeContextPayload.focusedMessageId?.isNotBlank() == true && cached.lacksFocusedAnchor()
+        val durableLastKnownResult =
+            if ((cached == null || needsDurableAnchoredLookup) && current == null && threadId != null && staleConversationCause == null) {
                 producerContext?.let { context ->
-                    dataSource.durableLastKnownPayloadIfCurrent(
+                    dataSource.durableLastKnownResultIfCurrent(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
                         context = context,
+                        allowNewestFallbackForMissingAnchor = !needsDurableAnchoredLookup,
                     )
                 }
             } else {
                 null
             }
+        val durableLastKnown = durableLastKnownResult?.payload
+        val durableLastKnownScope = durableLastKnownResult?.scope
         if (!staleTokenStillCurrent(staleToken, "thread_start", "after_durable_read", routeContextPayload)) {
             return
         }
@@ -1169,17 +1179,27 @@ internal class SharedThreadStore(
         val diskSeq = durableLastKnown?.newestServerSeqOrNull() ?: Long.MIN_VALUE
         val diskStrictlyNewerThanMemory =
             durableLastKnown != null && durableLastKnown.messages.isNotEmpty() && diskSeq > memorySeq
+        val durableSatisfiesMissingMemoryAnchor =
+            durableLastKnown != null &&
+                routeContextPayload.focusedMessageId?.isNotBlank() == true &&
+                !durableLastKnown.lacksFocusedAnchor() &&
+                supersededMemory?.lacksFocusedAnchor() == true
         val supersededFirstFrame =
-            supersededMemory?.takeIf { memory ->
-                durableLastKnown == null ||
-                    durableLastKnown.messages.isEmpty() ||
-                    memorySeq > diskSeq
+            supersededMemory?.takeIf { _ ->
+                !durableSatisfiesMissingMemoryAnchor &&
+                    (durableLastKnown == null ||
+                        durableLastKnown.messages.isEmpty() ||
+                        memorySeq > diskSeq)
             }
+        val durableAnchoredOverCached =
+            needsDurableAnchoredLookup &&
+                durableLastKnown != null &&
+                !durableLastKnown.lacksFocusedAnchor()
         val shouldAdoptDurableFrame =
-            if (publishedImmediateSuperseded != null) {
-                diskStrictlyNewerThanMemory
-            } else {
-                durableLastKnown != null && supersededFirstFrame == null
+            when {
+                publishedImmediateSuperseded != null -> diskStrictlyNewerThanMemory
+                cached != null -> durableAnchoredOverCached
+                else -> durableLastKnown != null && supersededFirstFrame == null
             }
         if (supersededMemory != null) {
             diagnosticsLogger?.invoke(
@@ -1203,7 +1223,7 @@ internal class SharedThreadStore(
         // Only await the (small) disk read when a durable frame actually wins the first frame; when
         // superseded memory won or there is no durable frame, seed beside the network fetch.
         val seededReplyWindows =
-            if (cached == null && current == null && producerContext != null) {
+            if ((cached == null || durableAnchoredOverCached) && current == null && producerContext != null) {
                 if (shouldAdoptDurableFrame) {
                     seedCachedReplyWindows(routeContextPayload, producerContext)
                 } else {
@@ -1239,6 +1259,7 @@ internal class SharedThreadStore(
             )
         if (publishedImmediateSuperseded != null) {
             var staleDropped = false
+            var adoptedDurableScope: SyncScopeKey? = null
             initialAccessStateMutex.withLock {
                 if (!staleTokenStillCurrent(staleToken, "thread_start", "post_durable_reconcile", routeContextPayload)) {
                     staleDropped = true
@@ -1270,6 +1291,7 @@ internal class SharedThreadStore(
                                             status = durableLastKnownWithReplies.status,
                                             durableLastKnown = durableLastKnownWithReplies.durableLastKnown,
                                             messages = durableLastKnownWithReplies.messages,
+                                            timelineGaps = durableLastKnownWithReplies.timelineGaps,
                                             canLoadMoreBefore = durableLastKnownWithReplies.canLoadMoreBefore,
                                             durableReachedOldest = durableLastKnownWithReplies.durableReachedOldest,
                                             canLoadMoreAfter = durableLastKnownWithReplies.canLoadMoreAfter,
@@ -1293,6 +1315,7 @@ internal class SharedThreadStore(
                                         )
                                     if (!upgradedVisible.lacksFocusedAnchor()) {
                                         visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                                        adoptedDurableScope = durableLastKnownScope
                                         reduceState(
                                             liveState.copy(
                                                 payload = upgradedVisible,
@@ -1337,6 +1360,9 @@ internal class SharedThreadStore(
                 }
             }
             if (staleDropped) return
+            adoptedDurableScope?.let { readScope ->
+                scope.launch { dataSource.touchDurableUserAccess(readScope) }
+            }
         } else {
             val standInFirstFrame =
                 supersededFirstFrame
@@ -1360,7 +1386,11 @@ internal class SharedThreadStore(
             // message only after the network answered (or never, when the answer kept being superseded).
             // Such an open shows a loading state at the anchor instead (the Activity seed when it holds the
             // message); the candidate is kept only to stand in if the load fails.
-            val firstFrameCandidate = cached ?: current ?: seededStandIn
+            val durableAnchoredWinner =
+                durableLastKnownWithReplies?.takeIf {
+                    cached != null && cached.lacksFocusedAnchor() && !it.lacksFocusedAnchor()
+                }
+            val firstFrameCandidate = durableAnchoredWinner ?: cached ?: current ?: seededStandIn
             val anchorPending =
                 current == null &&
                     firstFrameCandidate.hasRenderableThreadContent() &&
@@ -1420,6 +1450,7 @@ internal class SharedThreadStore(
             val keptResolvedAccess =
                 rememberedAccessFailure == null &&
                     threadId != null &&
+                    durableAnchoredWinner == null &&
                     (cached ?: current) != null &&
                     routeIdentity.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
                     producerContext?.provenance?.let { provenance ->
@@ -1428,7 +1459,13 @@ internal class SharedThreadStore(
             if (keptResolvedAccess) {
                 diagnosticsLogger?.invoke("thread_start_access_kept threadId=${threadId.orEmpty()}")
             }
+            val durableCandidateSelected =
+                !anchorPending &&
+                    rememberedAccessFailure == null &&
+                    (durableAnchoredWinner != null ||
+                        (cached == null && current == null && supersededFirstFrame == null && durableLastKnownWithReplies != null))
             var staleDropped = false
+            var adoptedDurableScope: SyncScopeKey? = null
             initialAccessStateMutex.withLock {
                 if (!staleTokenStillCurrent(staleToken, "thread_start", "initial_commit", routeContextPayload)) {
                     staleDropped = true
@@ -1438,6 +1475,9 @@ internal class SharedThreadStore(
                     producerContext?.let { context ->
                         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
                             visiblePayloadOwnerScopeId = payloadOwnerScopeId
+                            if (durableCandidateSelected) {
+                                adoptedDurableScope = durableLastKnownScope
+                            }
                             reduceState(
                                 SharedThreadState(
                                     payload = visiblePayload,
@@ -1491,6 +1531,9 @@ internal class SharedThreadStore(
                 }
             }
             if (staleDropped) return
+            adoptedDurableScope?.let { readScope ->
+                scope.launch { dataSource.touchDurableUserAccess(readScope) }
+            }
         }
         if (!staleTokenStillCurrent(staleToken, "thread_start", "before_refresh", routeContextPayload)) {
             return
@@ -3900,7 +3943,7 @@ internal class SharedThreadStore(
                                         accepted[projection.identity.parentMessageId]
                                     },
                                 )
-                            return reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            return reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                                 latestPayload.withThreadContentProjectionFrom(commitMerged)
                             }
                         }
@@ -3938,7 +3981,7 @@ internal class SharedThreadStore(
                             targetSeq = realtimeGapServerSeq,
                             targetVersion = 1L,
                         )
-                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                         latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     return@withLock RealtimeEventDecision(
@@ -4002,7 +4045,7 @@ internal class SharedThreadStore(
                                 accepted[projection.identity.parentMessageId]
                             },
                         )
-                    return reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    return reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                         latestPayload.withThreadContentProjectionFrom(commitSelected)
                     }
                 }
@@ -4355,18 +4398,25 @@ internal class SharedThreadStore(
             return
         }
         reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
-        // Task #168 step 2b: while the offline stand-in is shown, older pages come from the durable
-        // window first; only when it has nothing older does the ordinary network fetch run.
-        if (existing.durableLastKnown && loadOlderFromDurableStandIn(existing, beforeSeq)) return
+        // Task #168 step 2b / Phase 2d:
+        // - While the offline stand-in is shown, older pages come from SQLite (crossing into lower islands
+        //   with derived gaps) before asking the network.
+        // - Online, older pages inside a proven contiguous SQLite segment are served directly from disk
+        //   with zero network RTT; at a segment edge we fetch `before=beforeSeq` from the server.
+        if (existing.durableLastKnown && loadOlderFromDurableStandIn(existing, beforeSeq, staleToken)) return
+        if (!existing.durableLastKnown && loadOlderFromProvenLocalSegment(existing, beforeSeq, staleToken)) return
         val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
         val latest = _state.value.payload
-        if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
+        if (
+            !staleTokenStillCurrent(staleToken, "thread_page", "older_after_fetch", existing, latest) ||
+            !routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)
+        ) {
             return
         }
         val nextPayload =
             when (result) {
                 is DataResult.Content -> {
-                    val merged =
+                    val mergedRaw =
                         latest
                         .mergePagedMessages(
                             pageMessages = result.data.payload.messages,
@@ -4374,6 +4424,15 @@ internal class SharedThreadStore(
                             pageSize = result.data.requestedPageSize
                         )
                         .preserveStableTimelineFrom(latest)
+                    val merged =
+                        mergedRaw.copy(
+                            timelineGaps =
+                                reconcileThreadTimelineGaps(
+                                    existingGaps = mergedRaw.timelineGaps,
+                                    addedGaps = emptyList(),
+                                    messages = mergedRaw.messages,
+                                ),
+                        )
                     // A stand-in (durable rows) is never committed to the memory payload cache: a memory
                     // candidate outranks the durable frame on the next entry as "network-fresh".
                     (if (latest.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
@@ -4388,7 +4447,10 @@ internal class SharedThreadStore(
                     latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
             }
         reducePayloadPatch { currentPayload ->
-            if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
+            if (
+                !staleTokenStillCurrent(staleToken, "thread_page", "older_apply", existing, currentPayload) ||
+                !routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)
+            ) {
                 return@reducePayloadPatch currentPayload
             }
             currentPayload.withThreadContentProjectionFrom(nextPayload)
@@ -4529,6 +4591,7 @@ internal class SharedThreadStore(
     private suspend fun loadOlderFromDurableStandIn(
         existing: RaftThreadScreenPayload,
         beforeSeq: Long,
+        staleToken: MviStaleToken,
     ): Boolean {
         val context = dataSource.captureReplyCacheProducerContext() ?: return false
         val page =
@@ -4539,27 +4602,251 @@ internal class SharedThreadStore(
                 // The stand-in on screen belongs to the owner it was read for; another owner never pages it.
                 expectedOwnerScopeId = visiblePayloadOwnerScopeId,
                 replyParent = existing.durableReplyParentOrNull(),
+                crossGaps = true,
             ) ?: return false
         var applied = false
         reducePayloadPatch { currentPayload ->
             if (
                 !currentPayload.durableLastKnown ||
+                !staleTokenStillCurrent(staleToken, "thread_page", "durable_older_apply", existing, currentPayload) ||
                 !routeStillCurrent(existing, "thread_page", "durable_older_apply", currentPayload)
             ) {
                 return@reducePayloadPatch currentPayload
             }
             applied = true
-            currentPayload
-                .mergePagedMessages(pageMessages = page.messages, before = true, pageSize = page.pageSize)
-                .copy(canLoadMoreBefore = page.canLoadMoreBefore, durableReachedOldest = page.reachedOldest)
+            val merged =
+                currentPayload.mergePagedMessages(
+                    pageMessages = page.messages,
+                    before = true,
+                    pageSize = page.pageSize,
+                )
+            merged.copy(
+                canLoadMoreBefore = page.canLoadMoreBefore,
+                durableReachedOldest = page.reachedOldest,
+                timelineGaps =
+                    reconcileThreadTimelineGaps(
+                        existingGaps = currentPayload.timelineGaps,
+                        addedGaps = page.gaps,
+                        messages = merged.messages,
+                    ),
+            )
         }
-        if (!applied) {
+        if (applied) {
+            page.scope?.let { readScope ->
+                scope.launch { dataSource.touchDurableUserAccess(readScope) }
+            }
+        } else {
             diagnosticsLogger?.invoke(
                 "thread_durable_older_page threadId=${existing.sourceThreadId.orEmpty()} " +
                     "served=0 reason=stand_in_replaced"
             )
         }
         return true
+    }
+
+    /**
+     * Phase 2d: online older paging inside a proven contiguous SQLite segment (`crossGaps = false`).
+     * Returns `true` when disk satisfied the page (or proved the channel's oldest boundary, or the
+     * route became stale/replaced while reading) without a network request; returns `false` at a
+     * segment edge so [loadOlder] fetches `before=beforeSeq`.
+     */
+    private suspend fun loadOlderFromProvenLocalSegment(
+        existing: RaftThreadScreenPayload,
+        beforeSeq: Long,
+        staleToken: MviStaleToken,
+    ): Boolean {
+        val context = dataSource.captureReplyCacheProducerContext() ?: return false
+        val page =
+            dataSource.durableOlderPageIfCurrent(
+                routeIdentity = existing.resolveThreadRouteIdentity(),
+                context = context,
+                beforeSeq = beforeSeq,
+                expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                replyParent = existing.durableReplyParentOrNull(),
+                crossGaps = false,
+            ) ?: return false
+        if (!page.insideProvenSegment) return false
+        var applied = false
+        var committedForCache: RaftThreadScreenPayload? = null
+        reducePayloadPatch(cachePayload = false) { currentPayload ->
+            if (
+                currentPayload.durableLastKnown ||
+                !staleTokenStillCurrent(staleToken, "thread_page", "proven_older_apply", existing, currentPayload) ||
+                !routeStillCurrent(existing, "thread_page", "proven_older_apply", currentPayload)
+            ) {
+                return@reducePayloadPatch currentPayload
+            }
+            applied = true
+            val merged =
+                if (page.messages.isEmpty()) {
+                    currentPayload.copy(
+                        canLoadMoreBefore = false,
+                        durableReachedOldest = true,
+                        olderMessagesStatus = "idle",
+                    )
+                } else {
+                    val combined =
+                        currentPayload
+                            .mergePagedMessages(
+                                pageMessages = page.messages,
+                                before = true,
+                                pageSize = page.pageSize,
+                            )
+                            .preserveStableTimelineFrom(currentPayload)
+                    combined.copy(
+                        canLoadMoreBefore = page.canLoadMoreBefore,
+                        durableReachedOldest = page.reachedOldest,
+                        timelineGaps =
+                            reconcileThreadTimelineGaps(
+                                existingGaps = currentPayload.timelineGaps,
+                                addedGaps = emptyList(),
+                                messages = combined.messages,
+                            ),
+                    )
+                }
+            committedForCache = merged
+            merged
+                .withRouteContext(existing)
+                .preserveStableTimelineFrom(currentPayload)
+        }
+        if (applied) {
+            page.scope?.let { readScope ->
+                scope.launch { dataSource.touchDurableUserAccess(readScope) }
+            }
+            committedForCache?.let { committed ->
+                dataSource.cacheCanonicalPayload(committed, visiblePayloadOwnerScopeId)
+            }
+            // Proven-segment local paging is intentionally zero-network-RTT: secondary reply/task/saved
+            // refreshes run on conversation refresh or when paging hits a network boundary.
+        } else {
+            diagnosticsLogger?.invoke(
+                "thread_durable_older_page threadId=${existing.sourceThreadId.orEmpty()} " +
+                    "served=0 reason=replaced_or_stale"
+            )
+        }
+        return true
+    }
+
+    /**
+     * Phase 2d: fetch older messages from the server to bridge or shrink an inline timeline gap
+     * `(afterSeq, beforeSeq)` and persist the fetched page to SQLite so segments coalesce.
+     */
+    private suspend fun fillTimelineGap(afterSeq: Long, beforeSeq: Long) {
+        val existing = _state.value.payload
+        val targetGap =
+            existing.timelineGaps.firstOrNull { it.afterSeq == afterSeq && it.beforeSeq == beforeSeq }
+                ?: return
+        if (targetGap.status == "loading") return
+        val staleToken = routeStaleToken
+        reducePayloadPatch { currentPayload ->
+            if (
+                !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_start", existing, currentPayload) ||
+                !routeStillCurrent(existing, "thread_page", "gap_fill_start", currentPayload)
+            ) {
+                return@reducePayloadPatch currentPayload
+            }
+            currentPayload.copy(
+                timelineGaps =
+                    currentPayload.timelineGaps.map { gap ->
+                        if (gap.afterSeq == afterSeq && gap.beforeSeq == beforeSeq) {
+                            gap.copy(status = "loading")
+                        } else {
+                            gap
+                        }
+                    },
+            )
+        }
+        val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
+        val latest = _state.value.payload
+        if (
+            !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_after_fetch", existing, latest) ||
+            !routeStillCurrent(existing, "thread_page", "gap_fill_after_fetch", latest)
+        ) {
+            return
+        }
+        var applied = false
+        var committedForCache: RaftThreadScreenPayload? = null
+        reducePayloadPatch(cachePayload = false) { currentPayload ->
+            if (
+                !staleTokenStillCurrent(staleToken, "thread_page", "gap_fill_apply", existing, currentPayload) ||
+                !routeStillCurrent(existing, "thread_page", "gap_fill_apply", currentPayload)
+            ) {
+                return@reducePayloadPatch currentPayload
+            }
+            applied = true
+            when (result) {
+                is DataResult.Content -> {
+                    val pageMessages = result.data.payload.messages
+                    val baseMessages =
+                        currentPayload.messages
+                            .absorbingCanonicalSendEchoes(pageMessages)
+                            .withIncomingDelegatedLabels(pageMessages)
+                            .withKnownRetractionsFrom(pageMessages)
+                            .withNewerServerCopiesFrom(pageMessages)
+                    val incoming = pageMessages.filterNot { candidate -> baseMessages.any { it.id == candidate.id } }
+                    val mergedMessages = (baseMessages + incoming).distinctBy { it.id }.sortedByThreadTimeline()
+                    val nextGaps =
+                        reconcileThreadTimelineGapsAfterFill(
+                            existingGaps = currentPayload.timelineGaps,
+                            filledAfterSeq = afterSeq,
+                            filledBeforeSeq = beforeSeq,
+                            fetchedPageMessages = pageMessages,
+                            requestedPageSize = result.data.requestedPageSize,
+                            mergedMessages = mergedMessages,
+                        )
+                    val updated =
+                        currentPayload
+                            .copy(
+                                status = "content",
+                                messages = mergedMessages,
+                                timelineGaps = nextGaps,
+                            )
+                            .preserveStableTimelineFrom(currentPayload)
+                    if (currentPayload.durableLastKnown) {
+                        updated
+                    } else {
+                        committedForCache = updated
+                        updated
+                            .withRouteContext(existing)
+                            .preserveStableTimelineFrom(currentPayload)
+                    }
+                }
+                is DataResult.Empty ->
+                    currentPayload.copy(
+                        timelineGaps =
+                            currentPayload.timelineGaps.filterNot {
+                                it.afterSeq == afterSeq && it.beforeSeq == beforeSeq
+                            },
+                    )
+                is DataResult.Error,
+                is DataResult.NoPermission ->
+                    currentPayload.copy(
+                        timelineGaps =
+                            currentPayload.timelineGaps.map { gap ->
+                                if (gap.afterSeq == afterSeq && gap.beforeSeq == beforeSeq) {
+                                    gap.copy(status = "error")
+                                } else {
+                                    gap
+                                }
+                            },
+                    )
+            }
+        }
+        if (applied) {
+            committedForCache?.let { committed ->
+                dataSource.cacheCanonicalPayload(committed, visiblePayloadOwnerScopeId)
+            }
+        }
+        val appliedPayload = _state.value.payload
+        if (
+            applied &&
+            result is DataResult.Content &&
+            staleToken.isCurrent(routeStaleToken) &&
+            routeStillCurrent(existing, "thread_page", "gap_fill_secondary", appliedPayload)
+        ) {
+            launchSecondaryTimelineRefresh(appliedPayload, staleToken)
+            launchDurableWindowExtension(existing, result.data, ThreadDurablePageDirection.Older, beforeSeq)
+        }
     }
 
     suspend fun loadNewer(): ThreadNewerPageLoadOutcome {
@@ -4604,7 +4891,7 @@ internal class SharedThreadStore(
                             routeIdentity = routeIdentity,
                             staleToken = staleToken,
                         )
-                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                         latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     id
@@ -4613,125 +4900,249 @@ internal class SharedThreadStore(
         var successorRecovery: Pair<RaftThreadScreenPayload, RealtimeVisibleStreamGapRequest>? = null
         var outcome: ThreadNewerPageLoadOutcome = ThreadNewerPageLoadOutcome.Ignored
         try {
-            val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
-            realtimeGapRecoveryMutex.withLock {
-                val active =
-                    loadNewerState
-                        ?.takeIf { state -> state.id == loadId }
-                        ?: return@withLock
-                val currentPayload = _state.value.payload
-                if (
-                    !staleTokenStillCurrent(
-                        staleToken,
-                        "thread_page",
-                        "newer_after_fetch",
-                        initial,
-                        currentPayload,
-                    ) ||
-                    !routeStillCurrent(
-                        initial,
-                        "thread_page",
-                        "newer_after_fetch",
-                        currentPayload,
+            val localContext = dataSource.captureReplyCacheProducerContext()
+            val localNewerPage =
+                localContext?.let { context ->
+                    dataSource.durableNewerPageIfCurrent(
+                        routeIdentity = initial.resolveThreadRouteIdentity(),
+                        context = context,
+                        afterSeq = afterSeq,
+                        expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                        replyParent = initial.durableReplyParentOrNull(),
+                        crossGaps = initial.durableLastKnown,
                     )
-                ) {
-                    loadNewerState = null
-                    return@withLock
-                }
-                val pageMaxSeq =
-                    when (result) {
-                        is DataResult.Content ->
-                            result.data.payload.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
-                        else -> afterSeq
+                }?.takeIf { initial.durableLastKnown || it.insideProvenSegment }
+            if (localNewerPage != null) {
+                realtimeGapRecoveryMutex.withLock {
+                    val active =
+                        loadNewerState
+                            ?.takeIf { state -> state.id == loadId }
+                            ?: return@withLock
+                    val currentPayload = _state.value.payload
+                    if (
+                        !staleTokenStillCurrent(staleToken, "thread_page", "newer_local_apply", initial, currentPayload) ||
+                        !routeStillCurrent(initial, "thread_page", "newer_local_apply", currentPayload) ||
+                        currentPayload.durableLastKnown != initial.durableLastKnown
+                    ) {
+                        loadNewerState = null
+                        return@withLock
                     }
-                val nextPayload =
-                    when (result) {
-                        is DataResult.Content -> {
-                            val merged =
-                                currentPayload
-                                    .mergePagedMessages(
-                                        pageMessages = result.data.payload.messages,
-                                        before = false,
-                                        pageSize = result.data.requestedPageSize
-                                    )
-                                    .preserveStableTimelineFrom(currentPayload)
-                            dataSource
-                                .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
-                                .withRouteContext(initial)
-                                .preserveStableTimelineFrom(currentPayload)
+                    val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
+                    var appliedToCurrentRoute = false
+                    var committedForCache: RaftThreadScreenPayload? = null
+                    reducePayloadPatch(cachePayload = false) { latestPayload ->
+                        if (
+                            !staleTokenStillCurrent(staleToken, "thread_page", "newer_local_commit", initial, latestPayload) ||
+                            !routeStillCurrent(initial, "thread_page", "newer_local_commit", latestPayload)
+                        ) {
+                            return@reducePayloadPatch latestPayload
                         }
-                        is DataResult.Empty ->
-                            currentPayload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
-                        is DataResult.Error ->
-                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code, errorTraceId = result.error.traceId)
-                        is DataResult.NoPermission ->
-                            currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
+                        appliedToCurrentRoute = true
+                        if (localNewerPage.messages.isEmpty()) {
+                            latestPayload.copy(
+                                canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
+                                newerMessagesStatus = "idle",
+                            )
+                        } else {
+                            val merged =
+                                latestPayload
+                                    .mergePagedMessages(
+                                        pageMessages = localNewerPage.messages,
+                                        before = false,
+                                        pageSize = localNewerPage.pageSize,
+                                    )
+                                    .preserveStableTimelineFrom(latestPayload)
+                            val withGaps =
+                                merged.copy(
+                                    canLoadMoreAfter = localNewerPage.canLoadMoreAfter,
+                                    timelineGaps =
+                                        reconcileThreadTimelineGaps(
+                                            existingGaps = latestPayload.timelineGaps,
+                                            addedGaps = localNewerPage.gaps,
+                                            messages = merged.messages,
+                                        ),
+                                )
+                            if (latestPayload.durableLastKnown) {
+                                withGaps
+                            } else {
+                                committedForCache = withGaps
+                                withGaps
+                                    .withRouteContext(initial)
+                                    .preserveStableTimelineFrom(latestPayload)
+                            }
+                        }
                     }
-                var appliedToCurrentRoute = false
-                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    if (appliedToCurrentRoute) {
+                        localNewerPage.scope?.let { readScope ->
+                            scope.launch { dataSource.touchDurableUserAccess(readScope) }
+                        }
+                        committedForCache?.let { committed ->
+                            dataSource.cacheCanonicalPayload(committed, visiblePayloadOwnerScopeId)
+                        }
+                        val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
+                        val addedMessageIds =
+                            localNewerPage.messages
+                                .map { it.id }
+                                .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
+                                .distinct()
+                        outcome =
+                            if (addedMessageIds.isEmpty()) {
+                                ThreadNewerPageLoadOutcome.Empty
+                            } else {
+                                ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
+                            }
+                    }
+                    loadNewerState = null
+                    val pageMaxSeq = localNewerPage.messages.mapNotNull { it.seq }.maxOrNull() ?: afterSeq
+                    val pendingTarget = active.pendingTargetSeq
+                    if (appliedToCurrentRoute && pendingTarget != null && pendingTarget > pageMaxSeq) {
+                        val streamChannelId =
+                            currentPayload.sourceThreadId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(::ChannelId)
+                                ?: currentPayload.streamChannelId
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let(::ChannelId)
+                        if (streamChannelId != null) {
+                            successorRecovery =
+                                _state.value.payload to
+                                    RealtimeVisibleStreamGapRequest(
+                                        channelId = streamChannelId,
+                                        sinceSeq = pageMaxSeq,
+                                        serverSeq = pendingTarget,
+                                    )
+                        }
+                    }
+                }
+            } else {
+                val result = dataSource.fetchNewerThreadPayload(initial, afterSeq)
+                realtimeGapRecoveryMutex.withLock {
+                    val active =
+                        loadNewerState
+                            ?.takeIf { state -> state.id == loadId }
+                            ?: return@withLock
+                    val currentPayload = _state.value.payload
                     if (
                         !staleTokenStillCurrent(
                             staleToken,
                             "thread_page",
-                            "newer_apply",
+                            "newer_after_fetch",
                             initial,
-                            latestPayload,
+                            currentPayload,
                         ) ||
                         !routeStillCurrent(
                             initial,
                             "thread_page",
-                            "newer_apply",
-                            latestPayload,
+                            "newer_after_fetch",
+                            currentPayload,
                         )
                     ) {
-                        return@reducePayloadPatch latestPayload
+                        loadNewerState = null
+                        return@withLock
                     }
-                    appliedToCurrentRoute = true
-                    latestPayload.withThreadContentProjectionFrom(nextPayload)
-                }
-                if (appliedToCurrentRoute && result is DataResult.Content) {
-                    launchDurableWindowExtension(initial, result.data, ThreadDurablePageDirection.Newer, afterSeq)
-                }
-                if (appliedToCurrentRoute) {
-                    outcome =
+                    val pageMaxSeq =
+                        when (result) {
+                            is DataResult.Content ->
+                                result.data.payload.messages.mapNotNull { message -> message.seq }.maxOrNull() ?: afterSeq
+                            else -> afterSeq
+                        }
+                    val nextPayload =
                         when (result) {
                             is DataResult.Content -> {
-                                val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
-                                val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
-                                val addedMessageIds =
-                                    result.data.payload.messages
-                                        .map { it.id }
-                                        .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
-                                        .distinct()
-                                if (addedMessageIds.isEmpty()) {
-                                    ThreadNewerPageLoadOutcome.Empty
-                                } else {
-                                    ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
-                                }
+                                val mergedRaw =
+                                    currentPayload
+                                        .mergePagedMessages(
+                                            pageMessages = result.data.payload.messages,
+                                            before = false,
+                                            pageSize = result.data.requestedPageSize
+                                        )
+                                        .preserveStableTimelineFrom(currentPayload)
+                                val merged =
+                                    mergedRaw.copy(
+                                        timelineGaps =
+                                            reconcileThreadTimelineGaps(
+                                                existingGaps = mergedRaw.timelineGaps,
+                                                addedGaps = emptyList(),
+                                                messages = mergedRaw.messages,
+                                            ),
+                                    )
+                                (if (currentPayload.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
+                                    .withRouteContext(initial)
+                                    .preserveStableTimelineFrom(currentPayload)
                             }
-                            is DataResult.Empty -> ThreadNewerPageLoadOutcome.Empty
-                            is DataResult.Error,
-                            is DataResult.NoPermission -> ThreadNewerPageLoadOutcome.Failed
+                            is DataResult.Empty ->
+                                currentPayload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
+                            is DataResult.Error ->
+                                currentPayload.copy(newerMessagesStatus = "error", errorCode = result.error.code, errorTraceId = result.error.traceId)
+                            is DataResult.NoPermission ->
+                                currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
                         }
-                }
-                loadNewerState = null
-                val pendingTarget = active.pendingTargetSeq
-                if (pendingTarget != null && pendingTarget > pageMaxSeq) {
-                    val streamChannelId =
-                        currentPayload.sourceThreadId
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let(::ChannelId)
-                            ?: currentPayload.streamChannelId
+                    var appliedToCurrentRoute = false
+                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
+                        if (
+                            !staleTokenStillCurrent(
+                                staleToken,
+                                "thread_page",
+                                "newer_apply",
+                                initial,
+                                latestPayload,
+                            ) ||
+                            !routeStillCurrent(
+                                initial,
+                                "thread_page",
+                                "newer_apply",
+                                latestPayload,
+                            )
+                        ) {
+                            return@reducePayloadPatch latestPayload
+                        }
+                        appliedToCurrentRoute = true
+                        latestPayload.withThreadContentProjectionFrom(nextPayload)
+                    }
+                    if (appliedToCurrentRoute && result is DataResult.Content) {
+                        launchDurableWindowExtension(initial, result.data, ThreadDurablePageDirection.Newer, afterSeq)
+                    }
+                    if (appliedToCurrentRoute) {
+                        outcome =
+                            when (result) {
+                                is DataResult.Content -> {
+                                    val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
+                                    val appliedIds = _state.value.payload.messages.mapTo(mutableSetOf()) { it.id }
+                                    val addedMessageIds =
+                                        result.data.payload.messages
+                                            .map { it.id }
+                                            .filter { id -> id.isNotBlank() && id !in existingIds && id in appliedIds }
+                                            .distinct()
+                                    if (addedMessageIds.isEmpty()) {
+                                        ThreadNewerPageLoadOutcome.Empty
+                                    } else {
+                                        ThreadNewerPageLoadOutcome.Applied(addedMessageIds)
+                                    }
+                                }
+                                is DataResult.Empty -> ThreadNewerPageLoadOutcome.Empty
+                                is DataResult.Error,
+                                is DataResult.NoPermission -> ThreadNewerPageLoadOutcome.Failed
+                            }
+                    }
+                    loadNewerState = null
+                    val pendingTarget = active.pendingTargetSeq
+                    if (pendingTarget != null && pendingTarget > pageMaxSeq) {
+                        val streamChannelId =
+                            currentPayload.sourceThreadId
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let(::ChannelId)
-                    if (streamChannelId != null) {
-                        successorRecovery =
-                            _state.value.payload to
-                                RealtimeVisibleStreamGapRequest(
-                                    channelId = streamChannelId,
-                                    sinceSeq = pageMaxSeq,
-                                    serverSeq = pendingTarget,
-                                )
+                                ?: currentPayload.streamChannelId
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let(::ChannelId)
+                        if (streamChannelId != null) {
+                            successorRecovery =
+                                _state.value.payload to
+                                    RealtimeVisibleStreamGapRequest(
+                                        channelId = streamChannelId,
+                                        sinceSeq = pageMaxSeq,
+                                        serverSeq = pendingTarget,
+                                    )
+                        }
                     }
                 }
             }
@@ -4746,7 +5157,7 @@ internal class SharedThreadStore(
                         active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
                         currentPayload.newerMessagesStatus == "loading"
                     ) {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                             latestPayload.copy(newerMessagesStatus = "idle")
                         }
                     }
@@ -4994,8 +5405,8 @@ internal class SharedThreadStore(
                             backfillAfterRecovery = backfillAfterRecovery,
                         )
                     requestSnapshot = currentPayload
-                    reducePayloadPatch(cachePayload = true) { currentPayload ->
-                        currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
+                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
+                        latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     id
                 }
@@ -5233,8 +5644,7 @@ internal class SharedThreadStore(
                                     )
                             }
                         val selected =
-                            dataSource
-                                .cacheCanonicalPayload(next, visiblePayloadOwnerScopeId)
+                            (if (next.durableLastKnown) next else dataSource.cacheCanonicalPayload(next, visiblePayloadOwnerScopeId))
                                 .withRouteContext(initial)
                                 .preserveStableTimelineFrom(currentPayload)
                         var applied = false
@@ -5276,7 +5686,7 @@ internal class SharedThreadStore(
                         if (added > 0 || durableBaseline != null) durableOffer = catchUpResult.data
                     }
                     is DataResult.Empty -> {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                             latestPayload.copy(
                                 canLoadMoreAfter = false,
                                 newerMessagesStatus = "idle",
@@ -5289,7 +5699,7 @@ internal class SharedThreadStore(
                             markConversationAccessLost(catchUpResult.error.code)
                         } else {
                             if (catchUpResult.error.retryable) gapCatchUpRetryableFailures += 1L
-                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                                 latestPayload.copy(
                                     newerMessagesStatus = "error",
                                     errorCode = catchUpResult.error.code,
@@ -5303,7 +5713,7 @@ internal class SharedThreadStore(
                             accessLost = true
                             markConversationAccessLost(catchUpResult.blocker.code)
                         } else {
-                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                                 latestPayload.copy(
                                     newerMessagesStatus = "error",
                                     errorCode = catchUpResult.blocker.code,
@@ -5338,7 +5748,7 @@ internal class SharedThreadStore(
                             active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
                             currentPayload.newerMessagesStatus == "loading"
                         ) {
-                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                            reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                                 latestPayload.copy(newerMessagesStatus = "idle")
                             }
                         }
@@ -6237,6 +6647,7 @@ internal class SharedThreadStore(
         )
         reduceState(_state.value.copy(unreadThreadJumpLoading = true))
         try {
+            adoptDurableIslandForJumpIfAvailable(focusRoute = focusRoute, staleToken = staleToken)
             refresh(basePayload = focusRoute, staleToken = staleToken)
         } finally {
             // The parent landed, or the load ended without it: the pill can be pressed again.
@@ -6299,6 +6710,7 @@ internal class SharedThreadStore(
         diagnosticsLogger?.invoke("thread_outline_jump result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}")
         messageJumpInFlightTarget = target
         try {
+            adoptDurableIslandForJumpIfAvailable(focusRoute = focusRoute, staleToken = staleToken)
             refresh(basePayload = focusRoute, staleToken = staleToken)
         } finally {
             if (messageJumpInFlightTarget == target) messageJumpInFlightTarget = null
@@ -6310,6 +6722,98 @@ internal class SharedThreadStore(
         )
         if (!loaded && !superseded) {
             _jumpFailures.tryEmit(ThreadJumpFailure(messageId = target, switchToTab = switchToTab, unreadThreadPill = false))
+        }
+    }
+
+    /**
+     * Phase 2d: when jumping to a message outside the currently loaded window, adopt any stored
+     * SQLite island containing [RaftThreadScreenPayload.focusedMessageId] immediately so online
+     * jumps paint the island on Frame 1 before the context refresh lands and offline jumps succeed
+     * instead of failing.
+     */
+    private suspend fun adoptDurableIslandForJumpIfAvailable(
+        focusRoute: RaftThreadScreenPayload,
+        staleToken: MviStaleToken,
+    ) {
+        val context = dataSource.captureReplyCacheProducerContext() ?: return
+        val ownerScopeId = context.provenance.threadPayloadOwnerScopeId ?: return
+        if (visiblePayloadOwnerScopeId != null && visiblePayloadOwnerScopeId != ownerScopeId) return
+        val routeIdentity = focusRoute.resolveThreadRouteIdentity()
+        val staleConversationCause =
+            routeIdentity.timelineKey?.let { timelineKey ->
+                dataSource.staleConversationCauseIfCurrent(timelineKey, context.provenance)
+            }
+        if (staleConversationCause != null) return
+        val islandResult =
+            dataSource.durableLastKnownResultIfCurrent(
+                routePayload = focusRoute,
+                routeIdentity = routeIdentity,
+                context = context,
+                allowNewestFallbackForMissingAnchor = false,
+            ) ?: return
+        val island = islandResult.payload
+        if (island.lacksFocusedAnchor()) return
+        if (!staleTokenStillCurrent(staleToken, "thread_jump", "durable_island", focusRoute)) return
+        val seededReplyWindows = seedCachedReplyWindows(focusRoute, context)
+        if (!staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_replies", focusRoute)) return
+        val withReplies = island.withSeededReplyWindows(seededReplyWindows)
+        if (!dataSource.isCurrentReplyCacheProvenance(context.provenance)) return
+        dataSource.seedThreadAuthorProfiles(
+            serverId = context.provenance.serverId,
+            payload = withReplies,
+            source = "durable_jump_island",
+        )
+        var applied = false
+        dataSource.withCurrentReplyCacheProvenance(context.provenance) {
+            if (!staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_apply", focusRoute)) {
+                return@withCurrentReplyCacheProvenance
+            }
+            if (visiblePayloadOwnerScopeId != null && visiblePayloadOwnerScopeId != ownerScopeId) {
+                return@withCurrentReplyCacheProvenance
+            }
+            reducePayloadPatch(cachePayload = false) { currentPayload ->
+                if (
+                    !staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_apply", focusRoute, currentPayload) ||
+                    !routeStillCurrent(focusRoute, "thread_jump", "durable_island_apply", currentPayload)
+                ) {
+                    return@reducePayloadPatch currentPayload
+                }
+                applied = true
+                val mergedCandidate =
+                    currentPayload.withContentSliceFrom(withReplies).copy(
+                        channelArchived = currentPayload.channelArchived,
+                        channelCanUnarchive = currentPayload.channelCanUnarchive,
+                        originMessage = withReplies.originMessage ?: currentPayload.originMessage,
+                        originPreview = withReplies.originPreview ?: currentPayload.originPreview,
+                        originParentMessageId = withReplies.originParentMessageId ?: currentPayload.originParentMessageId,
+                        originStatus =
+                            if (withReplies.originMessage != null) {
+                                withReplies.originStatus
+                            } else {
+                                currentPayload.originStatus
+                            },
+                        originErrorCode =
+                            if (withReplies.originMessage != null) {
+                                withReplies.originErrorCode
+                            } else {
+                                currentPayload.originErrorCode
+                            },
+                        focusedMessageId = focusRoute.focusedMessageId,
+                        focusedMessageRequestNonce = focusRoute.focusedMessageRequestNonce,
+                        selectedTab = focusRoute.selectedTab,
+                        backgroundRefreshing = true,
+                    )
+                dataSource.restorePendingLocalSends(
+                    provenance = context.provenance,
+                    route = routeIdentity,
+                    canonicalPayload = mergedCandidate,
+                )
+            }
+        }
+        if (applied) {
+            islandResult.scope?.let { readScope ->
+                scope.launch { dataSource.touchDurableUserAccess(readScope) }
+            }
         }
     }
 
@@ -6386,7 +6890,7 @@ internal class SharedThreadStore(
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
-        if (emitted && cachePayload) {
+        if (emitted && cachePayload && !_state.value.payload.durableLastKnown) {
             dataSource.cachePayload(
                 _state.value.payload,
                 ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
@@ -6460,7 +6964,7 @@ internal class SharedThreadStore(
     ): Boolean {
         val nextPayload = patch(_state.value.payload)
         val emitted = reduceState(_state.value.copy(payload = nextPayload))
-        if (emitted && cachePayload) {
+        if (emitted && cachePayload && !_state.value.payload.durableLastKnown) {
             dataSource.cachePayload(
                 _state.value.payload,
                 ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()

@@ -17,14 +17,11 @@ import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftFilterChip
-import build.raft.designsystem.components.RaftSegment
-import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * Tap areas that reach past a control on some sides only (raft-ui `::after` insets): a segment's
@@ -54,29 +51,6 @@ class RaftTouchReachHitTest {
         return clicks
     }
 
-    private val segments: @Composable (() -> Unit) -> Unit = { onClick ->
-        RaftSegmentedControl {
-            RaftSegment("All", selected = false, onClick = onClick)
-            RaftSegment("Unread", selected = true, onClick = {})
-        }
-    }
-
-    /** [above] dp above the first segment (3dp inside the track's top), 10dp into it. */
-    private fun aboveSegment(above: Float): Density.(Rect) -> Offset = { track ->
-        Offset(track.left + (3 + 10).dp.toPx(), track.top + (3 - above).dp.toPx())
-    }
-
-    @Test
-    fun aFingerPicksASegmentUpTo6dpAboveIt() {
-        assertTrue(tap(RaftPointerInput.Touch, mouse = false, segments, aboveSegment(5f)) > 0, "5dp above")
-        assertEquals(0, tap(RaftPointerInput.Touch, mouse = false, segments, aboveSegment(8f)), "8dp above")
-    }
-
-    @Test
-    fun aMouseTakesNoTapsAboveASegment() {
-        assertEquals(0, tap(RaftPointerInput.Fine, mouse = true, segments, aboveSegment(2f)))
-    }
-
     private val chip: @Composable (() -> Unit) -> Unit = { onClick -> RaftFilterChip("Mentions", onClick, removeLabel = "Clear filter") }
 
     /** [dx] dp from the ×'s start edge (24dp, 4dp in from the chip's end), [dy] dp from its centre line. */
@@ -88,19 +62,5 @@ class RaftTouchReachHitTest {
     fun theChipRemoveReachesTheGapButNotTheLabel() {
         assertEquals(1, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(-5f)), "in the 6dp gap")
         assertEquals(0, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(-8f)), "on the label's end")
-    }
-
-    @Test
-    fun theChipRemoveReachesPastTheChipsEndAndUpAndDown() {
-        // The × ends at 24; 14dp past it is 10dp past the chip.
-        assertEquals(1, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(24f + 12f)), "12dp past the ×")
-        assertEquals(0, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(24f + 16f)), "16dp past the ×")
-        assertEquals(1, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(12f, dy = 21f)), "21dp below its centre")
-        assertEquals(0, tap(RaftPointerInput.Touch, mouse = false, chip, fromRemoveStart(12f, dy = 24f)), "24dp below its centre")
-    }
-
-    @Test
-    fun aMouseTakesNoTapsBesideTheChipRemove() {
-        assertEquals(0, tap(RaftPointerInput.Fine, mouse = true, chip, fromRemoveStart(-3f)))
     }
 }

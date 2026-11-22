@@ -33,6 +33,7 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -132,6 +133,11 @@ internal data class WireMessage(
     val deletedAt: String? = null,
     /** Resolved mention facts; see [WireMessageMention]. */
     val mentions: List<WireMessageMention> = emptyList(),
+    /**
+     * Quote replies verified for this viewer (`ResolvedInlineQuotesMap`, [decodeResolvedInlineQuotes]):
+     * on the pages, the sync page and the sender's own send this client reads with this row.
+     */
+    val resolvedQuotes: JsonElement? = null,
 )
 
 @Serializable
@@ -368,6 +374,13 @@ private fun WireMessage.toMessageItem(
         commentRef = commentRef?.toMessageCommentRef(),
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         mentions = mentions.toMessageMentions(),
+        resolvedQuotes =
+            decodeResolvedInlineQuotes(
+                element = resolvedQuotes,
+                absentMeansNone = true,
+                source = "thread_wire_resolved_quotes",
+                diagnostics = diagnostics,
+            ),
     )
 }
 

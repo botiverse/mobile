@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">파일 1개</string>
     <string name="thread_quoted_permalink_images">이미지 %1$d개</string>
     <string name="thread_quoted_permalink_attachments">첨부 파일 %1$d개</string>
+    <string name="thread_quote_reply_jump">%1$s님의 원본 메시지로 이동: %2$s</string>
     <string name="thread_member_role_member">멤버</string>
     <string name="thread_member_role_system">시스템</string>
     <string name="thread_settings_preferences">환경설정</string>
@@ -2009,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">채널 작업</string>
     <string name="tasks_header_channel_tasks_count">채널 작업 %1$d개</string>
     <string name="tasks_header_channel_tasks_filtered">채널 작업 %2$d개 중 %1$d개</string>
+    <string name="tasks_header_view_count">작업 %1$s개</string>
     <string name="tasks_unavailable">작업을 사용할 수 없어요</string>
     <string name="tasks_empty">아직 작업이 없어요</string>
     <string name="tasks_empty_filtered">이 필터와 일치하는 작업이 없어요</string>

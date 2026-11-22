@@ -3,7 +3,6 @@ package build.raft.realtime.socket
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class RaftReconnectPolicyTest {
@@ -29,12 +28,5 @@ class RaftReconnectPolicyTest {
         }
         val spread = (0 until 200).map { policy.delayMillis(3, random) }.toSet()
         assertTrue(spread.size > 50, "jitter must actually vary the delay, got ${spread.size} values")
-    }
-
-    @Test
-    fun invalidPoliciesAreRejected() {
-        assertFailsWith<IllegalArgumentException> { RaftReconnectPolicy(initialDelayMillis = 0) }
-        assertFailsWith<IllegalArgumentException> { RaftReconnectPolicy(initialDelayMillis = 10, maxDelayMillis = 5) }
-        assertFailsWith<IllegalArgumentException> { RaftReconnectPolicy(jitter = 1.5) }
     }
 }

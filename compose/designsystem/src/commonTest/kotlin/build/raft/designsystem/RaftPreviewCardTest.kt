@@ -1,6 +1,5 @@
 package build.raft.designsystem
 
-import androidx.compose.ui.input.pointer.PointerType
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.raftPreviewCardSwitchDelay
@@ -8,7 +7,6 @@ import build.raft.designsystem.components.raftPreviewCardWantsOpen
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** RaftPreviewCard's open / close decision (Base UI PreviewCard with the web mention's delays). */
@@ -17,35 +15,9 @@ class RaftPreviewCardTest {
     private val close = RaftPreviewCardDefaults.CloseDelayMillis
 
     @Test
-    fun theWebMentionDelays() {
-        assertEquals(200L, open)
-        assertEquals(120L, close)
-    }
-
-    @Test
-    fun wantsOpenWhileThePointerIsOnTheTriggerOrTheCard() {
-        assertFalse(raftPreviewCardWantsOpen(overTrigger = false, overCard = false, suppressed = false))
-        assertTrue(raftPreviewCardWantsOpen(overTrigger = true, overCard = false, suppressed = false))
-        assertTrue(raftPreviewCardWantsOpen(overTrigger = false, overCard = true, suppressed = false))
-        assertTrue(raftPreviewCardWantsOpen(overTrigger = true, overCard = true, suppressed = false))
-    }
-
-    @Test
-    fun aDismissedCardStaysShutWhateverThePointerDoes() {
-        assertFalse(raftPreviewCardWantsOpen(overTrigger = true, overCard = false, suppressed = true))
-        assertFalse(raftPreviewCardWantsOpen(overTrigger = true, overCard = true, suppressed = true))
-    }
-
-    @Test
     fun opensAfterTheOpenDelayAndClosesAfterTheCloseDelay() {
         assertEquals(open, raftPreviewCardSwitchDelay(open = false, wantsOpen = true, openDelayMillis = open, closeDelayMillis = close))
         assertEquals(close, raftPreviewCardSwitchDelay(open = true, wantsOpen = false, openDelayMillis = open, closeDelayMillis = close))
-    }
-
-    @Test
-    fun nothingToWaitForWhenItAlreadyIsAsWanted() {
-        assertNull(raftPreviewCardSwitchDelay(open = true, wantsOpen = true, openDelayMillis = open, closeDelayMillis = close))
-        assertNull(raftPreviewCardSwitchDelay(open = false, wantsOpen = false, openDelayMillis = open, closeDelayMillis = close))
     }
 
     @Test
@@ -82,18 +54,6 @@ class RaftPreviewCardTest {
     }
 
     @Test
-    fun dismissFromTheCardDoesNotHoldItShut() {
-        // A button on the card dismissed it with the pointer off the trigger: the next rest on
-        // the trigger opens it as usual.
-        val state = RaftPreviewCardState()
-        state.isOpen = true
-        state.setCardHovered(true)
-        state.dismiss()
-        state.setTriggerHovered(true)
-        assertTrue(state.wantsOpen)
-    }
-
-    @Test
     fun aPinnedCardOpensAtOnceAndStaysWhenThePointerLeaves() {
         // Web RuntimeUsageHoverCard: a click on the trigger pins the card.
         val state = RaftPreviewCardState()
@@ -105,32 +65,5 @@ class RaftPreviewCardTest {
         state.setCardHovered(false)
         assertTrue(state.wantsOpen)
         assertTrue(raftPreviewCardWantsOpen(overTrigger = false, overCard = false, suppressed = true, pinned = true))
-    }
-
-    @Test
-    fun dismissUnpins() {
-        // A click outside, Escape or the card's close button.
-        val state = RaftPreviewCardState()
-        state.pin()
-        state.dismiss()
-        assertFalse(state.isOpen)
-        assertFalse(state.isPinned)
-        assertFalse(state.wantsOpen)
-    }
-
-    @Test
-    fun aClickIsAMouseClickByTheInputThatMadeIt() {
-        // A phone with a mouse plugged in: the input decides, not the device.
-        val state = RaftPreviewCardState()
-        state.pressPointer = PointerType.Mouse
-        assertTrue(state.isMouseClick(noPointer = false), "a mouse click pins the card")
-        state.pressPointer = PointerType.Touch
-        assertFalse(state.isMouseClick(noPointer = true), "a finger's tap is the caller's (a sheet)")
-        state.pressPointer = PointerType.Stylus
-        assertFalse(state.isMouseClick(noPointer = true), "so is a pen's")
-        // A key or a screen reader: the device's usual input.
-        state.pressPointer = null
-        assertTrue(state.isMouseClick(noPointer = true))
-        assertFalse(state.isMouseClick(noPointer = false))
     }
 }

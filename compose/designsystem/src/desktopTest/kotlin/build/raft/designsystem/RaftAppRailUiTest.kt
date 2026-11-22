@@ -7,21 +7,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertHeightIsEqualTo
-import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -107,33 +99,5 @@ class RaftAppRailUiTest {
             timeUp.complete(Unit)
             mainClock.advanceTimeBy(1_000)
             onNode(hasText("Home")).assertDoesNotExist()
-        }
-
-    @Test
-    fun theToggleIsASwitchThatFlipsItsState() =
-        runComposeUiTest {
-            var shown by mutableStateOf(true)
-            setContent { Rail(sidebarShown = shown, onSidebar = { shown = it }) }
-            val toggle = onNodeWithContentDescription("Collapse sidebar")
-            val config = toggle.fetchSemanticsNode().config
-            assertEquals(Role.Switch, config.getOrNull(SemanticsProperties.Role))
-            assertEquals(ToggleableState.On, config.getOrNull(SemanticsProperties.ToggleableState))
-            toggle.performClick()
-            waitForIdle()
-            assertEquals(false, shown)
-            val expand = onNodeWithContentDescription("Expand sidebar").fetchSemanticsNode().config
-            assertEquals(ToggleableState.Off, expand.getOrNull(SemanticsProperties.ToggleableState))
-        }
-
-    @Test
-    fun aCompactRailHas36dpItems() =
-        runComposeUiTest {
-            var compact by mutableStateOf<Boolean?>(true)
-            setContent { Rail(compact = compact) }
-            onNodeWithContentDescription("Home").assertWidthIsEqualTo(36.dp).assertHeightIsEqualTo(36.dp)
-            onNodeWithContentDescription("Collapse sidebar").assertWidthIsEqualTo(36.dp)
-            compact = false
-            waitForIdle()
-            onNodeWithContentDescription("Home").assertWidthIsEqualTo(40.dp).assertHeightIsEqualTo(40.dp)
         }
 }

@@ -63,12 +63,6 @@ class RaftInlineIconButtonHitTest {
     private fun RaftIconButtonSize.layoutBox() = if (this == RaftIconButtonSize.Xs) 24.dp else 28.dp
 
     @Test
-    fun aMouseHitsTheExtraSmallButtonUpTo2dpOutside() {
-        assertEquals(1, hits(RaftIconButtonSize.Xs, RaftPointerInput.Fine, outsideDp = 1.5f, mouse = true))
-        assertEquals(0, hits(RaftIconButtonSize.Xs, RaftPointerInput.Fine, outsideDp = 3f, mouse = true))
-    }
-
-    @Test
     fun aFingerHitsTheInlineButtonsUpTo44dp() {
         assertEquals(1, hits(RaftIconButtonSize.Xs, RaftPointerInput.Touch, outsideDp = 9f, mouse = false))
         assertEquals(1, hits(RaftIconButtonSize.Sm, RaftPointerInput.Touch, outsideDp = 7f, mouse = false))

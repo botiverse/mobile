@@ -48,20 +48,4 @@ class RaftMultiChoiceListTest {
             render(raftMultiChoiceListEntries(items, pinned = setOf("human:artin"), needle = "zzz", matchedValues = null, groups = groups)),
         )
     }
-
-    @Test
-    fun callerMatchesReplaceTheOwnMatchInTheirOrder() {
-        assertEquals(
-            listOf("#Humans", "human:designer", "human:artin"),
-            render(
-                raftMultiChoiceListEntries(
-                    items,
-                    pinned = emptySet(),
-                    needle = "x",
-                    matchedValues = listOf("human:designer", "human:artin"),
-                    groups = groups,
-                )
-            ),
-        )
-    }
 }

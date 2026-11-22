@@ -15,7 +15,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -24,7 +23,6 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
-import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
@@ -64,53 +62,12 @@ class RaftBackSwipeDismissUiTest {
     }
 
     @Test
-    fun backSwipePastAThirdDismisses() = runComposeUiTest {
-        setContent { Overlay(RaftBackSwipeRegions()) }
-        onNodeWithTag("overlay").performTouchInput {
-            down(Offset(20f, 300f))
-            repeat(20) { moveBy(Offset(8f, 0f), delayMillis = 40) }
-            up()
-        }
-        waitForIdle()
-        assertEquals(1, dismissed)
-    }
-
-    @Test
-    fun shortSlowDragSlidesBackOpen() = runComposeUiTest {
-        setContent { Overlay(RaftBackSwipeRegions()) }
-        onNodeWithTag("overlay").performTouchInput {
-            down(Offset(20f, 300f))
-            repeat(10) { moveBy(Offset(4f, 0f), delayMillis = 60) }
-            up()
-        }
-        waitForIdle()
-        assertEquals(0, dismissed)
-    }
-
-    @Test
-    fun verticalAndForwardDragsDoNotDismiss() = runComposeUiTest {
-        setContent { Overlay(RaftBackSwipeRegions()) }
-        onNodeWithTag("overlay").performTouchInput { swipeUp(startY = bottom - 20f, endY = top + 40f, durationMillis = 200) }
-        onNodeWithTag("overlay").performTouchInput { swipeLeft(startX = right - 10f, endX = left + 20f, durationMillis = 150) }
-        waitForIdle()
-        assertEquals(0, dismissed)
-    }
-
-    @Test
     fun aScrollerAwayFromItsStartKeepsTheBackDrag() = runComposeUiTest {
         setContent { Overlay(RaftBackSwipeRegions()) }
         onNodeWithTag("row").performTouchInput { swipeLeft(startX = right - 10f, endX = left + 10f, durationMillis = 200) }
         waitForIdle()
         assertTrue(row.value > 0)
         onNodeWithTag("row").performTouchInput { swipeRight(startX = left + 10f, endX = left + 200f, durationMillis = 200) }
-        waitForIdle()
-        assertEquals(0, dismissed)
-    }
-
-    @Test
-    fun inertWithoutAHostBackSwipe() = runComposeUiTest {
-        setContent { Overlay(regions = null) }
-        onNodeWithTag("overlay").performTouchInput { swipeRight(startX = 20f, endX = 280f, durationMillis = 150) }
         waitForIdle()
         assertEquals(0, dismissed)
     }

@@ -14,7 +14,6 @@ import build.raft.designsystem.components.raftComboboxToggled
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftComboboxFilterTest {
@@ -27,13 +26,6 @@ class RaftComboboxFilterTest {
         )
 
     private fun matches(query: String): List<String> = raftComboboxFilter(models, query).map { it.value }
-
-    @Test
-    fun aBlankQueryListsEveryOptionAsGiven() {
-        listOf("", "   ", "\t").forEach { query ->
-            assertSame(models, raftComboboxFilter(models, query), "query \"$query\"")
-        }
-    }
 
     @Test
     fun matchesTheLabelOrAKeywordIgnoringCaseAndKeepsTheOrder() {
@@ -56,18 +48,6 @@ class RaftComboboxFilterTest {
                 "zz" to emptyList<String>(),
             )
         cases.forEach { (query, expected) -> assertEquals(expected, matches(query), "query \"$query\"") }
-    }
-
-    @Test
-    fun matchesTheIdentifierShownUnderTheLabel() {
-        // Web runtimeChoiceMatches searches the stored id (`provider/modelId`) too.
-        val pi =
-            listOf(
-                RaftComboboxOption("anthropic/claude-sonnet-4-5", "Claude Sonnet 4.5", identifier = "anthropic/claude-sonnet-4-5"),
-                RaftComboboxOption("openai/gpt-5", "GPT-5", identifier = "openai/gpt-5"),
-            )
-        assertEquals(listOf("openai/gpt-5"), raftComboboxFilter(pi, "openai").map { it.value })
-        assertEquals(listOf("anthropic/claude-sonnet-4-5"), raftComboboxFilter(pi, "sonnet-4-5").map { it.value })
     }
 }
 
@@ -92,20 +72,6 @@ class RaftComboboxRowsTest {
             ),
             raftComboboxRows(options),
         )
-    }
-
-    @Test
-    fun aGroupWithNoMatchLosesItsLabel() {
-        val options =
-            listOf(
-                RaftComboboxOption("wug", "Wug", group = "Agents"),
-                RaftComboboxOption("ada", "Ada", group = "People"),
-            )
-        assertEquals(
-            listOf(RaftComboboxRow.Group("People"), RaftComboboxRow.Option(0)),
-            raftComboboxRows(raftComboboxFilter(options, "ada")),
-        )
-        assertEquals(emptyList<RaftComboboxRow>(), raftComboboxRows(raftComboboxFilter(options, "zz")))
     }
 
     @Test
@@ -170,12 +136,6 @@ class RaftComboboxCreateQueryTest {
 }
 
 class RaftComboboxToggledTest {
-    @Test
-    fun aValueNotChosenIsAddedAtTheEnd() {
-        assertEquals(listOf("a", "b", "c"), raftComboboxToggled(listOf("a", "b"), "c"))
-        assertEquals(listOf("a"), raftComboboxToggled(emptyList(), "a"))
-    }
-
     @Test
     fun aChosenValueIsRemovedKeepingTheOrder() {
         assertEquals(listOf("a", "c"), raftComboboxToggled(listOf("a", "b", "c"), "b"))

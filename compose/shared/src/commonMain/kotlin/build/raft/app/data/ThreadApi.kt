@@ -174,6 +174,9 @@ internal class RaftThreadApiClient(
         if (!response.isSuccessful) {
             return ThreadApiResult.Failure(
                 code = response.code,
+                // The refusal's body: a 404 `history_limited` names the hidden target
+                // (MessageContextHistoryLimitedApi.kt, RaftQuotedPermalinkHistoryLimitedMemo.kt).
+                errorBodyText = response.bodyText?.takeIf { it.isNotBlank() } ?: response.errorBodyText,
                 contractCode = "message_context_contract_mismatch",
                 traceId = response.traceId
             )

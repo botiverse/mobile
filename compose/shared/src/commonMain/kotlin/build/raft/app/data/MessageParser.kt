@@ -142,6 +142,11 @@ private data class MessagesWireMessage(
     val deletedAt: String? = null,
     /** Resolved mention facts (`ResolvedMentionFact[]`). */
     val mentions: List<WireMessageMention> = emptyList(),
+    /**
+     * Quote replies verified for this viewer (`ResolvedInlineQuotesMap`, [decodeResolvedInlineQuotes]),
+     * read leniently so a drifted entry never drops the row.
+     */
+    val resolvedQuotes: JsonElement? = null,
 )
 
 /**
@@ -472,7 +477,8 @@ internal fun parseSharedMessageRow(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): Message? {
     val wire = runCatching { messagesJson.decodeFromJsonElement(MessagesWireMessage.serializer(), row) }.getOrNull() ?: return null
-    return wire.toDomain(ThreadId(wire.channelId), diagnostics)
+    // The sync log's row (`readVisibleMessageRow`) never carries `resolvedQuotes`: unknown, not none.
+    return wire.toDomain(ThreadId(wire.channelId), diagnostics, quotesAttached = false)
 }
 
 fun parseSharedSentMessage(
@@ -481,9 +487,10 @@ fun parseSharedSentMessage(
     diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger,
 ): Message? {
     if (bodyText.isBlank()) return null
+    // A forward's answer (`POST /messages/forward`) attaches no `resolvedQuotes`.
     return runCatching {
         messagesJson.decodeFromString(MessagesWireMessage.serializer(), bodyText)
-    }.getOrNull()?.toDomain(fallbackThreadId, diagnostics)
+    }.getOrNull()?.toDomain(fallbackThreadId, diagnostics, quotesAttached = false)
 }
 
 fun parseSharedSentMessagePayload(
@@ -530,9 +537,14 @@ fun parsePendingMentionActionExecuteResults(bodyText: String): List<PendingMenti
     }.getOrDefault(emptyList())
 }
 
+/**
+ * [quotesAttached]: the row comes from a read that attaches `resolvedQuotes` when any resolved (a
+ * page, the context, the sync page, the sender's own send), so a row without them resolved none.
+ */
 private fun MessagesWireMessage.toDomain(
     fallbackThreadId: ThreadId,
     diagnostics: (String) -> Unit,
+    quotesAttached: Boolean = true,
 ): Message? {
     val summary = threadSummary
     val resolvedThreadChannelId =
@@ -632,6 +644,13 @@ private fun MessagesWireMessage.toDomain(
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toMessageMentions(),
+        resolvedQuotes =
+            decodeResolvedInlineQuotes(
+                element = resolvedQuotes,
+                absentMeansNone = quotesAttached,
+                source = "rest_message_resolved_quotes",
+                diagnostics = diagnostics,
+            ),
     )
 }
 

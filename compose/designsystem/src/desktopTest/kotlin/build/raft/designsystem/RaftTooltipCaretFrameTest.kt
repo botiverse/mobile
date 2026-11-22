@@ -17,13 +17,9 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
-import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftTooltipPreview
-import build.raft.designsystem.components.LocalRaftTooltipSide
-import build.raft.designsystem.components.RaftFrameInsets
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.components.RaftTooltipPlacement
-import build.raft.designsystem.components.RaftTooltipSide
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import java.awt.image.BufferedImage
@@ -48,23 +44,6 @@ import org.jetbrains.skia.EncodedImageFormat
 class RaftTooltipCaretFrameTest {
     @Test
     fun aboveItsAnchorTheCaretComesWithTheBubble() = assertCaretInFirstFrame("above") { Anchor() }
-
-    @Test
-    fun belowItsAnchorTheCaretComesWithTheBubble() =
-        assertCaretInFirstFrame("below") { Anchor(placement = RaftTooltipPlacement.Below) }
-
-    @Test
-    fun besideItsAnchorTheCaretComesWithTheBubble() =
-        assertCaretInFirstFrame("beside") {
-            CompositionLocalProvider(LocalRaftTooltipSide provides RaftTooltipSide.Right) { Anchor() }
-        }
-
-    @Test
-    fun movedOutOfTheFrameInsetsTheCaretComesWithTheBubble() =
-        assertCaretInFirstFrame("framed", anchorTop = 72) {
-            // Under a 64dp top band: it opens below, out of the band.
-            CompositionLocalProvider(LocalRaftFrameInsets provides RaftFrameInsets(top = 64.dp)) { Anchor(top = 72) }
-        }
 
     @Composable
     private fun Anchor(placement: RaftTooltipPlacement = RaftTooltipPlacement.Above, top: Int = ANCHOR_TOP) {

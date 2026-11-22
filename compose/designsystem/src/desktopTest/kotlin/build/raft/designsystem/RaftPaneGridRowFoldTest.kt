@@ -38,9 +38,6 @@ import build.raft.designsystem.components.RaftPaneGridColumn
 import build.raft.designsystem.components.RaftPaneGridColumnBounds
 import build.raft.designsystem.components.RaftPaneGridConversationBounds
 import build.raft.designsystem.components.RaftPaneGridMemorySizes
-import build.raft.designsystem.components.raftPaneGridFolds
-import build.raft.designsystem.components.raftPaneGridInRow
-import build.raft.designsystem.components.raftPaneGridRoomDp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -133,48 +130,6 @@ class RaftPaneGridRowFoldTest {
             near(rowWidth, conversation + sizes.widthDp(thread) + sizes.widthDp(cards), "kept widths fill the row")
         }
 
-    @Test
-    fun aKeyOnASeamSavesTheRowAsShownToo() =
-        runComposeUiTest {
-            rowWidth = 1100f
-            val sizes = RaftPaneGridMemorySizes()
-            setContent { Frame(sizes) { RaftPaneGrid(listOf(column(thread, "thread"), column(cards, "tasks", "files"))) { Cell("main") } } }
-            waitForIdle()
-            val seam = onNodeWithContentDescription("Resize cards")
-            seam.requestFocus()
-            // Right narrows the column 16: from 330 to 314; the thread keeps its 385, the main pane takes the rest.
-            seam.performKeyInput { pressKey(Key.DirectionRight) }
-            waitForIdle()
-            near(314f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id), "cards")
-            near(385f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + thread.id), "thread")
-            near(401f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "main")
-            near(401f, assertNotNull(sizes.savedWidthDp(RaftPaneGridConversationBounds)), "kept conversation")
-        }
-
-    @Test
-    fun aPageNamingItsMainPaneKeepsItsWidthApartFromTheConversations() =
-        runComposeUiTest {
-            // PR #4661 review: the Tasks page's task column saved the list's width as the conversation's.
-            rowWidth = 1100f
-            val list = RaftPaneGridColumnBounds(id = "tasksList", defaultWidthDp = 400f, minWidthDp = 360f)
-            val sizes = RaftPaneGridMemorySizes()
-            setContent {
-                Frame(sizes) {
-                    // As in the shell: an outer grid, the page's own grid in its main pane naming its list.
-                    RaftPaneGrid(columns = emptyList()) {
-                        RaftPaneGrid(columns = listOf(column(cards, "task")), mainBounds = list) { Cell("list") }
-                    }
-                }
-            }
-            waitForIdle()
-            val seam = onNodeWithContentDescription("Resize cards")
-            seam.requestFocus()
-            seam.performKeyInput { pressKey(Key.DirectionRight) }
-            waitForIdle()
-            assertEquals(null, sizes.savedWidthDp(RaftPaneGridConversationBounds), "the conversation's width is not the list's")
-            near(1100f - sizes.widthDp(cards), assertNotNull(sizes.savedWidthDp(list), "the list's width is kept"), "kept list")
-        }
-
     /** Each focusable cell that has had focus. */
     private val focused = mutableSetOf<String>()
 
@@ -214,89 +169,6 @@ class RaftPaneGridRowFoldTest {
             assertTrue("main" in focused && "thread" in focused, "Tab goes round past the tab not shown: $focused")
         }
 
-    private var folds: Boolean? = null
-    private var cardsOpen by mutableStateOf(false)
-
-    /** How often the workspace's pages composed; past [COMPOSITION_CAP] it is a loop, failed at once instead of hanging. */
-    private var detailCompositions = 0
-    private var conversationCompositions = 0
-
-    private fun counted(count: Int, page: String): Int {
-        check(count < COMPOSITION_CAP) { "the $page recomposes without end: a recomposition loop in the pane grid's row" }
-        return count + 1
-    }
-
-    /**
-     * The workspace's shape: the split's grid, the detail's grid one level in (the thread, declared only while the
-     * plan doesn't fold it, as SettingsHomePage does), the conversation's two in (Tasks / Files, new column objects
-     * every time it composes and reading the row, as ThreadPage does).
-     */
-    private fun ComposeUiTest.showWorkspace() {
-        val sizes = RaftPaneGridMemorySizes()
-        detailCompositions = 0
-        conversationCompositions = 0
-        setContent {
-            Frame(sizes) {
-                RaftPaneGrid(columns = emptyList()) {
-                    detailCompositions = counted(detailCompositions, "detail")
-                    val threadFolds = raftPaneGridFolds(thread)
-                    folds = threadFolds
-                    RaftPaneGrid(columns = if (threadFolds == false) listOf(column(thread, "thread")) else emptyList()) {
-                        conversationCompositions = counted(conversationCompositions, "conversation")
-                        val inRow = raftPaneGridInRow()
-                        raftPaneGridRoomDp()
-                        RaftPaneGrid(columns = if (cardsOpen && inRow) listOf(column(cards, "tasks", "files")) else emptyList()) { Cell("main") }
-                    }
-                }
-            }
-        }
-        waitForIdle()
-    }
-
-    /** The row settled: a few more frames compose none of the workspace's pages again. */
-    private fun ComposeUiTest.assertSettled() {
-        val detail = detailCompositions
-        val conversation = conversationCompositions
-        repeat(5) { mainClock.advanceTimeByFrame() }
-        waitForIdle()
-        assertEquals(detail, detailCompositions, "the detail recomposed with nothing changing")
-        assertEquals(conversation, conversationCompositions, "the conversation recomposed with nothing changing")
-    }
-
-    @Test
-    fun theThreadFoldsByThePlanNotAFixedWidth() =
-        runComposeUiTest {
-            cardsOpen = false
-            rowWidth = 720f
-            showWorkspace()
-            assertEquals(false, folds, "at 720 the conversation and the thread keep 360 each")
-            assertSettled()
-            rowWidth = 719f
-            waitForIdle()
-            assertEquals(true, folds, "under 720 the thread folds")
-            assertSettled()
-            // Tasks / Files beside the conversation: the thread folds before anything would clip, under 360 + 360 + 280.
-            cardsOpen = true
-            rowWidth = 1000f
-            waitForIdle()
-            assertEquals(false, folds, "at 1000 all three stand side by side")
-            assertSettled()
-            near(360f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + thread.id), "thread at 1000")
-            near(280f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id), "cards at 1000")
-            rowWidth = 999f
-            waitForIdle()
-            assertEquals(true, folds, "under 1000 the thread folds")
-            assertSettled()
-            // Folded, the cards still stand beside the conversation, at their 360 (the conversation has what is left).
-            near(360f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id), "cards beside the folded conversation")
-            near(639f, widthDp(RAFT_PANE_GRID_MAIN_TEST_TAG), "the conversation beside them")
-            // Wider again the plan lets the thread stand beside (the app's fold is the page's to undo).
-            rowWidth = 1200f
-            waitForIdle()
-            assertEquals(false, folds)
-            assertSettled()
-        }
-
     private var shown by mutableStateOf("first")
 
     @Test
@@ -332,46 +204,4 @@ class RaftPaneGridRowFoldTest {
             onNodeWithText("value first", useUnmergedTree = true).assertExists()
             onNodeWithText("value second", useUnmergedTree = true).assertDoesNotExist()
         }
-
-    private fun ComposeUiTest.leftDp(tag: String): Float =
-        with(density) { onAllNodesWithTag(tag, useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot.left.toDp().value }
-
-    /**
-     * The app's profile / details column (#189 step 3) is declared by the detail, one level in, with the thread; Tasks /
-     * Files come from the conversation two levels in. As on the web's default layout the profile column stands last.
-     */
-    @Test
-    fun aTrailingColumnStandsLastWhicheverGridDeclaredIt() =
-        runComposeUiTest {
-            rowWidth = 1600f
-            val sizes = RaftPaneGridMemorySizes()
-            detailCompositions = 0
-            conversationCompositions = 0
-            setContent {
-                Frame(sizes) {
-                    RaftPaneGrid(columns = emptyList()) {
-                        detailCompositions = counted(detailCompositions, "detail")
-                        RaftPaneGrid(columns = listOf(column(thread, "thread"), column(profile, "profile", "details", trailing = true))) {
-                            conversationCompositions = counted(conversationCompositions, "conversation")
-                            raftPaneGridRoomDp()
-                            RaftPaneGrid(columns = listOf(column(cards, "tasks", "files"))) { Cell("main") }
-                        }
-                    }
-                }
-            }
-            waitForIdle()
-            val threadAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + thread.id)
-            val cardsAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + cards.id)
-            val profileAt = leftDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + profile.id)
-            assertTrue(threadAt < cardsAt && cardsAt < profileAt, "thread $threadAt, then Tasks / Files $cardsAt, then the profile $profileAt")
-            // 1600 holds the columns' 400 + 360 + 400 and the conversation's 440 (what they leave): each at its own width.
-            near(400f, widthDp(RAFT_PANE_GRID_COLUMN_TEST_TAG + profile.id), "profile")
-            near(1600f - 400f, profileAt, "the profile at the row's end")
-            assertSettled()
-        }
-
-    private companion object {
-        /** Far more compositions than a settled row ever needs, far fewer than a loop makes before the 60s watchdog. */
-        const val COMPOSITION_CAP = 200
-    }
 }

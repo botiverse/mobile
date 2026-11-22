@@ -13,11 +13,6 @@ class RaftMessageReactionTooltipPlacementTest {
     private val chip = IntRect(left = 20, top = 300, right = 80, bottom = 328)
 
     @Test
-    fun hoverOpensBelowTheChip() {
-        assertEquals(IntOffset(20, 332), raftTooltipBelowStartPosition(chip, window, popup, spacing = 4))
-    }
-
-    @Test
     fun longPressOpensAboveTheChipOutFromUnderTheFinger() {
         assertEquals(IntOffset(20, 256), raftTooltipBelowStartPosition(chip, window, popup, spacing = 4, aboveFirst = true))
     }

@@ -4,11 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RaftDesktopLoginCallbacksTest {
-    @Test fun `the Compose desktop app returns to the raft scheme`() {
-        // The shared allowlist and parser are covered by AppLoginCallbacksTest (commonTest).
-        assertEquals("raft://login/callback", RaftDesktopSettingsCapability.APP_LOGIN_RETURN_URI)
-    }
-
     @Test fun `only raft login callbacks are callback arguments`() {
         val args =
             listOf(

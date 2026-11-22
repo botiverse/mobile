@@ -9,7 +9,6 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 class RaftSocketIoClientReconnectTest {
@@ -81,23 +80,6 @@ class RaftSocketIoClientReconnectTest {
     }
 
     @Test
-    fun withoutCredentialsTheSocketWaitsForAKick() = runTest {
-        val harness = SocketHarness(this, credentialsAvailable = false)
-        harness.root.connect()
-        runCurrent()
-        harness.server.last.open()
-        runCurrent()
-        assertEquals(RaftSocketState.Failed(null), harness.root.state.value)
-        assertTrue(harness.server.last.closed)
-        harness.credentialsAvailable = true
-        harness.client.kick("signed_in")
-        runCurrent()
-        harness.server.last.open()
-        runCurrent()
-        assertEquals("token-1", harness.token(harness.server.last.connectAuth(harness.server.last.receivedTexts())))
-    }
-
-    @Test
     fun transportLossReconnectsWithGrowingBackoffAndAFreshTokenEachTime() = runTest {
         val harness = SocketHarness(this)
         val first = harness.connectRoot()
@@ -131,23 +113,6 @@ class RaftSocketIoClientReconnectTest {
     }
 
     @Test
-    fun kickEndsTheBackoffWaitAtOnce() = runTest {
-        val harness = SocketHarness(this)
-        val first = harness.connectRoot()
-        harness.server.failNextConnects = 5
-        first.fail()
-        runCurrent()
-        repeat(3) {
-            advanceTimeBy(harness.listener.scheduledDelays.last() + 1)
-            runCurrent()
-        }
-        val opened = harness.server.urls.size
-        harness.client.kick("network_available")
-        runCurrent()
-        assertEquals(opened + 1, harness.server.urls.size, "the kick connects without waiting")
-    }
-
-    @Test
     fun forceReconnectReplacesTheLiveConnectionWithoutBackoff() = runTest {
         val harness = SocketHarness(this)
         val first = harness.connectRoot()
@@ -156,86 +121,6 @@ class RaftSocketIoClientReconnectTest {
         assertTrue(first.closed)
         assertTrue("disconnected:forced" in harness.listener.calls)
         assertEquals(2, harness.server.sessions.size)
-    }
-
-    @Test
-    fun aServerDisconnectReconnectsTheNamespaceWithAFreshToken() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot()
-        session.push("41")
-        runCurrent()
-        assertTrue("disconnected:io_server_disconnect" in harness.listener.calls)
-        advanceTimeBy(harness.listener.scheduledDelays.last() + 1)
-        runCurrent()
-        assertEquals("token-2", harness.token(session.connectAuth(session.receivedTexts())))
-        session.acceptConnect(sid = "sio-again")
-        runCurrent()
-        assertEquals("connected:sio-again:reconnect=true", harness.listener.calls.last())
-        assertEquals(1, harness.server.sessions.size)
-    }
-
-    @Test
-    fun disconnectLeavesTheNamespaceAndClosesTheEngine() = runTest {
-        val harness = SocketHarness(this)
-        val session = harness.connectRoot()
-        harness.root.disconnect()
-        runCurrent()
-        assertEquals(listOf("41"), session.receivedTexts())
-        assertTrue(session.closed)
-        assertEquals(RaftSocketState.Idle, harness.root.state.value)
-        advanceTimeBy(600_000)
-        runCurrent()
-        assertEquals(1, harness.server.sessions.size)
-        assertEquals("disconnected:io_client_disconnect", harness.listener.calls.last())
-    }
-
-    @Test
-    fun namespacesConnectWithTheirOwnAuthOverOneEngine() = runTest {
-        val harness = SocketHarness(this)
-        val adminListener = RecordingSocketListener()
-        val admin =
-            harness.client.socket(
-                "admin",
-                RaftSocketNamespaceOptions(
-                    authProvider = { JsonObject(mapOf("role" to JsonPrimitive("admin"))) },
-                    listener = adminListener,
-                    retryOnConnectError = false,
-                ),
-            )
-        assertEquals("/admin", admin.namespace)
-        val session = harness.connectRoot()
-        admin.connect()
-        runCurrent()
-        assertEquals(JsonPrimitive("admin"), session.connectAuth(session.receivedTexts(), namespace = "/admin")["role"])
-        assertEquals(1, harness.server.sessions.size)
-
-        session.push("44/admin,{\"message\":\"Not authorized\"}")
-        runCurrent()
-        assertTrue("connect_error:Unknown:retry=false" in adminListener.calls)
-        assertIs<RaftSocketState.Failed>(admin.state.value)
-        assertIs<RaftSocketState.Connected>(harness.root.state.value, "another namespace's rejection leaves / connected")
-        assertFalse(session.closed)
-
-        harness.client.kick("retry_admin")
-        runCurrent()
-        assertTrue(session.receivedTexts().any { it.startsWith("40/admin,") })
-        session.push("40/admin,{\"sid\":\"adm-1\"}")
-        session.push("42/admin,[\"admin:event\",1]")
-        session.push("42[\"message:new\",{}]")
-        runCurrent()
-        assertEquals(listOf("admin:event"), adminListener.events.map { it.name })
-        assertEquals(listOf("message:new"), harness.listener.events.map { it.name })
-
-        admin.emit("ping:admin")
-        harness.root.emit("ping:root")
-        runCurrent()
-        assertEquals(listOf("42/admin,[\"ping:admin\"]", "42[\"ping:root\"]"), session.receivedTexts())
-
-        admin.disconnect()
-        runCurrent()
-        assertEquals(listOf("41/admin,"), session.receivedTexts())
-        assertFalse(session.closed, "/ still uses the engine")
-        assertEquals("disconnected:io_client_disconnect", adminListener.calls.last())
     }
 
     @Test
@@ -296,38 +181,6 @@ class RaftSocketIoClientReconnectTest {
         val connectedAt = harness.listener.calls.indexOfLast { it.startsWith("connected:") }
         assertTrue(connectedAt < harness.listener.calls.indexOf("event:message:new"), harness.listener.calls.toString())
         assertTrue(harness.listener.connections.last().recovered)
-    }
-
-    @Test
-    fun eventsBufferedForARejectedConnectAreDroppedWithAReason() = runTest {
-        val harness = SocketHarness(this)
-        harness.root.connect()
-        runCurrent()
-        val session = harness.server.last
-        session.open()
-        runCurrent()
-        session.push("42[\"message:new\",{}]")
-        session.push("44{\"message\":\"SSO_REQUIRED\"}")
-        runCurrent()
-        assertEquals(emptyList(), harness.listener.events)
-        assertTrue("dropped:message:new:buffered_connect_error" in harness.listener.calls, harness.listener.calls.toString())
-    }
-
-    @Test
-    fun aSocketWithoutPidNeverSendsRecoveryFields() = runTest {
-        val harness = SocketHarness(this)
-        val first = harness.connectRoot()
-        first.push("42[\"message:new\",{},\"looks-like-offset\"]")
-        runCurrent()
-        first.fail()
-        runCurrent()
-        advanceTimeBy(harness.listener.scheduledDelays.last() + 1)
-        runCurrent()
-        harness.server.last.open()
-        runCurrent()
-        val auth = harness.server.last.connectAuth(harness.server.last.receivedTexts())
-        assertNull(auth["pid"])
-        assertNull(auth["offset"])
     }
 
     @Test

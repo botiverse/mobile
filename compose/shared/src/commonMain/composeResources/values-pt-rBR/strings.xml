@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 arquivo</string>
     <string name="thread_quoted_permalink_images">%1$d imagens</string>
     <string name="thread_quoted_permalink_attachments">%1$d anexos</string>
+    <string name="thread_quote_reply_jump">Ir para a mensagem citada de %1$s: %2$s</string>
     <string name="thread_member_role_member">Membro</string>
     <string name="thread_member_role_system">Sistema</string>
     <string name="thread_settings_preferences">Preferências</string>
@@ -2009,6 +2010,7 @@
     <string name="tasks_header_channel_tasks">Tarefas do canal</string>
     <string name="tasks_header_channel_tasks_count">%1$d tarefas do canal</string>
     <string name="tasks_header_channel_tasks_filtered">%1$d de %2$d tarefas do canal</string>
+    <string name="tasks_header_view_count">%1$s tarefas</string>
     <string name="tasks_unavailable">Tarefas indisponíveis</string>
     <string name="tasks_empty">Nenhuma tarefa ainda</string>
     <string name="tasks_empty_filtered">Nenhuma tarefa corresponde a este filtro</string>

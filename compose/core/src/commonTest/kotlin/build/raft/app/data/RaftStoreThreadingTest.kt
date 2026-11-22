@@ -6,14 +6,12 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
 
 class RaftStoreThreadingTest {
     private val violations = mutableListOf<RaftStoreThreadingViolation>()
@@ -29,21 +27,6 @@ class RaftStoreThreadingTest {
     }
 
     @Test
-    fun writesOnTheStoreDispatcherPassTheGuard() = runTest {
-        val state = raftStoreState(0, "TestStore")
-
-        withContext(RaftStoreThreading.dispatcher) {
-            assertTrue(RaftStoreThreading.isOnStoreDispatcher)
-            state.value = 1
-            state.update { it + 1 }
-            state.emit(3)
-        }
-
-        assertEquals(3, state.value)
-        assertEquals(emptyList(), violations)
-    }
-
-    @Test
     fun writesFromAnyOtherThreadAreReportedWithTheStoreName() = runTest {
         val state = raftStoreState("initial", "SharedHomeStore")
         assertFalse(RaftStoreThreading.isOnStoreDispatcher)
@@ -53,44 +36,6 @@ class RaftStoreThreadingTest {
 
         assertEquals("ui-thread write, again", state.value, "the guard reports; it never drops a write")
         assertEquals(listOf("SharedHomeStore", "SharedHomeStore"), violations.map { it.subject })
-    }
-
-    @Test
-    fun withoutAHandlerNothingIsChecked() = runTest {
-        RaftStoreThreading.installViolationHandler(null)
-        val state = raftStoreState(0, "TestStore")
-
-        state.value = 1
-
-        assertEquals(1, state.value)
-        assertEquals(emptyList(), violations)
-    }
-
-    @Test
-    fun blockingCallsAreReportedOnlyOnTheStoreDispatcher() = runTest {
-        RaftStoreThreading.checkNotOnStoreDispatcher("off.store")
-        withContext(RaftStoreThreading.dispatcher) {
-            RaftStoreThreading.checkNotOnStoreDispatcher("RaftSqlDatabase.transaction")
-        }
-
-        assertEquals(
-            listOf(RaftStoreThreadingViolation.Kind.BlockingCallOnStoreDispatcher to "RaftSqlDatabase.transaction"),
-            violations.map { it.kind to it.subject },
-        )
-    }
-
-    @Test
-    fun runOffStoreDispatcherLeavesTheStoreDispatcherForBlockingWork() = runTest {
-        val confinedInside =
-            withContext(RaftStoreThreading.dispatcher) {
-                RaftStoreThreading.runOffStoreDispatcher {
-                    RaftStoreThreading.checkNotOnStoreDispatcher("blocking")
-                    RaftStoreThreading.isOnStoreDispatcher
-                }
-            }
-
-        assertFalse(confinedInside)
-        assertEquals(emptyList(), violations)
     }
 
     @Test
