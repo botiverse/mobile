@@ -622,8 +622,10 @@ internal fun ThreadPageHeader(
                             replyThreadSearch != null || replyThreadViewInChannel != null || onOpenTimeline != null
                     val edgeInsetDp = ThreadHeaderEdgeInset.value
                     val actionSizeDp = ThreadHeaderActionSize.value
-                    val startInsetDp = if (showsBack && !controlsInColumn) edgeInsetDp else ThreadSplitDetailEdgeInset.value
-                    val backWidthDp = if (showsBack && !controlsInColumn) actionSizeDp + 6f else 0f
+                    val horizontalSafeArea = LocalRaftWindowHorizontalSafeArea.current
+                    val horizontalSafeAreaDp = horizontalSafeArea.left.value + horizontalSafeArea.right.value
+                    val startInsetDp = if (showBack && !controlsInColumn) edgeInsetDp else ThreadSplitDetailEdgeInset.value
+                    val backWidthDp = if (showsBack && !controlsInColumn) actionSizeDp + ThreadHeaderContentSpacing.value else 0f
                     val leadingTileDp =
                         when {
                             loungeHeader != null -> 35f + ThreadHeaderContentSpacing.value
@@ -632,7 +634,8 @@ internal fun ThreadPageHeader(
                             payload.showModeTabs -> ThreadHeaderChannelTileSize.value + ThreadHeaderContentSpacing.value
                             else -> 0f
                         }
-                    val leadOverheadDp = startInsetDp + backWidthDp + leadingTileDp + ThreadHeaderContentSpacing.value + edgeInsetDp
+                    val leadOverheadDp =
+                        horizontalSafeAreaDp + startInsetDp + backWidthDp + leadingTileDp + ThreadHeaderContentSpacing.value + edgeInsetDp
                     val shownOwnCount =
                         threadHeaderShownOwnActions(
                             widthDp = headerWidthDp,
@@ -837,7 +840,8 @@ internal fun threadHeaderShownOwnActions(
 /**
  * The conversation header's actions for the Duo side column and iOS native nav bar, in web Task v2
  * order: Search, Lounge (agent DM), Tasks, Files, Settings — folding from the last into ⋯; reply
- * thread and task commands live in ⋯, and Focus mode stays out of ⋯.
+ * thread and task commands prioritize Search and View in Channel while Timeline / Mark Unread /
+ * Follow / Delete sit in ⋯, and Focus mode stays out of ⋯.
  */
 @Composable
 private fun threadHeaderSideColumnActions(
@@ -941,16 +945,16 @@ private fun threadHeaderSideColumnActions(
         }
         if (taskConversation || (replyThreadMenu && payload.threadHeaderSearchAction() != null)) {
             val label = if (taskConversation) searchInTaskLabel else searchInThreadLabel
-            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch, priority = -1))
+            add(raftSideColumnLucideAction(SEARCH_IN_TASK_MENU_ITEM_ID, label, RaftLucideIconName.Search, onOpenSearch))
         }
         // Web ThreadOverflowMenu: Timeline after Search, before View in Channel; in the ⋯.
         if (onOpenTimeline != null) {
             add(raftSideColumnLucideAction(THREAD_TIMELINE_MENU_ITEM_ID, timelineLabel, RaftLucideIconName.List, onOpenTimeline, priority = -1))
         }
         if (taskConversation && onViewTaskInChannel != null) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel, priority = -1))
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onViewTaskInChannel))
         } else if (replyThreadMenu && parentReachable && payload.threadHeaderOpenInParentActionVisible()) {
-            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel, priority = -1))
+            add(raftSideColumnLucideAction(VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID, viewInChannelLabel, RaftLucideIconName.MapPin, onOpenInChannel))
         }
         if (onMarkThreadUnread != null) {
             add(
@@ -1530,50 +1534,60 @@ private fun ThreadHeaderFocusModeMenu(
     // boundary -- the device trace showed `click_abort reason=eventBus_null` for exactly that reason.
     // RaftSharedStoreRegistry is keyed by pager bridge id, so each page gets the live bus it can
     // actually post on (the same path the rest of ThreadPage already uses).
-    val localPager = LocalActivity.current.getPager() as Pager
-    val eventBusOverride = LocalThreadHeaderMenuEventBus.current
-    val pageEventBus: build.raft.app.data.RaftEventBus =
-        remember(localPager.pagerId, eventBusOverride) {
-            eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
-        }
-    // This page's registry key, mirroring what RaftChildPage publishes for it.
-    // This page's registry key, mirroring what RaftChildPage publishes for it. Verified by
-    // reading PagerData: the host's pageData becomes `rawPageData["param"]` and `pageData.params`
-    // reads that back, so `instanceId` is present on both sides. The trace logs both keys so any
-    // future divergence is a line comparison rather than a silent zero origin.
-    val pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
-    // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
-    val pageKey =
-        LocalActivity.current.pageData.params
-            .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
-            .trim()
-            .ifEmpty { "thread-panel" }
+    val pageEventBus: build.raft.app.data.RaftEventBus?
+    val pageOriginKey: String
+    val pageKey: String
+    if (!drawLocally) {
+        val localPager = LocalActivity.current.getPager() as Pager
+        val eventBusOverride = LocalThreadHeaderMenuEventBus.current
+        pageEventBus =
+            remember(localPager.pagerId, eventBusOverride) {
+                eventBusOverride ?: RaftSharedStoreRegistry.get(Utils.bridgeModule(localPager.pagerId)).eventBus
+            }
+        // This page's registry key, mirroring what RaftChildPage publishes for it. Verified by
+        // reading PagerData: the host's pageData becomes `rawPageData["param"]` and `pageData.params`
+        // reads that back, so `instanceId` is present on both sides. The trace logs both keys so any
+        // future divergence is a line comparison rather than a silent zero origin.
+        pageOriginKey = raftChildPageOriginKey(THREAD_PAGE, LocalActivity.current.pageData.params)
+        // Identifies this page to the shell so a menu cannot be attributed to a different thread column.
+        pageKey =
+            LocalActivity.current.pageData.params
+                .optString(RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY)
+                .trim()
+                .ifEmpty { "thread-panel" }
+    } else {
+        pageEventBus = null
+        pageOriginKey = ""
+        pageKey = "thread-panel"
+    }
     var openRequestId by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(pageEventBus, pageKey) {
-        val bus = pageEventBus
-        val subscription =
-            bus.observe(RAFT_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
-                if (!raftShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
-                openRequestId = null
-                val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
-                when (selectedId) {
-                    FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
-                    MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
-                    SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
-                    THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
-                    VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
-                    DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
-                    NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
-                    else -> latestFoldedActions.firstOrNull { it.id == selectedId }?.onClick?.invoke()
+    if (pageEventBus != null) {
+        DisposableEffect(pageEventBus, pageKey) {
+            val bus = pageEventBus
+            val subscription =
+                bus.observe(RAFT_SHELL_OVERLAY_RESULT_EVENT) { eventData ->
+                    if (!raftShouldApplyShellOverlayResult(openRequestId, eventData)) return@observe
+                    openRequestId = null
+                    val selectedId = eventData?.optString(SHELL_OVERLAY_SELECTED_ID).orEmpty()
+                    when (selectedId) {
+                        FOLLOW_THREAD_MENU_ITEM_ID -> onToggleFollow?.invoke()
+                        MARK_THREAD_UNREAD_MENU_ITEM_ID -> onMarkUnread?.invoke()
+                        SEARCH_IN_TASK_MENU_ITEM_ID -> onSearchInTask?.invoke()
+                        THREAD_TIMELINE_MENU_ITEM_ID -> onTimeline?.invoke()
+                        VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID -> onViewInChannel?.invoke()
+                        DELETE_TASK_MENU_ITEM_ID -> onDeleteTask?.invoke()
+                        NOTIFICATION_LEVEL_MENU_ITEM_ID -> notificationLevelDialogOpen = true
+                        else -> latestFoldedActions.firstOrNull { it.id == selectedId }?.onClick?.invoke()
+                    }
                 }
+            onDispose {
+                // Leaving the page retires the menu; the shell drops a cancel for anything it is not
+                // currently showing, so this cannot close another page's menu.
+                openRequestId?.let { requestId ->
+                    bus.post(RAFT_SHELL_OVERLAY_REQUEST_EVENT, cancelRaftShellOverlayJson(requestId))
+                }
+                subscription.close()
             }
-        onDispose {
-            // Leaving the page retires the menu; the shell drops a cancel for anything it is not
-            // currently showing, so this cannot close another page's menu.
-            openRequestId?.let { requestId ->
-                bus.post(RAFT_SHELL_OVERLAY_REQUEST_EVENT, cancelRaftShellOverlayJson(requestId))
-            }
-            subscription.close()
         }
     }
     ThreadHeaderCompactAction(
@@ -1587,7 +1601,7 @@ private fun ThreadHeaderFocusModeMenu(
                 anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { localMenuAnchor = it }
                 return@onClick
             }
-            val bus = pageEventBus
+            val bus = pageEventBus ?: return@onClick
             val anchor = anchorRef.resolve(RaftPopoverLocalPoint.BottomEnd)
             if (anchor == null) {
                 raftTraceToPlatformLog("SlockShellOverlay", "click_abort reason=anchor_resolve_null")

@@ -323,6 +323,7 @@ internal fun raftSideColumnLucideAction(
 internal fun RaftLucideIconName.raftSideColumnSystemSymbol(): String? =
     when (this) {
         RaftLucideIconName.Search -> "magnifyingglass"
+        RaftLucideIconName.Users -> "person.2"
         RaftLucideIconName.Settings -> "gearshape"
         RaftLucideIconName.Bell, RaftLucideIconName.FollowThread -> "bell"
         RaftLucideIconName.UnfollowThread -> "bell.slash"

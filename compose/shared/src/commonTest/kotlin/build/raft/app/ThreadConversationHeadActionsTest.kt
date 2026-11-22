@@ -49,7 +49,7 @@ class ThreadConversationHeadActionsTest {
         val shownPhone =
             threadHeaderShownOwnActions(
                 widthDp = 393f,
-                leadOverheadDp = 99f,
+                leadOverheadDp = 105f,
                 ownCount = channelActions.size,
                 actionSizeDp = 44f,
             )
@@ -59,7 +59,7 @@ class ThreadConversationHeadActionsTest {
         val shownNarrow =
             threadHeaderShownOwnActions(
                 widthDp = 320f,
-                leadOverheadDp = 99f,
+                leadOverheadDp = 105f,
                 ownCount = channelActions.size,
                 actionSizeDp = 44f,
             )
@@ -109,7 +109,7 @@ class ThreadConversationHeadActionsTest {
         val shownNarrowDm =
             threadHeaderShownOwnActions(
                 widthDp = 360f,
-                leadOverheadDp = 106f,
+                leadOverheadDp = 112f,
                 ownCount = dmActions.size,
                 actionSizeDp = 44f,
             )
