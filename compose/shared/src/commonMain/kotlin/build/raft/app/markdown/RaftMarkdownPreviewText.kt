@@ -2,6 +2,7 @@ package build.raft.app.markdown
 
 import androidx.compose.runtime.Immutable
 import build.raft.app.RaftAppThemeState
+import build.raft.app.data.stripQuoteReplyRefsForPreview
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -130,7 +131,9 @@ private object RaftMarkdownPreviewCache {
 }
 
 internal fun flattenMarkdownPreview(markdown: String): RaftMarkdownPreview {
-    val source = markdown.take(RaftMarkdownPreviewMaxSourceLength)
+    // A quote reply's `> msg=<id>` line points at the quoted message; a preview reads the quote
+    // without it (web `stripQuoteReplyRefsForPreview`).
+    val source = stripQuoteReplyRefsForPreview(markdown.take(RaftMarkdownPreviewMaxSourceLength))
     val root =
         try {
             MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(source)

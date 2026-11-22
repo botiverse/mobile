@@ -930,6 +930,7 @@
     <string name="thread_quoted_permalink_one_file">1 個檔案</string>
     <string name="thread_quoted_permalink_images">%1$d 張圖片</string>
     <string name="thread_quoted_permalink_attachments">%1$d 個附件</string>
+    <string name="thread_quote_reply_jump">跳至 %1$s 的原訊息：%2$s</string>
     <string name="thread_member_role_member">成員</string>
     <string name="thread_member_role_system">系統</string>
     <string name="thread_settings_preferences">偏好設定</string>

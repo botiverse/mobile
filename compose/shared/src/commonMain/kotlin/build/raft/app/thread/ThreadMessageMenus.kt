@@ -552,6 +552,10 @@ internal fun ThreadMessageActionMenu(
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
+    // web MessageItem "Quote" (quote_reply_v0): the message's opening as a quote reply, into this
+    // page's composer (the append Select Text > Quote makes); no composer on the page, no Quote.
+    val quoteIntoComposer = LocalThreadInPlaceTextSelectionHost.current?.quoteIntoComposer
+    val menuQuote = if (quoteIntoComposer != null) threadMessageMenuQuote(message) else null
     val actions =
         remember(
             message,
@@ -589,7 +593,10 @@ internal fun ThreadMessageActionMenu(
             onMarkConversationUnread,
             onCopySelection,
             onDownloadVideo,
-            link != null
+            link != null,
+            menuQuote,
+            quoteIntoComposer,
+            onDismiss
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -627,7 +634,14 @@ internal fun ThreadMessageActionMenu(
                 onForward = onForward,
                 onMarkThreadUnread = onMarkThreadUnread,
                 onMarkConversationUnread = onMarkConversationUnread,
-                onDownloadVideo = onDownloadVideo
+                onDownloadVideo = onDownloadVideo,
+                showQuoteAction = menuQuote != null && quoteIntoComposer != null,
+                onQuote = {
+                    if (menuQuote != null && quoteIntoComposer != null) {
+                        onDismiss()
+                        quoteIntoComposer(menuQuote)
+                    }
+                }
             )
         }
     // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).

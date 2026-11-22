@@ -725,6 +725,9 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         // have been deleted), a sparse patch without it keeps the label.
         delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy),
         deletedAt = update.deletedAt ?: deletedAt,
+        // A read's quote replies win; a live copy carries none (room broadcasts never do), so the
+        // loaded ones stay while the words they were resolved for stay.
+        resolvedQuotes = update.resolvedQuotes ?: resolvedQuotes.takeIf { update.body.isBlank() || update.body == body },
     ).let { merged ->
         // RFC 077 PR 2b: a retraction is authoritative. The sparse-patch fallbacks above
         // (`ifBlank`/`ifEmpty` keep the loaded body, attachments, reactions) must not keep

@@ -626,6 +626,8 @@ internal fun threadMessageMenuActions(
     showMarkThreadUnreadAction: Boolean = false,
     /** botiverse/slock #14222: the list's "Mark channel/DM as unread", last of the just-for-me section. */
     markConversationUnread: ThreadMarkConversationUnreadKind? = null,
+    /** web MessageItem "Quote" (quote_reply_v0): the message quoted into this page's composer, after Reply in Thread. */
+    showQuoteAction: Boolean = false,
     /**
      * A right-click menu opened over selected text in the message: "Copy" copies it, first in the
      * copy group (web: the browser's own Copy). Null otherwise (long press, nothing selected).
@@ -650,7 +652,8 @@ internal fun threadMessageMenuActions(
     onMarkThreadUnread: () -> Unit = {},
     onMarkConversationUnread: () -> Unit = {},
     /** Downloads the message's video ([threadMessageMenuDownloadVideoAttachmentId]); null hides it. */
-    onDownloadVideo: (() -> Unit)? = null
+    onDownloadVideo: (() -> Unit)? = null,
+    onQuote: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
     // Add Reaction is not a row: it ends the reaction header ([ThreadMessageMenuChrome]).
     // web MessageItem's sections, by what the action does: keep going on this message (thread and
@@ -666,6 +669,9 @@ internal fun threadMessageMenuActions(
         }
         if (showReplyAction) {
             add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.Thread, "message", onClick = onReply))
+        }
+        if (showQuoteAction && copyText) {
+            add(ThreadMessageMenuAction(Res.string.thread_action_quote.desc(), RaftLucideIconName.TextQuote, "message", onClick = onQuote))
         }
         val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
         if (showFollowAction && shouldShowThreadFollowAction(message, replyMetadata)) {
