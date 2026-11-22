@@ -37,6 +37,7 @@ enum class RaftLucideIconName(val wireName: String) {
     Bug("bug"),
     Building2("building-2"),
     Calendar("calendar"),
+    CalendarRange("calendar-range"),
     Camera("camera"),
     ChartBar("chart-bar"),
     ChartColumn("chart-column"),
