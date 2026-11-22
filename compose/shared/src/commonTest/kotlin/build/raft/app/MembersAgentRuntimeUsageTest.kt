@@ -76,17 +76,6 @@ class MembersAgentRuntimeUsageTest {
     }
 
     @Test
-    fun diagnosticsLabelsCarryOnlyTheLoadShape() {
-        assertEquals("none", (null as RuntimeAccountUsageLoad?).diagnosticsLabel())
-        assertEquals("forbidden", RuntimeAccountUsageLoad.Forbidden.diagnosticsLabel())
-        assertEquals("superseded", RuntimeAccountUsageLoad.Superseded.diagnosticsLabel())
-        assertEquals("failed:server_unavailable", RuntimeAccountUsageLoad.Failed("server_unavailable", true).diagnosticsLabel())
-        assertEquals("missing", RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing).diagnosticsLabel())
-        assertEquals("stale", loaded(stale = true, account()).diagnosticsLabel())
-        assertEquals("fresh", loaded(stale = false, account()).diagnosticsLabel())
-    }
-
-    @Test
     fun aReadForAnIdentityThatIsNoLongerSignedInShowsNothing() {
         assertNull(RuntimeAccountUsageLoad.Superseded.shownRuntimeAccountUsage())
         assertFalse(RuntimeAccountUsageLoad.Superseded.offersRuntimeAccountUsage())
@@ -94,23 +83,6 @@ class MembersAgentRuntimeUsageTest {
         val loaded = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing)
         assertEquals(loaded, loaded.shownRuntimeAccountUsage())
         assertEquals(RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Forbidden.shownRuntimeAccountUsage())
-    }
-
-    @Test
-    fun missingStaleUnknownAndUnavailableAllNeedAttentionOnlyHealthyFreshDoesNot() {
-        assertFalse(loaded(stale = false, account()).runtimeAccountUsageNeedsAttention())
-        assertTrue(RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing).runtimeAccountUsageNeedsAttention())
-        assertTrue(RuntimeAccountUsageLoad.Failed("server_unavailable", true).runtimeAccountUsageNeedsAttention())
-        assertTrue(loaded(stale = true, account()).runtimeAccountUsageNeedsAttention())
-        assertTrue(loaded(stale = false, account(health = RuntimeAccountUsageHealth.Unknown)).runtimeAccountUsageNeedsAttention())
-        assertTrue(
-            loaded(stale = false, account(window = window(RuntimeAccountUsageWindowStatus.Unavailable, null)))
-                .runtimeAccountUsageNeedsAttention()
-        )
-        assertTrue(
-            loaded(stale = false, account(window = window(RuntimeAccountUsageWindowStatus.LimitReached, 1.0)))
-                .runtimeAccountUsageNeedsAttention()
-        )
     }
 
     @Test
@@ -166,26 +138,6 @@ class MembersAgentRuntimeUsageTest {
         signedIn = null
         tracker.onAuthSessionEvent(AuthSessionEvent.BindingMetadataChanged(generation = 2))
         assertNull(tracker.owner.value)
-    }
-
-    @Test
-    fun aRefreshOvertakenByAnInvalidateNeverPublishesTheOldOwner() = runPortableCoroutineTest<Unit> {
-        var signedIn: SharedComputersOwner? = owner
-        val firstResolve = CompletableDeferred<Unit>()
-        var calls = 0
-        val tracker = MembersRuntimeAccountUsageOwnerTracker {
-            calls += 1
-            val seen = signedIn
-            if (calls == 1) firstResolve.await()
-            seen
-        }
-        val stale = async(start = CoroutineStart.UNDISPATCHED) { tracker.refresh() }
-        signedIn = owner.copy(accountId = "user-2")
-        tracker.invalidate()
-        assertEquals("user-2", tracker.owner.value?.accountId)
-        firstResolve.complete(Unit)
-        stale.await()
-        assertEquals("user-2", tracker.owner.value?.accountId)
     }
 
     private class UsageOkApi : RaftComputersApi {

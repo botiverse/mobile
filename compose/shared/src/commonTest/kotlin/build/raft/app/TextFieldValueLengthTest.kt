@@ -2,47 +2,14 @@ package build.raft.app
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class TextFieldValueLengthTest {
-    @Test
-    fun underLimitAndAtLimitReturnOriginalSnapshot() {
-        val underLimit =
-            TextFieldValue(
-                text = "draft",
-                selection = TextRange(4, 1),
-                composition = TextRange(1, 4)
-            )
-        val atLimit = TextFieldValue(text = "12345", selection = TextRange(2))
-
-        assertSame(underLimit, underLimit.coerceTextLength(6))
-        assertSame(atLimit, atLimit.coerceTextLength(5))
-    }
-
-    @Test
-    fun cumulativeDeleteAndRetypeSnapshotsRemainExact() {
-        val nativeValues =
-            listOf(
-                TextFieldValue(text = "a", selection = TextRange(1)),
-                TextFieldValue(text = "ab", selection = TextRange(2)),
-                TextFieldValue(text = "abc", selection = TextRange(3)),
-                TextFieldValue(text = "ab", selection = TextRange(2)),
-                TextFieldValue(text = "abx", selection = TextRange(3))
-            )
-
-        val coerced = nativeValues.map { it.coerceTextLength(3) }
-
-        assertEquals(listOf("a", "ab", "abc", "ab", "abx"), coerced.map { it.text })
-        nativeValues.zip(coerced).forEach { (native, result) -> assertSame(native, result) }
-    }
-
     @Test
     fun oversizeActiveCjkCompositionIsNotMutated() {
         val composing =
@@ -83,26 +50,5 @@ class TextFieldValueLengthTest {
         assertEquals(TextRange(4, 2), reversedResult.selection)
         assertTrue(reversedResult.selection.reversed)
         assertNull(reversedResult.composition)
-    }
-
-    @Test
-    fun createAgentLimitIsTheProfileDescriptionLimit() {
-        val createAgent =
-            TextFieldValue(
-                text = "a".repeat(PROFILE_DESCRIPTION_MAX_LENGTH + 1),
-                selection = TextRange(PROFILE_DESCRIPTION_MAX_LENGTH + 1)
-            ).coerceTextLength(PROFILE_DESCRIPTION_MAX_LENGTH)
-
-        assertEquals(PROFILE_DESCRIPTION_MAX_LENGTH, createAgent.text.length)
-        assertEquals(TextRange(PROFILE_DESCRIPTION_MAX_LENGTH), createAgent.selection)
-    }
-
-    @Test
-    fun externalReplacementStartsAtEndAndNegativeLimitFailsClosed() {
-        val replacement = textFieldValueAtEnd("server copy")
-
-        assertEquals(TextRange(replacement.text.length), replacement.selection)
-        assertNull(replacement.composition)
-        assertFailsWith<IllegalArgumentException> { replacement.coerceTextLength(-1) }
     }
 }

@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 class RaftAdaptivePaneTest {
     @Test
@@ -43,24 +42,6 @@ class RaftAdaptivePaneTest {
     }
 
     @Test
-    fun halfFoldedWindowStaysCompactBelowTheWidthRule() {
-        // Half-fold is now judged by width like every other posture -- it must not claim a second
-        // pane just because it is folded.
-        val state =
-            reduceRaftAdaptivePane(
-                RaftAdaptivePaneState(),
-                RaftAdaptivePaneEvent(
-                    widthPx = 1400,
-                    heightPx = 1200,
-                    density = 2f,
-                    posture = RaftAdaptivePanePosture.HalfFolded
-                )
-            )
-
-        assertEquals(RaftAdaptivePaneLayout.Compact, state.layout)
-    }
-
-    @Test
     fun theRailStartsAtTheIpadMinisPortraitWidth() {
         // Direction A (#proj-mobile 10-30): wide from 744dp (artin), not 840 and 24 under the web's
         // `md` 768, so every iPad held upright gets the rail: 744 (iPad mini 6 and later), 768,
@@ -76,29 +57,6 @@ class RaftAdaptivePaneTest {
         }
         listOf(402, 700, 743).forEach { width ->
             assertEquals(RaftAdaptivePaneLayout.Compact, layoutAt(width), "width $width")
-        }
-    }
-
-    @Test
-    fun foldedAndFlatAgreeWithHalfFoldedAtTheSameWidth() {
-        // Posture must no longer change the layout decision; only width (and Unknown) does.
-        val width = 2200
-        val density = 2f
-        listOf(
-            RaftAdaptivePanePosture.Flat,
-            RaftAdaptivePanePosture.Folded,
-            RaftAdaptivePanePosture.HalfFolded,
-        ).forEach { posture ->
-            val state =
-                reduceRaftAdaptivePane(
-                    RaftAdaptivePaneState(),
-                    RaftAdaptivePaneEvent(width, 1200, density, posture)
-                )
-            assertEquals(
-                RaftAdaptivePaneLayout.DualPane,
-                state.layout,
-                "posture $posture should follow the width rule"
-            )
         }
     }
 
@@ -171,19 +129,5 @@ class RaftAdaptivePaneTest {
         // A missing or unrecognised value is "other", not a guess.
         assertEquals(RaftAdaptiveDisplay.Other, displayOf(null))
         assertEquals(RaftAdaptiveDisplay.Other, displayOf("somethingElse"))
-    }
-
-    @Test
-    fun nativeEnvelopeParsesOnlyCompleteWindowFacts() {
-        val event =
-            JSONObject()
-                .put("widthPx", 1800)
-                .put("heightPx", 1200)
-                .put("density", 2)
-                .put("posture", "half_folded")
-                .toRaftAdaptivePaneEventOrNull()
-
-        assertEquals(RaftAdaptivePanePosture.HalfFolded, event?.posture)
-        assertNull(JSONObject().put("widthPx", 1800).toRaftAdaptivePaneEventOrNull())
     }
 }

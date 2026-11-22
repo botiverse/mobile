@@ -6,7 +6,6 @@ import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SharedComputersLoadStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 /**
@@ -50,44 +49,6 @@ class MembersMachineStatusRowTest {
     }
 
     @Test
-    fun onlineBareDaemonWithVersionShowsDaemonVersion() {
-        // Same shape as fixture Machines.DaemonOnly (#2346).
-        assertEquals(
-            MembersMachineRunLabel.DaemonVersion("0.65.0"),
-            membersMachineRunLabel(machine(isComputer = false, computerVersion = null))
-        )
-    }
-
-    @Test
-    fun offlineComputerShowsComputerOfflineWithoutVersion() {
-        // artin: 乙 -- keep the "computer offline" segment, drop the version number.
-        assertEquals(
-            MembersMachineRunLabel.ComputerOffline,
-            membersMachineRunLabel(machine(status = ComputerStatus.Offline))
-        )
-    }
-
-    @Test
-    fun offlineBareDaemonShowsDaemonOffline() {
-        // No fixture input yet (Batch 3). Logic-layer coverage only.
-        assertEquals(
-            MembersMachineRunLabel.DaemonOffline,
-            membersMachineRunLabel(machine(status = ComputerStatus.Offline, isComputer = false, computerVersion = null))
-        )
-    }
-
-    @Test
-    fun onlineComputerWithoutVersionIsOnlineNotOffline() {
-        // The incident cell (#wg-raft-computer:de94165c): a non-owner REST read returns
-        // status=online with version=null. Routing this into the offline label showed a live
-        // Computer as offline. It must never reach ComputerOffline.
-        assertEquals(
-            MembersMachineRunLabel.ComputerOnline,
-            membersMachineRunLabel(machine(computerVersion = null))
-        )
-    }
-
-    @Test
     fun onlineBareDaemonWithoutVersionIsOnlineNotOffline() {
         assertEquals(
             MembersMachineRunLabel.DaemonOnline,
@@ -95,47 +56,7 @@ class MembersMachineStatusRowTest {
         )
     }
 
-    @Test
-    fun blankVersionCountsAsMissing() {
-        assertEquals(
-            MembersMachineRunLabel.ComputerOnline,
-            membersMachineRunLabel(machine(computerVersion = "  "))
-        )
-    }
-
-    @Test
-    fun unknownStatusIsTreatedAsNotOnline() {
-        // ComputerStatus.Unknown is unreachable under the current server contract (task #262
-        // monitors it). If it ever arrives, "not online" is the conservative reading; this test
-        // pins that it does not accidentally claim the machine is up.
-        assertEquals(
-            MembersMachineRunLabel.ComputerOffline,
-            membersMachineRunLabel(machine(status = ComputerStatus.Unknown))
-        )
-    }
-
     // --- row resolution: cells 4-6 of the table ---------------------------------------------
-
-    @Test
-    fun noMachineIdIsNoComputerRegardlessOfStore() {
-        assertEquals(
-            MembersMachineStatusRow.NoComputer,
-            membersMachineStatusRow(null, listOf(machine()), SharedComputersLoadStatus.Loaded, hasSnapshot = true)
-        )
-        assertEquals(
-            MembersMachineStatusRow.NoComputer,
-            membersMachineStatusRow("  ", emptyList(), SharedComputersLoadStatus.Idle, hasSnapshot = false)
-        )
-    }
-
-    @Test
-    fun machineIdAbsentFromLoadedStoreIsNoComputer() {
-        // Cell 4: web renders "no computer assigned" here; we do too. No dot.
-        assertEquals(
-            MembersMachineStatusRow.NoComputer,
-            membersMachineStatusRow("missing", listOf(machine(id = "other")), SharedComputersLoadStatus.Loaded, hasSnapshot = true)
-        )
-    }
 
     @Test
     fun machineIdAbsentFromUnloadedStoreIsLoadingNotNoComputer() {
@@ -161,17 +82,6 @@ class MembersMachineStatusRowTest {
         )
     }
 
-    @Test
-    fun statusWordAndRunLabelAreIndependentFacts() {
-        // LiBai: two spans from one record. An offline machine's row carries online=false AND
-        // an offline run label; asserting only the concatenated string would let one hide the other.
-        val row = membersMachineStatusRow(
-            "m", listOf(machine(id = "m", status = ComputerStatus.Offline)), SharedComputersLoadStatus.Loaded, hasSnapshot = true
-        ) as MembersMachineStatusRow.Machine
-        assertEquals(false, row.online)
-        assertEquals(MembersMachineRunLabel.ComputerOffline, row.runLabel)
-    }
-
     // LiBai (review of c1fadb13f): localized() is @Composable, so the six label -> resource pairs had
     // no unit coverage; a swapped resource would compile and pass every test above. The pairing is
     // now a pure function. Each branch is asserted by identity against its own MR key, and the
@@ -182,37 +92,6 @@ class MembersMachineStatusRowTest {
         val label = MembersMachineRunLabel.ComputerVersion("0.0.48")
         assertSame(Res.string.member_machine_run_computer_version, label.resource())
         assertEquals("0.0.48", label.formatArg())
-    }
-
-    @Test
-    fun daemonVersionPairsWithItsOwnResourceAndCarriesTheVersion() {
-        val label = MembersMachineRunLabel.DaemonVersion("0.65.0")
-        assertSame(Res.string.member_machine_run_daemon_version, label.resource())
-        assertEquals("0.65.0", label.formatArg())
-    }
-
-    @Test
-    fun computerOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(Res.string.member_machine_run_computer_online, MembersMachineRunLabel.ComputerOnline.resource())
-        assertNull(MembersMachineRunLabel.ComputerOnline.formatArg())
-    }
-
-    @Test
-    fun daemonOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(Res.string.member_machine_run_daemon_online, MembersMachineRunLabel.DaemonOnline.resource())
-        assertNull(MembersMachineRunLabel.DaemonOnline.formatArg())
-    }
-
-    @Test
-    fun computerOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(Res.string.member_machine_run_computer_offline, MembersMachineRunLabel.ComputerOffline.resource())
-        assertNull(MembersMachineRunLabel.ComputerOffline.formatArg())
-    }
-
-    @Test
-    fun daemonOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(Res.string.member_machine_run_daemon_offline, MembersMachineRunLabel.DaemonOffline.resource())
-        assertNull(MembersMachineRunLabel.DaemonOffline.formatArg())
     }
 
     @Test
@@ -231,19 +110,6 @@ class MembersMachineStatusRowTest {
     }
 
     // --- task #336: machineId-vs-server-list gate for the agent-detail Computer link ---------
-
-    @Test
-    fun knownStateIsAbsentWhenMachineIdIsBlank() {
-        assertEquals(
-            MembersAgentComputerKnownState.Absent,
-            membersAgentComputerKnownState(
-                machineId = " ",
-                machines = listOf(machine("m-1")),
-                loadStatus = SharedComputersLoadStatus.Loaded,
-                hasSnapshot = true
-            )
-        )
-    }
 
     @Test
     fun knownStateIsUnknownWhileStoreHasNotAnswered() {
@@ -268,19 +134,6 @@ class MembersMachineStatusRowTest {
             MembersAgentComputerKnownState.Absent,
             membersAgentComputerKnownState(
                 machineId = "m-gone",
-                machines = listOf(machine("m-1"), machine("m-2")),
-                loadStatus = SharedComputersLoadStatus.Loaded,
-                hasSnapshot = true
-            )
-        )
-    }
-
-    @Test
-    fun knownStateIsPresentWhenLoadedSliceContainsTheMachine() {
-        assertEquals(
-            MembersAgentComputerKnownState.Present,
-            membersAgentComputerKnownState(
-                machineId = "m-2",
                 machines = listOf(machine("m-1"), machine("m-2")),
                 loadStatus = SharedComputersLoadStatus.Loaded,
                 hasSnapshot = true

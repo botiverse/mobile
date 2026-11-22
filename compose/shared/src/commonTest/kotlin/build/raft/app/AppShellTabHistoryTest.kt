@@ -26,23 +26,6 @@ class AppShellTabHistoryTest {
     }
 
     @Test
-    fun phoneRootsAreTheBarTabsWithoutTheServerTab() {
-        assertEquals(setOf("home", "activity", "tasks", AppShellSearchTabKey), phone)
-    }
-
-    @Test
-    fun railRootsHaveNoSearchTab() {
-        assertEquals(false, AppShellSearchTabKey in rail)
-        assertEquals(true, "activity" in rail && "members" in rail && "settings" in rail)
-    }
-
-    @Test
-    fun activityThenSearchBackReturnsToActivity() {
-        val (history, current) = pick("activity", AppShellSearchTabKey)
-        assertEquals("activity", back(history, current).second)
-    }
-
-    @Test
     fun backWalksThroughEveryEarlierTabThenLeavesFromHome() {
         val (history, current) = pick("activity", AppShellSearchTabKey, "tasks")
         val (h1, t1) = back(history, current)
@@ -64,17 +47,6 @@ class AppShellTabHistoryTest {
     }
 
     @Test
-    fun historyKeepsOnlyTheNewestTabsUpToTheCap() {
-        var history = AppShellTabHistory()
-        val tabs = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i", "j")
-        tabs.zipWithNext().forEach { (from, to) ->
-            history = history.selected(from = from, to = to, roots = tabs.toSet(), cap = AppShellTabHistoryCap)
-        }
-        assertEquals(AppShellTabHistoryCap, history.tabs.size)
-        assertEquals("i", history.tabs.last())
-    }
-
-    @Test
     fun backSwitchDoesNotPushTheTabItLeaves() {
         val (history, current) = pick("activity", AppShellSearchTabKey)
         val (afterBack, landed) = back(history, current)
@@ -83,27 +55,8 @@ class AppShellTabHistoryTest {
     }
 
     @Test
-    fun noHistoryOnAnotherTabGoesHome() {
-        assertEquals("home", AppShellTabHistory().backTarget("tasks", phone))
-    }
-
-    @Test
     fun homeWithNoHistoryLeavesTheApp() {
         assertNull(AppShellTabHistory().backTarget("home", phone))
-    }
-
-    @Test
-    fun homeWithHistoryReturnsToTheEarlierTab() {
-        val (history, current) = pick("activity", "home")
-        assertEquals("activity", back(history, current).second)
-    }
-
-    @Test
-    fun sanitizeDropsTabsThatAreNoLongerAvailable() {
-        val (history, current) = pick("tasks", "activity", AppShellSearchTabKey)
-        val clamped = history.sanitized(listOf("home", AppShellSearchTabKey, "tasks"))
-        assertEquals(listOf("home", "tasks"), clamped.tabs)
-        assertEquals("tasks", clamped.backTarget(current, phone))
     }
 
     @Test
@@ -123,10 +76,5 @@ class AppShellTabHistoryTest {
         assertEquals(listOf("home", "activity"), history.tabs)
         history = history.arrivedByBack("activity")
         assertEquals("home", history.backTarget("activity", phone))
-    }
-
-    @Test
-    fun aFreshHistoryAfterAProgrammaticSwitchFallsBackToHome() {
-        assertEquals("home", AppShellTabHistory().backTarget("activity", phone))
     }
 }

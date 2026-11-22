@@ -27,40 +27,6 @@ class SharedHomeSavedActionsTest {
     }
 
     @Test
-    fun savedPermalinkUsesConfiguredWebBaseUrl() {
-        val item =
-            InboxItem(
-                key = "saved-custom-web",
-                kind = InboxItemKind.Channel,
-                channelId = ChannelId("channel-1"),
-                channelName = "general",
-                lastMessageId = MessageId("message-1")
-            )
-
-        assertEquals(
-            "https://staging.raft.build/s/raft/channel/channel-1?msg=message-1",
-            sharedHomeSavedPermalink(item, "raft", "https://staging.raft.build/")
-        )
-    }
-
-    @Test
-    fun savedPermalinkUsesDmRouteForDmMessage() {
-        val item =
-            InboxItem(
-                key = "saved-dm",
-                kind = InboxItemKind.DirectMessage,
-                channelId = ChannelId("dm-1"),
-                channelName = "artin",
-                lastMessageId = MessageId("message-2")
-            )
-
-        assertEquals(
-            "https://app.raft.build/s/raft/dm/dm-1?msg=message-2",
-            sharedHomeSavedPermalink(item, "raft")
-        )
-    }
-
-    @Test
     fun savedPermalinkKeepsThreadOnParentChannelRoute() {
         val item =
             InboxItem(

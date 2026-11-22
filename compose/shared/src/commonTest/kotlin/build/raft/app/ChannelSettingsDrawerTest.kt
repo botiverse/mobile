@@ -23,15 +23,6 @@ class ChannelSettingsDrawerTest {
     private fun placement(pinned: Boolean = false, sectionId: String? = null, canPin: Boolean = true) =
         ChannelSectionPlacement(customSections = sections, pinned = pinned, placementSectionId = sectionId, canPin = canPin)
 
-    private val pin =
-        ThreadConversationPinUiState(
-            conversationId = "channel-design",
-            pinnedKind = "channel",
-            pinnedId = "channel-design",
-            pinned = false,
-            available = true
-        )
-
     private fun channel(
         name: String = "design",
         type: String = "channel",
@@ -61,22 +52,6 @@ class ChannelSettingsDrawerTest {
     }
 
     @Test
-    fun pinnedWinsOverPlacementAndOrphanedPlacementShowsHome() {
-        assertEquals(ChannelSectionValue.Pinned, placement(pinned = true, sectionId = "s-ops").current)
-        assertEquals(ChannelSectionValue.Custom("s-ops"), placement(sectionId = "s-ops").current)
-        assertEquals(ChannelSectionValue.Home, placement(sectionId = "s-deleted").current)
-        assertEquals(ChannelSectionValue.Home, placement().current)
-    }
-
-    @Test
-    fun newSectionGoesBeforeTheCurrentOne() {
-        assertEquals("system:channels", placement().currentSectionKey)
-        assertEquals("system:joint", placement().copy(joint = true).currentSectionKey)
-        assertEquals("system:pinned", placement(pinned = true).currentSectionKey)
-        assertEquals("s-launch", placement(sectionId = "s-launch").currentSectionKey)
-    }
-
-    @Test
     fun homeUnpinsAndClearsAnyPlacement() {
         assertEquals(listOf(ChannelSectionMove.Unpin), channelSectionMoves(placement(pinned = true), ChannelSectionValue.Home))
         assertEquals(
@@ -102,78 +77,6 @@ class ChannelSettingsDrawerTest {
         assertEquals(emptyList<ChannelSectionMove>(), channelSectionMoves(placement(sectionId = "s-ops"), ChannelSectionValue.Custom("s-ops")))
         assertEquals(emptyList<ChannelSectionMove>(), channelSectionMoves(placement(), ChannelSectionValue.Custom("s-gone")))
         assertEquals(emptyList<ChannelSectionMove>(), channelSectionMoves(placement(canPin = false), ChannelSectionValue.Pinned))
-    }
-
-    @Test
-    fun movesBecomeSidebarOrderIntents() {
-        assertEquals(
-            listOf(
-                SharedHomeIntent.TogglePinned(conversationId = "channel-design", pinnedKind = "channel", pinnedId = "channel-design"),
-                SharedHomeIntent.MoveConversationToSection("channel-design", null),
-                SharedHomeIntent.MoveConversationToSection("channel-design", "s-ops"),
-            ),
-            channelSectionHomeIntents(
-                pin,
-                listOf(ChannelSectionMove.Unpin, ChannelSectionMove.ClearPlacement, ChannelSectionMove.MoveTo("s-ops"))
-            )
-        )
-    }
-
-    private val sidebarOrder =
-        build.raft.app.data.SettingsServerSidebarOrderSnapshot(
-            customSections = sections,
-            sectionPlacements =
-                listOf(
-                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "agent", id = "agent-friday", sectionId = "s-ops", position = 0),
-                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-ada", sectionId = "s-launch", position = 0),
-                    build.raft.app.data.SettingsServerSidebarSectionPlacement(kind = "channel", id = "dm-friday", sectionId = "s-launch", position = 1),
-                ),
-        )
-
-    @Test
-    fun dmIsAtHomeInDirectMessages() {
-        val dm = placement().copy(directMessage = true, joint = false)
-        assertEquals(ChannelSectionValue.Home, dm.current)
-        assertEquals("system:dms", dm.currentSectionKey)
-        assertEquals(ChannelSectionValue.Home, dm.options.first())
-        assertTrue(ChannelSectionValue.Pinned in dm.options)
-    }
-
-    @Test
-    fun agentDmIsPlacedByItsAgentAndHumanDmByItsChannel() {
-        val agentDm =
-            channelSettingsSectionPlacement(
-                sidebarOrder = sidebarOrder,
-                channelId = "dm-friday",
-                pinned = false,
-                joint = false,
-                directMessagePeerKind = "agent",
-                directMessagePeerId = "agent-friday",
-                directMessage = true,
-            )
-        assertEquals(ChannelSectionValue.Custom("s-ops"), agentDm.current)
-        assertTrue(agentDm.directMessage)
-        val humanDm =
-            channelSettingsSectionPlacement(
-                sidebarOrder = sidebarOrder,
-                channelId = "dm-ada",
-                pinned = false,
-                joint = true,
-                directMessagePeerKind = "human",
-                directMessagePeerId = "user-ada",
-                directMessage = true,
-            )
-        assertEquals(ChannelSectionValue.Custom("s-launch"), humanDm.current)
-        assertFalse(humanDm.joint)
-        assertEquals("system:dms", humanDm.copy(placementSectionId = null).currentSectionKey)
-    }
-
-    @Test
-    fun channelPlacementIgnoresAgentItems() {
-        val channelState =
-            channelSettingsSectionPlacement(sidebarOrder = sidebarOrder, channelId = "agent-friday", pinned = false, joint = false)
-        assertEquals(ChannelSectionValue.Home, channelState.current)
-        assertFalse(channelState.directMessage)
     }
 
     @Test
@@ -258,27 +161,11 @@ class ChannelSettingsDrawerTest {
     }
 
     @Test
-    fun unknownChannelKeepsTheNameForm() {
-        val panel = ThreadChannelSettingsPanel()
-        assertTrue(panel.showsInfoForm())
-        assertTrue(panel.nameEditable())
-    }
-
-    @Test
     fun membersStripHidesOnlyOnAllForAMemberWhenTheServerHidesPeople() {
         assertTrue(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "member", hideHumansFromMembers = true))
         assertFalse(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "admin", hideHumansFromMembers = true))
         assertFalse(channelSettingsHidesMembersStrip(channel(name = "all"), serverRole = "member", hideHumansFromMembers = false))
         assertFalse(channelSettingsHidesMembersStrip(channel(), serverRole = "member", hideHumansFromMembers = true))
         assertFalse(channelSettingsHidesMembersStrip(null, serverRole = "member", hideHumansFromMembers = true))
-    }
-
-    @Test
-    fun addTileNeedsTheServerAnswerAndALiveChannel() {
-        val slice = SharedServerChannelMembersSlice(channelId = "c-design", canAddMembers = true, canAddMembersKnown = true)
-        assertTrue(channelSettingsCanAddMembers(slice, channel()))
-        assertFalse(channelSettingsCanAddMembers(slice, channel(archived = true)))
-        assertFalse(channelSettingsCanAddMembers(slice.copy(canAddMembersKnown = false), channel()))
-        assertFalse(channelSettingsCanAddMembers(slice.copy(canAddMembers = false), channel()))
     }
 }

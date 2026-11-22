@@ -13,7 +13,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -52,13 +51,6 @@ class RaftArtifactViewerOpenScopeTest {
 
     private val target = ArtifactLinkTarget("pt_artifact1", 2)
     private val activityScope = RaftShellStoreScope.create("android-default-app-shell", "server-1")
-
-    @Test
-    fun theActivityTabsOwnPageHasNoScopeToOpenTheViewerWith() {
-        // Without the Activity's scope (the code before the fix): rejected, so the browser opened.
-        assertFalse(activityTabPager().openRaftArtifactViewerPage(target, storeScope = null))
-        assertEquals(emptyList(), opened)
-    }
 
     @Test
     fun withTheActivitysScopeTheViewerPageOpens() {

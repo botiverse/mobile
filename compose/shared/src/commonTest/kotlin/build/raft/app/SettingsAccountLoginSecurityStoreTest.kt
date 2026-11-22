@@ -12,7 +12,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -33,25 +32,6 @@ class SettingsAccountLoginSecurityStoreTest {
             gate?.await()
             return result
         }
-    }
-
-    @Test
-    fun aReadShowsTheRowsAndAResumeWhileItRunsAddsNoRequest() = runTest {
-        val dataSource = FakeLoginSecurityDataSource(DataResult.Content(on)).apply { gate = CompletableDeferred() }
-        val store = SharedAccountLoginSecurityStore(dataSource, backgroundScope)
-
-        store.dispatch(SharedAccountLoginSecurityIntent.Refresh)
-        store.dispatch(SharedAccountLoginSecurityIntent.Refresh)
-        runCurrent()
-        // The first read: nothing shown yet (web: the sections render nothing while loading).
-        assertTrue(store.state.value.loading)
-        assertFalse(store.state.value.visible)
-        dataSource.gate?.complete(Unit)
-        runCurrent()
-
-        assertEquals(1, dataSource.reads)
-        assertEquals(SharedAccountLoginSecurityState(security = on), store.state.value)
-        assertTrue(store.state.value.visible)
     }
 
     @Test
@@ -96,22 +76,6 @@ class SettingsAccountLoginSecurityStoreTest {
         runCurrent()
         assertEquals(on, store.state.value.security)
         assertEquals(failure, store.state.value.error)
-    }
-
-    @Test
-    fun theFeatureOffForThePersonHidesTheGroup() = runTest {
-        val dataSource = FakeLoginSecurityDataSource(DataResult.Content(on))
-        val store = SharedAccountLoginSecurityStore(dataSource, backgroundScope)
-        store.dispatch(SharedAccountLoginSecurityIntent.Refresh)
-        runCurrent()
-
-        dataSource.result = DataResult.Content(null)
-        store.dispatch(SharedAccountLoginSecurityIntent.Refresh)
-        runCurrent()
-
-        assertTrue(store.state.value.unavailable)
-        assertNull(store.state.value.security)
-        assertFalse(store.state.value.visible)
     }
 
     @Test

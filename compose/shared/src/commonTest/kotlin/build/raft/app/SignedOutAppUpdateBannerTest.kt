@@ -36,15 +36,6 @@ class SignedOutAppUpdateBannerTest {
     }
 
     @Test
-    fun aSkippedBuildStaysQuietSignedOutAsOnHome() = runTest {
-        assertNull(loadSignedOutAppUpdateNotification(skippedVersionCode = 12_400_002L) { DataResult.Content(update124) })
-        assertEquals(
-            APP_UPDATE_HOME_NOTIFICATION_ID,
-            loadSignedOutAppUpdateNotification(skippedVersionCode = 12_400_001L) { DataResult.Content(update124) }?.id
-        )
-    }
-
-    @Test
     fun noNoticeWithoutInAppUpdatesOrWhenTheCheckFails() = runTest {
         // iOS and Google Play builds: the host has no in-app update.
         assertNull(

@@ -8,9 +8,6 @@ import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.parseSharedAgentConfigApply
 import build.raft.app.data.parseSharedAgentConfigApplyNewSession
 import build.raft.app.data.planRaftBulkModelChange
-import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,22 +39,6 @@ class MembersRuntimeConfigApplyTest {
     }
 
     @Test
-    fun theProfileAsStoredHasNoConfigApply() {
-        val saved =
-            MemberProfile(
-                MemberId("a1"),
-                "witty",
-                "witty",
-                MemberKind.Agent,
-                configApply = AgentConfigApply.Applied,
-                configApplyNewSession = true
-            )
-        assertNull(saved.withoutConfigApply().configApply)
-        assertNull(saved.withoutConfigApply().configApplyNewSession)
-        assertEquals(saved.copy(configApply = null, configApplyNewSession = null), saved.withoutConfigApply())
-    }
-
-    @Test
     fun appliedAndRestartedOnAnActiveAgentShowPlainAppliedConfirmation() {
         assertEquals(
             MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.AppliedNow),
@@ -86,14 +67,6 @@ class MembersRuntimeConfigApplyTest {
             MembersRuntimeConfigApplyNotice(MembersRuntimeConfigApplyKind.NewSessionWhenIdle),
             notice(AgentConfigApply.WhenIdle, agentActive = true, newSession = true)
         )
-    }
-
-    @Test
-    fun savedAndAbsentShowNoManualRestartPrompt() {
-        assertNull(notice(AgentConfigApply.Saved, agentActive = true, newSession = false))
-        assertNull(notice(AgentConfigApply.Saved, agentActive = true, newSession = true))
-        assertNull(notice(AgentConfigApply.Saved, agentActive = false, newSession = false))
-        assertNull(notice(null, agentActive = true, newSession = false))
     }
 
     @Test

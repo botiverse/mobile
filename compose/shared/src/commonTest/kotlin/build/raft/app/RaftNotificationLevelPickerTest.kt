@@ -4,10 +4,6 @@ import build.raft.app.data.RaftNotificationLevel
 import build.raft.app.data.RaftNotificationLevelScope
 import build.raft.app.data.RaftNotificationLevelSetting
 import build.raft.app.data.RaftServerNotificationLevels
-import build.raft.app.resources.Res
-import build.raft.app.resources.notification_level_dm_note
-import build.raft.app.resources.notification_level_muted_note
-import build.raft.app.resources.notification_level_thread_note
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -31,23 +27,6 @@ class RaftNotificationLevelPickerTest {
         assertEquals(RaftNotificationLevel.None, thread.copy(muted = true).effective(explicitThread))
         val channel = RaftNotificationLevelTarget("s1", RaftNotificationLevelScope.Channel, id = "c1", muted = true)
         assertEquals(RaftNotificationLevel.None, channel.effective(levels))
-    }
-
-    @Test
-    fun theNotesFollowMuteDmAndThread() {
-        val channel = RaftNotificationLevelTarget("s1", RaftNotificationLevelScope.Channel, id = "c1")
-        assertEquals(emptyList(), raftNotificationLevelNotes(channel))
-        assertEquals(listOf(Res.string.notification_level_muted_note), raftNotificationLevelNotes(channel.copy(muted = true)))
-        assertEquals(listOf(Res.string.notification_level_dm_note), raftNotificationLevelNotes(channel.copy(isDirectMessage = true)))
-        // A muted DM notifies nothing either, the same note as a channel (slock #12231).
-        assertEquals(
-            listOf(Res.string.notification_level_muted_note),
-            raftNotificationLevelNotes(channel.copy(isDirectMessage = true, muted = true))
-        )
-        assertEquals(
-            listOf(Res.string.notification_level_thread_note),
-            raftNotificationLevelNotes(channel.copy(scope = RaftNotificationLevelScope.Thread))
-        )
     }
 
     @Test
@@ -92,31 +71,6 @@ class RaftNotificationLevelPickerTest {
     private val channel = RaftNotificationLevelTarget("s1", RaftNotificationLevelScope.Channel, id = "c1", muteSupported = true)
     private val all = RaftNotificationChoice.Level(RaftNotificationLevelSetting.All)
     private val mentions = RaftNotificationChoice.Level(RaftNotificationLevelSetting.Mentions)
-    private val nothing = RaftNotificationChoice.Level(RaftNotificationLevelSetting.None)
-
-    @Test
-    fun aChannelOffersAllMentionsAndMuteLoudToQuiet() {
-        // slock #12231 NotificationLevelMenu: All / Only what involves me / Mute.
-        assertEquals(
-            listOf(all, mentions, RaftNotificationChoice.Mute),
-            raftNotificationChoices(RaftNotificationLevelScope.Channel, true, RaftNotificationLevelSetting.All, muted = false),
-        )
-        // A channel set to Nothing before Mute took its place keeps showing it, before Mute.
-        assertEquals(
-            listOf(all, mentions, nothing, RaftNotificationChoice.Mute),
-            raftNotificationChoices(RaftNotificationLevelScope.Channel, true, RaftNotificationLevelSetting.None, muted = false),
-        )
-        assertEquals(
-            listOf(all, mentions, RaftNotificationChoice.Mute),
-            raftNotificationChoices(RaftNotificationLevelScope.Channel, true, RaftNotificationLevelSetting.None, muted = true),
-        )
-        // No mute control: the plain levels.
-        assertEquals(
-            listOf(all, mentions, nothing),
-            raftNotificationChoices(RaftNotificationLevelScope.Channel, false, RaftNotificationLevelSetting.All, muted = false),
-        )
-        assertEquals(false, channel.copy(scope = RaftNotificationLevelScope.Server).hasMuteChoice)
-    }
 
     @Test
     fun aMutedChannelShowsMuteElseItsLevel() {

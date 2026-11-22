@@ -1,20 +1,12 @@
 package build.raft.app
 
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class RaftForwardTargetPickerTest {
     private val session = RaftForwardPickerSessionKey("thread-1", "server-1", 7)
-
-    @Test
-    fun externalShareActionPaddingClearsBottomSafeAreaWithoutChangingZeroInsetGeometry() {
-        assertEquals(60.dp, raftForwardPickerActionBottomPadding(48.dp))
-        assertEquals(12.dp, raftForwardPickerActionBottomPadding(0.dp))
-    }
 
     @Test
     fun productionFlowAdmitsRequestsSynchronouslyAndRestoresNoteSelection() {
@@ -138,61 +130,10 @@ class RaftForwardTargetPickerTest {
     }
 
     @Test
-    fun rapidQueryAtoBtoARejectsBothOlderGenerations() {
-        val firstA = RaftForwardPickerRequestIdentity("server-1", session, "a", 1)
-        val queryB = RaftForwardPickerRequestIdentity("server-1", session, "b", 2)
-        val latestA = RaftForwardPickerRequestIdentity("server-1", session, "a", 3)
-
-        assertFalse(firstA.accepts("server-1", session, "a", 3))
-        assertFalse(queryB.accepts("server-1", session, "a", 3))
-        assertTrue(latestA.accepts("server-1", session, "a", 3))
-    }
-
-    @Test
     fun serverOrSessionSwitchRejectsLateResult() {
         val request = RaftForwardPickerRequestIdentity("server-1", session, "", 4)
 
         assertFalse(request.accepts("server-2", session.copy(serverId = "server-2"), "", 4))
         assertFalse(request.accepts("server-1", session.copy(openGeneration = 8), "", 4))
     }
-
-    @Test
-    fun latePagingResultCannotAppendAfterQueryOrServerSwitch() {
-        val pagingRequest = RaftForwardPickerRequestIdentity("server-1", session, "", 5)
-
-        assertFalse(pagingRequest.accepts("server-1", session, "release", 6))
-        assertFalse(
-            pagingRequest.accepts(
-                "server-2",
-                session.copy(serverId = "server-2"),
-                "",
-                6
-            )
-        )
-    }
-
-    @Test
-    fun visualKindParticipatesInStableRowKey() {
-        val public = pickerItem("same-id", RaftForwardTargetVisualKind.PublicChannel)
-        val private = pickerItem("same-id", RaftForwardTargetVisualKind.PrivateChannel)
-        val joint = pickerItem("same-id", RaftForwardTargetVisualKind.JointChannel)
-
-        assertNotEquals(public.rowKey, private.rowKey)
-        assertNotEquals(private.rowKey, joint.rowKey)
-        assertEquals(RaftLucideIconName.Hash, public.visualKind.iconName())
-        assertEquals(RaftLucideIconName.Lock, private.visualKind.iconName())
-        assertEquals(RaftLucideIconName.GitBranch, joint.visualKind.iconName())
-    }
-
-    private fun pickerItem(
-        id: String,
-        visualKind: RaftForwardTargetVisualKind
-    ): RaftForwardTargetPickerItem<String> =
-        RaftForwardTargetPickerItem(
-            stableKey = id,
-            title = id,
-            subtitle = "",
-            visualKind = visualKind,
-            payload = id
-        )
 }

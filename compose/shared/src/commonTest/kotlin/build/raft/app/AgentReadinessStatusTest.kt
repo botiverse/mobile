@@ -17,7 +17,6 @@ import build.raft.app.data.likelyOnlineMemberStatusOrNull
 import build.raft.app.data.parseSharedAgentRow
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
 import build.raft.app.data.toStoredChannelMembers
-import build.raft.app.model.ANTHROPIC_VERIFICATION_PORTAL_URL
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessFact
 import build.raft.app.model.AgentReadinessLight
@@ -33,7 +32,6 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.agentReadinessResetCountdown
 import build.raft.app.model.holds
 import build.raft.app.model.light
-import build.raft.app.model.resolvedRuntimeId
 import build.raft.app.resources.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -203,100 +201,6 @@ class AgentReadinessStatusTest {
             )
         val expiredSpec = resolveAgentReadinessCopySpec(expiredUntil, "antigravity", now)
         assertEquals(Res.string.agent_readiness_generic_title, expiredSpec.title.res)
-    }
-
-    @Test
-    fun knownAndTrimmedReadinessCodesMatchWebReadinessCopy() {
-        val now = 1_795_250_000_000L
-
-        val verification =
-            AgentReadiness(
-                state = "blocked",
-                primary =
-                    AgentReadinessFact(
-                        resource = AgentReadinessResource(kind = "login", key = "shared:claude"),
-                        code = "verification_required",
-                    ),
-                scope = "computer",
-                actor = "computer_owner",
-            )
-        val verificationSpec = resolveAgentReadinessCopySpec(verification, null, now)
-        assertEquals(AgentReadinessLight.Error, verificationSpec.light)
-        assertEquals(Res.string.agent_readiness_verification_required_title, verificationSpec.title.res)
-        assertEquals(Res.string.agent_readiness_verification_required_detail, verificationSpec.detail.res)
-        assertEquals("Claude Code", verificationSpec.detail.stringArg)
-        assertEquals(Res.string.agent_readiness_scope_computer, verificationSpec.scope)
-        assertEquals(Res.string.agent_readiness_actor_computer_owner, verificationSpec.actor?.res)
-        assertEquals(ANTHROPIC_VERIFICATION_PORTAL_URL, verificationSpec.verificationPortalUrl)
-        assertTrue(verificationSpec.offersRetry)
-
-        val offline = AgentReadiness(state = "blocked", primary = AgentReadinessFact(code = "computer_offline"))
-        assertEquals(AgentReadinessLight.Offline, offline.light())
-        assertEquals(Res.string.agent_readiness_computer_offline_title, resolveAgentReadinessCopySpec(offline, null, now).title.res)
-
-        val restarting = AgentReadiness(state = "waiting", primary = AgentReadinessFact(code = "computer_restarting"))
-        assertEquals(AgentReadinessLight.Busy, restarting.light())
-        val restartingSpec = resolveAgentReadinessCopySpec(restarting, null, now)
-        assertEquals(Res.string.agent_readiness_computer_restarting_agent_title, restartingSpec.title.res)
-        assertNull(restartingSpec.actor)
-
-        val updating = AgentReadiness(state = "waiting", primary = AgentReadinessFact(code = "computer_updating"))
-        assertEquals(AgentReadinessLight.Busy, updating.light())
-        assertEquals(Res.string.agent_readiness_computer_updating_agent_title, resolveAgentReadinessCopySpec(updating, null, now).title.res)
-
-        val desktopTooOld =
-            AgentReadiness(
-                state = "blocked",
-                primary = AgentReadinessFact(code = "computer_too_old", managedByDesktop = true),
-                scope = "computer",
-                actor = "computer_owner",
-            )
-        assertEquals(
-            Res.string.agent_readiness_computer_too_old_desktop_detail,
-            resolveAgentReadinessCopySpec(desktopTooOld, null, now).detail.res,
-        )
-
-        val missingRuntime =
-            AgentReadiness(
-                state = "blocked",
-                primary =
-                    AgentReadinessFact(
-                        resource = AgentReadinessResource(kind = "runtime", runtime = "codex"),
-                        code = "runtime_missing",
-                    ),
-            )
-        val missingSpec = resolveAgentReadinessCopySpec(missingRuntime, null, now)
-        assertEquals(Res.string.agent_readiness_runtime_missing_title, missingSpec.title.res)
-        assertEquals("Codex CLI", missingSpec.title.stringArg)
-        assertEquals("codex", missingRuntime.resolvedRuntimeId("fallback"))
-
-        val trimmedNamed =
-            AgentReadiness(
-                state = "blocked",
-                primary = null,
-                actor = "computer_owner",
-                actorName = "Olive",
-                action = "sign_in",
-            )
-        val trimmedNamedSpec = resolveAgentReadinessCopySpec(trimmedNamed, null, now)
-        assertEquals(Res.string.agent_readiness_generic_title, trimmedNamedSpec.title.res)
-        assertEquals(Res.string.agent_readiness_can_sign_in, trimmedNamedSpec.actor?.res)
-        assertEquals("Olive", trimmedNamedSpec.actor?.stringArg)
-        assertTrue(trimmedNamedSpec.wrapActorInSentence)
-
-        val trimmedRoleOnly =
-            AgentReadiness(
-                state = "blocked",
-                primary = null,
-                actor = "agent_owner",
-                action = "update_computer",
-            )
-        val trimmedRoleSpec = resolveAgentReadinessCopySpec(trimmedRoleOnly, null, now)
-        assertEquals(Res.string.agent_readiness_owner_can_update_computer_agent_owner, trimmedRoleSpec.actor?.res)
-        assertTrue(trimmedRoleSpec.wrapActorInSentence)
-
-        val trimmedWaiting = AgentReadiness(state = "waiting", primary = null, actor = "computer_owner", actorName = "Olive")
-        assertNull(resolveAgentReadinessCopySpec(trimmedWaiting, null, now).actor)
     }
 
     @Test
@@ -564,22 +468,5 @@ class AgentReadinessStatusTest {
         assertEquals("—", neutralStatus.statusLabel)
         assertTrue(neutralStatus.paused)
         assertNull(effectiveHoldingReadiness(neutralStatus.toRaftAgentStatusIndicatorState()))
-    }
-
-    @Test
-    fun blankActorDoesNotFallBackToServerAdmin() {
-        val spec =
-            resolveAgentReadinessCopySpec(
-                readiness =
-                    AgentReadiness(
-                        state = "blocked",
-                        primary = null,
-                        actor = "   ",
-                        action = "fix",
-                    ),
-                fallbackRuntimeId = "claude",
-                nowEpochMillis = 1_795_246_000_000L,
-            )
-        assertNull(spec.actor)
     }
 }

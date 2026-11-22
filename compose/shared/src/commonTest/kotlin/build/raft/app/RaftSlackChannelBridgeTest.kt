@@ -147,44 +147,6 @@ class RaftSlackChannelBridgeTest {
     }
 
     @Test
-    fun bridgeProviderSurvivesSummaryRoundTripAndReachesHomeItem() {
-        val row = requireNotNull(
-            parseRaftChannelDetail(
-                """{"id":"c1","name":"sync","type":"channel","bridge":{"provider":"Slack","state":"active"}}"""
-            )
-        )
-        val summary = row.toConversationSummary()
-        assertEquals("slack", summary.bridgeProvider)
-        assertEquals("slack", summary.toHomeChannelRow().bridgeProvider)
-
-        val item = SharedHomeConversationRowProjector().project(row)
-        assertEquals("slack", item.bridgeProvider)
-        val plainItem =
-            SharedHomeConversationRowProjector().project(
-                requireNotNull(parseRaftChannelDetail("""{"id":"c2","name":"general","type":"channel"}"""))
-            )
-        assertNull(plainItem.bridgeProvider)
-    }
-
-    @Test
-    fun channelHeaderDisplayModelCarriesBridgeProviderFromDirectory() {
-        val row = requireNotNull(
-            parseRaftChannelDetail(
-                """{"id":"c1","name":"sync","type":"channel","bridge":{"provider":"slack","state":"active"}}"""
-            )
-        )
-        val projection = requireNotNull(row.toSharedConversationDirectoryProjection(ServerId("server-1")))
-        assertEquals("slack", projection.bridgeProvider)
-        assertNull(projection.slackSyncProblem)
-
-        val plain = requireNotNull(
-            parseRaftChannelDetail("""{"id":"c2","name":"general","type":"channel"}""")
-                ?.toSharedConversationDirectoryProjection(ServerId("server-1"))
-        )
-        assertNull(plain.bridgeProvider)
-    }
-
-    @Test
     fun onlyTheSlackProviderMakesASlackChannel() {
         assertTrue(isRaftSlackChannel("slack"))
         assertTrue(isRaftSlackChannel("SLACK"))

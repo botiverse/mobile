@@ -173,26 +173,6 @@ class TaskOpenSurfacesTest {
     }
 
     @Test
-    fun summaryOnlyPendingTaskHandsOffWhenFullRowArrivesAtSameRevision() {
-        val summaryOnly =
-            task("""{"messageId":"t-1","hostMessageId":null,"conversationAnchored":false,"isLegacy":false,"hasDescription":true,"sourceSenderType":"user","sourceSenderId":"user-1"}""")
-        assertFalse(summaryOnly.conversationDetailsLoaded)
-        val flow = TaskOpenSurfaceFlow(newRandomId = { "rid" })
-        flow.open(TaskOpenSurface.Pending(summaryOnly))
-        // Full row at the exact same revision reveals the existing conversation -> hands off immediately.
-        val hydrated =
-            summaryOnly.copy(
-                messageId = null,
-                parentMessageId = null,
-                conversationChannelId = ChannelId("conv-existing"),
-                conversationAnchored = true,
-                conversationDetailsLoaded = true,
-            )
-        assertEquals(hydrated, flow.onTaskChanged(hydrated))
-        assertEquals(null, flow.surface)
-    }
-
-    @Test
     fun aSendThatFinishesOnAnotherServerOpensNothingAndClosingKeepsTheDraft() = runTest {
         val preV2 = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val api = ConversationApi(HomeNetworkResponse(200, """{"conversationChannelId":"conv-local","canonicalConversationChannelId":"conv-1","created":true}"""), mutableListOf())

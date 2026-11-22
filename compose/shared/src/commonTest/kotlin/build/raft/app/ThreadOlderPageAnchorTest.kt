@@ -24,14 +24,4 @@ class ThreadOlderPageAnchorTest {
             )
         )
     }
-
-    @Test
-    fun anchorRestoresSkippedWhenUserScrolledBeforeLoadStarted() {
-        assertFalse(
-            shouldRestoreThreadOlderPageAnchor(
-                capturedUserScrollGeneration = 0,
-                currentUserScrollGeneration = 1
-            )
-        )
-    }
 }

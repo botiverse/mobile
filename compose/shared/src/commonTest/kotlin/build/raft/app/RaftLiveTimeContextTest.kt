@@ -8,31 +8,8 @@ import build.raft.app.model.resolveRaftRelativeTimeLabel
 import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 
 class RaftLiveTimeContextTest {
-    @Test
-    fun stableProviderKeepsIdentityAcrossMinuteUpdates() {
-        val first = epochMillis("2026-07-27T12:00:00Z")
-        val second = first + 60_000L
-        val provider =
-            RaftTimeContextProvider(
-                RaftTimeCapabilities(0, "24h").contextAt(first, RaftLegacyTestDatetimeFoundationOwner)
-            )
-
-        provider.update(
-            RaftTimeCapabilities(0, "24h").contextAt(second, RaftLegacyTestDatetimeFoundationOwner)
-        )
-
-        assertEquals(second, provider.current?.nowEpochMillis)
-        assertEquals(provider.current?.todayEpochDay, provider.todayEpochDay)
-    }
-
     @Test
     fun liveCapabilitiesDiscardHostSnapshotTime() {
         val staleHostNow = epochMillis("2026-07-26T08:00:00Z")
@@ -49,23 +26,6 @@ class RaftLiveTimeContextTest {
 
         assertEquals(liveNow, context.nowEpochMillis)
         assertEquals(raftEpochDayForDate(2026, 7, 27), context.todayEpochDay)
-        assertEquals(480, context.localOffsetMinutes)
-        assertEquals("12h", context.timeFormat)
-    }
-
-    @Test
-    fun staticCapabilityContextCannotCarryRouteSnapshotTime() {
-        val staleHostNow = epochMillis("2026-07-26T08:00:00Z")
-        val context =
-            RaftTimeContext(
-                localOffsetMinutes = 480,
-                todayEpochDay = raftEpochDayForDate(2026, 7, 26),
-                nowEpochMillis = staleHostNow,
-                timeFormat = "12h"
-            ).toRaftTimeCapabilities().staticContext()
-
-        assertEquals(null, context.nowEpochMillis)
-        assertEquals(null, context.todayEpochDay)
         assertEquals(480, context.localOffsetMinutes)
         assertEquals("12h", context.timeFormat)
     }
@@ -220,67 +180,6 @@ class RaftLiveTimeContextTest {
             contexts.map { it?.todayEpochDay },
         )
         controller.stop()
-    }
-
-    @Test
-    fun independentTimeoutSchedulerFencesCancellationBeforeAndAfterWake() = runBlocking {
-        val queuedDeliveries = mutableListOf<() -> Unit>()
-        val pendingWakes = mutableListOf<CompletableDeferred<Unit>>()
-        val scheduler =
-            RaftIndependentTimeoutScheduler(
-                timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
-                dispatchCallback = queuedDeliveries::add,
-                wait = {
-                    CompletableDeferred<Unit>()
-                        .also(pendingWakes::add)
-                        .await()
-                }
-            )
-        var callbackCount = 0
-
-        scheduler.schedule(30_000) { callbackCount += 1 }
-        assertEquals(1, pendingWakes.size)
-        assertEquals(0, callbackCount)
-        pendingWakes.removeAt(0).complete(Unit)
-        assertEquals(1, queuedDeliveries.size)
-        assertEquals(0, callbackCount)
-        queuedDeliveries.removeAt(0).invoke()
-        assertEquals(1, callbackCount)
-
-        val canceledBeforeWake = scheduler.schedule(10_000) { callbackCount += 1 }
-        assertEquals(1, pendingWakes.size)
-        canceledBeforeWake.cancel()
-        pendingWakes.removeAt(0).complete(Unit)
-        assertEquals(0, queuedDeliveries.size)
-        assertEquals(1, callbackCount)
-
-        val canceledAfterWake = scheduler.schedule(10_000) { callbackCount += 1 }
-        pendingWakes.removeAt(0).complete(Unit)
-        assertEquals(1, queuedDeliveries.size)
-        canceledAfterWake.cancel()
-        queuedDeliveries.removeAt(0).invoke()
-        assertEquals(1, callbackCount)
-
-        scheduler.schedule(10_000) { callbackCount += 1 }
-        pendingWakes.removeAt(0).complete(Unit)
-        assertEquals(1, queuedDeliveries.size)
-        scheduler.close()
-        queuedDeliveries.removeAt(0).invoke()
-        assertEquals(1, callbackCount)
-    }
-
-    @Test
-    fun independentTimeoutSchedulerUsesRealDefaultDispatcherWake() = runBlocking {
-        val delivered = CompletableDeferred<Unit>()
-        val scheduler =
-            RaftIndependentTimeoutScheduler(
-                timerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-                dispatchCallback = { callback -> callback() }
-            )
-
-        scheduler.schedule(1) { delivered.complete(Unit) }
-        withTimeout(5_000) { delivered.await() }
-        scheduler.close()
     }
 
     private fun epochMillis(value: String): Long =

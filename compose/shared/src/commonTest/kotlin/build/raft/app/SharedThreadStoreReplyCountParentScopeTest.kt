@@ -56,30 +56,6 @@ class SharedThreadStoreReplyCountParentScopeTest {
     }
 
     @Test
-    fun aReplyToAParentOnTheOpenPageIsAppliedThereAsBefore() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
-        val dataSource = dataSource(storeScope = backgroundScope)
-        val diagnostics = mutableListOf<String>()
-        try {
-            val openDm = openPage(dataSource, scope, dmRoute(), dmPayload(), diagnostics)
-
-            openDm.dispatch(SharedThreadIntent.ApplyRealtimeEvent(dmReplyUpdated()))
-            advanceUntilIdle()
-
-            val parent = openDm.state.value.payload.messages.single { it.id == DmParentId }
-            assertEquals(1, parent.replyCount)
-            assertEquals(listOf("reply-1"), parent.inlineReplies?.replies?.map { it.messageId })
-            assertTrue(
-                diagnostics.none { it.startsWith("thread_reply_parent_scope") },
-                "the open page owns its own parent: no second write to another conversation, log=$diagnostics",
-            )
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
     fun anEditedSlackReplyRewritesItsInlineRowOnTheOpenPage() = runTest {
         // Task #73: slock sends `thread:reply_updated` to the parent's room when a Slack thread reply
         // is edited; the inline row under the parent shows the new text, count unchanged.

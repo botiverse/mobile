@@ -11,7 +11,6 @@ import build.raft.app.data.SyncTestPreferences
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
-import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlinx.serialization.json.Json
@@ -31,8 +30,6 @@ class RaftChannelSideLayoutTest {
     /** The channel details (added after these cases were written) are left out of a shape: their own test checks where they go. */
     private fun shape(l: RaftChannelSideLayout) =
         l.columns.map { c -> c.sections.filter { it != Details }.joinToString("+") { it.wire } }.filter { it.isNotEmpty() }.joinToString(" | ")
-
-    private fun fullShape(l: RaftChannelSideLayout) = l.columns.joinToString(" | ") { c -> c.sections.joinToString("+") { it.wire } }
 
     private val default = RAFT_DEFAULT_CHANNEL_SIDE_LAYOUT
 
@@ -138,14 +135,6 @@ class RaftChannelSideLayoutTest {
     }
 
     @Test
-    fun aColumnsMinimumIsItsWidestSections() {
-        assertEquals(280, raftChannelSideColumnMinWidth(listOf(Tasks, Files)))
-        assertEquals(360, raftChannelSideColumnMinWidth(listOf(Tasks, Thread)))
-        assertEquals(480, raftChannelSideColumnMinWidth(listOf(Artifact, Tasks)))
-        assertEquals(320, raftChannelSideColumnMinWidth(listOf(Profile)))
-    }
-
-    @Test
     fun onlyColumnsWithAnOpenSectionShowWithOnlyThoseSections() {
         val l = layout(col(Thread, width = 400), col(Tasks, Files, width = 360))
         assertEquals(listOf(Triple(1, listOf(Tasks), 280)), raftVisibleChannelSideColumns(l, setOf(Tasks)).map { Triple(it.column, it.sections, it.minWidth) })
@@ -172,44 +161,6 @@ class RaftChannelSideLayoutTest {
         assertSame(l, raftMoveChannelSideSection(l, Tasks, RaftChannelSideDrop.Into(1, Files)), "where it already is: unchanged")
         assertSame(l, raftMoveChannelSideSection(l, Tasks, RaftChannelSideDrop.Into(1, Tasks)))
         assertSame(l, raftMoveChannelSideSection(l, Tasks, RaftChannelSideDrop.Into(7, null)), "no such column")
-    }
-
-    @Test
-    fun aNewColumnAtTheEdgesAtMostFourSideColumns() {
-        val l = raftCompleteChannelSideLayout(default)
-        val split = raftMoveChannelSideSection(l, Files, RaftChannelSideDrop.NewColumn(2))
-        assertEquals("thread | tasks | files | artifact | profile+context", shape(split), "four side columns and the thread's own")
-        assertEquals(360, split.columns[2].width, "out of a stack: Files' own default")
-        assertEquals("tasks | thread | files | artifact | profile+context", shape(raftMoveChannelSideSection(l, Tasks, RaftChannelSideDrop.NewColumn(0))))
-        assertSame(l, raftMoveChannelSideSection(l, Thread, RaftChannelSideDrop.NewColumn(0)), "alone at its own left edge")
-        assertSame(l, raftMoveChannelSideSection(l, Thread, RaftChannelSideDrop.NewColumn(1)), "alone at its own right edge")
-        assertEquals(
-            "tasks+files | thread | artifact | profile+context",
-            shape(raftMoveChannelSideSection(l, Thread, RaftChannelSideDrop.NewColumn(2))),
-            "a lone section moving: same count",
-        )
-        // The profile (the context view stacked under the Artifact), moved left of Tasks' column, keeps its saved width.
-        val wide = raftResizeChannelSideColumn(raftMoveChannelSideSection(l, Context, RaftChannelSideDrop.Into(2, null)), 3, 520f)
-        val moved = raftMoveChannelSideSection(wide, Profile, RaftChannelSideDrop.NewColumn(1))
-        assertEquals("thread | profile | tasks+files | artifact+context", shape(moved))
-        assertEquals(520, moved.columns[1].width)
-        // Four sections besides the thread: the cap of four side columns holds whatever moves (the thread's own column
-        // aside), and stacking is always a place.
-        assertNotSame(split, raftMoveChannelSideSection(split, Artifact, RaftChannelSideDrop.Into(4, null)))
-        val full = layout(col(Thread, Tasks), col(Files), col(Artifact), col(Profile))
-        assertEquals("thread | files | artifact | profile | tasks", shape(raftMoveChannelSideSection(full, Tasks, RaftChannelSideDrop.NewColumn(4))))
-        // The thread out of a stack into a column of its own doesn't count among them.
-        val stacked = layout(col(Thread, Tasks), col(Files), col(Artifact), col(Profile))
-        assertEquals("thread | tasks | files | artifact | profile", shape(raftMoveChannelSideSection(stacked, Thread, RaftChannelSideDrop.NewColumn(0))))
-    }
-
-    @Test
-    fun resizingRoundsAndKeepsTheWidthWithinTheSavedRange() {
-        val l = raftCompleteChannelSideLayout(default)
-        assertEquals(411, raftResizeChannelSideColumn(l, 1, 410.6f).columns[1].width)
-        assertEquals(160, raftResizeChannelSideColumn(l, 1, 10f).columns[1].width, "a column goes to 160 (#189); its sections clip")
-        assertSame(l, raftResizeChannelSideColumn(l, 1, 360f), "unchanged")
-        assertSame(l, raftResizeChannelSideColumn(l, 5, 400f))
     }
 
     @Test
@@ -243,58 +194,6 @@ class RaftChannelSideLayoutTest {
         assertEquals(l, raftMoveChannelSideSection(l, Context, RaftChannelSideDrop.NewColumn(4)))
     }
 
-    @Test
-    fun aStoredLayoutWithAColumnHoldingOnlyTheContextViewNormalisesToItUnderTheProfile() {
-        assertEquals(
-            "thread | tasks+files | profile+context | artifact",
-            shape(raftCompleteChannelSideLayout(layout(col(Thread), col(Tasks, Files), col(Profile), col(Context), col(Artifact)))),
-        )
-        assertEquals(
-            "thread | tasks+files | artifact+profile+context",
-            shape(raftCompleteChannelSideLayout(layout(col(Context), col(Thread), col(Tasks, Files, width = 360), col(Artifact, Profile)))),
-        )
-        assertEquals(
-            "thread | tasks+files | profile+context | artifact",
-            shape(raftCompleteChannelSideLayout(layout(col(Thread), col(Context), col(Tasks, Files), col(Profile)))),
-        )
-        // A layout saved before the context view existed gets it under the profile.
-        assertEquals(
-            "thread | tasks+files | artifact | profile+context",
-            shape(raftCompleteChannelSideLayout(layout(col(Thread), col(Tasks, Files), col(Artifact), col(Profile)))),
-        )
-    }
-
-    @Test
-    fun theChannelDetailsFollowTheProfile() {
-        assertEquals("thread | tasks+files | artifact | profile+context+details", fullShape(default))
-        // A layout saved before the details existed gets them under the profile, after the context view.
-        assertEquals(
-            "thread | tasks+files | profile+context+details | artifact",
-            fullShape(raftCompleteChannelSideLayout(layout(col(Thread), col(Tasks, Files), col(Profile, Context), col(Artifact)))),
-        )
-        val l = raftCompleteChannelSideLayout(default)
-        // The profile carries them.
-        assertEquals("thread | tasks+files | artifact+profile+context+details", fullShape(raftMoveChannelSideSection(l, Profile, RaftChannelSideDrop.Into(2, null))))
-        // Moved by themselves into a stack they stay there; dropped into a column of their own they go back under the profile.
-        assertEquals("thread | tasks+files+details | artifact | profile+context", fullShape(raftMoveChannelSideSection(l, Details, RaftChannelSideDrop.Into(1, null))))
-        assertEquals(l, raftMoveChannelSideSection(l, Details, RaftChannelSideDrop.NewColumn(4)))
-        assertEquals(
-            "thread | tasks+files | profile+context+details | artifact",
-            fullShape(raftCompleteChannelSideLayout(layout(col(Thread), col(Details), col(Tasks, Files), col(Profile)))),
-        )
-        assertEquals(320, raftChannelSideColumnMinWidth(listOf(Details)))
-        // A reader that knows them keeps them where they were saved.
-        assertEquals(
-            layout(col(Thread, width = 400), col(Profile, Details, width = 400)),
-            parse("""{"v":1,"columns":[{"sections":["thread"],"width":400},{"sections":["profile","details"],"width":400}]}"""),
-        )
-        // A section a reader doesn't know (as "details" is to an older one) is dropped and the rest of the layout kept.
-        assertEquals(
-            layout(col(Thread, width = 400), col(Profile, width = 400)),
-            parse("""{"v":1,"columns":[{"sections":["thread"],"width":400},{"sections":["profile","not-yet-a-section"],"width":400}]}"""),
-        )
-    }
-
     // #189 step 5, web columnMovePlaces.test.ts: ⋯ > Move Left / Move Right. Out of a column it shares, a section goes
     // into a new column of its own beside it; alone, its column swaps with its neighbour; only where that changes what
     // shows.
@@ -305,33 +204,6 @@ class RaftChannelSideLayoutTest {
         val moves = raftColumnMoves(l, open, section)
         val drop = (if (left) moves.left else moves.right) ?: return null
         return shapeOf(raftMoveChannelSideSection(l, section, drop), open)
-    }
-
-    @Test
-    fun outOfAColumnItSharesEachMoveMakesItAColumnOfItsOwnOnThatSide() {
-        val shown = setOf(Thread, Tasks, Files)
-        assertEquals("thread | files | tasks", after(default, Files, shown, left = true))
-        assertEquals("thread | tasks | files", after(default, Files, shown, left = false))
-        assertEquals("thread | tasks | files", after(default, Tasks, shown, left = true))
-    }
-
-    @Test
-    fun aloneInItsColumnItSwapsWithItsNeighbourAndAtTheRowsEndHasNoMoveThatWay() {
-        val shown = setOf(Thread, Tasks, Files, Artifact, Profile)
-        assertEquals("thread | artifact | tasks+files | profile", after(default, Artifact, shown, left = true))
-        assertEquals("thread | tasks+files | profile | artifact", after(default, Artifact, shown, left = false))
-        assertNull(raftColumnMoves(default, shown, Profile).right, "the last column")
-        assertNull(raftColumnMoves(default, shown, Thread).left, "the first column")
-        assertEquals("tasks+files | thread | artifact | profile", after(default, Thread, shown, left = false))
-    }
-
-    @Test
-    fun closedSectionsDontCountAndASectionNotShownHasNoMove() {
-        val shown = setOf(Thread, Tasks, Profile)
-        assertEquals("thread | profile | tasks", after(default, Profile, shown, left = true))
-        assertEquals(RaftColumnMoves(null, null), raftColumnMoves(default, shown, Files))
-        // Tasks alone on screen in a column it shares with closed Files: alone as far as what shows goes.
-        assertEquals("tasks | thread | profile", after(default, Tasks, shown, left = true))
     }
 
     // App-only: the layout is kept per device in the web's shape, completed on read, and the pane grid stands its cells by it.

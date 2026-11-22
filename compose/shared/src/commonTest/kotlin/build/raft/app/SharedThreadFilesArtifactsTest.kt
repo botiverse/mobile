@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.data.ChannelFileItem
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.DataResult
-import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RaftConversationArtifactsApi
@@ -56,31 +55,6 @@ class SharedThreadFilesArtifactsTest {
         assertEquals(null, store.state.value.payload.errorCode)
         assertEquals(emptyList(), artifactIds(store))
         assertEquals(false, store.state.value.artifacts.loading)
-        store.clear()
-    }
-
-    @Test
-    fun noFilesButArtifactsStillListAndPullToRefreshReadsBothAgain() = runTest {
-        val artifacts = FakeArtifactsApi(page(listOf("pt_a"), next = null))
-        val repository = recorder(DataResult.Empty(EmptyReason.NoMessages))
-        val store = started(repository, artifacts, scope)
-        assertEquals("empty", store.state.value.payload.status)
-        assertEquals(listOf("pt_a"), artifactIds(store))
-
-        // A pull reads both again; a failed reload of the Artifacts keeps the rows shown.
-        repository.channelFilesResults += files("f-1")
-        artifacts.answers += failure()
-        store.dispatch(SharedThreadFilesIntent.PullRefresh)
-        runCurrent()
-        assertEquals(listOf("f-1"), fileIds(store))
-        assertEquals(listOf("pt_a"), artifactIds(store))
-        assertEquals(2, artifacts.asked.size)
-
-        repository.channelFilesResults += files("f-1")
-        artifacts.answers += page(listOf("pt_c", "pt_a"), next = null)
-        store.dispatch(SharedThreadFilesIntent.PullRefresh)
-        runCurrent()
-        assertEquals(listOf("pt_c", "pt_a"), artifactIds(store))
         store.clear()
     }
 

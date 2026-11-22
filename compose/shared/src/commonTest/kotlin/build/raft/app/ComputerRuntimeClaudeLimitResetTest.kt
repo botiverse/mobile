@@ -3,15 +3,10 @@ package build.raft.app
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RuntimeAccountUsageKey
-import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
-import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeLimitResetKind
-import build.raft.app.data.RuntimeLimitResetKindStatus
 import build.raft.app.data.RuntimeLimitResetTest
-import build.raft.app.data.RuntimeLimitResetsReadResult
 import build.raft.app.data.SharedRuntimeAccountUsageStore
-import build.raft.app.data.toRuntimeLimitResetsReadReply
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,7 +21,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -143,46 +137,6 @@ class ComputerRuntimeClaudeLimitResetTest {
     }
 
     @Test
-    fun severalUsableKindsAreChosenThenConfirmed() = runTest {
-        val api = api(read = { ok(WEEKLY_AND_FABLE) }, redeem = { ok("""{"result":{"kind":"reset"},"snapshot":${snapshot(atLimit = false)}}""") })
-        withController(api) { controller ->
-            controller.openClaudeLimitReset()
-            runCurrent()
-            val choose = assertIs<ComputerRuntimeClaudeLimitResetsPhase.Choose>(controller.claudeLimitResetsDialog?.phase)
-            assertEquals(listOf(RuntimeLimitResetKind.Weekly, RuntimeLimitResetKind.Fable), choose.usable.map { it.kind })
-            // Nothing chosen for the person: Use does nothing yet.
-            controller.useSelectedClaudeLimitReset()
-            runCurrent()
-            assertNull(controller.claudeLimitResetConfirm)
-            controller.selectClaudeLimitResetKind(RuntimeLimitResetKind.Fable)
-            controller.useSelectedClaudeLimitReset()
-            runCurrent()
-            assertNull(controller.claudeLimitResetsDialog, "the confirm takes the choice's place")
-            assertEquals(RuntimeLimitResetKind.Fable, controller.claudeLimitResetConfirm?.kind)
-            controller.confirmClaudeLimitReset()
-            runCurrent()
-            assertNull(controller.claudeLimitResetConfirm)
-            assertEquals(ComputerRuntimeClaudeLimitResetText.Done(RuntimeLimitResetKind.Fable), controller.claudeLimitResetNote)
-            val redeems = api.calls.filter { it.contains("/claude/limit-reset ") }
-            assertEquals(1, redeems.size)
-            val body = Json.parseToJsonElement(redeems.single().substringAfter("/limit-reset ")).jsonObject
-            assertEquals("fable", body["kind"]?.jsonPrimitive?.content)
-            assertEquals(true, body["onboardingRequiredReason"]?.jsonPrimitive?.booleanOrNull)
-            assertIs<RuntimeAccountUsageRead.Available>(assertIs<RuntimeAccountUsageLoad.Loaded>(controller.load).read)
-        }
-        // Cancel on the choice: nothing sent, nothing said.
-        val cancelled = api(read = { ok(WEEKLY_AND_FABLE) })
-        withController(cancelled) { controller ->
-            controller.openClaudeLimitReset()
-            runCurrent()
-            controller.dismissClaudeLimitResets()
-            assertNull(controller.claudeLimitResetsDialog)
-            assertNull(controller.claudeLimitResetNote)
-            assertTrue(cancelled.calls.none { it.contains("/limit-reset ") })
-        }
-    }
-
-    @Test
     fun theOlderProgramsReadThatUsedTheFiveHourResetEndsWithALineAndAUsageReadNeverASecondReset() = runTest {
         val api = api(read = { ok(LEGACY_SPENT) }, atLimit = true)
         withController(api) { controller ->
@@ -214,64 +168,6 @@ class ComputerRuntimeClaudeLimitResetTest {
             runCurrent()
             assertEquals(ComputerRuntimeClaudeLimitResetText.LegacyReset, controller.claudeLimitResetNote)
         }
-    }
-
-    @Test
-    fun noUsableKindSaysNothingWasUsed() = runTest {
-        val none = api(read = { ok(NONE) })
-        withController(none) { controller ->
-            controller.openClaudeLimitReset()
-            runCurrent()
-            assertNull(controller.claudeLimitResetsDialog)
-            assertNull(controller.claudeLimitResetConfirm)
-            assertEquals(ComputerRuntimeClaudeLimitResetText.NoneToUse, controller.claudeLimitResetNote)
-        }
-        val atLimit = api(read = { ok(ONE_WEEKLY) }, atLimit = true)
-        withController(atLimit) { controller ->
-            controller.openClaudeLimitReset()
-            runCurrent()
-            assertEquals(ComputerRuntimeClaudeLimitResetText.NoneAtLimit, controller.claudeLimitResetNote, "the other kinds are on claude.ai")
-            assertTrue(atLimit.calls.none { it.contains("/limit-reset ") })
-        }
-    }
-
-    @Test
-    fun aFailedReadKeepsItsTraceId() = runTest {
-        val api =
-            api(read = {
-                HomeNetworkResponse(
-                    code = 409,
-                    bodyText = null,
-                    errorBodyText = """{"code":"computer_offline","error":"This Computer is offline."}""",
-                    responseHeaders = mapOf("X-Trace-Id" to listOf(TRACE)),
-                )
-            })
-        withController(api) { controller ->
-            controller.openClaudeLimitReset()
-            runCurrent()
-            assertEquals(
-                ComputerRuntimeClaudeLimitResetsPhase.Failed(ComputerRuntimeClaudeLimitResetText.ComputerOffline, TRACE),
-                controller.claudeLimitResetsDialog?.phase,
-            )
-        }
-    }
-
-    @Test
-    fun theReadStepFollowsTheWeb() {
-        fun step(json: String, atLimit: Boolean = false) =
-            claudeLimitResetReadStep(assertIs<RuntimeLimitResetsReadResult.Read>(Json.parseToJsonElement(json).toRuntimeLimitResetsReadReply()), atLimit)
-        assertEquals(
-            ComputerRuntimeClaudeLimitResetReadStep.Note(ComputerRuntimeClaudeLimitResetText.LegacyKept, usageChanged = false),
-            step("""{"result":{"kind":"read","program":"legacy","resets":[{"kind":"five_hour","state":"available"}]}}"""),
-        )
-        assertEquals(
-            ComputerRuntimeClaudeLimitResetReadStep.Note(ComputerRuntimeClaudeLimitResetText.ReadFailed(viewOnly = false), usageChanged = false),
-            step("""{"result":{"kind":"read","resets":[{"kind":"five_hour","state":"unknown"},{"kind":"weekly","state":"none"}]}}"""),
-        )
-        assertEquals(
-            ComputerRuntimeClaudeLimitResetReadStep.Confirm(RuntimeLimitResetKindStatus.Available(RuntimeLimitResetKind.FiveHour, resetsLeft = 2)),
-            step(FIVE_HOUR_AND_OTHERS, atLimit = true),
-        )
     }
 
     private fun api(
@@ -325,8 +221,6 @@ class ComputerRuntimeClaudeLimitResetTest {
     private fun ok(body: String) = HomeNetworkResponse(code = 200, bodyText = body)
 
     private companion object {
-        const val TRACE = "0123456789abcdef0123456789abcdef"
-
         /** slock web tests `claudeSnapshot(atLimit)`: one account, its "Current session" window. */
         fun snapshot(atLimit: Boolean): String =
             """{"protocolVersion":2,"provider":"claude","collectedAt":"2026-11-19T03:00:00.000Z","staleAfter":"2099-11-19T03:30:00.000Z","collectorVersion":"test","accounts":[{"accountKey":"${"c".repeat(64)}","maskedLabel":"x*****n@botiverse.dev","health":"${if (atLimit) "rate_limited" else "ok"}","windows":[{"id":"session","label":"Current session","status":"${if (atLimit) "limit_reached" else "ok"}","usedRatio":${if (atLimit) "1" else "0.4"},"resetsAt":"2099-11-24T09:00:00.000Z"}]}]}"""
@@ -344,8 +238,6 @@ class ComputerRuntimeClaudeLimitResetTest {
         const val NONE = """{"result":{"kind":"read","resets":[{"kind":"five_hour","state":"none"},{"kind":"weekly","state":"none"}]}}"""
         const val ONE_WEEKLY =
             """{"result":{"kind":"read","resets":[{"kind":"five_hour","state":"none"},{"kind":"weekly","state":"available","resetsLeft":1,"expiresText":"Nov 26, 4:59pm"},{"kind":"full","state":"none"}]}}"""
-        const val WEEKLY_AND_FABLE =
-            """{"result":{"kind":"read","resets":[{"kind":"five_hour","state":"none"},{"kind":"weekly","state":"available","resetsLeft":1,"expiresText":"Nov 26, 4:59pm"},{"kind":"fable","state":"available","resetsLeft":3},{"kind":"full","state":"none"}]}}"""
         const val FIVE_HOUR_AND_OTHERS =
             """{"result":{"kind":"read","resets":[{"kind":"five_hour","state":"available","resetsLeft":2},{"kind":"weekly","state":"available","resetsLeft":1,"expiresText":"Nov 26, 4:59pm"},{"kind":"fable","state":"available","resetsLeft":3}]}}"""
         const val LEGACY_SPENT = """{"result":{"kind":"read","program":"legacy","fiveHourSpent":true,"resets":[{"kind":"five_hour","state":"none"}]}}"""

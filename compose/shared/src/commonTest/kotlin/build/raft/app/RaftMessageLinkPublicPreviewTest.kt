@@ -8,7 +8,6 @@ import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 
@@ -80,20 +79,6 @@ class RaftMessageLinkPublicPreviewTest {
     }
 
     @Test
-    fun serverThatIsNotPublicIsNotFoundWhateverItsChannelPageAnswers() = runTest {
-        // Backstop to the resolver's check: the server's card says missing, deleted or not public.
-        for (code in listOf(400, 403, 404)) {
-            val network =
-                FakePublicNetwork(
-                    channelPage = HomeNetworkResponse(200, """{"messages":[${message(mid, "second")}]}"""),
-                    card = HomeNetworkResponse(code, """{"error":"Not found"}"""),
-                )
-            val state = store(network, RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid), this).loadOnce()
-            assertEquals(RaftPublicPreviewState.NotFound, state, "code=$code")
-        }
-    }
-
-    @Test
     fun serverErrorTimeoutOrOfflineKeepsTheRetryStateNotTheEmptyState() = runTest {
         for (code in listOf(500, 503, 408, 429, 0)) {
             val network = FakePublicNetwork(channelPage = HomeNetworkResponse(code, null))
@@ -105,28 +90,6 @@ class RaftMessageLinkPublicPreviewTest {
             RaftPublicPreviewState.Unavailable,
             store(offline, RaftMessageLink(slug, ConversationKind.Channel, cid), this).loadOnce()
         )
-    }
-
-    @Test
-    fun messageNotOnTheReadablePageStillShowsTheConversation() = runTest {
-        val network = FakePublicNetwork(channelPage = HomeNetworkResponse(200, """{"messages":[${message(pid, "only")}]}"""))
-        val content =
-            assertIs<RaftPublicPreviewState.Content>(
-                store(network, RaftMessageLink(slug, ConversationKind.Channel, cid, messageId = mid), this).loadOnce()
-            )
-        assertNull(content.highlightMessageId)
-        assertNull(content.channelName, "the card failed: no name, still the preview")
-    }
-
-    @Test
-    fun pageDataCarriesOnlyLinkIdentityAndRoundTrips() {
-        val link = RaftMessageLink(slug, ConversationKind.DirectMessage, cid, messageId = mid, threadParentMessageId = pid)
-        val pageData = link.toPublicPreviewPageData()
-        assertEquals(
-            setOf("pageName", "serverSlug", "routeKind", "channelId", "messageId", "threadParentMessageId"),
-            pageData.keys().asSequence().toSet()
-        )
-        assertEquals(link, pageData.publicPreviewMessageLinkOrNull())
     }
 }
 

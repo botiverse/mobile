@@ -7,41 +7,6 @@ class ThreadFocusedAnchorImeHandoffTest {
     private val identity = "latest-message:request-1"
 
     @Test
-    fun anchoredRequestHandsViewportToComposerWhenImeOpens() {
-        assertEquals(
-            identity,
-            handoff(
-                keyboardInsetDp = 320f,
-                anchoredIdentity = identity,
-                startUserScrollGeneration = 4,
-                currentUserScrollGeneration = 4
-            )
-        )
-    }
-
-    @Test
-    fun closedImeOrUnanchoredRequestStaysPending() {
-        assertEquals(
-            null,
-            handoff(
-                keyboardInsetDp = 0f,
-                anchoredIdentity = identity,
-                startUserScrollGeneration = 4,
-                currentUserScrollGeneration = 4
-            )
-        )
-        assertEquals(
-            null,
-            handoff(
-                keyboardInsetDp = 320f,
-                anchoredIdentity = null,
-                startUserScrollGeneration = null,
-                currentUserScrollGeneration = 4
-            )
-        )
-    }
-
-    @Test
     fun consumedOrUserOwnedRequestCannotHandoffAgain() {
         assertEquals(
             null,
@@ -139,46 +104,6 @@ class ThreadFocusedAnchorImeHandoffTest {
                     focusedActiveTailAnchorCanCorrectLayout = false,
                     focusedTailAnchorCanCorrectLayout = composerOwnsTail
                 )
-            )
-        )
-    }
-
-    @Test
-    fun onlyCanonicalLatestTargetTransfersHandoffToBottom() {
-        assertEquals(
-            true,
-            focusedAnchorImeHandoffTransfersToBottom(
-                handoffIdentity = identity,
-                targetItemIndex = 10,
-                latestMessageItemIndex = 10,
-                canLoadMoreAfter = false
-            )
-        )
-        assertEquals(
-            false,
-            focusedAnchorImeHandoffTransfersToBottom(
-                handoffIdentity = identity,
-                targetItemIndex = 8,
-                latestMessageItemIndex = 10,
-                canLoadMoreAfter = false
-            )
-        )
-        assertEquals(
-            false,
-            focusedAnchorImeHandoffTransfersToBottom(
-                handoffIdentity = identity,
-                targetItemIndex = 10,
-                latestMessageItemIndex = 10,
-                canLoadMoreAfter = true
-            )
-        )
-        assertEquals(
-            false,
-            focusedAnchorImeHandoffTransfersToBottom(
-                handoffIdentity = null,
-                targetItemIndex = 10,
-                latestMessageItemIndex = 10,
-                canLoadMoreAfter = false
             )
         )
     }

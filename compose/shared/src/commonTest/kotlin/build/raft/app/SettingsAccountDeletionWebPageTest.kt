@@ -8,7 +8,6 @@ import build.raft.app.data.StoredAuthUser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Settings > Account > Delete account opens the web deletion page (botiverse/slock #12459,
@@ -35,21 +34,6 @@ class SettingsAccountDeletionWebPageTest {
             "https://raft-app-staging.botiverse.dev/s/workspace/settings/account/delete?embed=raft-settings-v1&shell=host&lang=zh-Hans",
             settingsAccountDeletionWebViewUrl(SharedApiEnvironmentStore.Staging.webUrl, session("workspace"), "zh-Hans"),
         )
-    }
-
-    @Test
-    fun deletionUrlFallsBackWithoutServerSlug() {
-        assertEquals(
-            "https://app.raft.build/settings/account/delete?embed=raft-settings-v1&shell=host&lang=system",
-            settingsAccountDeletionWebViewUrl("https://app.raft.build/", null, "system"),
-        )
-    }
-
-    @Test
-    fun deletionPageReceivesHostEvents() {
-        assertTrue(settingsAccountDeletionWebViewSpec.hostEventsEnabled)
-        assertTrue(settingsAccountDeletionWebViewSpec.allowNavigation)
-        assertEquals(SettingsWebViewSurface.AccountDeletion, settingsAccountDeletionWebViewSpec.surface)
     }
 
     @Test

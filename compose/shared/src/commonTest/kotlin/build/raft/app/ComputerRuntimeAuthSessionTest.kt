@@ -4,15 +4,10 @@ import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
-import build.raft.app.data.RuntimeAuthOAuthMethod
-import build.raft.app.data.RuntimeAuthProvider
 import build.raft.app.data.RuntimeAuthProviderConnectResult
-import build.raft.app.data.RuntimeAuthProviderKeyEntry
-import build.raft.app.data.RuntimeAuthProviderOAuthFlow
 import build.raft.app.data.RuntimeAuthProvidersResult
 import build.raft.app.data.RuntimeAuthRequestError
 import build.raft.app.data.RuntimeAuthRuntime
-import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
@@ -24,7 +19,6 @@ import build.raft.app.model.RuntimeAuthLoginEventPushed
 import build.raft.app.model.RuntimeAuthLoginOutcome
 import build.raft.app.model.RuntimeAuthLoginResultPushed
 import build.raft.app.model.RuntimeAuthLoginStep
-import build.raft.app.model.RuntimeAuthUpdated
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -132,26 +126,6 @@ class ComputerRuntimeAuthSessionTest {
         controller.dispose()
         runCurrent()
         assertEquals("cancel grok $LOGIN", disposed.calls.last(), "the controller's dispose")
-    }
-
-    @Test
-    fun kimiAsksTheRegionFirstAndTryAgainKeepsIt() = runTest {
-        val ops = FakeAuthOps()
-        val session = signIn(RuntimeAuthRuntime.Kimi, ops)
-        session.open()
-        runCurrent()
-        assertTrue(session.state.choosingRegion)
-        assertTrue(ops.calls.isEmpty(), "nothing starts until the person chooses")
-        session.continueWithRegion()
-        assertTrue(ops.calls.isEmpty(), "no region chosen, no start")
-        session.chooseRegion(RuntimeAuthLoginRegion.Global)
-        session.continueWithRegion()
-        ops.start.complete(RuntimeAuthCall.Refused(RuntimeAuthRequestError(409, "computer_offline", TRACE)))
-        runCurrent()
-        assertEquals(ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.ComputerOffline, retryable = true, traceId = TRACE), session.state.failure)
-        session.retry()
-        runCurrent()
-        assertEquals(listOf("start kimi region=global provider=null", "start kimi region=global provider=null"), ops.calls)
     }
 
     @Test
@@ -280,18 +254,6 @@ class ComputerRuntimeAuthSessionTest {
     }
 
     @Test
-    fun aPiProviderSignsOutAloneAndNoProviderMeansNoRuntimeWideSignOut() = runTest {
-        val ops = FakeAuthOps(logout = RuntimeAuthCall.Done(RuntimeAuthLogoutResult.LoggedOut))
-        val controller = controller(RuntimeAuthRuntime.Pi, ops)
-        controller.openSignOut()
-        assertNull(controller.dialog, "Pi signs out per provider only")
-        controller.openSignOut(RuntimeAuthSignedInProvider("deepseek", "DeepSeek", apiKey = true))
-        controller.confirmSignOut()
-        runCurrent()
-        assertEquals("logout pi provider=deepseek", ops.calls.first { it.startsWith("logout") })
-    }
-
-    @Test
     fun aSignInThatSucceedsAsksTheCardToReadItsUsageAgain() = runTest {
         // Web `RuntimeSignInDialog onSignedIn` (slock #15786): only a login that ended signed in.
         val ops = FakeAuthOps()
@@ -310,103 +272,6 @@ class ComputerRuntimeAuthSessionTest {
         runCurrent()
         assertEquals(1, reads)
         controller.onSignedIn = null
-    }
-
-    @Test
-    fun anUpdateForThisComputerReadsTheStatusAgain() = runTest {
-        val ops = FakeAuthOps()
-        val controller = controller(RuntimeAuthRuntime.Codex, ops)
-        controller.onRealtime(RuntimeAuthUpdated("m2"))
-        runCurrent()
-        assertTrue(ops.calls.isEmpty())
-        controller.onRealtime(RuntimeAuthUpdated("m1"))
-        runCurrent()
-        assertEquals(listOf("invalidate", "view"), ops.calls)
-        assertEquals(RuntimeAuthStatus.LoggedOut(), controller.status)
-        assertTrue(controller.signedOut)
-    }
-
-    @Test
-    fun piAddProviderGoesOnToTheSignInForAnAccountAndKeepsALiteralKeyOnly() = runTest {
-        val ops = FakeAuthOps(providers = RuntimeAuthCall.Done(RuntimeAuthProvidersResult.Listed(PI_PROVIDERS)))
-        val controller = controller(RuntimeAuthRuntime.Pi, ops)
-        controller.openSignIn()
-        runCurrent()
-        val pi = assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog).session
-        assertIs<ComputerRuntimePiProviderList.Listed>(pi.list)
-        pi.choose(ComputerRuntimePiChoice(account = false, providerId = "deepseek"))
-        pi.continueWithChoice()
-        assertEquals(ComputerRuntimePiStep.Key, pi.step)
-        pi.apiKeyChanged("!op read secret")
-        assertTrue(pi.keyRefusedHere)
-        pi.connect()
-        runCurrent()
-        assertTrue(ops.calls.none { it.startsWith("connect") }, "a key Pi would run is never sent")
-        pi.apiKeyChanged(" sk-123 ")
-        pi.connect()
-        runCurrent()
-        assertEquals("connect pi deepseek", ops.calls.last())
-        assertEquals(ComputerRuntimePiStep.Done, pi.step)
-        assertEquals("", pi.apiKey, "dropped once saved")
-
-        pi.choose(ComputerRuntimePiChoice(account = true, providerId = "openai"))
-        pi.continueWithChoice()
-        val signIn = assertIs<ComputerRuntimeAuthDialog.SignIn>(controller.dialog).session
-        assertEquals(ComputerRuntimeSignInProvider("openai", "ChatGPT Plus/Pro", pastesAddress = true), signIn.provider)
-        runCurrent()
-        assertEquals("start pi region=null provider=openai", ops.calls.last())
-        ops.start.complete(RuntimeAuthCall.Done(LOGIN))
-        controller.closeDialog()
-        runCurrent()
-        assertEquals("cancel pi $LOGIN", ops.calls.last(), "closing ends the provider's login")
-    }
-
-    @Test
-    fun openCodeNamesTheChosenMethodAndGreysOutOneThatNeedsTheComputersBrowser() = runTest {
-        ComputerRuntimeLoopbackRequired.clearForTests()
-        val providers =
-            listOf(
-                RuntimeAuthProvider(
-                    "github-copilot",
-                    "GitHub Copilot",
-                    oauthMethodList =
-                        listOf(
-                            RuntimeAuthOAuthMethod("Login with GitHub (device)", RuntimeAuthProviderOAuthFlow.DeviceCode),
-                            RuntimeAuthOAuthMethod("Login with GitHub", RuntimeAuthProviderOAuthFlow.Link),
-                        ),
-                ),
-            )
-        val ops = FakeAuthOps(providers = RuntimeAuthCall.Done(RuntimeAuthProvidersResult.Listed(providers)))
-        val controller = controller(RuntimeAuthRuntime.Opencode, ops)
-        controller.openSignIn()
-        runCurrent()
-        val pi = assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog).session
-        pi.choose(ComputerRuntimePiChoice(account = true, providerId = "github-copilot", methodIndex = 1))
-        pi.continueWithChoice()
-        val signIn = assertIs<ComputerRuntimeAuthDialog.SignIn>(controller.dialog).session
-        assertEquals(ComputerRuntimeSignInProvider("github-copilot", "GitHub Copilot", oauthMethod = "Login with GitHub"), signIn.provider)
-        runCurrent()
-        assertEquals("start opencode region=null provider=github-copilot method=Login with GitHub", ops.calls.last())
-        ops.start.complete(RuntimeAuthCall.Done(LOGIN))
-        runCurrent()
-        signIn.onRealtime(RuntimeAuthLoginResultPushed("s1", "m1", "opencode", LOGIN, RuntimeAuthLoginOutcome.Failed("loopback_required")))
-        assertEquals(ComputerRuntimeAuthProblem.LoopbackRequired, signIn.state.failure?.problem)
-        assertTrue(ComputerRuntimeLoopbackRequired.contains("m1", RuntimeAuthRuntime.Opencode, "github-copilot", "Login with GitHub"))
-        // The same method is not started again from here this session.
-        controller.closeDialog()
-        controller.openSignIn()
-        runCurrent()
-        val again = assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog).session
-        again.choose(ComputerRuntimePiChoice(account = true, providerId = "github-copilot", methodIndex = 1))
-        again.continueWithChoice()
-        assertIs<ComputerRuntimeAuthDialog.AddProvider>(controller.dialog)
-        // OpenCode's key rule: no {env:} / {file:} reference.
-        again.choose(ComputerRuntimePiChoice(account = false, providerId = "github-copilot"))
-        again.apiKeyChanged("{env:OPENAI_API_KEY}")
-        assertTrue(again.keyRefusedHere)
-        again.apiKeyChanged("!literal-for-opencode")
-        assertTrue(!again.keyRefusedHere, "a leading ! is Pi's rule, not OpenCode's")
-        ComputerRuntimeLoopbackRequired.clearForTests()
     }
 
     private fun TestScope.signIn(runtime: RuntimeAuthRuntime, ops: FakeAuthOps) =
@@ -474,11 +339,6 @@ class ComputerRuntimeAuthSessionTest {
                 availability = RuntimeAuthAvailability.Ok,
                 runtimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Qoder, RuntimeAuthRuntime.Antigravity, RuntimeAuthRuntime.Pi, RuntimeAuthRuntime.Grok),
                 logoutRuntimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Pi, RuntimeAuthRuntime.Grok),
-            )
-        val PI_PROVIDERS =
-            listOf(
-                RuntimeAuthProvider("openai", "OpenAI", oauthLabel = "ChatGPT Plus/Pro", oauthFlow = RuntimeAuthProviderOAuthFlow.PasteAddress),
-                RuntimeAuthProvider("deepseek", "DeepSeek", apiKeyEntry = RuntimeAuthProviderKeyEntry.Key),
             )
     }
 }

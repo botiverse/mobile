@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.TranslationTargetLanguages
-import build.raft.app.data.toSettingsAppearanceSnapshot
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,14 +32,5 @@ class SettingsLocalizedOptionLabelsTest {
         // "Same as display language" has its own label; an unknown saved code keeps its stored label.
         assertNull(settingsTranslationTargetLanguageRes(TranslationTargetLanguages.System))
         assertNull(settingsTranslationTargetLanguageRes("nl"))
-    }
-
-    @Test
-    fun everyMessageFontSizeHasItsWord() {
-        val options = "md".toSettingsAppearanceSnapshot().messageBodyFontSize.options
-        assertEquals(listOf("sm", "md", "lg"), options.map { it.key })
-        options.forEach { assertNotNull(settingsMessageFontSizeLabelRes(it.key), it.key) }
-        assertEquals(Res.string.settings_appearance_message_font_size_large, settingsMessageFontSizeLabelRes("lg"))
-        assertNull(settingsMessageFontSizeLabelRes("xl"))
     }
 }

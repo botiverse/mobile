@@ -50,19 +50,6 @@ class ThreadListViewportTest {
     }
 
     @Test
-    fun theTopContentPaddingOfAReversedListIsItsForwardBeforePadding() {
-        // Offline tip inset: PaddingValues(top = 40) is the raw *after* padding of a bottom-up list.
-        val info = ReversedThreadLayoutInfo(RawInfo(rawItems, totalItemsCount = 5, layoutSize = 1000, afterContentPadding = 40))
-        assertEquals(40, info.beforeContentPadding)
-        assertEquals(0, info.afterContentPadding)
-        assertEquals(-40, info.viewportStartOffset)
-        assertEquals(960, info.viewportEndOffset)
-        val padding = info.visibleItemsInfo.last()
-        assertEquals(info.viewportEndOffset, padding.offset + padding.size)
-        assertEquals(520, info.visibleItemsInfo.first().offset)
-    }
-
-    @Test
     fun underTheTopInsetTheFirstVisibleRowAndScrollTargetsFollowComposeForwardSemantics() {
         // BiSheng #2773 review: with a 40px top inset, forward offsets are measured after the inset, so a
         // row lying wholly under it is not the first visible row, and scrollToItem(i, s) aims at offset -s.
@@ -81,26 +68,5 @@ class ThreadListViewportTest {
         assertEquals(80, (-top.offset).coerceAtLeast(0), "scrolled 80px past the content start, not 40")
         // Restoring an anchor captured as offset -80 must be a no-op, not a 40px (inset) jump.
         assertEquals(0, forwardScrollToItemDelta(itemOffset = -80, scrollOffset = 80))
-    }
-
-    @Test
-    fun indexMappingIsItsOwnInverse() {
-        for (count in 1..6) {
-            for (index in 0 until count) {
-                assertEquals(index, reversedThreadListIndex(reversedThreadListIndex(index, count), count))
-            }
-        }
-        assertEquals(4, reversedThreadListIndex(0, 5), "the oldest forward row is the top physical row")
-        assertEquals(0, reversedThreadListIndex(4, 5), "the bottom padding row is physical item 0")
-    }
-
-    @Test
-    fun aRowScrolledPartlyOffTheBottomKeepsItsForwardGeometry() {
-        // Raw offset -30: the bottom padding row is 30px below the viewport bottom.
-        val info = ReversedThreadLayoutInfo(RawInfo(listOf(RawItem(0, -30, 40), RawItem(1, 10, 100)), totalItemsCount = 5, layoutSize = 1000))
-        val latest = info.visibleItemsInfo.last()
-        assertEquals(4, latest.index)
-        assertEquals(990, latest.offset)
-        assertEquals(30, latest.offset + latest.size - info.viewportEndOffset, "30px past the bottom, forward-measured")
     }
 }

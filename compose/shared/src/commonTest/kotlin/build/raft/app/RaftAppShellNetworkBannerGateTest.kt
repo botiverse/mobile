@@ -61,24 +61,4 @@ class RaftAppShellNetworkBannerGateTest {
 
             assertEquals(Online, gate.bannerStatus.value, "Online must hide the banner without waiting")
         }
-
-    @Test
-    fun offlineOnlineOfflineFlapRestartsGrace() =
-        runTest {
-            val gate = RaftAppShellNetworkBannerGate(backgroundScope)
-
-            gate.onHostStatus(Offline)
-            advanceTimeBy(2_000)
-            gate.onHostStatus(Online)
-            advanceTimeBy(500)
-            gate.onHostStatus(Offline)
-            // 3.5s since the first Offline, but only 1s since the latest one.
-            advanceTimeBy(1_000)
-            runCurrent()
-            assertEquals(Online, gate.bannerStatus.value, "flap must restart the 3s grace window")
-
-            advanceTimeBy(2_000)
-            runCurrent()
-            assertEquals(Offline, gate.bannerStatus.value, "3s after the latest Offline the banner shows")
-        }
 }

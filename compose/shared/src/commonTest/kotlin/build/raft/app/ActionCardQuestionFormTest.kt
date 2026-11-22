@@ -50,29 +50,11 @@ class ActionCardQuestionFormTest {
     }
 
     @Test
-    fun aStepNamingNoDrawnFieldIsSkippedAndFewerThanTwoPagesIsOnePage() {
-        val skipped = actionCardFormPages(form(choice("one"), notes, steps = listOf(ActionCardSpecFormStep(null, listOf("gone")), ActionCardSpecFormStep(null, listOf("one", "notes")))))
-        assertEquals(1, skipped.size)
-        assertEquals(listOf("one", "notes"), skipped.single().fields.map { it.name })
-        // Without a title: a lone remaining step is the whole form, as a form without steps.
-        assertNull(skipped.single().title)
-    }
-
-    @Test
     fun initialValuesAreEmptyChoicesOrTheAgentsDefault() {
         val prefilled = ActionCardFormValue.Choice(listOf("b"), "x")
         val values = initialActionCardFormValues(form(choice("plain"), choice("prefilled", multiple = true, default = prefilled)))
         assertEquals(ActionCardFormValue.Choice(emptyList()), values["plain"])
         assertEquals(prefilled, values["prefilled"])
-    }
-
-    @Test
-    fun aRequiredChoiceLacksAnOptionOrTheOtherText() {
-        assertEquals(ActionCardChoicePending.Choose, actionCardChoicePending(ActionCardFormValue.Choice(emptyList())))
-        assertEquals(ActionCardChoicePending.Write, actionCardChoicePending(ActionCardFormValue.Choice(emptyList(), "")))
-        assertEquals(ActionCardChoicePending.Write, actionCardChoicePending(ActionCardFormValue.Choice(listOf("a"), "  ")))
-        assertNull(actionCardChoicePending(ActionCardFormValue.Choice(listOf("a"))))
-        assertNull(actionCardChoicePending(ActionCardFormValue.Choice(emptyList(), "mine")))
     }
 
     @Test

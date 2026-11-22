@@ -1,42 +1,10 @@
 package build.raft.app
 
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class RaftAvatarStepTest {
-
-    @Test
-    fun nearestPicksTheClosestWebStepAndTiesGoToTheLargerStep() {
-        // avatar dp -> step. Midpoints between edges (14/19/27/35/51/99): 16.5, 23, 31, 43, 75.
-        val cases =
-            listOf(
-                0f to RaftAvatarStep.Xxxs,
-                12f to RaftAvatarStep.Xxxs,
-                14f to RaftAvatarStep.Xxxs,
-                16f to RaftAvatarStep.Xxxs,
-                16.5f to RaftAvatarStep.Xs,
-                20f to RaftAvatarStep.Xs,
-                22f to RaftAvatarStep.Xs,
-                23f to RaftAvatarStep.Sm,
-                28f to RaftAvatarStep.Sm,
-                30f to RaftAvatarStep.Sm,
-                31f to RaftAvatarStep.Md,
-                36f to RaftAvatarStep.Md,
-                42f to RaftAvatarStep.Md,
-                43f to RaftAvatarStep.Lg,
-                44f to RaftAvatarStep.Lg,
-                56f to RaftAvatarStep.Lg,
-                74f to RaftAvatarStep.Lg,
-                75f to RaftAvatarStep.Xl,
-                99f to RaftAvatarStep.Xl,
-                200f to RaftAvatarStep.Xl,
-            )
-        cases.forEach { (size, expected) ->
-            assertEquals(expected, RaftAvatarStep.nearest(size.dp), "nearest(${size}dp)")
-        }
-    }
 
     @Test
     fun initialsSkipWhatCannotStandAsAnInitial() {

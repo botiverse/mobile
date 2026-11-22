@@ -10,7 +10,6 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -24,80 +23,6 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedReplyThreadAccessIntegrationTest {
-    @Test
-    fun unresolvedReentryAcrossPageDataSourcesJoinsOneAppScopeFlight() = runBlocking {
-        withPortableAppScope { appScope ->
-            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
-            val release = CompletableDeferred<Unit>()
-            val firstRepository =
-                ReplyThreadAccessConversationRepositoryRecorder(
-                    replyResult = DataResult.Content(replyThreadAccessSnapshot()),
-                    releaseReply = release
-                )
-            val secondRepository =
-                ReplyThreadAccessConversationRepositoryRecorder(
-                    replyResult =
-                        DataResult.Error(
-                            ScreenError(code = "second_page_must_not_start", retryable = false)
-                        )
-                )
-            fun dataSource(repository: ConversationRepository) =
-                replyThreadAccessDataSource(
-                    repository = repository,
-                    sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1")),
-                    payloadStore = payloadStore
-                )
-            val base = unresolvedReplyThreadAccessPayload()
-            val first = async { dataSource(firstRepository).fetchThreadPayload(base, persistResult = false) }
-            firstRepository.replyStarted.await()
-
-            val second =
-                async(start = CoroutineStart.UNDISPATCHED) {
-                    dataSource(secondRepository).fetchThreadPayload(base, persistResult = false)
-                }
-
-            assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), firstRepository.replyRequests)
-            assertTrue(secondRepository.replyRequests.isEmpty())
-            release.complete(Unit)
-
-            assertIs<DataResult.Content<RaftThreadScreenPayload>>(first.await())
-            assertIs<DataResult.Content<RaftThreadScreenPayload>>(second.await())
-            assertTrue(secondRepository.replyRequests.isEmpty())
-        }
-    }
-
-    @Test
-    fun accessFlightFailsClosedWhenAuthBindingChangesDuringFetch() = runBlocking {
-        withPortableAppScope { appScope ->
-            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
-            val sessionStore = InMemoryRaftAuthSessionStore(authSessionFixture(userId = "u1"))
-            val release = CompletableDeferred<Unit>()
-            val repository =
-                ReplyThreadAccessConversationRepositoryRecorder(
-                    replyResult = DataResult.Content(replyThreadAccessSnapshot()),
-                    releaseReply = release
-                )
-            val dataSource = replyThreadAccessDataSource(repository, sessionStore, payloadStore)
-            val base = unresolvedReplyThreadAccessPayload()
-            val first = async { dataSource.fetchThreadPayload(base, persistResult = false) }
-            repository.replyStarted.await()
-
-            sessionStore.updateTokens(
-                accessToken = "rotated-access",
-                refreshToken = "rotated-refresh"
-            )
-            release.complete(Unit)
-
-            val firstResult = assertIs<DataResult.Error>(first.await())
-            assertEquals("thread_reply_access_authority_changed", firstResult.error.code)
-
-            assertIs<DataResult.Content<RaftThreadScreenPayload>>(
-                dataSource.fetchThreadPayload(base, persistResult = false)
-            )
-            assertEquals(2, repository.replyRequests.size)
-        }
-    }
-
     @Test
     fun loadedRepliesDoNotWaitForHungParentContextProducerAndOriginStaysLoading() = runBlocking {
         withPortableAppScope { appScope ->

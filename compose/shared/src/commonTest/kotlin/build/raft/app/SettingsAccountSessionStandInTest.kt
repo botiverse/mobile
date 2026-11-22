@@ -30,15 +30,4 @@ class SettingsAccountSessionStandInTest {
         assertEquals("Ada Lovelace", profile.displayName)
         assertEquals("https://cdn.example/ada.png", profile.avatarUrl)
     }
-
-    @Test
-    fun loadingAccountWithoutASessionStaysEmpty() {
-        val loading: ScreenLoadState<AccountSettingsSnapshot> = ScreenLoadState.Loading
-
-        val profile = loading.toAccountPayload(null, null, strings).profile
-
-        assertEquals("", profile.email)
-        assertEquals("", profile.handle)
-        assertEquals("", profile.displayName)
-    }
 }

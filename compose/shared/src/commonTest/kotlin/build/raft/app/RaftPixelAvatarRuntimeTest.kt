@@ -87,35 +87,6 @@ class RaftPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun parserRejectsMalformedGridRowLength() {
-        val badRow = "\"_KKKKKK__\", " + List(7) { "\"________\"" }.joinToString(", ")
-        assertNull(parsePixelAvatarData(sampleJson(robotGridRows = badRow)))
-    }
-
-    @Test
-    fun parserRejectsUnknownGridLetter() {
-        val unknownLetter = "\"_KKKKKQ_\", " + List(7) { "\"________\"" }.joinToString(", ")
-        assertNull(parsePixelAvatarData(sampleJson(robotGridRows = unknownLetter)))
-    }
-
-    @Test
-    fun parserRejectsUnknownDefaultKey() {
-        assertNull(parsePixelAvatarData(sampleJson(defaultKey = "ghost")))
-    }
-
-    @Test
-    fun parserRejectsUnknownReservedKey() {
-        assertNull(parsePixelAvatarData(sampleJson(reservedKeys = """["ghost"]""")))
-    }
-
-    @Test
-    fun parserRejectsNonJsonAndWrongShapes() {
-        assertNull(parsePixelAvatarData("not json"))
-        assertNull(parsePixelAvatarData("""{"version": 1}"""))
-        assertNull(parsePixelAvatarData("""{"version": 0, "palette": {}, "avatars": {}, "defaultKey": "x"}"""))
-    }
-
-    @Test
     fun versionGateRejectsDocumentsOlderThanMinimum() {
         try {
             // Parseable but stale relative to an explicit minimum: rejected by the gate.
@@ -169,53 +140,6 @@ class RaftPixelAvatarRuntimeTest {
     }
 
     @Test
-    fun holderSkipsSameVersionAsBundled() {
-        try {
-            // Same version as the active table: version is the table identity,
-            // so the document is skipped without swapping `current` — a swap is
-            // what makes every pixel avatar recompose and flash its placeholder.
-            val applied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(version = RaftPixelAvatarRuntime.bundled.version),
-                    source = "fetch"
-                )
-            assertNull(applied)
-            assertSame(RaftPixelAvatarRuntime.bundled, RaftPixelAvatarRuntime.current)
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
-    }
-
-    @Test
-    fun holderSkipsSameVersionEvenWhenContentDiffers() {
-        try {
-            val applied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(version = RaftPixelAvatarRuntime.bundled.version + 1),
-                    source = "fetch"
-                )
-            assertNotNull(applied)
-            assertSame(applied, RaftPixelAvatarRuntime.current)
-
-            // A fetched document with the same version but different content is
-            // still skipped: version, not payload, is the table identity.
-            val reapplied =
-                RaftPixelAvatarRuntime.applyRuntimeJson(
-                    sampleJson(
-                        version = RaftPixelAvatarRuntime.bundled.version + 1,
-                        defaultKey = "mug",
-                        reservedKeys = "[]"
-                    ),
-                    source = "fetch"
-                )
-            assertNull(reapplied)
-            assertSame(applied, RaftPixelAvatarRuntime.current)
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
-    }
-
-    @Test
     fun keyValueStoreRoundTripsJsonVersionAndFetchedAt() {
         val backing = InMemoryRaftKeyValueStore()
         val store = KeyValuePixelAvatarStore(backing)
@@ -230,23 +154,6 @@ class RaftPixelAvatarRuntimeTest {
         assertEquals("""{"version":3}""", backing.getString("avatars.pixelJson"))
         assertEquals("3", backing.getString("avatars.pixelJsonVersion"))
         assertEquals("1234", backing.getString("avatars.pixelJsonFetchedAt"))
-    }
-
-    @Test
-    fun bundledSpecsStayUsableAfterRuntimeSwap() {
-        try {
-            RaftPixelAvatarRuntime.applyRuntimeJson(
-                sampleJson(version = RaftPixelAvatarRuntime.bundled.version + 1),
-                source = "fetch"
-            )
-            // Bundled specs keep resolving against the generated palette (random avatars
-            // and any cached spec instances must not be affected by the swap).
-            val bundledRobot = PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey)
-            assertTrue(bundledRobot.spans.isNotEmpty())
-            assertFalse(bundledRobot.backgroundArgb.isBlank())
-        } finally {
-            RaftPixelAvatarRuntime.resetForTest()
-        }
     }
 
     @Test

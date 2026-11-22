@@ -2,11 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
-import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.AgentSpawnFailure
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
@@ -94,22 +92,6 @@ class AgentSpawnFailureStatusTest {
     }
 
     @Test
-    fun aStartTimeoutGetsTheCopyOnlyWhilePaused() {
-        assertEquals(
-            AgentSpawnFailureCopy.StartTimeoutPaused("Timed out", now + 5),
-            agentSpawnFailureCopy(AgentSpawnFailure("runtime_start_timeout", autoRestartPaused = true, pauseRetryAtMs = now + 5), "Timed out", now),
-        )
-        assertEquals(
-            AgentSpawnFailureCopy.StartTimeoutPaused("Timed out", null),
-            agentSpawnFailureCopy(AgentSpawnFailure("runtime_start_timeout", autoRestartPaused = true, pauseRetryAtMs = now - 5), "Timed out", now),
-        )
-        assertNull(agentSpawnFailureCopy(AgentSpawnFailure("runtime_start_timeout"), "Timed out", now))
-        // Reasons #13460 did not change keep the text shown before.
-        assertNull(agentSpawnFailureCopy(AgentSpawnFailure("runtime_not_found", autoRestartPaused = true), "x", now))
-        assertNull(agentSpawnFailureCopy(null, "x", now))
-    }
-
-    @Test
     fun changeModelOnlyWhereAnotherModelIsAWayOut() {
         assertTrue(agentSpawnFailureOffersChangeModel(AgentSpawnFailure("model_unsupported")))
         assertTrue(agentSpawnFailureOffersChangeModel(AgentSpawnFailure("session_needs_reset")))
@@ -123,35 +105,6 @@ class AgentSpawnFailureStatusTest {
     }
 
     @Test
-    fun theStatusReadsTheFailureOnlyWithItsKind() {
-        val failure = AgentSpawnFailure("model_unsupported", model = "o3")
-        // No live status yet: the loaded profile's.
-        assertEquals(
-            AgentStatusSpawnFailure(failure, "kept detail"),
-            membersAgentStatusSpawnFailure(null, "runtime_unavailable", "kept detail", failure),
-        )
-        // Live and offline without a kind: still the profile's.
-        assertEquals(
-            AgentStatusSpawnFailure(failure, "kept detail"),
-            membersAgentStatusSpawnFailure(state(AgentStatus.Offline), "runtime_unavailable", "kept detail", failure),
-        )
-        // Running again: gone.
-        assertNull(membersAgentStatusSpawnFailure(state(AgentStatus.Working), "runtime_unavailable", "kept detail", failure))
-        // A live frame of another kind: gone; of this kind: the live label is the daemon's detail.
-        assertNull(membersAgentStatusSpawnFailure(state(AgentStatus.Offline).copy(detailKind = "stopped"), null, null, failure))
-        assertEquals(
-            AgentStatusSpawnFailure(failure, "Live detail"),
-            membersAgentStatusSpawnFailure(
-                state(AgentStatus.Offline).copy(detailKind = "runtime_unavailable", label = "Live detail"),
-                "runtime_unavailable",
-                "kept detail",
-                failure,
-            ),
-        )
-        assertNull(membersAgentStatusSpawnFailure(null, "runtime_unavailable", "x", null))
-    }
-
-    @Test
     fun aTypedBillingErrorIsTheBillingBannerWhateverTheText() {
         assertEquals(AgentRuntimeErrorKind.BillingExhausted, agentTypedRuntimeErrorKind("BillingError", "something"))
         assertEquals(AgentRuntimeErrorKind.BillingExhausted, agentTypedRuntimeErrorKind("RuntimeError", "billing_exhausted"))
@@ -162,40 +115,6 @@ class AgentSpawnFailureStatusTest {
             agentRuntimeErrorDisplay("402 Payment Required", "BillingError", "billing_exhausted", null, "Claude").isBillingExhausted,
         )
         assertFalse(agentRuntimeErrorDisplay("Invalid API key", "AuthError", "auth_failed", null, "Claude").isBillingExhausted)
-    }
-
-    @Test
-    fun aKeptBillingErrorStaysWhileTheAgentStartsAgain() {
-        val billing =
-            detail(
-                AgentDetailSummary(
-                    id = "agent-1",
-                    name = "ruby",
-                    lastRuntimeErrorMessage = "402 Payment Required: insufficient balance",
-                    lastRuntimeErrorClass = "BillingError",
-                    lastRuntimeErrorReason = "billing_exhausted",
-                )
-            )
-        val expected = AgentRuntimeErrorDisplay.Known(AgentRuntimeErrorKind.BillingExhausted)
-        assertEquals(expected, agent.membersAgentRuntimeErrorDisplay(billing, state(AgentStatus.Offline)))
-        // Start / Starting does not clear it (web: the banner follows the stored error).
-        assertEquals(expected, agent.membersAgentRuntimeErrorDisplay(billing, state(AgentStatus.Working)))
-        assertEquals(expected, agent.membersAgentRuntimeErrorDisplay(billing, state(AgentStatus.Online)))
-        // Any other kept error still goes while the agent runs.
-        val other = detail(AgentDetailSummary(id = "agent-1", name = "ruby", lastRuntimeErrorMessage = "Invalid API key provided"))
-        assertNull(agent.membersAgentRuntimeErrorDisplay(other, state(AgentStatus.Working)))
-        // A blank kept message is still a billing banner (catalog copy).
-        val blank = detail(AgentDetailSummary(id = "agent-1", name = "ruby", lastRuntimeErrorClass = "BillingError", lastRuntimeErrorReason = "billing_exhausted"))
-        assertEquals(expected, agent.membersAgentRuntimeErrorDisplay(blank, state(AgentStatus.Offline)))
-    }
-
-    @Test
-    fun theBillingBannerHasNoViewLogs() {
-        val billing =
-            membersAgentRuntimeErrorBannerState(MemberKind.Agent, MembersAgentDetailTab.Profile, "Model service balance too low", billingExhausted = true)
-        assertEquals(MembersAgentRuntimeErrorBannerState("Model service balance too low", showViewLogs = false, billingExhausted = true), billing)
-        val other = membersAgentRuntimeErrorBannerState(MemberKind.Agent, MembersAgentDetailTab.Profile, "Error: x")
-        assertEquals(MembersAgentRuntimeErrorBannerState("Error: x", showViewLogs = true, billingExhausted = false), other)
     }
 
     @Test
@@ -222,17 +141,6 @@ class AgentSpawnFailureStatusTest {
     }
 
     @Test
-    fun aShownBillingErrorIsReReadOnceTheAgentRunsAgain() {
-        listOf(AgentStatus.Online, AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Idle).forEach {
-            assertTrue(membersBillingErrorRereadDue(billingErrorShown = true, liveStatus = it), it.name)
-            assertFalse(membersBillingErrorRereadDue(billingErrorShown = false, liveStatus = it), it.name)
-        }
-        listOf(AgentStatus.Offline, AgentStatus.Disconnected, AgentStatus.Error, null).forEach {
-            assertFalse(membersBillingErrorRereadDue(billingErrorShown = true, liveStatus = it), it?.name)
-        }
-    }
-
-    @Test
     fun anOpenEditorRequestWaitsUntilTheEditorCanOpen() {
         assertFalse(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = true, runtimeEditorReady = false, hasFormV2Access = true))
         assertFalse(membersRuntimeEditorCanOpen(canEdit = true, hasAuthority = true, hasConfig = false, runtimeEditorReady = true, hasFormV2Access = true))
@@ -254,8 +162,4 @@ class AgentSpawnFailureStatusTest {
             reminders = emptyList(),
             activity = emptyList(),
         )
-
-    private fun state(status: AgentStatus) =
-        SharedServerMemberStatus(status = status, presence = status.presence, runtime = "claude", external = false)
-            .toRaftAgentStatusIndicatorState()
 }

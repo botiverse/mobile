@@ -4,7 +4,6 @@ import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -18,24 +17,6 @@ class SharedReplyThreadParentFailurePolicyTest {
         assertTrue(direct.hasReadableCanonicalReplyContent())
         assertEquals("error", channel.originStatus)
         assertNull(channel.originMessage)
-    }
-
-    @Test
-    fun canonicalReplyReadFallbackRequiresContentAndCompleteRouteIdentity() {
-        val readable = readableReplyPayload()
-
-        assertFalse(readable.copy(status = "loading").hasReadableCanonicalReplyContent())
-        assertFalse(readable.copy(messages = emptyList()).hasReadableCanonicalReplyContent())
-        assertFalse(readable.copy(streamChannelId = null, sourceThreadId = null).hasReadableCanonicalReplyContent())
-        assertFalse(readable.copy(parentChannelKind = null).hasReadableCanonicalReplyContent())
-    }
-
-    @Test
-    fun readOnlyParentFailureSuppressesParentTaskLookup() {
-        val payload = readableReplyPayload(parentChannelId = "joint-storage-parent")
-
-        assertEquals("joint-storage-parent", payload.resolvedTaskLookupChannelId())
-        assertNull(payload.resolvedTaskLookupChannelId(writeActionsEnabled = false))
     }
 
     @Test

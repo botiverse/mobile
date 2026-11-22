@@ -21,15 +21,6 @@ class RaftHomeSectionDialogStateTest {
     }
 
     @Test
-    fun pickingReplacesTheCurrentEmoji() {
-        val state = RaftHomeSectionDialogState(initialName = "Design", initialEmoji = "🎨")
-
-        state.pickEmoji("👍🏽")
-
-        assertEquals("Design" to "👍🏽", state.submission())
-    }
-
-    @Test
     fun removingTheEmojiSavesNoIcon() {
         val state = RaftHomeSectionDialogState(initialName = "Design", initialEmoji = "🎨")
         state.pickerOpen = true

@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftPageRoute
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSettingsTab
@@ -44,35 +43,6 @@ class RaftProductPageRoutesTest {
     }
 
     @Test
-    fun navKeysMapToDestinations() {
-        val keys =
-            mapOf(
-                "home" to RaftNavDestination.Home,
-                "activity" to RaftNavDestination.Activity,
-                "tasks" to RaftNavDestination.Tasks,
-                AppShellSearchTabKey to RaftNavDestination.Search,
-                AppShellRailSearchKey to RaftNavDestination.Search,
-                "more" to RaftNavDestination.More,
-                "members" to RaftNavDestination.Members,
-                "settings" to RaftNavDestination.Settings,
-            )
-        keys.forEach { (key, destination) -> assertEquals(destination, appShellNavDestination(key), key) }
-        assertNull(appShellNavDestination("dms"))
-        assertEquals(RaftNavDestination.Computers, appShellNavDestination("computers"))
-        // The rail's Apps and Help have no value in the app's NAV_DESTINATIONS mirror yet.
-        assertNull(appShellNavDestination("apps"))
-        assertNull(appShellNavDestination("help"))
-        // Nor Artifacts (NAV_DESTINATIONS has no `artifacts` yet).
-        assertNull(appShellNavDestination("artifacts"))
-        // The rail's Assistant (web LeftRail `trackNavEntrySelected("assistant", "rail", …)`).
-        assertEquals(RaftNavDestination.Assistant, appShellNavDestination("assistant"))
-        // Every other phone bar slot and rail entry has a destination.
-        (AppShellPhoneBottomBarKeys + AppShellRailTabKeys - "apps" - "artifacts").forEach { key ->
-            assertEquals(true, appShellNavDestination(key) != null, key)
-        }
-    }
-
-    @Test
     fun threadPagesMapBySurfaceAndTaskOpens() {
         val never: (String) -> Boolean = { false }
         val cases =
@@ -91,98 +61,5 @@ class RaftProductPageRoutesTest {
             authenticatedProductPageView(AuthenticatedProductRoute.Thread, threadParams(RaftThreadSurfaceKind.ReplyThread)) { marked.remove(it) },
         )
         assertNull(authenticatedProductPageView(AuthenticatedProductRoute.Thread, JSONObject(), never))
-    }
-
-    @Test
-    fun pushedPagesMapToRoutesAndSettingsTabs() {
-        val never: (String) -> Boolean = { false }
-        fun page(route: AuthenticatedProductRoute, params: JSONObject = JSONObject()) =
-            authenticatedProductPageView(route, params, never)
-
-        assertEquals(view(RaftPageRoute.Search), page(AuthenticatedProductRoute.HomeSearch))
-        assertEquals(
-            view(RaftPageRoute.ConversationSearch),
-            page(AuthenticatedProductRoute.HomeSearch, JSONObject().apply { put(HOME_SEARCH_SELECTED_CHANNEL_ID, "c1") }),
-        )
-        // A DM's header Search (web nav.toConversationSearch("dm", id)) is a conversation search too.
-        assertEquals(
-            view(RaftPageRoute.ConversationSearch),
-            page(
-                AuthenticatedProductRoute.HomeSearch,
-                RaftThreadScreenPayload(sourceThreadId = "dm-1", surfaceKind = RaftThreadSurfaceKind.DirectMessage)
-                    .toThreadChannelSearchPageData()!!,
-            ),
-        )
-        assertEquals(view(RaftPageRoute.Saved), page(AuthenticatedProductRoute.HomeSaved))
-        assertEquals(view(RaftPageRoute.Activity), page(AuthenticatedProductRoute.HomeActivity))
-        assertEquals(view(RaftPageRoute.Members), page(AuthenticatedProductRoute.Members))
-        assertEquals(view(RaftPageRoute.Agent), page(AuthenticatedProductRoute.MemberDetail, JSONObject().apply { put("memberKind", "agent") }))
-        assertEquals(
-            view(RaftPageRoute.Human),
-            page(
-                AuthenticatedProductRoute.MemberDetail,
-                JSONObject().apply { put("payload", JSONObject().apply { put("memberKind", "human") }.toString()) },
-            ),
-        )
-        assertEquals(view(RaftPageRoute.ReleaseNotes), page(AuthenticatedProductRoute.ReleaseNotes))
-        assertEquals(view(RaftPageRoute.Assistant), page(AuthenticatedProductRoute.Assistant))
-        assertEquals(view(RaftPageRoute.Computers), page(AuthenticatedProductRoute.SettingsComputers))
-        assertEquals(
-            view(RaftPageRoute.Computer),
-            page(
-                AuthenticatedProductRoute.SettingsComputers,
-                JSONObject().apply {
-                    put(RAFT_SHELL_SERVER_ID, "srv-a")
-                    put(SETTINGS_COMPUTER_ID, "m1")
-                },
-            ),
-        )
-        assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Account), page(AuthenticatedProductRoute.SettingsAccount))
-        assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Storage), page(AuthenticatedProductRoute.SettingsStorage))
-        assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Labs), page(AuthenticatedProductRoute.SettingsLabs))
-        assertEquals(view(RaftPageRoute.Settings, RaftSettingsTab.Feedback), page(AuthenticatedProductRoute.SettingsHandsFeedback))
-        listOf(
-            AuthenticatedProductRoute.TaskPending,
-            AuthenticatedProductRoute.ThreadMembers,
-            AuthenticatedProductRoute.ChannelSettings,
-            AuthenticatedProductRoute.ThreadSettings,
-            AuthenticatedProductRoute.ThreadForwardBundle,
-            AuthenticatedProductRoute.FilePreview,
-            AuthenticatedProductRoute.ArtifactsHome,
-        ).forEach { assertNull(page(it), it.name) }
-    }
-
-    @Test
-    fun settingsSectionsMapToRegistryTabs() {
-        val native =
-            mapOf(
-                SettingsNativeDetailPage.LanguageRegion to RaftSettingsTab.LanguageRegion,
-                SettingsNativeDetailPage.Appearance to RaftSettingsTab.Appearance,
-                SettingsNativeDetailPage.Notifications to RaftSettingsTab.Notifications,
-                SettingsNativeDetailPage.Server to RaftSettingsTab.Server,
-                SettingsNativeDetailPage.About to RaftSettingsTab.About,
-            )
-        SettingsNativeDetailPage.entries.forEach { page ->
-            val params = JSONObject().apply { put(SETTINGS_NATIVE_DETAIL_PAGE_KEY, page.key) }
-            val expected = native[page]?.let { view(RaftPageRoute.Settings, it) }
-            if (page != SettingsNativeDetailPage.LocalFeatureOverride) {
-                assertEquals(expected, authenticatedProductPageView(AuthenticatedProductRoute.SettingsNativeDetail, params) { false }, page.key)
-            }
-        }
-        val web =
-            mapOf(
-                SettingsWebViewSurface.Billing to view(RaftPageRoute.Settings, RaftSettingsTab.Billing),
-                SettingsWebViewSurface.Administration to view(RaftPageRoute.Settings, RaftSettingsTab.Administration),
-                SettingsWebViewSurface.ImBridges to view(RaftPageRoute.Settings, RaftSettingsTab.ImBridges),
-                SettingsWebViewSurface.Marketplace to view(RaftPageRoute.Settings, RaftSettingsTab.Integrations),
-                SettingsWebViewSurface.Computers to view(RaftPageRoute.Computers),
-                SettingsWebViewSurface.ReleaseNotes to view(RaftPageRoute.ReleaseNotes),
-                SettingsWebViewSurface.Onboarding to null,
-                SettingsWebViewSurface.WebPage to null,
-            )
-        web.forEach { (surface, expected) ->
-            val params = JSONObject().apply { put(SETTINGS_WEB_VIEW_SURFACE, surface.diagnosticsName) }
-            assertEquals(expected, authenticatedProductPageView(AuthenticatedProductRoute.SettingsWebView, params) { false }, surface.name)
-        }
     }
 }

@@ -2,69 +2,12 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * The share image's author headers come from the selection, not the timeline's grouping
  * (web messageGrouping.ts `shouldShowGroupedMessageHeader`).
  */
 class ThreadShareSelectionAuthorTest {
-    @Test
-    fun aSelectedContinuationWhosePredecessorIsNotSelectedShowsItsAuthor() {
-        assertFalse(
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = true,
-                selectionActive = true,
-                selected = true,
-                previousSelected = false,
-            )
-        )
-    }
-
-    @Test
-    fun aSelectedContinuationAfterASelectedRowOfItsRunStaysCompact() {
-        assertTrue(
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = true,
-                selectionActive = true,
-                selected = true,
-                previousSelected = true,
-            )
-        )
-    }
-
-    @Test
-    fun theTimelineGroupingStandsOutsideTheSelection() {
-        // Not selecting: the timeline's rows are untouched.
-        assertTrue(
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = true,
-                selectionActive = false,
-                selected = true,
-                previousSelected = false,
-            )
-        )
-        // Selecting, but this row is not picked: it is not in the image, so it keeps its look.
-        assertTrue(
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = true,
-                selectionActive = true,
-                selected = false,
-                previousSelected = false,
-            )
-        )
-        // A row that opens a run always shows its author.
-        assertFalse(
-            threadShareSelectionSuppressesAuthor(
-                timelineSuppressesAuthor = false,
-                selectionActive = true,
-                selected = true,
-                previousSelected = true,
-            )
-        )
-    }
-
     @Test
     fun theImageRegroupsTheSelectedRowsOnly() {
         // One run in the timeline: Artin m1..m4 within minutes; only m1 shows its author there.

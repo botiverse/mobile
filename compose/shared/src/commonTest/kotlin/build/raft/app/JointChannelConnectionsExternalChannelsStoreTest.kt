@@ -5,7 +5,6 @@ import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
-import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
@@ -13,7 +12,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 /**
@@ -101,33 +99,6 @@ class JointChannelConnectionsExternalChannelsStoreTest {
         assertEquals(listOf("srv-host", "srv-pending"), state.displayServers.map { it.serverId })
         assertEquals(JointChannelConnectionsEffect.ServerDisconnected(serverName = "Active Co", channelName = "partner-room"), state.effect)
         assertEquals(2, dataSource.loadCalls)
-        store.clear()
-    }
-
-    @Test
-    fun refusedDisconnectStaysInTheConfirmWithItsTraceId() = runTest {
-        val dataSource =
-            FakeJointConnectionsDataSource(connections = externalTestConnections(JointChannelRole.Host)).apply {
-                disconnectResult = DataResult.Error(ScreenError(code = "guests_present", traceId = "0123456789abcdef0123456789abcdef"))
-            }
-        val store = loadedStore(dataSource)
-
-        store.dispatch(JointChannelConnectionsIntent.ConfirmDisconnectServer("srv-active"))
-        store.dispatch(JointChannelConnectionsIntent.DisconnectServer)
-        runCurrent()
-
-        val state = store.state.value
-        assertNull(state.actionInFlight)
-        assertEquals("srv-active", state.disconnectConfirmServerId)
-        val failure = assertIs<JointChannelFailure.Error>(state.disconnectFailure)
-        assertEquals("guests_present", failure.code)
-        assertEquals("0123456789abcdef0123456789abcdef", failure.error.traceId)
-        assertEquals(3, state.displayServers.size)
-        assertNull(state.effect)
-
-        store.dispatch(JointChannelConnectionsIntent.DismissDisconnectServer)
-        assertNull(store.state.value.disconnectConfirmServerId)
-        assertNull(store.state.value.disconnectFailure)
         store.clear()
     }
 

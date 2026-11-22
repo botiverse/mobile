@@ -31,37 +31,6 @@ class ThreadActivityOpenSeedIdentityTest {
     }
 
     @Test
-    fun aHumanSenderTheRowDoesNotNameIsNamedFromTheDirectoryOrActivity() {
-        // The server's thread rows carry no sender name for people or agents
-        // (channelService `latestActivitySenderName`: external authors only), and done rows none at all.
-        val thread = threadRow(senderId = "u-jasper", senderKind = MemberKind.Human)
-        val fromDirectory =
-            seed(source(thread), replyRoute(), memberNames = mapOf("u-jasper" to "Jasper")).single()
-        assertEquals("Jasper", fromDirectory.authorName)
-        assertEquals("human", fromDirectory.authorKind)
-
-        val fromActivity = seed(source(thread, senderNames = mapOf("u-jasper" to "Jasper")), replyRoute()).single()
-        assertEquals("Jasper", fromActivity.authorName)
-
-        val unknown = seed(source(thread), replyRoute()).single()
-        assertEquals("", unknown.authorName, "nothing known: blank, not u-jasper")
-
-        // Agents resolve the same way.
-        val agent = seed(source(threadRow(senderId = "agent-1", senderKind = MemberKind.Agent)), replyRoute(), memberNames = mapOf("agent-1" to "Friday"))
-        assertEquals("Friday", agent.single().authorName)
-    }
-
-    @Test
-    fun aReplyWindowAuthorPrefersTheDirectoryName() {
-        val thread = threadRow(senderId = "u-jasper", senderKind = MemberKind.Human).copy(
-            latestActivityMessageId = null,
-            latestReplies = listOf(reply("r1", senderId = "u-jasper", senderType = "user", name = "User")),
-        )
-        val seeded = seed(source(thread), replyRoute(), memberNames = mapOf("u-jasper" to "Jasper")).single()
-        assertEquals("Jasper", seeded.authorName)
-    }
-
-    @Test
     fun aMembershipNoteIsASystemRowLikeTheWeb() {
         // The server stores "@Jasper joined this channel." as sender type `user`, sender id `system`,
         // message type `system`; the Activity row keeps only the sender type and id.

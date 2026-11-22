@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
-import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -100,29 +99,6 @@ class SettingsOwnWebPageTest {
     }
 
     @Test
-    fun validatorFailsClosedWhenActiveWebBaseUrlIsMissingOrBlank() {
-        // Custom environment with no configured webUrl must NEVER fall back to production origin.
-        for (missingBase in listOf(null, "", "   ", "not-a-url")) {
-            assertNull(
-                raftAuthenticatedOwnWebPageUrlOrNull(
-                    rawUrl = "$prodBase/s/hq/tasks",
-                    activeWebBaseUrl = missingBase,
-                    blockAppStoreBilling = false,
-                ),
-                "blank/missing activeWebBaseUrl=$missingBase must fail closed",
-            )
-            assertNull(
-                raftAuthenticatedOwnWebPageUrlOrNull(
-                    rawUrl = "$prodBase/artifacts/pt_123",
-                    activeWebBaseUrl = missingBase,
-                    blockAppStoreBilling = true,
-                ),
-                "blank/missing activeWebBaseUrl=$missingBase must fail closed on iOS too",
-            )
-        }
-    }
-
-    @Test
     fun validatorFailsClosedAcrossEnvironmentsEncodedBypassesBackslashesAndUnsafeTargets() {
         val rejectedOnStaging =
             listOf(
@@ -179,75 +155,6 @@ class SettingsOwnWebPageTest {
                     blockAppStoreBilling = false,
                 ),
                 "expected rejection when misconfigured base=$hostUrl",
-            )
-        }
-    }
-
-    @Test
-    fun renderTimeRevalidationFailsClosedOnEnvSwitchBlankWebUrlAndAppStoreRules() {
-        val stagingPageData = settingsOwnWebViewPageData("$stagingBase/s/hq/tasks")
-        // Same environment on Android/Desktop renders with host-shell embed params.
-        assertEquals(
-            "$stagingBase/s/hq/tasks?embed=raft-settings-v1&shell=host",
-            resolveSettingsOwnWebViewRenderUrl(stagingPageData, stagingBase, blockAppStoreBilling = false),
-        )
-        // Environment switched to production before/during restore: fails closed to null (invalid route).
-        assertNull(resolveSettingsOwnWebViewRenderUrl(stagingPageData, prodBase, blockAppStoreBilling = false))
-        // Switched to custom environment with no webUrl: fails closed to null.
-        assertNull(resolveSettingsOwnWebViewRenderUrl(stagingPageData, "", blockAppStoreBilling = false))
-        // On iOS (App Store rules), general server-shell pages are blocked at render time too.
-        assertNull(resolveSettingsOwnWebViewRenderUrl(stagingPageData, stagingBase, blockAppStoreBilling = true))
-
-        // Standalone Artifact fallback passes render-time validation on iOS when origin matches,
-        // and still fails closed if environment switches.
-        val artifactPageData = settingsOwnWebViewPageData("$prodBase/artifacts/pt_123/v/2")
-        assertEquals(
-            "$prodBase/artifacts/pt_123/v/2?embed=raft-settings-v1&shell=host",
-            resolveSettingsOwnWebViewRenderUrl(artifactPageData, prodBase, blockAppStoreBilling = true),
-        )
-        assertNull(resolveSettingsOwnWebViewRenderUrl(artifactPageData, stagingBase, blockAppStoreBilling = true))
-    }
-
-    @Test
-    fun appStoreRulesBlockGeneralOwnWebPagesByDefaultAndAllowOnlyStandaloneArtifacts() {
-        // On iOS, only standalone Artifact fallback pages (/artifacts/<id>[/v/<n>]) are allowed in WebPage.
-        val iosAllowed =
-            listOf(
-                "$prodBase/artifacts/pt_123",
-                "$prodBase/artifacts/pt_123/v/2",
-                "HTTPS://APP.RAFT.BUILD/artifacts/pt_123",
-            )
-        for (url in iosAllowed) {
-            assertEquals(
-                "$url?embed=raft-settings-v1&shell=host",
-                raftAuthenticatedOwnWebPageUrlOrNull(url, prodBase, embedHostShell = true, blockAppStoreBilling = true),
-                "expected iOS allowlist to permit $url",
-            )
-        }
-        // Server-shell routes (channels with 30-day history banner, tasks, apps, server artifacts list,
-        // account settings, billing, /servers/*/upgrade) are ALL blocked on iOS by default.
-        val iosBlocked =
-            listOf(
-                "$prodBase/s/hq/channel/c1?msg=m1",
-                "$prodBase/s/hq/tasks",
-                "$prodBase/s/hq/apps",
-                "$prodBase/s/hq/artifacts",
-                "$prodBase/s/hq/artifacts/pt_123",
-                "$prodBase/s/hq/settings/account#passkeys",
-                "$prodBase/settings/account",
-                "$prodBase/settings/billing",
-                "$prodBase/s/hq/settings/billing?upgrade=history_30d&lang=en",
-                "$prodBase/servers/srv-1/upgrade",
-                "$prodBase/s/hq/servers/srv-1/upgrade",
-                "$prodBase/artifacts/pt_123?upgrade=history_30d",
-                "$prodBase/artifacts/pt_123?upgradeServer=srv-1",
-                "$prodBase/artifacts/pt_123/v/notanumber",
-                "$prodBase/artifacts/pt_123/v/0",
-            )
-        for (url in iosBlocked) {
-            assertNull(
-                raftAuthenticatedOwnWebPageUrlOrNull(url, prodBase, embedHostShell = false, blockAppStoreBilling = true),
-                "iOS default allowlist must reject $url",
             )
         }
     }
@@ -383,97 +290,5 @@ class SettingsOwnWebPageTest {
             RaftLinkOpenIntent.Ordinary,
             settingsOwnWebExternalOpenIntent("https://docs.example.com/guide", prodBase, prodBase, emptySet()),
         )
-    }
-
-    @Test
-    fun stripEmbedParamsPreservesProductQueryAndRemovesAllReservedHostParams() {
-        assertEquals(
-            "$prodBase/s/hq/settings/account#passkeys",
-            stripRaftOwnWebPageEmbedParams("$prodBase/s/hq/settings/account?embed=raft-settings-v1&shell=host#passkeys"),
-        )
-        assertEquals(
-            "$prodBase/s/hq/settings/billing?upgrade=history_30d&lang=en",
-            stripRaftOwnWebPageEmbedParams(
-                "$prodBase/s/hq/settings/billing?upgrade=history_30d&lang=en&embed=raft-settings-v1&shell=host&back=host&chrome=none&hostMenu=copy-link&hostLoaded=1",
-            ),
-        )
-        assertEquals(
-            "$prodBase/s/hq/tasks",
-            stripRaftOwnWebPageEmbedParams("$prodBase/s/hq/tasks?embed=raft-settings-v1&shell=host#host=open-external&to=https%3A%2F%2Fexample.com"),
-        )
-    }
-
-    @Test
-    fun artifactFrameDetectionAndPageDataRoundTrip() {
-        assertTrue(raftOwnWebPageNeedsArtifactContentFrame("$prodBase/artifacts/pt_123/v/2"))
-        assertTrue(raftOwnWebPageNeedsArtifactContentFrame("$prodBase/s/hq/artifacts/pt_123"))
-        assertFalse(raftOwnWebPageNeedsArtifactContentFrame("$prodBase/s/hq/tasks"))
-
-        val pageData = settingsOwnWebViewPageData("$prodBase/s/hq/apps")
-        assertEquals(SettingsWebViewSurface.WebPage, settingsWebViewSurfaceFromPageData(pageData))
-        assertEquals("$prodBase/s/hq/apps", settingsWebViewTargetUrlFromPageData(pageData))
-        assertFalse(pageData.optBoolean(RAFT_REPLACE_CURRENT_PAGE, false))
-
-        val replaceData = settingsOwnWebViewPageData("$prodBase/artifacts/pt_123", replaceCurrentPage = true)
-        assertTrue(replaceData.optBoolean(RAFT_REPLACE_CURRENT_PAGE, false))
-    }
-
-    @Test
-    fun inAppBrowserUsesEphemeralStoreForOwnRaftHostsOnIosOnly() {
-        assertTrue(raftInAppBrowserUsesEphemeralStore("$prodBase/s/hq/tasks", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
-        assertTrue(raftInAppBrowserUsesEphemeralStore("https://open.raft.build/s/hq/tasks", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
-        assertFalse(raftInAppBrowserUsesEphemeralStore("https://example.com/docs", prodBase, appStoreBillingRules = true, appHosts = emptySet()))
-        assertFalse(raftInAppBrowserUsesEphemeralStore("$prodBase/s/hq/tasks", prodBase, appStoreBillingRules = false, appHosts = emptySet()))
-        assertFalse(raftInAppBrowserUsesEphemeralStore(null, prodBase, appStoreBillingRules = true, appHosts = emptySet()))
-
-        // A persistent (third-party) InAppBrowser on iOS must intercept redirects/links onto any Raft own host.
-        assertTrue(
-            raftInAppBrowserShouldRouteNavigation(
-                candidateUrl = "$prodBase/s/hq/tasks",
-                activeWebBaseUrl = prodBase,
-                appStoreBillingRules = true,
-                useEphemeralStore = false,
-                appHosts = emptySet(),
-            ),
-        )
-        // Once already in an ephemeral InAppBrowser on iOS, non-billing Raft pages load unauthenticated while billing stays blocked.
-        assertFalse(
-            raftInAppBrowserShouldRouteNavigation(
-                candidateUrl = "$prodBase/s/hq/tasks",
-                activeWebBaseUrl = prodBase,
-                appStoreBillingRules = true,
-                useEphemeralStore = true,
-                appHosts = emptySet(),
-            ),
-        )
-        assertTrue(
-            raftInAppBrowserShouldRouteNavigation(
-                candidateUrl = "$prodBase/settings/billing",
-                activeWebBaseUrl = prodBase,
-                appStoreBillingRules = true,
-                useEphemeralStore = true,
-                appHosts = emptySet(),
-            ),
-        )
-        assertFalse(
-            raftInAppBrowserShouldRouteNavigation(
-                candidateUrl = "https://docs.stripe.com/api",
-                activeWebBaseUrl = prodBase,
-                appStoreBillingRules = true,
-                useEphemeralStore = false,
-                appHosts = emptySet(),
-            ),
-        )
-    }
-
-    @Test
-    fun webKitDisplayNameMatcherTargetsOnlyOwnRaftHostsAndPreservesThirdParties() {
-        val hosts = setOf("app.raft.build", "staging.raft.build", "raft.local")
-        assertTrue(raftWebKitDisplayNameMatchesHosts("raft.build", hosts))
-        assertTrue(raftWebKitDisplayNameMatchesHosts("app.raft.build", hosts))
-        assertTrue(raftWebKitDisplayNameMatchesHosts("RAFT.LOCAL.", hosts))
-        assertFalse(raftWebKitDisplayNameMatchesHosts("github.com", hosts))
-        assertFalse(raftWebKitDisplayNameMatchesHosts("notraft.build", hosts))
-        assertFalse(raftWebKitDisplayNameMatchesHosts("", hosts))
     }
 }

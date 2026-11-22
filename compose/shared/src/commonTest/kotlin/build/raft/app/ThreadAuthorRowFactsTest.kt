@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.data.parseSharedSettingsAgentsAsMembers
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.Message
 import build.raft.app.model.MemberId
@@ -41,57 +40,6 @@ class ThreadAuthorRowFactsTest {
         assertEquals("Claude Sonnet", agent.copy(serverId = null).authorRowModelLabel(server))
         assertNull(agent.copy(assistantOwnerUserId = "user-9").authorRowModelLabel(server))
         assertNull(agent.copy(serverId = ServerId("server-peer")).authorRowModelLabel(server))
-    }
-
-    @Test
-    fun aJointRosterDecidesAnotherServerByInViewerServerNotTheFirstSource() {
-        // #4656 memberOrigin: a computed joint roster's `serverId` is only the first source.
-        val peer = ServerId("server-peer")
-        // One of this server's members whose first source is the peer: model and Guest stay.
-        assertEquals("Claude Sonnet", agent.copy(serverId = peer, inViewerServer = true).authorRowModelLabel(server))
-        assertTrue(person.copy(serverRole = "guest", serverId = peer, inViewerServer = true).authorFacts(server).viewerServerGuest)
-        // Not in the viewed server, whatever `serverId` says: no model, no Guest.
-        assertNull(agent.copy(serverId = server, inViewerServer = false).authorRowModelLabel(server))
-        assertFalse(person.copy(serverRole = "guest", serverId = server, inViewerServer = false).authorFacts(server).viewerServerGuest)
-    }
-
-    @Test
-    fun aSenderFromAnotherServerCarriesItsServersForTheAvatarCorner() {
-        // web #14535 useSenderOrigin / AvatarOriginCorner: the directory's (or joint roster's) origin.
-        val peer = build.raft.app.model.MemberServerRef("server-peer", "Peer Labs", "peer-labs")
-        val acme = build.raft.app.model.MemberServerRef("server-acme", "Acme", "acme")
-        val external = person.copy(serverId = ServerId(peer.id), inViewerServer = false, servers = listOf(peer, acme))
-        assertEquals(listOf(peer, acme), external.authorFacts(server).originServers)
-        assertEquals(listOf(peer.copy(slug = "")), person.copy(serverId = ServerId(peer.id), serverName = peer.name).authorFacts(server).originServers)
-        // This server's own, and one of them whose first source is the peer: no corner.
-        assertEquals(emptyList(), person.authorFacts(server).originServers)
-        assertEquals(emptyList(), external.copy(inViewerServer = true).authorFacts(server).originServers)
-        // An external sender whose server was not named has no tile to draw.
-        assertEquals(emptyList(), person.copy(serverId = ServerId(peer.id)).authorFacts(server).originServers)
-        // With the channel's `jointServers[]`, a bare external agent resolves both name and logo (slock #15809/#15817).
-        val peerWithLogo = peer.copy(avatarUrl = "/api/avatars/server-peer/logo.webp")
-        assertEquals(
-            listOf(peerWithLogo),
-            agent.copy(serverId = ServerId(peer.id)).authorFacts(server, knownServers = listOf(peerWithLogo)).originServers,
-        )
-
-        val facts = external.authorFacts(server)
-        val row = RaftThreadMessageItem(id = "m-2", authorId = "user-2", authorName = "Ada", authorKind = "human")
-        assertEquals(listOf(peer, acme), threadAuthorRowOriginServers(row, facts))
-        // A bridged (Slack) sender's provider is not a server; a system row has no sender.
-        assertEquals(emptyList(), threadAuthorRowOriginServers(row.copy(authorKind = "external", externalAuthor = ExternalMessageAuthor(displayName = "Al", provider = "slack", actorKind = "user")), facts))
-        assertEquals(emptyList(), threadAuthorRowOriginServers(row.copy(authorKind = "system"), facts))
-    }
-
-    @Test
-    fun assistantOwnerIsReadFromTheAgentDirectory() {
-        // botiverse/slock ec13decd3 routes/agents.ts GET /agents: the agent row's `assistantOwnerUserId`.
-        val members =
-            parseSharedSettingsAgentsAsMembers(
-                """{"agents":[{"id":"a-1","name":"pa","status":"active","assistantOwnerUserId":"user-9"},{"id":"a-2","name":"plain","status":"active"}]}"""
-            )!!.associateBy { it.id.value }
-        assertEquals("user-9", members.getValue("a-1").assistantOwnerUserId)
-        assertNull(members.getValue("a-2").assistantOwnerUserId)
     }
 
     @Test

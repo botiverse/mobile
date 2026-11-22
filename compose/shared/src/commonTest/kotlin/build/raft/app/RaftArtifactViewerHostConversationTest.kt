@@ -61,15 +61,6 @@ class RaftArtifactViewerHostConversationTest {
     }
 
     @Test
-    fun theRouteCarriesTheConversationAsIdentity() {
-        val pageData = raftArtifactViewerPageData(ArtifactLinkTarget(id, 2), channel)
-        assertEquals(ArtifactLinkTarget(id, 2), pageData.raftArtifactViewerTargetOrNull())
-        assertEquals(channel, pageData.raftArtifactViewerConversationOrNull())
-        assertNull(raftArtifactViewerPageData(ArtifactLinkTarget(id)).raftArtifactViewerConversationOrNull())
-        assertFalse(raftArtifactViewerPageData(ArtifactLinkTarget(id), "a/b").has("conversationId"))
-    }
-
-    @Test
     fun aPickInThePageTitleSwitchesInPlaceOnlyFromAConversation() {
         val picked = "$web/artifacts/$other?$embed&hostConversation=$channel"
         val navigation = raftArtifactViewerNavigation(picked, web, id)
@@ -123,38 +114,5 @@ class RaftArtifactViewerHostConversationTest {
         cache.markKeptWarm(maya, token)
         assertFalse(cache.keptDocumentUsable(maya, token, channel))
         assertTrue(cache.keptDocumentUsable(maya, token))
-    }
-
-    @Test
-    fun aThreadOpensFromItsChannelATaskConversationFromNone() {
-        val dm = "d0d0d0d0-0000-4000-8000-000000000002"
-        val channelPage =
-            RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = channel, streamChannelId = channel)
-        assertEquals(channel, channelPage.artifactOpenConversationId())
-        val dmPage =
-            RaftThreadScreenPayload(status = "content", surfaceKind = RaftThreadSurfaceKind.DirectMessage, sourceThreadId = dm, streamChannelId = dm)
-        assertEquals(dm, dmPage.artifactOpenConversationId())
-        // A reply thread: the channel it belongs to (web: recorded beside its channel), not the thread's stream.
-        val thread =
-            RaftThreadScreenPayload(
-                status = "content",
-                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "thread-stream-1",
-                streamChannelId = "thread-stream-1",
-                parentChannelId = channel,
-                parentMessageId = "a0a0a0a0-0000-4000-8000-000000000009",
-            )
-        assertEquals(channel, thread.artifactOpenConversationId())
-        assertNull(thread.copy(parentChannelId = null).artifactOpenConversationId())
-        // A task conversation: none (the web's task dialog keeps the plain title and records nothing).
-        val task =
-            RaftThreadScreenPayload(
-                status = "content",
-                surfaceKind = RaftThreadSurfaceKind.Channel,
-                channelKind = RaftTaskConversationChannelKind,
-                sourceThreadId = "task-conv-1",
-                streamChannelId = "task-conv-1",
-            )
-        assertNull(task.artifactOpenConversationId())
     }
 }

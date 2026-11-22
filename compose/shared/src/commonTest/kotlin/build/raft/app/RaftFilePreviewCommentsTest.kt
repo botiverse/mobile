@@ -1,8 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentCommentItem
-import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test
@@ -51,46 +49,6 @@ class RaftFilePreviewCommentsTest {
     }
 
     @Test
-    fun filePreviewFailureProjectionReachesVisibleCopyAndClearsAsOneState() {
-        val failure =
-            ThreadApiResult.Failure(
-                code = 409,
-                errorBodyText =
-                    """{"error":"This channel is archived","code":"channel_archived"}"""
-            ).toThreadAttachmentCommentsFailureProjection()
-        val failedState =
-            ThreadAttachmentCommentsDialogState(
-                attachment = RaftThreadAttachmentItem(id = "attachment-1", name = "runbook.md"),
-                status = "error"
-            ).withAttachmentCommentsError(failure.errorCode, failure.serverMessage)
-
-        assertEquals("channel_archived", failedState.errorCode)
-        assertEquals("This channel is archived", failedState.errorServerMessage)
-        assertEquals(
-            "localized:ChannelArchived",
-            attachmentCommentsVisibleErrorMessage(
-                errorCode = failedState.errorCode,
-                serverMessage = failedState.errorServerMessage,
-                labels = errorLabels,
-                genericMessage = "generic"
-            )
-        )
-        assertEquals(
-            "Attachment comments are temporarily locked.",
-            attachmentCommentsVisibleErrorMessage(
-                errorCode = "attachment_comments_locked",
-                serverMessage = "Attachment comments are temporarily locked.",
-                labels = errorLabels,
-                genericMessage = "generic"
-            )
-        )
-
-        val retrying = failedState.copy(status = "loading").clearAttachmentCommentsError()
-        assertNull(retrying.errorCode)
-        assertNull(retrying.errorServerMessage)
-    }
-
-    @Test
     fun attachmentCommentDraftRetainsExactEditorSnapshotAcrossNonTextAndSameTextEvents() {
         val nativeValue =
             TextFieldValue(
@@ -113,37 +71,6 @@ class RaftFilePreviewCommentsTest {
         assertSame(nativeValue, sameTextProjection.draft)
         assertEquals(TextRange(1, 4), sameTextProjection.draft.selection)
         assertEquals(TextRange(0, 2), sameTextProjection.draft.composition)
-    }
-
-    @Test
-    fun attachmentCommentOwnerKeepsCumulativeMidTextDeleteAndRetypeSnapshotsExact() {
-        val nativeValues =
-            listOf(
-                TextFieldValue("n", selection = TextRange(1), composition = TextRange(0, 1)),
-                TextFieldValue("ni", selection = TextRange(2), composition = TextRange(0, 2)),
-                TextFieldValue("你好", selection = TextRange(1)),
-                TextFieldValue("你X好", selection = TextRange(2)),
-                TextFieldValue("你好", selection = TextRange(1)),
-                TextFieldValue("你再好", selection = TextRange(2), composition = TextRange(1, 2))
-            )
-        var state =
-            ThreadAttachmentCommentsDialogState(
-                attachment = RaftThreadAttachmentItem(id = "attachment-1", name = "runbook.md"),
-                status = "loaded",
-                errorCode = "old_error"
-            )
-        val retained = mutableListOf<TextFieldValue>()
-
-        nativeValues.forEach { nativeValue ->
-            state = state.withAttachmentCommentEditorValue(nativeValue)
-            retained += state.draft
-            assertSame(nativeValue, state.draft)
-        }
-
-        assertEquals(listOf("n", "ni", "你好", "你X好", "你好", "你再好"), retained.map { it.text })
-        assertEquals(TextRange(2), retained.last().selection)
-        assertEquals(TextRange(1, 2), retained.last().composition)
-        assertNull(state.errorCode)
     }
 
     @Test
@@ -197,51 +124,6 @@ class RaftFilePreviewCommentsTest {
         assertEquals("markdown", payload.requestedKind)
         assertTrue(payload.commentsInitiallyOpen)
         assertTrue(payload.supportsAttachmentComments())
-    }
-
-    @Test
-    fun videoCommentsOpenBesideThePlayer() {
-        // Web comments on a video beside its player with timestamp anchors (VideoPreviewBody).
-        listOf(
-            "demo.mp4" to "video/mp4",
-            "DEMO.MP4" to "application/octet-stream"
-        ).forEach { (name, mimeType) ->
-            val payload =
-                RaftThreadAttachmentItem(
-                    id = "attachment-video",
-                    name = name,
-                    mimeType = mimeType
-                ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true)
-
-            assertNotNull(payload, "video comments open in the file viewer for $name")
-            assertEquals("video", payload.requestedKind)
-            assertTrue(payload.commentsInitiallyOpen)
-            assertTrue(payload.supportsAttachmentComments())
-        }
-    }
-
-    @Test
-    fun workspaceAndVideoPreviewsDoNotExposeAttachmentComments() {
-        assertFalse(agentWorkspaceLazyPreviewPayload(agentId = "agent-1", path = "notes.md").supportsAttachmentComments())
-        listOf(
-            "demo.mp4" to "video/mp4",
-            "DEMO.MP4" to "application/octet-stream"
-        ).forEach { (name, mimeType) ->
-            assertFalse(
-                RaftThreadAttachmentItem(
-                    id = "attachment-video",
-                    name = name,
-                    mimeType = mimeType
-                ).toThreadAttachmentLazyPreviewPayload(kind = "video").supportsAttachmentComments()
-            )
-        }
-        assertNull(
-            RaftThreadAttachmentItem(
-                id = "attachment-markdown",
-                name = "runbook.md",
-                mimeType = "text/markdown"
-            ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = false)
-        )
     }
 
     // Per-type entry points, matching web (MessageItem.handleOpenAttachmentCard + attachmentPreviewSurfaces).

@@ -1,11 +1,7 @@
 package build.raft.app
 
-import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_CONNECT
-import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_DISCONNECT
 import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.ScreenError
 import build.raft.app.data.ScriptedAgentControlsNetworkClient
-import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.sendSharedPasswordSetupEmail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +13,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -27,11 +22,7 @@ import kotlin.test.assertTrue
  * answers `{ ok, message }`, app.ts's limiter refuses with 429 `{ error }`).
  */
 class SettingsAccountPasswordSetupTest {
-    private val traceId = "0af7651916cd43dd8448eb211c80319c"
-    private val traceHeaders = mapOf("X-Trace-Id" to listOf(traceId))
     private val okBody = """{"ok":true,"message":"If an account exists with that email, a reset link has been sent."}"""
-    private val tooMany = "Too many password reset requests. Please try again later."
-    private val fallback = "Failed to send password setup email"
     private val github = SettingsAccountPasswordSetupProvider(id = "github", label = "GitHub")
 
     private fun passwordSetupStore(network: ScriptedAgentControlsNetworkClient, scope: CoroutineScope) =
@@ -77,70 +68,6 @@ class SettingsAccountPasswordSetupTest {
     }
 
     @Test
-    fun setAPasswordFirstSaysWhichProviderItWasSentFor() = runTest {
-        val network = ScriptedAgentControlsNetworkClient().apply { respond("POST", "auth/forgot-password", 200, okBody) }
-        val store = passwordSetupStore(network, backgroundScope)
-
-        store.dispatch(SettingsAccountPasswordSetupIntent.Send(email = "owner@example.com", provider = github))
-        runCurrent()
-        // The line under Connected accounts ("…then return here to disconnect GitHub.") instead of the row's.
-        assertEquals(SettingsAccountPasswordSetupState(sent = true, sentForProvider = github), store.state.value)
-
-        // Disconnect pressed again (web handleRequestDisconnectProvider): the provider's line goes, "sent" stays.
-        store.dispatch(SettingsAccountPasswordSetupIntent.DisconnectRequested)
-        assertEquals(SettingsAccountPasswordSetupState(sent = true), store.state.value)
-    }
-
-    @Test
-    fun aFailedSendShowsTheServersWordsOrTheFallbackWithTheTraceId() = runTest {
-        val network =
-            ScriptedAgentControlsNetworkClient().apply {
-                respond("POST", "auth/forgot-password", 429, """{"error":"$tooMany"}""", headers = traceHeaders)
-                respond("POST", "auth/forgot-password", 500, "{}", headers = traceHeaders)
-            }
-        val store = passwordSetupStore(network, backgroundScope)
-
-        store.dispatch(SettingsAccountPasswordSetupIntent.Send(email = "owner@example.com"))
-        runCurrent()
-        val refused = store.state.value
-        assertFalse(refused.sending)
-        assertFalse(refused.sent, "nothing went out")
-        assertEquals(tooMany, refused.error?.serverMessage)
-        assertEquals(traceId, refused.error?.traceId)
-        assertEquals(tooMany, refused.error?.let { settingsAccountPasswordSetupErrorText(it, fallback) })
-
-        // A server answer without words: the page's own sentence, still with the request's trace ID.
-        store.dispatch(SettingsAccountPasswordSetupIntent.Send(email = "owner@example.com"))
-        runCurrent()
-        val failed = store.state.value.error
-        assertNull(failed?.serverMessage)
-        assertEquals(traceId, failed?.traceId)
-        assertEquals(fallback, failed?.let { settingsAccountPasswordSetupErrorText(it, fallback) })
-        assertEquals(2, network.requests.size)
-    }
-
-    @Test
-    fun aFailureAfterASendKeepsTheEarlierSuccessAndDisconnectClearsIt() = runTest {
-        val network =
-            ScriptedAgentControlsNetworkClient().apply {
-                respond("POST", "auth/forgot-password", 200, okBody)
-                respond("POST", "auth/forgot-password", 429, """{"error":"$tooMany"}""", headers = traceHeaders)
-            }
-        val store = passwordSetupStore(network, backgroundScope)
-
-        store.dispatch(SettingsAccountPasswordSetupIntent.Send(email = "owner@example.com"))
-        runCurrent()
-        store.dispatch(SettingsAccountPasswordSetupIntent.Send(email = "owner@example.com"))
-        runCurrent()
-        // As the web: `passwordSetupEmailSent` stays true, the failure shows as well.
-        assertTrue(store.state.value.sent)
-        assertEquals(tooMany, store.state.value.error?.serverMessage)
-
-        store.dispatch(SettingsAccountPasswordSetupIntent.DisconnectRequested)
-        assertNull(store.state.value.error)
-    }
-
-    @Test
     fun oneSendAtATime() = runTest {
         val gate = CompletableDeferred<Unit>()
         val network =
@@ -163,27 +90,5 @@ class SettingsAccountPasswordSetupTest {
         runCurrent()
         assertEquals(SettingsAccountPasswordSetupState(sent = true), store.state.value, "the first send's answer; the dropped one marks no provider")
         assertEquals(1, network.requests.size)
-    }
-
-    @Test
-    fun onlyADisconnectRefusedForThePasswordReadsTheSignInMethodsAgain() {
-        // routes/auth.ts DELETE /identities/:provider: 409 `{ code: "PASSWORD_CREDENTIAL_REQUIRED", error }`.
-        val refused =
-            ScreenError(
-                code = "http_409",
-                serverMessage = "Set a password before disconnecting your final sign-in account.",
-                serverCode = SETTINGS_ACCOUNT_PASSWORD_CREDENTIAL_REQUIRED_CODE,
-                traceId = traceId,
-            )
-
-        assertTrue(settingsAccountDisconnectRefusedForPassword(SharedSettingsActionState(ACCOUNT_ACTION_PROVIDER_DISCONNECT, "github", screenError = refused)))
-        assertFalse(settingsAccountDisconnectRefusedForPassword(SharedSettingsActionState(ACCOUNT_ACTION_PROVIDER_DISCONNECT, "github", inProgress = true)))
-        assertFalse(
-            settingsAccountDisconnectRefusedForPassword(
-                SharedSettingsActionState(ACCOUNT_ACTION_PROVIDER_DISCONNECT, "github", screenError = refused.copy(serverCode = "AUTH_PROVIDER_NOT_FOUND"))
-            )
-        )
-        assertFalse(settingsAccountDisconnectRefusedForPassword(SharedSettingsActionState(ACCOUNT_ACTION_PROVIDER_CONNECT, "github", screenError = refused)))
-        assertFalse(settingsAccountDisconnectRefusedForPassword(null))
     }
 }

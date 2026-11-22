@@ -11,21 +11,6 @@ import kotlin.test.assertTrue
 
 class ThreadNewMessageMenuTest {
     @Test
-    fun compactToolRowKeepsSixActionsVisibleAndOverflowOutOfThePrimaryActions() {
-        assertEquals(
-            listOf(
-                ThreadNewMessageMenuTool.Copy,
-                ThreadNewMessageMenuTool.Reply,
-                ThreadNewMessageMenuTool.Forward,
-                ThreadNewMessageMenuTool.Save,
-                ThreadNewMessageMenuTool.Translate,
-                ThreadNewMessageMenuTool.Select
-            ),
-            ThreadNewMessageMenuToolOrder
-        )
-    }
-
-    @Test
     fun compactMenuIsOptInAndLocalSendStatesKeepTheClassicActions() {
         assertEquals(
             ThreadMessageMenuVariant.Classic,

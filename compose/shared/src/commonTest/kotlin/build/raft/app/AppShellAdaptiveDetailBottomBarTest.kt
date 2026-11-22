@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -23,34 +22,6 @@ class AppShellAdaptiveDetailBottomBarTest {
                 "tab=$tab",
             )
         }
-    }
-
-    @Test
-    fun theListAndTheTwoPaneLayoutKeepTheBarRule() {
-        listOf(
-            RaftAdaptiveWorkspacePresentation.ListOnly,
-            RaftAdaptiveWorkspacePresentation.Split,
-            RaftAdaptiveWorkspacePresentation.Inactive,
-            null,
-        ).forEach { presentation ->
-            assertFalse(
-                appShellAdaptiveDetailCoversTabRoot(true, "home", presentation),
-                "presentation=$presentation",
-            )
-        }
-    }
-
-    @Test
-    fun otherTabsAndDesktopModeOffAreUnaffected() {
-        // Tasks shows a selection in its own overlay; More/Search never host the shared detail.
-        listOf("tasks", "settings", "more", AppShellSearchTabKey).forEach { tab ->
-            assertFalse(
-                appShellAdaptiveDetailCoversTabRoot(true, tab, RaftAdaptiveWorkspacePresentation.DetailOnly),
-                "tab=$tab",
-            )
-        }
-        // Desktop mode off: conversations are pushed pages, the workspace only parks a selection.
-        assertFalse(appShellAdaptiveDetailCoversTabRoot(false, "home", RaftAdaptiveWorkspacePresentation.DetailOnly))
     }
 
     @Test

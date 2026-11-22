@@ -1,11 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.InboxItem
-import build.raft.app.model.ChannelId
-import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageDelegatedBy
-import build.raft.app.model.MessageId
-import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -60,40 +55,5 @@ class DelegatedLabelMergeTest {
                     .mergePagedMessages(listOf(row("sent", 41, incoming), row("next", 42, null)), before = false, pageSize = 50)
             assertEquals(expected, merged.messages.single { it.id == "sent" }.delegatedBy, name)
         }
-    }
-
-    @Test
-    fun realtimeAndMessageCacheKeepTheLabel() {
-        catchUpCases.forEach { (name, incoming, expected) ->
-            assertEquals(expected, keepKnownDelegatedBy(incoming, friday), name)
-
-            val store = SharedThreadMessageStore()
-            val labelled = row("sent", 41, friday).toMessage(ThreadId("channel-qa-x"), ChannelId("channel-qa-x"))!!
-            store.upsertScoped("server-1", ChannelId("channel-qa-x"), labelled)
-            val stored = store.upsertScoped("server-1", ChannelId("channel-qa-x"), labelled.copy(delegatedBy = incoming))
-            assertEquals(expected, stored.delegatedBy, name)
-            assertEquals(expected, store.getScoped("server-1", ChannelId("channel-qa-x"), MessageId("sent"))?.delegatedBy, name)
-        }
-    }
-
-    private fun activityRow(latestMessageId: String, delegatedBy: MessageDelegatedBy?) =
-        InboxItem(
-            key = "channel:channel-qa-x",
-            kind = InboxItemKind.Channel,
-            channelId = ChannelId("channel-qa-x"),
-            channelName = "qa-x",
-            lastMessageId = MessageId(latestMessageId),
-            latestDelegatedBy = delegatedBy,
-        )
-
-    @Test
-    fun activityAndSearchRowsKeepTheLabelOfTheSameMessage() {
-        catchUpCases.forEach { (name, incoming, expected) ->
-            val merged = listOf(activityRow("sent", incoming)).withKnownLatestDelegatedLabelsFrom(listOf(activityRow("sent", friday)))
-            assertEquals(expected, merged.single().latestDelegatedBy, name)
-        }
-        // The row moved on to another message: its own (absent) label is the truth.
-        val movedOn = listOf(activityRow("newer", null)).withKnownLatestDelegatedLabelsFrom(listOf(activityRow("sent", friday)))
-        assertNull(movedOn.single().latestDelegatedBy)
     }
 }

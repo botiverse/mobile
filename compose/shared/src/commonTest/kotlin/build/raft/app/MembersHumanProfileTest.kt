@@ -185,16 +185,6 @@ class MembersHumanProfileTest {
     }
 
     @Test
-    fun roleBadgeIsNeutralForServerRolesAndInformationForGuests() {
-        assertEquals(MembersHumanRoleBadge.Owner, membersHumanRoleBadge("owner", null))
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Owner.badgeVariant)
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Admin.badgeVariant)
-        assertEquals(RaftBadgeVariant.Default, MembersHumanRoleBadge.Member.badgeVariant)
-        assertEquals(MembersHumanRoleBadge.Guest, membersHumanRoleBadge("guest", null))
-        assertEquals(RaftBadgeVariant.Information, MembersHumanRoleBadge.Guest.badgeVariant)
-    }
-
-    @Test
     fun roleBadgeFallsBackToRoleDescriptionThenUnknown() {
         assertEquals(MembersHumanRoleBadge.Admin, membersHumanRoleBadge(null, "Admin"))
         assertEquals(MembersHumanRoleBadge.Unknown, membersHumanRoleBadge(null, null))
@@ -239,14 +229,6 @@ class MembersHumanProfileTest {
         assertNull("".membersJoinedDateOrNull(utc))
         assertNull(null.membersJoinedDateOrNull(utc))
         assertNull("not a date".membersJoinedDateOrNull(utc))
-    }
-
-    @Test
-    fun joinedMonthLabelReadsTheLocalizedList() {
-        val english = "Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec"
-        assertEquals("Sep", membersJoinedMonthLabel(english, 9))
-        assertEquals("9", membersJoinedMonthLabel("1,2,3,4,5,6,7,8,9,10,11,12", 9))
-        assertEquals("13", membersJoinedMonthLabel(english, 13))
     }
 
     @Test

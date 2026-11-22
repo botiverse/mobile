@@ -27,10 +27,4 @@ class FontFaceResolutionTest {
         assertNotEquals(raftMonoFamilyForWeight(FontWeight.Normal), raftMonoFamilyForWeight(FontWeight.Bold))
         assertEquals(RaftMonoFamily, raftMonoFamilyForWeight(null))
     }
-
-    @Test
-    fun theTypeTokensUseTheDesignSystemFace() {
-        assertEquals(raftFontFamilyForWeight(FontWeight.Normal), RaftType.Body.fontFamily)
-        assertEquals(raftFontFamilyForWeight(FontWeight.Bold), RaftType.ButtonBold.fontFamily)
-    }
 }

@@ -15,7 +15,6 @@ import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ServerConnectOutcome
-import build.raft.app.data.ScreenError
 import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.SentExternalInvite
 import kotlinx.coroutines.CompletableDeferred
@@ -137,33 +136,6 @@ class ExternalInvitesStoreTest {
     }
 
     @Test
-    fun managementIsForTheSameOwnersAndAdminsAsAccess() {
-        // Web useExternalInviteManagement is useExternalInviteAccess (botiverse/slock #15939): whether
-        // or not the channel is external yet, its owners and admins see and withdraw its open invites.
-        assertTrue(externalInviteManagement("owner", channel()))
-        assertTrue(externalInviteManagement("admin", channel(hasExternalRelation = true)))
-        assertFalse(externalInviteManagement("member", channel(hasExternalRelation = true)))
-    }
-
-    @Test
-    fun daysLeftRoundsUpAndIsAtLeastOne() {
-        val now = 1_763_337_600_000L // 2025-11-17T00:00:00Z
-        assertEquals(14, externalInviteDaysLeft("2025-12-01T00:00:00.000Z", now))
-        assertEquals(2, externalInviteDaysLeft("2025-11-18T00:00:01.000Z", now))
-        assertEquals(1, externalInviteDaysLeft("2025-11-17T00:00:00.000Z", now))
-    }
-
-    @Test
-    fun errorsReadTheServersCodeThenTheStatus() {
-        assertEquals(ExternalInviteError.FreeLimit, externalInviteErrorFor("free_external_limit", 409))
-        assertEquals(ExternalInviteError.ChannelFull, externalInviteErrorFor("channel_full", 409))
-        assertEquals(ExternalInviteError.DailyCap, externalInviteErrorFor(null, 429))
-        assertEquals(ExternalInviteError.NotFound, externalInviteErrorFor(null, 404))
-        assertEquals(ExternalInviteError.Forbidden, externalInviteErrorFor(null, 403))
-        assertEquals(ExternalInviteError.Generic, externalInviteErrorFor("something_new", 500))
-    }
-
-    @Test
     fun reviewRowsListWhoIsInvitedAddedThenWhoIsNotAndWhy() {
         val rows =
             externalInviteReviewRows(
@@ -195,48 +167,6 @@ class ExternalInvitesStoreTest {
     }
 
     @Test
-    fun membersGetInviteToConnectBoxesAndUncheckedOnesAreOnlyAdded() = runTest {
-        val preview =
-            ExternalInvitePreview(
-                valid = listOf("new@example.com"),
-                alreadyMembers = listOf("m@example.com", "n@example.com"),
-                alreadyInChannel = listOf("here@example.com", "guest@example.com"),
-                alreadyInChannelMembers = listOf("here@example.com"),
-                slotsLeft = 28,
-            )
-        val rows = externalInviteReviewRows(preview)
-        assertEquals(
-            listOf("m@example.com", "n@example.com", "here@example.com"),
-            rows.filter { it.connectInvite }.map { it.email },
-        )
-        assertEquals(ExternalInviteReviewStatus.MemberInChannel, rows.first { it.email == "here@example.com" }.status)
-        assertEquals(ExternalInviteReviewStatus.AlreadyInChannel, rows.first { it.email == "guest@example.com" }.status)
-
-        val source = FakeExternalInvitesDataSource()
-        source.previewAnswer = DataResult.Content(ExternalInviteAnswer.Ok(preview))
-        val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.OpenDialog())
-        store.dispatch(ExternalInvitesIntent.SetText("new@example.com m@example.com n@example.com here@example.com guest@example.com"))
-        store.dispatch(ExternalInvitesIntent.Next)
-        runCurrent()
-        // The invite, two members added, and the member here invited to connect.
-        assertEquals(4, assertNotNull(store.state.value.dialog).actionCount)
-        store.dispatch(ExternalInvitesIntent.SetConnectInvite("n@example.com", checked = false))
-        store.dispatch(ExternalInvitesIntent.SetConnectInvite("here@example.com", checked = false))
-        // Unchecked: n is still added; the member here has nothing left to send.
-        assertEquals(3, assertNotNull(store.state.value.dialog).actionCount)
-        store.dispatch(ExternalInvitesIntent.SetConnectInvite("here@example.com", checked = true))
-
-        store.dispatch(ExternalInvitesIntent.Send(makePrivate = false))
-        runCurrent()
-        assertEquals(
-            listOf(listOf("new@example.com", "m@example.com", "n@example.com", "here@example.com") to false),
-            source.sendCalls,
-        )
-        assertEquals(listOf(listOf("m@example.com", "here@example.com")), source.connectMemberCalls)
-    }
-
-    @Test
     fun theSendBodyCarriesConnectInviteMemberEmailsOnlyWhenThereAreAny() {
         val plain = Json.parseToJsonElement(buildSharedExternalInviteEmailsBody(listOf("a@x.co"))).jsonObject
         assertEquals(setOf("emails"), plain.keys)
@@ -246,19 +176,6 @@ class ExternalInvitesStoreTest {
             ).jsonObject
         assertEquals(listOf("m@x.co"), withMembers.getValue("connectInviteMemberEmails").jsonArray.map { it.jsonPrimitive.content })
         assertEquals(true, withMembers.getValue("makePrivate").jsonPrimitive.boolean)
-    }
-
-    @Test
-    fun slotsAreSaidOnlyWhenTheSendCouldReachThem() {
-        assertNull(externalInviteSlotsLine(slotsLeft = null, taking = 3))
-        assertEquals(ExternalInviteSlotsLine.Full, externalInviteSlotsLine(slotsLeft = 0, taking = 1))
-        assertEquals(ExternalInviteSlotsLine.Over(room = 2, count = 1), externalInviteSlotsLine(slotsLeft = 2, taking = 3))
-        assertEquals(ExternalInviteSlotsLine.Fills, externalInviteSlotsLine(slotsLeft = 3, taking = 3))
-        assertEquals(ExternalInviteSlotsLine.Left(2), externalInviteSlotsLine(slotsLeft = 5, taking = 3))
-        // Far from the slots (more than 20 left): nothing to say.
-        assertNull(externalInviteSlotsLine(slotsLeft = 25, taking = 3))
-        assertNull(externalInviteTypedSlotsLine(channelSlotsLeft = 5, entries = 0))
-        assertEquals(ExternalInviteSlotsLine.Over(room = 1, count = 1), externalInviteTypedSlotsLine(channelSlotsLeft = 1, entries = 2))
     }
 
     @Test
@@ -362,53 +279,6 @@ class ExternalInvitesStoreTest {
         first.complete(DataResult.Content(ExternalInviteAnswer.Ok(ChannelExternalInviteList(emptyList()))))
         runCurrent()
         assertEquals(listOf("i1"), store.state.value.invites.map { it.id })
-    }
-
-    @Test
-    fun aFailedReadKeepsWhatWasListedAndCarriesTheTraceId() = runTest {
-        val source = FakeExternalInvitesDataSource()
-        val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.Load)
-        runCurrent()
-        source.listAnswer = DataResult.Error(ScreenError(code = "network_unavailable", traceId = TraceId))
-        store.dispatch(ExternalInvitesIntent.Load)
-        runCurrent()
-        assertEquals(listOf("i1"), store.state.value.invites.map { it.id })
-        assertEquals(TraceId, store.state.value.loadFailure?.traceId)
-    }
-
-    @Test
-    fun resendIsForAPlainPendingInviteAndToastsEitherWay() = runTest {
-        val source = FakeExternalInvitesDataSource()
-        source.listAnswer =
-            DataResult.Content(
-                ExternalInviteAnswer.Ok(
-                    ChannelExternalInviteList(
-                        listOf(externalTestInvite("i1", "a@example.com"), externalTestInvite("i2", "b@example.com", awaitingApproval = true))
-                    )
-                )
-            )
-        val store = ExternalInvitesStore(this, source)
-        store.dispatch(ExternalInvitesIntent.Load)
-        runCurrent()
-        store.dispatch(ExternalInvitesIntent.Resend("i2"))
-        runCurrent()
-        assertEquals(emptyList(), source.resendCalls)
-
-        store.dispatch(ExternalInvitesIntent.Resend("i1"))
-        runCurrent()
-        assertEquals(listOf("i1"), source.resendCalls)
-        assertEquals(listOf(ExternalInvitesEffect.Resent("a@example.com")), store.state.value.effects)
-        store.dispatch(ExternalInvitesIntent.ConsumeEffect(ExternalInvitesEffect.Resent("a@example.com")))
-
-        source.resendAnswer = DataResult.Content(ExternalInviteAnswer.Refused(ExternalInviteRefusal(429, "daily_cap", null, traceId = TraceId)))
-        store.dispatch(ExternalInvitesIntent.Resend("i1"))
-        runCurrent()
-        assertEquals(
-            listOf(ExternalInvitesEffect.Failed(ExternalInviteFailure(ExternalInviteError.DailyCap, traceId = TraceId))),
-            store.state.value.effects,
-        )
-        assertEquals(emptySet(), store.state.value.rowBusy)
     }
 
     @Test

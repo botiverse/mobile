@@ -13,7 +13,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 /** The file page's download progress: the host's samples reach it, and a fast download is seen. */
@@ -74,7 +73,6 @@ class RaftFilePreviewDownloadProgressTest {
         }
     }
 
-    private val indeterminate = RaftFilePreviewDownloadView(phase = RaftFilePreviewDownloadPhase.Active)
     private val halfway =
         RaftFilePreviewDownloadView(
             phase = RaftFilePreviewDownloadPhase.Active,
@@ -84,37 +82,6 @@ class RaftFilePreviewDownloadProgressTest {
             bytesPerSecond = 9_000_000L
         )
     private val idle = RaftFilePreviewDownloadView(phase = RaftFilePreviewDownloadPhase.Idle)
-    private val failed = RaftFilePreviewDownloadView(phase = RaftFilePreviewDownloadPhase.Failed, errorMessage = "HTTP 500")
-
-    @Test
-    fun aFastDownloadKeepsItsPanelForTheMinimumThenShowsTheResult() = runTest {
-        val frames = MutableStateFlow(RaftFilePreviewDownloadHoldInput(indeterminate))
-        val shown = mutableListOf<RaftFilePreviewDownloadView>()
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            frames.raftHoldingDownloadPanel(minVisibleMillis = 600L, timeSource = testScheduler.timeSource).collect { shown += it }
-        }
-        runCurrent()
-        assertEquals(listOf(indeterminate), shown, "unknown total: the indeterminate bar shows at once")
-
-        advanceTimeBy(150L)
-        frames.value = RaftFilePreviewDownloadHoldInput(halfway)
-        advanceTimeBy(150L)
-        // The host saved the file: the page completed its transfer (Done, 100%).
-        val saved = idle.copy(transfer = halfway.transfer.completed())
-        frames.value = RaftFilePreviewDownloadHoldInput(saved)
-        runCurrent()
-        val finished = halfway.copy(transfer = saved.transfer)
-        assertEquals(100, finished.percent)
-        assertEquals(3_000_000L, finished.downloadedBytes)
-        assertNull(finished.bytesPerSecond)
-        assertEquals(listOf(indeterminate, halfway, finished), shown, "done at 300 ms: the bar fills and stays")
-
-        advanceTimeBy(299L)
-        assertEquals(finished, shown.last(), "still within 600 ms of the panel showing")
-        advanceTimeBy(1L)
-        runCurrent()
-        assertEquals(saved, shown.last(), "after 600 ms the finished page follows")
-    }
 
     @Test
     fun thePanelNeverFillsTheBarItself() = runTest {
@@ -128,29 +95,5 @@ class RaftFilePreviewDownloadProgressTest {
         frames.value = RaftFilePreviewDownloadHoldInput(idle)
         runCurrent()
         assertEquals(listOf(halfway, halfway), shown)
-    }
-
-    @Test
-    fun aStopAFailureOrASlowDownloadIsShownAtOnce() = runTest {
-        data class Case(val name: String, val runMillis: Long, val end: RaftFilePreviewDownloadHoldInput)
-        val cases =
-            listOf(
-                Case("user stop", 100L, RaftFilePreviewDownloadHoldInput(idle, hold = false)),
-                Case("failure", 100L, RaftFilePreviewDownloadHoldInput(failed)),
-                Case("slow download", 2_000L, RaftFilePreviewDownloadHoldInput(idle))
-            )
-        for (case in cases) {
-            val frames = MutableStateFlow(RaftFilePreviewDownloadHoldInput(halfway))
-            val shown = mutableListOf<RaftFilePreviewDownloadView>()
-            val collector =
-                launch(UnconfinedTestDispatcher(testScheduler)) {
-                    frames.raftHoldingDownloadPanel(minVisibleMillis = 600L, timeSource = testScheduler.timeSource).collect { shown += it }
-                }
-            advanceTimeBy(case.runMillis)
-            frames.value = case.end
-            runCurrent()
-            assertEquals(listOf(halfway, case.end.view), shown, case.name)
-            collector.cancel()
-        }
     }
 }

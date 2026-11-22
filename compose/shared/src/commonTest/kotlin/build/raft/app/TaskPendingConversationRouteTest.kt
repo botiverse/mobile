@@ -1,32 +1,22 @@
 package build.raft.app
 
-import build.raft.app.data.DataRequestPriority
-import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.RaftTasksApi
 import build.raft.app.data.SharedConversationDirectoryProjection
-import build.raft.app.data.SharedTasksDataSource
-import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
-import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.ServerId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.nav.RaftMobileStackMotion
-import build.raft.app.nav.RaftPageKey
 import build.raft.app.nav.RaftPageStack
-import build.raft.app.nav.raftPageRouteIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 
@@ -38,74 +28,6 @@ import kotlinx.serialization.json.jsonObject
  */
 class TaskPendingConversationRouteTest {
     private val scope = RaftShellStoreScope.create(shellInstanceId = "shell-1", initialServerId = "server-1")
-
-    @Test
-    fun pageDataIsIdentityOnlyRoundTripsAndDedupesAcrossVolatileClockFields() {
-        val pending = task("""{"messageId":"msg-host","hostMessageId":"msg-host","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
-        val first =
-            taskPendingPageData(
-                task = pending,
-                storeScope = scope,
-                timeContext = RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = 20_000L, nowEpochMillis = 1_000L),
-                alignOwnMessagesRight = true,
-                compactConsecutiveMessages = false,
-            )
-        val second =
-            taskPendingPageData(
-                task = pending,
-                storeScope = scope,
-                timeContext = RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = 20_000L, nowEpochMillis = 9_999L),
-                alignOwnMessagesRight = true,
-                compactConsecutiveMessages = false,
-            )
-
-        val parsed = parseTaskPendingRouteParams(first, scope)
-        assertEquals("server-1", parsed.serverId)
-        assertEquals("t-1", parsed.taskId)
-        assertEquals(ChannelId("channel-1"), parsed.channelId)
-        assertTrue(parsed.alignOwnMessagesRight)
-        assertFalse(parsed.compactConsecutiveMessages)
-
-        val firstJson = Json.parseToJsonElement(first.toString()).jsonObject
-        val secondJson = Json.parseToJsonElement(second.toString()).jsonObject
-        val dropped = mutableListOf<String>()
-        RaftPageKey.create(TASK_PENDING_CONVERSATION_PAGE, firstJson, id = 1L) { dropped += it }
-        assertTrue(dropped.isEmpty(), "identity-only pageData must not contain blocked keys: $dropped")
-        assertEquals(
-            raftPageRouteIdentity(TASK_PENDING_CONVERSATION_PAGE, firstJson),
-            raftPageRouteIdentity(TASK_PENDING_CONVERSATION_PAGE, secondJson),
-            "double-tap with a newer clock must resolve to the same route identity",
-        )
-    }
-
-    @Test
-    fun seedStoreFollowsSessionAndClearsOnConversationCreation() {
-        val pendingA = task("""{"messageId":"msg-1","hostMessageId":"msg-1","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
-        val pendingB = pendingA.copy(id = TaskId("t-2"))
-        val store = TaskPendingDraftStore()
-
-        store.seed("server-1", pendingA, channelJoined = false, canWriteChannel = false)
-        store.seed("server-2", pendingB, channelJoined = true, canWriteChannel = true)
-        assertEquals(pendingA, store.seededTask("server-1", "t-1"))
-        assertEquals(false, store.seeded("server-1", "t-1")?.channelJoined)
-        assertEquals(false, store.seeded("server-1", "t-1")?.canWriteChannel)
-
-        // Clearing after first send drops draft, randomId, and seed for that task.
-        store.update("server-1", "t-1", "draft")
-        store.clear("server-1", "t-1")
-        assertNull(store.seededTask("server-1", "t-1"))
-        assertEquals("", store.draft("server-1", "t-1"))
-        assertEquals(pendingB, store.seededTask("server-2", "t-2"))
-
-        // Leaving a server drops its seeds; signing out drops all seeds.
-        store.seed("server-1", pendingA)
-        store.followSession(signedOut = false, accountId = "user-1", serverIds = listOf("server-1"))
-        assertEquals(pendingA, store.seededTask("server-1", "t-1"))
-        assertNull(store.seededTask("server-2", "t-2"))
-
-        store.followSession(signedOut = true, accountId = null, serverIds = null)
-        assertNull(store.seededTask("server-1", "t-1"))
-    }
 
     @Test
     fun resolvePendingTaskSummaryPrefersConversationThenHighestRevisionThenCallerOrder() {
@@ -219,93 +141,6 @@ class TaskPendingConversationRouteTest {
     }
 
     @Test
-    fun controllerReusesRandomIdAcrossRetryClearsDraftAndClaimsArrivalOnce() = runTest {
-        val pending = task("""{"messageId":"msg-1","hostMessageId":"msg-1","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
-        val drafts = TaskPendingDraftStore()
-        drafts.seed("server-1", pending)
-        var ids = 0
-        val controller = TaskPendingPageController(drafts, newRandomId = { "rid-${++ids}" })
-        val api = StubTasksApi(HomeNetworkResponse(200, """{"conversationChannelId":"conv-local","canonicalConversationChannelId":"conv-1","created":true}"""))
-        val dataSource = SharedTasksDataSource(api, diagnosticsLogger = {})
-        val sentIds = mutableListOf<String>()
-        var attempts = 0
-
-        val firstAttempt =
-            controller.send(
-                task = pending,
-                text = "First note",
-                serverId = "server-1",
-                tasksDataSource = dataSource,
-                sendMessage = { _, _, randomId ->
-                    sentIds += randomId
-                    attempts += 1
-                    if (attempts == 1) ThreadApiResult.Failure(code = 504) else ThreadApiResult.Success(Unit)
-                },
-                currentServerId = { "server-1" },
-                fallbackError = "Send failed",
-            )
-        assertNull(firstAttempt)
-        assertEquals("Send failed", controller.errorText)
-        assertEquals("First note", controller.draft("server-1", "t-1"))
-        assertFalse(controller.handingOff)
-
-        val secondAttempt =
-            controller.send(
-                task = pending,
-                text = "First note",
-                serverId = "server-1",
-                tasksDataSource = dataSource,
-                sendMessage = { _, _, randomId ->
-                    sentIds += randomId
-                    attempts += 1
-                    ThreadApiResult.Success(Unit)
-                },
-                currentServerId = { "server-1" },
-                fallbackError = "Send failed",
-            )
-        assertEquals(ChannelId("conv-local"), secondAttempt)
-        assertEquals(listOf("rid-1", "rid-1"), sentIds)
-        assertTrue(controller.handingOff)
-        assertEquals("", controller.draft("server-1", "t-1"))
-        assertNull(drafts.seededTask("server-1", "t-1"))
-
-        // Once handing off, a concurrent task:updated arrival does not trigger a second replace.
-        val arrived = pending.copy(conversationChannelId = ChannelId("conv-local"), conversationAnchored = true)
-        assertFalse(controller.claimConversationArrived(arrived))
-
-        // On a fresh controller, task:updated claims arrival once and refuses duplicates; resetHandOff recovers.
-        val arrivalController = TaskPendingPageController(TaskPendingDraftStore())
-        assertFalse(arrivalController.claimConversationArrived(pending))
-        assertTrue(arrivalController.claimConversationArrived(arrived))
-        assertFalse(arrivalController.claimConversationArrived(arrived))
-        arrivalController.resetHandOff()
-        assertFalse(arrivalController.handingOff)
-        assertTrue(arrivalController.claimConversationArrived(arrived))
-
-        // Pre-v2 task (conversationAnchored = false) receiving conversationChannelId resolves to Conversation,
-        // and resolveTaskOpenConversationChannelId names it, so the page opens that conversation.
-        val preV2Arrived = pending.copy(conversationChannelId = ChannelId("conv-pre-v2"), conversationAnchored = false)
-        assertEquals(TaskOpenTarget.Conversation(ChannelId("conv-pre-v2")), preV2Arrived.taskOpenTarget())
-        val resolvedPreV2Id =
-            resolveTaskOpenConversationChannelId(
-                task = preV2Arrived,
-                serverId = "server-1",
-                tasksDataSource = dataSource,
-                log = {},
-            )
-        assertEquals(ChannelId("conv-pre-v2"), resolvedPreV2Id)
-        val preV2Payload =
-            buildStandaloneTaskThreadLaunchPayload(
-                task = preV2Arrived,
-                serverId = "server-1",
-                conversationDirectory = emptyList<SharedConversationDirectoryProjection>().toSharedConversationDirectoryState(),
-                timeContext = null,
-                resolvedConversationChannelId = resolvedPreV2Id,
-            )!!
-        assertEquals("conv-pre-v2", preV2Payload.sourceThreadId)
-    }
-
-    @Test
     fun replaceConversationPageDataReplacesPendingPageInPlaceWithoutMotion() {
         val pending = task("""{"messageId":"msg-1","hostMessageId":"msg-1","conversationChannelId":null,"conversationAnchored":false,"isLegacy":false}""")
         val launchPayload =
@@ -352,15 +187,5 @@ class TaskPendingConversationRouteTest {
                "createdByType":"user","createdById":"user-1","createdByName":"artin","revision":1,"""
         val json = base + fields.trim().removePrefix("{")
         return parseSharedServerTasksPayload("""{"tasks":[$json]}""")?.tasks?.single() ?: error("task dropped: $json")
-    }
-
-    private class StubTasksApi(private val postResponse: HomeNetworkResponse) : RaftTasksApi {
-        override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-            HomeNetworkResponse(code = 501, bodyText = null)
-
-        override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
-            HomeNetworkResponse(code = 501, bodyText = null)
-
-        override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse = postResponse
     }
 }

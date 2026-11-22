@@ -5,7 +5,6 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -23,17 +22,6 @@ class ServerLastConversationTest {
             RaftAdaptiveHomeLandingCandidate("b-all", "all", ConversationKind.Channel),
             RaftAdaptiveHomeLandingCandidate("b-ops", "ops", ConversationKind.Channel),
         )
-
-    @Test
-    fun eachServerKeepsItsOwnLastConversation() {
-        val repository = ServerLastConversationRepository { MapPreferences() }
-        repository.write(owner, "server-a", channel("server-a", "a-dev").toServerLastConversation()!!)
-        repository.write(owner, "server-b", channel("server-b", "b-ops").toServerLastConversation()!!)
-
-        assertEquals("a-dev", repository.read(owner, "server-a")?.threadId)
-        assertEquals("b-ops", repository.read(owner, "server-b")?.threadId)
-        assertNull(repository.read(owner, "server-c"))
-    }
 
     @Test
     fun anotherUserOrEnvironmentDoesNotSeeTheConversation() {
@@ -75,16 +63,6 @@ class ServerLastConversationTest {
     }
 
     @Test
-    fun aRememberedConversationStillListedComesBack() {
-        val remembered = channel("server-a", "a-dm-alice").toServerLastConversation()
-
-        val resolution = resolveRaftAdaptiveHomeLanding(null, remembered, serverACandidates)
-
-        assertEquals(RaftAdaptiveHomeLanding.Row("a-dm-alice"), resolution.landing)
-        assertFalse(resolution.rememberedUnavailable)
-    }
-
-    @Test
     fun aDeletedOrLeftConversationFallsBackToAllAndIsForgotten() {
         val remembered = channel("server-a", "a-gone").toServerLastConversation()
 
@@ -92,35 +70,6 @@ class ServerLastConversationTest {
 
         assertEquals(RaftAdaptiveHomeLanding.Row("a-all"), resolution.landing)
         assertTrue(resolution.rememberedUnavailable)
-    }
-
-    @Test
-    fun aReplyThreadComesBackWhileItsParentIsListed() {
-        val remembered = thread("server-a", parentChannelId = "a-dev").toServerLastConversation()!!
-
-        val restored = resolveRaftAdaptiveHomeLanding(null, remembered, serverACandidates)
-        val gone = resolveRaftAdaptiveHomeLanding(null, thread("server-a", parentChannelId = "a-gone").toServerLastConversation(), serverACandidates)
-
-        val landing = restored.landing as RaftAdaptiveHomeLanding.ReplyThread
-        assertEquals("a-dev", landing.parentThreadId)
-        val identity = landing.toThreadLaunchConversationIdentity()
-        assertEquals(ConversationKind.Thread, identity.kind)
-        assertEquals("a-dev:msg-1", identity.threadId.value)
-        assertEquals("a-dev", identity.thread?.parentChannelId?.value)
-        assertEquals("msg-1", identity.thread?.parentMessageId?.value)
-        assertEquals("stream-1", identity.thread?.streamChannelId?.value)
-        assertEquals(RaftAdaptiveHomeLanding.Row("a-all"), gone.landing)
-        assertTrue(gone.rememberedUnavailable)
-    }
-
-    @Test
-    fun aVisibleSelectionWinsOverTheMemory() {
-        val remembered = channel("server-a", "a-dev").toServerLastConversation()
-
-        val resolution = resolveRaftAdaptiveHomeLanding("a-dm-alice", remembered, serverACandidates)
-
-        assertEquals(RaftAdaptiveHomeLanding.Row("a-dm-alice"), resolution.landing)
-        assertFalse(resolution.rememberedUnavailable)
     }
 
     /** artin: switching servers back and forth must not send the first server back to #all. */

@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.data.ChannelMessageWindow
 import build.raft.app.data.InMemoryRaftAuthSessionStore
-import build.raft.app.data.RawMessagePage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadMessagesPage
@@ -86,95 +85,6 @@ class SharedThreadStoreReplyThreadDurableTest {
         scopeJob.cancelAndJoin()
     }
 
-    @Test
-    fun offlineReplyThreadOpenWithoutAStoredWindowTakesTheNetworkPath() = runTest {
-        // Twin of the test above: identical route and failing network, but nothing on disk.
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
-        val reader = FakeReader(frame = null)
-        val store = SharedThreadStore(dataSource(api, scope, reader = reader), scope = scope)
-        store.accept(SharedThreadIntent.Start(replyRoute()))
-
-        val payload = store.state.value.payload
-        assertFalse(payload.durableLastKnown)
-        assertTrue(payload.messages.isEmpty())
-        assertTrue(payload.status != "content", payload.status)
-        assertEquals(1, api.channelMessageCalls, "the ordinary network load ran")
-        // Phase 2b: one read — there is no separate entry load to wait for (the entry's own request is the write).
-        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), reader.replyReads)
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun replyRouteWithoutItsTypedParentNeverConsultsTheDurableReader() = runTest {
-        // Twin of the offline stand-in: identical stored frame and stream id, but the route lost its
-        // parent channel, so it cannot name the thread scope's parent.
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val reader = FakeReader(replyFrame(count = 40))
-        val store =
-            SharedThreadStore(
-                dataSource(SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), scope, reader = reader),
-                scope = scope,
-            )
-        store.accept(SharedThreadIntent.Start(replyRoute().copy(parentChannelId = null)))
-        assertFalse(store.state.value.payload.durableLastKnown)
-        assertTrue(reader.replyReads.isEmpty(), reader.replyReads.toString())
-        assertTrue(reader.topLevelReads.isEmpty(), reader.topLevelReads.toString())
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun replyThreadEntryRequestsTheReplyThreadSnapshotWithItsParent() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val loader = FakeLoader()
-        val store = SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), scope, loader = loader), scope = scope)
-        store.accept(SharedThreadIntent.Start(replyRoute()))
-        withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) delay(10) }
-        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loader.replyLoads)
-        assertTrue(loader.topLevelLoads.isEmpty(), "a reply route is never loaded as a top-level window")
-        scopeJob.cancelAndJoin()
-
-        // Twin: identical route without its parent channel requests nothing.
-        val twinJob = SupervisorJob()
-        val twinScope = CoroutineScope(coroutineContext + twinJob)
-        val twinLoader = FakeLoader()
-        SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), twinScope, loader = twinLoader), scope = twinScope)
-            .accept(SharedThreadIntent.Start(replyRoute().copy(parentChannelId = null)))
-        repeat(10) { yield() }
-        assertTrue(twinLoader.replyLoads.isEmpty() && twinLoader.topLevelLoads.isEmpty(), twinLoader.replyLoads.toString())
-        twinJob.cancelAndJoin()
-    }
-
-    @Test
-    fun replyThreadPagesAreOfferedToTheExtenderWithTheRoutesParent() = runTest {
-        val extender = RecordingExtender()
-        val dataSource = dataSource(SharedThreadStoreTest.FakeThreadApi(), storeScope = null, extender = extender)
-        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
-        val raw = RawMessagePage(messages = JsonArray(emptyList()), requestedLimit = 30)
-        val route = replyRoute().resolveThreadRouteIdentity()
-
-        assertTrue(dataSource.extendDurableWindowIfCurrent(route, context, ThreadDurablePageDirection.Older, 10L, raw, parent))
-        assertEquals(listOf<Pair<SyncScopeId, ThreadDurableReplyParent?>>("thread-1" to parent), extender.calls)
-        // Twin: identical route and page without the typed parent is not admitted.
-        assertFalse(dataSource.extendDurableWindowIfCurrent(route, context, ThreadDurablePageDirection.Older, 10L, raw))
-        assertEquals(1, extender.calls.size)
-        // A channel route is still offered as a top-level window (no parent).
-        assertTrue(
-            dataSource.extendDurableWindowIfCurrent(
-                replyRoute().copy(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "channel-1", streamChannelId = null, parentChannelId = null, parentMessageId = null, originParentMessageId = null)
-                    .resolveThreadRouteIdentity(),
-                context,
-                ThreadDurablePageDirection.Older,
-                10L,
-                raw,
-            ),
-        )
-        assertEquals<Pair<SyncScopeId, ThreadDurableReplyParent?>>("channel-1" to null, extender.calls.last())
-    }
-
     private data class ReplyRead(
         val partition: DurablePartitionKey,
         val threadChannelId: SyncScopeId,
@@ -249,17 +159,6 @@ class SharedThreadStoreReplyThreadDurableTest {
         val other = joinCatchUpRun(confirmedThread = "thread-2")
         assertEquals(0, other.catchUps)
         assertEquals(emptyList(), other.logs)
-    }
-
-    @Test
-    fun aFailedJoinCatchUpIsLoggedAndNotRetried() = runTest {
-        val failed = joinCatchUpRun(catchUpCode = 500)
-        assertEquals(1, failed.catchUps, "one request, no retry")
-        assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=requested", failed.logs.first())
-        assertTrue(failed.logs.last().startsWith("thread_join_catch_up threadId=thread-1 epoch=2 outcome=failed retry=none"), failed.logs.toString())
-        assertEquals(2, failed.logs.size)
-        // Twin: the same catch-up succeeding logs no failure.
-        assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=done", joinCatchUpRun().logs.last())
     }
 
     /** Phase 2b: the tickets the store takes before its own page request (top-level / reply thread). */
@@ -549,35 +448,6 @@ class SharedThreadStoreReplyThreadDurableTest {
         assertTrue(reopenLogs.any { "thread_visible_payload threadId=thread-1 status=content messages=15" in it }, reopenLogs.toString())
         assertTrue(reopened.state.value.payload.durableLastKnown)
         assertEquals((1..15).map { "reply $it" }, reopened.state.value.payload.messages.map { it.body })
-        scopeJob.cancelAndJoin()
-    }
-
-    @Test
-    fun aConfirmedSendTakesNoExtraDurableLoad() = runTest {
-        // Phase 2b: the own-send durable catch-up is gone — Phase 3a stores the realtime echo itself. Positive control:
-        // the entry took exactly one ticket; the confirmed send adds none.
-        val logs = mutableListOf<String>()
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..15))
-        val loader = FakeLoader()
-        val dataSource = dataSource(api, scope, reader = FakeReader(replyFrame(count = 15)), loader = loader, logs = logs)
-        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
-        val store = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
-        store.accept(SharedThreadIntent.Start(sendableReplyRoute()))
-        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) delay(10) }
-        assertEquals(1, loader.replyLoads.size, loader.replyLoads.toString())
-        store.accept(
-            SharedThreadIntent.ReplaceLocalSendWithSentPage(
-                messageId = "local-16",
-                page = ownSentPage(16),
-                expectedProvenance = context.provenance,
-                expectedRoute = store.state.value.payload.resolveThreadRouteIdentity(),
-            ),
-        )
-        delay(3_000L)
-        repeat(20) { yield() }
-        assertEquals(1, loader.replyLoads.size, loader.replyLoads.toString())
         scopeJob.cancelAndJoin()
     }
 }

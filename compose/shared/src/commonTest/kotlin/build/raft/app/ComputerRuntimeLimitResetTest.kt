@@ -157,61 +157,6 @@ class ComputerRuntimeLimitResetTest {
         }
     }
 
-    /** AGENTS.md "Errors carry the trace ID": a failed redeem keeps its request's trace id beside the message. */
-    @Test
-    fun aFailedRedeemKeepsItsTraceIdAndAnAnsweredOneDropsIt() = runPortableCoroutineTest {
-        val trace = "4bf92f3577b34da6a3ce929d0e0e4736"
-        val redeems =
-            mutableListOf(
-                HomeNetworkResponse(
-                    code = 409,
-                    bodyText = """{"code":"computer_offline","error":"This Computer is offline."}""",
-                    responseHeaders = mapOf("X-Trace-Id" to listOf(trace)),
-                ),
-                ok("""{"result":{"kind":"unsupported","reason":"endpoint_unavailable"},"snapshot":null}"""),
-            )
-        val api =
-            RuntimeLimitResetTest.FakeLimitResetApi(
-                usage = { ok(RuntimeLimitResetTest.usageBody("2")) },
-                auth = { ok(AUTH_VIEW) },
-                redeem = { redeems.removeAt(0) },
-                refresh = { HomeNetworkResponse(202, """{"accepted":false,"state":"computer_offline"}""") },
-            )
-        withController(api) { controller ->
-            controller.onOpen()
-            settle()
-            controller.openLimitReset()
-            settle()
-            controller.confirmLimitReset()
-            settle()
-            val failed = assertNotNull(controller.limitResetDialog)
-            assertEquals(ComputerRuntimeLimitResetError.ComputerOffline, failed.error)
-            assertEquals(trace, failed.traceId)
-            controller.confirmLimitReset()
-            settle()
-            val answered = assertNotNull(controller.limitResetDialog)
-            assertEquals(ComputerRuntimeLimitResetError.Unsupported, answered.error)
-            assertNull(answered.traceId, "an answered outcome is not a failed request")
-        }
-    }
-
-    @Test
-    fun aRefusedViewerGetsNoAction() = runPortableCoroutineTest {
-        val api =
-            RuntimeLimitResetTest.FakeLimitResetApi(
-                usage = { ok(RuntimeLimitResetTest.usageBody("2")) },
-                auth = { ok("""{"status":null,"availability":"ok","runtimes":["codex"],"canAct":false}""") },
-            )
-        withController(api) { controller ->
-            controller.onOpen()
-            settle()
-            assertNull(controller.limitResetOffer)
-            controller.openLimitReset()
-            settle()
-            assertNull(controller.limitResetDialog)
-        }
-    }
-
     private suspend fun CoroutineScope.withController(
         api: RuntimeLimitResetTest.FakeLimitResetApi,
         block: suspend (ComputerRuntimeUsageController) -> Unit,

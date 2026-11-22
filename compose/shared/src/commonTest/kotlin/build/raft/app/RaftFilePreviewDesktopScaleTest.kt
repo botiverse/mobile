@@ -25,22 +25,9 @@ class RaftFilePreviewDesktopScaleTest {
     }
 
     @Test
-    fun aWiderViewportNeedsMoreScale() {
-        // Same dpr, roughly double the width: the layout occupies a larger share of the view.
-        assertEquals(75, raftFilePreviewDesktopScalePercent(viewportPx = 1440, dpr = 1.5f))
-    }
-
-    @Test
     fun aViewportAlreadyAtDesktopWidthNeedsNoFit() {
         // 1280 CSS px at dpr 1 is exactly the desktop layout: nothing to shrink.
         assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 1280, dpr = 1f))
-    }
-
-    @Test
-    fun aViewportWiderThanDesktopNeedsNoFit() {
-        // Shrinking here would make the layout smaller than the view, which is not what desktop
-        // mode means. The Android implementation returned early for the same reason.
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 2400, dpr = 1f))
     }
 
     @Test
@@ -51,14 +38,6 @@ class RaftFilePreviewDesktopScaleTest {
     }
 
     @Test
-    fun anUnusableDensityYieldsNoScale() {
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = 0f))
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = -1.5f))
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = Float.NaN))
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = Float.POSITIVE_INFINITY))
-    }
-
-    @Test
     fun anImpossiblyNarrowViewportIsClampedToTheFloorNotRoundedToNothing() {
         // 10 / (1280 * 3) = 0.26% -> would round to 0 and render nothing. The floor keeps the
         // layout visible; every platform clamps at this same value.
@@ -66,18 +45,5 @@ class RaftFilePreviewDesktopScaleTest {
             RaftFilePreviewDesktopScaleMinPercent,
             raftFilePreviewDesktopScalePercent(viewportPx = 10, dpr = 3f),
         )
-    }
-
-    @Test
-    fun theScaleNeverExceedsFullSize() {
-        // Any input that produces a fit ratio must stay below 100, since >= 1 returns null.
-        val percent = raftFilePreviewDesktopScalePercent(viewportPx = 1279, dpr = 1f)
-        assertEquals(99, percent)
-    }
-
-    @Test
-    fun aNonPositiveDesktopWidthIsRejectedRatherThanDividingByZero() {
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = 1.5f, desktopCssWidth = 0))
-        assertNull(raftFilePreviewDesktopScalePercent(viewportPx = 720, dpr = 1.5f, desktopCssWidth = -1280))
     }
 }

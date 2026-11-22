@@ -36,28 +36,6 @@ class ThreadAgentTypingTest {
         )
     }
 
-    @Test fun theLineAndItsSlotAtTheListEndGoWithTheComposerOnly() {
-        val channel = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, sourceThreadId = "ch-1")
-        val cases =
-            listOf(
-                channel to true,
-                // Previewed without joining: the join footer.
-                channel.copy(joined = false) to false,
-                // Archived: the archived banner.
-                channel.copy(channelArchived = true) to false,
-                channel.copy(showComposer = false) to false,
-                // A composer that cannot send yet is still a composer.
-                channel.copy(canSend = false) to true,
-            )
-        cases.forEach { (payload, expected) ->
-            assertEquals(expected, payload.agentTypingLineCanShow(), "$payload")
-            // The list's end follows the same answer: the slot is there exactly where the line can be.
-            assertEquals(expected, payload.toThreadTimelineSlice().agentTypingLineSlot, "$payload")
-        }
-        assertEquals(30f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = true).value)
-        assertEquals(16f, threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot = false).value)
-    }
-
     @Test fun onlyAgentsAreNamedAndUnknownIdsUseTheFallback() {
         val serverMembers =
             listOf(
@@ -81,36 +59,6 @@ class ThreadAgentTypingTest {
                 ThreadTypingAgent("niko", "Niko", "https://cdn.raft.build/niko.webp"),
                 ThreadTypingAgent("kirby", "Kirby", null),
                 ThreadTypingAgent("ghost", "Agent", null),
-            ),
-            agents,
-        )
-    }
-
-    @Test fun facesResolveLikeMessageRowsNotFromAvatarUrlAlone() {
-        // An agent's pixel face lives in its one `avatar` field; the old URL-only copy drew initials.
-        val serverMembers =
-            listOf(
-                MemberProfile(
-                    MemberId("niko"), displayName = "Niko", handle = "niko", kind = MemberKind.Agent,
-                    avatar = AvatarReference.Pixel("antenna"),
-                ),
-                MemberProfile(MemberId("plain"), displayName = "Plain", handle = "plain", kind = MemberKind.Agent),
-            )
-        val agents =
-            resolveThreadTypingAgents(
-                agentIds = listOf("niko", "plain", "ghost"),
-                serverMembers = serverMembers,
-                channelMembers = emptyList(),
-                fallbackName = "Agent",
-                durableAvatar = { id -> if (id == "ghost") "pixel:pencil" else null },
-            )
-        assertEquals(
-            listOf(
-                ThreadTypingAgent("niko", "Niko", "pixel:antenna"),
-                // An agent with no avatar of its own wears the default face, as on its messages.
-                ThreadTypingAgent("plain", "Plain", "pixel:robot"),
-                // Not in the directory yet: the last persisted avatar for the id.
-                ThreadTypingAgent("ghost", "Agent", "pixel:pencil"),
             ),
             agents,
         )

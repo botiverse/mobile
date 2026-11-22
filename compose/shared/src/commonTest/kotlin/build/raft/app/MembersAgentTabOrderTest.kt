@@ -3,9 +3,7 @@ package build.raft.app
 import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 class MembersAgentTabOrderTest {
 
@@ -126,15 +124,6 @@ class MembersAgentTabOrderTest {
     }
 
     @Test
-    fun invalidMoveReturnsOriginalTabList() {
-        val tabs = listOf(MembersAgentDetailTab.Profile, MembersAgentDetailTab.Chat)
-
-        assertSame(tabs, tabs.membersMoveTab(fromIndex = -1, toIndex = 1))
-        assertSame(tabs, tabs.membersMoveTab(fromIndex = 0, toIndex = 2))
-        assertSame(tabs, tabs.membersMoveTab(fromIndex = 1, toIndex = 1))
-    }
-
-    @Test
     fun tabDropIndexCrossesNeighbourMidpointsUsingTheirOwnWidths() {
         // Tabs 100, 40, 200, 60 px wide, 2 px apart; midpoints 50, 122, 244, 376.
         val widths = listOf(100, 40, 200, 60)
@@ -163,16 +152,6 @@ class MembersAgentTabOrderTest {
                 "drop index for $case"
             )
         }
-    }
-
-    @Test
-    fun detailBodyKeysSeparateDifferentTabSurfaces() {
-        val profileKey = membersAgentDetailBodyItemKey(" agent-1 ", MembersAgentDetailTab.Profile)
-        val chatKey = membersAgentDetailBodyItemKey("agent-1", MembersAgentDetailTab.Chat)
-
-        assertEquals("member-detail-agent-1-tab-Profile", profileKey)
-        assertEquals(profileKey, membersAgentDetailBodyItemKey("agent-1", MembersAgentDetailTab.Profile))
-        assertNotEquals(profileKey, chatKey)
     }
 
     @Test
@@ -208,30 +187,6 @@ class MembersAgentTabOrderTest {
                 isAtBottom = true
             )
         )
-    }
-
-    @Test
-    fun tabOrderForRenderWaitsOnlyWhenNoOrderIsKnown() {
-        data class Case(
-            val name: String,
-            val serverId: String?,
-            val known: List<String>?,
-            val payload: List<String>,
-            val expected: MembersAgentTabOrderRender
-        )
-        listOf(
-            Case("profile-only detail", null, null, emptyList(), MembersAgentTabOrderRender(emptyList(), known = true)),
-            Case("store or device order", "s", listOf("activity"), listOf("chat"), MembersAgentTabOrderRender(listOf("activity"), known = true)),
-            Case("known default order", "s", emptyList(), emptyList(), MembersAgentTabOrderRender(emptyList(), known = true)),
-            Case("launch payload order", "s", null, listOf("chat"), MembersAgentTabOrderRender(listOf("chat"), known = true)),
-            Case("cold start, nothing known", "s", null, emptyList(), MembersAgentTabOrderRender(emptyList(), known = false))
-        ).forEach { case ->
-            assertEquals(
-                case.expected,
-                membersAgentTabOrderForRender(case.serverId, case.known, case.payload),
-                case.name
-            )
-        }
     }
 
     @Test

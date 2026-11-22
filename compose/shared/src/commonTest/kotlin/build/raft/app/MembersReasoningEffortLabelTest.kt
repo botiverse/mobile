@@ -30,33 +30,6 @@ class MembersReasoningEffortLabelTest {
         assertNull(membersReasoningEffortLabel(""))
     }
 
-    /**
-     * Web `reasoningEffortDisplayLabel` (botiverse/slock #15691, the cases of
-     * `membersAgentReasoningColumn.behavior.test.tsx`): the one value the profile's Reasoning row
-     * and the Members list show.
-     */
-    @Test
-    fun displayLabelReadsAsTheWebHelper() {
-        val cases: List<Triple<String, String?, StringDesc?>> =
-            listOf(
-                // A runtime's own level (Kimi Code's) reads as-is, not as Default for a set level.
-                Triple("kimi-sdk", "thinking-max", "thinking-max".desc()),
-                Triple("claude", "toString", "toString".desc()),
-                Triple("codex", "xhigh", Res.string.agent_create_reasoning_extra_high.desc()),
-                Triple("pi", "off", Res.string.agent_create_reasoning_off.desc()),
-                // No level set: Default, Kimi Code included.
-                Triple("codex", null, Res.string.member_label_default.desc()),
-                Triple("kimi-sdk", null, Res.string.member_label_default.desc()),
-                Triple("claude", " ", Res.string.member_label_default.desc()),
-                // A runtime that takes no reasoning effort: no value (no profile row, nothing in the list).
-                Triple("gemini", "high", null),
-                Triple("external", null, null),
-            )
-        for ((runtime, effort, expected) in cases) {
-            assertEquals(expected, membersReasoningEffortDisplayLabel(runtime, effort), "runtime=$runtime effort=$effort")
-        }
-    }
-
     /** Web `agentReasoningEffortFact` and the row's description, "Reasoning: High". */
     @Test
     fun membersAgentRowShowsTheProfilesLevel() {

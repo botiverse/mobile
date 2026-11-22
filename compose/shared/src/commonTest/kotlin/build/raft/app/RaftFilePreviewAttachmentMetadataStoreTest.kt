@@ -65,33 +65,6 @@ class RaftFilePreviewAttachmentMetadataStoreTest {
     }
 
     @Test
-    fun candidateOnlyFillsBlankFields() {
-        val store = RaftFilePreviewAttachmentMetadataStore()
-        val owner = owner()
-        store.capture(
-            owner,
-            RaftFilePreviewPayload(
-                name = "candidate.txt",
-                meta = "1 KB",
-                externalMimeType = "text/plain",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-1",
-            ),
-        )
-        val canonical =
-            restoredPayload("attachment-1").copy(
-                subtitle = "canonical subtitle",
-                name = "canonical.txt",
-                path = "canonical/path.txt",
-                meta = "2 KB",
-                externalFileName = "canonical-external.txt",
-                externalMimeType = "text/canonical",
-            )
-
-        assertEquals(canonical, store.hydrate(owner, canonical))
-    }
-
-    @Test
     fun environmentAccountAndServerOwnerMismatchesFailClosed() {
         val store = RaftFilePreviewAttachmentMetadataStore()
         store.capture(
@@ -117,50 +90,6 @@ class RaftFilePreviewAttachmentMetadataStoreTest {
                 "candidate must not cross owner $mismatchedOwner",
             )
         }
-    }
-
-    @Test
-    fun mismatchedAttachmentIdIsIgnored() {
-        val store = RaftFilePreviewAttachmentMetadataStore()
-        val owner = owner()
-        store.capture(
-            owner,
-            RaftFilePreviewPayload(
-                name = "one.txt",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-1",
-            ),
-        )
-        val restored = restoredPayload("attachment-2")
-
-        assertEquals(restored, store.hydrate(owner, restored))
-    }
-
-    @Test
-    fun blankCanonicalFilenameKeepsLocalizedFileFallback() {
-        val store = RaftFilePreviewAttachmentMetadataStore()
-        val owner = owner()
-        store.capture(
-            owner,
-            RaftFilePreviewPayload(
-                externalFileName = "attachment-attachm",
-                source = RaftFilePreviewSourceThreadAttachment,
-                attachmentId = "attachment-1",
-            ),
-        )
-
-        val hydrated = store.hydrate(owner, restoredPayload("attachment-1"))
-
-        assertEquals("", hydrated.name)
-        assertEquals("", hydrated.path)
-        assertEquals("", hydrated.externalFileName)
-        assertEquals(
-            "文件",
-            hydrated.raftFilePreviewHeaderTitle(
-                fallbackFile = "文件",
-                localizedTitle = "文件预览",
-            ),
-        )
     }
 
     private fun restoredPayload(

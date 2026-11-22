@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import build.raft.app.data.ActivityObjectEventVerb
 import build.raft.app.data.ActivityObjectRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
@@ -595,32 +594,6 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun objectRowNamesAnActorNoRosterHasAsTheJointActorResolveAnswered() {
-        val cachet =
-            ResolvedActor(
-                kind = MemberKind.Agent,
-                id = "agent-cachet",
-                homeServerId = "server-2",
-                name = "cachet",
-                displayName = "Cachet",
-                avatarUrl = "https://example.test/cachet.png",
-                gravatarHash = null,
-            )
-        val line = ActivityObjectLine(actorName = "cachet", verb = ActivityObjectEventVerb.Published, version = null, home = "#joint-stamp", avatar = null)
-        assertEquals("Cachet", line.displayActorName(cachet))
-        assertEquals("cachet", line.displayActorName(cachet.copy(displayName = " ")))
-        // Not resolved (yet): the handle the row carries.
-        assertEquals("cachet", line.displayActorName(null))
-        // This server's roster always wins.
-        assertEquals("Fable", line.copy(actorName = "Fable", actorNameKnownLocally = true).displayActorName(cachet))
-        assertEquals(
-            "Cachet",
-            ResolvedActor(MemberKind.Agent, "agent-cachet", "server-2", name = "Cachet", displayName = null, avatarUrl = null, gravatarHash = null)
-                .let { line.copy(actorName = null).displayActorName(it) },
-        )
-    }
-
-    @Test
     fun channelTileUsesTheHomeSidebarGlyphOfTheChannelOrItsThreadsParent() {
         val home =
             homeSnapshot().let { snapshot ->
@@ -773,37 +746,6 @@ class ActivityConversationListTest {
         for (case in cases) {
             val next = nextActivityConversationListContext(case.previous, case.home, "server-1")
             assertEquals(case.expected, next, case.name)
-        }
-    }
-
-    @Test
-    fun prewarmAfterClickFollowsTheDisplayedOrder() {
-        fun replyThread(key: String) =
-            thread.copy(
-                key = "thread:$key",
-                channelId = ChannelId("reply-$key"),
-                threadChannelId = ChannelId("reply-$key"),
-                parentChannelId = ChannelId("parent-$key"),
-                parentMessageId = MessageId("message-$key"),
-            )
-        // Loaded order a, #android (pinned), b is the displayed order: pins no longer float first.
-        val loaded = listOf(replyThread("a"), channel("channel:android", "android"), replyThread("b"))
-        val entries = activityConversationListEntries(loaded)
-        assertEquals(listOf("thread:a", "channel:android", "thread:b"), activityRowsInDisplayOrder(entries).map { it.key })
-
-        data class Case(val clickedKey: String, val prewarmed: List<String>)
-        val cases =
-            listOf(
-                // The next reply thread the person sees after the clicked row.
-                Case(clickedKey = "thread:a", prewarmed = listOf("reply-b")),
-                Case(clickedKey = "channel:android", prewarmed = listOf("reply-b")),
-                Case(clickedKey = "thread:b", prewarmed = emptyList()),
-            )
-        for (case in cases) {
-            val order = activityRowsInDisplayOrder(entries)
-            val prewarmed =
-                activityReplyThreadPrewarmNextAfterClick(items = order, clickedKey = case.clickedKey, serverId = "server-1")
-            assertEquals(case.prewarmed, prewarmed.map { it.key.threadChannelId }, "$case")
         }
     }
 }

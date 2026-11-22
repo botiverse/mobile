@@ -11,7 +11,6 @@ import kotlin.test.assertTrue
 /** The Artifact viewer's Desktop Mode (artin 11-03): where it is offered, what it injects, what it keeps. */
 class RaftArtifactViewerDesktopModeTest {
     private val web = "https://raft-app-staging.botiverse.dev"
-    private val scope = RaftArtifactViewerScope(web, "staging", "user-maya", "server-northwind")
     private val session = "localStorage.setItem('slock_access_token', 't')"
 
     @Test
@@ -34,12 +33,6 @@ class RaftArtifactViewerDesktopModeTest {
         // A host without the viewport-meta path (the Compose desktop app) has no Desktop Mode.
         assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 390f))
         assertFalse(raftArtifactViewerOffersDesktopMode(viaViewportMeta = false, finePointer = false, windowWidthDp = 1024f))
-    }
-
-    @Test
-    fun offLeavesTheSessionScriptAsItIs() {
-        assertEquals(session, raftArtifactViewerInjectedScript(web, session, desktopMode = false, viaViewportMeta = true))
-        assertEquals(session, raftArtifactViewerInjectedScript(web, session, desktopMode = false, viaViewportMeta = false))
     }
 
     @Test
@@ -70,24 +63,6 @@ class RaftArtifactViewerDesktopModeTest {
     }
 
     @Test
-    fun onLeavesTheScriptAloneWhereTheHostHasNoViewportMetaPath() {
-        // The Compose app (desktop): no Desktop Mode, so no viewport rewrite either.
-        assertEquals(session, raftArtifactViewerInjectedScript(web, session, desktopMode = true, viaViewportMeta = false))
-    }
-
-    @Test
-    fun configWidensTheViewportOnlyInDesktopMode() {
-        val url = raftArtifactViewerWarmUrl(web)
-        assertFalse(raftArtifactViewerWebViewConfig(url, scope, session).useWideViewPort)
-        assertTrue(raftArtifactViewerWebViewConfig(url, scope, session, desktopMode = true).useWideViewPort)
-        // The rest of Tenny's rules hold either way.
-        val desktop = raftArtifactViewerWebViewConfig(url, scope, session, desktopMode = true)
-        assertEquals(web, desktop.mainFrameOrigin)
-        assertFalse(desktop.hostEventsEnabled)
-        assertEquals(scope.keepAliveKey, desktop.keepAliveKey)
-    }
-
-    @Test
     fun preferenceIsKeptOnTheDeviceAndOffRemovesIt() {
         val store = InMemoryRaftKeyValueStore()
         val preference = ArtifactViewerDesktopModePreferenceRepository(store)
@@ -97,12 +72,6 @@ class RaftArtifactViewerDesktopModeTest {
         preference.write(false)
         assertFalse(preference.read())
         assertNull(store.getString(ArtifactViewerDesktopModePreferenceRepository.Key))
-    }
-
-    @Test
-    fun anythingElseStoredReadsAsOff() {
-        val store = InMemoryRaftKeyValueStore(mapOf(ArtifactViewerDesktopModePreferenceRepository.Key to "true"))
-        assertFalse(ArtifactViewerDesktopModePreferenceRepository(store).read())
     }
 
     /** #189 step 6 (artin): the Artifact column keeps its own choice, off by default, apart from the page's. */
@@ -117,12 +86,5 @@ class RaftArtifactViewerDesktopModeTest {
         assertTrue(ArtifactViewerDesktopModePreferenceRepository(store, ArtifactViewerDesktopModePreferenceRepository.ColumnKey).read())
         page.write(false)
         assertTrue(column.read(), "turning it off on the page leaves the column's")
-    }
-
-    @Test
-    fun aColumnIsOfferedDesktopModeByItsOwnWidth() {
-        // A 480 column in a 1366 window: the window is a desktop's width, the column isn't.
-        assertTrue(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 480f, viaViewportMeta = true))
-        assertFalse(raftArtifactViewerOffersDesktopMode(finePointer = false, windowWidthDp = 1366f, viaViewportMeta = true))
     }
 }

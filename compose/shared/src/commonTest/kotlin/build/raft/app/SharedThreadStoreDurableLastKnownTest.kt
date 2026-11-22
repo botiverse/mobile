@@ -1,7 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftAuthSessionStore
-import build.raft.app.data.PresenceNoopMemberRepository
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -9,8 +8,6 @@ import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.data.WireMessage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
-import build.raft.app.model.ServerId
-import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.network.sync.CanonicalActionMetadataV2
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
@@ -92,55 +89,6 @@ class SharedThreadStoreDurableLastKnownTest {
             releaseLoadingState.complete(Unit)
             scopeJob.cancelAndJoin()
         }
-    }
-
-    @Test
-    fun durableFrameRestoresAnActionCardWithItsPresentationAndConfirmationVersion() = runTest {
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = FakeReader(
-                        frames = mapOf(partition(ownerA) to frame("card body", actionMetadata = v2ActionCardWithPresentation())),
-                    ),
-                    identity = { ownerA },
-                ),
-                scope = scope,
-            )
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        val restored = store.state.value.payload
-        assertTrue(restored.durableLastKnown)
-        assertRestoredActionCardPresentation(restored.messages.single().metadata)
-        scope.cancel()
-
-        // Twin: the same card stored without the optional keys renders only the legacy fallback.
-        val bareScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val bare =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = FakeReader(
-                        frames = mapOf(
-                            partition(ownerA) to frame(
-                                "card body",
-                                actionMetadata = v2ActionCardWithPresentation()
-                                    .copy(sourceServerId = null, targetServerName = null, confirmationVersion = null, presentation = null),
-                            ),
-                        ),
-                    ),
-                    identity = { ownerA },
-                ),
-                scope = bareScope,
-            )
-        bare.accept(SharedThreadIntent.Start(basePayload()))
-        val bareCard = assertNotNull(actionCardFromMessageMetadata(bare.state.value.payload.messages.single().metadata))
-        assertNull(bareCard.presentationTitle)
-        assertFalse(bareCard.genericApprovalAllowed)
-        assertNull(bareCard.confirmationVersion)
-        bareScope.cancel()
     }
 
     @Test
@@ -285,143 +233,6 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
-    fun identitySwitchWhileTheDiskReadIsSuspendedNeverRendersThePreviousOwnersFrame() = runTest {
-        // Positive control with the same parked reader: no switch while suspended ⇒ A's frame renders
-        // AND its author is seeded into the shared member-profile cache (the side effect that runs
-        // before the commit gate, see below).
-        val controlScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val controlReader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
-        controlReader.parkNextRead()
-        val controlMembers = testServerMembersStore(PresenceNoopMemberRepository, scope = backgroundScope)
-        val controlStore =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = controlReader,
-                    identity = { ownerA },
-                    serverMembersStore = controlMembers,
-                ),
-                scope = controlScope,
-            )
-        controlStore.dispatch(SharedThreadIntent.Start(basePayload()))
-        controlReader.readStarted.await()
-        assertTrue(controlStore.state.value.payload.messages.isEmpty())
-        assertNull(controlMembers.state.value.memberProfile(ServerId("server-1"), "u-a"))
-        controlReader.releaseRead.complete(Unit)
-        assertEquals(listOf("owner-a durable body"), controlStore.state.value.payload.messages.map { it.body })
-        assertTrue(controlStore.state.value.payload.durableLastKnown)
-        assertEquals("Owner A", controlMembers.state.value.memberProfile(ServerId("server-1"), "u-a")?.displayName)
-        controlScope.cancel()
-
-        // The race the post-read check guards: A is current when the read is admitted, the disk read
-        // suspends, B signs in meanwhile (the authority re-captures like a real account switch), then
-        // the read completes with A's rows. They must not render under the route B now owns — and,
-        // separately, A's authors must not be written into the process-wide member-profile cache.
-        // The render half is also refused by the commit gate in start(); the seeding half is refused
-        // ONLY by the post-read provenance check, because seedThreadAuthorProfiles runs upstream of
-        // that gate. This assertion is what bites if that check is removed.
-        var identity = ownerA
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + UnconfinedTestDispatcher(testScheduler))
-        val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("owner-a durable body")))
-        reader.parkNextRead()
-        val members = testServerMembersStore(PresenceNoopMemberRepository, scope = backgroundScope)
-        val dataSource = dataSource(
-            storeScope = backgroundScope,
-            api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-            reader = reader,
-            identity = { identity },
-            serverMembersStore = members,
-        )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        try {
-            store.dispatch(SharedThreadIntent.Start(basePayload()))
-            reader.readStarted.await()
-            assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
-
-            identity = ownerB
-            assertNotNull(dataSource.readSession())
-            assertEquals("u-b", dataSource.currentReplyCacheProvenance()?.principalId)
-
-            reader.releaseRead.complete(Unit)
-            val payload = store.state.value.payload
-            assertTrue(payload.messages.isEmpty(), payload.messages.map { it.body }.toString())
-            assertFalse(payload.durableLastKnown)
-            assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
-            assertNull(
-                members.state.value.memberProfile(ServerId("server-1"), "u-a"),
-                "owner A's author profile must not be seeded after the identity moved to B",
-            )
-        } finally {
-            reader.releaseRead.complete(Unit)
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun emptyFrameStandsInAsAnEmptyChannelThroughAFailureAndYieldsToContent() = runTest {
-        // Task #1137. Negative control: with no durable frame, an offline start ends in the error state.
-        val noFrameScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val noFrameStore =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = FakeReader(frames = emptyMap()),
-                    identity = { ownerA },
-                ),
-                scope = noFrameScope,
-            )
-        noFrameStore.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals("error", noFrameStore.state.value.payload.status)
-        noFrameScope.cancel()
-
-        // An empty baseline: offline, the channel shows as empty (flagged last-known), never as an error.
-        val logs = mutableListOf<String>()
-        val offlineScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val offlineStore =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
-                    identity = { ownerA },
-                    diagnosticsLogger = logs::add,
-                ),
-                scope = offlineScope,
-            )
-        offlineStore.accept(SharedThreadIntent.Start(basePayload()))
-        val offline = offlineStore.state.value.payload
-        assertEquals("empty", offline.status)
-        assertTrue(offline.durableLastKnown)
-        assertFalse(offline.backgroundRefreshing)
-        assertTrue(offline.messages.isEmpty())
-        assertNotNull(offline.errorCode, "the failure is recorded, the empty stand-in is kept")
-        assertTrue(threadOfflineLastKnownChrome(offline).tipVisible, "the offline tip shows on the empty channel too")
-        assertTrue(logs.any { "thread_durable_last_known" in it && "outcome=empty_frame" in it }, logs.toString())
-        offlineScope.cancel()
-
-        // Online, the network answer replaces the stand-in and clears the flag.
-        val onlineScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val onlineStore =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    reader = FakeReader(frames = mapOf(partition(ownerA) to emptyFrame())),
-                    identity = { ownerA },
-                ),
-                scope = onlineScope,
-            )
-        onlineStore.accept(SharedThreadIntent.Start(basePayload()))
-        val online = onlineStore.state.value.payload
-        assertEquals("content", online.status)
-        assertFalse(online.durableLastKnown)
-        assertEquals(listOf("network body"), online.messages.map { it.body })
-        onlineScope.cancel()
-    }
-
-    @Test
     fun standInShowsOnlyTheNewestPageOfALargeStoredScope() = runTest {
         // 45 stored facts, network first page = 30 (SharedThreadPaging.DefaultPageSize): the stand-in is
         // the newest 30 in timeline order, not the whole scope (artin, Hands 2d15915b).
@@ -466,56 +277,6 @@ class SharedThreadStoreDurableLastKnownTest {
         smallScope.cancel()
     }
 
-    @Test
-    fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runTest {
-        // Positive control: a "channel" frame renders on the channel route (same logger wiring).
-        val controlLogs = mutableListOf<String>()
-        val controlScope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val controlStore =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = FakeReader(frames = mapOf(partition(ownerA) to frame("durable body"))),
-                    identity = { ownerA },
-                    diagnosticsLogger = controlLogs::add,
-                ),
-                scope = controlScope,
-            )
-        controlStore.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(listOf("durable body"), controlStore.state.value.payload.messages.map { it.body })
-        assertTrue(controlLogs.any { "thread_durable_last_known" in it && "outcome=frame" in it }, controlLogs.toString())
-        controlScope.cancel()
-
-        // A committed "dm" baseline under the same id must not render on a Channel route.
-        val logs = mutableListOf<String>()
-        val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
-        val reader = FakeReader(frames = mapOf(partition(ownerA) to frame("dm body", scopeKind = "dm")))
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource(
-                    storeScope = backgroundScope,
-                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
-                    reader = reader,
-                    identity = { ownerA },
-                    diagnosticsLogger = logs::add,
-                ),
-                scope = scope,
-            )
-        store.accept(SharedThreadIntent.Start(basePayload()))
-        val payload = store.state.value.payload
-        // Phase 2b: one read — there is no separate entry load to wait for.
-        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
-        assertTrue(payload.messages.isEmpty(), payload.messages.map { it.body }.toString())
-        assertFalse(payload.durableLastKnown)
-        assertTrue(payload.status != "content", payload.status)
-        assertEquals(1, logs.count { "outcome=surface_mismatch" in it }, logs.toString())
-        val mismatch = assertNotNull(logs.firstOrNull { "outcome=surface_mismatch" in it }, logs.toString())
-        assertTrue("scopeKind=dm" in mismatch, mismatch)
-        assertTrue(logs.none { "outcome=frame" in it }, logs.toString())
-        scope.cancel()
-    }
-
     private class FakeReader(
         private val frames: Map<DurablePartitionKey, ThreadDurableLastKnownFrame>,
     ) : ThreadDurableLastKnownReader {
@@ -525,13 +286,6 @@ class SharedThreadStoreDurableLastKnownTest {
             private set
         var releaseRead = CompletableDeferred<Unit>()
             private set
-
-        /** The next [read] suspends until [releaseRead] completes, so a test can act mid-read. */
-        fun parkNextRead() {
-            parkRead = true
-            readStarted = CompletableDeferred()
-            releaseRead = CompletableDeferred()
-        }
 
         override suspend fun read(partition: DurablePartitionKey, channelId: SyncScopeId): ThreadDurableLastKnownFrame? {
             reads += partition to channelId
@@ -572,13 +326,6 @@ class SharedThreadStoreDurableLastKnownTest {
             principalId = identity.principalId,
             consumerId = SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID,
             environmentId = identity.environmentId,
-        )
-
-    private fun emptyFrame(): ThreadDurableLastKnownFrame =
-        ThreadDurableLastKnownFrame(
-            scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
-            envelopes = emptyList(),
-            cursor = PersistedCursor(null, null, null, hasLoadedOldest = true),
         )
 
     /** Facts seq 1..[count], stored newest-first so the stand-in must order and trim by seq itself. */

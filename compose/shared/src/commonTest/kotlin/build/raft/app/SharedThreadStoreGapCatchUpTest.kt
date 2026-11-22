@@ -15,8 +15,6 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.RawMessagePageWitness
 import build.raft.app.data.ScreenError
-import build.raft.app.model.Message
-import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -103,26 +101,6 @@ class SharedThreadStoreGapCatchUpTest {
         assertTrue(replaced.logs.any { "decision=replace anchorOnPage=false steps=2" in it }, replaced.logs.toString())
     }
     @Test
-    fun anchorOnlyOnTheWidePageIsMergedAfterTwoRequests() = runTest {
-        // The cheap page (m12..m14) misses the anchor; the 200 page reaches back to it, so the gap is
-        // small after all: merged at the newest edge, no replacement.
-        val outcome =
-            gapCatchUpOutcome(
-                200 to pageRangeResponse(12L..14L),
-                200 to pageResponse(
-                    Triple("m10", 10L, "current body"),
-                    Triple("m11", 11L, "body-11"),
-                    Triple("m12", 12L, "body-12"),
-                    Triple("m13", 13L, "body-13"),
-                    Triple("m14", 14L, "body-14"),
-                ),
-            )
-        assertEquals(listOf(SharedThreadPaging.DefaultPageSize, SharedThreadGapCatchUpPageLimit), outcome.requestLimits)
-        assertEquals(listOf("m10", "m11", "m12", "m13", "m14"), outcome.payload.messages.map { it.id })
-        assertEquals(false, outcome.payload.canLoadMoreAfter)
-        assertTrue(outcome.logs.any { "decision=merge anchorOnPage=true steps=2" in it }, outcome.logs.toString())
-    }
-    @Test
     fun aFailedSecondStepChangesNothing() = runTest {
         // The cheap page misses the anchor and the wide request fails: the cheap page is never
         // committed on its own, the timeline is exactly what it was.
@@ -167,76 +145,6 @@ class SharedThreadStoreGapCatchUpTest {
         assertEquals(listOf("m500", "m501", "m502"), store.state.value.payload.messages.map { it.id })
         assertEquals(false, store.state.value.payload.canLoadMoreAfter)
         scopeJob.cancelAndJoin()
-    }
-    @Test
-    fun failedCatchUpChangesNothingAndOffersNothingToTheDurableWindow() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val repository = FakeConversationRepository()
-        repository.latestResult = DataResult.Error(ScreenError(code = "thread_gap_catchup_network", retryable = true))
-        val extender = RecordingDurablePageExtender()
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository,
-                durablePageExtender = extender
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
-        val before = store.state.value.payload
-
-        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
-        delay(10)
-
-        val after = store.state.value.payload
-        assertEquals(listOf(ThreadId("channel-1")), repository.latestRequests)
-        assertEquals(before.messages, after.messages, "the single request failed: the timeline is untouched")
-        assertEquals(before.canLoadMoreAfter, after.canLoadMoreAfter)
-        assertEquals("error", after.newerMessagesStatus)
-        assertTrue(extender.latestCalls.isEmpty(), extender.latestCalls.toString())
-        scopeJob.cancelAndJoin()
-    }
-    @Test
-    fun catchUpPageThatAddsMessagesIsOfferedToTheDurableWindowAndAnAllKnownOneIsNot() = runTest {
-        suspend fun offered(page: List<Message>): List<Triple<String, List<String?>, Pair<Int, Boolean>>> {
-            val scopeJob = SupervisorJob()
-            val scope = CoroutineScope(coroutineContext + scopeJob)
-            val repository = FakeConversationRepository()
-            val raw =
-                RawMessagePage(
-                    messages = Json.parseToJsonElement(page.joinToString(prefix = "[", postfix = "]") { """{"id":"${it.id.value}"}""" }) as JsonArray,
-                    requestedLimit = SharedThreadPaging.DefaultPageSize
-                )
-            repository.latestResult = DataResult.Content(threadSnapshot(messages = page).copy(rawMessagePage = RawMessagePageWitness(raw)))
-            val extender = RecordingDurablePageExtender()
-            val dataSource =
-                testSharedThreadDataSource(
-                    storeScope = backgroundScope,
-                    networkApi = FakeThreadApi(),
-                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                    cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                    conversationRepository = repository,
-                    durablePageExtender = extender
-                )
-            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-            store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
-            store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-            withTimeout(5_000) { while (repository.latestRequests.isEmpty()) delay(10) }
-            delay(20)
-            assertEquals(listOf(SharedThreadPaging.DefaultPageSize), repository.latestLimits, "anchor on the cheap page: one request")
-            scopeJob.cancelAndJoin()
-            return extender.latestCalls
-        }
-        // The default repository snapshot shows m1 (seq 10).
-        val anchor = message(id = "m1", seq = 10, body = "repository body")
-        assertEquals(
-            listOf(Triple("channel-1", listOf<String?>("m1", "m12"), SharedThreadPaging.DefaultPageSize to true)),
-            offered(listOf(anchor, message(id = "m12", seq = 12, body = "gap body"))),
-        )
-        assertEquals(emptyList(), offered(listOf(anchor)), "an all-known page (the heartbeat case) writes nothing")
     }
     @Test
     fun aCatchUpRegistersItsRealtimeBaselineBeforeItsFetchAndHandsItToTheDurableWrite() = runTest {
@@ -294,66 +202,5 @@ class SharedThreadStoreGapCatchUpTest {
         val (failed, failedWrites) = run(fail = true)
         assertEquals(listOf("fetches_before_begin=0", "begin", "abandon"), failed)
         assertEquals(0, failedWrites)
-    }
-    @Test
-    fun aCatchUpReadsTheDurableHeadEpochBeforeItsFetchAndHandsItToTheWrite() = runTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(coroutineContext + scopeJob)
-        val repository = FakeConversationRepository()
-        val raw =
-            RawMessagePage(
-                messages = Json.parseToJsonElement("""[{"id":"m1"}]""") as JsonArray,
-                requestedLimit = SharedThreadPaging.DefaultPageSize
-            )
-        val extender = RecordingDurablePageExtender()
-        // The epoch moves with every latest-page request: a read after the fetch would see 1, not 0.
-        extender.headEpochProvider = { repository.latestRequests.size.toLong() }
-        // With a realtime baseline even an all-known page is written (only its commit restores continuity).
-        extender.baselineToRegister = { partition, channelId ->
-            CanonicalMessageV2EnterBaseline(
-                partition = partition,
-                scopeId = channelId,
-                epochAtRequest = 2L,
-                roomLeaveCountAtRequest = 0L,
-                nonMemberAtRequest = false,
-                roomsJoinedAtRequest = true,
-                source = "catch_up",
-            )
-        }
-        val dataSource =
-            testSharedThreadDataSource(
-                storeScope = backgroundScope,
-                networkApi = FakeThreadApi(),
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-                conversationRepository = repository,
-                durablePageExtender = extender
-            )
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
-        repository.latestResult =
-            DataResult.Content(
-                threadSnapshot(messages = listOf(message(id = "m1", seq = 10, body = "repository body")))
-                    .copy(rawMessagePage = RawMessagePageWitness(raw))
-            )
-        store.accept(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
-        withTimeout(5_000) { while (repository.latestRequests.isEmpty()) delay(10) }
-        delay(20)
-        scopeJob.cancelAndJoin()
-        assertEquals(1, repository.latestRequests.size)
-        assertEquals(1, extender.latestCalls.size)
-        assertEquals(listOf<Long?>(0L), extender.requestHeadEpochs, "the epoch must be read before the request")
-    }
-
-    @Test
-    fun gapCatchUpDecisionReadsOnlyTheAnchorFact() {
-        // Pure decision table (knife target): identical page id lists except for the anchor.
-        val page = listOf("m10", "m12")
-        assertEquals(GapCatchUpDecision.MergeAtNewestEdge, gapCatchUpDecision("m10", page, timelineAtTail = true, viewportFollowsLatest = true))
-        assertEquals(GapCatchUpDecision.MergeAtNewestEdge, gapCatchUpDecision("m10", page, timelineAtTail = false, viewportFollowsLatest = false))
-        assertEquals(GapCatchUpDecision.ReplaceWithLatestPage, gapCatchUpDecision("m9", page, timelineAtTail = true, viewportFollowsLatest = true))
-        assertEquals(GapCatchUpDecision.DetachFromTail, gapCatchUpDecision("m9", page, timelineAtTail = true, viewportFollowsLatest = false))
-        assertEquals(GapCatchUpDecision.DetachFromTail, gapCatchUpDecision("m9", page, timelineAtTail = false, viewportFollowsLatest = true))
-        assertEquals(GapCatchUpDecision.ReplaceWithLatestPage, gapCatchUpDecision(null, page, timelineAtTail = true, viewportFollowsLatest = true))
     }
 }

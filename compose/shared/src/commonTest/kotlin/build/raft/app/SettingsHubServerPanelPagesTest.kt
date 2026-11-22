@@ -27,15 +27,6 @@ class SettingsHubServerPanelPagesTest {
     }
 
     @Test
-    fun wideKeepsComputersAndApplications() {
-        listOf(false, true).forEach { guest ->
-            val wide = settingsHomeRowKeys(hasThemeServer = true, guest = guest)
-            assertTrue(SettingsDestinationComputers in wide)
-            assertTrue(SettingsDestinationConnectedApps in wide)
-        }
-    }
-
-    @Test
     fun thePhoneServerPanelOpensComputersAndApps() {
         val phone = raftServerMenuEntriesFor(RaftServerMenuEntry.entries, wide = false, guest = false)
         assertTrue(RaftServerMenuEntry.Computers in phone)

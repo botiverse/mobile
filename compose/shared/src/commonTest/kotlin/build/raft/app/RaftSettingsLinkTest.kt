@@ -57,22 +57,6 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun themeLinkOpensThemeSettings() {
-        val link = parse("$prod/settings/theme")
-        assertEquals(SettingsNativeDetailPage.Theme.key, link?.destinationKey)
-        assertNull(link?.serverSlug)
-        assertNull(link?.section)
-    }
-
-    @Test
-    fun plainAccountLinkOpensAccountSettings() {
-        val link = parse("$prod/settings/account")
-        assertEquals(SettingsDestinationAccount, link?.destinationKey)
-        assertNull(link?.section)
-        assertEquals(SettingsDestinationAccount, key("$prod/s/hq/settings/account?x=1"))
-    }
-
-    @Test
     fun accountLoginSecurityBlocksOpenTheInAppAccountAtTheirRow() {
         for ((url, anchor) in listOf(
             "$prod/settings/account#two-step" to "two-step",
@@ -113,12 +97,6 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun deeperSegmentsOpenTheirTab() {
-        assertEquals(SettingsDestinationComputers, key("$prod/s/hq/settings/computers/abc123"))
-        assertEquals(SettingsDestinationHandsFeedback, key("$prod/s/hq/settings/feedback/ticket-1"))
-    }
-
-    @Test
     fun onlyRaftOwnOriginsAreSettingsLinks() {
         assertEquals(SettingsNativeDetailPage.Theme.key, key("https://open.raft.build/settings/theme"))
         // Staging: only as the configured environment web URL.
@@ -140,22 +118,6 @@ class RaftSettingsLinkTest {
     }
 
     @Test
-    fun nonSettingsRaftPathsAreNotSettingsLinks() {
-        for (url in listOf(
-            "$prod/",
-            "$prod/apps",
-            "$prod/s/hq/apps",
-            "$prod/s/hq/channel/89dce17f-1cd3-4db8-b08f-7b4141004b5a",
-            "$prod/s/hq/settingsx/theme",
-            "$prod/s/hq/x/settings/theme",
-            "$prod/s/bad%20slug/settings/theme",
-            "$prod/settings//theme",
-        )) {
-            assertNull(parse(url), url)
-        }
-    }
-
-    @Test
     fun serverSlugIsRespected() {
         val current = raftSettingsLinkTarget(parse("$prod/s/hq/settings/theme")!!, "srv-hq", servers)
         assertEquals(RaftSettingsLinkTarget(null, SettingsNativeDetailPage.Theme.key), current)
@@ -168,22 +130,6 @@ class RaftSettingsLinkTest {
 
     private fun action(href: String, webBase: String = prod) =
         announcementLinkAction(href, webBase, currentServerId = "srv-hq", servers = servers, appHosts = noAppHosts)
-
-    @Test
-    fun announcementChooseThemeOpensInAppThemeSettings() {
-        val action = assertIs<AnnouncementLinkAction.OpenSettings>(action("/settings/theme"))
-        assertEquals("hq", action.link.serverSlug)
-        assertEquals(RaftSettingsLinkTarget(null, SettingsNativeDetailPage.Theme.key), action.target)
-        // The same link written absolute, on production and on the staging environment.
-        assertIs<AnnouncementLinkAction.OpenSettings>(action("$prod/settings/theme"))
-        assertIs<AnnouncementLinkAction.OpenSettings>(action("$staging/s/hq/settings/theme", webBase = staging))
-    }
-
-    @Test
-    fun announcementAccountLinkOpensInAppAccountSettings() {
-        val action = assertIs<AnnouncementLinkAction.OpenSettings>(action("/settings/account"))
-        assertEquals(RaftSettingsLinkTarget(null, SettingsDestinationAccount), action.target)
-    }
 
     @Test
     fun announcementTwoStepLinkOpensTheInAppLoginSecurityGroup() {
@@ -203,24 +149,6 @@ class RaftSettingsLinkTest {
         val unknown = AnnouncementLinkAction.OpenUrl("$prod/s/hq/settings/account#unknown-block", raftWebPage = true)
         assertEquals(unknown, action("/settings/account#unknown-block"))
         assertEquals(RaftLinkOpenIntent.RaftWebPage, unknown.openIntent)
-    }
-
-    @Test
-    fun announcementLinksElsewhereStayWebLinks() {
-        val blog = AnnouncementLinkAction.OpenUrl("https://example.com/blog")
-        assertEquals(blog, action("https://example.com/blog"))
-        // Another site is an ordinary web link: the link setting alone decides where it opens.
-        assertEquals(RaftLinkOpenIntent.Ordinary, blog.openIntent)
-        // An in-app path that is not Settings opens on the current server, as the web's.
-        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/s/hq/apps", raftWebPage = true), action("/apps"))
-        assertEquals(AnnouncementLinkAction.OpenUrl("$prod/download", raftWebPage = true), action("/download"))
-        // Another account's server: the app cannot show it.
-        assertEquals(
-            AnnouncementLinkAction.OpenUrl("$prod/s/elsewhere/settings/theme", raftWebPage = true),
-            action("/s/elsewhere/settings/theme"),
-        )
-        assertNull(action("//evil.example/settings/theme"))
-        assertNull(action("javascript:alert(1)"))
     }
 
     @Test

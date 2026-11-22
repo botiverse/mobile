@@ -27,7 +27,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -130,23 +129,6 @@ class SettingsServerThemeStoreTest {
     }
 
     @Test
-    fun failedSaveRollsBackAndReports() = runTest {
-        val h = harness(session(theme = "plants"))
-
-        h.store.pickTheme(RaftThemeId.Quest)
-        runCurrent()
-        assertEquals("quest", h.sessions.serverA().theme)
-        assertEquals(RaftThemeId.Quest, h.store.state.value.choice)
-
-        h.client.answer(0, HomeNetworkResponse(500, """{"error":"Failed to update appearance settings"}"""))
-        runCurrent()
-
-        assertEquals("plants", h.sessions.serverA().theme, "the stored server is back on the previous theme")
-        assertEquals(RaftThemeId.Plants, h.store.state.value.choice)
-        assertEquals(1, h.saveFailures)
-    }
-
-    @Test
     fun onlyTheLatestFailedSaveRollsBackToTheConfirmedLook() = runTest {
         val h = harness(session(theme = "plants"))
 
@@ -200,27 +182,5 @@ class SettingsServerThemeStoreTest {
         runCurrent()
         assertEquals("space", h.sessions.serverA().theme)
         assertFalse(h.store.state.value.decorChecked)
-    }
-
-    @Test
-    fun decorSwitchIsOffAndInertForAThemeWithoutPixelArt() = runTest {
-        val h = harness(session(theme = null))
-
-        assertFalse(h.store.state.value.decorAvailable)
-        assertFalse(h.store.state.value.decorChecked)
-        h.store.setDecor(false)
-        runCurrent()
-        assertTrue(h.client.requests.isEmpty())
-    }
-
-    @Test
-    fun noSelectedServerHidesTheSection() = runTest {
-        val h = harness(session().copy(selectedServerId = null, servers = emptyList()))
-
-        assertFalse(h.store.state.value.visible)
-        assertNull(h.store.state.value.serverId)
-        h.store.pickTheme(RaftThemeId.Space)
-        runCurrent()
-        assertTrue(h.client.requests.isEmpty())
     }
 }

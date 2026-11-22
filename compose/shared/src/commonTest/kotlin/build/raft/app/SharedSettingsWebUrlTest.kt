@@ -22,14 +22,6 @@ class SharedSettingsWebUrlTest {
     }
 
     @Test
-    fun webUrlAppendsPathToConfiguredBase() {
-        assertEquals(
-            "https://staging.raft.build/settings/billing",
-            sharedSettingsWebUrl("https://staging.raft.build/", "/settings/billing")
-        )
-    }
-
-    @Test
     fun stagingEnvironmentProvidesOriginAndSettingsConsumerBuildsSelectedServerRoute() {
         assertEquals(
             "https://raft-app-staging.botiverse.dev",

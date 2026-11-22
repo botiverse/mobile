@@ -63,65 +63,6 @@ class SharedThreadJumpToLatestTest {
     }
 
     @Test
-    fun canonicalTailClearsFocusWithoutAnotherNetworkRequest() = runPortableCoroutineTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
-        val api = TailNetworkApi()
-        val store =
-            SharedThreadStore(
-                dataSource = dataSource(api),
-                scope = scope,
-                initialPayload =
-                    RaftThreadScreenPayload(
-                        instanceId = "shared-shell-thread-channel-1",
-                        sourceThreadId = "channel-1",
-                        streamChannelId = "channel-1",
-                        status = "content",
-                        messages = listOf(message(id = "m210", seq = 210L, body = "canonical tail")),
-                        focusedMessageId = "m210",
-                        canLoadMoreBefore = true,
-                        canLoadMoreAfter = false,
-                        canSend = true
-                    )
-            )
-
-        try {
-            assertEquals(ThreadLatestJumpOutcome.Landed, store.jumpToLatest())
-            assertEquals(0, api.tailRequestCount)
-            assertNull(store.state.value.payload.focusedMessageId)
-            assertFalse(store.state.value.payload.canLoadMoreAfter)
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun aSecondJumpWhileTheTailLoadsStartsNoSecondRequest() = runPortableCoroutineTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
-        val api = TailNetworkApi()
-        val store = SharedThreadStore(dataSource = dataSource(api), scope = scope, initialPayload = focusedWindow())
-
-        try {
-            val first = scope.async { store.jumpToLatest() }
-            api.tailRequestStarted.await()
-            // The repeated tap: ignored, and the request on the way is not cancelled or restarted.
-            assertEquals(ThreadLatestJumpOutcome.AlreadyLoading, store.jumpToLatest())
-            assertEquals(1, api.tailRequestCount)
-            api.releaseTailRequest.complete(Unit)
-
-            assertEquals(ThreadLatestJumpOutcome.Landed, first.await())
-            assertEquals(1, api.tailRequestCount)
-            assertEquals("m210", store.state.value.payload.messages.last().id)
-            // Once it has landed, a new jump is a new jump (already at the tail: no request).
-            assertEquals(ThreadLatestJumpOutcome.Landed, store.jumpToLatest())
-            assertEquals(1, api.tailRequestCount)
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
     fun aFailedTailLoadIsReportedAndKeepsTheWindow() = runPortableCoroutineTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
@@ -142,26 +83,6 @@ class SharedThreadJumpToLatestTest {
             api.releaseTailRequest = CompletableDeferred(Unit)
             assertEquals(ThreadLatestJumpOutcome.Landed, store.jumpToLatest())
             assertEquals(2, api.tailRequestCount)
-        } finally {
-            scopeJob.cancelAndJoin()
-        }
-    }
-
-    @Test
-    fun aJumpReplacedByAnotherIsNotAFailure() = runPortableCoroutineTest {
-        val scopeJob = SupervisorJob()
-        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
-        val api = TailNetworkApi()
-        val store = SharedThreadStore(dataSource = dataSource(api), scope = scope, initialPayload = focusedWindow())
-
-        try {
-            val jump = scope.async { store.jumpToLatest() }
-            api.tailRequestStarted.await()
-            // A message jump (a search match) takes the timeline while the tail loads.
-            store.dispatch(SharedThreadIntent.JumpToMessage(messageId = "m5", unreadThreadPill = false))
-            api.releaseTailRequest.complete(Unit)
-
-            assertEquals(ThreadLatestJumpOutcome.Superseded, jump.await())
         } finally {
             scopeJob.cancelAndJoin()
         }

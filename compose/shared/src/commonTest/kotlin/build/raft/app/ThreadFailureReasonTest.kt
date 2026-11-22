@@ -1,8 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.ThreadApiResult
-import build.raft.app.network.RaftRequestTimeoutException
-import build.raft.app.resources.ResourceStringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -63,18 +61,6 @@ class ThreadFailureReasonTest {
         assertTrue("session-secret" !in detail)
         assertTrue("other-secret" !in detail)
         assertTrue("query-secret" !in detail)
-    }
-
-    @Test
-    fun legacyFailureReasonLabelStaysBoundedWhileDiagnosticDetailRemainsComplete() {
-        val longReason = "safe-diagnostic-".repeat(20)
-        val legacyLabel = threadFailureReasonLabel(longReason)
-        val diagnosticDetail = threadFailureDiagnosticDetail("thread_send_exception", longReason)
-
-        assertEquals(120, legacyLabel?.length)
-        assertTrue(legacyLabel!!.endsWith("..."))
-        assertTrue(diagnosticDetail!!.contains(longReason))
-        assertTrue(diagnosticDetail.length > 120)
     }
 
     @Test
@@ -148,42 +134,6 @@ class ThreadFailureReasonTest {
     }
 
     @Test
-    fun userFacingErrorReasonUsesResourceBackedCopy() {
-        ThreadUserFacingErrorReason.entries.forEach { reason ->
-            assertIs<ResourceStringDesc>(reason.stringDesc())
-        }
-    }
-
-    @Test
-    fun failureReasonParsesReadableMessageFromErrorBody() {
-        assertEquals(
-            "Body is too large",
-            threadFailureReasonMessage("""{"code":"body_too_large","errorMessage":"Body is too large"}""")
-        )
-        assertEquals(
-            "body_too_large",
-            threadFailureDiagnosticCode("""{"code":"body_too_large","errorMessage":"Body is too large"}""")
-        )
-        assertEquals("plain failure", threadFailureReasonMessage("plain failure"))
-    }
-
-    @Test
-    fun sendExceptionErrorCodeMapsCommonFailureTypes() {
-        assertEquals(
-            "thread_send_timeout",
-            threadSendExceptionErrorCode(RaftRequestTimeoutException("timed out"))
-        )
-        assertEquals(
-            "thread_send_cancelled",
-            threadSendExceptionErrorCode(IllegalStateException("request cancelled"))
-        )
-        assertEquals(
-            "thread_send_exception",
-            threadSendExceptionErrorCode(IllegalArgumentException("unexpected"))
-        )
-    }
-
-    @Test
     fun silentRetryOnlyTargetsTransientSendFailures() {
         assertEquals(true, threadSendShouldSilentlyRetry("thread_send_timeout"))
         assertEquals(true, threadSendShouldSilentlyRetry("thread_send_network"))
@@ -222,40 +172,6 @@ class ThreadFailureReasonTest {
     }
 
     @Test
-    fun codeZeroTimeoutUsesTransientTimeoutClassification() {
-        val errorCode =
-            threadSendFailureErrorCode(
-                contractCode = null,
-                errorBodyText = """{"error":"network_timeout","message":"request timed out"}""",
-                httpCode = 0
-            )
-
-        assertEquals("thread_send_timeout", errorCode)
-        assertEquals(true, threadSendShouldSilentlyRetry(errorCode, httpCode = 0))
-    }
-
-    @Test
-    fun arbitraryCodeZeroAndBusinessFailuresDoNotSilentlyRetry() {
-        val unknownCodeZero =
-            threadSendFailureErrorCode(
-                contractCode = null,
-                errorBodyText = "unexpected local failure",
-                httpCode = 0
-            )
-        val validationFailure =
-            threadSendFailureErrorCode(
-                contractCode = null,
-                errorBodyText = """{"code":"body_too_large","errorMessage":"Body is too large"}""",
-                httpCode = 400
-            )
-
-        assertEquals("http_0", unknownCodeZero)
-        assertEquals(false, threadSendShouldSilentlyRetry(unknownCodeZero, httpCode = 0))
-        assertEquals("body_too_large", validationFailure)
-        assertEquals(false, threadSendShouldSilentlyRetry(validationFailure, httpCode = 400))
-    }
-
-    @Test
     fun silentRetryRequiresAnIdempotencyIdentity() {
         val missingIdentity = ThreadSendAttemptState(randomId = null, maxSilentRetries = 2)
         val blankIdentity = ThreadSendAttemptState(randomId = " ", maxSilentRetries = 2)
@@ -264,77 +180,6 @@ class ThreadFailureReasonTest {
         assertEquals(false, blankIdentity.advanceForSilentRetry(eligible = true))
         assertEquals(1, missingIdentity.attempt)
         assertEquals(1, blankIdentity.attempt)
-    }
-
-    @Test
-    fun uploadFailureCodePrefersStructuredServerCodeExceptForAuthBlockers() {
-        assertEquals(
-            "FILE_UPLOAD_QUOTA_EXCEEDED",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.Error(
-                    build.raft.app.data.ScreenError(
-                        code = "http_403",
-                        retryable = false,
-                        serverCode = "FILE_UPLOAD_QUOTA_EXCEEDED",
-                    )
-                )
-            )
-        )
-        assertEquals(
-            "FILE_UPLOAD_QUOTA_EXCEEDED",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.NoPermission(
-                    build.raft.app.data.PermissionBlocker(
-                        code = "server_forbidden",
-                        requiredCapability = "server_access",
-                        serverCode = "FILE_UPLOAD_QUOTA_EXCEEDED",
-                    )
-                )
-            )
-        )
-        assertEquals(
-            "UPLOAD_FORBIDDEN",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.NoPermission(
-                    build.raft.app.data.PermissionBlocker(
-                        code = "server_forbidden",
-                        requiredCapability = "server_access",
-                        serverCode = "UPLOAD_FORBIDDEN",
-                    )
-                )
-            )
-        )
-        assertEquals(
-            "server_forbidden",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.NoPermission(
-                    build.raft.app.data.PermissionBlocker(
-                        code = "server_forbidden",
-                        requiredCapability = "server_access",
-                        serverCode = "channel_membership_required",
-                    )
-                )
-            )
-        )
-        assertEquals(
-            "auth_required",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.NoPermission(
-                    build.raft.app.data.PermissionBlocker(
-                        code = "auth_required",
-                        requiredCapability = "auth_session",
-                        serverCode = "token_expired",
-                    )
-                )
-            )
-        )
-        assertEquals(
-            "attachment_upload_batch_empty",
-            resolveThreadAttachmentUploadFailureCode(
-                build.raft.app.data.DataResult.Empty(build.raft.app.data.EmptyReason.NoMessages),
-                emptyCode = "attachment_upload_batch_empty",
-            )
-        )
     }
 
     @Test

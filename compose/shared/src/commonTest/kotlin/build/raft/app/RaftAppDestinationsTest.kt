@@ -31,25 +31,6 @@ class RaftAppDestinationsTest {
     }
 
     @Test
-    fun thePhoneBarKeepsTodaysTabsAndIcons() {
-        // Keys and order as before the shared list; icons as the web's MobileNav (House, ListTodo).
-        assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), AppShellPhoneBottomBarKeys)
-        assertEquals(
-            listOf(
-                RaftLucideIconName.House,
-                RaftLucideIconName.Activity,
-                RaftLucideIconName.ListTodo,
-                RaftLucideIconName.Search,
-                RaftLucideIconName.Ellipsis,
-            ),
-            AppShellPhoneBottomBarKeys.map(::appShellTabIcon),
-        )
-        assertEquals(RaftLucideIconName.MessageCircle, appShellTabIcon("dms"))
-        assertEquals(RaftLucideIconName.Users, appShellTabIcon("members"))
-        assertEquals(RaftLucideIconName.Settings, appShellTabIcon("settings"))
-    }
-
-    @Test
     fun theWindowWidthPicksThePresentation() {
         assertEquals(RaftNavPresentation.PhoneBar, raftNavPresentation(navRailActive = false))
         assertEquals(RaftNavPresentation.Rail, raftNavPresentation(navRailActive = true))

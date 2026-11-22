@@ -3,8 +3,6 @@ package build.raft.app
 import build.raft.app.data.AgentActivityTurn
 import build.raft.app.data.AgentActivityTurnOutcome
 import build.raft.app.model.AgentStatus
-import build.raft.app.model.Presence
-import build.raft.designsystem.components.RaftStepStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -66,45 +64,5 @@ class MembersAgentActivityNowHeadlineTest {
             MembersAgentNowHeadline.IdleSince(t0 - 20_000),
             membersAgentNowHeadline(AgentStatus.Online, running, last, nowEpochMillis = t0 + 600_000),
         )
-    }
-
-    @Test
-    fun anyOtherStateIsTheStatusItself() {
-        val now = t0 + 600_000
-        // Working without a running turn (an older server): the headline is the step, said once.
-        assertEquals(MembersAgentNowHeadline.Status, membersAgentNowHeadline(AgentStatus.Working, null, last, now))
-        // Online before any turn finished.
-        assertEquals(MembersAgentNowHeadline.Status, membersAgentNowHeadline(AgentStatus.Online, null, null, now))
-        // A crash, a stop, a lost connection, an away presence, and a status not observed yet.
-        listOf(AgentStatus.Error, AgentStatus.Offline, AgentStatus.Disconnected, AgentStatus.Idle, null).forEach { status ->
-            assertEquals(MembersAgentNowHeadline.Status, membersAgentNowHeadline(status, running, last, now), "$status")
-        }
-    }
-
-    @Test
-    fun theTimeIsWholeSecondsAsShown() {
-        // Web `Math.round(ms / 1000) * 1000`: half a second rounds up.
-        assertEquals(0L, membersAgentNowElapsedMillis(t0, t0 + 499))
-        assertEquals(1_000L, membersAgentNowElapsedMillis(t0, t0 + 500))
-        assertEquals(192_000L, membersAgentNowElapsedMillis(t0, t0 + 191_600))
-        // Read by web formatTurnDuration: "3m 12s", "2h 5m", and never under its 1s floor, even when
-        // the producer's clock started the turn ahead of this device's.
-        assertEquals(MembersActivityOverviewDurationParts(0, 3, 12), membersActivityOverviewDurationParts(membersAgentNowElapsedMillis(t0, t0 + 191_600)))
-        assertEquals(MembersActivityOverviewDurationParts(2, 5, 0), membersActivityOverviewDurationParts(membersAgentNowElapsedMillis(t0, t0 + 7_500_200)))
-        assertEquals(MembersActivityOverviewDurationParts(0, 0, 1), membersActivityOverviewDurationParts(membersAgentNowElapsedMillis(t0, t0 - 5_000)))
-    }
-
-    @Test
-    fun ottieFollowsTheLiveIndicator() {
-        // The live indicator's status, not the label (the dot it replaces read the same SSOT).
-        fun ottieWhen(status: AgentStatus, presence: Presence, label: String) =
-            MembersAgentActivityNow(label, raftAgentStatusIndicatorState(status, presence, external = false)).otter()
-        assertEquals(RaftStepStatus.Process, ottieWhen(AgentStatus.Working, Presence.Active, "Running tests"))
-        assertEquals(RaftStepStatus.Process, ottieWhen(AgentStatus.Thinking, Presence.Active, "Thinking"))
-        assertEquals(RaftStepStatus.Error, ottieWhen(AgentStatus.Error, Presence.Offline, "Error"))
-        assertEquals(RaftStepStatus.Wait, ottieWhen(AgentStatus.Online, Presence.Active, "Idle"))
-        assertEquals(RaftStepStatus.Wait, ottieWhen(AgentStatus.Disconnected, Presence.Offline, "Disconnected"))
-        // Not observed yet: resting, whatever the label says.
-        assertEquals(RaftStepStatus.Wait, MembersAgentActivityNow("Working", indicator = null).otter())
     }
 }

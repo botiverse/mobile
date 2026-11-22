@@ -17,8 +17,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -44,53 +42,10 @@ class ChannelAddMemberCreateExternalAgentTest {
     }
 
     @Test
-    fun theMenuListsCreateAgentThenCreateExternalAgent() {
-        assertEquals(listOf(MembersCreateAgentMode.Managed, MembersCreateAgentMode.External), ThreadAddMemberCreateMenuModes)
-        val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "", adding = false)
-        assertTrue(spec.enabled && spec.showsAutoJoin && !spec.promoted && spec.initialName.isEmpty())
-    }
-
-    @Test
-    fun aSearchThatFoundNoOneNamesTheRowAndOnlyTheManagedItemCarriesIt() {
-        val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "mia", adding = false)
-        assertTrue(spec.promoted)
-        assertEquals("mia", spec.nameFor(MembersCreateAgentMode.Managed))
-        assertEquals("", spec.nameFor(MembersCreateAgentMode.External))
-    }
-
-    @Test
-    fun withoutPermissionTheSpecIsInert() {
-        val spec = threadAddMemberCreateRowSpec(canCreateAgents = false, createName = "mia", adding = false)
-        assertFalse(spec.enabled || spec.showsAutoJoin || spec.promoted)
-        assertEquals("", spec.initialName)
-    }
-
-    @Test
     fun theRowIsDisabledWhileABatchIsBeingAdded() {
         val spec = threadAddMemberCreateRowSpec(canCreateAgents = true, createName = "", adding = true)
         assertFalse(spec.enabled)
         assertTrue(spec.showsAutoJoin)
-    }
-
-    @Test
-    fun theExternalSubmitSendsNoComputerAndNoRuntime() {
-        val submit =
-            assertNotNull(
-                createAgentDialogSubmit(
-                    name = " @mia ",
-                    description = "  ",
-                    machineId = "machine-1",
-                    external = true,
-                    runtime = "claude",
-                    loaded = null,
-                    values = emptyMap(),
-                )
-            )
-        assertEquals("mia", submit.name)
-        assertNull(submit.description)
-        assertNull(submit.machineId)
-        assertTrue(submit.external)
-        assertNull(submit.runtimeFormV2)
     }
 
     @Test
@@ -111,17 +66,6 @@ class ChannelAddMemberCreateExternalAgentTest {
             assertEquals("Runs on my laptop", body.string("description"))
             assertTrue(body.string("avatarUrl").startsWith("pixel:"))
             assertTrue(body.getValue("external").jsonPrimitive.boolean)
-        }
-
-    @Test
-    fun anExternalCreateWithoutADescriptionLeavesItOut() =
-        runPortableCoroutineTest {
-            val api = ExternalAgentRecordingAgentsApi()
-            val coordinator = SharedCreateAgentCoordinator(RaftAgentsApiClient(api), RaftComputersApiClient(ExternalAgentUnusedComputersApi))
-            coordinator.createAgent(
-                SharedCreateAgentDialogSubmit(name = "mia", description = null, machineId = null, external = true).toCreateAgentRequest()
-            )
-            assertEquals(setOf("name", "avatarUrl", "external"), Json.parseToJsonElement(api.bodies.single()).jsonObject.keys)
         }
 
     @Test

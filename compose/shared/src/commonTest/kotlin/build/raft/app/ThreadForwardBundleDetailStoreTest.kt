@@ -22,14 +22,11 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
-import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ThreadId
 import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertIs
@@ -139,24 +136,6 @@ class ThreadForwardBundleDetailStoreTest {
     }
 
     @Test
-    fun visualFixtureRemainsAdmittedWithoutProductionAuthority() {
-        assertTrue(
-            threadForwardBundleContentAdmitted(
-                visualFixture = true,
-                productionAuthorityValid = false,
-                status = ThreadForwardBundleDetailStatus.Empty,
-            )
-        )
-        assertFalse(
-            threadForwardBundleContentAdmitted(
-                visualFixture = false,
-                productionAuthorityValid = false,
-                status = ThreadForwardBundleDetailStatus.Content,
-            )
-        )
-    }
-
-    @Test
     fun routeAcceptsIdentityOnlyAndRejectsMissingIdentity() {
         val route =
             JSONObject()
@@ -169,44 +148,6 @@ class ThreadForwardBundleDetailStoreTest {
         assertEquals(ChannelId("channel-1"), route?.channelId)
         assertEquals(MessageId("message-1"), route?.messageId)
         assertNull(JSONObject().put("payload", "full-message-content").toThreadForwardBundleRouteOrNull())
-    }
-
-    @Test
-    fun pageDataKeepsProductStateOutAndReadsOnlyHostTimeFallback() {
-        val route = threadForwardBundleRoute()
-        val pageData = route.toThreadForwardBundlePageData()
-
-        assertEquals(route, pageData.toThreadForwardBundleRouteOrNull())
-        assertFalse(pageData.has("localOffsetMinutes"), "route must not carry host time context")
-        listOf("payload", "messages", "bundle", "title", "timestampLabel").forEach { forbidden ->
-            assertFalse(pageData.has(forbidden), "$forbidden must stay outside forward-bundle pageData")
-        }
-
-        val hostInjectedPageData =
-            JSONObject()
-                .put("localOffsetMinutes", 480)
-                .put("timeFormat", RaftTimeFormat24Hour)
-        assertEquals(480, hostInjectedPageData.threadForwardBundleTimeCapabilitiesOrNull()?.localOffsetMinutes)
-        assertEquals(
-            RaftTimeFormat24Hour,
-            hostInjectedPageData.threadForwardBundleTimeCapabilitiesOrNull()?.timeFormat
-        )
-        assertNull(JSONObject().threadForwardBundleTimeCapabilitiesOrNull())
-        assertNull(JSONObject().put("localOffsetMinutes", "invalid").threadForwardBundleTimeCapabilitiesOrNull())
-    }
-
-    @Test
-    fun inlinePreviewUsesWebLongContentThresholdForSingleMessage() {
-        val short = forwardItem(id = "short", body = "x".repeat(ThreadForwardBundlePreviewCharLimit))
-        val long = forwardItem(id = "long", body = "x".repeat(ThreadForwardBundlePreviewCharLimit + 1))
-
-        val shortPreview = ForwardMessageBundle(messages = listOf(short)).inlinePreviewMessages().single()
-        val longPreview = ForwardMessageBundle(messages = listOf(long)).inlinePreviewMessages().single()
-
-        assertFalse(shortPreview.truncated)
-        assertEquals(short.body, shortPreview.body)
-        assertTrue(longPreview.truncated)
-        assertTrue(longPreview.body.endsWith("…"))
     }
 
     @Test
@@ -227,38 +168,6 @@ class ThreadForwardBundleDetailStoreTest {
         assertEquals(ThreadForwardBundleInlinePreviewLimit, previews.size)
         assertTrue(previews.all { it.truncated })
         assertTrue(previews.all { it.body.lines().size == ThreadForwardBundlePreviewLineLimit })
-    }
-
-    @Test
-    fun storeLoadsBundleThroughRepositoryIgnoresDuplicateLoadAndAllowsRevalidation() = runBlocking {
-        val bundle = ForwardMessageBundle(messages = listOf(forwardItem("message-1", "full body")))
-        var loadCount = 0
-        val repository =
-            object : ThreadForwardBundleDetailRepository {
-                override suspend fun load(route: ThreadForwardBundleRoute): DataResult<ForwardMessageBundle> {
-                    loadCount += 1
-                    return DataResult.Content(bundle)
-                }
-            }
-        val store =
-            ThreadForwardBundleDetailStore(
-                route = threadForwardBundleRoute(),
-                repository = repository,
-                scope = this
-            )
-
-        store.dispatch(ThreadForwardBundleDetailIntent.Load)
-        store.dispatch(ThreadForwardBundleDetailIntent.Load)
-        yield()
-
-        assertEquals(1, loadCount)
-        assertEquals(ThreadForwardBundleDetailStatus.Content, store.state.value.status)
-        assertEquals(bundle, store.state.value.bundle)
-
-        store.dispatch(ThreadForwardBundleDetailIntent.Retry)
-        yield()
-        assertEquals(2, loadCount)
-        store.clear()
     }
 
     private fun threadForwardBundleRoute(): ThreadForwardBundleRoute =

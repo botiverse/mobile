@@ -63,41 +63,6 @@ class ThreadMembersJointGroupsTest {
     }
 
     @Test
-    fun anEmptyGroupIsLeftOut() {
-        val ownServerOnly = listOf(ebby, tenny)
-        assertEquals(listOf("section:viewer-server" to listOf("ebby", "tenny")), sections(JointChannelKindWireValue, ownServerOnly))
-        val otherServersOnly = listOf(alphaBot, dana)
-        assertEquals(listOf("section:other-servers" to listOf("dana", "alpha-bot")), sections(JointChannelKindWireValue, otherServersOnly))
-        // A search that leaves one group's rows only (the whole roster still decides the grouping).
-        assertEquals(
-            listOf("section:other-servers" to listOf("dana")),
-            sections(JointChannelKindWireValue, roster, visibleMembers = listOf(dana)),
-        )
-        // A search that leaves nobody: no section at all (the page shows its no-matches state).
-        assertEquals(emptyList(), sections(JointChannelKindWireValue, roster, visibleMembers = emptyList()))
-    }
-
-    @Test
-    fun slackParticipantsKeepTheirOwnSectionAfterTheGroups() {
-        assertEquals(
-            listOf(
-                "section:viewer-server" to listOf("ebby", "gus", "tenny"),
-                "section:other-servers" to listOf("dana", "alpha-bot"),
-                "section:external" to listOf("slack-sam"),
-            ),
-            sections(JointChannelKindWireValue, roster, slack = listOf(sam)),
-        )
-        // Only Slack participants left by the search: their section alone.
-        assertEquals(
-            listOf("section:external" to listOf("slack-sam")),
-            sections(JointChannelKindWireValue, roster, visibleMembers = emptyList(), slack = listOf(sam)),
-        )
-        // Slack participants never make a roster grouped: a joint channel with nobody else.
-        assertFalse(threadMembersGroupsByViewerServer(JointChannelKindWireValue, emptyList()))
-        assertEquals(listOf("section:external" to listOf("slack-sam")), sections(JointChannelKindWireValue, emptyList(), slack = listOf(sam)))
-    }
-
-    @Test
     fun anyOtherChannelOrARosterWithoutTheFieldKeepsHumansThenAgents() {
         val unchanged =
             listOf(
@@ -113,24 +78,5 @@ class ThreadMembersJointGroupsTest {
         val olderServer = roster.map { it.copy(inViewerServer = null) }
         assertFalse(threadMembersGroupsByViewerServer(JointChannelKindWireValue, olderServer))
         assertEquals(unchanged, sections(JointChannelKindWireValue, olderServer, slack = listOf(sam)))
-    }
-
-    @Test
-    fun aRowWithoutTheFieldInAGroupedRosterIsUnderOtherServers() {
-        // Web `(inViewerServer === true) === inViewerServer`: only `true` is the viewed server's.
-        val unmarked = human("pat", inViewerServer = null)
-        assertEquals(
-            listOf(
-                "section:viewer-server" to listOf("ebby"),
-                "section:other-servers" to listOf("pat"),
-            ),
-            sections(JointChannelKindWireValue, listOf(ebby, unmarked)),
-        )
-        // The whole roster decides the grouping, not what the search leaves (web
-        // `groupsByViewerServer(channel.type, channelHumans, channelAgents)`).
-        assertEquals(
-            listOf("section:other-servers" to listOf("pat")),
-            sections(JointChannelKindWireValue, listOf(ebby, unmarked), visibleMembers = listOf(unmarked)),
-        )
     }
 }

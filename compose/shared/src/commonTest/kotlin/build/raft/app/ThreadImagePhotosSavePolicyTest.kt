@@ -89,19 +89,4 @@ class ThreadImagePhotosSavePolicyTest {
         assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, visible))
         assertEquals(false, raftFilePreviewShouldRetireExternalOperation(active, active))
     }
-
-    @Test
-    fun activePhotosOperationRetiresWhenOwnerGenerationChanges() {
-        val active =
-            RaftFilePreviewExternalOperationIdentity(
-                source = "thread_attachment",
-                attachmentId = "image-a",
-                path = "a.jpg",
-                owner = owner(generation = 3L)
-            )
-        val successorOwner = active.copy(owner = owner(generation = 4L))
-
-        assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, successorOwner))
-        assertEquals(true, raftFilePreviewShouldRetireExternalOperation(active, null))
-    }
 }

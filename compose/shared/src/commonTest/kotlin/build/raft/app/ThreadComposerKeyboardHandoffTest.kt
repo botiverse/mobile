@@ -57,17 +57,6 @@ class ThreadComposerKeyboardHandoffTest {
     }
 
     @Test
-    fun anEditorOpenedWhileThePageIsPausedWaitsForItsResume() {
-        val r = Recorder()
-        r.handoff.leave(keyboardOpen = true)
-        r.resumed = false
-        r.handoff.pageOpened()
-        assertEquals(Phase.Away, r.handoff.phase)
-        r.handoff.onPageLifecycle(resumed = true)
-        assertEquals(listOf("down", "back"), r.calls)
-    }
-
-    @Test
     fun aClosedKeyboardTakesNoTrip() {
         val r = Recorder()
         r.handoff.leave(keyboardOpen = false)

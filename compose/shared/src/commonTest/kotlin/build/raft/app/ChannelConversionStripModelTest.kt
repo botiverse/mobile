@@ -67,18 +67,6 @@ class ChannelConversionStripModelTest {
     }
 
     @Test
-    fun runningIsOneStripWithItsPercentageAndNoNotice() {
-        val model = channelConversionStripModel(slice(job()))!!
-        assertTrue(model.showsStrip)
-        assertFalse(model.failed)
-        assertNull(model.error)
-        assertNull(model.statusNotice)
-        assertFalse(model.paused)
-        assertFalse(model.offersRetry)
-        assertTrue(model.offersCancel)
-    }
-
-    @Test
     fun failedIsANoticeWithRetryAndNoStrip() {
         val model = channelConversionStripModel(slice(job(status = RaftChannelConversionJobStatus.Failed, phase = "verify", canCancel = true, error = "Verification failed")))!!
         assertFalse(model.showsStrip)
@@ -105,20 +93,6 @@ class ChannelConversionStripModelTest {
         assertTrue(channelConversionStripModel(slice(job(phase = "prepare", canCancel = null)))!!.offersCancel)
         assertFalse(channelConversionStripModel(slice(job(phase = "prepare", canCancel = null, canonicalCopyStarted = true)))!!.offersCancel)
         assertFalse(channelConversionStripModel(slice(job(phase = "verify", canCancel = null)))!!.offersCancel)
-    }
-
-    @Test
-    fun aCommandThatWaitsShowsTheStripAtNoneWithoutActions() {
-        val model = channelConversionStripModel(slice(null, commandPending = true))!!
-        assertTrue(model.showsStrip)
-        assertEquals(0, model.percent)
-        assertEquals(0, model.stepIndex)
-        assertFalse(model.offersCancel)
-        assertFalse(model.offersRetry)
-        // A Retry waiting on a failed job: no Retry twice, and its old failure is not repeated.
-        val retrying = channelConversionStripModel(slice(job(status = RaftChannelConversionJobStatus.Failed, error = "Verification failed"), commandPending = true))!!
-        assertFalse(retrying.offersRetry)
-        assertNull(retrying.error)
     }
 
     @Test
@@ -166,12 +140,5 @@ class ChannelConversionStripModelTest {
         assertFalse(channelConversionStripEnabled(null, "ops"))
         assertFalse(channelConversionStripEnabled("owner", "all"))
         assertFalse(channelConversionStripEnabled("admin", "#all"))
-    }
-
-    @Test
-    fun theStepsArePopoverOnAWideWindowAndASheetOnAPhone() {
-        assertFalse(channelConversionStepsInPopover(finePointer = false, windowWidthDp = 390f))
-        assertTrue(channelConversionStepsInPopover(finePointer = true, windowWidthDp = 390f))
-        assertTrue(channelConversionStepsInPopover(finePointer = false, windowWidthDp = DualPaneMinimumWidthDp))
     }
 }

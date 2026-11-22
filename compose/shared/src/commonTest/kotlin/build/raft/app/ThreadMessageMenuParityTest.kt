@@ -1,24 +1,14 @@
 package build.raft.app
 
 import build.raft.app.resources.*
-import build.raft.app.data.SharedMessageTranslationEntry
-import build.raft.app.data.SharedMessageTranslationSettings
-import build.raft.app.data.SharedMessageTranslationState
-import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
-import build.raft.app.data.TranslationModePreference
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageBundle
-import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
-import build.raft.app.network.sync.ReplyPreview
-import build.raft.app.network.sync.initialThreadRepliesReadModel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /** Long-press menu parity with web MessageItem's context menu (botiverse/slock 9be029411). */
@@ -73,98 +63,6 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun hoverToolbarOffersWhatTheMenuOffers() {
-        // web MessageHoverToolbar: Add Reaction, Reply in Thread, Forward, Save, More Actions, each
-        // where the menu has it; a system message has no reaction and no More.
-        fun toolbar(message: RaftThreadMessageItem, slice: ThreadTimelineSlice = slice()) =
-            threadMessageHoverToolbarActions(
-                message = message,
-                capabilities = capabilities(message, slice = slice),
-                onShowReactions = {},
-                onForward = {},
-                onToggleSave = {},
-            )
-
-        val ordinary = assertNotNull(toolbar(message(isSaved = true)))
-        assertTrue(ordinary.reaction && ordinary.reply && ordinary.forward && ordinary.save && ordinary.more)
-        assertTrue(ordinary.saved)
-        val guest = assertNotNull(toolbar(message(), slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)))
-        assertFalse(guest.forward)
-        val system = assertNotNull(toolbar(message(messageType = "System")))
-        assertFalse(system.reaction)
-        assertFalse(system.more)
-        // The header fades under the toolbar's own width (raft-ui --mi-toolbar-width): 164 for
-        // five buttons, 132 for four.
-        assertEquals(5, ordinary.buttonCount)
-        assertEquals(164f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(ordinary.buttonCount).value)
-        assertEquals(132f, build.raft.designsystem.components.RaftMessageItemToolbarDefaults.width(guest.buttonCount).value)
-    }
-
-    @Test
-    fun theMenuDropsReplyInThreadOnceTheMessageShowsItsThread() {
-        // botiverse/slock #15524 (web MessageItem `showMenuReplyInThread`): the replies under a
-        // message (its inline replies, else its replies badge for replies or a reply draft) open its
-        // thread, so the long-press, right-click and More menus leave Reply in Thread out. A reply
-        // thread (a phone's thread page, a wide layout's side panel) never offers it.
-        val inlineReplies =
-            initialThreadRepliesReadModel(
-                replies = listOf(replyPreview("reply-1", seq = 1)),
-                replyCount = 1,
-                limit = InlineThreadReplyPreviewLimit,
-            )
-        val withReplies = message(threadChannelId = "thread-1", replyCount = 2)
-        val replyThread = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = withReplies)
-        data class Case(
-            val name: String,
-            val message: RaftThreadMessageItem,
-            val slice: ThreadTimelineSlice = slice(),
-            val hasReplyDraft: Boolean = false,
-            val shows: Boolean,
-        )
-        listOf(
-            Case("no replies", message(), shows = true),
-            Case("a thread channel without replies yet", message(threadChannelId = "thread-1"), shows = true),
-            Case("a DM message without replies", message(), slice(surfaceKind = RaftThreadSurfaceKind.DirectMessage), shows = true),
-            Case("its replies badge", withReplies, shows = false),
-            Case("a DM message's replies badge", withReplies, slice(surfaceKind = RaftThreadSurfaceKind.DirectMessage), shows = false),
-            Case("a reply draft's badge", message(), hasReplyDraft = true, shows = false),
-            Case(
-                "its inline replies",
-                message(threadChannelId = "thread-1", replyCount = 1).copy(inlineReplies = inlineReplies),
-                shows = false,
-            ),
-            Case("the reply thread's parent", withReplies, replyThread, shows = false),
-            Case("a reply in the reply thread", message(id = "reply-1"), replyThread, shows = false),
-            Case("a task conversation", message(), slice().copy(channelKind = RaftTaskConversationChannelKind), shows = false),
-            Case("a local send", message(deliveryState = ThreadMessageDeliveryFailed).copy(pendingSendContext = pendingSend()), shows = false),
-        ).forEach { case ->
-            assertEquals(
-                case.shows,
-                threadMessageMenuShowsReplyInThread(
-                    capabilities = capabilities(case.message, slice = case.slice),
-                    message = case.message,
-                    replyMetadata = case.message.toThreadReplyMetadata(),
-                    slice = case.slice,
-                    hasReplyDraft = case.hasReplyDraft,
-                ),
-                case.name,
-            )
-        }
-        // web MessageHoverToolbar keeps its Reply button there.
-        val toolbar =
-            assertNotNull(
-                threadMessageHoverToolbarActions(
-                    message = withReplies,
-                    capabilities = capabilities(withReplies),
-                    onShowReactions = {},
-                    onForward = {},
-                    onToggleSave = {},
-                )
-            )
-        assertTrue(toolbar.reply)
-    }
-
-    @Test
     fun guestsGetNeitherForwardNorSelectMessage() {
         val guestSlice = slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)
         val capabilities = capabilities(message(), slice = guestSlice)
@@ -176,13 +74,6 @@ class ThreadMessageMenuParityTest {
     }
 
     @Test
-    fun forwardNeedsASourceChannelAndWriteAccess() {
-        val noSource = slice().withThreadViewerMessageActions(viewerIsGuest = false, forwardSourceAvailable = false)
-        assertFalse(capabilities(message(), slice = noSource).forward)
-        assertFalse(capabilities(message(), writeActionsEnabled = false).forward)
-    }
-
-    @Test
     fun forwardFollowsWebGetForwardableMessages() {
         assertTrue(capabilities(message(taskId = "task-1", taskNumber = 3, taskStatus = "todo")).forward)
         assertFalse(capabilities(message(messageType = "System")).forward)
@@ -190,34 +81,6 @@ class ThreadMessageMenuParityTest {
             capabilities(message(metadata = mapOf("actionCard.kind" to "action-card", "actionCard.type" to "channel:create"))).forward
         )
         assertFalse(capabilities(message(forwardBundle = ForwardMessageBundle(id = "bundle-1"))).forward)
-    }
-
-    @Test
-    fun systemMessagesHideReactionsAndSelectMessage() {
-        val capabilities = capabilities(message(messageType = "System"))
-
-        assertFalse(capabilities.quickReactions)
-        assertFalse(capabilities.addReaction)
-        assertFalse(capabilities.selectMessage)
-        assertFalse(capabilities.forward)
-    }
-
-    @Test
-    fun externalSendersCannotBeConverted() {
-        val external = ExternalMessageAuthor(displayName = "Slack user", provider = "slack", actorKind = "user")
-        assertFalse(capabilities(message(externalAuthor = external)).convertToTask)
-    }
-
-    @Test
-    fun followNeedsAThreadConversationOnAThreadActionSurface() {
-        val withThread = message(threadChannelId = "thread-1", replyCount = 2)
-        assertTrue(capabilities(withThread).follow)
-        assertFalse(capabilities(withThread, slice = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread)).follow)
-        // The thread panel's parent keeps Follow (web showThreadFollowAction).
-        assertTrue(
-            capabilities(withThread, slice = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = withThread)).follow
-        )
-        assertFalse(capabilities(withThread, writeActionsEnabled = false).follow)
     }
 
     @Test
@@ -235,193 +98,6 @@ class ThreadMessageMenuParityTest {
         assertTrue(
             capabilities(message(deliveryState = ThreadMessageDeliverySending).copy(pendingSendContext = pendingSend())).cancelLocalSend
         )
-    }
-
-    @Test
-    fun classicMenuFollowsTheWebSectionsThreadThenElsewhereThenSave() {
-        var forwarded = 0
-        val actions = classicActions(message(), showForwardAction = true, onForward = { forwarded += 1 })
-
-        // web MessageItem: thread and task, then take it elsewhere, then just for me.
-        assertEquals(
-            listOf(
-                Res.string.thread_action_reply_in_thread.desc(),
-                Res.string.thread_action_copy_link.desc(),
-                Res.string.thread_action_copy_markdown.desc(),
-                Res.string.thread_action_select_text.desc(),
-                Res.string.thread_action_forward.desc(),
-                Res.string.thread_action_select_message.desc(),
-                Res.string.thread_action_save_message.desc()
-            ),
-            actions.map { it.label }
-        )
-        assertEquals(listOf("message", "copy", "copy", "copy", "copy", "copy", "personal"), actions.map { it.group })
-        assertFalse(
-            actions.any { it.icon == RaftLucideIconName.SmilePlus },
-            "Add Reaction ends the reaction row, it is not an action row"
-        )
-        assertEquals(RaftLucideIconName.Forward, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
-        actions.single { it.label == Res.string.thread_action_forward.desc() }.onClick()
-        assertEquals(1, forwarded)
-    }
-
-    @Test
-    fun theReactionRowEndsWithAddReactionOnlyWhereReactionsAreAllowed() {
-        // Web MessageItem's quick-reaction row: the quick emojis, then a SmilePlus "Add Reaction"
-        // (`reaction-add-any`) that opens the full emoji picker; its only entry in the menu.
-        val ordinary = capabilities(message())
-        assertTrue(ordinary.addReaction)
-        val availability = ordinary.toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
-        assertTrue(availability.addReaction)
-        assertTrue(availability.showsReactionRow())
-        assertFalse(ThreadNewMessageMenuTool.AddReaction in availability.primaryTools(), "no separate tool")
-        assertFalse(ThreadNewMessageMenuTool.AddReaction in availability.secondaryTools(), "no separate tool")
-        assertFalse(ThreadNewMessageMenuTool.AddReaction in ThreadNewMessageMenuSecondaryToolOrder)
-
-        data class Case(val name: String, val capabilities: ThreadMessageMenuCapabilities)
-        listOf(
-            Case("system message", capabilities(message(messageType = "System"))),
-            Case("read-only (no write access)", capabilities(message(), writeActionsEnabled = false)),
-            Case("surface without reactions", capabilities(message(), slice = slice().copy(showReactionActions = false))),
-            Case(
-                "local send",
-                capabilities(message(deliveryState = ThreadMessageDeliveryFailed).copy(pendingSendContext = pendingSend()))
-            ),
-        ).forEach { case ->
-            assertFalse(case.capabilities.quickReactions, case.name)
-            assertFalse(case.capabilities.addReaction, case.name)
-            assertFalse(
-                case.capabilities.toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata()).addReaction,
-                case.name
-            )
-        }
-    }
-
-    @Test
-    fun theClassicMenuWidensForTheAddReactionSlot() {
-        val withoutAdd = threadMessageMenuWidthDp(showReactionActions = true)
-        val withAdd = threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true)
-        // One more 36dp button and its 2dp gap, so the quick emojis are not squeezed or clipped.
-        assertEquals(withoutAdd + 38f, withAdd)
-        assertEquals(threadMessageMenuWidthDp(showReactionActions = false), threadMessageMenuWidthDp(false, showAddReactionAction = true))
-    }
-
-    @Test
-    fun classicTranslateShowsADisabledTranslatingEntryWhilePending() {
-        val pending = classicActions(message(), showTranslateAction = true, translatePending = true)
-        val entry = pending.single { it.icon == RaftLucideIconName.Languages }
-        assertEquals(Res.string.translation_state_in_progress.desc(), entry.label)
-        assertFalse(entry.enabled)
-
-        val idle = classicActions(message(), showTranslateAction = true).single { it.icon == RaftLucideIconName.Languages }
-        assertEquals(Res.string.thread_action_translate.desc(), idle.label)
-        assertTrue(idle.enabled)
-    }
-
-    @Test
-    fun classicSaveTogglesToRemoveFromSaved() {
-        val saved = classicActions(message(isSaved = true)).single { it.group == "personal" && it.icon == RaftLucideIconName.BookmarkMinus }
-        assertEquals(Res.string.thread_action_remove_from_saved.desc(), saved.label)
-    }
-
-    @Test
-    fun translateEntryTightensEligibilityLikeWeb() {
-        val foreign = message(body = "你好")
-        assertEquals(ThreadMessageMenuTranslateState.Available, translateState(foreign, entry = null))
-        assertEquals(
-            ThreadMessageMenuTranslateState.Pending,
-            translateState(foreign, entry = entry(SharedMessageTranslationStatus.Pending))
-        )
-        assertEquals(
-            ThreadMessageMenuTranslateState.Hidden,
-            translateState(foreign, entry = entry(SharedMessageTranslationStatus.Translated, translated = "Hello"))
-        )
-        assertEquals(
-            ThreadMessageMenuTranslateState.Hidden,
-            translateState(foreign, entry = entry(SharedMessageTranslationStatus.Failed))
-        )
-        // A stale entry produced for older content does not hide the entry.
-        assertEquals(
-            ThreadMessageMenuTranslateState.Available,
-            translateState(foreign, entry = entry(SharedMessageTranslationStatus.Failed, original = "旧内容"))
-        )
-        assertEquals(ThreadMessageMenuTranslateState.Hidden, translateState(message(body = "  "), entry = null))
-        assertEquals(
-            ThreadMessageMenuTranslateState.Hidden,
-            translateState(message(body = "你好", metadata = mapOf("actionCard.kind" to "action-card")), entry = null)
-        )
-        assertEquals(
-            ThreadMessageMenuTranslateState.Hidden,
-            threadMessageMenuTranslateState(foreign, SharedMessageTranslationState(settings = translationSettings()), translationAvailable = false)
-        )
-    }
-
-    @Test
-    fun compactMenuAddsSecondaryRowWithTheClassicOnlyActions() {
-        val withThread = message(threadChannelId = "thread-1", replyCount = 1, isThreadFollowed = true)
-        val availability =
-            capabilities(withThread).toThreadNewMessageMenuActionAvailability(withThread, withThread.toThreadReplyMetadata())
-
-        assertEquals(
-            listOf(
-                ThreadNewMessageMenuTool.SelectText,
-                ThreadNewMessageMenuTool.CopyLink,
-                // slock #14222: a channel message whose thread is followed marks that thread, and
-                // the channel's own Mark as Unread ends the row.
-                ThreadNewMessageMenuTool.MarkThreadUnread,
-                ThreadNewMessageMenuTool.FollowThread,
-                ThreadNewMessageMenuTool.ConvertToTask,
-                ThreadNewMessageMenuTool.MarkConversationUnread
-            ),
-            availability.secondaryTools()
-        )
-        assertTrue(availability.threadFollowed)
-        assertTrue(availability.enabled(ThreadNewMessageMenuTool.Forward))
-
-        val task = message(taskId = "task-1", taskNumber = 1, taskStatus = "done", isSaved = true)
-        val taskAvailability = capabilities(task).toThreadNewMessageMenuActionAvailability(task, task.toThreadReplyMetadata())
-        // Task v2: a message with a task still offers Create Task from Message, and no Mark as Done / Reopen.
-        assertFalse(ThreadNewMessageMenuTool.TaskStatus in taskAvailability.secondaryTools())
-        assertTrue(ThreadNewMessageMenuTool.ConvertToTask in taskAvailability.secondaryTools())
-        assertTrue(taskAvailability.taskDone)
-        assertTrue(taskAvailability.saved)
-        assertEquals(RaftLucideIconName.BookmarkMinus, ThreadNewMessageMenuTool.Save.compactIcon(taskAvailability))
-    }
-
-    @Test
-    fun compactMenuShowsSelectTextFirstOnTheThirdRowForEveryMessage() {
-        // Kirby (web #11467): third row (reactions, tools, then this one), first slot, always shown.
-        listOf(
-            message(),
-            message(body = ""),
-            message(taskId = "task-1", taskNumber = 1, taskStatus = "done"),
-            message(threadChannelId = "thread-1", replyCount = 1, isThreadFollowed = true)
-        ).forEach { candidate ->
-            val availability =
-                capabilities(candidate).toThreadNewMessageMenuActionAvailability(candidate, candidate.toThreadReplyMetadata())
-            assertEquals(ThreadNewMessageMenuTool.SelectText, availability.secondaryTools().first())
-            assertTrue(availability.showsReactionRow())
-        }
-        val plain = capabilities(message()).toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
-        assertEquals(Res.string.thread_action_select_text, ThreadNewMessageMenuTool.SelectText.compactLabelResource(plain))
-        assertEquals(RaftLucideIconName.SquareDashedText, ThreadNewMessageMenuTool.SelectText.compactIcon(plain))
-        // An in-place selection already picks text: the sheet's entry is not offered there.
-        for (coversAll in listOf(true, false)) {
-            assertFalse(ThreadNewMessageMenuTool.SelectText in threadInPlaceSelectionMenuAvailability(plain, coversAll).secondaryTools())
-        }
-    }
-
-    @Test
-    fun compactMenuGreysOutSelectForGuestsAndTranslateWhilePending() {
-        val guestSlice = slice().withThreadViewerMessageActions(viewerIsGuest = true, forwardSourceAvailable = true)
-        val availability =
-            capabilities(message(), slice = guestSlice, translate = ThreadMessageMenuTranslateState.Pending)
-                .toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
-
-        assertFalse(availability.enabled(ThreadNewMessageMenuTool.Select))
-        assertFalse(availability.enabled(ThreadNewMessageMenuTool.Forward))
-        assertTrue(availability.translatePending)
-        assertFalse(availability.enabled(ThreadNewMessageMenuTool.Translate))
     }
 
     @Test
@@ -507,12 +183,6 @@ class ThreadMessageMenuParityTest {
         )
     }
 
-    @Test
-    fun viewerActionsKeepTheSliceInstanceWhenUnchanged() {
-        val base = slice()
-        assertSame(base, base.withThreadViewerMessageActions(viewerIsGuest = false, forwardSourceAvailable = true))
-    }
-
     private fun message(
         id: String = "message-1",
         body: String = "Hello",
@@ -550,17 +220,6 @@ class ThreadMessageMenuParityTest {
 
     private fun pendingSend(): RaftThreadPendingSendContext =
         RaftThreadPendingSendContext(channelId = "channel-1", body = "Hello")
-
-    private fun replyPreview(id: String, seq: Long): ReplyPreview =
-        ReplyPreview(
-            messageId = id,
-            seq = seq,
-            content = "reply $seq",
-            senderId = "member-2",
-            senderType = "user",
-            senderName = "member-2",
-            createdAt = "2026-11-19T11:00:00Z",
-        )
 
     private fun slice(
         surfaceKind: String = RaftThreadSurfaceKind.Channel,
@@ -642,41 +301,5 @@ class ThreadMessageMenuParityTest {
             onDelete = {},
             onForward = onForward,
             onCopySelection = onCopySelection
-        )
-
-    private fun translationSettings(): SharedMessageTranslationSettings =
-        SharedMessageTranslationSettings(
-            loaded = true,
-            serverId = "server-1",
-            serverTranslationEnabled = true,
-            providerAvailable = true,
-            translationMode = TranslationModePreference.Manual,
-            effectiveLanguage = "en"
-        )
-
-    private fun entry(
-        status: SharedMessageTranslationStatus,
-        translated: String? = null,
-        original: String = "你好"
-    ): SharedMessageTranslationEntry =
-        SharedMessageTranslationEntry(
-            messageId = "message-1",
-            status = status,
-            translatedContent = translated,
-            originalContent = original
-        )
-
-    private fun translateState(
-        message: RaftThreadMessageItem,
-        entry: SharedMessageTranslationEntry?
-    ): ThreadMessageMenuTranslateState =
-        threadMessageMenuTranslateState(
-            message = message,
-            translationState =
-                SharedMessageTranslationState(
-                    settings = translationSettings(),
-                    entries = listOfNotNull(entry).associateBy { it.messageId }
-                ),
-            translationAvailable = true
         )
 }

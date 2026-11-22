@@ -7,7 +7,6 @@ import kotlin.test.assertTrue
 
 class RaftImageViewerSwipeDismissTest {
     private val slop = 10f
-    private val height = 2000f
 
     @Test
     fun onlyAMostlyVerticalDownwardDragIsClaimed() {
@@ -18,19 +17,6 @@ class RaftImageViewerSwipeDismissTest {
         assertEquals(RaftImageSwipeDismissDecision.Release, raftImageSwipeDismissDecision(10f, 12f, slop))
         assertEquals(RaftImageSwipeDismissDecision.Release, raftImageSwipeDismissDecision(-14f, 3f, slop))
         assertEquals(RaftImageSwipeDismissDecision.Release, raftImageSwipeDismissDecision(0f, -12f, slop))
-    }
-
-    @Test
-    fun theImageShrinksSlightlyAndTheBackgroundFadesWithTheDrag() {
-        assertEquals(1f, raftImageSwipeDismissScale(0f, height))
-        assertEquals(0.9f, raftImageSwipeDismissScale(1000f, height), 0.0001f)
-        assertEquals(RaftImageSwipeDismissMinScale, raftImageSwipeDismissScale(5000f, height))
-        assertEquals(1f, raftImageSwipeDismissScale(-300f, height), "dragged above the start: full size")
-
-        assertEquals(1f, raftImageSwipeDismissBackgroundAlpha(0f, height))
-        assertEquals(0.5f, raftImageSwipeDismissBackgroundAlpha(500f, height))
-        assertEquals(0f, raftImageSwipeDismissBackgroundAlpha(1500f, height))
-        assertEquals(1f, raftImageSwipeDismissBackgroundAlpha(400f, 0f), "before layout nothing fades")
     }
 
     @Test

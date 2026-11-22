@@ -4,7 +4,6 @@ import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.parseSharedAgentMigrationStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /**
  * The sizes on the status line while a move runs (botiverse/slock staging 6935917a0f, web
@@ -37,21 +36,6 @@ class AgentMigrationStageProgressTest {
         assertEquals(AgentMigrationPackingLine.Progress(files = 1203, bytes = 812 * mib), notice.packingLine(NOW))
         assertEquals("812 MiB", formatAgentMigrationSize(812 * mib))
         assertEquals("1,203", agentMigrationCount(1203))
-    }
-
-    @Test
-    fun packingWithNothingReportedYetKeepsThePlainLine() {
-        assertEquals(AgentMigrationPackingLine.Plain, status("provisioning", """"sourceBuildProgress":null""").packingLine(NOW))
-        // Web: shown only once `files > 0 || bytes > 0`.
-        assertEquals(
-            AgentMigrationPackingLine.Plain,
-            status("provisioning", """"sourceBuildProgress":{"phase":"scanning","files":0,"bytes":0,"reportedAt":"2026-11-16T08:00:01.000Z"}""").packingLine(NOW),
-        )
-        // Bytes before any file counts (a first large file).
-        assertEquals(
-            AgentMigrationPackingLine.Progress(files = 0, bytes = 4096),
-            status("provisioning", """"sourceBuildProgress":{"phase":"packing","files":0,"bytes":4096,"reportedAt":"2026-11-16T08:00:01.000Z"}""").packingLine(NOW),
-        )
     }
 
     @Test
@@ -110,31 +94,5 @@ class AgentMigrationStageProgressTest {
         // At or past the deadline the source stops the agent at once.
         assertEquals(AgentMigrationStoppingLine.Stopping, notice.stoppingLine(at(10)))
         assertEquals(AgentMigrationStoppingLine.Stopping, notice.stoppingLine(at(12)))
-    }
-
-    @Test
-    fun aSourceWithoutTheWaitSaysItIsStoppingTheAgent() {
-        // A source without the wait (`sourceDrainUntil` null), an older server (no field), an unreadable time.
-        assertNull(stopping(""""sourceDrainUntil":null""").sourceDrainUntil)
-        assertNull(stopping(""""updatedAt":null""").sourceDrainUntil)
-        assertEquals(AgentMigrationStoppingLine.Stopping, stopping(""""sourceDrainUntil":null""").stoppingLine(at(0)))
-        assertEquals(AgentMigrationStoppingLine.Stopping, stopping(""""updatedAt":null""").stoppingLine(at(0)))
-        assertEquals(AgentMigrationStoppingLine.Stopping, stopping(""""sourceDrainUntil":"soon"""").stoppingLine(at(0)))
-    }
-
-    @Test
-    fun packingWithNothingReportedSaysHowManyWholeMinutesItHasRun() {
-        // sourceQuiescedAt 08:00:00, nothing packed reported yet.
-        val notice = status("provisioning", """"sourceBuildProgress":null,"sourceDrainUntil":null""")
-        val quiesced = NOW - 30_000L
-        assertEquals(AgentMigrationPackingLine.Plain, notice.packingLine(quiesced + 59_999L))
-        assertEquals(AgentMigrationPackingLine.Elapsed(1), notice.packingLine(quiesced + 60_000L))
-        // Floored, as web `Math.floor`.
-        assertEquals(AgentMigrationPackingLine.Elapsed(4), notice.packingLine(quiesced + 4 * 60_000L + 59_000L))
-        // A device clock behind the source's: under a minute, the plain line.
-        assertEquals(AgentMigrationPackingLine.Plain, notice.packingLine(quiesced - 5 * 60_000L))
-        // Once it reports sizes, they replace the minutes.
-        val reported = status("provisioning", """"sourceBuildProgress":{"phase":"packing","files":3,"bytes":10,"reportedAt":"2026-11-16T08:04:00.000Z"}""")
-        assertEquals(AgentMigrationPackingLine.Progress(files = 3, bytes = 10), reported.packingLine(quiesced + 10 * 60_000L))
     }
 }

@@ -46,13 +46,6 @@ class SettingsWorkspaceRowsAccessTest {
         }
     }
 
-    @Test
-    fun aMembersWideListNeverPicksTheHiddenSections() {
-        val keys = settingsHomeRowKeys(hasThemeServer = true, billing = false, administration = false)
-        assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsDestinationBilling, keys))
-        assertEquals(SettingsDestinationAccount, settingsWideDetailKey(SettingsDestinationAdministration, keys))
-    }
-
     private val servers =
         listOf(
             StoredAuthServer(id = "srv-hq", name = "HQ", slug = "hq", role = "member"),

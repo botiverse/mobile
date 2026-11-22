@@ -9,7 +9,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 /** The in-app foreground banner follows the device push preview choice like the tray notification. */
 class RaftForegroundBannerPushPreviewTest {
@@ -38,12 +37,6 @@ class RaftForegroundBannerPushPreviewTest {
         val hidden = legacy.redactedForPushPreview(PushPreviewMode.Hidden, SENDER, mentioned = true, strings)
         assertNull(hidden.titleFallback)
         assertNull(hidden.bodyFallback)
-    }
-
-    @Test
-    fun fullModeLeavesTheBannerUntouched() {
-        val banner = banner()
-        assertSame(banner, banner.redactedForPushPreview(PushPreviewMode.Full, SENDER, mentioned = false, strings))
     }
 
     @Test

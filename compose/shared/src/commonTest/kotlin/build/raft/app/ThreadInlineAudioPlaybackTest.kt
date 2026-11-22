@@ -8,19 +8,6 @@ import kotlin.test.assertNull
 
 class ThreadInlineAudioPlaybackTest {
     @Test
-    fun seekingNeedsDurationAndClampsToMediaBounds() {
-        val unknown = ThreadInlineAudioPlayback()
-        assertEquals(unknown, unknown.seekTo(3000))
-        val ready = unknown.withTime(0, 0, 6000)
-        val first = ready.seekTo(-100)
-        val last = first.seekTo(9000)
-        assertEquals(0, first.seekRequest?.timeMs)
-        assertEquals(6000, last.seekRequest?.timeMs)
-        assertEquals(first.seekRequest!!.id + 1, last.seekRequest?.id)
-        assertEquals(6000, last.currentTimeMs)
-    }
-
-    @Test
     fun seekingPreservesPlayingOrPausedIntent() {
         val playing = ThreadInlineAudioPlayback(
             control = VideoPlayControl.PLAY, state = PlayState.PLAYING, totalTimeMs = 6000

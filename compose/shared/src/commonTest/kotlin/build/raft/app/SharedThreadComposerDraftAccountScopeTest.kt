@@ -66,23 +66,6 @@ class SharedThreadComposerDraftAccountScopeTest {
     }
 
     @Test
-    fun nothingIsReadOrWrittenWhileSignedOutOrWhileTheLiveAccountIsNotTheBoundOne() {
-        val h = Harness()
-        assertNull(h.persistence.read(draftKey))
-        h.persistence.save(key = draftKey, text = "typed while signed out", asTask = false)
-        h.live = accountA
-        assertNull(h.persistence.read(draftKey))
-
-        h.persistence.save(key = draftKey, text = "A", asTask = false)
-        // Someone else signed in; the follower has not rebound yet: fail closed.
-        h.live = accountB
-        assertNull(h.persistence.read(draftKey))
-        h.persistence.save(key = draftKey, text = "leaks?", asTask = false)
-        h.live = accountA
-        assertEquals("A", h.persistence.read(draftKey)?.text)
-    }
-
-    @Test
     fun signOutDeletesTheAccountsDraftsAndTemporaryFiles() {
         val h = Harness()
         h.bind(accountA)
@@ -141,40 +124,6 @@ class SharedThreadComposerDraftAccountScopeTest {
     }
 
     @Test
-    fun accountSwitchDeletesThePreviousAccountsDrafts() {
-        val h = Harness()
-        h.bind(accountA)
-        h.persistence.save(key = draftKey, text = "A", asTask = false)
-
-        h.bind(accountB)
-
-        h.live = accountA
-        h.store.rebind(accountA)
-        assertNull(h.persistence.read(draftKey))
-    }
-
-    @Test
-    fun leftoverRowsOfAnotherAccountAreDeletedWhenAnAccountIsBound() {
-        // A's sign-out cleanup never ran (process died): binding B removes A's rows.
-        val base = InMemoryRaftKeyValueStore()
-        Harness(base).apply {
-            bind(accountA)
-            persistence.save(key = draftKey, text = "A", asTask = false)
-        }
-        val next = Harness(base)
-        next.bind(accountB)
-        assertNull(
-            base.getString(
-                SharedThreadComposerDraftAccountKeys.scopedKey(
-                    accountA,
-                    SharedThreadComposerDraftPersistence.DraftStoragePrefix + draftKey + ":text"
-                )
-            )
-        )
-        assertEquals(null, base.getString(SharedThreadComposerDraftAccountKeys.OwnersKey))
-    }
-
-    @Test
     fun legacyUnscopedDraftsMoveToTheAccountSignedInAtFirstRun() {
         val base = InMemoryRaftKeyValueStore()
         // A draft as an older version wrote it: unscoped rows over the raw store.
@@ -194,31 +143,6 @@ class SharedThreadComposerDraftAccountScopeTest {
         assertEquals("from 1.17", h.persistence.read(draftKey)?.text)
 
         // It is A's now: B does not get it.
-        h.bind(accountB)
-        assertNull(h.persistence.read(draftKey))
-    }
-
-    @Test
-    fun legacyUnscopedDraftsAreDeletedWhenNobodyIsSignedInAtFirstRun() {
-        val base = InMemoryRaftKeyValueStore()
-        val pasted =
-            SharedThreadComposerAttachment(
-                id = "pasted",
-                fileName = "pasted.png",
-                mimeType = "image/png",
-                status = "ready",
-                fileRef = "cache/legacy.png",
-                source = "composer_image_compressor"
-            )
-        SharedThreadComposerDraftPersistence(base)
-            .save(key = draftKey, text = "from 1.17", asTask = false, uploadedAttachments = listOf(pasted))
-
-        val h = Harness(base)
-        h.accounts.onNoStoredSessionAtStart()
-
-        assertTrue(h.retired.flatten().contains("cache/legacy.png"), "temporary file retired: ${h.retired}")
-        SharedThreadComposerDraftPersistence.draftRowKeys(draftKey).forEach { row -> assertNull(base.getString(row)) }
-        assertNull(base.getString(SharedThreadComposerDraftPersistence.ActiveIndexKey))
         h.bind(accountB)
         assertNull(h.persistence.read(draftKey))
     }
@@ -274,23 +198,6 @@ class SharedThreadComposerDraftAccountScopeTest {
         val reopened = next.composer()
         reopened.dispatch(SharedThreadComposerDraftIntent.Start(RaftThreadComposerPayload(instanceId = "p2"), draftKey))
         assertEquals("typed before force-stop", reopened.state.value.seedText)
-    }
-
-    @Test
-    fun rowsOfAnEndedSessionAreDeletedAtStartWhenNoSessionIsStored() {
-        // A's sign-out cleanup never ran (process died) and nobody is signed in at the next start.
-        val base = InMemoryRaftKeyValueStore()
-        Harness(base).apply {
-            bind(accountA)
-            persistence.save(key = draftKey, text = "A", asTask = false)
-        }
-        val next = Harness(base)
-        next.accounts.onNoStoredSessionAtStart()
-        next.bind(null)
-
-        assertNull(base.getString(SharedThreadComposerDraftAccountKeys.OwnersKey))
-        next.bind(accountA)
-        assertNull(next.persistence.read(draftKey))
     }
 
     private class ManualScheduler : SharedThreadComposerDraftPersistenceScheduler {

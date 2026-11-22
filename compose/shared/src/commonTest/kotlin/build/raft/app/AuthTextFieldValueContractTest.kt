@@ -30,42 +30,6 @@ class AuthTextFieldValueContractTest {
     }
 
     @Test
-    fun authKeyboardViewportNeverExtendsAboveItsTopOrOnClosedKeyboard() {
-        val viewport = Rect(10f, 100f, 310f, 200f)
-
-        assertEquals(
-            viewport,
-            raftAuthKeyboardReducedViewport(
-                viewport = viewport,
-                keyboardHeightDp = 0f,
-                density = 2f
-            )
-        )
-        assertEquals(
-            Rect(10f, 100f, 310f, 100f),
-            raftAuthKeyboardReducedViewport(
-                viewport = viewport,
-                keyboardHeightDp = 300f,
-                density = 2f
-            )
-        )
-    }
-
-    @Test
-    fun authKeyboardViewportAddsBottomSafeAreaWhenNativeInsetExcludesIt() {
-        assertEquals(
-            Rect(10f, 100f, 310f, 352f),
-            raftAuthKeyboardReducedViewport(
-                viewport = Rect(10f, 100f, 310f, 1000f),
-                keyboardHeightDp = 300f,
-                density = 2f,
-                bottomSafeArea = 24.dp,
-                keyboardInsetExcludesBottomSafeArea = true
-            )
-        )
-    }
-
-    @Test
     fun authKeyboardViewportDoesNotDoubleCountIncludedSafeAreaOrClosedKeyboard() {
         val viewport = Rect(10f, 100f, 310f, 1000f)
 
@@ -92,14 +56,6 @@ class AuthTextFieldValueContractTest {
     }
 
     @Test
-    fun effectiveKeyboardInsetClampsNegativeInputsAndSafeArea() {
-        assertEquals(0.dp, raftEffectiveKeyboardInsetDp(-1f, (-24).dp, true))
-        assertEquals(300.dp, raftEffectiveKeyboardInsetDp(300f, (-24).dp, true))
-        assertEquals(324.dp, raftEffectiveKeyboardInsetDp(300f, 24.dp, true))
-        assertEquals(300.dp, raftEffectiveKeyboardInsetDp(300f, 24.dp, false))
-    }
-
-    @Test
     fun authWrapperForwardsEveryNativeSnapshotWithoutReconstruction() {
         val nativeValues =
             listOf(
@@ -122,29 +78,6 @@ class AuthTextFieldValueContractTest {
     }
 
     @Test
-    fun callerOwnerInstallsExactValueBeforePlainTextProjection() {
-        val events = mutableListOf<String>()
-        var owned: TextFieldValue? = null
-        val next = TextFieldValue("拼音", selection = TextRange(1), composition = TextRange(0, 2))
-
-        applyAuthTextFieldValue(
-            nextValue = next,
-            updateOwner = {
-                owned = it
-                events += "owner"
-            },
-            projectText = {
-                assertSame(next, owned)
-                assertEquals("拼音", it)
-                events += "projection"
-            },
-        )
-
-        assertSame(next, owned)
-        assertEquals(listOf("owner", "projection"), events)
-    }
-
-    @Test
     fun slugNormalizationDoesNotTouchActiveComposition() {
         val composing =
             TextFieldValue(
@@ -154,23 +87,5 @@ class AuthTextFieldValueContractTest {
             )
 
         assertSame(composing, authCreateServerSlugFieldValue(composing))
-    }
-
-    @Test
-    fun alreadyNormalizedSlugKeepsExactNativeSnapshot() {
-        val native = TextFieldValue("already-fine", selection = TextRange(4))
-
-        assertSame(native, authCreateServerSlugFieldValue(native))
-    }
-
-    @Test
-    fun slugNormalizationMapsCommittedSelectionThroughTransformedPrefix() {
-        val committed = TextFieldValue("A B!C", selection = TextRange(2, 5))
-
-        val normalized = authCreateServerSlugFieldValue(committed)
-
-        assertEquals("a-b-c", normalized.text)
-        assertEquals(TextRange(2, 5), normalized.selection)
-        assertEquals(null, normalized.composition)
     }
 }

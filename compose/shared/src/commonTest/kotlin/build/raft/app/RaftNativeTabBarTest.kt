@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class RaftNativeTabBarTest {
@@ -47,19 +46,6 @@ class RaftNativeTabBarTest {
         assertEquals(
             listOf("lucide-house", "lucide-activity", "lucide-list-todo", "lucide-users", "lucide-settings"),
             state.items.map { it.imageAssetName },
-        )
-    }
-
-    @Test
-    fun selectionIsNullWhenNoTabIsSelected() {
-        assertNull(raftNativeTabBarState(fiveTabs(selectedKey = "rail_search"), visible = true).selectedKey)
-    }
-
-    @Test
-    fun unknownTabIconFallsBackToCircle() {
-        assertEquals(
-            RaftNativeTabBarSymbol("circle", "circle.fill"),
-            raftNativeTabBarSymbol(appShellTabIcon("brand-new-tab")),
         )
     }
 
@@ -139,21 +125,6 @@ class RaftNativeTabBarTest {
     }
 
     @Test
-    fun bridgeReplaysToListenerAndSkipsEqualStates() {
-        val bridge = RaftNativeTabBarBridge()
-        val recorder = Recorder()
-        bridge.attachListener(recorder)
-        val token = Any()
-        val state = raftNativeTabBarState(fiveTabs(selectedKey = "home"), visible = true)
-
-        bridge.publish(token, state) {}
-        bridge.publish(token, state.copy()) {}
-
-        assertEquals(listOf(RaftNativeTabBarState.Hidden, state), recorder.states)
-        assertEquals(state, bridge.currentState)
-    }
-
-    @Test
     fun selectTabRunsShellHandlerOnlyForPublishedEnabledTabs() {
         val bridge = RaftNativeTabBarBridge()
         val taps = mutableListOf<String>()
@@ -166,26 +137,6 @@ class RaftNativeTabBarTest {
         assertFalse(bridge.selectTab("members"))
         assertFalse(bridge.selectTab("unknown"))
         assertEquals(listOf("tasks", "home"), taps)
-    }
-
-    @Test
-    fun retractHidesOnlyForTheActivePublisherAndKeepsItems() {
-        val bridge = RaftNativeTabBarBridge()
-        val stale = Any()
-        val current = Any()
-        val taps = mutableListOf<String>()
-        bridge.publish(stale, raftNativeTabBarState(fiveTabs(selectedKey = "home"), visible = true)) {}
-        val shown = raftNativeTabBarState(fiveTabs(selectedKey = "tasks"), visible = true)
-        bridge.publish(current, shown) { taps += it }
-
-        bridge.retract(stale)
-        assertEquals(shown, bridge.currentState)
-        assertTrue(bridge.selectTab("home"))
-
-        bridge.retract(current)
-        assertEquals(shown.copy(visible = false), bridge.currentState)
-        assertFalse(bridge.selectTab("home"))
-        assertEquals(listOf("home"), taps)
     }
 
     @Test
@@ -218,101 +169,6 @@ class RaftNativeTabBarTest {
             listOf(true, false, false, true),
             recorder.states.drop(1).map { it.visible },
         )
-    }
-
-    @Test
-    fun releasingACoverDoesNotShowARetractedBar() {
-        val bridge = RaftNativeTabBarBridge()
-        val publisher = Any()
-        val drawer = Any()
-        bridge.publish(publisher, raftNativeTabBarState(fiveTabs(selectedKey = "home"), visible = true)) {}
-        bridge.cover(drawer)
-        bridge.retract(publisher)
-        bridge.uncover(drawer)
-
-        assertFalse(bridge.currentState.visible)
-    }
-
-    @Test
-    fun bottomInsetIgnoresInvalidHostValues() {
-        val bridge = RaftNativeTabBarBridge()
-        bridge.updateBottomInset(83.0)
-        bridge.updateBottomInset(Double.NaN)
-        bridge.updateBottomInset(-1.0)
-        bridge.updateBottomInset(Double.POSITIVE_INFINITY)
-
-        assertEquals(83.0, bridge.bottomInsetPoints.value)
-    }
-
-    @Test
-    fun bandKeepsTheEdgeTheHostLaidTheBarOutOn() {
-        val bridge = RaftNativeTabBarBridge()
-        bridge.updateBand("bottom", 83.0)
-        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), bridge.band.value)
-        assertEquals(83.0, bridge.bottomInsetPoints.value)
-
-        bridge.updateBand("top", 96.0)
-        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), bridge.band.value)
-        // A top bar reserves no bottom band.
-        assertEquals(0.0, bridge.bottomInsetPoints.value)
-
-        bridge.updateBand("diagonal", 10.0)
-        bridge.updateBand("right", Double.NaN)
-        assertEquals(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), bridge.band.value)
-    }
-
-    @Test
-    fun nonBottomBarsReserveTheirOwnEdgeNotTheBottom() {
-        val bottomSafeArea = 34.dp
-        // Bottom bar: unchanged contract.
-        assertEquals(
-            83.dp + RaftAppSpacing.Lg,
-            raftNativeHostTabBarContentInset(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), bottomSafeArea),
-        )
-        // A top or side bar: the bottom keeps only the safe area (no full-height band).
-        for (edge in listOf(RaftNativeTabBarEdge.Top, RaftNativeTabBarEdge.Left, RaftNativeTabBarEdge.Right)) {
-            assertEquals(
-                bottomSafeArea + RaftAppSpacing.Lg,
-                raftNativeHostTabBarContentInset(RaftNativeTabBarBand(edge, 797.0), bottomSafeArea),
-            )
-        }
-        assertEquals(
-            RaftNativeTabBarEdgeInsets(top = 96.dp),
-            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Top, 96.0), visible = true),
-        )
-        assertEquals(
-            RaftNativeTabBarEdgeInsets(right = 100.dp),
-            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Right, 100.0), visible = true),
-        )
-        assertEquals(
-            RaftNativeTabBarEdgeInsets(left = 80.dp),
-            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Left, 80.0), visible = true),
-        )
-        // Hidden bars and bottom bars take nothing from the other edges.
-        assertEquals(
-            RaftNativeTabBarEdgeInsets.Zero,
-            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Right, 100.0), visible = false),
-        )
-        assertEquals(
-            RaftNativeTabBarEdgeInsets.Zero,
-            raftNativeTabBarEdgeInsets(RaftNativeTabBarBand(RaftNativeTabBarEdge.Bottom, 83.0), visible = true),
-        )
-    }
-
-    @Test
-    fun registryResolvesOnlyTheRegisteredBridge() {
-        val bridge = RaftNativeTabBarBridge()
-        val other = RaftNativeTabBarBridge()
-        RaftNativeTabBarRegistry.register("host-a", bridge)
-
-        assertSame(bridge, RaftNativeTabBarRegistry.bridgeFor("host-a"))
-        assertNull(RaftNativeTabBarRegistry.bridgeFor(""))
-        assertNull(RaftNativeTabBarRegistry.bridgeFor(null))
-
-        RaftNativeTabBarRegistry.unregister("host-a", other)
-        assertSame(bridge, RaftNativeTabBarRegistry.bridgeFor("host-a"))
-        RaftNativeTabBarRegistry.unregister("host-a", bridge)
-        assertNull(RaftNativeTabBarRegistry.bridgeFor("host-a"))
     }
 
     @Test

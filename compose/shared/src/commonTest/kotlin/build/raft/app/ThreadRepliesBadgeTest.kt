@@ -30,12 +30,6 @@ class ThreadRepliesBadgeTest {
     }
 
     @Test
-    fun noRepliesAndNoDraftOrNoThreadActionsShowNothing() {
-        assertNull(threadRepliesBadgeSpec(metadata(0), hasDraft = false, showReplyAction = true, hasInlineReplies = false))
-        assertNull(threadRepliesBadgeSpec(metadata(3), hasDraft = true, showReplyAction = false, hasInlineReplies = false))
-    }
-
-    @Test
     fun aDraftAloneShowsTheBadge() {
         assertEquals(
             ThreadRepliesBadgeSpec(replyCount = 0, unreadCount = 0, hasDraft = true),

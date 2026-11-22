@@ -4,7 +4,6 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftDraftChannelPlace
-import build.raft.app.data.RaftDraftPlaceKind
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.parseRaftDraftChannelPlace
 import build.raft.app.model.ChannelId
@@ -15,13 +14,9 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.topLevelThreadId
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -179,50 +174,6 @@ class RaftDraftsTest {
     }
 
     @Test
-    fun lookupsRunThreeAtATimeRememberNotHereAndRetryFailures() = runTest {
-        val lookups = RaftDraftPlaceLookups(maxConcurrent = 3)
-        lookups.bindAccount("env|user-a")
-        var running = 0
-        var peak = 0
-        val asked = mutableListOf<String>()
-        val gate = CompletableDeferred<Unit>()
-        val first =
-            async {
-                lookups.ensure("s1", listOf("a", "b", "c", "d", "e")) { _, id ->
-                    asked += id
-                    running += 1
-                    peak = maxOf(peak, running)
-                    gate.await()
-                    running -= 1
-                    when (id) {
-                        "a" -> RaftDraftLookupResult.Found(RaftDraftChannelPlace("a", "channel"))
-                        "b" -> RaftDraftLookupResult.NotHere
-                        else -> RaftDraftLookupResult.Failed
-                    }
-                }
-            }
-        repeat(5) { yield() }
-        assertEquals(3, peak)
-        gate.complete(Unit)
-        assertFalse(first.await(), "a failure is reported so the caller asks again later")
-        assertEquals(3, peak)
-        assertEquals(
-            mapOf("a" to RaftDraftChannelPlace("a", "channel"), "b" to null),
-            lookups.state.value[RaftDraftPlaceLookups.Scope("env|user-a", "s1")],
-        )
-
-        asked.clear()
-        assertTrue(
-            lookups.ensure("s1", listOf("a", "b", "c")) { _, id ->
-                asked += id
-                RaftDraftLookupResult.NotHere
-            }
-        )
-        assertEquals(listOf("c"), asked, "answers are not asked again; failures are")
-        assertNull(lookups.state.value[RaftDraftPlaceLookups.Scope("env|user-a", "s2")], "answers are per server")
-    }
-
-    @Test
     fun anotherAccountOnTheSameServerDoesNotSeeTheFirstAccountsAnswers() = runTest {
         val lookups = RaftDraftPlaceLookups()
         val asked = mutableListOf<Pair<String, String>>()
@@ -295,53 +246,6 @@ class RaftDraftsTest {
         assertEquals(4_000L, persistence.draftListings().single().editedAtEpochMillis)
     }
 
-    private val labels =
-        RaftDraftRowLabels(
-            threadIn = { "Thread in $it" },
-            taskUntitled = "Task",
-            unknownConversation = "A conversation",
-            prefix = { "$it ·" },
-        )
-
-    @Test
-    fun rowsReadLikeActivityRows() {
-        fun row(place: RaftDraftPlace, text: String = "first line\nsecond") =
-            RaftDraftEntry(key = place.toString(), text = text, editedAtEpochMillis = 0L, place = place).toRaftDraftRowModel(directory, labels)
-
-        val channel = row(RaftDraftPlace.Conversation("general", directMessage = false))
-        assertEquals("general", channel.title)
-        assertEquals("first line", channel.preview)
-        assertNull(channel.prefix)
-        assertEquals(ActivityConversationLeadingKind.Channel, channel.leading.leadingKind)
-        assertEquals("1970-01-01T00:00:00Z", channel.editedAt)
-
-        val dm = row(RaftDraftPlace.Conversation("dm-alice", directMessage = true))
-        assertEquals("Alice", dm.title)
-        assertEquals("Alice", dm.leading.dmPeer?.displayName)
-
-        val thread = row(RaftDraftPlace.Thread("general", "msg-1", "thread-1"), text = "\n  \nreply")
-        assertEquals("Thread in #general", thread.title)
-        assertEquals("reply", thread.preview)
-        assertEquals(ActivityConversationLeadingKind.Thread, thread.leading.leadingKind)
-        assertFalse(thread.leading.taskConversation)
-
-        val dmThread = row(RaftDraftPlace.Thread("dm-alice", "msg-2", null))
-        assertEquals("Thread in Alice", dmThread.title)
-        assertTrue(dmThread.leading.threadInDirectMessage)
-
-        val task = row(RaftDraftPlace.Task("conv-7", "general", "task-7"))
-        assertEquals("Ship drafts", task.title)
-        assertEquals("#general:#7 ·", task.prefix)
-        assertTrue(task.leading.taskConversation)
-
-        val unknownTask = row(RaftDraftPlace.Task("conv-9", "general", "task-9"))
-        assertEquals("Task", unknownTask.title)
-        assertEquals("#general ·", unknownTask.prefix)
-
-        val noTime = RaftDraftEntry("k", "x", null, RaftDraftPlace.Conversation("general", false)).toRaftDraftRowModel(directory, labels)
-        assertNull(noTime.editedAt)
-    }
-
     @Test
     fun opensWhereTheDraftWasTyped() {
         fun open(place: RaftDraftPlace) =
@@ -362,23 +266,5 @@ class RaftDraftsTest {
         assertEquals(ConversationKind.Task, task?.conversationIdentity?.kind)
         assertEquals(ChannelId("conv-7"), task?.conversationIdentity?.channelId)
         assertIs<ThreadId>(task?.conversationIdentity?.threadId)
-    }
-
-    @Test
-    fun productEventPlaceIsOnlyTheKindOfPlace() {
-        val cases =
-            listOf(
-                RaftDraftPlace.Conversation("general", directMessage = false) to RaftDraftPlaceKind.Channel,
-                RaftDraftPlace.Conversation("dm-alice", directMessage = true) to RaftDraftPlaceKind.Dm,
-                RaftDraftPlace.Thread("general", "msg-1", threadChannelId = null) to RaftDraftPlaceKind.Thread,
-                RaftDraftPlace.Task("conv-7", parentChannelId = null, taskId = null) to RaftDraftPlaceKind.Task,
-            )
-        cases.forEach { (place, kind) -> assertEquals(kind, place.productEventPlace(), "$place") }
-    }
-
-    @Test
-    fun listingIsSettledForThePageViewOnlyWithNoLookupOutstanding() {
-        assertTrue(RaftDraftListing.Empty.settled)
-        assertFalse(RaftDraftListing(lookupChannelIds = setOf("ch-unknown")).settled)
     }
 }

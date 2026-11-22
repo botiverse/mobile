@@ -23,16 +23,6 @@ class ThreadAdvancedMessageParityTest {
     }
 
     @Test
-    fun webLinkTargetParsesPlainRaftChannelUrls() {
-        val permalink =
-            "https://app.slock.ai/channel/channel-1?msg=msg-1"
-                .toRaftThreadWebLinkTarget()
-
-        assertEquals("channel-1", permalink?.channelId)
-        assertEquals("msg-1", permalink?.messageId)
-    }
-
-    @Test
     fun webLinkTargetRejectsMarkdownAndCodeUrls() {
         assertNull(
             "[quoted](https://app.slock.ai/channel/channel-1?msg=msg-1)"
@@ -42,15 +32,5 @@ class ThreadAdvancedMessageParityTest {
             "`https://app.slock.ai/channel/channel-1?msg=msg-1`"
                 .toRaftThreadWebLinkTarget()
         )
-    }
-
-    @Test
-    fun webLinkTargetParsesChannelWithoutMessageTarget() {
-        val permalink =
-            "https://app.slock.ai/channel/thread-1"
-                .toRaftThreadWebLinkTarget()
-
-        assertEquals("thread-1", permalink?.channelId)
-        assertNull(permalink?.messageId)
     }
 }

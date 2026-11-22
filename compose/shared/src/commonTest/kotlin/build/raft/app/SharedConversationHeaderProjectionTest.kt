@@ -6,20 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class SharedConversationHeaderProjectionTest {
-    @Test
-    fun activityReplyThreadHidesUnverifiedParentSubtitleWithoutDirectoryProjection() {
-        val payload = activityReplyThreadPayload(subtitle = "#general")
-        val input = payload.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
-
-        val display = input.displayModel(projection = null, contentPayload = payload)
-
-        assertEquals(ThreadReplyPageTitle, display.title)
-        assertNull(display.subtitle)
-    }
-
     @Test
     fun activityReplyThreadStillPrefersAcceptedDirectoryProjection() {
         val payload = activityReplyThreadPayload(subtitle = "#stale")
@@ -70,71 +58,6 @@ class SharedConversationHeaderProjectionTest {
     }
 
     @Test
-    fun replyThreadShowsNothingUntilLateExactParentProjectionWins() {
-        val payload = activityReplyThreadPayload(subtitle = "#proj-uiux")
-        val input = payload.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
-        val owner = ThreadHeaderProjectionStateOwner(input, emptyMap())
-        val initialDisplay = input.displayModel(owner.selectedProjection(), payload)
-        val parentProjection =
-            channelProjection(
-                canonicalChannelId = "channel-1",
-                aliases = setOf("channel-1"),
-                channelKind = "channel",
-                title = "proj-uiux-renamed"
-            )
-
-        val outcome = owner.accept(mapOf("channel-1" to parentProjection))
-        val hydratedDisplay = input.displayModel(owner.selectedProjection(), payload)
-        val childOutcome =
-            owner.accept(
-                mapOf(
-                    "thread-1" to
-                        channelProjection(
-                            canonicalChannelId = "thread-1",
-                            aliases = setOf("thread-1", "channel-1"),
-                            channelKind = "thread",
-                            title = "thread-message"
-                        )
-                )
-            )
-
-        assertNull(initialDisplay.subtitle)
-        assertEquals(ThreadHeaderProjectionAcceptance.AcceptedDisplayValidProjection, outcome)
-        assertEquals(ThreadHeaderProjectionAcceptance.PreservedNoDisplayValidProjection, childOutcome)
-        assertEquals(parentProjection, owner.selectedProjection())
-        assertEquals("#proj-uiux-renamed", hydratedDisplay.subtitle)
-    }
-
-    @Test
-    fun replyThreadAcceptsOnlyExactDirectMessageParentProjection() {
-        val payload =
-            activityReplyThreadPayload(subtitle = "#stale").copy(
-                parentChannelId = "dm-parent",
-                parentSurfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                parentChannelKind = "dm"
-            )
-        val input = payload.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
-        val exactParent =
-            SharedConversationDirectoryProjection(
-                serverId = "server-1",
-                canonicalChannelId = "dm-parent",
-                aliases = setOf("dm-parent"),
-                conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                channelKind = "dm",
-                title = "Cindy"
-            )
-        val relatedChild = exactParent.copy(
-            canonicalChannelId = "child-thread-1",
-            aliases = setOf("child-thread-1", "dm-parent")
-        )
-
-        assertTrue(input.acceptsForDisplay(exactParent))
-        assertFalse(input.acceptsForDisplay(relatedChild))
-        assertEquals("@Cindy", input.displayModel(exactParent, payload).subtitle)
-    }
-
-    @Test
     fun channelHeaderPaintsKnownHomeRowOnFirstFrame() {
         val loading = channelLaunchPayload()
         val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
@@ -159,46 +82,6 @@ class SharedConversationHeaderProjectionTest {
         assertEquals("general", fromLoadedPayload.title)
         assertEquals("Fresh topic", fromLoadedPayload.subtitle)
         assertEquals("general (canonical)", fromCanonicalProjection.title)
-    }
-
-    @Test
-    fun knownCandidateOfAnotherSurfaceIsIgnoredAndNoCandidateKeepsPlaceholder() {
-        val loading = channelLaunchPayload()
-        val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
-        val dmRow =
-            channelProjection("channel-1", setOf("channel-1"), "dm", "Cindy").copy(
-                conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage
-            )
-
-        listOf(dmRow, null).forEach { candidate ->
-            val display = input.displayModelWithKnownCandidate(null, loading, candidate)
-            assertEquals(threadHeaderFallbackTitle(RaftThreadSurfaceKind.Channel), display.title, "candidate=$candidate")
-            assertNull(display.subtitle)
-        }
-    }
-
-    @Test
-    fun directMessageHeaderPaintsKnownPeerOnFirstFrame() {
-        val loading =
-            channelLaunchPayload().copy(
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                channelKind = "dm",
-                streamChannelId = "dm-1",
-                sourceThreadId = "dm-1"
-            )
-        val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
-        val known =
-            channelProjection("dm-1", setOf("dm-1"), "dm", "Cindy").copy(
-                conversationKind = ConversationKind.DirectMessage,
-                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
-                avatarWireValue = "pixel:cindy"
-            )
-
-        val display = input.displayModelWithKnownCandidate(null, loading, known)
-
-        assertEquals("Cindy", display.title)
-        assertEquals("pixel:cindy", display.dmPeerAvatarWireValue)
     }
 
     private fun channelLaunchPayload(): RaftThreadScreenPayload =

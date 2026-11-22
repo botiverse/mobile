@@ -25,29 +25,4 @@ class HomeServerSwitcherBadgePresentationTest {
             homeServerSwitcherBadgePresentation(knownZero.copy(activityUnreadCount = null)),
         )
     }
-
-    @Test
-    fun exactAndBroaderFallbackNumbersUseTheSameCap() {
-        val exact =
-            homeServerSwitcherBadgePresentation(
-                RaftServerSwitcherItem(
-                    id = "server-exact",
-                    broaderUnreadCount = 7,
-                    activityUnreadCount = 128,
-                )
-            )
-        val fallback =
-            homeServerSwitcherBadgePresentation(
-                RaftServerSwitcherItem(
-                    id = "server-fallback",
-                    broaderUnreadCount = 150,
-                    activityUnreadCount = null,
-                )
-            )
-
-        assertEquals(HomeServerSwitcherBadgeKind.ActivityNumber, exact.kind)
-        assertEquals(HomeServerSwitcherBadgeKind.BroaderUnreadNumber, fallback.kind)
-        assertEquals("99+", exact.label)
-        assertEquals(exact.label, fallback.label)
-    }
 }

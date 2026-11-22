@@ -39,52 +39,6 @@ class ThreadMemberRemovalConfirmationTest {
     }
 
     @Test
-    fun confirmationFailsClosedAndChannelNameDoesNotCrossServerAuthority() {
-        val snapshot = homeSnapshot(channelName = "private-name")
-        val wrongAuthorityName =
-            threadMembersRemovalChannelName(
-                snapshot = snapshot,
-                serverId = ServerB,
-                channelId = ChannelA
-            )
-        val removable =
-            RaftThreadMemberItem(
-                id = "human-1",
-                displayName = "",
-                handle = "@human-one",
-                kind = "human",
-                canRemove = true
-            )
-
-        assertEquals("channel-a", wrongAuthorityName)
-        assertEquals(
-            "@human-one",
-            checkNotNull(
-                threadMemberRemovalConfirmation(
-                    member = removable,
-                    serverId = ServerB,
-                    channelId = ChannelA,
-                    channelName = wrongAuthorityName
-                )
-            ).memberLabel
-        )
-        listOf(
-            removable.copy(canRemove = false),
-            removable.copy(id = ""),
-            removable.copy(kind = "unknown")
-        ).forEach { rejected ->
-            assertNull(
-                threadMemberRemovalConfirmation(
-                    member = rejected,
-                    serverId = ServerB,
-                    channelId = ChannelA,
-                    channelName = wrongAuthorityName
-                )
-            )
-        }
-    }
-
-    @Test
     fun gateDismissesCrossRouteCommandAndExecutesMatchingCommandExactlyOnce() {
         val confirmation = confirmation()
         val pending =

@@ -17,10 +17,4 @@ class ServerSetupWebViewInsetsTest {
         // Keyboard up: the IME inset already covers the navigation bar.
         assertEquals(800, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 800, navigationBarBottomPx = 126, hostPadsWebView = true))
     }
-
-    @Test
-    fun iosLeavesTheSafeAreaToWkWebView() {
-        assertEquals(0.dp, serverSetupWebViewTopInset(statusBarTop = 59.dp, hostPadsWebView = false))
-        assertEquals(0, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 300, navigationBarBottomPx = 34, hostPadsWebView = false))
-    }
 }

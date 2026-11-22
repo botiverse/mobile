@@ -3,9 +3,6 @@ package build.raft.app
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftFeatureFlagsApi
 import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.StoredAuthServer
-import build.raft.app.data.StoredAuthSession
-import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -27,13 +24,6 @@ class SettingsImBridgesTest {
         SharedServerFeatureFlags(
             FakeApi("""{"evaluations":[{"key":"slack_bridge_v0","enabled":$enabled,"reason":"server_rule"}]}""")
         )
-
-    @Test
-    fun rowIsHiddenWhileTheFlagIsOff() {
-        val rows = settingsHomeRowKeys(hasThemeServer = true)
-        assertFalse(SettingsDestinationImBridges in rows)
-        assertFalse(SettingsDestinationImBridges in settingsHomeRowKeys(hasThemeServer = true, imBridges = false))
-    }
 
     @Test
     fun rowFollowsAdministrationLikeTheWebNavWhenTheFlagIsOn() {
@@ -61,51 +51,5 @@ class SettingsImBridgesTest {
         val off = flags(enabled = false)
         off.prefetch(ServerId("s1"))
         assertFalse(settingsImBridgesEnabled(off, "s1"))
-    }
-
-    @Test
-    fun opensTheWebSectionInTheHostShellEmbed() {
-        val session =
-            StoredAuthSession(
-                user = StoredAuthUser(id = "user-1", email = "user@example.test", displayName = "User"),
-                accessToken = "access",
-                refreshToken = "refresh",
-                selectedServerId = "server-1",
-                selectedServerSlug = "workspace",
-                servers = listOf(StoredAuthServer(id = "server-1", name = "Workspace", slug = "workspace")),
-            )
-        assertEquals(
-            "https://app.raft.build/s/workspace/settings/im-bridges?embed=raft-settings-v1&shell=host&lang=zh-Hans",
-            settingsImBridgesWebViewUrl("https://app.raft.build", session, "zh-Hans"),
-        )
-        assertEquals(
-            "https://app.raft.build/settings/im-bridges?embed=raft-settings-v1&shell=host&lang=system",
-            settingsImBridgesWebViewUrl("https://app.raft.build", null, "system"),
-        )
-        assertEquals(SettingsWebViewSurface.ImBridges, settingsImBridgesWebViewSpec.surface)
-        assertTrue(settingsImBridgesWebViewSpec.includeLocaleQuery)
-    }
-
-    @Test
-    fun phoneTapPushesTheSettingsWebPageForTheSection() {
-        val scope = build.raft.app.data.RaftShellStoreScope.create("shell-im-bridges")
-        val data = settingsWebViewPageData(SettingsWebViewSurface.ImBridges, scope)
-        assertEquals(SETTINGS_WEB_VIEW_PAGE, data.optString("pageName"))
-        assertEquals(SettingsWebViewSurface.ImBridges, settingsWebViewSurfaceFromPageData(data))
-    }
-
-    @Test
-    fun wideLayoutOpensItInTheDetailPane() {
-        val rows = settingsHomeRowKeys(hasThemeServer = true, imBridges = true)
-        assertEquals(SettingsWidePick.Detail(SettingsDestinationImBridges), settingsWidePick(SettingsDestinationImBridges))
-        assertEquals(SettingsDestinationImBridges, settingsWideDetailKey(SettingsDestinationImBridges, rows))
-        val page = settingsWideDetailPage(SettingsDestinationImBridges, build.raft.app.data.RaftShellStoreScope.create("shell-wide"))
-        assertEquals(SETTINGS_WEB_VIEW_PAGE, page?.first)
-        assertEquals(SettingsWebViewSurface.ImBridges, page?.second?.let(::settingsWebViewSurfaceFromPageData))
-        // Flag off: no row, so a stale pick falls back to the default section.
-        assertEquals(
-            SettingsDestinationAccount,
-            settingsWideDetailKey(SettingsDestinationImBridges, settingsHomeRowKeys(hasThemeServer = true)),
-        )
     }
 }

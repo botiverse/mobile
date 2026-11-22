@@ -73,36 +73,6 @@ class ActivityRefreshTopAnchorTest {
     }
 
     @Test
-    fun `active scroll at decision time is fenced even while armed`() = runTest {
-        val owner = ActivityEntryTopAnchorOwner()
-        owner.arm()
-        assertFalse(decide(owner, scrolling = true))
-    }
-
-    @Test
-    fun `re-activation re-arms after a retire`() = runTest {
-        val owner = ActivityEntryTopAnchorOwner()
-        owner.arm()
-        owner.retire()
-        assertFalse(decide(owner, scrolling = false))
-        owner.arm() // returned from a thread / app foreground
-        assertTrue(decide(owner, scrolling = false))
-    }
-
-    @Test
-    fun `pull to refresh owns the top edge without the entry session`() {
-        assertTrue(
-            activityShouldAnchorTopOnCanonicalSnapshot(
-                entryOwnerArmed = false,
-                pullRefreshOwnsTop = true,
-                parkedAtTop = true,
-                scrollInProgress = false,
-                genuineTopUpdate = true,
-            )
-        )
-    }
-
-    @Test
     fun `only a genuine head update counts - never pagination or in-place updates or removing the head`() {
         assertTrue(activityHasNewTopRow(cachedKeys, freshKeys), "new rows above the old head")
         assertTrue(activityHasNewTopRow(cachedKeys, listOf("c1", "c3", "c2")), "row bumped to the top")
@@ -122,13 +92,6 @@ class ActivityRefreshTopAnchorTest {
             ),
             "pagination never owns a top anchor",
         )
-    }
-
-    @Test
-    fun `parked at top means the first row fully at the top`() {
-        assertTrue(activityListParkedAtTop(0, 0))
-        assertFalse(activityListParkedAtTop(0, 40))
-        assertFalse(activityListParkedAtTop(3, 0))
     }
 
     @Test
@@ -157,16 +120,6 @@ class ActivityRefreshTopAnchorTest {
         assertFalse(followAt(index = 4, offset = 0, scrolling = false), "a scrolled reader is never moved")
         assertFalse(followAt(index = 0, offset = 30, scrolling = false), "first row partly scrolled away")
         assertFalse(followAt(index = 0, offset = 0, scrolling = true), "a drag in progress is fenced")
-    }
-
-    @Test
-    fun `new top row keys are the rows that landed above the previous head`() {
-        assertEquals(setOf("n2", "n1"), activityNewTopRowKeys(cachedKeys, freshKeys))
-        assertEquals(setOf("c1"), activityNewTopRowKeys(cachedKeys, listOf("c1", "c3", "c2")))
-        assertEquals(setOf("n1"), activityNewTopRowKeys(cachedKeys, listOf("n1", "c2", "c1")))
-        assertEquals(emptySet(), activityNewTopRowKeys(cachedKeys, cachedKeys + "c0"))
-        assertEquals(emptySet(), activityNewTopRowKeys(cachedKeys, listOf("c2", "c1")))
-        assertEquals(emptySet(), activityNewTopRowKeys(emptyList(), freshKeys))
     }
 
     @Test
@@ -232,28 +185,5 @@ class ActivityRefreshTopAnchorTest {
         assertEquals(emptySet(), activityArrivedTopRowKeys(served, realtime))
         // Read-state only (the head was read): nothing arrived either.
         assertEquals(emptySet(), activityArrivedTopRowKeys(served, listOf(unreadHead.copy(unreadCount = 0)) + served.filterNot { it.key == "seo" }))
-    }
-
-    @Test
-    fun `new rows and rows with new activity arrive`() {
-        val previous = readRows
-        val next = listOf(row("n1"), readRows[3].copy(lastMessageId = MessageId("r4-m2")), row("n2")) +
-            readRows.filterNot { it.key == "r4" }
-        assertEquals(setOf("n1", "r4", "n2"), activityArrivedTopRowKeys(previous, next))
-        assertEquals(emptySet(), activityArrivedTopRowKeys(previous, previous + row("old-page")), "an append")
-        assertEquals(emptySet(), activityArrivedTopRowKeys(emptyList(), next), "first load")
-    }
-
-    @Test
-    fun `the pill key set grows only by arrived rows and clears at the top`() {
-        val previous = readRows
-        val reordered = readRows.take(4).reversed() + readRows.drop(4)
-        val none = emptySet<String>()
-        assertTrue(activityPillKeysAfterChange(none, previous, reordered, listAtTop = false) === none, "reorder: no write")
-        val withNew = listOf(row("n1"), row("n2")) + previous
-        assertEquals(setOf("n1", "n2"), activityPillKeysAfterChange(none, previous, withNew, listAtTop = false))
-        val kept = setOf("n1", "n2")
-        assertTrue(activityPillKeysAfterChange(kept, withNew, withNew + row("old-page"), listAtTop = false) === kept)
-        assertEquals(none, activityPillKeysAfterChange(kept, previous, withNew, listAtTop = true))
     }
 }

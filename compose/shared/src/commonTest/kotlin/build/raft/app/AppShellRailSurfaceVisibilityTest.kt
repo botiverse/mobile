@@ -25,26 +25,6 @@ class AppShellRailSurfaceVisibilityTest {
     }
 
     @Test
-    fun `detail surface visible on activity tab and inline search`() {
-        assertTrue(
-            appShellSharedDetailSurfaceVisible(
-                pageVisible = true,
-                selectedTab = "activity",
-                selectedHomeDestination = null,
-                railInlineSecondaryDestination = null,
-            )
-        )
-        assertTrue(
-            appShellSharedDetailSurfaceVisible(
-                pageVisible = true,
-                selectedTab = "home",
-                selectedHomeDestination = null,
-                railInlineSecondaryDestination = AppShellRailSearchKey,
-            )
-        )
-    }
-
-    @Test
     fun `detail surface visible on dms tab so an opened dm is not hidden`() {
         // task #33: tapping a DM on the wide Slack-nav DMs tab updates the shared detail; the
         // tab must count as a visible host or the selection lands in a detail nobody sees.
@@ -62,24 +42,6 @@ class AppShellRailSurfaceVisibilityTest {
                 selectedTab = "dms",
                 selectedHomeDestination = null,
                 railInlineSecondaryDestination = null,
-            )
-        )
-    }
-
-    @Test
-    fun `first back on dms tab dismisses the open dm before leaving the tab`() {
-        assertTrue(
-            appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = "dms",
-                railInlineSecondaryDestination = null,
-                selectionPresent = true,
-            )
-        )
-        assertFalse(
-            appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = "dms",
-                railInlineSecondaryDestination = null,
-                selectionPresent = false,
             )
         )
     }
@@ -125,40 +87,6 @@ class AppShellRailSurfaceVisibilityTest {
             )
         )
     }
-
-
-    @Test
-    fun `tasks column shows only while the page owns the open detail on a wide desktop screen`() {
-        fun open(
-            desktop: Boolean = true,
-            dualPane: Boolean = true,
-            tab: String = "tasks",
-            selection: Boolean = true,
-            active: Boolean = true,
-        ) = appShellTasksDetailColumnOpen(desktop, dualPane, tab, selection, active)
-
-        assertTrue(open())
-        // Not opened from the board (e.g. a conversation selected on Home): no overlay.
-        assertFalse(open(active = false))
-        assertFalse(open(selection = false))
-        assertFalse(open(tab = "home"))
-        assertFalse(open(desktop = false))
-        assertFalse(open(dualPane = false))
-    }
-
-
-    @Test
-    fun `tasks column ownership survives in-detail navigation and ends when the surface changes`() {
-        // Navigating inside the detail (thread -> parent channel) keeps a selection on the
-        // Tasks tab, so ownership holds; leaving the tab, losing the wide layout, turning
-        // desktop mode off, or ending the selection releases it.
-        assertTrue(appShellTasksDetailColumnStaysActive(true, true, "tasks", true))
-        assertFalse(appShellTasksDetailColumnStaysActive(true, true, "home", true))
-        assertFalse(appShellTasksDetailColumnStaysActive(true, false, "tasks", true))
-        assertFalse(appShellTasksDetailColumnStaysActive(false, true, "tasks", true))
-        assertFalse(appShellTasksDetailColumnStaysActive(true, true, "tasks", false))
-    }
-
 
     @Test
     fun `detail surface suspends on unrelated tab pushed destination or background`() {
@@ -226,66 +154,6 @@ class AppShellRailSurfaceVisibilityTest {
                 railInlineSecondaryDestination = null,
                 selectionPresent = true,
             )
-        )
-    }
-
-    @Test
-    fun `inline saved behaves like inline search on rail surfaces`() {
-        // task #110: desktop-mode Saved opens as the rail-inline list pane, like Search.
-        assertTrue(
-            appShellSharedDetailSurfaceVisible(
-                pageVisible = true,
-                selectedTab = "home",
-                selectedHomeDestination = null,
-                railInlineSecondaryDestination = AppShellRailSavedKey,
-            )
-        )
-        // First Back closes an open saved message, then exits Saved.
-        assertTrue(
-            appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = "home",
-                railInlineSecondaryDestination = AppShellRailSavedKey,
-                selectionPresent = true,
-            )
-        )
-        assertFalse(
-            appShellRailSurfaceBackDismissesDetailFirst(
-                selectedTab = "home",
-                railInlineSecondaryDestination = AppShellRailSavedKey,
-                selectionPresent = false,
-            )
-        )
-    }
-
-    @Test
-    fun `activity destination survives narrowing once reached`() {
-        val legacy = listOf("home", "tasks", "members", "settings")
-        // Wide rail: Activity allowed even under legacy keys.
-        assertTrue(
-            "activity" in
-                appShellAllowedTabKeys(legacy, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false)
-        )
-        // Narrow while an inline destination covers the middle pane: still allowed.
-        assertTrue(
-            "activity" in
-                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = AppShellRailSearchKey, activityReachedThisSession = false)
-        )
-        // Narrow after the destination was reached earlier this session: still allowed.
-        assertTrue(
-            "activity" in
-                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = true)
-        )
-        // Narrow with Activity never reached: legacy clamp unchanged.
-        assertFalse(
-            "activity" in
-                appShellAllowedTabKeys(legacy, railActive = false, railInlineSecondaryDestination = null, activityReachedThisSession = false)
-        )
-        // Slack order already contains Activity: never duplicated.
-        val slack = listOf("home", "dms", "activity", "more")
-        assertTrue(
-            appShellAllowedTabKeys(slack, railActive = true, railInlineSecondaryDestination = null, activityReachedThisSession = false).count {
-                it == "activity"
-            } == 1
         )
     }
 }

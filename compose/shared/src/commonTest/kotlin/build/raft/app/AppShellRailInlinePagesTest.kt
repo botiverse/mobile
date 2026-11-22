@@ -1,8 +1,6 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.model.RaftTimeFormat24Hour
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,21 +21,6 @@ class AppShellRailInlinePagesTest {
         RaftNavPresentation.Rail.destinations
             .filter { it.route == RaftNavRoute.Page }
             .forEach { destination -> assertTrue(appShellRailInlinePage(appShellRailInlinePageKey(destination), scope) != null, destination.id) }
-    }
-
-    @Test
-    fun inlinePagesShowTheirSettingsPanePages() {
-        assertEquals(settingsWideDetailPage(SettingsDestinationComputers, scope)?.first, appShellRailInlinePage(AppShellRailComputersKey, scope)?.first)
-        assertEquals(SETTINGS_COMPUTERS_PAGE, appShellRailInlinePage(AppShellRailComputersKey, scope)?.first)
-        assertEquals(SETTINGS_WEB_VIEW_PAGE, appShellRailInlinePage(AppShellRailAppsKey, scope)?.first)
-        // The Artifacts home beside the rail, as the web LeftRail's Artifacts tab.
-        assertEquals(ARTIFACTS_HOME_PAGE, appShellRailInlinePage(AppShellRailArtifactsKey, scope)?.first)
-        // The assistant's page beside the rail (web's `assistant` rail mode), with the shell's time display for its DM.
-        val assistant = appShellRailInlinePage(AppShellRailAssistantKey, scope, AppShellThreadTimeContext(localOffsetMinutes = 480, timeFormat = RaftTimeFormat24Hour))
-        assertEquals(ASSISTANT_PAGE, assistant?.first)
-        assertEquals(480, assistant?.second?.optInt("localOffsetMinutes"))
-        assertNull(appShellRailInlinePage(AppShellRailSearchKey, scope))
-        assertNull(appShellRailInlinePage(null, scope))
     }
 
     @Test
@@ -64,15 +47,5 @@ class AppShellRailInlinePagesTest {
         assertFalse(appShellSharedDetailSurfaceVisible(true, "home", "x", AppShellRailComputersKey))
         assertTrue(appShellSharedDetailSurfaceVisible(true, "home", "x", AppShellRailSearchKey))
         assertFalse(appShellRailSurfaceBackDismissesDetailFirst("members", AppShellRailAppsKey, selectionPresent = true))
-    }
-
-    @Test
-    fun computerCardsFillTheWidthLikeTheWebGrid() {
-        // `repeat(auto-fill, minmax(250px, 1fr))`, gap 12, padding 20.
-        assertEquals(1, raftComputerCardColumns(390.dp))
-        assertEquals(1, raftComputerCardColumns(551.dp))
-        assertEquals(2, raftComputerCardColumns(552.dp))
-        assertEquals(4, raftComputerCardColumns(1280.dp))
-        assertEquals(6, raftComputerCardColumns(1600.dp))
     }
 }

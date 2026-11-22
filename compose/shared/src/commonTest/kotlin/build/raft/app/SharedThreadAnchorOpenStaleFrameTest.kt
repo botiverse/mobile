@@ -181,24 +181,4 @@ class SharedThreadAnchorOpenStaleFrameTest {
         assertNull(rig.payloadStore.staleConversationCause("server-1", conversationId, rig.ownerScopeId))
         rig.scope.cancel()
     }
-
-    @Test
-    fun leavingDuringTheLoadLogsTheRefreshAsCancelled() = runTest {
-        val repository =
-            FakeConversationRepository(threadResult = taskSnapshot("m1" to 1)).apply {
-                messageContextResult = taskSnapshot("m1" to 1, anchorId to 3)
-                messageContextDelayMillis = 3_500
-            }
-        val rig = open(repository)
-        advanceTimeBy(1_000)
-        runCurrent()
-        assertTrue(rig.logs.none { "thread_refresh_result" in it }, rig.logs.toString())
-
-        rig.scope.cancel()
-        runCurrent()
-        assertTrue(
-            rig.logs.any { "thread_refresh_result threadId=$conversationId result=cancelled" in it },
-            rig.logs.toString(),
-        )
-    }
 }

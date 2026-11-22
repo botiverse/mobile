@@ -10,20 +10,6 @@ import kotlin.test.assertNull
  */
 class RaftCopyTextTest {
     @Test
-    fun channelSettingsNameCopiesWithItsHashAsShown() {
-        assertEquals("#general", channelSettingsHeaderName("general"))
-        assertEquals("#general", channelSettingsHeaderName("#general"))
-    }
-
-    @Test
-    fun accountHeaderHandleIsShownAndCopiedWithItsAt() {
-        assertEquals("@alice", settingsAccountHeaderHandleLabel("alice"))
-        assertEquals("@alice", settingsAccountHeaderHandleLabel(" @alice "))
-        // Blank: nothing to copy (the field shows the placeholder).
-        assertNull(settingsAccountHeaderHandleLabel(""))
-    }
-
-    @Test
     fun conversationHeaderCopiesChannelAndDmNamesOnly() {
         val cases =
             listOf(

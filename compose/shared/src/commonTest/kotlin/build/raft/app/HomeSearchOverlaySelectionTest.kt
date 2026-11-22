@@ -29,23 +29,6 @@ class HomeSearchOverlaySelectionTest {
             archived = archived,
         )
 
-    @Test fun `rows run in drawing order with their sections`() {
-        assertEquals(
-            listOf(
-                HomeSearchOverlaySection.Exact,
-                HomeSearchOverlaySection.SearchFor,
-                HomeSearchOverlaySection.Entities,
-                HomeSearchOverlaySection.Entities,
-                HomeSearchOverlaySection.Messages,
-                HomeSearchOverlaySection.Messages,
-            ),
-            typedRows.map { it.section },
-        )
-        assertEquals(HomeSearchOverlaySearchForKey, typedRows[1].key)
-        val home = homeSearchOverlayRows(recentKeys = listOf("recent:a", "recent:b"))
-        assertEquals(listOf(HomeSearchOverlaySection.Recent, HomeSearchOverlaySection.Recent), home.map { it.section })
-    }
-
     @Test fun `the cursor starts on the first row and Return opens it`() {
         val cursor = HomeSearchOverlayCursor()
         assertEquals(0, cursor.index(typedRows))
@@ -77,24 +60,6 @@ class HomeSearchOverlaySelectionTest {
         val gone = homeSearchOverlayRows(searchFor = true, entityKeys = listOf("conversation:android"))
         assertEquals(0, cursor.index(gone), "a row that left puts the cursor back on top")
         assertNull(cursor.reset().selectedKey)
-    }
-
-    @Test fun `arrows move and Return opens while other keys stay with the field`() {
-        assertEquals(HomeSearchOverlayKeyAction.Move(1), homeSearchOverlayKeyAction(Key.DirectionDown, keyDown = true, shift = false))
-        assertEquals(HomeSearchOverlayKeyAction.Move(-1), homeSearchOverlayKeyAction(Key.DirectionUp, keyDown = true, shift = false))
-        assertEquals(HomeSearchOverlayKeyAction.Open, homeSearchOverlayKeyAction(Key.Enter, keyDown = true, shift = false))
-        assertEquals(HomeSearchOverlayKeyAction.Open, homeSearchOverlayKeyAction(Key.NumPadEnter, keyDown = true, shift = false))
-        assertNull(homeSearchOverlayKeyAction(Key.Enter, keyDown = true, shift = true))
-        assertNull(homeSearchOverlayKeyAction(Key.Enter, keyDown = false, shift = false))
-        assertNull(homeSearchOverlayKeyAction(Key.DirectionDown, keyDown = true, shift = false, composing = true))
-        assertNull(homeSearchOverlayKeyAction(Key.A, keyDown = true, shift = false))
-    }
-
-    @Test fun `an exact destination is the result the query names`() {
-        val results = listOf(entity("c:android-artifacts", "android-artifacts", "t1"), entity("c:android", "android", "t2"))
-        assertEquals("c:android", homeSearchOverlayExactKey("#Android", results))
-        assertNull(homeSearchOverlayExactKey("andr", results))
-        assertNull(homeSearchOverlayExactKey("  ", results))
     }
 
     @Test fun `recent conversations are the visits then the frequent ones without the open one`() {

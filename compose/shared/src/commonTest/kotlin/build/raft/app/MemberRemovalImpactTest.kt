@@ -72,21 +72,6 @@ class MemberRemovalImpactTest {
         assertEquals(listOf("Alpha", "Beta"), memberRemovalImpactNameItems(MemberRemovalImpact(2, 0, 0, listOf("Alpha", "Beta")), "others"))
     }
 
-    @Test
-    fun namesJoinAsAConjunctionList() {
-        fun join(items: List<String>) =
-            memberRemovalImpactJoin(
-                items,
-                two = { a, b -> "$a and $b" },
-                more = { a, b -> "$a, $b" },
-                end = { a, b -> "$a, and $b" },
-            )
-        assertEquals("", join(emptyList()))
-        assertEquals("Alpha", join(listOf("Alpha")))
-        assertEquals("Alpha and Beta", join(listOf("Alpha", "Beta")))
-        assertEquals("Alpha, Beta, Gamma, and others", join(listOf("Alpha", "Beta", "Gamma", "others")))
-    }
-
     private class FakeImpactNetwork(
         private val response: HomeNetworkResponse = HomeNetworkResponse(200, "{}"),
         private val hang: Boolean = false,

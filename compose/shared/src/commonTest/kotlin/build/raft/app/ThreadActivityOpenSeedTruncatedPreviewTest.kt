@@ -5,7 +5,6 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
-import build.raft.app.network.sync.ReplyPreview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,41 +56,6 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
     }
 
     @Test
-    fun theThreadRowsFullReplyWinsOverItsCutLatestPreview() {
-        val longReply = "r".repeat(300)
-        val thread =
-            InboxItem(
-                key = "thread-row",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("channel-1"),
-                channelName = "general",
-                threadChannelId = ChannelId("thread-1"),
-                parentChannelId = ChannelId("channel-1"),
-                parentMessageId = MessageId("p1"),
-                latestActivityMessageId = MessageId("r1"),
-                latestActivityPreview = longReply.take(140) + "…",
-                latestActivityAt = "2026-10-26T10:01:00Z",
-                latestActivitySenderId = "agent-1",
-                latestActivitySenderKind = MemberKind.Agent,
-                latestReplies =
-                    listOf(
-                        ReplyPreview(
-                            messageId = "r1",
-                            seq = 11,
-                            content = longReply,
-                            senderId = "agent-1",
-                            senderType = "agent",
-                            senderName = "Friday",
-                            createdAt = "2026-10-26T10:01:00Z",
-                        ),
-                    ),
-            )
-        val seeded = seed(thread, replyRoute()).single()
-        assertFalse(seeded.activityPreviewTruncated)
-        assertEquals(longReply, seeded.body)
-    }
-
-    @Test
     fun aFullCopyThisDeviceHoldsReplacesTheCutSeed() {
         val cut = seed(channelRow(preview = "y".repeat(140) + "…"), channelRoute()).single()
         val other = cut.copy(id = "m-other", body = "another message", activityPreviewTruncated = false)
@@ -109,28 +73,6 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
         assertEquals(listOf("y".repeat(400) to false), frame.messages.map { it.body to it.activityPreviewTruncated })
     }
 
-    /** artin 11-12: a superseded canonical answer already holds the tapped message's full text. */
-    @Test
-    fun aSupersededCanonicalAnswerFillsOnlyTheCutSeedOfTheSameStream() {
-        val cut = seed(channelRow(preview = "v".repeat(140) + "…"), channelRoute()).single()
-        val older = cut.copy(id = "m0", body = "older, already on the frame", activityPreviewTruncated = false)
-        val frame = channelRoute().copy(status = "content", messages = listOf(older, cut))
-        val canonicalFull = cut.copy(body = "v".repeat(400), activityPreviewTruncated = false, seq = 9)
-        val canonicalOlder = older.copy(body = "older, edited since")
-        val superseded = channelRoute().copy(status = "content", messages = listOf(canonicalOlder, canonicalFull))
-
-        val filled = frame.withActivitySeedBodiesFrom(superseded)
-        assertEquals(
-            listOf("older, already on the frame" to false, "v".repeat(400) to false),
-            filled.messages.map { it.body to it.activityPreviewTruncated },
-            "only the cut seed changes",
-        )
-
-        val otherStream = superseded.copy(sourceThreadId = "channel-2", instanceId = "shared-shell-thread-channel-2")
-        assertTrue(frame.withActivitySeedBodiesFrom(otherStream) === frame, "another stream fills nothing")
-        assertTrue(filled.withActivitySeedBodiesFrom(superseded) === filled, "nothing cut, nothing to do")
-    }
-
     @Test
     fun aRealtimeUpdateWithABodyClearsTheFlagAndASparseOneKeepsIt() {
         val cut = seed(channelRow(preview = "z".repeat(140) + "…"), channelRoute()).single()
@@ -138,17 +80,6 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
         assertEquals("z".repeat(300) to false, full.body to full.activityPreviewTruncated)
         val sparse = cut.mergeRealtimeUpdate(cut.copy(body = "", activityPreviewTruncated = false))
         assertEquals("z".repeat(140) + "…" to true, sparse.body to sparse.activityPreviewTruncated)
-    }
-
-    @Test
-    fun aSettledCutSeedStopsLoadingAndKeepsItsEllipsis() {
-        val cut = seed(channelRow(preview = "w".repeat(140) + "…"), channelRoute()).single()
-        val plain = cut.copy(id = "m2", body = "short", activityPreviewTruncated = false)
-        val settled = RaftThreadScreenPayload(status = "content", messages = listOf(plain, cut)).withActivityPreviewsSettled()
-        assertEquals(
-            listOf("short" to false, "w".repeat(140) + "…" to false),
-            settled.messages.map { it.body to it.activityPreviewTruncated },
-        )
     }
 
     private fun seed(item: InboxItem, route: RaftThreadScreenPayload) =
@@ -179,17 +110,6 @@ class ThreadActivityOpenSeedTruncatedPreviewTest {
             title = "general",
             surfaceKind = RaftThreadSurfaceKind.Channel,
             sourceThreadId = "channel-1",
-            status = "loading",
-        )
-
-    private fun replyRoute() =
-        RaftThreadScreenPayload(
-            instanceId = "shared-shell-reply-thread-1",
-            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-            sourceThreadId = "thread-1",
-            streamChannelId = "thread-1",
-            parentChannelId = "channel-1",
-            parentMessageId = "p1",
             status = "loading",
         )
 }

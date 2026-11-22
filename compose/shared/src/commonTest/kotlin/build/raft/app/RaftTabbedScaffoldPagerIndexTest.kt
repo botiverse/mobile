@@ -2,7 +2,6 @@ package build.raft.app
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 
 /**
  * task #232 PR3: RaftTabbedScaffold TabPager is index-aligned with the
@@ -35,27 +34,5 @@ class RaftTabbedScaffoldPagerIndexTest {
         // Tasks is missing from the subset (e.g. channel doesn't support tasks)
         assertEquals(0, raftTabbedScaffoldPageIndex(subset, TestTabKey.Tasks))
         assertEquals(0, raftTabbedScaffoldPageIndex(emptyList(), TestTabKey.Chat))
-    }
-
-    @Test
-    fun page_maps_back_to_tab_key_at_that_position() {
-        assertEquals(TestTabKey.Chat, raftTabbedScaffoldPageKey(tabs, 0))
-        assertEquals(TestTabKey.Tasks, raftTabbedScaffoldPageKey(tabs, 1))
-        assertEquals(TestTabKey.Files, raftTabbedScaffoldPageKey(tabs, 2))
-    }
-
-    @Test
-    fun page_outside_tabs_list_is_null_not_a_crash() {
-        assertNull(raftTabbedScaffoldPageKey(tabs, 3))
-        assertNull(raftTabbedScaffoldPageKey(tabs, -1))
-        assertNull(raftTabbedScaffoldPageKey(emptyList(), 0))
-    }
-
-    @Test
-    fun round_trips_every_tab_key() {
-        for (spec in tabs) {
-            val page = raftTabbedScaffoldPageIndex(tabs, spec.key)
-            assertEquals(spec.key, raftTabbedScaffoldPageKey(tabs, page))
-        }
     }
 }

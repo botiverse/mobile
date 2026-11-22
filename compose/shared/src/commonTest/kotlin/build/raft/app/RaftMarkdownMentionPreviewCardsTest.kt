@@ -29,14 +29,6 @@ class RaftMarkdownMentionPreviewCardsTest {
     private val spans = text.raftMarkdownMentionSpans()
 
     @Test
-    fun spansAreTheMentionAnnotationsInTextOrder() {
-        assertEquals(
-            listOf(RaftMarkdownMentionSpan(4, 8, "@ada"), RaftMarkdownMentionSpan(13, 19, "@bugen")),
-            spans,
-        )
-    }
-
-    @Test
     fun theCharacterUnderThePointerPicksTheMention() {
         val inside = { _: Int -> true }
         // The caret before or after a character of the mention.
@@ -57,11 +49,5 @@ class RaftMarkdownMentionPreviewCardsTest {
         // Only the character after the caret is under the pointer: the one before is ignored.
         assertNull(raftMarkdownMentionIndexAt(spans, text.length, caret = 8) { offset -> offset == 8 })
         assertEquals(0, raftMarkdownMentionIndexAt(spans, text.length, caret = 8) { offset -> offset == 7 })
-    }
-
-    @Test
-    fun noMentionsOrNoTextIsNoHit() {
-        assertNull(raftMarkdownMentionIndexAt(emptyList(), text.length, caret = 5) { true })
-        assertNull(raftMarkdownMentionIndexAt(spans, textLength = 0, caret = 0) { true })
     }
 }

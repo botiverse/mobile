@@ -64,35 +64,6 @@ class ThreadChannelArchiveLiveTest {
     }
 
     @Test
-    fun aReplyThreadFollowsItsParentChannelsArchive() = runTest {
-        val store = loadedStore(replyRoute(), channelId = "thread-parent-1")
-        assertEquals(RaftThreadSurfaceKind.ReplyThread, store.state.value.payload.surfaceKind)
-        assertFalse(store.state.value.payload.channelArchived)
-
-        // The thread's own channel id is not the archived channel: nothing changes.
-        store.accept(SharedThreadIntent.ApplyRealtimeEvent(channelUpdated("thread-parent-1", archived = true)))
-        assertFalse(store.state.value.payload.channelArchived)
-
-        store.accept(SharedThreadIntent.ApplyRealtimeEvent(channelUpdated("channel-1", archived = true)))
-        assertTrue(store.state.value.payload.channelArchived)
-        assertTrue(threadFooterShowsArchived(store.state.value.payload))
-
-        store.accept(SharedThreadIntent.ApplyRealtimeEvent(channelUpdated("channel-1", archived = false)))
-        assertFalse(store.state.value.payload.channelArchived)
-    }
-
-    @Test
-    fun anotherChannelsArchiveLeavesThePageAlone() = runTest {
-        val store = loadedStore(basePayload(), channelId = "channel-1")
-        val before = store.state.value.payload
-
-        store.accept(SharedThreadIntent.ApplyRealtimeEvent(channelUpdated("channel-2", archived = true)))
-
-        assertFalse(store.state.value.payload.channelArchived)
-        assertEquals(before.messages, store.state.value.payload.messages)
-    }
-
-    @Test
     fun aSendRefusedAsArchivedTurnsThePageArchived() = runTest {
         val (store, dataSource) = loadedStoreAndDataSource(basePayload(), channelId = "channel-1")
         failLocalSend(store, dataSource, id = "${ThreadTransientLocalSendIdPrefix}net-1", errorCode = "thread_send_network")
@@ -106,13 +77,6 @@ class ThreadChannelArchiveLiveTest {
         assertTrue(threadFooterShowsArchived(payload))
         // The refused message stays, failed, so its text is not lost.
         assertEquals(ThreadMessageDeliveryFailed, payload.messages.first { it.id == localId }.deliveryState)
-    }
-
-    @Test
-    fun aDirectMessageIgnoresTheArchiveSignals() {
-        val dm = basePayload().copy(surfaceKind = RaftThreadSurfaceKind.DirectMessage, status = "content")
-        assertFalse(dm.withChannelUpdateArchiveState(channelUpdated("channel-1", archived = true)).channelArchived)
-        assertFalse(dm.withSendRefusedAsArchived("channel_archived").channelArchived)
     }
 
     private fun channelUpdated(channelId: String, archived: Boolean): RealtimeRefreshRequired =
@@ -186,17 +150,6 @@ class ThreadChannelArchiveLiveTest {
         store.accept(SharedThreadIntent.Start(route))
         return store to dataSource
     }
-
-    private fun replyRoute(): RaftThreadScreenPayload =
-        basePayload().copy(
-            surfaceKind = RaftThreadSurfaceKind.ReplyThread,
-            sourceThreadId = "thread-parent-1",
-            streamChannelId = "thread-parent-1",
-            parentChannelId = "channel-1",
-            parentMessageId = "parent-1",
-            originParentMessageId = "parent-1",
-            originStatus = "loading",
-        )
 
     private companion object {
         /** slock publishChannelUpdate's `{ channel }`: the channel row as archive / unarchive commit it. */

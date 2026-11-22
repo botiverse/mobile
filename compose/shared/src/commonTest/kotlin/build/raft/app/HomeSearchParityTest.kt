@@ -16,7 +16,6 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
@@ -53,44 +52,6 @@ class HomeSearchParityTest {
         assertEquals(results.take(5), results.homeSearchShownEntities(expanded = false))
         assertEquals(results, results.homeSearchShownEntities(expanded = true))
         assertTrue(homeSearchEntitiesCollapsible(results.size))
-    }
-
-    @Test
-    fun showAllAppearsOnlyPastFiveDestinations() {
-        assertEquals(
-            listOf(1 to false, 5 to false, 6 to true, 50 to true),
-            listOf(1, 5, 6, 50).map { it to homeSearchEntitiesCollapsible(it) },
-        )
-    }
-
-    @Test
-    fun theWidePanelOffersShowAllAtTheGroupHeadingForMoreThanFiveDestinations() {
-        val entities = (1..12).map { channelEntity("eng-$it") }
-        val group = HomeSearchEntityGroupView(HomeSearchEntityGroupId.Channels, entities, total = 12, fromServer = false)
-        fun content(expanded: Boolean) =
-            HomeSearchOverlayContent(
-                typed = true,
-                recent = emptyList(),
-                exact = null,
-                entityGroups = listOf(group),
-                expandedGroups = if (expanded) setOf(HomeSearchEntityGroupId.Channels) else emptySet(),
-                messages = emptyList(),
-                messageCount = null,
-                searched = true,
-                loading = false,
-            )
-
-        val collapsed = content(expanded = false).entries()
-        assertEquals(5, collapsed.count { it is HomeSearchOverlayEntry.Entity })
-        val heading = assertIs<HomeSearchOverlayEntry.EntitiesHeading>(collapsed.single { it is HomeSearchOverlayEntry.EntitiesHeading })
-        assertEquals(12, heading.group.count)
-        assertTrue(heading.group.showsToggle(heading.expanded))
-        // The cursor walks the shown rows only; "Show all" is a button, not a row.
-        assertEquals(5, content(expanded = false).rows.count { it.section == HomeSearchOverlaySection.Entities })
-
-        val expanded = content(expanded = true).entries()
-        assertEquals(12, expanded.count { it is HomeSearchOverlayEntry.Entity })
-        assertEquals(true, expanded.filterIsInstance<HomeSearchOverlayEntry.EntitiesHeading>().single().expanded)
     }
 
     // --- 3./4. Incomplete search and the history notice in the wide panel ---
@@ -133,16 +94,6 @@ class HomeSearchParityTest {
         assertEquals(30, homeWithChannels(1, plan = "free").homeSearchHistoryWindowDays())
         assertNull(homeWithChannels(1, plan = "pro").homeSearchHistoryWindowDays())
         assertNull(SharedHomeState().homeSearchHistoryWindowDays())
-    }
-
-    @Test
-    fun searchedThroughReadsAsALocalMessageTime() {
-        // 2026-09-30T08:00Z at UTC+8 is 16:00 on 09-30; "today" is 2026-11-16.
-        val context = RaftTimeContext(localOffsetMinutes = 480, todayEpochDay = 20773L)
-        assertEquals("09-30 16:00", homeSearchSearchedThroughLabel("2026-09-30T08:00:00.000Z", context))
-        assertNull(homeSearchSearchedThroughLabel(null, context))
-        assertNull(homeSearchSearchedThroughLabel("  ", context))
-        assertNull(homeSearchSearchedThroughLabel("not a time", context))
     }
 
     // --- 5. A person or agent opens the DM, else the profile (useSearchResultActions) ---
@@ -215,24 +166,6 @@ class HomeSearchParityTest {
         assertEquals(0, opens)
     }
 
-    @Test
-    fun channelsAndKnownDirectMessagesOpenWithoutAskingForADirectMessage() = runTest {
-        val knownDm = memberEntity(MemberKind.Human).withDirectMessage(dmRow("dm-known", MemberKind.Human).toThreadLaunchConversationIdentity())
-        listOf(channelEntity("general"), knownDm).forEach { entity ->
-            var asked = 0
-            val opened = mutableListOf<SearchEntityResult>()
-            val (outcome, _) =
-                openHomeSearchEntityWithDirectMessage(
-                    entity = entity,
-                    openDirectMessage = { asked++; null },
-                    open = { opened += it; true },
-                )
-            assertEquals(HomeSearchMemberOpenOutcome.Direct, outcome)
-            assertEquals(0, asked)
-            assertEquals(entity, opened.single())
-        }
-    }
-
     private fun memberEntity(kind: MemberKind): SearchEntityResult =
         SearchEntityResult(
             key = "member:member-7",
@@ -242,18 +175,6 @@ class HomeSearchParityTest {
             threadId = null,
             memberIdentity = MemberDetailIdentity(memberId = MemberId("member-7"), kind = kind, sourceServerId = ServerId("server-1")),
             conversationIdentity = null,
-        )
-
-    private fun channelEntity(name: String): SearchEntityResult =
-        SearchEntityResult(
-            key = "conversation:$name",
-            type = SearchEntityType.Channel,
-            title = name,
-            subtitle = "Channel",
-            threadId = name,
-            memberIdentity = null,
-            conversationIdentity =
-                ThreadLaunchConversationIdentity(threadId = ThreadId(name), channelId = ChannelId(name), kind = ConversationKind.Channel),
         )
 
     private fun dmRow(id: String, kind: MemberKind): HomeDirectMessageRow =

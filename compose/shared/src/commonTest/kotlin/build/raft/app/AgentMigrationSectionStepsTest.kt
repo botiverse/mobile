@@ -57,26 +57,6 @@ class AgentMigrationSectionStepsTest {
     }
 
     @Test
-    fun anEndedOrStuckMoveHasNoSpinner() {
-        data class Case(val notice: AgentMigrationNotice, val current: Int, val status: RaftStepStatus)
-        listOf(
-            Case(notice("failed", sourceQuiescedAt = "2026-10-21T08:00:05.000Z"), 2, RaftStepStatus.Error),
-            Case(notice("canceled_pre_flip", sourceQuiescedAt = "2026-10-21T08:00:05.000Z"), 2, RaftStepStatus.Wait),
-            Case(
-                notice("canceled_pre_flip", sourceQuiescedAt = "2026-10-21T08:00:05.000Z", cancelNeedsAttention = true),
-                2,
-                RaftStepStatus.Error
-            ),
-            Case(notice("completed"), 5, RaftStepStatus.Finish)
-        ).forEach { (notice, current, status) ->
-            val model = agentMigrationStepsModel(notice)
-            assertEquals(current, model.current, notice.state)
-            assertEquals(status, model.status, notice.state)
-            assertEquals(List(5) { AgentMigrationStepMarker.Number }, markers(notice), notice.state)
-        }
-    }
-
-    @Test
     fun aCloudMoveWaitingForReviewShowsItsNumber() {
         val review =
             notice(

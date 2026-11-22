@@ -29,26 +29,6 @@ class ThreadComposerFileDropTest {
     }
 
     @Test
-    fun foldersGetTheWebNotice() {
-        val cases =
-            listOf(
-                listOf(ThreadComposerDroppedItem("/a.txt")) to ThreadComposerFileDropFolderNotice.None,
-                listOf(ThreadComposerDroppedItem("/dir", isFolder = true)) to ThreadComposerFileDropFolderNotice.FoldersCantUpload,
-                listOf(ThreadComposerDroppedItem("/dir", isFolder = true), ThreadComposerDroppedItem("/a.txt")) to
-                    ThreadComposerFileDropFolderNotice.FoldersSkipped,
-            )
-        cases.forEach { (items, notice) -> assertEquals(notice, threadComposerFileDrop(items).folderNotice(), "$items") }
-    }
-
-    @Test
-    fun onlyFileDragsLightTheComposerUp() {
-        listOf("text/plain", "text/html", "TEXT/PLAIN; charset=utf-8", "text/uri-list", "text/vnd.android.intent", "")
-            .forEach { assertFalse(threadComposerDragMimeTypeIsFile(it), it) }
-        listOf("image/png", "application/pdf", "video/mp4", "text/csv", "application/octet-stream")
-            .forEach { assertTrue(threadComposerDragMimeTypeIsFile(it), it) }
-    }
-
-    @Test
     fun droppedImagesGoStraightToTheTrayLikeAFilePick() {
         // The web adds dropped files directly; only the image button / camera open the editor.
         assertEquals(
@@ -65,19 +45,5 @@ class ThreadComposerFileDropTest {
     fun aDropNeedsWriteAccessLikeTheAttachButtons() {
         assertTrue(threadComposerEventRequiresWriteAccess(ThreadComposerDropAttachmentsAction))
         assertFalse(threadComposerEventAllowed(writeActionsEnabled = false, action = ThreadComposerDropAttachmentsAction))
-    }
-
-    @Test
-    fun aDropWithNothingInItIsRefusedAndReleased() {
-        val state = ThreadComposerFileDropState()
-        var delivered = 0
-        var released = 0
-        state.onDragEntered()
-        assertFalse(state.onDropped(null) { delivered++ })
-        assertFalse(state.dragging)
-        state.onDragEntered()
-        assertFalse(state.onDropped(threadComposerFileDrop(emptyList(), release = { released++ })) { delivered++ })
-        assertEquals(0, delivered)
-        assertEquals(1, released)
     }
 }

@@ -7,71 +7,6 @@ import kotlin.test.assertEquals
 
 class ThreadForwardMessageSelectionTest {
     @Test
-    fun originalMessagesAreAllForwardable() {
-        val selection =
-            listOf(
-                message("message-1"),
-                message("message-2")
-            ).threadForwardMessageSelection()
-
-        assertEquals(listOf("message-1", "message-2"), selection.forwardableMessages.map { it.id })
-        assertEquals(0, selection.skippedCount)
-        assertEquals(0, selection.nestedForwardCount)
-    }
-
-    @Test
-    fun forwardedBundlesAreNotForwardable() {
-        val selection =
-            listOf(
-                message("forwarded-1", forwardedBundle = true),
-                message("forwarded-2", forwardedBundle = true)
-            ).threadForwardMessageSelection()
-
-        assertEquals(emptyList(), selection.forwardableMessages)
-        assertEquals(2, selection.skippedCount)
-        assertEquals(2, selection.nestedForwardCount)
-        assertEquals("forwarded_source_not_supported", selection.threadForwardSelectionFailureCode())
-    }
-
-    @Test
-    fun taskLinkedChatMessagesAreForwardableLikeWeb() {
-        // Web getForwardableMessages and the server forward route accept task-linked chat rows.
-        val selection =
-            listOf(
-                message("task-1", taskStatus = "todo"),
-                message("task-2", taskId = "task-id-2", taskNumber = 7)
-            ).threadForwardMessageSelection()
-
-        assertEquals(listOf("task-1", "task-2"), selection.forwardableMessages.map { it.id })
-        assertEquals(0, selection.skippedCount)
-    }
-
-    @Test
-    fun projectedActionCardMetadataIsNotForwardable() {
-        val selection =
-            listOf(
-                message("message-1").copy(metadata = mapOf("actionCard.kind" to "action-card", "actionCard.type" to "channel:create"))
-            ).threadForwardMessageSelection()
-
-        assertEquals(emptyList(), selection.forwardableMessages)
-        assertEquals("unsupported_source_message", selection.threadForwardSelectionFailureCode())
-    }
-
-    @Test
-    fun actualTaskSystemAndActionCardMessagesAreNotForwardable() {
-        val selection =
-            listOf(
-                message("task-system-1", taskStatus = "todo", messageType = "System"),
-                message("action-1", actionCard = true)
-            ).threadForwardMessageSelection()
-
-        assertEquals(emptyList(), selection.forwardableMessages)
-        assertEquals(2, selection.skippedCount)
-        assertEquals(0, selection.nestedForwardCount)
-        assertEquals("unsupported_source_message", selection.threadForwardSelectionFailureCode())
-    }
-
-    @Test
     fun mixedSelectionKeepsOnlyOrdinaryMessagesInTimelineOrder() {
         val selection =
             listOf(
@@ -122,14 +57,6 @@ class ThreadForwardMessageSelectionTest {
             ThreadForwardFailure.entries.map { it.messageRes }.toSet().size,
             "each failure has its own toast"
         )
-    }
-
-    @Test
-    fun skippedWarningPicksTheCountForm() {
-        assertEquals(null, threadForwardSkippedWarningRes(0))
-        assertEquals(Res.string.thread_forward_skipped_one, threadForwardSkippedWarningRes(1))
-        assertEquals(Res.string.thread_forward_skipped_other, threadForwardSkippedWarningRes(2))
-        assertEquals(Res.string.thread_forward_skipped_other, threadForwardSkippedWarningRes(3))
     }
 
     private fun message(

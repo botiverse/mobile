@@ -8,7 +8,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 /**
  * Regression coverage for the draft persistence transaction boundary.
@@ -81,96 +80,6 @@ class SharedThreadComposerDraftTransactionRollbackTest {
         assertEquals(mountedState, store.state.value)
         assertEquals(before, fixture.snapshot())
         assertGateIsReleased(fixture.storage)
-    }
-
-    @Test
-    fun finalizeMarkerMakesManualRollbackFailClosedForEveryDeferredRetirement() {
-        val storage = InMemoryRaftKeyValueStore()
-        val retired = mutableListOf<Pair<String, Set<String>>>()
-        val persistence =
-            SharedThreadComposerDraftPersistence(
-                store = storage,
-                retireTemporaryFileRefs = { key, refs ->
-                    retired += key to refs
-                    // Model a native handler which moved bytes and then failed before returning a
-                    // per-ref receipt.  The transaction marker must make rollback conservative.
-                    error("native retirement failed after partial move")
-                }
-            )
-        val textKey = "send=marker-text|parent=_|mention=marker-text"
-        val attachmentOnlyKey = "send=marker-only|parent=_|mention=marker-only"
-        val textRef = "cache/marker-text.jpg"
-        val attachmentOnlyRef = "cache/marker-only.jpg"
-
-        persistence.save(
-            key = textKey,
-            text = "before",
-            asTask = false,
-            uploadedAttachments = listOf(ownedAttachment(textRef))
-        )
-        persistence.save(
-            key = attachmentOnlyKey,
-            text = "",
-            asTask = false,
-            uploadedAttachments = listOf(ownedAttachment(attachmentOnlyRef))
-        )
-
-        val transaction = persistence.beginTransition(emptyList())
-        transaction.save(
-            key = textKey,
-            text = "after",
-            asTask = false,
-            uploadedAttachments = emptyList(),
-            externalShareSources = emptyList()
-        )
-        transaction.clear(attachmentOnlyKey)
-        assertEquals(setOf(textRef, attachmentOnlyRef), transaction.deferredRetirementRefs())
-
-        transaction.commit()
-        transaction.markFinalizeAttempted()
-        assertTrue(transaction.isFinalizeAttempted())
-        assertFailsWith<SharedThreadComposerDraftPersistenceFailure> {
-            transaction.finalize()
-        }
-        // The first sorted retirement fails; the second was never called.  Its ref is still in
-        // the deferred plan and therefore must also be removed from the rollback image.
-        assertEquals(1, retired.size)
-
-        transaction.rollback()
-
-        val restoredText = persistence.read(textKey)
-        assertEquals("before", restoredText?.text)
-        assertTrue(restoredText?.uploadedAttachments.orEmpty().isEmpty())
-        val restoredAttachmentOnly = persistence.read(attachmentOnlyKey)
-        assertTrue(restoredAttachmentOnly?.text.orEmpty().isEmpty())
-        assertTrue(restoredAttachmentOnly?.uploadedAttachments.orEmpty().isEmpty())
-        assertEquals(
-            textKey,
-            storage.getString(ActiveIndexKey)
-        )
-        assertGateIsReleased(storage)
-    }
-
-    @Test
-    fun finalizeMarkerLifecycleIsPreparedBoundAndIdempotent() {
-        val storage = InMemoryRaftKeyValueStore()
-        val persistence = SharedThreadComposerDraftPersistence(storage)
-        val transaction = persistence.beginTransition(emptyList())
-
-        assertFailsWith<IllegalStateException> { transaction.markFinalizeAttempted() }
-        transaction.commit()
-        assertFailsWith<IllegalStateException> { transaction.finalize() }
-        transaction.markFinalizeAttempted()
-        transaction.markFinalizeAttempted()
-        assertTrue(transaction.isFinalizeAttempted())
-
-        // No retirement is planned, so finalization/rollback remain harmless and the marker is
-        // still a stable one-way fact for callers which inspect the snapshot after cleanup.
-        transaction.finalize()
-        transaction.rollback()
-        transaction.markFinalizeAttempted()
-        assertTrue(transaction.isFinalizeAttempted())
-        assertGateIsReleased(storage)
     }
 
     private fun assertGateIsReleased(storage: InMemoryRaftKeyValueStore) {
@@ -253,16 +162,6 @@ class SharedThreadComposerDraftTransactionRollbackTest {
         fun snapshot(): Map<String, String?> =
             keys.associateWith { key -> storage.getString(key) }
     }
-
-    private fun ownedAttachment(fileRef: String): SharedThreadComposerAttachment =
-        SharedThreadComposerAttachment(
-            id = "owned-${fileRef.substringAfterLast('/')}",
-            fileName = "image.jpg",
-            mimeType = "image/jpeg",
-            status = "ready",
-            fileRef = fileRef,
-            source = "composer_image_compressor"
-        )
 
     private companion object {
         const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"

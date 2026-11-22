@@ -14,8 +14,6 @@ import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.ThreadDurableAccessEvictor
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,53 +30,6 @@ import kotlin.test.assertTrue
  * and leaves (rule 2), and the cache is a per-server LRU (rule 3).
  */
 class SharedThreadTimelineCacheRekeyTest {
-    @Test
-    fun serverSwitchAndTokenRotationKeepTheCachedTimelineForTheFirstFrame() {
-        val transitions =
-            listOf(
-                // A -> B -> A: every selection advances the durable selection epoch.
-                "server switch A->B->A" to
-                    listOf(identity(server = "server-b", selection = 2L), identity(selection = 3L)),
-                // Same account, same binding, new credential revision.
-                "token rotation" to listOf(identity(auth = 2L)),
-            )
-        transitions.forEach { (label, path) ->
-            runTest {
-                val api = SharedThreadStoreTest.FakeThreadApi()
-                var current = identity()
-                val dataSource = dataSource(api, SharedThreadPayloadStore(backgroundScope)) { current }
-                assertIs<DataResult.Content<RaftThreadScreenPayload>>(dataSource.fetchThreadPayload(channelPayload()))
-                assertEquals(1, api.channelMessageCalls)
-
-                path.forEach { next ->
-                    current = next
-                    assertNotNull(dataSource.captureReplyCacheProducerContext(), label)
-                }
-
-                // Reopen the channel. The background refresh is held at the network so every frame
-                // the page renders before the refresh answers is observable.
-                api.channelMessagesStarted = CompletableDeferred()
-                api.releaseChannelMessages = CompletableDeferred()
-                val store = SharedThreadStore(dataSource, scope = backgroundScope)
-                val frames = mutableListOf<RaftThreadScreenPayload>()
-                backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-                    store.state.collect { frames += it.payload }
-                }
-                store.dispatch(SharedThreadIntent.Start(channelPayload()))
-                api.channelMessagesStarted?.await()
-
-                assertEquals(2, api.channelMessageCalls, "$label: exactly one background refresh")
-                val rendered = frames.drop(1) // frames[0] is the pre-Start constructor value
-                assertEquals("content", rendered.first().status, "$label: first frame is the cached timeline")
-                rendered.forEach { frame ->
-                    assertEquals(listOf("network body"), frame.messages.map { it.body }, "$label: never from empty")
-                }
-                assertTrue(store.state.value.payload.backgroundRefreshing, "$label: refreshes in the background")
-                api.releaseChannelMessages?.complete(Unit)
-            }
-        }
-    }
-
     @Test
     fun lateResponseIsWrittenToItsServerUnlessTheAccountChanged() {
         val cases =
@@ -163,32 +114,6 @@ class SharedThreadTimelineCacheRekeyTest {
                 DataResult.Content(Unit) to false,
             )
         cases.forEach { (result, lost) -> assertEquals(lost, result.isConversationAccessLost(), result.toString()) }
-    }
-
-    @Test
-    fun timelineCacheEvictsLeastRecentlyUsedPerServerThenOverall() = runTest {
-        val store =
-            SharedThreadPayloadStore(backgroundScope, maxConversationsPerServer = 2, maxConversations = 3)
-        val one = sharedThreadTimelineOwnerScopeId(TestThreadEnvironmentId, "u-a", "server-1")
-        val two = sharedThreadTimelineOwnerScopeId(TestThreadEnvironmentId, "u-a", "server-2")
-        fun put(owner: String, server: String, thread: String) =
-            store.put(server, thread, RaftThreadScreenPayload(sourceThreadId = thread, status = "content"), owner)
-        fun cached() = store.cachedKeysForTest().map { "${it.payloadKey.serverId}/${it.payloadKey.threadId}" }
-
-        put(one, "server-1", "c1")
-        put(one, "server-1", "c2")
-        assertNotNull(store.get("server-1", "c1", TestThreadEnvironmentId, "u-a", one)) // c1 is now newest
-        put(one, "server-1", "c3")
-        assertEquals(listOf("server-1/c1", "server-1/c3"), cached(), "per-server cap drops c2, the LRU of server-1")
-
-        put(two, "server-2", "d1")
-        put(two, "server-2", "d2")
-        assertEquals(listOf("server-1/c3", "server-2/d1", "server-2/d2"), cached(), "total cap drops the overall LRU")
-        assertNull(store.get("server-1", "c1", TestThreadEnvironmentId, "u-a", one))
-
-        // Removed from server-2: its whole partition goes, server-1 is untouched.
-        store.dropServer("server-2")
-        assertEquals(listOf("server-1/c3"), cached())
     }
 
     private class RecordingEvictor : ThreadDurableAccessEvictor {

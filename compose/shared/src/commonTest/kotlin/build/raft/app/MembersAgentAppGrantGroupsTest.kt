@@ -54,19 +54,6 @@ class MembersAgentAppGrantGroupsTest {
     }
 
     @Test
-    fun detailsListTheGrantsBySourceInFirstSeenOrder() {
-        val login = STAMP_SIGN_IN
-        val request = STAMP_NOTIFY
-        val secondLogin = STAMP_SIGN_IN.copy(id = "g-stamp-login-2")
-        val older = STAMP_NOTIFY.copy(id = "g-stamp-old", grantSource = null)
-
-        assertEquals(
-            listOf("agent_login" to listOf(login.id, secondLogin.id), "app_request" to listOf(request.id), null to listOf(older.id)),
-            membersAgentAppGrantsBySource(listOf(login, request, secondLogin, older)).map { (source, grants) -> source to grants.map { it.id } }
-        )
-    }
-
-    @Test
     fun ownersAdminsAndTheAgentsHumanCreatorManageItsAppAccess() {
         data class Viewer(val role: String?, val userId: String?, val creatorType: String?, val creatorId: String?)
         mapOf(

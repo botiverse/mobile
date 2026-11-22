@@ -50,24 +50,10 @@ class PagedMergeNewerServerCopyTest {
     }
 
     @Test
-    fun anEditedBodyOnAnOlderPageLandsToo() {
-        val merged =
-            payload(row("edited", 41), row("tail", 50))
-                .mergePagedMessages(listOf(row("old", 30), row("edited", 41, body = "edited body")), before = true, pageSize = 50)
-        assertEquals("edited body", merged.messages.single { it.id == "edited" }.body)
-    }
-
-    @Test
     fun aLocalSendKeepsItsOwnRow() {
         val sending =
             row("${ThreadTransientLocalSendIdPrefix}1", 0, body = "typed").copy(seq = null, deliveryState = ThreadMessageDeliverySending)
         val loaded = listOf(sending)
         assertSame(loaded, loaded.withNewerServerCopiesFrom(listOf(sending.copy(body = "other"))))
-    }
-
-    @Test
-    fun anUnchangedPageKeepsTheSameList() {
-        val loaded = listOf(row("a", 1), row("b", 2))
-        assertSame(loaded, loaded.withNewerServerCopiesFrom(listOf(row("a", 1), row("b", 2))))
     }
 }

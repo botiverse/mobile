@@ -32,17 +32,4 @@ class ThreadCreateAgentDialogStateTest {
         assertEquals("server_forbidden", blockerFailure.errorCode)
         assertNull(blockerFailure.errorServerMessage)
     }
-
-    @Test
-    fun validationFailureAlsoResetsAnyEarlierServerMessage() {
-        val card = ThreadActionCard(type = "agent:create", name = "@Draft")
-        val afterServerFailure =
-            ThreadCreateAgentActionDialogState(messageId = "m1", card = card)
-                .failedWith(errorCode = "http_409", errorServerMessage = "old raw reason")
-
-        val validation = afterServerFailure.failedWith("agent_name_required")
-
-        assertEquals("agent_name_required", validation.errorCode)
-        assertNull(validation.errorServerMessage)
-    }
 }

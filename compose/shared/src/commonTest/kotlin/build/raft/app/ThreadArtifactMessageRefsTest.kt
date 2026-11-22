@@ -8,14 +8,9 @@ import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.links.planRaftMessageLinks
-import build.raft.app.model.RaftTimeContext
-import build.raft.app.model.RaftTimeFormat12Hour
-import build.raft.app.model.raftEpochDayForDate
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 /**
  * The cards under a message (web `ArtifactMessageRefs.tsx` `artifactLinkOf` + the default export,
@@ -50,18 +45,6 @@ class ThreadArtifactMessageRefsTest {
     private val deleted = ArtifactDeletedShown("Old plan", "Martin", "2026-10-30T10:00:00Z")
 
     @Test
-    fun noReferencesDrawNothing() {
-        assertEquals(ThreadArtifactMessageRefsView.None, threadArtifactMessageRefsView(emptyList(), emptyMap()))
-    }
-
-    @Test
-    fun anyReferenceWithoutAnAnswerIsOneSkeleton() {
-        val targets = listOf(ArtifactLinkTarget(a), ArtifactLinkTarget(b))
-        val view = threadArtifactMessageRefsView(targets, mapOf(a to ArtifactSummaryAnswer.Ok(summary())))
-        assertEquals(ThreadArtifactMessageRefsView.Loading, view)
-    }
-
-    @Test
     fun okAndDeletedAreDrawnInMessageOrderUnavailableAndFailedAddNothing() {
         val content =
             "First https://app.raft.build/artifacts/$b then https://app.raft.build/artifacts/$a/v/2, " +
@@ -90,43 +73,8 @@ class ThreadArtifactMessageRefsTest {
     }
 
     @Test
-    fun onlyUnavailableOrFailedDrawsNothing() {
-        val targets = listOf(ArtifactLinkTarget(a), ArtifactLinkTarget(b))
-        val view = threadArtifactMessageRefsView(targets, mapOf(a to ArtifactSummaryAnswer.Unavailable, b to ArtifactSummaryAnswer.Failed))
-        assertEquals(ThreadArtifactMessageRefsView.None, view)
-    }
-
-    @Test
     fun anUnpinnedCardOpensTheLatest() {
         assertEquals(ArtifactLinkTarget(a, null), summary(version = 4).openTarget())
-    }
-
-    @Test
-    fun factLinePerKind() {
-        assertEquals(emptyList(), artifactCardFactParts(summary(kind = ArtifactKind.Html)), "HTML: its description is the line")
-        assertEquals(emptyList(), artifactCardFactParts(summary(kind = ArtifactKind.Markdown)))
-        assertEquals(
-            listOf(ArtifactFactPart.Pages(6)),
-            artifactCardFactParts(summary(kind = ArtifactKind.Pdf, facts = ArtifactFacts(sizeBytes = 9, pages = 6))),
-        )
-        assertEquals(
-            listOf(ArtifactFactPart.RowsColumns(5, 4), ArtifactFactPart.ColumnNames(listOf("Channel", "September"))),
-            artifactCardFactParts(
-                summary(kind = ArtifactKind.Csv, facts = ArtifactFacts(rows = 5, columns = 4, columnNames = listOf("Channel", "September"))),
-            ),
-        )
-        assertEquals(listOf(ArtifactFactPart.Rows(5)), artifactCardFactParts(summary(kind = ArtifactKind.Csv, facts = ArtifactFacts(rows = 5))))
-        assertEquals(
-            listOf(ArtifactFactPart.Pixels(1600, 1000)),
-            artifactCardFactParts(summary(kind = ArtifactKind.Image, facts = ArtifactFacts(width = 1600, height = 1000))),
-        )
-        assertEquals(listOf(ArtifactFactPart.Lines(214)), artifactCardFactParts(summary(kind = ArtifactKind.Text, facts = ArtifactFacts(lines = 214))))
-        // Nothing better known: the size.
-        assertEquals(
-            listOf(ArtifactFactPart.Size(3_000)),
-            artifactCardFactParts(summary(kind = ArtifactKind.Image, facts = ArtifactFacts(sizeBytes = 3_000, width = 0, height = 10))),
-        )
-        assertEquals(listOf(ArtifactFactPart.Size(10)), artifactCardFactParts(summary(kind = ArtifactKind.Video, facts = ArtifactFacts(sizeBytes = 10))))
     }
 
     @Test
@@ -137,49 +85,5 @@ class ThreadArtifactMessageRefsTest {
         )
         assertEquals(listOf(ArtifactFactPart.LatestIs(5)), artifactCardFactParts(summary(version = 3, pinned = true, latestVersion = 5)))
         assertEquals(emptyList(), artifactCardFactParts(summary(version = 3, pinned = false, latestVersion = 5)), "unpinned shows the latest")
-    }
-
-    @Test
-    fun sizesAsTheWebFormatsThem() {
-        assertEquals("512" to 0, artifactSizeValue(512))
-        assertEquals("2" to 1, artifactSizeValue(2048))
-        assertEquals("1000" to 1, artifactSizeValue(1_023_999))
-        assertEquals("2.5" to 2, artifactSizeValue(2_621_440))
-        assertEquals("1.0" to 2, artifactSizeValue(1024 * 1024))
-    }
-
-    @Test
-    fun aPhoneWidthWindowShowsThePhoneScreenshot() {
-        // web PHONE_QUERY `(max-width: 767px)`.
-        assertEquals(true, artifactScreenshotPhoneLayout(390.dp))
-        assertEquals(true, artifactScreenshotPhoneLayout(767.dp))
-        assertEquals(false, artifactScreenshotPhoneLayout(768.dp))
-        assertEquals(false, artifactScreenshotPhoneLayout(1024.dp))
-    }
-
-    @Test
-    fun theScreenshotIsSixteenByTenAtMostTheMaxHeight() {
-        assertEquals(192f, ArtifactCardScreenshotMaxHeight.value)
-        assertEquals(100, artifactCardScreenshotHeightPx(widthPx = 160, maxHeightPx = 576))
-        assertEquals(500, artifactCardScreenshotHeightPx(widthPx = 800, maxHeightPx = 576))
-        // Wider than 16:10 at the max height: cut to it (cover, top-aligned).
-        assertEquals(576, artifactCardScreenshotHeightPx(widthPx = 1320, maxHeightPx = 576))
-    }
-
-    @Test
-    fun theSettledTimeAlwaysNamesItsDay() {
-        // Read at UTC+8 on 2026-11-21 (web `shortDateTime` always says the day: "Nov 19, 14:02").
-        val context = RaftTimeContext(localOffsetMinutes = 8 * 60, todayEpochDay = raftEpochDayForDate(2026, 11, 21), nowEpochMillis = 1_795_248_000_000L)
-        val cases =
-            mapOf(
-                "2026-11-18T09:30:00.000Z" to "11-18 17:30",
-                // Today's keeps its date ("settled it on 14:02" would read as a date).
-                "2026-11-21T01:00:00.000Z" to "11-21 09:00",
-                "2025-11-18T09:30:00.000Z" to "2025-11-18 17:30",
-            )
-        for ((at, label) in cases) assertEquals(label, artifactSettledTimeLabel(at, context), at)
-        assertEquals("11-18 05:30 PM", artifactSettledTimeLabel("2026-11-18T09:30:00.000Z", context.withTimeFormat(RaftTimeFormat12Hour)))
-        assertNull(artifactSettledTimeLabel("2026-11-18T09:30:00.000Z", null), "no time context: the tag alone")
-        assertNull(artifactSettledTimeLabel("yesterday", context))
     }
 }

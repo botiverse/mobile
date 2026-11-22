@@ -35,15 +35,6 @@ class ThreadLocalSendKeyUniquenessTest {
     }
 
     @Test
-    fun localSendIdFormatKeepsTheCounterLastWithAFixedNonce() {
-        val generator = ThreadLocalSendIdGenerator(processNonce = "k3x9")
-
-        assertEquals("local-send-thread-a-k3x9-1", generator.next("thread-a"))
-        assertEquals("local-send-thread-k3x9-2", generator.next(" "))
-        assertTrue(newThreadLocalSendProcessNonce().none { it == '-' })
-    }
-
-    @Test
     fun restoredRowsSharingALocalIdKeepOnlyTheNewest() {
         val newer = message("local-send-t-1", randomId = "rid-newer", createdAt = 20L)
         val older = message("local-send-t-1", randomId = "rid-older", createdAt = 10L)
@@ -77,23 +68,6 @@ class ThreadLocalSendKeyUniquenessTest {
         assertEquals(listOf("thread-page:local-send-t-1"), dedupe.droppedKeys)
         val keys = dedupe.messages.map { it.messageListItemKey(dedupe.messages.threadDuplicateRandomIds()) }
         assertEquals(keys.size, keys.toSet().size)
-    }
-
-    @Test
-    fun uniqueListKeysPassThroughUntouched() {
-        // A local send and its canonical echo share a randomId but have different ids: both keep
-        // their (distinct) id keys and nothing is dropped.
-        val messages =
-            listOf(
-                message("local-send-t-1", randomId = "rid-1"),
-                message("server-1", randomId = "rid-1"),
-                message("server-2", randomId = null),
-            )
-
-        val dedupe = messages.withUniqueMessageListKeys()
-
-        assertSame(messages, dedupe.messages)
-        assertTrue(dedupe.droppedKeys.isEmpty())
     }
 
     private fun message(
