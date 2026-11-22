@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,8 +15,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -39,6 +43,7 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.AgentMigrationLogEntry
 import build.raft.app.data.AgentMigrationLogFilters
 import build.raft.app.data.AgentMigrationLogLoad
+import build.raft.app.data.AgentMigrationLogMachine
 import build.raft.app.data.AgentMigrationLogNode
 import build.raft.app.data.AgentMigrationLogOutcome
 import build.raft.app.data.agentMigrationLogAgentMoves
@@ -56,9 +61,12 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftEmptyState
+import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMultiComboboxSheet
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftTable
@@ -67,8 +75,6 @@ import build.raft.designsystem.components.RaftTableColumn
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftTextFieldSize
-import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.raftScrollEdgeFade
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
@@ -87,6 +93,15 @@ internal object AgentMigrationLogTags {
     const val Table = "migration-log-table"
     const val TableEmpty = "migration-log-table-empty"
     const val More = "migration-log-table-more"
+    const val View = "migration-log-view"
+    const val Chart = "migration-log-chart"
+    const val ResetZoom = "migration-log-reset-zoom"
+    const val CanceledNote = "migration-log-canceled-note"
+    const val Legend = "migration-log-legend"
+    const val AgentSummary = "migration-log-agent-summary"
+    const val ComputerDetails = "migration-log-computer-details"
+    const val RouteDetails = "migration-log-route-details"
+    const val DetailsMore = "migration-log-actions"
 }
 
 /** Web `min-w-180`: the least width the table's five columns read at; a phone scrolls it sideways. */
@@ -97,21 +112,25 @@ private val AgentMigrationLogRowAvatar = 27.dp
 private val AgentMigrationLogFilterAvatar = 19.dp
 
 /**
- * The agent migration log (web `MigrationLogPage`, its table view): the filters (computers, agents,
- * result, time and a search), the counts, and one row per move, the newest first.
+ * The agent migration log (web `MigrationLogPage`): the filters (computers, agents, result, time),
+ * the counts, and the moves as a chart (AgentMigrationLogChart.kt) or a table with a search, the
+ * newest first.
  *
  * Pure: state in, intents out ([AgentMigrationLogPage.kt] wires the request, the computers and the
- * agents). [agentName] is null for an agent no longer on the server: a plain short id, no link.
+ * agents). An agent not in [agents] is no longer on the server: a plain short id, no link.
  */
 @Composable
 internal fun AgentMigrationLogScreen(
     state: AgentMigrationLogState,
-    /** The server's computers now: id to name. */
-    machines: List<Pair<String, String>>,
-    agentName: (String) -> String?,
+    /** The server's computers now. */
+    machines: List<AgentMigrationLogMachine>,
+    /** The server's agents now, by id. */
+    agents: Map<String, AgentMigrationLogAgent>,
     wide: Boolean,
     onIntent: (AgentMigrationLogIntent) -> Unit,
     onOpenAgent: (String) -> Unit,
+    onOpenPerson: (String) -> Unit,
+    onCopy: (String) -> Unit,
     onBack: () -> Unit,
     avatar: @Composable (agentId: String, size: Dp) -> Unit,
     bottomContentPadding: Dp = 0.dp,
@@ -122,69 +141,84 @@ internal fun AgentMigrationLogScreen(
     val nodes = remember(entries, machines) { agentMigrationLogNodes(entries, machines) }
     val nodeById = remember(nodes) { nodes.associateBy { it.id } }
     val cloud = stringResource(Res.string.agent_migration_log_group_cloud)
-    val nodeName: (AgentMigrationLogNode) -> String = { if (it.id == AgentMigrationLogEntry.CLOUD_NODE) cloud else it.name }
-    val label: (String) -> String = { agentName(it) ?: it.take(8) }
+    val names = AgentMigrationLogNames(nodeById, agents, cloud, avatar, onOpenAgent, onOpenPerson)
     val shown = remember(entries, state.filters) { state.filters.apply(entries, nowMillis()) }
     RaftDesignSystemTheme {
         SettingsDetailShell(title = stringResource(Res.string.agent_migration_log_title), subtitle = "", onBack = onBack) {
             val margin = if (wide) 20.dp else 16.dp
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-                AgentMigrationLogToolbar(state, entries, nodes, nodeName, label, wide, margin, avatar, onIntent)
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = margin)) {
-                    AgentMigrationLogStatsRow(shown, filteredOf = entries.size.takeIf { log != null && state.filters.isFiltered }, wide = wide)
-                    if (log?.truncated == true) {
-                        RaftText(
-                            stringResource(Res.string.agent_migration_log_truncated),
-                            modifier = Modifier.padding(top = 4.dp).testTag(AgentMigrationLogTags.Truncated),
-                            style = RaftTheme.typography.caption,
-                            color = RaftTheme.colors.foregroundHint,
-                        )
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    RaftSeparator()
-                    Spacer(Modifier.height(16.dp))
-                    when {
-                        state.load == AgentMigrationLogLoad.Forbidden ->
-                            AgentMigrationLogEmpty(
-                                stringResource(Res.string.agent_migration_log_owners_and_admins_only),
-                                RaftLucideIconName.TriangleAlert,
-                                Modifier.testTag(AgentMigrationLogTags.NotAvailable),
+                AgentMigrationLogToolbar(state, entries, nodes, names, wide, margin, onIntent)
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                    val room = maxWidth - margin * 2
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = margin)) {
+                        AgentMigrationLogStatsRow(shown, filteredOf = entries.size.takeIf { log != null && state.filters.isFiltered }, wide = wide)
+                        if (log?.truncated == true) {
+                            RaftText(
+                                stringResource(Res.string.agent_migration_log_truncated),
+                                modifier = Modifier.padding(top = 4.dp).testTag(AgentMigrationLogTags.Truncated),
+                                style = RaftTheme.typography.caption,
+                                color = RaftTheme.colors.foregroundHint,
                             )
-                        state.load == AgentMigrationLogLoad.Failed ->
-                            AgentMigrationLogEmpty(
-                                stringResource(Res.string.agent_migration_log_load_failed),
-                                RaftLucideIconName.TriangleAlert,
-                                action = stringResource(Res.string.agent_migration_log_retry) to { onIntent(AgentMigrationLogIntent.Retry) },
-                            )
-                        log == null -> AgentMigrationLogSkeleton()
-                        entries.isEmpty() ->
-                            AgentMigrationLogEmpty(
-                                stringResource(Res.string.agent_migration_log_empty_none_title),
-                                RaftLucideIconName.Repeat,
-                                description = stringResource(Res.string.agent_migration_log_empty_none_body),
-                            )
-                        shown.isEmpty() ->
-                            AgentMigrationLogEmpty(
-                                stringResource(Res.string.agent_migration_log_empty_filtered_title),
-                                RaftLucideIconName.SearchX,
-                                description = stringResource(Res.string.agent_migration_log_empty_filtered_body),
-                                action =
-                                    stringResource(Res.string.agent_migration_log_filter_clear_all) to
-                                        { onIntent(AgentMigrationLogIntent.SetFilters(AgentMigrationLogFilters())) },
-                            )
-                        else -> {
-                            val found =
-                                remember(shown, state.query, nodeById, cloud, agentName) {
-                                    searchAgentMigrationLog(shown, state.query) { entry ->
-                                        listOf(label(entry.agentId), entry.sourceMachineName, entry.targetMachineName) +
-                                            listOfNotNull(nodeById[entry.sourceMachineId], nodeById[entry.targetNode])
-                                                .flatMap { listOf(it.code, nodeName(it)) }
-                                    }
-                                }
-                            AgentMigrationLogTable(found, state, nodeById, nodeName, agentName, avatar, onIntent, onOpenAgent)
                         }
+                        Spacer(Modifier.height(12.dp))
+                        RaftSeparator()
+                        Spacer(Modifier.height(16.dp))
+                        when {
+                            state.load == AgentMigrationLogLoad.Forbidden ->
+                                AgentMigrationLogEmpty(
+                                    stringResource(Res.string.agent_migration_log_owners_and_admins_only),
+                                    RaftLucideIconName.TriangleAlert,
+                                    Modifier.testTag(AgentMigrationLogTags.NotAvailable),
+                                )
+                            state.load == AgentMigrationLogLoad.Failed ->
+                                AgentMigrationLogEmpty(
+                                    stringResource(Res.string.agent_migration_log_load_failed),
+                                    RaftLucideIconName.TriangleAlert,
+                                    action = stringResource(Res.string.agent_migration_log_retry) to { onIntent(AgentMigrationLogIntent.Retry) },
+                                )
+                            log == null -> AgentMigrationLogSkeleton(state.view, agentMigrationChartSize(wide, room))
+                            entries.isEmpty() ->
+                                AgentMigrationLogEmpty(
+                                    stringResource(Res.string.agent_migration_log_empty_none_title),
+                                    RaftLucideIconName.Repeat,
+                                    description = stringResource(Res.string.agent_migration_log_empty_none_body),
+                                )
+                            shown.isEmpty() ->
+                                AgentMigrationLogEmpty(
+                                    stringResource(Res.string.agent_migration_log_empty_filtered_title),
+                                    RaftLucideIconName.SearchX,
+                                    description = stringResource(Res.string.agent_migration_log_empty_filtered_body),
+                                    action =
+                                        stringResource(Res.string.agent_migration_log_filter_clear_all) to
+                                            { onIntent(AgentMigrationLogIntent.SetFilters(AgentMigrationLogFilters())) },
+                                )
+                            state.view == AgentMigrationLogView.Chart ->
+                                AgentMigrationLogChartView(
+                                    entries = entries,
+                                    shown = shown,
+                                    filters = state.filters,
+                                    nodes = nodes,
+                                    names = names,
+                                    wide = wide,
+                                    width = room,
+                                    onFilters = { onIntent(AgentMigrationLogIntent.SetFilters(it)) },
+                                    onCopy = onCopy,
+                                )
+                            else -> {
+                                val found =
+                                    remember(shown, state.query, nodeById, cloud, agents) {
+                                        searchAgentMigrationLog(shown, state.query) { entry ->
+                                            listOf(names.agentLabel(entry.agentId), entry.sourceMachineName, entry.targetMachineName) +
+                                                listOfNotNull(nodeById[entry.sourceMachineId], nodeById[entry.targetNode])
+                                                    .flatMap { listOf(it.code, names.placeName(it)) }
+                                        }
+                                    }
+                                AgentMigrationLogTable(found, state, names, onIntent)
+                            }
+                        }
+                        if (entries.isNotEmpty() && state.view == AgentMigrationLogView.Chart) AgentMigrationLogLegend()
+                        Spacer(Modifier.height(24.dp + bottomContentPadding))
                     }
-                    Spacer(Modifier.height(24.dp + bottomContentPadding))
                 }
             }
         }
@@ -198,63 +232,73 @@ private fun AgentMigrationLogToolbar(
     state: AgentMigrationLogState,
     entries: List<AgentMigrationLogEntry>,
     nodes: List<AgentMigrationLogNode>,
-    nodeName: (AgentMigrationLogNode) -> String,
-    agentLabel: (String) -> String,
+    names: AgentMigrationLogNames,
     wide: Boolean,
     margin: Dp,
-    avatar: @Composable (agentId: String, size: Dp) -> Unit,
     onIntent: (AgentMigrationLogIntent) -> Unit,
 ) {
     val filters = state.filters
     val setFilters: (AgentMigrationLogFilters) -> Unit = { onIntent(AgentMigrationLogIntent.SetFilters(it)) }
     val moves = remember(entries) { agentMigrationLogAgentMoves(entries) }
     val controls: @Composable () -> Unit = {
-        val searchLabel = stringResource(Res.string.agent_migration_log_table_search)
-        RaftTextField(
-            value = state.query,
-            onValueChange = { onIntent(AgentMigrationLogIntent.Search(it)) },
-            modifier =
-                Modifier
-                    .width(if (wide) 256.dp else 192.dp)
-                    .testTag(AgentMigrationLogTags.Search)
-                    .semantics { contentDescription = searchLabel },
-            placeholder = searchLabel,
-            leading = { RaftSlotIcon(RaftLucideIconName.Search) },
-            trailingAction =
-                if (state.query.isNotEmpty()) {
-                    {
-                        RaftTextFieldClearAction(
-                            onClear = { onIntent(AgentMigrationLogIntent.Search("")) },
-                            label = stringResource(Res.string.agent_migration_log_table_clear_search),
-                        )
-                    }
-                } else {
-                    null
-                },
-            size = RaftTextFieldSize.Md,
-        )
+        if (state.view == AgentMigrationLogView.Table) {
+            val searchLabel = stringResource(Res.string.agent_migration_log_table_search)
+            RaftTextField(
+                value = state.query,
+                onValueChange = { onIntent(AgentMigrationLogIntent.Search(it)) },
+                modifier =
+                    Modifier
+                        .width(if (wide) 256.dp else 192.dp)
+                        .testTag(AgentMigrationLogTags.Search)
+                        .semantics { contentDescription = searchLabel },
+                placeholder = searchLabel,
+                leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+                trailingAction =
+                    if (state.query.isNotEmpty()) {
+                        {
+                            RaftTextFieldClearAction(
+                                onClear = { onIntent(AgentMigrationLogIntent.Search("")) },
+                                label = stringResource(Res.string.agent_migration_log_table_clear_search),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                size = RaftTextFieldSize.Md,
+            )
+        }
         AgentMigrationLogListFilter(
             name = stringResource(Res.string.agent_migration_log_filter_agents),
             icon = RaftLucideIconName.Bot,
             searchPlaceholder = stringResource(Res.string.agent_migration_log_filter_search_agents),
-            options = moves.map { (id, count) -> RaftComboboxOption(id, agentLabel(id), description = count.toString()) },
+            options = moves.map { (id, count) -> RaftComboboxOption(id, names.agentLabel(id), description = count.toString()) },
             chosen = filters.agents,
-            chosenLabel = agentLabel,
+            chosenLabel = names::agentLabel,
             onChange = { setFilters(filters.copy(agents = it)) },
             testTag = AgentMigrationLogTags.AgentsFilter,
-            optionLeading = { avatar(it, AgentMigrationLogFilterAvatar) },
+            optionLeading = { names.avatar(it, AgentMigrationLogFilterAvatar) },
         )
         AgentMigrationLogListFilter(
             name = stringResource(Res.string.agent_migration_log_filter_computers),
             icon = RaftLucideIconName.Monitor,
             searchPlaceholder = stringResource(Res.string.agent_migration_log_filter_search_computers),
-            options = nodes.map { RaftComboboxOption(it.id, "${it.code} · ${nodeName(it)}") },
+            options = nodes.map { RaftComboboxOption(it.id, "${it.code} · ${names.placeName(it)}") },
             chosen = filters.computers,
             // The trigger has room for a code, not a name.
             chosenLabel = { id -> nodes.firstOrNull { it.id == id }?.code ?: id },
             onChange = { setFilters(filters.copy(computers = it)) },
             testTag = AgentMigrationLogTags.ComputersFilter,
         )
+        filters.from.forEach { id ->
+            AgentMigrationLogDirectionChip(stringResource(Res.string.agent_migration_log_filter_from, names.code(id)), RaftLucideIconName.ArrowRightFromLine) {
+                setFilters(filters.copy(from = filters.from - id))
+            }
+        }
+        filters.to.forEach { id ->
+            AgentMigrationLogDirectionChip(stringResource(Res.string.agent_migration_log_filter_to, names.code(id)), RaftLucideIconName.ArrowRightToLine) {
+                setFilters(filters.copy(to = filters.to - id))
+            }
+        }
         val outcomeLabels = AgentMigrationLogOutcome.entries.associateWith { agentMigrationLogOutcomeLabel(it) }
         AgentMigrationLogListFilter(
             name = stringResource(Res.string.agent_migration_log_filter_outcome),
@@ -280,12 +324,18 @@ private fun AgentMigrationLogToolbar(
         }
     }
     if (wide) {
-        FlowRow(
+        Row(
             modifier = Modifier.fillMaxWidth().padding(start = margin, end = margin, top = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) { controls() }
+        ) {
+            FlowRow(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) { controls() }
+            AgentMigrationLogViewControl(state.view, onIntent)
+        }
     } else {
         val scroll = rememberScrollState()
         Row(
@@ -297,8 +347,41 @@ private fun AgentMigrationLogToolbar(
                     .padding(horizontal = margin, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-        ) { controls() }
+        ) {
+            controls()
+            AgentMigrationLogViewControl(state.view, onIntent)
+        }
     }
+}
+
+@Composable
+private fun AgentMigrationLogViewControl(view: AgentMigrationLogView, onIntent: (AgentMigrationLogIntent) -> Unit) {
+    val label = stringResource(Res.string.agent_migration_log_view_label)
+    RaftSegmentedControl(Modifier.testTag(AgentMigrationLogTags.View).semantics { contentDescription = label }) {
+        RaftSegment(
+            text = stringResource(Res.string.agent_migration_log_view_chart),
+            selected = view == AgentMigrationLogView.Chart,
+            onClick = { onIntent(AgentMigrationLogIntent.SetView(AgentMigrationLogView.Chart)) },
+            icon = { RaftSlotIcon(RaftLucideIconName.ChartPie) },
+        )
+        RaftSegment(
+            text = stringResource(Res.string.agent_migration_log_view_table),
+            selected = view == AgentMigrationLogView.Table,
+            onClick = { onIntent(AgentMigrationLogIntent.SetView(AgentMigrationLogView.Table)) },
+            icon = { RaftSlotIcon(RaftLucideIconName.Table2) },
+        )
+    }
+}
+
+/** Web `DirectionChip`: only the moves leaving, or arriving at, one place (set from the chart's menu). */
+@Composable
+private fun AgentMigrationLogDirectionChip(text: String, icon: RaftLucideIconName, onRemove: () -> Unit) {
+    RaftFilterChip(
+        text = text,
+        onRemove = onRemove,
+        removeLabel = stringResource(Res.string.agent_migration_log_filter_remove_filter, text),
+        leadingIcon = { RaftSlotIcon(icon) },
+    )
 }
 
 /**
@@ -472,7 +555,13 @@ private fun AgentMigrationLogEmpty(
 }
 
 @Composable
-private fun AgentMigrationLogSkeleton() {
+private fun AgentMigrationLogSkeleton(view: AgentMigrationLogView, chartSize: Dp) {
+    if (view == AgentMigrationLogView.Chart) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            RaftSkeleton(Modifier.size(chartSize).clip(CircleShape))
+        }
+        return
+    }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         repeat(6) { RaftSkeleton(Modifier.fillMaxWidth().height(40.dp)) }
     }
@@ -482,12 +571,8 @@ private fun AgentMigrationLogSkeleton() {
 private fun AgentMigrationLogTable(
     found: List<AgentMigrationLogEntry>,
     state: AgentMigrationLogState,
-    nodeById: Map<String, AgentMigrationLogNode>,
-    nodeName: (AgentMigrationLogNode) -> String,
-    agentName: (String) -> String?,
-    avatar: @Composable (agentId: String, size: Dp) -> Unit,
+    names: AgentMigrationLogNames,
     onIntent: (AgentMigrationLogIntent) -> Unit,
-    onOpenAgent: (String) -> Unit,
 ) {
     if (found.isEmpty()) {
         AgentMigrationLogEmpty(
@@ -529,8 +614,8 @@ private fun AgentMigrationLogTable(
                         maxLines = 1,
                         softWrap = false,
                     )
-                1 -> AgentMigrationLogAgent(entry.agentId, agentName(entry.agentId), avatar, onOpenAgent)
-                2 -> AgentMigrationLogRoute(entry, nodeById, nodeName)
+                1 -> AgentMigrationLogAgent(entry.agentId, names)
+                2 -> AgentMigrationLogRoute(entry, names)
                 3 -> AgentMigrationLogOutcomeBadge(entry.outcome)
                 else ->
                     RaftText(
@@ -557,19 +642,10 @@ private fun AgentMigrationLogTable(
 }
 
 @Composable
-private fun AgentMigrationLogAgent(
-    agentId: String,
-    name: String?,
-    avatar: @Composable (agentId: String, size: Dp) -> Unit,
-    onOpenAgent: (String) -> Unit,
-) {
+private fun AgentMigrationLogAgent(agentId: String, names: AgentMigrationLogNames) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        avatar(agentId, AgentMigrationLogRowAvatar)
-        if (name != null) {
-            RaftTextLink(name, onClick = { onOpenAgent(agentId) }, variant = RaftTextLinkVariant.Strong, style = RaftTheme.typography.callout)
-        } else {
-            RaftText(agentId.take(8), style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground)
-        }
+        names.avatar(agentId, AgentMigrationLogRowAvatar)
+        AgentMigrationLogAgentLink(agentId, names)
     }
 }
 
@@ -581,15 +657,14 @@ private fun AgentMigrationLogAgent(
 @Composable
 private fun AgentMigrationLogRoute(
     entry: AgentMigrationLogEntry,
-    nodeById: Map<String, AgentMigrationLogNode>,
-    nodeName: (AgentMigrationLogNode) -> String,
+    names: AgentMigrationLogNames,
 ) {
     val typography = RaftTheme.typography
     val colors = RaftTheme.colors
-    val source = nodeById[entry.sourceMachineId]
-    val target = nodeById[entry.targetNode]
-    val thenSource = agentMigrationLogThenName(entry.sourceMachineName, source?.let(nodeName))
-    val thenTarget = agentMigrationLogThenName(entry.targetMachineName.takeUnless { entry.toCloud }, target?.let(nodeName))
+    val source = names.nodeById[entry.sourceMachineId]
+    val target = names.nodeById[entry.targetNode]
+    val thenSource = agentMigrationLogThenName(entry.sourceMachineName, source?.let(names::placeName))
+    val thenTarget = agentMigrationLogThenName(entry.targetMachineName.takeUnless { entry.toCloud }, target?.let(names::placeName))
     val code = SpanStyle(color = colors.foreground, fontFamily = typography.monoCode.fontFamily, fontWeight = FontWeight.Bold)
     val muted = SpanStyle(color = colors.foregroundMuted)
     val hint = SpanStyle(color = colors.foregroundHint, fontSize = typography.caption.fontSize)
@@ -597,7 +672,7 @@ private fun AgentMigrationLogRoute(
         buildAnnotatedString {
             withStyle(code) { append(node?.code.orEmpty()) }
             append(" · ")
-            withStyle(muted) { append(node?.let(nodeName).orEmpty()) }
+            withStyle(muted) { append(node?.let(names::placeName).orEmpty()) }
             if (then != null) withStyle(hint) { append(" $then") }
             append(after)
         }
@@ -635,7 +710,7 @@ private fun agentMigrationLogOutcomeLabel(outcome: AgentMigrationLogOutcome): St
 
 /** Web `OutcomeBadge` with `all`: every row of the table says its result. */
 @Composable
-private fun AgentMigrationLogOutcomeBadge(outcome: AgentMigrationLogOutcome) {
+internal fun AgentMigrationLogOutcomeBadge(outcome: AgentMigrationLogOutcome) {
     RaftBadge(
         text = agentMigrationLogOutcomeLabel(outcome),
         appearance = RaftBadgeAppearance.Soft,
@@ -652,7 +727,7 @@ private fun AgentMigrationLogOutcomeBadge(outcome: AgentMigrationLogOutcome) {
 
 /** Web `formatDuration`: "41s", "3m 12s", a dash while it runs. */
 @Composable
-private fun agentMigrationLogDuration(seconds: Long?): String =
+internal fun agentMigrationLogDuration(seconds: Long?): String =
     when {
         seconds == null -> "—"
         seconds < 60 -> stringResource(Res.string.agent_migration_log_duration_seconds, seconds)

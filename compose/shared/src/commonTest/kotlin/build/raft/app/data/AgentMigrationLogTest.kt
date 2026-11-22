@@ -83,11 +83,17 @@ class AgentMigrationLogTest {
         val nodes =
             agentMigrationLogNodes(
                 listOf(move("r1", from = "gone", to = "m1"), move("r2", from = "m1", to = null)),
-                listOf("m1" to "Studio", "m2" to "alpha"),
+                listOf(
+                    AgentMigrationLogMachine("m1", "Studio"),
+                    AgentMigrationLogMachine("m2", "alpha", hostProvider = "Hetzner"),
+                    AgentMigrationLogMachine("m3", "beta", hostProvider = "hetzner"),
+                    AgentMigrationLogMachine("m4", "mini", deviceClass = "laptop"),
+                ),
             )
-        assertEquals(listOf("alpha", "Studio", "", "gone-then"), nodes.map { it.name })
-        assertEquals(listOf(true, true, false, false), nodes.map { it.known })
-        assertEquals("CLD", nodes[2].code)
+        // Groups by size, then "other", the cloud, the removed ones.
+        assertEquals(listOf("alpha", "beta", "mini", "Studio", "", "gone-then"), nodes.map { it.name })
+        assertEquals(listOf(true, true, true, true, false, false), nodes.map { it.known })
+        assertEquals("CLD", nodes[4].code)
     }
 
     @Test
@@ -134,6 +140,40 @@ class AgentMigrationLogTest {
         val found = searchAgentMigrationLog(entries, "  M9-THEN ") { listOf(it.sourceMachineName, null) }
         assertEquals(listOf("r2"), found.map { it.migrationRef })
         assertEquals(entries, searchAgentMigrationLog(entries, " ") { emptyList() })
+    }
+
+    @Test
+    fun aRouteCountsItsFinishedMovesOnly() {
+        val cells =
+            agentMigrationRouteCells(
+                listOf(
+                    move("r1"),
+                    move("r2", outcome = AgentMigrationLogOutcome.Failed),
+                    move("r3", outcome = AgentMigrationLogOutcome.Canceled),
+                    move("r4", from = "m2", to = "m1", outcome = AgentMigrationLogOutcome.InProgress),
+                    move("r5", from = "m2", to = null),
+                ),
+            )
+        assertEquals(listOf(AgentMigrationRouteCell("m1", "m2", 1, 1), AgentMigrationRouteCell("m2", "cloud", 1, 0)), cells)
+    }
+
+    @Test
+    fun aJourneyKeepsTheTriesBeforeEachArrival() {
+        val journey =
+            agentMigrationJourney(
+                listOf(
+                    move("r1", outcome = AgentMigrationLogOutcome.Failed),
+                    move("other", agent = "a2"),
+                    move("r2"),
+                    move("r3", from = "m2", to = "m3", outcome = AgentMigrationLogOutcome.Canceled),
+                    move("r4", from = "m2", to = "m3", outcome = AgentMigrationLogOutcome.InProgress),
+                ),
+                "a1",
+            )
+        assertEquals("m1", journey.start)
+        assertEquals(listOf("r2" to listOf("r1")), journey.legs.map { leg -> leg.entry.migrationRef to leg.tries.map { it.migrationRef } })
+        assertEquals(listOf("r3"), journey.pending.map { it.migrationRef })
+        assertNull(agentMigrationJourney(emptyList(), "a1").start)
     }
 
     @Test

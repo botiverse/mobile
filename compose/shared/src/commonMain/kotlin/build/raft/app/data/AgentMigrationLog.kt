@@ -149,9 +149,14 @@ internal data class AgentMigrationLogNode(
     val name: String,
     /** Three characters, unique on the server, like an airport code (HE3, AMA). */
     val code: String,
+    /** Where it is hosted (a provider, else its kind of device); the ring groups by it. */
+    val group: String,
     /** Still a computer of this server (false: deleted since, or the cloud). */
     val known: Boolean,
 )
+
+/** A computer of the server now. */
+internal data class AgentMigrationLogMachine(val id: String, val name: String, val hostProvider: String? = null, val deviceClass: String? = null)
 
 /**
  * A code from a computer's name: the first letters of up to three words, keeping a digit when the
@@ -187,11 +192,12 @@ private val NotLetterOrDigit = Regex("[^\\p{L}\\p{N}]+")
 
 /**
  * Every place in the log, plus every current computer of the server, moves or not (so a computer
- * without moves still has a filter option), by name; the cloud and the removed computers last
- * (web `buildNodes`).
+ * without moves still has a filter option), in ring order: groups by size, then names; the cloud and
+ * the removed computers last (web `buildNodes`).
  */
-internal fun agentMigrationLogNodes(entries: List<AgentMigrationLogEntry>, machines: List<Pair<String, String>>): List<AgentMigrationLogNode> {
-    val current = machines.toMap()
+internal fun agentMigrationLogNodes(entries: List<AgentMigrationLogEntry>, machines: List<AgentMigrationLogMachine>): List<AgentMigrationLogNode> {
+    val machineById = machines.associateBy { it.id }
+    val current = machineById.mapValues { it.value.name }
     val names = LinkedHashMap(current)
     for (entry in entries) {
         names[entry.sourceMachineId] = current[entry.sourceMachineId] ?: entry.sourceMachineName ?: entry.sourceMachineId.take(8)
@@ -199,17 +205,36 @@ internal fun agentMigrationLogNodes(entries: List<AgentMigrationLogEntry>, machi
         if (target != AgentMigrationLogEntry.CLOUD_NODE) names[target] = current[target] ?: entry.targetMachineName ?: target.take(8)
     }
     val codes = agentMigrationComputerCodes(names.toList())
-    val computers = names.map { (id, name) -> AgentMigrationLogNode(id, name, codes.getValue(id), known = id in current) }
-    val cloud =
-        if (entries.any { it.targetNode == AgentMigrationLogEntry.CLOUD_NODE }) {
-            listOf(AgentMigrationLogNode(AgentMigrationLogEntry.CLOUD_NODE, "", "CLD", known = false))
-        } else {
-            emptyList()
+    val nodes =
+        names.mapTo(mutableListOf()) { (id, name) ->
+            val machine = machineById[id]
+            val group = if (machine == null) REMOVED_GROUP else (machine.hostProvider ?: machine.deviceClass ?: OTHER_GROUP).lowercase()
+            AgentMigrationLogNode(id, name, codes.getValue(id), group, known = machine != null)
         }
-    val byName = compareBy<AgentMigrationLogNode> { it.name.lowercase() }.thenBy { it.name }
-    val (here, removed) = computers.partition { it.known }
-    return here.sortedWith(byName) + cloud + removed.sortedWith(byName)
+    if (entries.any { it.targetNode == AgentMigrationLogEntry.CLOUD_NODE }) {
+        nodes += AgentMigrationLogNode(AgentMigrationLogEntry.CLOUD_NODE, "", "CLD", CLOUD_GROUP, known = false)
+    }
+    val groupSize = nodes.groupingBy { it.group }.eachCount()
+    return nodes.sortedWith(
+        compareBy<AgentMigrationLogNode> { groupRank(it.group) }
+            .thenByDescending { groupSize.getValue(it.group) }
+            .thenBy { it.group }
+            .thenBy { it.name.lowercase() }
+            .thenBy { it.name },
+    )
 }
+
+private const val OTHER_GROUP = "other"
+private const val CLOUD_GROUP = "cloud"
+private const val REMOVED_GROUP = "removed"
+
+private fun groupRank(group: String): Int =
+    when (group) {
+        OTHER_GROUP -> 1
+        CLOUD_GROUP -> 2
+        REMOVED_GROUP -> 3
+        else -> 0
+    }
 
 internal data class AgentMigrationLogFilters(
     val agents: List<String> = emptyList(),
@@ -275,6 +300,43 @@ internal fun searchAgentMigrationLog(
     val needle = query.trim()
     if (needle.isEmpty()) return entries
     return entries.filter { entry -> textsOf(entry).any { it?.contains(needle, ignoreCase = true) == true } }
+}
+
+/** A route with its successful and failed moves; canceled and running moves are not drawn. */
+internal data class AgentMigrationRouteCell(val src: String, val dst: String, val ok: Int, val failed: Int) {
+    val volume: Int get() = ok + failed
+}
+
+internal fun agentMigrationRouteCells(entries: List<AgentMigrationLogEntry>): List<AgentMigrationRouteCell> =
+    entries
+        .filter { it.outcome == AgentMigrationLogOutcome.Completed || it.outcome == AgentMigrationLogOutcome.Failed }
+        .groupBy { it.sourceMachineId to it.targetNode }
+        .map { (route, moves) ->
+            val ok = moves.count { it.outcome == AgentMigrationLogOutcome.Completed }
+            AgentMigrationRouteCell(route.first, route.second, ok, moves.size - ok)
+        }
+
+/** One completed move of an agent, with the failed and canceled tries that led to it, oldest first. */
+internal data class AgentMigrationLeg(val entry: AgentMigrationLogEntry, val tries: List<AgentMigrationLogEntry>)
+
+/** An agent's path: where it began, each completed move, and the tries after the last one. */
+internal data class AgentMigrationJourney(val start: String?, val legs: List<AgentMigrationLeg>, val pending: List<AgentMigrationLogEntry>)
+
+internal fun agentMigrationJourney(entries: List<AgentMigrationLogEntry>, agentId: String): AgentMigrationJourney {
+    val mine = entries.filter { it.agentId == agentId }
+    val legs = mutableListOf<AgentMigrationLeg>()
+    val tries = mutableListOf<AgentMigrationLogEntry>()
+    for (entry in mine) {
+        when (entry.outcome) {
+            AgentMigrationLogOutcome.Completed -> {
+                legs += AgentMigrationLeg(entry, tries.toList())
+                tries.clear()
+            }
+            AgentMigrationLogOutcome.InProgress -> Unit
+            else -> tries += entry
+        }
+    }
+    return AgentMigrationJourney(mine.firstOrNull()?.sourceMachineId, legs, tries.toList())
 }
 
 internal sealed interface AgentMigrationLogLoad {
