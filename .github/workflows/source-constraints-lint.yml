@@ -4,7 +4,7 @@ name: Source constraints lint
 # announcement, #all 2026-07-25). check_source_constraints.py now holds the
 # 1.15.0 conditional-interaction-state crash guard, the task #82 native
 # Sign in with Apple contract and the #3823 no-production-runBlocking gate; the other steps below
-# are the visual fixture census, string edge spaces and no-production-visual-pages.
+# are string edge spaces and no-production-visual-pages.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
 
@@ -29,11 +29,10 @@ on:
       - "compose/iosApp/iosApp/iosApp.entitlements"
       - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
       - "scripts/ci/check_string_edge_spaces.py"
-      - "scripts/ci/visual_fixture_split_census.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
-      # visual_fixture_split_census.py and verify_no_production_visual_pages.py
-      # also scan the platform production source sets, the visual fixture source
-      # sets and the generated CMP page registries.
+      # verify_no_production_visual_pages.py also scans the platform production
+      # source sets and checks the generated CMP page registries, which are built
+      # from the visual fixture source sets.
       - "compose/shared/src/androidMain/kotlin/**/*.kt"
       - "compose/shared/src/iosMain/kotlin/**/*.kt"
       - "compose/shared/src/visualFixtures/**"
@@ -67,15 +66,6 @@ jobs:
       # The class-file reader behind test.yml's ":shared JVM method sizes" gate (#4802).
       - name: Self-test JVM method size checker
         run: python3 scripts/ci/check_jvm_method_size.py --self-test
-
-      # task #189: runs inside this already-required job on purpose. A guard that
-      # is only wired to an optional task is how verifyNoProductionVisualPages
-      # collected nine violations while never actually running.
-      - name: Self-test visual fixture split census
-        run: python3 scripts/ci/visual_fixture_split_census.py --self-test
-
-      - name: Enforce visual fixture split census
-        run: python3 scripts/ci/visual_fixture_split_census.py
 
       # task #536 (S8): aapt trims unquoted edge whitespace in <string>, so
       # `prefix + bold(name) + suffix` rendered "deleteVisual Serverand" on

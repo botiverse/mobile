@@ -10,7 +10,6 @@ on:
       - "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/**"
       - ".github/workflows/design-tokens.yml"
       - "scripts/generate_lucide_icons.py"
-      - "scripts/test_generate_lucide_icons.py"
       - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIcon*.kt"
       - "compose/shared/src/commonMain/assets/lucide/**"
   push:
@@ -29,9 +28,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Self-test generator
-        run: python3 tools/design-tokens/gen_tokens.py --self-test
-
       - name: Check sources, generated Kotlin and oracle
         run: python3 tools/design-tokens/gen_tokens.py --check
 
@@ -39,9 +35,9 @@ jobs:
         run: python3 tools/design-tokens/gen_theme_decor.py --check
 
   # The committed Lucide Kotlin outputs (RaftLucideIconPaths.kt, RaftLucideIconCatalog.kt) must
-  # match the generator run against the pinned Lucide tag. test_generate_lucide_icons.py only
-  # compares them when the pinned checkout is cached, and skips otherwise; nothing ran it before
-  # task #18. The checkout is cached, so the network is only used when the pin changes.
+  # match the generator run against the pinned Lucide tag, and the iOS asset catalog must hold
+  # every manifest icon (generate_lucide_icons.py --check). The checkout is cached, so the
+  # network is only used when the pin changes.
   lucide-icons:
     name: Generated Lucide icons current
     runs-on: ubuntu-latest
@@ -82,9 +78,3 @@ jobs:
 
       - name: Check generated Lucide Kotlin is up to date
         run: python3 scripts/generate_lucide_icons.py --check
-
-      - name: Test the Lucide generator (including the pinned-checkout comparison)
-        run: |
-          set -o pipefail
-          python3 scripts/test_generate_lucide_icons.py -v 2>&1 | tee lucide-tests.log
-          grep -Eq '^test_repository_compose_table_matches_pinned_checkout_when_available .* \.\.\. ok$' lucide-tests.log

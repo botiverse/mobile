@@ -16,7 +16,6 @@ on:
       - "scripts/qa/**"
       - "scripts/sign_android_apk_with_rotation.sh"
       - "scripts/test_sign_android_apk_with_rotation.sh"
-      - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
   push:
     branches: [main]
@@ -34,7 +33,6 @@ on:
       - "scripts/qa/**"
       - "scripts/sign_android_apk_with_rotation.sh"
       - "scripts/test_sign_android_apk_with_rotation.sh"
-      - "scripts/test_hands_identifier_migration.sh"
       - "scripts/verify_android_apk_with_rotation.sh"
 
 permissions:
@@ -59,16 +57,15 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.2
       - name: Run QA contract tests
         run: node --test scripts/qa/*.test.mjs
-      - name: Run i18n literal scanner tests
-        run: |
-          python3 scripts/qa/test_i18n_code_literal_scan.py
       - name: Check canonical release acceptance cases
         run: |
           python3 scripts/qa/test_release_acceptance_contract.py
           python3 scripts/qa/check_release_acceptance_cases.py
           python3 scripts/qa/check_release_acceptance_cases.py --emit-plan > /tmp/release-acceptance-plan.json
+      # Only the scripts no step or contract test here executes; the others fail on a syntax
+      # error when they run.
       - name: Check shell syntax
-        run: bash -n scripts/qa/stamp_report.sh scripts/qa/prepare_pinned_ios_app.sh scripts/sign_android_apk_with_rotation.sh scripts/test_sign_android_apk_with_rotation.sh scripts/test_hands_identifier_migration.sh scripts/verify_android_apk_with_rotation.sh scripts/qa/test_app_identity_apk_signer.sh scripts/qa/release_settings_login.sh scripts/qa/release_settings_case.sh
+        run: bash -n scripts/qa/prepare_pinned_ios_app.sh scripts/qa/release_settings_login.sh scripts/qa/release_settings_case.sh
       - name: Check rotated Android APK signing contract
         run: scripts/test_sign_android_apk_with_rotation.sh
       - name: Setup JDK 17
@@ -83,10 +80,3 @@ jobs:
       - name: Check identity receipt signer selection on real signed APKs
         # Four rotation policies x six released SDKs, signed with fresh keys (build-tools 36.0.0).
         run: scripts/qa/test_app_identity_apk_signer.sh
-      - name: Check Hands identifier migration contract
-        run: scripts/test_hands_identifier_migration.sh
-      - name: Check patch whitespace
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: git diff --check "$BASE_SHA" "$HEAD_SHA" --

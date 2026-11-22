@@ -1438,6 +1438,14 @@ def main():
         )
     if "shared" in targets:
         ok &= generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output), check=args.check)
+    if args.check:
+        # The iOS native bars draw these glyphs from the asset catalog (`lucide-<name>`).
+        try:
+            validate_ios_assets(LUCIDE_ICONS, os.path.abspath(args.ios_asset_catalog))
+            print(f"up to date: {args.ios_asset_catalog} covers the manifest")
+        except RuntimeError as error:
+            print(f"OUT OF DATE: {error}")
+            ok = False
     if "brand-assets" in targets:
         generate_brand_assets(
             os.path.abspath(args.shared_asset_output),

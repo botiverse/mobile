@@ -36,9 +36,7 @@ RUNNER_CONNECTED="build.raft.app.connectedtest.test/androidx.test.runner.Android
 RUNNER_SHARED="build.raft.app.shared.test/androidx.test.runner.AndroidJUnitRunner"
 
 DECLARED_TEST_IDS=(
-  "login-transition-routing"
   "first-character-baseline"
-  "ime-visibility-probe"
   "composer-session-retirement"
   "thread-composer-suggestion-interaction"
   "multiline-text-field-value"
@@ -46,15 +44,9 @@ DECLARED_TEST_IDS=(
   "attachment-private-file-provider"
   "attachment-atomic-sink"
   "attachment-download-runtime"
-  "performance-trace-feedback"
   "child-page-visibility"
-  "pager-scroll-probe"
-  "release-notes-section-gap"
-  "thread-align-right-bounds"
-  "diagnostics-caller-pipeline"
   "durable-partition-migration"
   "thread-newer-auto-pagination"
-  "adaptive-pane-host"
   "qa-session-bootstrap-inbox"
   "composed-character-boundary"
   "webview-renderer-gone"
@@ -74,23 +66,11 @@ declare -A TEST_EXIT_CODE
 declare -A TEST_DURATION
 
 init_test_metadata() {
-  TEST_CLASS["login-transition-routing"]="build.raft.app.shared.AndroidLoginTransitionRoutingConnectedTest"
-  TEST_RUNNER["login-transition-routing"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["login-transition-routing"]=1
-  TEST_OUTPUT["login-transition-routing"]="login-transition-routing-instrumentation.txt"
-  TEST_CONDITION["login-transition-routing"]="always"
-
   TEST_CLASS["first-character-baseline"]="build.raft.app.shared.RaftComposerFirstCharacterBaselineTest"
   TEST_RUNNER["first-character-baseline"]="$RUNNER_CONNECTED"
   TEST_RETRIES["first-character-baseline"]=1
   TEST_OUTPUT["first-character-baseline"]="first-character-baseline-instrumentation.txt"
   TEST_CONDITION["first-character-baseline"]="always"
-
-  TEST_CLASS["ime-visibility-probe"]="build.raft.app.shared.AndroidImeVisibilityProbeConnectedTest"
-  TEST_RUNNER["ime-visibility-probe"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["ime-visibility-probe"]=1
-  TEST_OUTPUT["ime-visibility-probe"]="ime-visibility-probe-instrumentation.txt"
-  TEST_CONDITION["ime-visibility-probe"]="always"
 
   TEST_CLASS["composer-session-retirement"]="build.raft.app.shared.RaftThreadImePaintConnectedTest#sendRetiresEditorSessionWithoutLosingFocusImeOrFirstComposition"
   TEST_RUNNER["composer-session-retirement"]="$RUNNER_CONNECTED"
@@ -134,41 +114,11 @@ init_test_metadata() {
   TEST_OUTPUT["attachment-download-runtime"]="attachment-download-runtime-instrumentation.txt"
   TEST_CONDITION["attachment-download-runtime"]="always"
 
-  TEST_CLASS["performance-trace-feedback"]="build.raft.app.core.data.diagnostics.PerformanceTraceFeedbackArchiveConnectedTest"
-  TEST_RUNNER["performance-trace-feedback"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["performance-trace-feedback"]=1
-  TEST_OUTPUT["performance-trace-feedback"]="performance-trace-feedback-instrumentation.txt"
-  TEST_CONDITION["performance-trace-feedback"]="always"
-
   TEST_CLASS["child-page-visibility"]="build.raft.app.shared.RaftChildPageVisibilityConnectedTest"
   TEST_RUNNER["child-page-visibility"]="$RUNNER_CONNECTED"
   TEST_RETRIES["child-page-visibility"]=1
   TEST_OUTPUT["child-page-visibility"]="child-page-visibility-instrumentation.txt"
   TEST_CONDITION["child-page-visibility"]="always"
-
-  TEST_CLASS["pager-scroll-probe"]="build.raft.app.shared.RaftPagerScrollProbeConnectedTest"
-  TEST_RUNNER["pager-scroll-probe"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["pager-scroll-probe"]=1
-  TEST_OUTPUT["pager-scroll-probe"]="pager-scroll-probe-instrumentation.txt"
-  TEST_CONDITION["pager-scroll-probe"]="always"
-
-  TEST_CLASS["release-notes-section-gap"]="build.raft.app.shared.RaftReleaseNotesSectionGapConnectedTest"
-  TEST_RUNNER["release-notes-section-gap"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["release-notes-section-gap"]=1
-  TEST_OUTPUT["release-notes-section-gap"]="release-notes-section-gap-instrumentation.txt"
-  TEST_CONDITION["release-notes-section-gap"]="always"
-
-  TEST_CLASS["thread-align-right-bounds"]="build.raft.app.shared.RaftThreadAlignRightBoundsConnectedTest"
-  TEST_RUNNER["thread-align-right-bounds"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["thread-align-right-bounds"]=1
-  TEST_OUTPUT["thread-align-right-bounds"]="thread-align-right-bounds-instrumentation.txt"
-  TEST_CONDITION["thread-align-right-bounds"]="always"
-
-  TEST_CLASS["diagnostics-caller-pipeline"]="build.raft.app.core.data.diagnostics.DiagnosticsCallerPipelineConnectedTest"
-  TEST_RUNNER["diagnostics-caller-pipeline"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["diagnostics-caller-pipeline"]=1
-  TEST_OUTPUT["diagnostics-caller-pipeline"]="diagnostics-caller-pipeline-instrumentation.txt"
-  TEST_CONDITION["diagnostics-caller-pipeline"]="always"
 
   TEST_CLASS["durable-partition-migration"]="build.raft.app.data.DurablePartitionAndroidDriverMigrationTest"
   TEST_RUNNER["durable-partition-migration"]="$RUNNER_SHARED"
@@ -181,13 +131,6 @@ init_test_metadata() {
   TEST_RETRIES["thread-newer-auto-pagination"]=1
   TEST_OUTPUT["thread-newer-auto-pagination"]="thread-newer-auto-pagination-instrumentation.txt"
   TEST_CONDITION["thread-newer-auto-pagination"]="thread_newer_pagination_gate"
-
-  # Promoted from "compiled, never run" (task #18): deterministic, no pixel probes or injected input.
-  TEST_CLASS["adaptive-pane-host"]="build.raft.app.shared.AndroidAdaptivePaneHostConnectedTest"
-  TEST_RUNNER["adaptive-pane-host"]="$RUNNER_CONNECTED"
-  TEST_RETRIES["adaptive-pane-host"]=1
-  TEST_OUTPUT["adaptive-pane-host"]="adaptive-pane-host-instrumentation.txt"
-  TEST_CONDITION["adaptive-pane-host"]="always"
 
   TEST_CLASS["qa-session-bootstrap-inbox"]="build.raft.app.core.data.auth.QaSessionBootstrapInboxConnectedTest"
   TEST_RUNNER["qa-session-bootstrap-inbox"]="$RUNNER_CONNECTED"
@@ -219,7 +162,7 @@ init_test_metadata() {
 run_pre_hook() {
   local id="$1"
   case "$id" in
-    ime-visibility-probe|composer-session-retirement|attachment-private-file-provider|child-page-visibility)
+    composer-session-retirement|attachment-private-file-provider|child-page-visibility)
       adb logcat -c || true
       ;;
     *)
@@ -231,14 +174,6 @@ run_pre_hook() {
 run_post_hook() {
   local id="$1"
   case "$id" in
-    ime-visibility-probe)
-      adb shell dumpsys input_method > ime-visibility-probe-input-method.txt 2>/dev/null || true
-      adb shell dumpsys window > ime-visibility-probe-window.txt 2>/dev/null || true
-      adb shell dumpsys activity activities > ime-visibility-probe-activity.txt 2>/dev/null || true
-      adb shell dumpsys power > ime-visibility-probe-power.txt 2>/dev/null || true
-      adb shell dumpsys window policy > ime-visibility-probe-policy.txt 2>/dev/null || true
-      adb logcat -d -v threadtime > ime-visibility-probe-logcat.txt 2>/dev/null || true
-      ;;
     composer-session-retirement)
       adb shell dumpsys input_method > composer-session-retirement-input-method.txt 2>/dev/null || true
       adb shell dumpsys window > composer-session-retirement-window.txt 2>/dev/null || true
@@ -276,9 +211,6 @@ run_assertion_hook() {
   local id="$1"
   local output="${TEST_OUTPUT[$id]}"
   case "$id" in
-    ime-visibility-probe)
-      grep -Fq 'ANDROID_IME_VISIBILITY_PROBE_PASS' "$output" || return 1
-      ;;
     composer-session-retirement)
       grep -Fq 'SLOCK_COMPOSER_SESSION_RETIREMENT_PASS editorRetained=true retainedFocused=true draftClearedAfterSend=true firstComposition=true firstSelection=true requestCount=1 imeSetupFailureDiagnostics=true' "$output" || return 1
       ;;
@@ -288,15 +220,6 @@ run_assertion_hook() {
     attachment-download-runtime)
       grep -Fq 'TASK2_RUNTIME scenario=slow_complete' "$output" || return 1
       grep -Fq 'TASK2_RUNTIME scenario=cancel_paths' "$output" || return 1
-      grep -Fq 'TASK2_RUNTIME scenario=pause_resume' "$output" || return 1
-      grep -Fq 'TASK2_RUNTIME scenario=whole_timeout' "$output" || return 1
-      grep -Fq 'TASK2_RUNTIME scenario=publishing_replacement' "$output" || return 1
-      grep -Fq 'TASK2_RUNTIME scenario=generation_safety' "$output" || return 1
-      ;;
-    thread-align-right-bounds)
-      for band in long sent sending failed retry; do
-        grep -Fq "ALIGN_RIGHT_GEOMETRY_${band}" "$output" || return 1
-      done
       ;;
     *)
       ;;

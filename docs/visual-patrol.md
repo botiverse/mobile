@@ -1,10 +1,11 @@
 # Visual Patrol — daily drift inspection
 
-> **Report only since 2026-10-15.** The repository is public, so the workflow no longer files
-> GitHub issues (artin; Sentinel, task #172). Every lens runs in its default dry-run mode and the
-> findings land in the job summary and the `visual-patrol-report` artifact; the 3x M3 verify stage
-> was removed with the issues it triaged. The scripts still support `--live` for a private fork.
-> The sections below describe the original issue-filing design.
+> **Removed 2026-11-22.** `visual-patrol.yml`, `scripts/visual_patrol.mjs` and the token,
+> renderer-coverage, font and glyph lenses (with their shared `scripts/patrol/lib.mjs`) were
+> deleted: since 2026-10-15 they only reported (the repository is public, so they filed no
+> issues) and gated nothing. The verified-backlog fix queue below (`visual-fix-queue.yml`) and
+> `scripts/patrol/verify_issues.mjs` remain. The other sections describe the original
+> issue-filing design.
 
 A daily, autonomous **inspection (巡检)** of cross-platform visual parity. It runs after
 the nightly capture + analysis, turns each **new** drift into a GitHub issue with
@@ -67,9 +68,7 @@ difference?* Consensus decides:
 - otherwise → the issue is **closed** as an auto-triaged false positive (with a comment;
   reopen if wrong).
 
-`scripts/patrol/verify_issues.mjs` (dry-run default). Shared core lives in
-`scripts/patrol/lib.mjs` so future lenses (i18n, code-smell) reuse the same
-dedupe/label/file machinery.
+`scripts/patrol/verify_issues.mjs` (dry-run default).
 
 ## Verified-backlog fix queue
 
@@ -125,30 +124,8 @@ Safety boundaries:
   structural change — a human owns that. (Same hard boundary as the visual-fix bot.)
 - The patrol only reports; it never edits app code or opens PRs.
 
-## Try it (dry run, creates nothing)
-
-```bash
-node scripts/visual_patrol.mjs --analysis gh-pages --comparison react__android --threshold medium --cap 10
-```
-
 ## Roadmap
 
 - Phase 1 (this change): detect → dedupe → file issues (dry-run-safe).
 - Phase 2: implemented by the independent verified-backlog fix queue above.
 - Later: auto-close issues whose drift no longer reproduces; multi-comparison sweep in one run.
-
-## token-audit lens
-
-`scripts/patrol/token_audit.mjs` scans commonMain for semantic/brand colors weakened with `.copy(alpha = …)` (the mobile#996 brown-destructive class) and files per-file `code-smell` cluster issues through the shared lib (cap 5/run in the nightly job). Deliberate react `bg-*/N` tint mirrors are false positives — comment them or promote to a named token, then close. M3 auto-triage for this lens is a follow-up; issue bodies carry manual triage guidance.
-
-## renderer-coverage lens
-
-`scripts/patrol/renderer_coverage.mjs` statically diffs the markdown library type universe (org.jetbrains:markdown 0.7.5 — refresh the embedded list on upgrade) against the types the fork actually dispatches, minus a justified allowlist. Unhandled types are silent-drop candidates (the task #493 EMAIL_AUTOLINK class). Dynamic sibling: `MarkdownContentIntegrityTest` in commonTest asserts content survives rendering for known shapes.
-
-## font-audit lens
-
-`scripts/patrol/font_audit.mjs` flags typography-contract suspects: naked `fontWeight = FontWeight.X` with no family dispatch on the line (Kuikly encodes weight in the family NAME — naked weight renders the original family, see RaftDesignTokens.kt), and raw `FontFamily(...)` constructed outside the tokens file. The markdown pipeline auto-repairs via `withResolvedRaftFontFamily`; plain `Text()` does not. Cap 5/run nightly.
-
-## glyph-audit lens
-
-`scripts/patrol/glyph_audit.mjs` flags unicode glyph characters (✓ × arrows …) used inside UI string literals — affordances must be Lucide icons (task #494). Typographic uses (masking dots, the → upgrade hint, fixture bodies, comments) are excluded; new legit patterns extend the exclusion list. Cap 5/run in the nightly job.

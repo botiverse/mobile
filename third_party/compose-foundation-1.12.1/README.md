@@ -15,7 +15,7 @@ version to our patched-dependency Maven repository. Nothing here is built by nor
 | Patch | `RaftAttachGuardPatch.java`: two entry guards written into the official `classes.jar` with ASM 9.11.1. A bytecode patch, not a rebuild (see [How the build works](#how-the-build-works)) |
 | Workflow | `.github/workflows/compose-foundation-patch.yml` (`workflow_dispatch` only; `publish` input, default `false`) |
 | Repository secrets | the same as [compose-ui-1.12.2](../compose-ui-1.12.2/README.md): `COMPOSE_PATCH_MAVEN_URL`, `COMPOSE_PATCH_MAVEN_USER`, `COMPOSE_PATCH_MAVEN_TOKEN`; read only by the publish step |
-| App pin | Android only: `raft.composeFoundationPatch.*` in `compose/gradle.properties`, the `RaftArtifactsComposeFoundationPatch` repository in `compose/settings.gradle.kts`, the version rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts`, guarded by `scripts/ci/check_compose_foundation_patch_pin.py` (see [The app pin](#the-app-pin)) |
+| App pin | Android only: `raft.composeFoundationPatch.*` in `compose/gradle.properties`, the `RaftArtifactsComposeFoundationPatch` repository in `compose/settings.gradle.kts`, the version rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts` (see [The app pin](#the-app-pin)) |
 
 The official files, pinned in the workflow. Google Maven's `.sha256` files and the hashes in the
 official `.module` have the same values.
@@ -88,9 +88,8 @@ protect the two nodes that crash for us.
 Remove this when an androidx release with the fix (in foundation, or in ui's attach order) reaches
 the app, through Compose Multiplatform or a direct androidx dependency. Then delete the app pin (the
 four `raft.composeFoundationPatch.*` properties, the `RaftArtifactsComposeFoundationPatch` repository,
-the rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts`, the
-`:verifyComposeFoundationPatch` calls in test.yml, android-release.yml and android-alpha.yml, and
-`scripts/ci/check_compose_foundation_patch_pin.py` with its test.yml step), delete this directory and
+the rule and `verifyComposeFoundationPatch` in `compose/build.gradle.kts` and the
+`:verifyComposeFoundationPatch` calls in test.yml, android-release.yml and android-alpha.yml), delete this directory and
 the workflow, and stop publishing `1.12.1-raft.N`. Run `ThreadSelectableTextStackMoveUiTest` on the
 new release, without the pin, first.
 
@@ -189,9 +188,6 @@ never requests `androidx.compose.foundation:foundation-android`).
   a Compose upgrade left the patch behind, and the build fails saying to re-make the patch for that
   version or remove the pin. Every `preBuild` of those projects depends on it, and test.yml,
   android-release.yml and android-alpha.yml also call `:verifyComposeFoundationPatch`.
-- `scripts/ci/check_compose_foundation_patch_pin.py` (test.yml, next to the compose-ui check) fails
-  once `composePlugin` is no longer `composeMultiplatform`, or when the properties, the task or its
-  workflow calls are incomplete.
 
 ## Verification
 

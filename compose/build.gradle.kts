@@ -229,10 +229,9 @@ if (raftComposeUiPatchOn) {
 // the root androidx.compose.foundation:foundation module's `available-at` redirect, and the androidx
 // Compose BOM constrains it; like a direct dependency, both are edges this rule rewrites. iOS and
 // desktop use the JetBrains foundation and never request this module. The versions and the AAR's
-// SHA-256 live in gradle.properties (raft.composeFoundationPatch.*);
-// scripts/ci/check_compose_foundation_patch_pin.py fails CI once composePlugin moves off the Compose
-// Multiplatform version the patch is for. `:verifyComposeFoundationPatch` (below) proves the rule
-// took effect and fails the build once foundation-android resolves to anything else.
+// SHA-256 live in gradle.properties (raft.composeFoundationPatch.*).
+// `:verifyComposeFoundationPatch` (below) proves the rule took effect and fails the build once
+// foundation-android resolves to anything else, as it does after a Compose Multiplatform upgrade.
 val raftComposeFoundationPatchReadme = "third_party/compose-foundation-1.12.1/README.md"
 val raftComposeFoundationPatchBase = providers.gradleProperty("raft.composeFoundationPatch.base").orNull
 val raftComposeFoundationPatchVersion = providers.gradleProperty("raft.composeFoundationPatch.version").orNull

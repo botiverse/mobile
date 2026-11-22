@@ -204,10 +204,6 @@ QA_SECRET_STEPS: dict[str, dict[str, dict[str, dict]]] = {
 # a credential-looking identifier, reviewed. Value: (reason, sha256 of the file as reviewed); an
 # edit fails until re-reviewed and re-pinned. Any other such file fails (rule 4).
 SCRIPT_ALLOWLIST = {
-    "scripts/ci/test_git_diff_path_state.sh": ("sets a fixture git user.email; writes no credential",
-        "1ed6c60ec91655722084bc9edfdc7616d9ee773c5fc3255a384bb7f67787f471"),
-    "scripts/ci/test_gradle_cache_policy.sh": ("'token' is a test-case label for epoch characters",
-        "63e42bb72aa1ad5466395d6b3b08a3e4d1daaacc97e69d47c5ad9125af3252ce"),
     ".github/actions/gradle-cache-policy/apply.sh": ("'token' is an error message about the epoch value",
         "b2f89c03f02fdcc90c78d5d780457a5ff93184a4bfbcc5e4f2adaa2ac385f7b0"),
 }
@@ -669,8 +665,8 @@ def real_tree_mutants() -> list[tuple[str, str, str, str]]:
          '          echo "STAMP_BOOTSTRAP_REQUIRED=$required" >> "$GITHUB_ENV"\n          echo "T=$STAMP_TOKEN" >> "$GITHUB_OUTPUT"\n'),
         ("allow-listed step env edited", ".github/workflows/release-auto-login.yml", "          GH_TOKEN: ${{ github.token }}\n          RUN_ID: ${{ needs.plan.outputs.apk_run_id }}",
          "          GH_TOKEN: ${{ github.token }}\n          EXTRA: ${{ secrets.QA_TEST_PASSWORD }}\n          RUN_ID: ${{ needs.plan.outputs.apk_run_id }}"),
-        ("allow-listed script edited", "scripts/ci/test_gradle_cache_policy.sh", 'echo "gradle-cache-policy self-test: all cases passed"\n',
-         'echo "gradle-cache-policy self-test: all cases passed"\necho "x=$token" >> "${GITHUB_OUTPUT:-/dev/null}"\n'),
+        ("allow-listed script edited", ".github/actions/gradle-cache-policy/apply.sh", 'echo "gradle-cache-policy: ${summary}"\n',
+         'echo "gradle-cache-policy: ${summary}"\necho "x=$token" >> "${GITHUB_OUTPUT:-/dev/null}"\n'),
     ]
     # Whole-file rewrites: old is a regex, applied to every match.
     for wfname in ("android-update-e2e.yml", "android-realtime-e2e.yml", "qa-acceptance.yml"):

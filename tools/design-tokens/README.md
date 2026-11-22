@@ -35,7 +35,7 @@ Names drop the leading `--` and `color-` and are camel-cased (`--foreground-mute
 ```sh
 python3 tools/design-tokens/gen_tokens.py              # regenerate both Kotlin files
 python3 tools/design-tokens/gen_tokens.py --check      # CI: sources match manifest, both Kotlin files current, oracle agrees
-python3 tools/design-tokens/gen_tokens.py --self-test  # CI: colour maths, cascade, fail-closed parsing
+python3 tools/design-tokens/gen_tokens.py --self-test  # local: colour maths, cascade, fail-closed parsing
 python3 tools/design-tokens/gen_theme_decor.py         # regenerate the theme decor art
 python3 tools/design-tokens/gen_theme_decor.py --check # CI: the decor art matches themes.css
 ```
