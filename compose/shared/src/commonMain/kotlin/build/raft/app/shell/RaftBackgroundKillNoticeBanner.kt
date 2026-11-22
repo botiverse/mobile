@@ -1,16 +1,22 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
 import build.raft.app.data.RaftBackgroundWhitelistGuide
@@ -26,6 +32,7 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 internal const val RAFT_BACKGROUND_KILL_NOTICE_BANNER_TAG = "raft_background_kill_notice_banner"
 internal const val RAFT_BACKGROUND_KILL_NOTICE_DISMISS_TAG = "raft_background_kill_notice_dismiss"
+internal const val RAFT_BACKGROUND_KILL_NOTICE_DISMISS_FOREVER_TAG = "raft_background_kill_notice_dismiss_forever"
 internal const val RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG = "raft_background_kill_notice_open_settings"
 
 /**
@@ -69,6 +76,8 @@ internal fun rememberRaftBackgroundKillNoticeBannerSlot(
                 notice = activeNotice,
                 onOpenSettings = { host.openVendorWhitelistSettings() },
                 onDismiss = { host.dismiss() },
+                onDismissForever = { host.dismissForever() },
+                onShown = { host.markShown() },
             )
         }
     }
@@ -79,8 +88,14 @@ internal fun RaftBackgroundKillNoticeBanner(
     notice: RaftBackgroundKillNotice,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
+    onDismissForever: () -> Unit,
+    onShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // An appearance counts once the banner is really composed, never when a headless start (a
+    // push, a widget, the keep-alive service) only selected the notice; the host counts once per process.
+    val currentOnShown by rememberUpdatedState(onShown)
+    LaunchedEffect(notice.exitTimestampMillis) { currentOnShown() }
     val description =
         when (notice.guide) {
             RaftBackgroundWhitelistGuide.HuaweiAppLaunch -> stringResource(Res.string.background_kill_notice_body_huawei)
@@ -99,28 +114,59 @@ internal fun RaftBackgroundKillNoticeBanner(
     ) {
         RaftBanner(
             title = stringResource(Res.string.background_kill_notice_title),
-            description = description,
+            description = AnnotatedString(description),
             status = RaftBannerStatus.Warning,
             modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_BANNER_TAG).fillMaxWidth(),
-            // raft-ui Banner rule: a banner with actions closes via a ghost Dismiss before a Default
-            // action button (never pink, never both action and onDismiss X).
-            action = {
-                RaftButton(
-                    text = stringResource(Res.string.common_dismiss),
-                    onClick = onDismiss,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftButtonSize.Md,
-                    modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_DISMISS_TAG),
-                )
-                RaftButton(
-                    text = stringResource(Res.string.background_kill_notice_action_open_settings),
-                    onClick = onOpenSettings,
-                    variant = RaftButtonVariant.Default,
-                    size = RaftButtonSize.Md,
-                    modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG),
-                )
-            },
             onDismiss = null,
+        ) {
+            RaftBackgroundKillNoticeActions(
+                onDismissForever = onDismissForever,
+                onDismiss = onDismiss,
+                onOpenSettings = onOpenSettings,
+            )
+        }
+    }
+}
+
+/**
+ * raft-ui Banner rule: a banner with actions closes via ghost buttons (Don't show again, then
+ * Dismiss) before a Default action button (never pink, never both action and onDismiss X).
+ * Three buttons are too wide for one line on a phone: they wrap onto a second line, aligned to
+ * the end, rather than run past the banner's start edge. The banner's own action row does not
+ * wrap, so they ride in its content slot (as [ArchivedNameCollisionBanner]'s do).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RaftBackgroundKillNoticeActions(
+    onDismissForever: () -> Unit,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.End),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+    ) {
+        RaftButton(
+            text = stringResource(Res.string.background_kill_notice_action_dont_show_again),
+            onClick = onDismissForever,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftButtonSize.Md,
+            modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_DISMISS_FOREVER_TAG),
+        )
+        RaftButton(
+            text = stringResource(Res.string.common_dismiss),
+            onClick = onDismiss,
+            variant = RaftButtonVariant.Ghost,
+            size = RaftButtonSize.Md,
+            modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_DISMISS_TAG),
+        )
+        RaftButton(
+            text = stringResource(Res.string.background_kill_notice_action_open_settings),
+            onClick = onOpenSettings,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
+            modifier = Modifier.testTag(RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG),
         )
     }
 }

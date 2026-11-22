@@ -5422,11 +5422,12 @@ private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
 private const val ThreadReplyLoadingListItemKey = "thread-page:reply-loading"
 private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scroll-padding"
 /**
- * The blank end of the list under the newest message: the list's own 16dp end and, in a
+ * The blank end of the list under the newest message: the list's own 16dp end or, in a
  * conversation that can show the typing / working line ([typingLineSlot],
  * [ThreadTimelineSlice.agentTypingLineSlot]), the slot the line floats over
- * ([ThreadAgentTypingListEndHeight]). The slot is there whether or not the line shows; it follows
- * the conversation, never agent activity.
+ * ([ThreadAgentTypingListEndHeight]) in its place: one line's height, not the slot on top of the
+ * 16dp end (artin 11-22: 46dp left too much blank under the newest message while nobody works). The
+ * slot is there whether or not the line shows; it follows the conversation, never agent activity.
  *
  * The one source for both sides of "the newest message at the bottom": the height of the list's
  * last (spacer) row, and the trailing padding every scroll owner uses for it
@@ -5435,7 +5436,7 @@ private const val ThreadBottomScrollPaddingListItemKey = "thread-page:bottom-scr
  * parks the newest message under the line (Android 1.27.0, #proj-mobile #227).
  */
 internal fun threadBottomSpacerAndAnchorTrailingHeight(typingLineSlot: Boolean): androidx.compose.ui.unit.Dp =
-    if (typingLineSlot) 16.dp + ThreadAgentTypingListEndHeight else 16.dp
+    if (typingLineSlot) ThreadAgentTypingListEndHeight else 16.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 /** The list's top inset for the find bar until the bar is measured (its usual height). */
 private val ThreadInlineSearchBarTopInset = 58.dp

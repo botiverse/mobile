@@ -2748,6 +2748,7 @@
     <string name="background_kill_notice_body_vendor">系统在后台停止了 Raft，可能导致消息和通知延迟。请在系统设置中允许 Raft 自启动并保持后台运行，避免被后台清理。</string>
     <string name="background_kill_notice_body_app_details">系统在后台停止了 Raft，可能导致消息和通知延迟。请打开应用信息，进入「电池」设置并将 Raft 设为无限制。</string>
     <string name="background_kill_notice_action_open_settings">去设置</string>
+    <string name="background_kill_notice_action_dont_show_again">不再提示</string>
     <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>
     <string name="settings_notifications_offline_computers_detail">当已注册的计算机离线时，在首页显示提醒。默认关闭。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>

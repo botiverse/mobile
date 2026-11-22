@@ -2745,6 +2745,7 @@
     <string name="background_kill_notice_body_vendor">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Permite que Raft se inicie automáticamente y se ejecute sin restricciones en segundo plano en los ajustes del sistema.</string>
     <string name="background_kill_notice_body_app_details">Tu dispositivo detuvo Raft mientras estaba en segundo plano, lo que puede retrasar mensajes y notificaciones. Abre Información de la aplicación, ve a Batería y establece Raft en Sin restricciones.</string>
     <string name="background_kill_notice_action_open_settings">Abrir ajustes</string>
+    <string name="background_kill_notice_action_dont_show_again">No volver a mostrar</string>
     <string name="settings_notifications_offline_computers_title">Alertas de computadoras sin conexión</string>
     <string name="settings_notifications_offline_computers_detail">Muestra una alerta en Inicio cuando una computadora registrada está sin conexión. Desactivado de forma predeterminada.</string>
     <string name="settings_notifications_test_title">Enviar una notificación de prueba</string>

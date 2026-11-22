@@ -84,6 +84,23 @@ class AgentDetailOfflineTest {
     }
 
     @Test
+    fun coldStartShowsTheSavedFastModeAsTheLivePageDoes() = runTest {
+        // The profile's Mode row reads `runtimeMode`: without it on disk a fast agent read Default until the
+        // refresh landed. `executionMode` (where the agent runs) is its own field and comes back as stored.
+        val device = Device(backgroundScope)
+        val first = device.cache()
+        val fast =
+            detail("Atlas").let { base ->
+                base.copy(summary = base.summary?.copy(runtime = "codex", model = "gpt-6.2-sol", runtimeMode = "fast", executionMode = "byoc"))
+            }
+        assertTrue(first.write(owner.agentDetailCacheKey(AGENT), cached(fast), first.ticket()))
+
+        val replay = assertNotNull(device.cache().cachedAgentDetailFor(owner, AGENT))
+        assertEquals("fast", replay.detail.summary?.runtimeMode)
+        assertEquals("byoc", replay.detail.summary?.executionMode)
+    }
+
+    @Test
     fun secretsNeverReachDisk() = runTest {
         val device = Device(backgroundScope)
         val cache = device.cache()
